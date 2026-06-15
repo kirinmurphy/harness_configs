@@ -15,10 +15,9 @@ while [[ $# -gt 0 ]]; do
     --mode=*) install_mode="${1#*=}"; shift ;;
     --on-conflict) on_conflict="$2"; shift 2 ;;
     --on-conflict=*) on_conflict="${1#*=}"; shift ;;
-    *) echo "usage: $0 [--dry-run] [--mode managed|adopt] [--on-conflict overwrite|keep|agent]" >&2; exit 2 ;;
+    *) echo "usage: $0 [--dry-run] [--mode managed|adopt] [--on-conflict overwrite|keep|abort]" >&2; exit 2 ;;
   esac
 done
-[[ "${on_conflict}" == "prompt" ]] && on_conflict="agent"
 export ROBOREPO_INSTALL_MODE="${install_mode}"
 export ROBOREPO_ON_CONFLICT="${on_conflict}"
 

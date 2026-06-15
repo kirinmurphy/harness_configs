@@ -1,6 +1,7 @@
 # Using the `roborepo` CLI
 
-`roborepo` is the single front door. After [installing roborepo](../../guides/first-time-setup.md), install puts it on your `PATH`, so it works from any shell.
+`roborepo` is the single front door.
+After [installing roborepo](../../guides/first-time-setup.md), install puts it on your `PATH`, so it works from any shell.
 
 > If `roborepo` is not found, run `roborepo doctor` (or `./bin/roborepo doctor` before the first
 > install) — it reports whether the command is installed and on `PATH`, with the exact fix.
@@ -25,19 +26,19 @@
 
 ## Project Context
 
-|                                                          |                                                                                                                          |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `roborepo project-context inventory [path] [--summary]`  | Scans a repo and writes deterministic generated facts to `docs/project-context/generated/repo-scan.json` (and, with `--summary`, a short `repo-summary.md`). The `project-context` skill turns those facts into curated handoff docs. |
+|                                                         |                                                                                                                                                                                                                                       |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `roborepo project-context inventory [path] [--summary]` | Scans a repo and writes deterministic generated facts to `docs/project-context/generated/repo-scan.json` (and, with `--summary`, a short `repo-summary.md`). The `project-context` skill turns those facts into curated handoff docs. |
 
 ## Skills
 
-|                                           |                                                                                                                               |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `roborepo skill new`                      | Scaffolds a shared skill or slash command and updates manifests, generated links, commands, and README.                       |
-| `roborepo skill export-to-local`          | Copies this repo's shared skills into the current target repo and leaves a shareable zip bundle.                              |
-| `roborepo skill symlink-repo`            | Symlinks a target repo's `.agents/skills` into existing `.claude/skills` and/or `.codex/skills` folders.                      |
+|                                            |                                                                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `roborepo skill new`                       | Scaffolds a shared skill or slash command and updates manifests, generated links, commands, and README.                       |
+| `roborepo skill export-to-local`           | Copies this repo's shared skills into the current target repo and leaves a shareable zip bundle.                              |
+| `roborepo skill symlink-repo`              | Symlinks a target repo's `.agents/skills` into existing `.claude/skills` and/or `.codex/skills` folders.                      |
 | `roborepo skill symlink-globals [--check]` | Symlinks this repo's shared skill source into global harness folders after adding or removing `globals/agents/skills/<name>`. |
-| `roborepo skill render-commands [--check]`       | Renders generated slash commands from `manifests/inventory/slash-commands.json`, or verifies them with `--check`.                       |
+| `roborepo skill render-commands [--check]` | Renders generated slash commands from `manifests/inventory/slash-commands.json`, or verifies them with `--check`.             |
 
 ## MCP Setup
 

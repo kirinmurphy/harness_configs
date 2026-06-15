@@ -1,0 +1,60 @@
+{
+  "default": ["base", "skills", "rules", "hooks", "commands", "permissions", "mcp"],
+  "bundles": [
+    {
+      "id": "base",
+      "label": "Base guidance",
+      "description": "AGENTS/CLAUDE guidance, managed markers, and root config baselines.",
+      "rows": [
+        "claude:settings.json",
+        "claude:CLAUDE.md",
+        "claude:MANAGED_BY_ROBOREPO.md",
+        "codex:config.toml",
+        "codex:AGENTS.md",
+        "codex:MANAGED_BY_ROBOREPO.md"
+      ]
+    },
+    {
+      "id": "skills",
+      "label": "Skills",
+      "description": "Shared global skills for Claude and Codex.",
+      "rows": ["claude:skills", "agents:skills"]
+    },
+    {
+      "id": "rules",
+      "label": "Codex rules",
+      "description": "Generated Codex command permission rules.",
+      "rows": ["codex:rules"]
+    },
+    {
+      "id": "hooks",
+      "label": "Hooks",
+      "description": "Claude and Codex lifecycle hooks.",
+      "rows": ["claude:hooks", "codex:hooks.json"]
+    },
+    {
+      "id": "commands",
+      "label": "Slash commands",
+      "description": "Global slash command wrappers.",
+      "rows": ["claude:commands", "codex:commands"]
+    },
+    {
+      "id": "permissions",
+      "label": "Permission profiles",
+      "description": "Rendered harness permission defaults inside root config.",
+      "rows": []
+    },
+    {
+      "id": "mcp",
+      "label": "MCP defaults",
+      "description": "Default jcodemunch and jdocmunch MCP config inside root config.",
+      "rows": []
+    },
+    {
+      "id": "telemetry",
+      "label": "Telemetry",
+      "description": "Local cross-repo metadata capture and reports. Installed off unless selected.",
+      "rows": []
+    }
+  ]
+}

@@ -71,6 +71,24 @@ paths_equivalent_for_copy() {
   return 1
 }
 
+path_has_meaningful_content() {
+  local path="$1"
+
+  [[ -e "${path}" || -L "${path}" ]] || return 1
+  if [[ -L "${path}" ]]; then
+    return 0
+  fi
+  if [[ -f "${path}" ]]; then
+    [[ -s "${path}" ]]
+    return $?
+  fi
+  if [[ -d "${path}" ]]; then
+    [[ -n "$(find "${path}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]
+    return $?
+  fi
+  return 0
+}
+
 choose_path_conflict_action() {
   local repo_rel="$1"
   local home_path="$2"
@@ -84,13 +102,13 @@ choose_path_conflict_action() {
 
   if [[ "${dry_run}" -eq 1 ]]; then
     echo "collision: ${home_path}"
-    echo "dry-run: would ask overwrite, keep originals, or agent prompt"
+    echo "dry-run: would ask overwrite or keep originals"
     return 0
   fi
 
   if ! stdin_is_interactive; then
     echo "error: ${home_path} exists and stdin is not interactive." >&2
-    echo "Run interactively, pass --on-conflict overwrite|keep|agent, or use --dry-run to inspect collisions." >&2
+    echo "Run interactively, pass --on-conflict overwrite|keep, or use --dry-run to inspect collisions." >&2
     return 1
   fi
 
@@ -103,9 +121,8 @@ choose_path_conflict_action() {
     echo "Choose:"
     echo "  1) overwrite     backup local as *_original_TIMESTAMP; install repo item"
     echo "  2) keep originals leave local active; stage repo item as *_update_TIMESTAMP"
-    echo "  3) agent prompt  stage repo item and print merge prompt"
     echo "  q) quit"
-    printf "Selection [1/2/3/q]: "
+    printf "Selection [1/2/q]: "
     if ! read -r choice; then
       CONFIG_COLLISION_ACTION="abort"
       return 0
@@ -118,10 +135,6 @@ choose_path_conflict_action() {
         ;;
       2|keep|original|originals)
         CONFIG_COLLISION_ACTION="keep"
-        return 0
-        ;;
-      3|agent|prompt)
-        CONFIG_COLLISION_ACTION="agent"
         return 0
         ;;
       q|Q|quit|exit)
@@ -172,6 +185,27 @@ install_copy_item() {
     return 0
   fi
 
+  if [[ "${install_mode}" == "managed" ]]; then
+    if path_has_meaningful_content "${home_path}"; then
+      local original_path
+      original_path="$(timestamped_path "${home_path}" original)"
+      if [[ "${dry_run}" -eq 0 ]]; then
+        mkdir -p "$(dirname "${original_path}")"
+        mv "${home_path}" "${original_path}"
+        copy_tree "${src}" "${home_path}"
+      fi
+      echo "backup: ${home_path} -> ${original_path}"
+      echo "copy: ${home_path} <- ${src}"
+      print_install_conflict_prompt "${repo_rel}" "${home_path}"
+      return 0
+    fi
+    if [[ "${dry_run}" -eq 0 ]]; then
+      copy_tree "${src}" "${home_path}"
+    fi
+    echo "copy: ${home_path} <- ${src}"
+    return 0
+  fi
+
   CONFIG_COLLISION_ACTION=""
   choose_path_conflict_action "${repo_rel}" "${home_path}"
   if [[ "${dry_run}" -eq 1 && -n "${harness}" ]]; then
@@ -188,11 +222,9 @@ install_copy_item() {
       fi
       echo "backup: ${home_path} -> ${original_path}"
       echo "copy: ${home_path} <- ${src}"
+      print_install_conflict_prompt "${repo_rel}" "${home_path}"
       ;;
     keep)
-      stage_update_item "${repo_rel}" "${home_path}"
-      ;;
-    agent)
       stage_update_item "${repo_rel}" "${home_path}"
       print_install_conflict_prompt "${repo_rel}" "${home_path}"
       ;;
@@ -240,6 +272,27 @@ install_link_item() {
     return 0
   fi
 
+  if [[ "${install_mode}" == "managed" ]]; then
+    if path_has_meaningful_content "${home_path}"; then
+      local original_path
+      original_path="$(timestamped_path "${home_path}" original)"
+      if [[ "${dry_run}" -eq 0 ]]; then
+        mkdir -p "$(dirname "${original_path}")" "$(dirname "${home_path}")"
+        mv "${home_path}" "${original_path}"
+        ln -s "${src}" "${home_path}"
+      fi
+      echo "backup: ${home_path} -> ${original_path}"
+      echo "link: ${home_path} -> ${src}"
+      print_install_conflict_prompt "${repo_rel}" "${home_path}"
+      return 0
+    fi
+    if [[ "${dry_run}" -eq 0 ]]; then
+      ln -s "${src}" "${home_path}"
+    fi
+    echo "link: ${home_path} -> ${src}"
+    return 0
+  fi
+
   CONFIG_COLLISION_ACTION=""
   choose_path_conflict_action "${repo_rel}" "${home_path}"
   case "${CONFIG_COLLISION_ACTION}" in
@@ -253,11 +306,9 @@ install_link_item() {
       fi
       echo "backup: ${home_path} -> ${original_path}"
       echo "link: ${home_path} -> ${src}"
+      print_install_conflict_prompt "${repo_rel}" "${home_path}"
       ;;
     keep)
-      stage_update_item "${repo_rel}" "${home_path}"
-      ;;
-    agent)
       stage_update_item "${repo_rel}" "${home_path}"
       print_install_conflict_prompt "${repo_rel}" "${home_path}"
       ;;
@@ -322,7 +373,7 @@ print_install_conflict_prompt() {
   local src="${repo_root}/${repo_rel}"
 
   echo ""
-  echo "Agent merge prompt:"
+  echo "Merge review prompt:"
   echo "-----"
   cat <<EOF
 Resolve this harness install conflict.
@@ -482,94 +533,6 @@ describe_user_config() {
   grep -E '^[[:space:]]*(model|model_provider|approval_policy|sandbox_mode)[[:space:]]*=|^[[:space:]]*\[(mcp_servers|model_providers|profiles|features|hooks|projects|plugins)(\.|\])' "${home_path}" 2>/dev/null \
     | sed 's/^/  has: /' \
     | head -n 20 || true
-}
-
-print_agent_merge_prompt() {
-  local harness="$1"
-  local mode="$2"
-  local repo_rel="$3"
-  local home_path="$4"
-  local src="${repo_root}/${repo_rel}"
-
-  echo ""
-  echo "Agent merge prompt:"
-  echo "-----"
-  sed \
-    -e "s#{{SRC}}#${src}#g" \
-    -e "s#{{HOME_PATH}}#${home_path}#g" \
-    -e "s#{{MODE}}#${mode}#g" \
-    -e "s#{{HARNESS}}#${harness}#g" \
-    "${repo_root}/manifests/platform/prompts/install-root-config-merge.md"
-  echo "-----"
-  echo ""
-}
-
-confirm_choice() {
-  local prompt="$1"
-  local answer
-
-  read -r -p "${prompt} [Y/n] " answer
-  case "${answer}" in
-    ""|y|Y|yes|YES) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-config_collision_action() {
-  local harness="$1"
-  local repo_rel="$2"
-  local home_path="$3"
-  local src="${repo_root}/${repo_rel}"
-  local choice
-
-  while true; do
-    echo ""
-    echo "User-owned ${harness} config exists:"
-    echo "  local:   ${home_path}"
-    echo "  harness: ${src}"
-    echo ""
-    describe_user_config "${harness}" "${home_path}"
-    echo ""
-    echo "Choose:"
-    echo "  1) adopt         keep local root config; install only clean harness links"
-    echo "  2) agent prompt  print merge prompt; leave root config unchanged"
-    echo "  q) quit"
-    read -r -p "Selection [1/2/q]: " choice
-
-    case "${choice}" in
-      1|adopt)
-        echo ""
-        echo "Keeping local ${home_path}. Harness defaults will not be installed for this file."
-        print_agent_merge_prompt "${harness}" "adopt existing" "${repo_rel}" "${home_path}"
-        if confirm_choice "Continue by adopting existing local config?"; then
-          CONFIG_COLLISION_ACTION="adopt"
-          return 0
-        fi
-        ;;
-      2|agent|prompt)
-        print_agent_merge_prompt "${harness}" "manual agent merge before install" "${repo_rel}" "${home_path}"
-        if confirm_choice "Skip this root config export for now?"; then
-          CONFIG_COLLISION_ACTION="agent"
-          return 0
-        fi
-        ;;
-      q|Q|quit|exit)
-        CONFIG_COLLISION_ACTION="abort"
-        return 0
-        ;;
-      *)
-        echo "Invalid selection."
-        ;;
-    esac
-  done
-}
-
-choose_config_collision_action() {
-  local harness="$1"
-  local repo_rel="$2"
-  local home_path="$3"
-
-  config_collision_action "${harness}" "${repo_rel}" "${home_path}"
 }
 
 choose_profile() {

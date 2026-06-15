@@ -1,6 +1,6 @@
 # Setup and Daily Use
 
-This repo owns your agent harness config (Claude Code, Codex) and exposes it at the paths agents already read. One install script wires everything up.
+This repo owns your agent harness config (Claude Code, Codex) and exposes it at the paths agents already read. Setup installs the core once, then starts onboarding so you can choose which behavior bundles you want on that machine.
 
 For install workflow tradeoffs, see [install-workflows.md](install-workflows.md). For system details, see [../reference/services/architecture.md](../reference/services/architecture.md).
 
@@ -24,17 +24,26 @@ For install workflow tradeoffs, see [install-workflows.md](install-workflows.md)
 ./scripts/install/main.sh
 ```
 
-This detects which harnesses are installed (Claude Code, Codex, or both), installs clean repo-managed symlinks, exports mutable root config as local files, installs global commands, and adds shell snippets to your profile.
+This installs the core CLI plus the shared baseline. It detects which harnesses are installed (Claude Code, Codex, or both), installs the core-managed links and baselines, exports mutable root config as local files, installs global commands, and adds shell snippets to your profile.
 
-The installer has three workflows. See [install-workflows.md](install-workflows.md) for what each option offers, what it hinders, and how local user config can live alongside downloaded repo defaults.
+Interactive install starts onboarding after the core install completes. If you skip it, or if install ran noninteractively, run:
 
-- `managed`: read-mostly target path is missing or already points to this repo. The installer creates or keeps the symlink. Mutable root config is copied into a local active file instead of symlinked.
-- `adopt`: a user-owned root config exists, so the installer leaves it in place and installs only other clean harness links.
-- `agent prompt`: a user-owned root config exists and needs manual comparison, so the installer prints a merge prompt and leaves it unchanged.
+```sh
+roborepo onboard
+```
 
-Root config export is only automatic when the target path is missing, already an identical local copy, or still symlinked to this repo from an older install. The installer does not auto-merge user config or silently replace non-root conflicts. If another harness file or global command target already exists and is not managed by this repo, install stops before changing files and prints an agent prompt. See [Config Collision Handling](../reference/internal/config-collision-handling.md) for exact behavior.
+That workflow turns on or skips optional behavior packages such as skills, hooks, commands, rules, MCP defaults, permissions, and telemetry. Re-running `roborepo onboard` later shows selected options checked and unselected options unchecked.
+
+The installer has two install modes. See [install-workflows.md](install-workflows.md) for the step-by-step flow and the collision behavior.
+
+- `managed`: repo defaults win. Existing non-empty config is backed up first, then the repo version is installed.
+- `adopt`: local root config stays active. Collisions offer overwrite or keep-originals handling, and the merge prompt prints after the action.
+
+Root config export is only automatic when the target path is missing, already an identical local copy, or still symlinked to this repo from an older install. The installer does not auto-merge user config or silently replace non-root conflicts. If another harness file or global command target already exists and is not managed by this repo, install stops before changing files and prints a merge prompt after the blocking action. See [Config Collision Handling](../reference/internal/config-collision-handling.md) for exact behavior.
 
 **The script is safe to re-run** — managed links are left alone, fresh paths are linked, identical root config copies are accepted, and user-owned root config files are preserved unless you explicitly merge them later. Re-run it for a new machine, broken symlink, added harness, or new commands/snippets added to the repo.
+
+If onboarding has not been completed yet, `roborepo` runs that workflow before most normal commands. `--no-presets-onboard` or `ROBOREPO_PRESETS_ONBOARD=skip` bypasses install-time onboarding and the later command gate for automation.
 
 ### Preview without modifying anything:
 
@@ -68,7 +77,7 @@ Claude Code and Codex sometimes write directly to active files under `~/.claude`
 ./scripts/sync-from-home.sh
 ```
 
-For each changed item, the script shows a diff before writing to the repo. Choose `keep repo`, `overwrite repo`, or `agent prompt`.
+For each changed item, the script shows a diff before writing to the repo. Choose `keep repo` or `overwrite repo`; merge prompts print after actions that create backups or staged defaults.
 
 By default, sync skips root config files: `~/.claude/settings.json` and `~/.codex/config.toml`. Those files are active local files because Claude and Codex can write personal state there. Use `--include-root-config` only when you intentionally want to review and promote selected local root config changes into the repo baseline:
 

@@ -96,14 +96,82 @@ run_expect_install_args() {
   HOME="$home_dir" "$repo_root/scripts/install/main.sh" "$@" >"$output" 2>&1
 }
 
+run_harness_install_args() {
+  local home_dir="$1"
+  local output="$2"
+  shift 2
+
+  HOME="$home_dir" "$repo_root/scripts/install/install-claude.sh" "$@" >"$output" 2>&1
+  HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" "$@" >>"$output" 2>&1
+}
+
 test_fresh_managed() {
   local home_dir
   home_dir="$(make_home)"
 
   HOME="$home_dir" "$repo_root/scripts/install/main.sh" >"$home_dir/out"
 
-  assert_regular_file_contains "$home_dir/.claude/settings.json" "permissions" "fresh Claude config copied as local file"
-  assert_regular_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "fresh Codex config copied as local file"
+  assert_file_contains "$home_dir/out" "Core install complete" "main install applies core only"
+  assert_file_contains "$home_dir/out" "Onboarding not started because this install is noninteractive" "noninteractive install defers onboarding"
+  [[ ! -e "$home_dir/.claude/settings.json" && ! -e "$home_dir/.codex/config.toml" ]] \
+    && pass "main install leaves harness bundles for onboarding" \
+    || fail "main install leaves harness bundles for onboarding"
+}
+
+test_mode_prompt_allows_adopt_on_clean_machine() {
+  local home_dir expect_file
+  home_dir="$(make_home)"
+  expect_file="$home_dir/expect.tcl"
+  cat >"$expect_file" <<'EOF'
+expect "Selection*"
+send "2\r"
+expect "Choose adopt collision behavior"
+expect "Selection*"
+send "2\r"
+expect "Select numbers to toggle"
+send "\r"
+EOF
+
+  run_expect_install "$home_dir" "$home_dir/out" "$expect_file"
+
+  assert_file_contains "$home_dir/out" "Choose install mode" "install mode prompt appears"
+  assert_file_contains "$home_dir/out" "Mode:   adopt" "install mode prompt accepts adopt"
+  assert_file_contains "$home_dir/out" "state: .* mode=adopt on-conflict=keep" "adopt keep policy is persisted"
+  assert_file_contains "$home_dir/out" "roborepo onboard" "install starts onboarding after core install"
+  [[ -f "$home_dir/.roborepo/presets/state.json" ]] \
+    && pass "post-install onboarding records preset state" \
+    || fail "post-install onboarding records preset state" "$home_dir/out"
+}
+
+test_mode_prompt_allows_managed_selection() {
+  local home_dir expect_file
+  home_dir="$(make_home)"
+  expect_file="$home_dir/expect.tcl"
+  cat >"$expect_file" <<'EOF'
+expect "Selection*"
+send "1\r"
+expect "Select numbers to toggle"
+send "\r"
+EOF
+
+  run_expect_install "$home_dir" "$home_dir/out" "$expect_file"
+
+  assert_file_contains "$home_dir/out" "Choose install mode" "install mode prompt appears for managed"
+  assert_file_contains "$home_dir/out" "Mode:   managed" "install mode prompt accepts managed"
+  assert_file_contains "$home_dir/out" "state: .* mode=managed on-conflict=overwrite" "managed overwrite policy is persisted"
+  assert_file_contains "$home_dir/out" "roborepo onboard" "managed install starts onboarding after core install"
+}
+
+test_managed_mode_backs_up_existing_configs() {
+  local home_dir
+  home_dir="$(make_home)"
+  seed_user_configs "$home_dir"
+
+  ROBOREPO_INSTALL_MODE=managed run_harness_install_args "$home_dir" "$home_dir/out"
+
+  assert_file_contains "$home_dir/out" "backup: $home_dir/.claude/settings.json" "managed backs up existing Claude config"
+  assert_file_contains "$home_dir/out" "backup: $home_dir/.codex/config.toml" "managed backs up existing Codex config"
+  assert_file_contains "$home_dir/out" "Merge review prompt:" "managed prints merge review prompt"
 }
 
 test_existing_root_symlinks_convert_to_local_copies() {
@@ -113,9 +181,11 @@ test_existing_root_symlinks_convert_to_local_copies() {
   ln -s "$repo_root/globals/claude/settings.json" "$home_dir/.claude/settings.json"
   ln -s "$repo_root/globals/codex/config.toml" "$home_dir/.codex/config.toml"
 
-  HOME="$home_dir" "$repo_root/scripts/install/main.sh" >"$home_dir/out"
+  HOME="$home_dir" "$repo_root/scripts/install/install-claude.sh" >"$home_dir/claude.out"
+  HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" >"$home_dir/codex.out"
 
-  assert_file_contains "$home_dir/out" "converted from repo symlink" "managed root config symlinks are converted"
+  assert_file_contains "$home_dir/claude.out" "converted from repo symlink" "managed Claude root config symlinks are converted"
+  assert_file_contains "$home_dir/codex.out" "converted from repo symlink" "managed Codex root config symlinks are converted"
   assert_regular_file_contains "$home_dir/.claude/settings.json" "permissions" "converted Claude config is local file"
   assert_regular_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "converted Codex config is local file"
 }
@@ -166,7 +236,7 @@ test_old_repo_managed_symlinks_are_migrated() {
   ln -s "$repo_root/agents/skills" "$home_dir/.agents/skills"
   ln -s "$repo_root/agents/skills" "$home_dir/.codex/skills"
 
-  HOME="$home_dir" "$repo_root/scripts/install/main.sh" >"$home_dir/out"
+  run_harness_install_args "$home_dir" "$home_dir/out"
 
   assert_regular_file_contains "$home_dir/.claude/settings.json" "permissions" "old Claude root config symlink converts to local file"
   assert_regular_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "old Codex root config symlink converts to local file"
@@ -206,6 +276,7 @@ test_verify_install_requires_active_root_configs() {
   fi
 
   HOME="$home_dir" "$repo_root/scripts/install/main.sh" >"$home_dir/install.out"
+  HOME="$home_dir" ROBOREPO_STATE_DIR="$home_dir/.roborepo" node "$repo_root/scripts/cli/main.mjs" bundle apply base >/dev/null
   PATH="$home_dir/.local/bin:$PATH" HOME="$home_dir" "$repo_root/scripts/verify-install.sh" --quiet >"$home_dir/verify-pass.out" 2>&1 \
     && pass "verify-install accepts copied active root configs" \
     || fail "verify-install accepts copied active root configs" "$home_dir/verify-pass.out"
@@ -218,8 +289,7 @@ test_verify_install_requires_active_root_configs() {
     fail "verify-install rejects stale root config symlinks" "$home_dir/verify-fail.out"
   fi
 
-  assert_file_contains "$home_dir/verify-fail.out" "$home_dir/.claude/settings.json is not an active local file" "verify-install rejects stale Claude root symlink"
-  assert_file_contains "$home_dir/verify-fail.out" "$home_dir/.codex/config.toml is not an active local file" "verify-install rejects stale Codex root symlink"
+  assert_file_contains "$home_dir/verify-fail.out" "base selected but not fully applied" "verify-install rejects stale selected root preset"
 }
 
 test_dry_run_collision_no_mutation() {
@@ -227,10 +297,10 @@ test_dry_run_collision_no_mutation() {
   home_dir="$(make_home)"
   seed_user_configs "$home_dir"
 
-  HOME="$home_dir" "$repo_root/scripts/install/main.sh" --dry-run >"$home_dir/out"
+  run_harness_install_args "$home_dir" "$home_dir/out" --dry-run
 
-  assert_file_contains "$home_dir/out" "collision: $home_dir/.claude/settings.json" "dry-run reports Claude collision"
-  assert_file_contains "$home_dir/out" "overwrite, keep originals, or agent prompt" "dry-run describes conflict policies"
+  assert_file_contains "$home_dir/out" "backup: $home_dir/.claude/settings.json" "dry-run previews Claude backup"
+  assert_file_contains "$home_dir/out" "Merge review prompt:" "dry-run previews merge prompt"
   [[ ! -L "$home_dir/.claude/settings.json" && ! -L "$home_dir/.codex/config.toml" ]] && pass "dry-run leaves config files untouched" || fail "dry-run leaves config files untouched"
   [[ ! -e "$home_dir/.claude/settings_update_"* && ! -e "$home_dir/.roborepo-backups" ]] && pass "dry-run creates no backups or staged updates" || fail "dry-run creates no backups or staged updates"
 }
@@ -240,7 +310,7 @@ test_noninteractive_block_no_mutation() {
   home_dir="$(make_home)"
   seed_user_configs "$home_dir"
 
-  if HOME="$home_dir" "$repo_root/scripts/install/main.sh" >"$home_dir/out" 2>&1; then
+  if ROBOREPO_INSTALL_MODE=adopt run_harness_install_args "$home_dir" "$home_dir/out"; then
     fail "noninteractive collision blocks install" "$home_dir/out"
   fi
 
@@ -253,15 +323,15 @@ test_non_root_conflict_stages_with_policy() {
   home_dir="$(make_home)"
   printf 'existing agents\n' > "$home_dir/.codex/AGENTS.md"
 
-  HOME="$home_dir" "$repo_root/scripts/install/main.sh" --mode adopt --on-conflict keep >"$home_dir/out" 2>&1
+  HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" --mode adopt --on-conflict keep >"$home_dir/out" 2>&1
 
   assert_file_contains "$home_dir/.codex/AGENTS.md" "existing agents" "keep policy preserves existing non-root file"
   find "$home_dir/.codex" -name 'AGENTS_update_*.md' | grep -q . \
     && pass "keep policy stages non-root repo update" \
     || fail "keep policy stages non-root repo update"
-  [[ -f "$home_dir/.claude/settings.json" && -f "$home_dir/.codex/config.toml" ]] \
-    && pass "keep policy still installs missing files" \
-    || fail "keep policy still installs missing files"
+  [[ -f "$home_dir/.codex/config.toml" ]] \
+    && pass "keep policy still installs missing Codex files" \
+    || fail "keep policy still installs missing Codex files"
 }
 
 test_global_command_conflict_blocks_before_mutation() {
@@ -289,7 +359,7 @@ test_direct_harness_conflict_dry_run_reports() {
   home_dir="$(make_home)"
   printf 'existing agents\n' > "$home_dir/.codex/AGENTS.md"
 
-  HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" --dry-run >"$home_dir/out" 2>&1
+  ROBOREPO_INSTALL_MODE=adopt HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" --dry-run >"$home_dir/out" 2>&1
 
   assert_file_contains "$home_dir/out" "collision: $home_dir/.codex/AGENTS.md" "direct Codex installer reports non-root conflict"
   [[ ! -e "$home_dir/.codex/config.toml" && ! -e "$home_dir/.codex/hooks.json" ]] \
@@ -297,12 +367,12 @@ test_direct_harness_conflict_dry_run_reports() {
     || fail "direct Codex dry-run prevents mutation"
 }
 
-test_interactive_keep_agent() {
+test_adopt_keep_originals_prints_merge_prompt() {
   local home_dir
   home_dir="$(make_home)"
   seed_user_configs "$home_dir"
 
-  HOME="$home_dir" "$repo_root/scripts/install/main.sh" --on-conflict keep >"$home_dir/out" 2>&1
+  ROBOREPO_INSTALL_MODE=adopt run_harness_install_args "$home_dir" "$home_dir/out" --on-conflict keep
 
   [[ ! -L "$home_dir/.claude/settings.json" ]] && pass "keep leaves Claude config as regular file" || fail "keep leaves Claude config as regular file"
   assert_file_contains "$home_dir/.claude/settings.json" '"model":"opus"' "keep preserves Claude config content"
@@ -314,14 +384,15 @@ test_interactive_keep_agent() {
   find "$home_dir/.codex" -name 'config_update_*.toml' | grep -q . \
     && pass "keep stages Codex root config update" \
     || fail "keep stages Codex root config update"
+  assert_file_contains "$home_dir/out" "Merge review prompt:" "keep prints merge review prompt"
 }
 
-test_overwrite_policy_backs_up_originals() {
+test_adopt_overwrite_policy_backs_up_originals() {
   local home_dir
   home_dir="$(make_home)"
   seed_user_configs "$home_dir"
 
-  run_expect_install_args "$home_dir" "$home_dir/out" --on-conflict overwrite
+  ROBOREPO_INSTALL_MODE=adopt run_harness_install_args "$home_dir" "$home_dir/out" --on-conflict overwrite
 
   assert_file_contains "$home_dir/.claude/settings.json" "permissions" "overwrite installs Claude repo config"
   find "$home_dir/.claude" -name 'settings_original_*.json' | grep -q . \
@@ -331,17 +402,7 @@ test_overwrite_policy_backs_up_originals() {
   find "$home_dir/.codex" -name 'config_original_*.toml' | grep -q . \
     && pass "overwrite backs up original Codex config" \
     || fail "overwrite backs up original Codex config"
-}
-
-test_cancel_loop_and_agent_prompt() {
-  local home_dir
-  home_dir="$(make_home)"
-  seed_user_configs "$home_dir"
-
-  HOME="$home_dir" "$repo_root/scripts/install/main.sh" --on-conflict agent >"$home_dir/out" 2>&1
-
-  assert_file_contains "$home_dir/out" "Agent merge prompt:" "agent prompt printed"
-  [[ ! -L "$home_dir/.claude/settings.json" && ! -L "$home_dir/.codex/config.toml" ]] && pass "agent prompt leaves root configs local" || fail "agent prompt leaves root configs local"
+  assert_file_contains "$home_dir/out" "Merge review prompt:" "overwrite prints merge review prompt"
 }
 
 test_abort_no_config_replacement() {
@@ -349,7 +410,7 @@ test_abort_no_config_replacement() {
   home_dir="$(make_home)"
   seed_user_configs "$home_dir"
 
-  if HOME="$home_dir" "$repo_root/scripts/install/main.sh" --on-conflict abort >"$home_dir/out" 2>&1; then
+  if ROBOREPO_INSTALL_MODE=adopt run_harness_install_args "$home_dir" "$home_dir/out" --on-conflict abort; then
     fail "abort exits nonzero" "$home_dir/out"
   fi
 
@@ -364,6 +425,7 @@ test_uninstall_removes_repo_owned_links() {
   home_dir="$(make_home)"
 
   HOME="$home_dir" "$repo_root/scripts/install/main.sh" >"$home_dir/install.out"
+  HOME="$home_dir" ROBOREPO_STATE_DIR="$home_dir/.roborepo" node "$repo_root/scripts/cli/main.mjs" bundle apply base >/dev/null
   HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" >"$home_dir/uninstall.out"
 
   [[ ! -e "$home_dir/.claude/CLAUDE.md" && ! -L "$home_dir/.claude/CLAUDE.md" ]] \
@@ -384,8 +446,8 @@ test_idempotency_no_extra_backups() {
   local home_dir
   home_dir="$(make_home)"
 
-  HOME="$home_dir" "$repo_root/scripts/install/main.sh" >"$home_dir/first.out"
-  HOME="$home_dir" "$repo_root/scripts/install/main.sh" >"$home_dir/second.out"
+  run_harness_install_args "$home_dir" "$home_dir/first.out"
+  run_harness_install_args "$home_dir" "$home_dir/second.out"
 
   assert_file_contains "$home_dir/second.out" "ok: $home_dir/.claude/settings.json" "idempotent Claude config ok"
   assert_file_contains "$home_dir/second.out" "ok: $home_dir/.codex/config.toml" "idempotent Codex config ok"
@@ -400,7 +462,7 @@ test_malformed_claude_config() {
   printf '{bad json\n' > "$home_dir/.claude/settings.json"
   printf 'model = "o3"\n' > "$home_dir/.codex/config.toml"
 
-  HOME="$home_dir" "$repo_root/scripts/install/main.sh" --dry-run >"$home_dir/out"
+  ROBOREPO_INSTALL_MODE=adopt HOME="$home_dir" "$repo_root/scripts/install/install-claude.sh" --dry-run >"$home_dir/out"
 
   assert_file_contains "$home_dir/out" "invalid JSON" "malformed Claude config is reported"
   assert_file_contains "$home_dir/out" "collision: $home_dir/.claude/settings.json" "malformed Claude config still prompts"
@@ -449,7 +511,7 @@ test_sync_interactive_choices() {
   printf 'home marker\n' > "$home_dir/.codex/MANAGED_BY_ROBOREPO.md"
   # sync processes items in manifest order; for this fixture the present items prompt as:
   #   1) AGENTS.md   2) MANAGED_BY_ROBOREPO.md   3) hooks.json
-  # Answer so AGENTS is kept, hooks.json is overwritten, MANAGED_BY gets the agent prompt
+  # Answer so AGENTS is kept, hooks.json is overwritten, MANAGED_BY gets the merge prompt
   # (matches the assertions below, which are keyed by file, not by prompt order).
   expect_file="$home_dir/expect.tcl"
   cat >"$expect_file" <<'EOF'
@@ -474,8 +536,8 @@ EOF
 
   assert_file_contains "$sync_repo/globals/codex/AGENTS.md" "repo agents" "sync keep repo leaves item unchanged"
   assert_file_contains "$sync_repo/globals/codex/hooks.json" "home hooks" "sync overwrite copies home item"
-  assert_file_contains "$sync_repo/globals/codex/MANAGED_BY_ROBOREPO.md" "repo marker" "sync agent prompt skips item"
-  assert_file_contains "$home_dir/out" "Agent merge prompt:" "sync agent prompt printed"
+  assert_file_contains "$sync_repo/globals/codex/MANAGED_BY_ROBOREPO.md" "repo marker" "sync merge prompt skips item"
+  assert_file_contains "$home_dir/out" "Merge review prompt:" "sync merge prompt printed"
   assert_file_contains "$home_dir/out" "Required first step: compute your own complete comparison" "sync prompt requires full comparison"
   assert_file_contains "$home_dir/out" "Default stance: keep the repo baseline" "sync prompt defaults to repo baseline"
 }
@@ -578,9 +640,11 @@ test_noninteractive_block_no_mutation
 test_non_root_conflict_stages_with_policy
 test_global_command_conflict_blocks_before_mutation
 test_direct_harness_conflict_dry_run_reports
-test_interactive_keep_agent
-test_overwrite_policy_backs_up_originals
-test_cancel_loop_and_agent_prompt
+test_mode_prompt_allows_adopt_on_clean_machine
+test_mode_prompt_allows_managed_selection
+test_managed_mode_backs_up_existing_configs
+test_adopt_keep_originals_prints_merge_prompt
+test_adopt_overwrite_policy_backs_up_originals
 test_abort_no_config_replacement
 test_uninstall_removes_repo_owned_links
 test_idempotency_no_extra_backups

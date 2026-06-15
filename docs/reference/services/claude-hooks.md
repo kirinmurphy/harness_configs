@@ -38,6 +38,13 @@ global gitignore.
 This is the one hook duplicated near-identically on both harnesses — only the
 output protocol differs (JSON `systemMessage` here, plain text on Codex).
 
+### Telemetry capture — SessionStart / PreToolUse / PostToolUse / UserPromptSubmit / Stop
+
+When telemetry is enabled, these hook events call `roborepo telemetry capture`
+and append metadata-only records into `~/.roborepo/telemetry`. The records are
+tagged with repo and harness context so later reports can group by machine,
+repo, tool, and session without storing raw conversation text by default.
+
 ---
 
 ## Part 2 — Claude-specific

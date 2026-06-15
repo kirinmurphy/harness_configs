@@ -12,6 +12,52 @@
           {
             "type": "command",
             "command": "if [ -d \"$(pwd)/docs\" ]; then if [ -f \"$(pwd)/docs/.jdm-indexed\" ]; then echo 'jdocmunch: docs indexed. Use search_sections, get_toc, get_section for doc exploration.'; else echo 'jdocmunch: docs/ exists but not indexed. Run: roborepo index docs docs/'; fi; fi"
+          },
+          {
+            "type": "command",
+            "command": "roborepo telemetry capture --harness codex --event SessionStart"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "roborepo telemetry capture --harness codex --event PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "roborepo telemetry capture --harness codex --event PostToolUse"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "roborepo telemetry capture --harness codex --event UserPromptSubmit"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "roborepo telemetry capture --harness codex --event Stop"
           }
         ]
       }

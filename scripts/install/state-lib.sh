@@ -45,8 +45,27 @@ process.exit(1);
 ' "${state_file}"
 }
 
+read_install_on_conflict() {
+  local state_file
+  state_file="$(roborepo_state_file)"
+  [[ -f "${state_file}" ]] || return 1
+
+  node -e '
+const fs = require("fs");
+try {
+  const state = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  if (state && (state.onConflict === "overwrite" || state.onConflict === "keep")) {
+    console.log(state.onConflict);
+    process.exit(0);
+  }
+} catch {}
+process.exit(1);
+' "${state_file}"
+}
+
 write_install_state() {
   local mode="$1"
+  local on_conflict="${2:-}"
   local state_file state_dir
   state_dir="$(roborepo_state_dir)"
   state_file="$(roborepo_state_file)"
@@ -60,19 +79,25 @@ write_install_state() {
   node -e '
 const fs = require("fs");
 const path = require("path");
-const [stateFile, repoRoot, mode] = process.argv.slice(1);
+const [stateFile, repoRoot, mode, onConflict] = process.argv.slice(1);
+const persistedOnConflict = onConflict === "overwrite" || onConflict === "keep" ? onConflict : undefined;
 const state = {
   repo: repoRoot,
   mode,
+  onConflict: persistedOnConflict,
   updatedAt: new Date().toISOString(),
   harnesses: {
-    claude: { mode },
-    codex: { mode },
-    agents: { mode },
+    claude: { mode, onConflict: persistedOnConflict },
+    codex: { mode, onConflict: persistedOnConflict },
+    agents: { mode, onConflict: persistedOnConflict },
   },
 };
 fs.mkdirSync(path.dirname(stateFile), { recursive: true });
 fs.writeFileSync(stateFile, JSON.stringify(state, null, 2) + "\n");
-' "${state_file}" "${repo_root}" "${mode}"
-  echo "state: ${state_file} mode=${mode}"
+' "${state_file}" "${repo_root}" "${mode}" "${on_conflict}"
+  if [[ -n "${on_conflict}" ]]; then
+    echo "state: ${state_file} mode=${mode} on-conflict=${on_conflict}"
+  else
+    echo "state: ${state_file} mode=${mode}"
+  fi
 }

@@ -39,6 +39,13 @@ If the marker is present, confirms docs are indexed. This is duplicated
 near-identically on Claude — only the output protocol differs (plain text here,
 JSON `systemMessage` on Claude).
 
+### Telemetry capture — SessionStart / PreToolUse / PostToolUse / UserPromptSubmit / Stop
+
+When telemetry is enabled, these hook events call `roborepo telemetry capture`
+and append metadata-only records into `~/.roborepo/telemetry`. The records are
+tagged with repo and harness context so later reports can group by machine,
+repo, tool, and session without storing raw conversation text by default.
+
 ---
 
 ## Part 2 — Codex-specific
@@ -58,8 +65,9 @@ not tool-level hooks. See [jcodemunch.md](jcodemunch.md) for full details.
 Codex documents support for `SessionStart`, `PreToolUse`, `PermissionRequest`,
 `PostToolUse`, `PreCompact`, `PostCompact`, `UserPromptSubmit`, `SubagentStart`,
 `SubagentStop`, and `Stop` events. Matchers are not honored by every event;
-`UserPromptSubmit` and `Stop` ignore matcher values. Current repo config only uses
-`SessionStart`.
+`UserPromptSubmit` and `Stop` ignore matcher values. Current repo config uses
+`SessionStart`, `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, and `Stop` when
+telemetry is enabled, plus the existing `SessionStart` caveman/jdocmunch nudges.
 
 ---
 

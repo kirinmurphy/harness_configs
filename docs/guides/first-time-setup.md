@@ -1,6 +1,6 @@
 # First-Time Setup
 
-Use this guide to install the repo-managed configs and put `roborepo` on your `PATH`.
+Use this guide to install the core repo-managed config and put `roborepo` on your `PATH`.
 
 Works with Claude Code, Codex, or both. Supports macOS and Linux; Windows support is available but
 less tested.
@@ -19,6 +19,13 @@ Install on a new machine:
 ./bin/roborepo update
 ```
 
+Interactive installs ask for the install mode, then start the onboarding wizard automatically.
+If you skip onboarding or run install noninteractively, start the same wizard later with:
+
+```sh
+roborepo onboard
+```
+
 After the first install, use `roborepo` from anywhere:
 
 ```sh
@@ -34,11 +41,15 @@ The installer has two ownership models:
 
 | Workflow | Use when | Result |
 | --- | --- | --- |
-| `managed` | This repo owns the global defaults. | Global config paths point into this repo through symlinks. |
+| `managed` | This repo owns the global defaults, or the machine is clean. | Core config paths point into this repo through symlinks, then you choose optional bundles separately. |
 | `adopt` | You already have local Claude/Codex config you want to keep. | Local config remains user-owned while repo defaults are copied, staged, or merged intentionally. |
 
 No install workflow deletes existing user config. When the installer finds a collision it preserves
 the existing file and either asks what to do or stops before changing that path.
 
-For the full decision model, see [Install Workflow Choices](install-workflows.md). For exact
-collision behavior, see [Config Collision Handling](../reference/internal/config-collision-handling.md).
+Interactive installs always ask you to choose `managed` or `adopt`. Both choices are available on
+clean machines and on machines with existing config. Adopt installs also ask whether later file
+collisions should overwrite with backups or keep originals with staged repo defaults. Use
+`--mode managed` or `--mode adopt` only when you want to skip the interactive mode prompt.
+
+For the full decision model and terminal-style walkthroughs, see [Install Workflow Choices](install-workflows.md). For exact collision behavior, see [Config Collision Handling](../reference/internal/config-collision-handling.md).

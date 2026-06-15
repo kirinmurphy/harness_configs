@@ -314,6 +314,39 @@ identifier, number, and tradeoff from the previous version is still present.
 - End with a short "What's next" only if the source docs describe a real planned
   evolution.
 
+## Validation step (run before reporting done)
+
+After the draft and pruning pass read well, run a validation loop with two distinct
+roles. The point is to catch rule violations the drafting pass missed, then fix them —
+not to re-draft. Keep the roles separate; do not let the writer grade its own work in
+the same pass.
+
+- **Creator** — writes and revises the article. Owns the prose.
+- **Validator** — does not write. Reads every rule in this skill (audience model, code
+  rules, diagrams, the 6-beat arc, voice & restraint, pruning, tone & structure,
+  anonymization and any project blacklist) and checks the current draft against each
+  one. Its only output is a report of violations.
+
+The loop:
+
+1. **Validator pass.** Go through the whole article against the rules above and find
+   violations. For each, write one report line: the rule it breaks, the offending
+   location (section or quoted phrase), and what is wrong.
+2. **If the validator finds violations**, hand the report to the creator. The creator
+   revises the draft to address every reported item, then the loop returns to step 1
+   for a fresh validator pass on the revised draft.
+3. **If the validator finds nothing**, the article passes — proceed to *After drafting*.
+4. **Cap the loop at 10 validator passes.** If the validator still reports violations on
+   the 10th pass, stop and report the last validator report as an error — do not keep
+   looping. Surface what remained unresolved so the user can decide.
+
+Each pass validates the *revised* draft, not the original — a fix in one round may
+introduce a new violation, which the next pass catches.
+
+**Surface the validator's report to the user in chat on each pass** — the violations
+it found that round. The creator's revisions don't need restating; they show up in the
+edited output already. The user should be able to see what each validation round caught.
+
 ## After drafting
 
 - Report the saved path.

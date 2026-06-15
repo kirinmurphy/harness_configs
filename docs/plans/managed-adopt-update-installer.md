@@ -15,7 +15,7 @@ Design and implement the next installer model for managed/adopt/update behavior.
 - Desired mental model:
   - `managed`: repo-hosted read-mostly logic; mutable root config is copied or merged locally.
   - `adopt`: copy/replicate/merge repo defaults into user-owned global config.
-  - `agent prompt`: sub-option of `adopt`, not a top-level mode.
+  - merge prompt: printed after overwrite/keep or managed backup actions, not a top-level mode.
 
 ## Important Files
 
@@ -35,7 +35,7 @@ Design and implement the next installer model for managed/adopt/update behavior.
    - `managed`
    - `adopt`: replace existing files
    - `adopt`: keep existing files
-   - `adopt`: agent prompt
+   - `adopt`: overwrite or keep-existing behavior, with merge prompt printed after the action
    - future update behavior
 3. Define archive/staging layout:
    - `archived/` for local files replaced by repo candidates
@@ -43,7 +43,7 @@ Design and implement the next installer model for managed/adopt/update behavior.
 4. Define idempotency:
    - repeated adopt-replace should not endlessly archive files
    - repeated adopt-keep should refresh or stabilize staged repo candidates
-   - agent prompt should be non-mutating except output
+   - merge prompt should be non-mutating except output
 5. Define update behavior:
    - decide whether `install/main.sh` handles updates or a separate update command/script is needed
    - account for repo updates after initial adopt

@@ -147,7 +147,7 @@ function Write-AgentMergePrompt {
   param($Harness, $Mode, $RepoRel, $HomePath)
   $src = Join-Path $repoRoot $RepoRel
   Write-Host ""
-  Write-Host "Agent merge prompt:"
+  Write-Host "Merge review prompt:"
   Write-Host "-----"
   Write-Host @"
 Compare harness config at:
@@ -218,7 +218,7 @@ function Export-UserConfig {
 
   if ($DryRun) {
     Write-Host "collision: $HomePath"
-    Write-Host "dry-run: would ask whether to keep existing config or print agent merge prompt"
+    Write-Host "dry-run: would ask whether to keep existing config or print merge prompt"
     return
   }
 
@@ -234,7 +234,7 @@ function Export-UserConfig {
     Write-Host ""
     Write-Host "Choose:"
     Write-Host "  1) adopt         keep local root config; install only clean harness links"
-    Write-Host "  2) agent prompt  print merge prompt; leave root config unchanged"
+    Write-Host "  2) merge prompt  print merge prompt; leave root config unchanged"
     Write-Host "  q) quit"
     $choice = Read-Host "Selection [1/2/q]"
 
@@ -249,7 +249,7 @@ function Export-UserConfig {
         }
       }
       { $_ -in @("2", "agent", "prompt") } {
-        Write-AgentMergePrompt $Harness "manual agent merge before install" $RepoRel $HomePath
+        Write-AgentMergePrompt $Harness "manual merge before install" $RepoRel $HomePath
         if (Confirm-Choice "Skip this root config export for now?") {
           Write-Host "skip: $HomePath left in place"
           return
@@ -292,7 +292,7 @@ function Resolve-UserConfigCollision {
 
   if ($DryRun) {
     Write-Host "collision: $HomePath"
-    Write-Host "dry-run: would ask whether to keep existing config or print agent merge prompt"
+    Write-Host "dry-run: would ask whether to keep existing config or print merge prompt"
     return $false
   }
 
@@ -308,7 +308,7 @@ function Resolve-UserConfigCollision {
     Write-Host ""
     Write-Host "Choose:"
     Write-Host "  1) adopt         keep local root config; install only clean harness links"
-    Write-Host "  2) agent prompt  print merge prompt; leave root config unchanged"
+    Write-Host "  2) merge prompt  print merge prompt; leave root config unchanged"
     Write-Host "  q) quit"
     $choice = Read-Host "Selection [1/2/q]"
 
@@ -323,7 +323,7 @@ function Resolve-UserConfigCollision {
         }
       }
       { $_ -in @("2", "agent", "prompt") } {
-        Write-AgentMergePrompt $Harness "manual agent merge before install" $RepoRel $HomePath
+        Write-AgentMergePrompt $Harness "manual merge before install" $RepoRel $HomePath
         if (Confirm-Choice "Skip this root config export for now?") {
           Write-Host "skip: $HomePath left in place"
           return $true

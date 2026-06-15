@@ -275,26 +275,13 @@ else
 fi
 
 if [[ "${check_installed}" -eq 1 ]]; then
-  # Claude links each skill individually (globals/claude/skills/<n> -> globals/agents/skills/<n>), so each
-  # ~/.claude/skills/<n> is its own symlink and is checked per skill. Codex has NO per-skill
-  # links — ~/.agents/skills is a whole-dir symlink to globals/agents/skills, and <n> inside
-  # it is the real source dir. That directory link is verified through the manifest below.
-  while IFS= read -r skill_name; do
-    [[ -n "${skill_name}" ]] || continue
-    check_link "globals/agents/skills/${skill_name}" "${HOME}/.claude/skills/${skill_name}"
-  done < <(list_source_skills "${repo_root}/globals/agents/skills")
-  # Managed link + root-config checks come from manifests/platform/manifest.tsv. Rows flagged "nodoctor"
-  # (commands, MANAGED_BY_ROBOREPO.md) are verified by verify-install.sh but intentionally
-  # not here; cleanup rows are only ever pruned, never checked.
-  while IFS=$'\t' read -r _h kind src_rel home_abs flags; do
-    manifest_has_flag "${flags}" nodoctor && continue
-    case "${kind}" in
-      link)        check_link "${src_rel}" "${home_abs}" ;;
-      root_config) check_active_file "${home_abs}" ;;
-    esac
-  done < <(manifest_rows)
   check_link "bin/roborepo" "${HOME}/.local/bin/roborepo"
   check_roborepo_on_path
+  if [[ "${quiet}" -eq 1 ]]; then
+    node "${repo_root}/scripts/cli/main.mjs" bundle check >/dev/null || failed=1
+  else
+    node "${repo_root}/scripts/cli/main.mjs" bundle check || failed=1
+  fi
 fi
 
 if [[ "${failed}" -ne 0 ]]; then

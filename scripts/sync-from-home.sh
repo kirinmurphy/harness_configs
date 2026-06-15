@@ -19,7 +19,7 @@ print_agent_sync_prompt() {
   local dst="${repo_root}/${repo_rel}"
 
   echo ""
-  echo "Agent merge prompt:"
+  echo "Merge review prompt:"
   echo "-----"
   sed \
     -e "s#{{HOME_PATH}}#${home_path}#g" \
@@ -147,7 +147,7 @@ sync_item() {
     echo "Choose:"
     echo "  1) keep repo      skip this item"
     echo "  2) overwrite repo copy home item into repo"
-    echo "  3) agent prompt   print merge prompt and skip this item"
+    echo "  3) merge prompt   print merge prompt and skip this item"
     echo "  q) quit"
     read -r -p "Selection [1/2/3/q]: " choice
 

@@ -24,6 +24,7 @@ done
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/roborepo-test.XXXXXX")"
 trap 'rm -rf "${work}"' EXIT
+export ROBOREPO_PRESETS_ONBOARD=skip
 
 assert() {
   local label="$1"; shift
@@ -292,6 +293,49 @@ assert "run: failure propagates non-zero exit" \
   bash -c "! node '${cli}' run false >/dev/null 2>&1"
 assert "run: no command exits non-zero" \
   bash -c "! node '${cli}' run >/dev/null 2>&1"
+
+# ---------------------------------------------------------------------------
+# roborepo bundles / telemetry
+# ---------------------------------------------------------------------------
+presets_home="${work}/presets-home"
+mkdir -p "${presets_home}/.claude" "${presets_home}/.codex" "${presets_home}/.agents"
+assert "bundle apply: selected bundles apply into harness homes" \
+  bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' bundle apply base hooks skills >/dev/null"
+assert "bundle check: selected bundles verify" \
+  bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' bundle check >/dev/null"
+assert "bundle remove: unlinks owned link bundle" \
+  bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' bundle remove hooks >/dev/null && ! test -e '${presets_home}/.claude/hooks'"
+assert "telemetry enable: creates local state dirs" \
+  bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' telemetry enable >/dev/null && test -d '${presets_home}/.roborepo/telemetry/spool'"
+
+adopt_keep_home="${work}/adopt-keep-home"
+mkdir -p "${adopt_keep_home}/.claude" "${adopt_keep_home}/.roborepo"
+printf 'local hooks\n' > "${adopt_keep_home}/.claude/hooks"
+node -e 'const fs = require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({ repo: process.argv[2], mode: "adopt", onConflict: "keep" }));' \
+  "${adopt_keep_home}/.roborepo/install-state.json" "${repo_root}"
+assert "bundle apply: adopt keep policy stages repo item" \
+  bash -c "HOME='${adopt_keep_home}' ROBOREPO_STATE_DIR='${adopt_keep_home}/.roborepo' ROBOREPO_INSTALL_TIMESTAMP=20260615-101500 node '${cli}' bundle apply hooks >'${adopt_keep_home}/out' && grep -q 'local hooks' '${adopt_keep_home}/.claude/hooks' && test -d '${adopt_keep_home}/.claude/hooks_update_20260615-101500' && grep -q 'stage: .*hooks_update_20260615-101500' '${adopt_keep_home}/out'"
+assert "bundle remove: adopt keep policy removes staged item only" \
+  bash -c "HOME='${adopt_keep_home}' ROBOREPO_STATE_DIR='${adopt_keep_home}/.roborepo' node '${cli}' bundle remove hooks >/dev/null && grep -q 'local hooks' '${adopt_keep_home}/.claude/hooks' && ! test -e '${adopt_keep_home}/.claude/hooks_update_20260615-101500'"
+
+adopt_overwrite_home="${work}/adopt-overwrite-home"
+mkdir -p "${adopt_overwrite_home}/.claude" "${adopt_overwrite_home}/.roborepo"
+printf 'local hooks\n' > "${adopt_overwrite_home}/.claude/hooks"
+node -e 'const fs = require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({ repo: process.argv[2], mode: "adopt", onConflict: "overwrite" }));' \
+  "${adopt_overwrite_home}/.roborepo/install-state.json" "${repo_root}"
+assert "bundle apply: adopt overwrite policy backs up local item" \
+  bash -c "HOME='${adopt_overwrite_home}' ROBOREPO_STATE_DIR='${adopt_overwrite_home}/.roborepo' ROBOREPO_INSTALL_TIMESTAMP=20260615-101500 node '${cli}' bundle apply hooks >'${adopt_overwrite_home}/out' && grep -q 'local hooks' '${adopt_overwrite_home}/.claude/hooks_original_20260615-101500' && test -d '${adopt_overwrite_home}/.claude/hooks' && grep -q 'backup: .*hooks_original_20260615-101500' '${adopt_overwrite_home}/out'"
+assert "bundle remove: adopt overwrite policy restores backed up item" \
+  bash -c "HOME='${adopt_overwrite_home}' ROBOREPO_STATE_DIR='${adopt_overwrite_home}/.roborepo' node '${cli}' bundle remove hooks >/dev/null && grep -q 'local hooks' '${adopt_overwrite_home}/.claude/hooks' && ! test -e '${adopt_overwrite_home}/.claude/hooks_original_20260615-101500'"
+
+gate_home="${work}/gate-home"
+mkdir -p "${gate_home}/.roborepo"
+node -e 'const fs = require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({ repo: process.argv[2], mode: "managed" }));' \
+  "${gate_home}/.roborepo/install-state.json" "${repo_root}"
+assert "onboard gate: noninteractive command fails before onboarding" \
+  bash -c "cd '${repo_root}' && HOME='${gate_home}' ROBOREPO_STATE_DIR='${gate_home}/.roborepo' ROBOREPO_PRESETS_ONBOARD= node '${cli}' run true >/dev/null 2>&1; test \$? -eq 2"
+assert "onboard gate: explicit bypass allows command" \
+  bash -c "cd '${repo_root}' && HOME='${gate_home}' ROBOREPO_STATE_DIR='${gate_home}/.roborepo' ROBOREPO_PRESETS_ONBOARD= node '${cli}' --no-presets-onboard run true >/dev/null"
 
 # ---------------------------------------------------------------------------
 # roborepo mcp add

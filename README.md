@@ -2,7 +2,7 @@
 
 Claude Code & Codex global harness configuration with CLI support.
 
-The repo installs shared rules, skills, hooks, MCP helpers, and maintenance commands into the local filesystem paths the harnesses already read.
+The repo installs shared rules, skills, hooks, MCP helpers, and maintenance commands into the local filesystem paths the harnesses already read. Core install comes first; the onboarding workflow lets each machine opt into any combination of behavior groups.
 
 Primary goals:
 
@@ -20,12 +20,30 @@ Windows support is there, but not really tested.
 
 ## Using the roborepo CLI
 
-After [installing roborepo](docs/guides/first-time-setup.md), you have a `roborepo` command line tool.  
-Install puts it on your `PATH`, so it works from any shell.
+After [installing roborepo](docs/guides/first-time-setup.md), you will have a `roborepo` command line tool.
+
+You can use roborepo CLI to add items and configuation to your globalsetup that will work with both claude and codex.
+
+Get started
+
+REPO TABLE
 
 [View roborepo commands](docs/reference/services/roborepo-cli.md)
 
 ## Global Behavior
+
+Once you install the `roborepo` core, you will be prompted to install default packages and configurations. You can opt in/out of each one.
+
+Run `roborepo onboard` to edit your settings.
+
+- [Token Optimization / Efficiency](#token-optimization--efficiency)
+- [Automatic Skill Helpers](#automatic-skill-helpers)
+- [Commands](#commands)
+- [Chat-Time Output](#chat-time-output)
+- [Hooks](#hooks)
+- [Harness Specifics](#harness-specifics)
+  - [Codex](#codex)
+  - [Claude](#claude)
 
 ### Token Optimization / Efficiency
 
@@ -56,8 +74,8 @@ Use these when you want to intentionally start a named workflow.
 | `/blog`               | Write a long-form architecture blog post about a real design decision.              |
 | `/frontend-design`    | Apply Claude's frontend design workflow to build or review a substantial UI change. |
 | `/technical-planning` | Create or revise a durable technical planning document.                             |
-| `/inventory`          | Scan this repo and refresh its Project Context handoff docs (glossary, inventory).   |
-| `/tighten`            | Clean up code against this project's own patterns with specific, anchored callouts.  |
+| `/inventory`          | Scan this repo and refresh its Project Context handoff docs (glossary, inventory).  |
+| `/tighten`            | Clean up code against this project's own patterns with specific, anchored callouts. |
 
 **Plain-Language Triggers**: Some named workflows can also be started in ordinary chat: "capture this", "write a blog post about this", "make this a durable technical plan", "run inventory", or "tighten this."
 
@@ -65,11 +83,13 @@ Use these when you want to intentionally start a named workflow.
 
 Lighter-weight behaviors that only generate messages in the conversation — no files written, no workflow started.
 
-|                                                                     |                                                                                       |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| [Convention capture](docs/reference/services/convention-capture.md) | Agents surface newly confirmed conventions as inline recommendations during the chat. |
+|                                                                     |                                                                                                                    |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| [Convention capture](docs/reference/services/convention-capture.md) | Agents surface newly confirmed conventions as inline recommendations during the chat.                              |
 | Impact awareness                                                    | When you propose a change, agents flag (`> 🧭 Impact:`) how it collides with or duplicates existing functionality. |
-| Skill visibility                                                    | Agents report which skills shaped a response (`> 🧩 Skills loaded:`) so behavior changes are traceable. |
+| Skill visibility                                                    | Agents report which skills shaped a response (`> 🧩 Skills loaded:`) so behavior changes are traceable.            |
+
+![Chat Time Output](./docs/images/chat_notes.png)
 
 ### Hooks
 
@@ -77,10 +97,11 @@ Hooks are shell commands the harness runs on its own when an event fires — a s
 starts, or a tool is about to run. They steer the agent without the agent having to
 remember to do anything. The defaults fall into two jobs:
 
-|                |                                                                                              |
-| -------------- | -------------------------------------------------------------------------------------------- |
-| Session nudges | On session start, tell the agent what's available — caveman mode, jcodemunch/jdocmunch index state. |
+|                |                                                                                                                                                                                              |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Session nudges | On session start, tell the agent what's available — caveman mode, jcodemunch/jdocmunch index state.                                                                                          |
 | Tool guards    | Before a tool runs, redirect or tidy it — block `Grep`/`Glob` (and source-file `grep`/`cat`/`find` in Bash) toward jcodemunch, trim noisy Bash output, flag writes into managed config dirs. |
+| Telemetry      | When enabled, capture metadata-only session/tool events for later analysis. Turn it on later with `roborepo telemetry enable`.                                                               |
 
 Most of this is Claude-side, where the hook system is richer; Codex runs a single
 session-start nudge and leans on its rules file for the rest. Full breakdown:
@@ -112,13 +133,11 @@ Harness source lives under `globals/`, with the data that drives the build/insta
   skill-invocation policy, and agent permission profiles
 - `manifests/platform/` — install/verify/render plumbing: the `.tsv` path tables, content checks,
   the CLI usage catalog, and merge prompts
+- `manifests/platform/presets.json` — preset bundle source of truth for onboarding/apply/remove
 
-Every element (rules, skills, commands, hooks, MCP, permissions, root config) is authored once and
-fanned out to both harnesses. New to the setup? Start with
-[How the Harnesses Work, and How We Build Parity](docs/reference/internal/harnesses-explained.md) —
-it teaches what each element does natively, the defaults, and the parity pattern. For the quick
-"which command changes element X" lookup, use
-[Harness Anatomy and Parity](docs/reference/internal/harness-anatomy.md).
+Every element is authored once and fanned out to both harnesses by the build/link step. New here?
+Start with [How the Harnesses Work, and How We Build Parity](docs/reference/internal/harnesses-explained.md)
+for the build/parity model; see **Under The Hood** below for the full doc set.
 
 ## Reference
 

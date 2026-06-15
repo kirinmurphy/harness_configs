@@ -12,7 +12,7 @@ Claude and Codex should share the same global behavior defaults without hand-mai
 - Root harness config files are conditional defaults:
   - `~/.claude/settings.json`
   - `~/.codex/config.toml`
-- The installer can leave root config user-owned through `adopt` or `agent prompt`.
+- The installer can leave root config user-owned through `adopt`.
 - Repo-local instructions still layer through project files such as `CLAUDE.md`, `AGENTS.md`, and repo instructions.
 
 ## Implemented Behavior
@@ -64,7 +64,7 @@ Priority from lowest to highest:
 
 1. Shared global defaults from this repo.
 2. Harness-specific global defaults from this repo.
-3. User-owned root config when installer uses `adopt` or `agent prompt`.
+3. User-owned root config when installer uses `adopt`.
 4. Repo-local instructions for the active project.
 5. Direct user instructions in the current conversation.
 

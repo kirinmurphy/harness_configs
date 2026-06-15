@@ -12,8 +12,10 @@ import { skillNew } from "./skill-new.mjs";
 import { indexCode, indexDocs, watchCode, runCmd } from "./index.mjs";
 import { mcpAdd } from "./mcp.mjs";
 import { projectContextInventory } from "./project-context.mjs";
+import { maybeRunPresetOnboarding, presetsCommand } from "./presets.mjs";
+import { telemetryCommand } from "./telemetry.mjs";
 
-const argv = process.argv.slice(2);
+const argv = await maybeRunPresetOnboarding(process.argv.slice(2));
 const cliCatalog = JSON.parse(fs.readFileSync(path.join(repoRoot, "manifests", "platform", "cli-commands.json"), "utf8"));
 
 // --------------------------------------------------------------------------- help
@@ -89,6 +91,18 @@ async function dispatch(args) {
       if (sub === "inventory") return projectContextInventory(rest);
       console.error(`unknown: roborepo project-context ${sub ?? ""}`.trim());
       return usageError();
+
+    case "onboard":
+      return presetsCommand(["onboard", ...rest]);
+
+    case "bundle":
+      return presetsCommand(sub === undefined ? ["bundle"] : ["bundle", sub, ...rest]);
+
+    case "presets":
+      return presetsCommand(sub === undefined ? [] : [sub, ...rest]);
+
+    case "telemetry":
+      return telemetryCommand(sub === undefined ? [] : [sub, ...rest]);
 
     case "watch":
       if (sub === "code") return watchCode(rest);

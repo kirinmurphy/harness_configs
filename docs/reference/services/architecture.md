@@ -140,9 +140,9 @@ User-owned config remains active. Repo candidates are preserved in a staging fol
 
 Implication: user keeps current behavior, but must merge wanted repo defaults from `not_adopted/`.
 
-#### Agent prompt
+#### Merge review prompt
 
-User-owned config remains active. The installer prints an agent prompt that points at both local and repo paths.
+User-owned config remains active until the selected install mode or collision policy completes. The installer prints a merge prompt that points at both local and repo paths after actions that create backups or staged defaults.
 
 ```text
 <repo>/globals/codex/config.toml                # repo candidate
@@ -152,7 +152,7 @@ User-owned config remains active. The installer prints an agent prompt that poin
 ~/.claude/settings.json                 # existing local version, active
 ```
 
-Implication: no automatic merge. The agent/user compares both sides and applies intentional edits.
+Implication: no automatic merge. The agent/user compares both sides and applies intentional edits after the installer finishes the backup-producing action.
 
 ### Future layered model
 

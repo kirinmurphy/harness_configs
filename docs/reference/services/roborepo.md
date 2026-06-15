@@ -1,9 +1,10 @@
 # roborepo CLI
 
 `roborepo` is the single command for everything a consumer of this harness does — setting up the
-install on a machine, day-to-day indexing, working with skills, and maintenance. It replaces the
-old one-off commands (`harness_helper`, `harness-run`, `jcmindex`, `jcmwatch`, `jdmindex`,
-`harness-install-local-skills`), so there is one name to remember and one entry on `PATH`.
+core install on a machine, choosing preset bundles, day-to-day indexing, working with skills, and
+maintenance. It replaces the old one-off commands (`harness_helper`, `harness-run`, `jcmindex`,
+`jcmwatch`, `jdmindex`, `harness-install-local-skills`), so there is one name to remember and one
+entry on `PATH`.
 
 It is a Node program invoked via the `bin/roborepo` shim, installed to `~/.local/bin/roborepo`.
 `scripts/cli/main.mjs` is a thin orchestrator (usage, interactive menu, dispatch table); the
@@ -15,6 +16,8 @@ subcommand implementations live under `scripts/cli/`, one module per category:
 | `scripts/cli/index.mjs` | `index code\|docs`, `watch code`, `run` |
 | `scripts/cli/project-context.mjs` | `project-context inventory` (deterministic repo scan) |
 | `scripts/cli/mcp.mjs` | `mcp add` (Claude + Codex registration) |
+| `scripts/cli/presets.mjs` | `onboard`, `bundle status\|apply\|check\|remove` |
+| `scripts/cli/telemetry.mjs` | `telemetry enable\|disable\|status\|report\|export\|purge` |
 | `scripts/cli/paths.mjs` | shared `repoRoot` / `sharedSkillsDir` |
 | `scripts/cli/skill-lib.mjs` | shared Node core (zip, prompts, symlink helpers) |
 
@@ -77,6 +80,9 @@ roborepo — choose an action:
   mcp add        register an MCP server with Claude + Codex
   watch code     live-index code as files change
   project-context inventory  scan a repo and write generated project-context facts
+  onboard         choose behavior bundles
+  bundle status   inspect selected behavior bundles
+  telemetry status  show telemetry capture state
   run            run a command with trimmed output
 
   Skills
@@ -111,6 +117,9 @@ roborepo index docs  [path]
 roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--dry-run] [--only-claude|--only-codex] [--skip-claude-permission]
 roborepo watch code  [path]
 roborepo project-context inventory [path] [--summary]
+roborepo onboard
+roborepo bundle status|apply|check|remove [bundle...]
+roborepo telemetry enable|disable|status|report|export|purge
 
 roborepo run <cmd> [args...]
 
@@ -129,15 +138,16 @@ relative or absolute — roborepo resolves it to an absolute path before use.
 
 ### Categories
 
-- **Setup** — `update` re-applies the harness config on this machine (re-runs managed links,
+- **Setup** — `update` re-applies the core harness config on this machine (re-runs managed links,
   root config export, command install, and shell install to pick up new config). The *first*
-  install is the shell bootstrap
-  `scripts/install/main.sh` — that is what puts `roborepo` on `PATH` — so the CLI has no
-  separate `install` verb; once `roborepo` exists you only ever `update`.
+  install is the shell bootstrap `scripts/install/main.sh` — that is what puts `roborepo` on
+  `PATH` — so the CLI has no separate `install` verb; once `roborepo` exists you only ever
+  `update`. After that, `onboard` chooses the optional behavior bundles for this machine.
 - **Day to day** — `index code|docs` are one-shot indexers; `watch code` runs a live indexer (and
   writes the pidfile the Claude SessionStart hook reads to report watcher status); `mcp add`
-  registers MCP servers with Claude + Codex; `run` executes a command and prints only a trimmed
-  tail of its output.
+  registers MCP servers with Claude + Codex; `bundle` manages the optional bundle selections;
+  `telemetry` enables or disables the local capture/reporting path; `run` executes a command and
+  prints only a trimmed tail of its output.
 - **Skills** — `skill new` scaffolds a shared automatic helper, skill-backed command, or standalone
   command and updates the relevant manifests, generated links, generated slash commands, and README
   rows. `skill export-to-local` bundles the shared skills into a `.zip` and copies them into the
@@ -163,6 +173,23 @@ The lifecycle verbs dispatch to `scripts/install/main.sh`, `scripts/sync-from-ho
 Most maintainer-only scripts (`test-*.sh`) are intentionally not exposed through `roborepo`.
 `skill symlink-globals` and `rules` are exposed because shared-skill and generated-rule editing are
 documented maintainer workflows.
+
+## Preset Onboarding
+
+`roborepo onboard` is the machine-level chooser for behavior bundles. Interactive install starts it
+after the core install completes; the CLI also gates normal commands until onboarding has completed
+at least once, unless you bypass the gate for automation. Re-running the onboarding workflow shows
+selected options checked and unselected options unchecked so you can turn a bundle on or off later.
+
+`roborepo bundle status` shows which bundles are selected and whether they are applied. `check`
+verifies selected bundles are still present on disk. `apply` and `remove` are the lower-level
+bundle operations the onboarding flow uses; removing a bundle reverses the installed artifact for
+that bundle, deleting staged updates in keep-originals mode and restoring backed-up content when an
+overwrite or managed install had replaced it.
+
+The `telemetry` bundle is selected from the same workflow. When enabled, it writes metadata-only
+records under `~/.roborepo/telemetry` and uses the `telemetry` command group for status, reports,
+exports, and purge.
 
 ## Permission Profiles
 
@@ -207,7 +234,8 @@ touching anything.
 ## Tests
 
 `scripts/test/test-roborepo.sh` smoke-tests the subcommands (skill symlink-repo/symlink-globals/prune/uninstall/
-conflict, `skill new` scaffolds, export/override/firewall/self-pollution guard, slash-command render checks, run,
-`mcp add` dry-runs + real Codex/Claude writes against a throwaway harness root,
-lifecycle/rules dispatch, menu fallback) against throwaway temp repos.
+conflict, `skill new` scaffolds, export/override/firewall/self-pollution guard, slash-command render checks,
+`onboard`/`bundle` onboarding/apply/remove/status, `telemetry` enable/status/report, run, `mcp add` dry-runs + real
+Codex/Claude writes against a throwaway harness root, lifecycle/rules dispatch, menu fallback) against throwaway
+temp repos.
 It touches no global state.

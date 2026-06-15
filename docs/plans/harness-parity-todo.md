@@ -25,7 +25,7 @@
 
 4. Redesign managed/adopt/update installer model.
    - Clarify top-level choices: `managed` as repo-hosted symlink logic for read-mostly assets plus local root-config export; `adopt` as copy/replicate/merge into user-owned global config.
-   - Treat `agent prompt` as an adopt sub-option, alongside replace-existing-files and keep-existing-files behavior.
+   - Treat merge review output as post-action guidance, not a selectable install branch.
    - Define archive/not-adopted folder layout, idempotency rules for repeated adopt runs, and whether repo updates use `adopt` again or a separate update command.
    - Revisit whether a layered model is possible: harness repo baseline, global config overlay, local repo overlay.
 

@@ -82,36 +82,9 @@ check_active_file() {
   fi
 }
 
-# Managed links + root configs come from manifests/platform/manifest.tsv (single source of truth,
-# shared with the installer/doctor/sync). link -> symlink check; root_config -> active
-# local file; cleanup rows are not verified here (they only ever get pruned, not created).
-while IFS=$'\t' read -r _harness kind src_rel home_abs _flags; do
-  case "${kind}" in
-    link)        check_link "${src_rel}" "${home_abs}" ;;
-    root_config) check_active_file "${home_abs}" ;;
-  esac
-done < <(manifest_rows)
-
-# Only Claude links skills per-skill (~/.claude/skills/<n> is its own symlink). Codex uses
-# the whole-dir ~/.agents/skills symlink to globals/agents/skills, verified above; the <n>
-# inside is the real source dir, not a link, so it is NOT checked per skill here.
-while IFS= read -r skill_name; do
-  [[ -n "${skill_name}" ]] || continue
-  check_link "globals/agents/skills/${skill_name}" "${HOME}/.claude/skills/${skill_name}"
-done < <(list_source_skills "${repo_root}/globals/agents/skills")
 check_link "bin/roborepo" "${HOME}/.local/bin/roborepo"
 
-if command -v node >/dev/null 2>&1; then
-  node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "${HOME}/.codex/hooks.json"
-  node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "${HOME}/.claude/settings.json"
-  pass_msg "JSON config parses"
-else
-  echo "skip: node not found, JSON parse check not run"
-fi
-
-while IFS=$'\t' read -r home_abs pattern label; do
-  check_file_contains "${home_abs}" "${pattern}" "${label}"
-done < <(verify_content_rows)
+node "${repo_root}/scripts/cli/main.mjs" bundle check || failed=1
 
 doctor_args=(--installed)
 [[ "${quiet}" -eq 1 ]] && doctor_args+=(--quiet)

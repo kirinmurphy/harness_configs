@@ -8,9 +8,10 @@ maintain it. For the underlying filesystem/symlink mechanics, see
 does natively and why each element's parity is solved the way it is — read
 [How the Harnesses Work, and Why Parity Takes the Shape It Does](harnesses-explained.md) first.
 
-The repo is the single source of truth. Every element is authored once under `globals/` (or a
-`manifests/` data file) and fanned out to both harnesses. Parity is therefore a property of the
-build/link step, not something you hand-maintain in two places.
+Every element is authored once under `globals/` (or a `manifests/` data file) and fanned out to
+both harnesses by the build/link step — you never hand-maintain it in two places. This doc is the
+*what* and *how-to-change*; for *why* each element is solved its particular way, each section links
+the matching step in [the teaching doc](harnesses-explained.md).
 
 ## Elements at a glance
 
@@ -19,9 +20,11 @@ build/link step, not something you hand-maintain in two places.
 | Global rules | The always-on instruction file each harness reads at startup. | Claude: `globals/claude/CLAUDE.md` (generated)<br>Codex: `globals/codex/AGENTS.md` (generated) | `roborepo rules [--check]` |
 | Skills | On-demand capability/instruction bundles the agent loads when relevant. | Claude: reached via `globals/claude/skills/`<br>Codex: reached via `~/.agents/skills` | `roborepo skill new`, `roborepo skill symlink-globals [--check]` |
 | Slash commands | Named workflows the user starts explicitly (`/blog`, etc.). | Claude: `globals/claude/commands/` (generated)<br>Codex: `globals/codex/commands/` (generated) | `roborepo skill render-commands [--check]` |
+| Preset bundles | Named behavior groups chosen during onboarding or later reconfiguration. | `manifests/platform/presets.json` | `roborepo onboard`, `roborepo bundle status\|apply\|check\|remove` |
 | Hooks | Scripts the harness runs on lifecycle/tool events. | Claude: `globals/claude/hooks/*.mjs` + `settings.json` wiring<br>Codex: `globals/codex/hooks.json` | edit source, then `roborepo update` |
 | MCP servers | External tool servers (jcodemunch, jdocmunch, …) registered with both harnesses. | Claude: `~/.claude` registration<br>Codex: `~/.codex` registration | `roborepo mcp add <name-or-url>` |
 | Permissions | Allowed/denied commands, tools, and profile defaults. | Claude: `settings.json` `permissions.*`<br>Codex: `config.toml` + `rules/default.rules` | `roborepo permissions [--check]` |
+| Telemetry | Metadata-only capture and analysis for sessions, tools, and token usage. | Claude/Codex hooks feed `~/.roborepo/telemetry` | `roborepo telemetry enable\|disable\|status\|report` |
 | Root config | Mutable, machine-local settings (model, trust, hook approvals). | Claude: `globals/claude/settings.json` (baseline)<br>Codex: `globals/codex/config.toml` (baseline) | `roborepo update` (export/merge) |
 
 The rest of this doc takes each element in turn: what it does, how parity works, and what you do
@@ -32,9 +35,9 @@ to change it.
 **What they do:** the always-loaded behavior defaults — caveman mode, code/doc exploration policy,
 verification discipline, session-capture flagging.
 
-**Parity model:** both files are *generated* from shared fragments under `globals/rules/shared/`,
-plus harness-only fragments under `globals/rules/claude/` and `globals/rules/codex/`. You never
-edit `CLAUDE.md` or `AGENTS.md` directly — they carry a generated-file header.
+**Parity model:** generated from shared fragments under `globals/rules/shared/`, plus harness-only
+fragments under `globals/rules/claude/` and `globals/rules/codex/`. You never edit `CLAUDE.md` or
+`AGENTS.md` directly — they carry a generated-file header. (Why a generator: [explained.md Step 2](harnesses-explained.md#step-2--bridging-a-cosmetic-gap-global-rules).)
 
 **To change behavior in both harnesses:** edit a fragment in `globals/rules/shared/`, then render:
 
@@ -52,10 +55,11 @@ override-layering rules: [Rules Parity and Layering](rules-parity-and-layering.m
 **What they do:** on-demand bundles the agent loads when a task matches (`code-style`, `react`,
 `roborepo-support`, …). Shared skills are also exportable to other repos.
 
-**Parity model:** one canonical source, `globals/agents/skills/<name>/SKILL.md`, fanned out per
-harness because Claude and Codex scan different paths. Codex reads `~/.agents/skills` directly;
-Claude reads per-skill symlinks under `globals/claude/skills/`. `link-skills.sh` derives the Claude
-links from the canonical source, so adding a skill folder is not enough on its own.
+**Parity model:** one canonical source, `globals/agents/skills/<name>/SKILL.md`, symlinked per
+harness. Codex reads `~/.agents/skills` directly; Claude reads per-skill symlinks under
+`globals/claude/skills/`. `link-skills.sh` derives the Claude links from the canonical source, so
+adding a skill folder is not enough on its own. (Why a symlink, not a generator:
+[explained.md Step 4](harnesses-explained.md#step-4--when-the-files-are-identical-but-live-apart-skills).)
 
 **To add or change a skill:**
 
@@ -73,10 +77,11 @@ model: [Skills And Slash Commands](skills-and-commands.md) and
 ## Slash commands
 
 **What they do:** named workflows the user starts on purpose (`/blog`, `/frontend-design`,
-`/technical-planning`).
+`/technical-planning`, `/inventory`, `/tighten`).
 
-**Parity model:** authored once in `manifests/inventory/slash-commands.json`, rendered into both
-`globals/claude/commands/` and `globals/codex/commands/`. Files in those dirs are generated.
+**Parity model:** authored once in `manifests/inventory/slash-commands.json`, stamped into both
+`globals/claude/commands/` and `globals/codex/commands/`. Files in those dirs are generated. (Why
+just a stamped copy: [explained.md Step 1](harnesses-explained.md#step-1--when-they-already-agree-slash-commands).)
 
 **To add or change a command:** edit `manifests/inventory/slash-commands.json`, then:
 
@@ -93,10 +98,11 @@ do not hand-edit the manifest.
 **What they do:** scripts the harness runs on lifecycle or tool events — caveman activation on
 startup, broad-read nudges, noisy-Bash trimming, the write guard.
 
-**Parity model:** this is the least-symmetric element. Claude hooks are `.mjs` scripts under
-`globals/claude/hooks/` wired through `settings.json`; Codex hooks are declared in
-`globals/codex/hooks.json`. There is no shared generator — a behavior wanted on both sides is
-authored in both places.
+**Parity model:** no shared generator — a behavior wanted on both sides is authored twice. Claude
+hooks are `.mjs` scripts under `globals/claude/hooks/` wired through `settings.json`; Codex hooks
+are declared in `globals/codex/hooks.json`. Telemetry capture uses the same hook layer when it is
+enabled, writing metadata-only records into `~/.roborepo/telemetry`. (Why parity stops here:
+[explained.md Step 6](harnesses-explained.md#step-6--when-automation-gives-up-hooks).)
 
 **To change a hook:** edit the script and/or the wiring (`settings.json` for Claude, `hooks.json`
 for Codex), then re-apply:
@@ -113,7 +119,8 @@ Hook details: [Claude Hooks](../services/claude-hooks.md), [Codex Hooks](../serv
 `jdocmunch-mcp` for docs, plus anything you add.
 
 **Parity model:** one command registers a server with **both** harnesses and adds matching Claude
-permissions, so the two stay in sync by construction. Presets live in `manifests/inventory/mcp-presets.json`.
+permissions in the same motion. Presets live in `manifests/inventory/mcp-presets.json`. (Why a
+command, not a generator: [explained.md Step 5](harnesses-explained.md#step-5--when-rendering-doesnt-fit-mcp-servers).)
 
 **To register a server:**
 
@@ -129,7 +136,8 @@ defaults (sandbox, approval policy).
 
 **Parity model:** authored once in `manifests/inventory/agent-permissions.json`, rendered into each harness's
 native shape — Claude's `permissions.allow`/`permissions.deny` in `settings.json`, and Codex's
-`config.toml` session profile + `rules/default.rules` command policy.
+`config.toml` session profile + `rules/default.rules` command policy. (Why one source, two output
+shapes: [explained.md Step 3](harnesses-explained.md#step-3--bridging-a-structural-gap-permissions).)
 
 **To change permissions:** edit `manifests/inventory/agent-permissions.json`, then:
 
@@ -144,9 +152,20 @@ roborepo permissions --check
 Unlike everything above, the active home files are **not** symlinks; the repo keeps a portable
 baseline and the installer copies or merges it.
 
-**Parity model:** there is no auto-parity here by design — root config is where machine-specific
-divergence is allowed to live. The repo baselines (`globals/claude/settings.json`,
-`globals/codex/config.toml`) receive the generated permission blocks; everything else is local.
+**Parity model:** no auto-parity by design — this is the layer where per-machine divergence is
+allowed. The repo baselines (`globals/claude/settings.json`, `globals/codex/config.toml`) receive
+the generated permission blocks; everything else is local. (Why parity isn't the goal here:
+[explained.md Step 7](harnesses-explained.md#step-7--when-parity-isnt-the-goal-root-config).)
+
+## Preset bundles (`presets.json`)
+
+**What they do:** define which behavior groups are turned on for a machine after the core install.
+
+**Parity model:** one bundle manifest drives the onboarding chooser and the lower-level bundle
+apply/remove commands. It is the source of truth for what `roborepo onboard` can show.
+
+**To change bundle selection behavior:** edit `manifests/platform/presets.json`, then run
+`roborepo onboard` on a machine that should pick up the new default selection.
 
 **To apply baseline changes to a machine:**
 
@@ -160,7 +179,7 @@ To pull intentional local edits back into the repo:
 roborepo backfill
 ```
 
-Merge options (replace / keep / agent-prompt) and the future layered-config model are covered in
+Merge options (replace / keep, with merge prompts after backup-producing actions) and the future layered-config model are covered in
 [How It Works → Root Config](../services/architecture.md#root-config-export).
 
 ## Keeping a machine in sync
@@ -168,9 +187,11 @@ Merge options (replace / keep / agent-prompt) and the future layered-config mode
 After changing any element above, the same two verbs cover most situations:
 
 ```sh
-roborepo update   # re-apply repo config to this machine (links + root-config export)
+roborepo update   # re-apply core repo config to this machine (links + root-config export)
 roborepo doctor   # health-check links, helper commands, deps, and generated-output drift
 ```
 
 `roborepo doctor` runs the `rules --check` / `permissions --check` / `skill symlink-globals --check`
 drift checks for you, so it is the fastest way to confirm every generated element is current.
+`roborepo bundle status` shows which bundles are selected, and `roborepo telemetry status`
+shows whether local capture is enabled.

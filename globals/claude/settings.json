@@ -84,9 +84,27 @@
             "command": "if [ -d \"$(pwd)/docs\" ]; then if [ -f \"$(pwd)/docs/.jdm-indexed\" ]; then echo '{\"systemMessage\": \"jdocmunch is available and docs are indexed. Use search_sections, get_toc, get_section for doc exploration instead of Read.\"}'; else echo '{\"systemMessage\": \"jdocmunch: docs/ exists but is not indexed. Run: roborepo index docs docs/\"}'; fi; fi"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "roborepo telemetry capture --harness claude --event SessionStart"
+          }
+        ]
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "roborepo telemetry capture --harness claude --event PreToolUse"
+          }
+        ]
+      },
       {
         "matcher": "Bash",
         "hooks": [
@@ -119,6 +137,39 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/roborepo-write-guard.mjs\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "roborepo telemetry capture --harness claude --event PostToolUse"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "roborepo telemetry capture --harness claude --event UserPromptSubmit"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "roborepo telemetry capture --harness claude --event Stop"
           }
         ]
       }

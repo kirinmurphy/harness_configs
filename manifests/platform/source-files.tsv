@@ -17,6 +17,7 @@ globals/codex/rules/default.rules
 manifests/inventory/agent-permissions.json
 manifests/platform/cli-commands.json
 manifests/platform/harnesses.tsv
+manifests/platform/presets.json
 manifests/inventory/skill-invocation.json
 manifests/inventory/slash-commands.json
 manifests/inventory/mcp-presets.json
@@ -40,10 +41,12 @@ scripts/build/render-slash-commands.mjs
 scripts/cli/skill-command-config.mjs
 scripts/build/skill-lib.sh
 scripts/cli/prompts.mjs
+scripts/cli/presets.mjs
 scripts/cli/skill-files.mjs
 scripts/cli/skill-lib.mjs
 scripts/cli/skill-links.mjs
 scripts/cli/repo-script-runner.mjs
+scripts/cli/state-paths.mjs
 scripts/cli/skill-new-manifests.mjs
 scripts/cli/skill-new-options.mjs
 scripts/cli/skill-new-readme.mjs
@@ -58,6 +61,7 @@ scripts/cli/mcp-codex.mjs
 scripts/cli/mcp-config.mjs
 scripts/cli/mcp-parse.mjs
 scripts/cli/mcp-presets.mjs
+scripts/cli/telemetry.mjs
 scripts/install/state-lib.sh
 scripts/install/uninstall.sh
 scripts/test/test-roborepo.sh

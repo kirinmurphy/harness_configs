@@ -93,6 +93,22 @@ picture of *how pieces relate* faster than a paragraph describing it.
    should read as a shortened title, not a separate label. (The frontmatter `slug` is the
    public URL and may differ from the filename for SEO; the filename tracks the title.)
 
+## Splitting one source into multiple articles
+
+When a source covers several distinct decisions, split **by architectural concept (the
+decision), not by user-facing feature.** Splitting by feature slices one concept across
+several articles and pads each with a neighbor's concept.
+
+- **One article owns one decision.** "No database," "branch state is the source of truth"
+  are decisions. "Preview," "publishing," "multilingual" are usually *consequences* of a
+  decision, not decisions — fold each into the article whose decision produces it.
+- **Demote a feature to an example when it isn't the concept.** If the article is about a
+  mechanism (atomic multi-file commit) and the feature (multilingual publishing) is one
+  reason to use it, the mechanism is the title; the feature is one example.
+- **No concept split across two articles.** When a second article reuses a mechanism the
+  first owns, reference it ("written atomically, as in <article A>"), don't re-explain.
+- Propose the regrouped set and get user confirmation before drafting.
+
 ## Anonymization (decide per article, up front)
 
 Some articles name the real project — its brand, links, and details are part of the

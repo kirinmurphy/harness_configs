@@ -20,6 +20,20 @@
       "description": "Create or revise a durable technical planning document.",
       "skill": "technical-planning-docs",
       "harnesses": ["claude", "codex"]
+    },
+    {
+      "name": "inventory",
+      "kind": "skill-backed",
+      "description": "Scan this repo and refresh its Project Context handoff docs (glossary, inventory).",
+      "skill": "project-context",
+      "harnesses": ["claude", "codex"]
+    },
+    {
+      "name": "tighten",
+      "kind": "skill-backed",
+      "description": "Clean up code against this project's own patterns with specific, anchored callouts.",
+      "skill": "tighten",
+      "harnesses": ["claude", "codex"]
     }
   ]
 }

@@ -65,10 +65,8 @@ Examples:
 - `react`: implicit helper skill; no slash command needed.
 - `technical-planning-docs`: reusable writing workflow; can also have a slash
   command.
-- future `plan`: reusable planning workflow; should likely be a manual skill
-  with a slash command.
-- future `tighten`: reusable review/fix workflow; should likely be a manual
-  skill with a slash command.
+- `project-context`: explicit-only handoff-doc workflow behind `/inventory`.
+- `tighten`: explicit-only review/fix workflow behind `/tighten`.
 
 ## Skill-Backed Slash Commands
 
@@ -91,6 +89,8 @@ Current generated examples:
 - `/blog` -> `blog`
 - `/frontend-design` -> `frontend-design`
 - `/technical-planning` -> `technical-planning-docs`
+- `/inventory` -> `project-context`
+- `/tighten` -> `tighten`
 
 ## Standalone Slash Commands
 
@@ -131,23 +131,20 @@ observation plus normal chat.
 
 ## Plan And Tighten
 
-`/plan` and `/tighten` should usually be skills first, commands second.
+These two ideas resolved into different mechanisms, not two parallel commands.
 
-Plan is a reusable planning workflow:
+**Tighten** is a real explicit-only skill behind `/tighten`. Its body reviews a
+scope against `code-style` (plus `javascript-typescript` / `react` as the files
+require) and Project Context inventory facts, classifies issues, makes scoped
+fixes, and verifies. It must not silently trigger from vague prompts such as
+"make this better"; it runs only when explicitly invoked.
 
-- the user might say "plan this"
-- a slash command is convenient
-- the same body should inspect the repo, find patterns, and return an
-  implementation path
-
-Tighten is a reusable review/fix workflow:
-
-- the user might say "tighten this"
-- a slash command is convenient
-- the same body should review, classify issues, make scoped fixes, and verify
-
-Both should likely be manual or tightly gated. They should not silently trigger
-from vague prompts such as "make this better."
+**Plan** did not become a command. The useful product behavior — surfacing how a
+proposed change collides with or duplicates existing functionality — is the
+always-on **Impact Awareness** convention (a `> 🧭 Impact:` inline flag), the
+same observer shape as convention capture. It needs no slash command because the
+value is the proactive flag, not a named workflow. The deeper architecture-fit
+analysis happens conversationally once the flag surfaces.
 
 ## Decision Rules
 

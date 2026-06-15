@@ -11,6 +11,7 @@ import { skillLink, skillExport } from "./skills.mjs";
 import { skillNew } from "./skill-new.mjs";
 import { indexCode, indexDocs, watchCode, runCmd } from "./index.mjs";
 import { mcpAdd } from "./mcp.mjs";
+import { projectContextInventory } from "./project-context.mjs";
 
 const argv = process.argv.slice(2);
 const cliCatalog = JSON.parse(fs.readFileSync(path.join(repoRoot, "manifests", "platform", "cli-commands.json"), "utf8"));
@@ -82,6 +83,11 @@ async function dispatch(args) {
     case "mcp":
       if (sub === "add") return mcpAdd(rest);
       console.error(`unknown: roborepo mcp ${sub ?? ""}`.trim());
+      return usageError();
+
+    case "project-context":
+      if (sub === "inventory") return projectContextInventory(rest);
+      console.error(`unknown: roborepo project-context ${sub ?? ""}`.trim());
       return usageError();
 
     case "watch":

@@ -23,6 +23,12 @@
 | `roborepo index docs [path]` | Runs a one-shot jdocmunch documentation index for the current directory or `[path]`. |
 | `roborepo watch code [path]` | Keeps the jcodemunch code index live while files change.                             |
 
+## Project Context
+
+|                                                          |                                                                                                                          |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `roborepo project-context inventory [path] [--summary]`  | Scans a repo and writes deterministic generated facts to `docs/project-context/generated/repo-scan.json` (and, with `--summary`, a short `repo-summary.md`). The `project-context` skill turns those facts into curated handoff docs. |
+
 ## Skills
 
 |                                           |                                                                                                                               |

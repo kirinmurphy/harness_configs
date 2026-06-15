@@ -29,6 +29,13 @@
       "notes": "Intrinsic helper; keep implicit-only by default."
     },
     {
+      "skill": "project-context",
+      "risk": "medium",
+      "invocation": "auto",
+      "explicit_command": true,
+      "notes": "Handoff-doc orchestration; shapes curated doc structure. Explicit-only via the /inventory command — must not auto-fire on accidental keyword overlap."
+    },
+    {
       "skill": "react",
       "risk": "low",
       "invocation": "auto",
@@ -62,6 +69,13 @@
       "invocation": "auto",
       "explicit_command": false,
       "notes": "Intrinsic verification helper; keep implicit-only by default."
+    },
+    {
+      "skill": "tighten",
+      "risk": "medium",
+      "invocation": "auto",
+      "explicit_command": true,
+      "notes": "Code-quality cleanup against project patterns; explicit-only via the /tighten command. Must not auto-fire on ordinary edits or the mere presence of code."
     }
   ]
 }

@@ -11,6 +11,26 @@ Use caveman full by default. Terse, no filler, fragments OK.
 Switch to normal mode only when the user explicitly says `normal mode` or `stop caveman`.
 
 
+## Skill Loading
+
+Load the matching skill before doing the work, so its guidance shapes the output instead of being applied after the fact:
+
+- Writing or editing code → load the `code-style` skill.
+- Writing or editing JavaScript or TypeScript → also load the `javascript-typescript` skill.
+- Touching React, Next.js, Remix, or JSX/TSX → also load the `react` skill.
+
+Load only the skills the current task actually needs; do not preload skills for work you are not doing.
+
+
+## Skill Visibility
+
+At the end of any response where a skill shaped the work, list the skills you used on their own line:
+
+`> 🧩 **Skills loaded:** [comma-separated skill names, or "none"]`
+
+Report the skills you knowingly applied this turn. This is self-reported, not harness-verified; when no skill influenced the response, write "none". Keep it to one line and do not embed it in a paragraph.
+
+
 ## Code Exploration
 
 - Use jcodemunch-mcp for code lookup whenever available.
@@ -60,12 +80,38 @@ Qualifies: naming/file/import conventions, architectural decisions, business log
 Does not qualify: debugging steps, temp fixes, generic knowledge, already-documented things, in-progress work.
 
 
+## Impact Awareness
+
+When the user proposes a new idea, feature, or change, before building it, surface how it interacts with existing functionality. Flag the interaction prominently on its own line:
+
+`> 🧭 **Impact:** [one-line description]`
+
+Use that exact format. Never embed it in a paragraph. Base the assessment on the actual code, and on Project Context inventory docs when they exist; do not guess.
+
+Flag when the change:
+
+- **Affects existing behavior** — `this affects "XX" and requires re-evaluating how YY works`.
+- **Is already partly implemented** — `this is partly implemented at <path>; combine with the existing behavior, or keep separate?`
+- **Forces a tradeoff** — `this changes current behavior XX; let's evaluate options before building`.
+
+Flag only real collisions with existing functionality. Do not flag for net-new behavior that touches nothing, and do not block product work — make the impact visible so the user can choose knowingly.
+
+
 ## Temporary Files and Cleanup
 
 - For scratch work, scaffolding, or throwaway test repos, create under `$TMPDIR`/`/tmp` with `mktemp -d`, never in the project tree.
 - Make cleanup self-contained so it never needs a separate delete step: in the same command/script that creates the temp dir, register `trap 'rm -rf "$d"' EXIT` (or the script's existing trap). The dir is then removed automatically on exit, pass or fail.
 - Do not run a standalone `rm`/`rm -rf` to clean up after the fact. Prefer the trap; if a manual delete is unavoidable, target the exact `mktemp` path you created and surface it for approval rather than widening permissions.
 - Never request or rely on a blanket `rm` allowlist entry. Permission matching is literal prefix matching, not a path sandbox: `rm:*` authorizes every delete on any path, and `..`/variable expansion can escape a narrow pattern. A `mktemp` + `trap` keeps deletion bounded by construction instead.
+
+
+## Project Context
+
+- If a repo has Project Context docs (`docs/project-context/`, `docs/handoff/`, or a location set in `project-context.config.json` / `package.json` `projectContext`), use the ones relevant to the task as human orientation: terminology, user commands, reusable parts, extension paths.
+- Do not treat these docs as source of truth. Inspect the code, tests, schemas, migrations, and runtime behavior before making implementation claims. When docs disagree with those, the code wins.
+- Do not load every handoff doc by default; use only the docs the task touches.
+- If the docs are missing, stale, or inconsistent with the code, suggest the `project-context` skill or `roborepo project-context inventory`.
+- If a repo has no such docs, ignore this section.
 
 
 ## Claude Specifics

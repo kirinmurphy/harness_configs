@@ -13,6 +13,7 @@ subcommand implementations live under `scripts/cli/`, one module per category:
 | --- | --- |
 | `scripts/cli/skills.mjs` | `skill export-to-local`, `skill symlink-repo` |
 | `scripts/cli/index.mjs` | `index code\|docs`, `watch code`, `run` |
+| `scripts/cli/project-context.mjs` | `project-context inventory` (deterministic repo scan) |
 | `scripts/cli/mcp.mjs` | `mcp add` (Claude + Codex registration) |
 | `scripts/cli/paths.mjs` | shared `repoRoot` / `sharedSkillsDir` |
 | `scripts/cli/skill-lib.mjs` | shared Node core (zip, prompts, symlink helpers) |
@@ -75,6 +76,7 @@ roborepo — choose an action:
   index docs     index this repo's docs for jdocmunch
   mcp add        register an MCP server with Claude + Codex
   watch code     live-index code as files change
+  project-context inventory  scan a repo and write generated project-context facts
   run            run a command with trimmed output
 
   Skills
@@ -108,6 +110,7 @@ roborepo index code  [path]
 roborepo index docs  [path]
 roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--dry-run] [--only-claude|--only-codex] [--skip-claude-permission]
 roborepo watch code  [path]
+roborepo project-context inventory [path] [--summary]
 
 roborepo run <cmd> [args...]
 

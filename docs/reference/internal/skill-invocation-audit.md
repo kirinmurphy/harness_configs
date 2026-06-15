@@ -27,11 +27,13 @@ checks if this repo starts converting skills to manual-only behavior.
 | `code-style` | Good: cross-language convention work | Low | Keep auto |
 | `frontend-design` | Medium: valuable but broad "build UI" trigger can reshape product tone | Medium | Keep auto for now; tighten trigger and skip cases |
 | `javascript-typescript` | Good: language and file-type gated | Low | Keep auto |
+| `project-context` | Explicit-only: gated to the `/inventory` command and clear instructions | Medium | Manual entry via `/inventory`; description forbids auto-invoke on keyword overlap |
 | `react` | Good: framework and file-type gated | Low | Keep auto |
 | `roborepo-support` | Good: repo/path/task gated | Low to medium | Keep auto for this repo; keep trigger narrow |
 | `supabase-integration-testing` | Good: already requires most conditions to match | Low to medium | Keep auto |
 | `technical-planning-docs` | Medium: useful for real docs, but can over-structure quick planning requests | Medium | Keep auto for now; tighten trigger and skip cases |
 | `test-harness` | Good: verification and test-design gated | Low | Keep auto |
+| `tighten` | Explicit-only: gated to the `/tighten` command and clear instructions | Medium | Manual entry via `/tighten`; must not fire on ordinary edits or the mere presence of code |
 
 ## Dynamic Context And Shell Audit
 

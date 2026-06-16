@@ -39,6 +39,11 @@ export function dashboardHtml() {
 </header>
 <main>
   <section class="panel">
+    <h2>what's causing spikes</h2>
+    <div id="causes"></div>
+    <div class="legend">grouped by the pattern that drove each token spike · each row is a behavior you can change</div>
+  </section>
+  <section class="panel">
     <h2>token deltas over time</h2>
     <canvas id="timeline"></canvas>
     <div class="legend"><span class="swatch" style="background:var(--accent)"></span>per-capture delta tokens <span class="swatch" style="background:var(--spike);margin-left:12px"></span>spike threshold</div>
@@ -65,8 +70,11 @@ async function load(force) {
   const data = await (await fetch("/api/data")).json();
   if (!force && data.version === lastVersion) return;
   lastVersion = data.version;
+  const w = data.usage_windows || {};
   document.getElementById("meta").textContent =
-    data.capture_count + " captures · " + data.sessions.length + " sessions · spike ≥ " + fmt(data.spike_threshold) + " tok";
+    data.capture_count + " captures · " + data.sessions.length + " sessions · spike ≥ " + fmt(data.spike_threshold) + " tok"
+    + " · ~" + fmt(w.five_hour) + " tok last 5h / ~" + fmt(w.seven_day) + " last 7d (local estimate)";
+  renderCauses(data.spike_causes);
   drawTimeline(data.timeline, data.spike_threshold);
   renderSessions(data.sessions);
   renderSpikes(data.spikes);
@@ -104,6 +112,18 @@ function drawTimeline(points, threshold) {
   }
 }
 
+// The headline panel: each spike cause as a row, biggest token cost first, with the fix to apply.
+function renderCauses(rows) {
+  if (!rows || !rows.length) { document.getElementById("causes").innerHTML = "<p style='color:#8b949e'>no spikes yet — nothing blowing up your tokens</p>"; return; }
+  table("causes", ["cause", "spikes", "avg Δ", "worst Δ", "where", "what to change"], rows.slice(0, 8).map((c) => [
+    c.cause,
+    { num: c.spikes },
+    { num: fmt(c.avg_delta) },
+    { num: "+" + fmt(c.worst_delta), cls: "spike" },
+    c.worst_repo || "unknown",
+    c.hint || "",
+  ]));
+}
 function renderSessions(rows) {
   table("sessions", ["session", "tokens", "tools", "mcp"], rows.slice(0, 12).map((s) => [
     s.repo + "/" + short(s.session_id), { num: fmt(s.total_tokens) }, { num: s.tool_calls }, { num: s.mcp_calls },

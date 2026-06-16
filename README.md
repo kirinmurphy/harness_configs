@@ -2,9 +2,12 @@
 
 Claude Code & Codex global harness configuration with CLI support.
 
-The repo installs shared rules, skills, hooks, MCP helpers, and maintenance commands into the local filesystem paths the harnesses already read. Core install comes first; the onboarding workflow lets each machine opt into any combination of behavior groups.
+The repo
 
-Primary goals:
+- provides a CLI to update both Claude and Codex configurations simultaneously
+- provides an array of built in global rules, skills, features avaialbe to individually install
+
+Design goals:
 
 - keep Claude and Codex configuration aligned (where desired)
 - reduce token overuse
@@ -13,28 +16,61 @@ Primary goals:
 
 ## Start Here
 
-Supports macOS and Linux;
+Supports macOS and Linux;  
 Windows support is there, but not really tested.
 
-[Setup default configs and CLI](docs/guides/first-time-setup.md)
+[Install CLI](docs/guides/first-time-setup.md)
 
 ## Using the roborepo CLI
 
-After [installing roborepo](docs/guides/first-time-setup.md), you will have a `roborepo` command line tool.
+After install, you will have a `roborepo` command line tool.
 
-You can use roborepo CLI to add items and configuation to your globalsetup that will work with both claude and codex.
+Use the CLI to update items and configuation to your global setup that will work across both harnesses.
 
-Get started
+| Command                          | What it does                                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `roborepo`                       | Open the interactive menu — browse and run any command without memorizing flags.                     |
+| `roborepo onboard`               | Choose which global behavior bundles (rules, skills, hooks) are active across both harnesses.        |
+| `roborepo update`                | Re-apply harness config on this machine to pick up new or changed global config.                     |
+| `roborepo mcp add <name-or-url>` | Register an MCP server with both Claude and Codex in one step.                                       |
+| `roborepo index code [path]`     | Index a repo's source for jcodemunch so agents find code via symbol search instead of reading files. |
+| `roborepo telemetry status`      | Show local token-usage capture state; `telemetry serve` opens the local token-spike dashboard (with spike-cause attribution). `telemetry purge --all --backup` resets capture, backing up first. |
+| `roborepo doctor`                | Health-check the install and report what is linked, missing, or drifted.                             |
 
-REPO TABLE
-
-[View roborepo commands](docs/reference/services/roborepo-cli.md)
+[View all roborepo commands](docs/reference/services/roborepo-cli.md)
 
 ## Global Behavior
 
 Once you install the `roborepo` core, you will be prompted to install default packages and configurations. You can opt in/out of each one.
 
-Run `roborepo onboard` to edit your settings.
+After CLI install, you can choose which packages/tools to enable:
+
+```text
+== roborepo onboarding =================
+These are optional behavior packages you can add.
+You can opt in or out of some or all of them.
+
+You can change these settings later by running: roborepo onboard
+
+Toggle behavior groups. Blank keeps current selection.
+  1) [x] Base guidance (base)
+      AGENTS/CLAUDE guidance, managed markers, and root config baselines.
+  2) [x] Skills (skills)
+      Shared global skills for Claude and Codex.
+  3) [x] Codex rules (rules)
+      Generated Codex command permission rules.
+  4) [x] Hooks (hooks)
+      Claude and Codex lifecycle hooks.
+  5) [x] Slash commands (commands)
+      Global slash command wrappers.
+  6) [x] Permission profiles (permissions)
+      Rendered harness permission defaults inside root config.
+  7) [x] MCP defaults (mcp)
+      Default jcodemunch and jdocmunch MCP config inside root config.
+  8) [ ] Telemetry (telemetry)
+      Local cross-repo metadata capture and reports. Installed off unless selected.
+Select numbers to toggle, or 'all'/'none':
+```
 
 - [Token Optimization / Efficiency](#token-optimization--efficiency)
 - [Automatic Skill Helpers](#automatic-skill-helpers)
@@ -53,6 +89,7 @@ Run `roborepo onboard` to edit your settings.
 | [jdocmunch-mcp](docs/reference/services/jdocmunch.md)   | Documentation indexer that lets agents query headings and sections instead of reading whole docs. |
 | Caveman plugin                                          | Makes default agent output terse to reduce token usage.                                           |
 | Minimal verification                                    | Agents run the narrowest useful check and report a `pass/fail` receipt.                           |
+| Local Telemetry                                         | Enable, monitor and analyze your token usage across harnesses.                                    |
 
 ### Automatic Skill Helpers
 

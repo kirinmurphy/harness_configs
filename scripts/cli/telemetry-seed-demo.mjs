@@ -46,7 +46,8 @@ function tool(name, { command = null } = {}) {
 
 // One capture record. `session` carries the running session-level rollup; `delta` is the marginal
 // token cost the dashboard plots and uses to classify spikes.
-function capture({ minutesAgo, harness, event, sessionId, repoLabel, model, tokensTotal, delta, toolName, toolCalls, mcpCalls, command }) {
+function capture({ minutesAgo, harness, event, sessionId, repoLabel, model, tokensTotal, delta, toolName, toolCalls, mcpCalls, command, resultChars, biggestResult }) {
+  const lastResult = toolName ? { tool: toolName, chars: resultChars ?? 0, is_error: false } : null;
   return {
     schema: SCHEMA_VERSION,
     ts: ts(minutesAgo),
@@ -72,6 +73,10 @@ function capture({ minutesAgo, harness, event, sessionId, repoLabel, model, toke
       mcp_calls: mcpCalls,
       max_output_tokens: 4096,
     },
+    // Drives the spike-cause classifier: a heavy last_result is what the dashboard attributes the
+    // delta to. ~4 chars/token, so result chars track the step's delta.
+    last_result: lastResult,
+    biggest_result: biggestResult ?? lastResult,
   };
 }
 
@@ -82,10 +87,16 @@ function session({ harness, sessionId, repoLabel, model, startMinutesAgo, steps 
   let total = 0;
   let toolCalls = 0;
   let mcpCalls = 0;
+  let biggest = null;
+  // Result size that landed in context for each step. ~4 chars/token, so a heavy delta implies a
+  // heavy tool result — which is exactly what the spike-cause classifier keys off.
+  const stepChars = (step) => (step.tool ? Math.round(step.delta * 4) : 0);
   steps.forEach((step, index) => {
     total += step.delta;
     toolCalls += 1;
     if (typeof step.tool === "string" && step.tool.startsWith("mcp__")) mcpCalls += 1;
+    const chars = stepChars(step);
+    if (step.tool && (!biggest || chars > biggest.chars)) biggest = { tool: step.tool, chars, is_error: false };
     records.push(
       capture({
         minutesAgo: startMinutesAgo - index,
@@ -100,6 +111,8 @@ function session({ harness, sessionId, repoLabel, model, startMinutesAgo, steps 
         toolCalls,
         mcpCalls,
         command: step.command ?? null,
+        resultChars: chars,
+        biggestResult: biggest ? { ...biggest } : null,
       }),
     );
   });
@@ -141,7 +154,8 @@ function demoRecords() {
         { tool: "Bash", delta: 40_000, command: "npm ci" },
         { tool: "Bash", delta: 55_000, command: "npm run build" },
         { tool: "Read", delta: 22_000 },
-        { tool: "Bash", delta: 68_000, command: "npm test -- --runInBand" },
+        // Verbose test run dumped to context — the classic unbounded-bash-output spike.
+        { tool: "Bash", delta: 1_150_000, command: "npm test -- --verbose 2>&1" },
         { tool: "Edit", delta: 30_000 },
       ],
     }),
@@ -158,9 +172,10 @@ function demoRecords() {
       startMinutesAgo: 360,
       steps: [
         { tool: "mcp__jcodemunch__resolve_repo", delta: 120_000 },
-        { tool: "mcp__jcodemunch__get_context_bundle", delta: 480_000 },
+        // Oversized context bundle pulled the whole module tree in — an mcp-bundle spike.
+        { tool: "mcp__jcodemunch__get_context_bundle", delta: 1_120_000 },
         { tool: "mcp__jcodemunch__find_references", delta: 260_000 },
-        { tool: "mcp__jdocmunch__search_sections", delta: 310_000 },
+        { tool: "mcp__jdocmunch__search_sections", delta: 340_000 },
         { tool: "Read", delta: 60_000 },
       ],
     }),
@@ -178,8 +193,9 @@ function demoRecords() {
       steps: [
         { tool: "Read", delta: 45_000 },
         { tool: "Grep", delta: 38_000 },
-        { tool: "Edit", delta: 52_000 },
-        { tool: "mcp__jcodemunch__get_blast_radius", delta: 920_000 },
+        // Read of a generated/minified file — the large-file-read spike.
+        { tool: "Read", delta: 1_180_000 },
+        { tool: "mcp__jcodemunch__get_blast_radius", delta: 1_200_000 },
         { tool: "Edit", delta: 61_000 },
         { tool: "Bash", delta: 47_000, command: "npm run typecheck" },
       ],

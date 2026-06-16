@@ -316,8 +316,10 @@ mkdir -p "${tele_home}/.roborepo"
 tele_env=( "HOME=${tele_home}" "ROBOREPO_STATE_DIR=${tele_home}/.roborepo" )
 tele_transcript="${tele_home}/transcript.jsonl"
 cat > "${tele_transcript}" <<'TRANSCRIPT'
-{"type":"assistant","message":{"model":"claude-opus-4-8","usage":{"input_tokens":1000,"output_tokens":200,"cache_creation_input_tokens":500,"cache_read_input_tokens":300},"content":[{"type":"tool_use","name":"Read"}]}}
-{"type":"assistant","message":{"model":"claude-opus-4-8","usage":{"input_tokens":5000,"output_tokens":800,"cache_creation_input_tokens":40000,"cache_read_input_tokens":20000},"content":[{"type":"tool_use","name":"mcp__jcodemunch__search_text"}]}}
+{"type":"assistant","message":{"model":"claude-opus-4-8","usage":{"input_tokens":1000,"output_tokens":200,"cache_creation_input_tokens":500,"cache_read_input_tokens":300},"content":[{"type":"tool_use","id":"tu_read","name":"Read"}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"tu_read","content":"a small read result"}]}}
+{"type":"assistant","message":{"model":"claude-opus-4-8","usage":{"input_tokens":5000,"output_tokens":800,"cache_creation_input_tokens":40000,"cache_read_input_tokens":20000},"content":[{"type":"tool_use","id":"tu_mcp","name":"mcp__jcodemunch__search_text"}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"tu_mcp","content":"MCPRESULTPADDING"}]}}
 TRANSCRIPT
 env "${tele_env[@]}" node "${cli}" telemetry enable >/dev/null
 echo "{\"session_id\":\"sess-x\",\"cwd\":\"${repo_root}\",\"transcript_path\":\"${tele_transcript}\"}" \
@@ -326,12 +328,25 @@ assert "telemetry capture: records token totals from transcript" \
   bash -c "grep -q '\"total\":67800' '${tele_home}/.roborepo/telemetry/spool/claude.jsonl'"
 assert "telemetry capture: marks mcp tool metadata" \
   bash -c "grep -q '\"schema\":2' '${tele_home}/.roborepo/telemetry/spool/claude.jsonl'"
+# Spike attribution: capture sizes the tool result that most recently entered context (last_result)
+# and the heaviest result of the session (biggest_result), tying a spike back to what caused it.
+assert "telemetry capture: records last tool result for spike attribution" \
+  bash -c "grep -q '\"last_result\":{\"tool\":\"mcp__jcodemunch__search_text\"' '${tele_home}/.roborepo/telemetry/spool/claude.jsonl'"
+# spikeCause classifies a heavy MCP result into the mcp-bundle bucket with an actionable hint.
+assert "telemetry analyze: classifies spike cause from result size" \
+  bash -c "node -e 'import(\"${repo_root}/scripts/cli/telemetry-analyze.mjs\").then(m=>{const r=m.spikeCause({last_result:{tool:\"mcp__jcodemunch__get_context_bundle\",chars:500000},tool:{is_mcp:true},delta_tokens:900000});process.exit(r.cause===\"mcp-bundle\"?0:1)})'"
 assert "telemetry report: shows token sections when token data exists" \
   bash -c "env ${tele_env[*]} node '${cli}' telemetry report | grep -q 'token spikes'"
 assert "telemetry report: legacy metadata-only records still report" \
   bash -c "printf '%s\n' '{\"ts\":\"2026-06-10T01:00:00Z\",\"harness\":\"claude\",\"event\":\"Stop\",\"repo\":{\"label\":\"legacy\"},\"tool\":{\"name\":\"Read\"}}' >> '${tele_home}/.roborepo/telemetry/spool/claude.jsonl' && env ${tele_env[*]} node '${cli}' telemetry report | grep -q 'legacy'"
 assert "telemetry serve: rejects invalid port" \
   bash -c "! env ${tele_env[*]} node '${cli}' telemetry serve --port 0 >/dev/null 2>&1"
+# Reset must be able to snapshot first: purge --backup copies the spool to a backup that lives
+# outside telemetryDir, then removes telemetryDir. The backup (and its spool) must survive.
+assert "telemetry purge --backup: snapshots spool before reset, backup survives purge" \
+  bash -c "env ${tele_env[*]} node '${cli}' telemetry purge --all --backup >/dev/null && ! test -d '${tele_home}/.roborepo/telemetry' && ls '${tele_home}/.roborepo/telemetry-backups'/*/spool/claude.jsonl >/dev/null 2>&1"
+assert "telemetry purge: rejects missing --all" \
+  bash -c "! env ${tele_env[*]} node '${cli}' telemetry purge >/dev/null 2>&1"
 
 adopt_keep_home="${work}/adopt-keep-home"
 mkdir -p "${adopt_keep_home}/.claude" "${adopt_keep_home}/.roborepo"

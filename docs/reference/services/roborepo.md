@@ -17,9 +17,9 @@ subcommand implementations live under `scripts/cli/`, one module per category:
 | `scripts/cli/project-context.mjs` | `project-context inventory` (deterministic repo scan) |
 | `scripts/cli/mcp.mjs` | `mcp add` (Claude + Codex registration) |
 | `scripts/cli/presets.mjs` | `onboard`, `bundle status\|apply\|check\|remove` |
-| `scripts/cli/telemetry.mjs` | `telemetry enable\|disable\|status\|report\|export\|serve\|purge` |
-| `scripts/cli/telemetry-transcript.mjs` | parse harness transcript -> token/tool/MCP session stats |
-| `scripts/cli/telemetry-analyze.mjs` | sessions, spikes, token contributors, spike-vs-normal |
+| `scripts/cli/telemetry.mjs` | `telemetry enable\|disable\|status\|report\|export\|serve\|backup\|purge` |
+| `scripts/cli/telemetry-transcript.mjs` | parse harness transcript -> token/tool/MCP session stats + tool-result sizes |
+| `scripts/cli/telemetry-analyze.mjs` | sessions, spikes, spike causes, token contributors, usage windows, spike-vs-normal |
 | `scripts/cli/telemetry-serve.mjs` + `telemetry-dashboard.mjs` | loopback-only charting dashboard |
 | `scripts/cli/paths.mjs` | shared `repoRoot` / `sharedSkillsDir` |
 | `scripts/cli/skill-lib.mjs` | shared Node core (zip, prompts, symlink helpers) |
@@ -122,7 +122,7 @@ roborepo watch code  [path]
 roborepo project-context inventory [path] [--summary]
 roborepo onboard
 roborepo bundle status|apply|check|remove [bundle...]
-roborepo telemetry enable|disable|status|report|export|purge
+roborepo telemetry enable|disable|status|report|export|serve|backup|purge
 
 roborepo run <cmd> [args...]
 
@@ -210,22 +210,43 @@ of the v1 metadata (`ts`, `harness`, `event`, `session_id`, hashed `cwd`/repo id
   signal: it isolates a single heavy turn from the cumulative climb.
 - `tool.is_mcp` / `tool.mcp_server` — MCP attribution (parsed from `mcp__<server>__<tool>` names).
 - `session` — `model`, `assistant_turns`, `tool_calls`, `mcp_calls`, `max_output_tokens`.
+- `last_result` / `biggest_result` — spike attribution: the size (`{tool, chars, is_error}`) of the
+  tool result that most recently entered the context window, and the heaviest result of the session.
+  Sizes and tool names only — result content is never stored, preserving the hash-only privacy model.
+  These tie a spike back to *what* drove it (a large file read, an MCP bundle, an unbounded Bash log).
 
 Per-session token cursors live under `~/.roborepo/telemetry/collector/` and back the `delta_tokens`
-computation. `roborepo telemetry purge --all` removes the whole telemetry tree.
+computation.
+
+`roborepo telemetry backup` snapshots the telemetry tree to a timestamped copy under
+`~/.roborepo/telemetry-backups/` (which lives *outside* the telemetry tree, so a later purge cannot
+remove it). `roborepo telemetry purge --all` removes the whole telemetry tree; add `--backup` to take
+that snapshot first, so a reset is recoverable.
 
 ### Reports and the dashboard
 
-`roborepo telemetry report` prints the metadata summary plus, when token-bearing records exist,
-sessions ranked by tokens, detected token spikes (captures whose `delta_tokens` exceed mean + 2σ),
-top token contributors by repo / tool / MCP server, and a spike-vs-normal comparison (average delta,
-tool calls, and MCP rate). `roborepo telemetry export` dumps the raw spool as JSON.
+`roborepo telemetry report` prints the metadata summary plus, when token-bearing records exist:
+a recent-usage estimate (trailing 5h / 7d token totals — a *local* estimate from capture deltas, not
+the real server-side rate limit, which telemetry cannot see); a **spike-cause** breakdown that groups
+each spike by the pattern that drove it (`mcp-bundle`, `large-file-read`, `unbounded-bash-output`,
+`big-prompt`, …) with the change to make; sessions ranked by tokens; detected token spikes (captures
+whose `delta_tokens` exceed mean + 2σ); top token contributors by repo / tool / MCP server; and a
+spike-vs-normal comparison (average delta, tool calls, MCP rate). The spike-cause classifier keys off
+`last_result` size, degrading to tool name for records that predate result-size capture.
+`roborepo telemetry export` dumps the raw spool as JSON.
 
 `roborepo telemetry serve [--port <n>]` (default `4317`) starts a dependency-free local web dashboard
 on `127.0.0.1`. It serves the same analysis as JSON and renders it with a self-contained `<canvas>`
-UI: the token-delta timeline buckets to one column per pixel client-side, so dense histories with
-thousands of captures stay fast and the spike threshold line stays readable. The page re-fetches every
-few seconds, so a dashboard left open during a session reflects live captures.
+UI: a "what's causing spikes" panel leads with the spike-cause breakdown (each row a behavior to
+change), the recent-usage estimate shows in the header, and the token-delta timeline buckets to one
+column per pixel client-side, so dense histories with thousands of captures stay fast and the spike
+threshold line stays readable. The page re-fetches every few seconds, so a dashboard left open during
+a session reflects live captures.
+
+For demos and dashboard development, `node scripts/cli/telemetry-seed-demo.mjs` writes a set of
+synthetic sessions (varied models, repos, and spike causes) to a dedicated `spool/demo.jsonl`, picked
+up automatically alongside real spools; rerun with `--clear` to remove it. It never touches the real
+`claude.jsonl` / `codex.jsonl` spools.
 
 ## Permission Profiles
 

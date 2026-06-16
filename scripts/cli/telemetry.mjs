@@ -3,7 +3,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { markTelemetrySelected, presetsApply } from "./presets.mjs";
-import { telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
+import { telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
 import { mcpServerOf, transcriptStats } from "./telemetry-transcript.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { startTelemetryServer } from "./telemetry-serve.mjs";
@@ -29,10 +29,12 @@ export function telemetryCommand(rest) {
       return telemetryServe(args);
     case "purge":
       return telemetryPurge(args);
+    case "backup":
+      return telemetryBackup(args);
     case "capture":
       return telemetryCapture(args);
     default:
-      console.error("usage: roborepo telemetry enable|disable|status|report|export|serve|purge");
+      console.error("usage: roborepo telemetry enable|disable|status|report|export|serve|backup|purge");
       process.exit(2);
   }
 }
@@ -80,12 +82,34 @@ function telemetryReport(args) {
     console.log("\n(no token-bearing records yet — start a session with telemetry enabled to populate spike analysis)");
     return;
   }
+  printUsageWindows(report.usage_windows);
+  printSpikeCauses(report.spike_causes);
   printSessions(report.sessions);
   printSpikes(report);
   printTokenContributors("token by repo", report.top_repos);
   printTokenContributors("token by tool", report.top_tools);
   printTokenContributors("token by MCP server", report.top_mcp);
   printComparison(report.comparison);
+}
+
+// Trailing-window consumption is a local estimate from capture deltas — not the real server-side
+// Claude rate limit, which telemetry can't see. Labeled as such so it's never mistaken for quota.
+function printUsageWindows(windows) {
+  if (!windows) return;
+  console.log("\nrecent token usage (local estimate, not server rate limit):");
+  console.log(`  last 5h:  ~${fmt(windows.five_hour).padStart(12)} tok`);
+  console.log(`  last 7d:  ~${fmt(windows.seven_day).padStart(12)} tok`);
+}
+
+// The actionable headline: each token spike grouped by the pattern that drove it, with the change to
+// make. Answers "what am I doing that blows up my tokens" instead of a wall of per-capture numbers.
+function printSpikeCauses(causes) {
+  if (!causes || causes.length === 0) return;
+  console.log("\nwhat's causing spikes (biggest token cost first):");
+  for (const cause of causes.slice(0, 8)) {
+    console.log(`  ${cause.cause.padEnd(22)} n=${String(cause.spikes).padEnd(3)} avg Δ=${fmt(cause.avg_delta).padStart(9)} tok  worst @${cause.worst_repo}`);
+    console.log(`    → ${cause.hint}`);
+  }
 }
 
 function printSessions(sessions) {
@@ -153,13 +177,41 @@ function parseServeArgs(args) {
 }
 
 function telemetryPurge(args) {
-  if (args.length !== 1 || args[0] !== "--all") {
-    console.error("usage: roborepo telemetry purge --all");
+  const backup = args.includes("--backup");
+  const rest = args.filter((arg) => arg !== "--backup");
+  if (rest.length !== 1 || rest[0] !== "--all") {
+    console.error("usage: roborepo telemetry purge --all [--backup]");
     process.exit(2);
+  }
+  if (backup) {
+    const archive = backupTelemetry();
+    if (archive) console.log(`backup:  ${archive}`);
+    else console.log("backup:  nothing to back up (no telemetry data)");
   }
   fs.rmSync(telemetryDir, { recursive: true, force: true });
   markTelemetrySelected(false);
   console.log(`purged: ${telemetryDir}`);
+}
+
+function telemetryBackup(args) {
+  rejectArgs(args);
+  const archive = backupTelemetry();
+  if (archive) console.log(`backup: ${archive}`);
+  else console.log("nothing to back up (no telemetry data yet)");
+}
+
+// Snapshots the current telemetry dir into a timestamped, gitignored copy under telemetryBackupDir
+// (which lives outside telemetryDir, so a subsequent purge can't remove it). Returns the backup path,
+// or null when there's nothing to copy. Uses fs.cpSync — no shell, no tar dependency.
+function backupTelemetry() {
+  if (!fs.existsSync(telemetryDir)) return null;
+  const entries = fs.readdirSync(telemetryDir);
+  if (entries.length === 0) return null;
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const dest = path.join(telemetryBackupDir, `telemetry-${stamp}`);
+  fs.mkdirSync(telemetryBackupDir, { recursive: true });
+  fs.cpSync(telemetryDir, dest, { recursive: true });
+  return dest;
 }
 
 function telemetryCapture(args) {
@@ -198,6 +250,10 @@ function telemetryCapture(args) {
           max_output_tokens: stats.max_output_tokens,
         }
       : null,
+    // Likely driver of this capture's delta (freshest tool result to enter context) and the
+    // heaviest result seen all session. Sizes/tool names only — no result content is stored.
+    last_result: stats ? stats.last_result : null,
+    biggest_result: stats ? stats.biggest_result : null,
   };
   ensureTelemetryDirs();
   fs.appendFileSync(path.join(telemetrySpoolDir, `${options.harness}.jsonl`), JSON.stringify(record) + "\n");

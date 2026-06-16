@@ -43,8 +43,9 @@ output protocol differs (JSON `systemMessage` here, plain text on Codex).
 When telemetry is enabled, these hook events call `roborepo telemetry capture`
 and append JSON records into `~/.roborepo/telemetry`. Records are tagged with
 repo and harness context (hashed, not raw conversation text) and, from the
-transcript, cumulative + per-capture token usage, tool/MCP attribution, and
-session counts — enough to analyze token spikes over time. See the
+transcript, cumulative + per-capture token usage, tool/MCP attribution, tool-result
+sizes (for spike attribution — sizes only, never content), and session counts —
+enough to analyze token spikes and what caused them over time. See the
 [roborepo service doc](roborepo.md) for the record schema and the dashboard.
 
 ---

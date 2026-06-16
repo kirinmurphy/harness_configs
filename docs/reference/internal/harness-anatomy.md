@@ -24,7 +24,7 @@ the matching step in [the teaching doc](harnesses-explained.md).
 | Hooks | Scripts the harness runs on lifecycle/tool events. | Claude: `globals/claude/hooks/*.mjs` + `settings.json` wiring<br>Codex: `globals/codex/hooks.json` | edit source, then `roborepo update` |
 | MCP servers | External tool servers (jcodemunch, jdocmunch, …) registered with both harnesses. | Claude: `~/.claude` registration<br>Codex: `~/.codex` registration | `roborepo mcp add <name-or-url>` |
 | Permissions | Allowed/denied commands, tools, and profile defaults. | Claude: `settings.json` `permissions.*`<br>Codex: `config.toml` + `rules/default.rules` | `roborepo permissions [--check]` |
-| Telemetry | Local capture + analysis of sessions, tools, MCP, and token usage; spike detection + dashboard. | Claude/Codex hooks feed `~/.roborepo/telemetry` | `roborepo telemetry enable\|disable\|status\|report\|serve` |
+| Telemetry | Local capture + analysis of sessions, tools, MCP, and token usage; spike detection + cause attribution + dashboard; backup/reset. | Claude/Codex hooks feed `~/.roborepo/telemetry` | `roborepo telemetry enable\|disable\|status\|report\|serve\|backup\|purge` |
 | Root config | Mutable, machine-local settings (model, trust, hook approvals). | Claude: `globals/claude/settings.json` (baseline)<br>Codex: `globals/codex/config.toml` (baseline) | `roborepo update` (export/merge) |
 
 The rest of this doc takes each element in turn: what it does, how parity works, and what you do

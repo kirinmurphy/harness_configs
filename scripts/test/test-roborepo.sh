@@ -308,6 +308,31 @@ assert "bundle remove: unlinks owned link bundle" \
 assert "telemetry enable: creates local state dirs" \
   bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' telemetry enable >/dev/null && test -d '${presets_home}/.roborepo/telemetry/spool'"
 
+# Token capture reads the harness transcript (transcript_path on hook stdin) and records cumulative
+# token totals + a per-session delta. These tests use a fixture transcript so they never depend on a
+# live agent session.
+tele_home="${work}/telemetry-home"
+mkdir -p "${tele_home}/.roborepo"
+tele_env=( "HOME=${tele_home}" "ROBOREPO_STATE_DIR=${tele_home}/.roborepo" )
+tele_transcript="${tele_home}/transcript.jsonl"
+cat > "${tele_transcript}" <<'TRANSCRIPT'
+{"type":"assistant","message":{"model":"claude-opus-4-8","usage":{"input_tokens":1000,"output_tokens":200,"cache_creation_input_tokens":500,"cache_read_input_tokens":300},"content":[{"type":"tool_use","name":"Read"}]}}
+{"type":"assistant","message":{"model":"claude-opus-4-8","usage":{"input_tokens":5000,"output_tokens":800,"cache_creation_input_tokens":40000,"cache_read_input_tokens":20000},"content":[{"type":"tool_use","name":"mcp__jcodemunch__search_text"}]}}
+TRANSCRIPT
+env "${tele_env[@]}" node "${cli}" telemetry enable >/dev/null
+echo "{\"session_id\":\"sess-x\",\"cwd\":\"${repo_root}\",\"transcript_path\":\"${tele_transcript}\"}" \
+  | env "${tele_env[@]}" node "${cli}" telemetry capture --harness claude --event Stop
+assert "telemetry capture: records token totals from transcript" \
+  bash -c "grep -q '\"total\":67800' '${tele_home}/.roborepo/telemetry/spool/claude.jsonl'"
+assert "telemetry capture: marks mcp tool metadata" \
+  bash -c "grep -q '\"schema\":2' '${tele_home}/.roborepo/telemetry/spool/claude.jsonl'"
+assert "telemetry report: shows token sections when token data exists" \
+  bash -c "env ${tele_env[*]} node '${cli}' telemetry report | grep -q 'token spikes'"
+assert "telemetry report: legacy metadata-only records still report" \
+  bash -c "printf '%s\n' '{\"ts\":\"2026-06-10T01:00:00Z\",\"harness\":\"claude\",\"event\":\"Stop\",\"repo\":{\"label\":\"legacy\"},\"tool\":{\"name\":\"Read\"}}' >> '${tele_home}/.roborepo/telemetry/spool/claude.jsonl' && env ${tele_env[*]} node '${cli}' telemetry report | grep -q 'legacy'"
+assert "telemetry serve: rejects invalid port" \
+  bash -c "! env ${tele_env[*]} node '${cli}' telemetry serve --port 0 >/dev/null 2>&1"
+
 adopt_keep_home="${work}/adopt-keep-home"
 mkdir -p "${adopt_keep_home}/.claude" "${adopt_keep_home}/.roborepo"
 printf 'local hooks\n' > "${adopt_keep_home}/.claude/hooks"

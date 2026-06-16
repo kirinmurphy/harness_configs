@@ -17,7 +17,10 @@ subcommand implementations live under `scripts/cli/`, one module per category:
 | `scripts/cli/project-context.mjs` | `project-context inventory` (deterministic repo scan) |
 | `scripts/cli/mcp.mjs` | `mcp add` (Claude + Codex registration) |
 | `scripts/cli/presets.mjs` | `onboard`, `bundle status\|apply\|check\|remove` |
-| `scripts/cli/telemetry.mjs` | `telemetry enable\|disable\|status\|report\|export\|purge` |
+| `scripts/cli/telemetry.mjs` | `telemetry enable\|disable\|status\|report\|export\|serve\|purge` |
+| `scripts/cli/telemetry-transcript.mjs` | parse harness transcript -> token/tool/MCP session stats |
+| `scripts/cli/telemetry-analyze.mjs` | sessions, spikes, token contributors, spike-vs-normal |
+| `scripts/cli/telemetry-serve.mjs` + `telemetry-dashboard.mjs` | loopback-only charting dashboard |
 | `scripts/cli/paths.mjs` | shared `repoRoot` / `sharedSkillsDir` |
 | `scripts/cli/skill-lib.mjs` | shared Node core (zip, prompts, symlink helpers) |
 
@@ -187,9 +190,42 @@ bundle operations the onboarding flow uses; removing a bundle reverses the insta
 that bundle, deleting staged updates in keep-originals mode and restoring backed-up content when an
 overwrite or managed install had replaced it.
 
-The `telemetry` bundle is selected from the same workflow. When enabled, it writes metadata-only
-records under `~/.roborepo/telemetry` and uses the `telemetry` command group for status, reports,
-exports, and purge.
+The `telemetry` bundle is selected from the same workflow. When enabled, the harness hooks call
+`roborepo telemetry capture` on session/tool/prompt/stop events and append one JSON record per event
+to `~/.roborepo/telemetry/spool/<harness>.jsonl`. Everything stays local — no record ever leaves the
+machine, and the dashboard binds to `127.0.0.1` only.
+
+### Record schema
+
+Records are versioned by a `schema` field so the spool stays backward compatible. Legacy records
+written before token capture have no `schema` key (treated as v1) and are metadata-only; readers count
+them in event totals but skip them in token analysis. Current records are `schema: 2` and add, on top
+of the v1 metadata (`ts`, `harness`, `event`, `session_id`, hashed `cwd`/repo identity, `tool`,
+`prompt`):
+
+- `tokens` — cumulative session totals at capture time: `input`, `output`, `cache_creation`,
+  `cache_read`, `total`. Read from the harness transcript (`transcript_path` on hook stdin), so no
+  agent-side instrumentation is needed.
+- `delta_tokens` — tokens consumed since the previous capture in the same session. This is the spike
+  signal: it isolates a single heavy turn from the cumulative climb.
+- `tool.is_mcp` / `tool.mcp_server` — MCP attribution (parsed from `mcp__<server>__<tool>` names).
+- `session` — `model`, `assistant_turns`, `tool_calls`, `mcp_calls`, `max_output_tokens`.
+
+Per-session token cursors live under `~/.roborepo/telemetry/collector/` and back the `delta_tokens`
+computation. `roborepo telemetry purge --all` removes the whole telemetry tree.
+
+### Reports and the dashboard
+
+`roborepo telemetry report` prints the metadata summary plus, when token-bearing records exist,
+sessions ranked by tokens, detected token spikes (captures whose `delta_tokens` exceed mean + 2σ),
+top token contributors by repo / tool / MCP server, and a spike-vs-normal comparison (average delta,
+tool calls, and MCP rate). `roborepo telemetry export` dumps the raw spool as JSON.
+
+`roborepo telemetry serve [--port <n>]` (default `4317`) starts a dependency-free local web dashboard
+on `127.0.0.1`. It serves the same analysis as JSON and renders it with a self-contained `<canvas>`
+UI: the token-delta timeline buckets to one column per pixel client-side, so dense histories with
+thousands of captures stay fast and the spike threshold line stays readable. The page re-fetches every
+few seconds, so a dashboard left open during a session reflects live captures.
 
 ## Permission Profiles
 

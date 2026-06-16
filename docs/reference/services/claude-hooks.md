@@ -41,9 +41,11 @@ output protocol differs (JSON `systemMessage` here, plain text on Codex).
 ### Telemetry capture — SessionStart / PreToolUse / PostToolUse / UserPromptSubmit / Stop
 
 When telemetry is enabled, these hook events call `roborepo telemetry capture`
-and append metadata-only records into `~/.roborepo/telemetry`. The records are
-tagged with repo and harness context so later reports can group by machine,
-repo, tool, and session without storing raw conversation text by default.
+and append JSON records into `~/.roborepo/telemetry`. Records are tagged with
+repo and harness context (hashed, not raw conversation text) and, from the
+transcript, cumulative + per-capture token usage, tool/MCP attribution, and
+session counts — enough to analyze token spikes over time. See the
+[roborepo service doc](roborepo.md) for the record schema and the dashboard.
 
 ---
 

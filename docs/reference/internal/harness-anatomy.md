@@ -24,7 +24,7 @@ the matching step in [the teaching doc](harnesses-explained.md).
 | Hooks | Scripts the harness runs on lifecycle/tool events. | Claude: `globals/claude/hooks/*.mjs` + `settings.json` wiring<br>Codex: `globals/codex/hooks.json` | edit source, then `roborepo update` |
 | MCP servers | External tool servers (jcodemunch, jdocmunch, …) registered with both harnesses. | Claude: `~/.claude` registration<br>Codex: `~/.codex` registration | `roborepo mcp add <name-or-url>` |
 | Permissions | Allowed/denied commands, tools, and profile defaults. | Claude: `settings.json` `permissions.*`<br>Codex: `config.toml` + `rules/default.rules` | `roborepo permissions [--check]` |
-| Telemetry | Metadata-only capture and analysis for sessions, tools, and token usage. | Claude/Codex hooks feed `~/.roborepo/telemetry` | `roborepo telemetry enable\|disable\|status\|report` |
+| Telemetry | Local capture + analysis of sessions, tools, MCP, and token usage; spike detection + dashboard. | Claude/Codex hooks feed `~/.roborepo/telemetry` | `roborepo telemetry enable\|disable\|status\|report\|serve` |
 | Root config | Mutable, machine-local settings (model, trust, hook approvals). | Claude: `globals/claude/settings.json` (baseline)<br>Codex: `globals/codex/config.toml` (baseline) | `roborepo update` (export/merge) |
 
 The rest of this doc takes each element in turn: what it does, how parity works, and what you do
@@ -101,7 +101,7 @@ startup, broad-read nudges, noisy-Bash trimming, the write guard.
 **Parity model:** no shared generator — a behavior wanted on both sides is authored twice. Claude
 hooks are `.mjs` scripts under `globals/claude/hooks/` wired through `settings.json`; Codex hooks
 are declared in `globals/codex/hooks.json`. Telemetry capture uses the same hook layer when it is
-enabled, writing metadata-only records into `~/.roborepo/telemetry`. (Why parity stops here:
+enabled, writing token-usage and context records into `~/.roborepo/telemetry`. (Why parity stops here:
 [explained.md Step 6](harnesses-explained.md#step-6--when-automation-gives-up-hooks).)
 
 **To change a hook:** edit the script and/or the wiring (`settings.json` for Claude, `hooks.json`

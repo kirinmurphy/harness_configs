@@ -111,25 +111,30 @@ test_fresh_managed() {
 
   HOME="$home_dir" "$repo_root/scripts/install/main.sh" >"$home_dir/out"
 
-  assert_file_contains "$home_dir/out" "Core install complete" "main install applies core only"
-  assert_file_contains "$home_dir/out" "Onboarding not started because this install is noninteractive" "noninteractive install defers onboarding"
-  [[ ! -e "$home_dir/.claude/settings.json" && ! -e "$home_dir/.codex/config.toml" ]] \
-    && pass "main install leaves harness bundles for onboarding" \
-    || fail "main install leaves harness bundles for onboarding"
+  # Onboarding wizard disabled (in-progress feature): install now applies the default bundles
+  # headlessly even non-interactively, instead of deferring them to an onboarding step. The previous
+  # "defers onboarding / leaves bundles uninstalled" assertions are recorded in
+  # docs/plans/onboarding-reinstatement.md §5.
+  assert_file_contains "$home_dir/out" "Core install complete" "main install completes core"
+  assert_file_contains "$home_dir/out" "Applying default configuration" "noninteractive install applies defaults headlessly"
+  [[ -e "$home_dir/.claude/settings.json" && -e "$home_dir/.codex/config.toml" ]] \
+    && pass "main install applies harness bundles automatically" \
+    || fail "main install applies harness bundles automatically"
 }
 
 test_mode_prompt_allows_adopt_on_clean_machine() {
   local home_dir expect_file
   home_dir="$(make_home)"
   expect_file="$home_dir/expect.tcl"
+  # Onboarding wizard disabled (in-progress feature): install applies defaults headlessly with no
+  # toggle prompt. The expect script no longer waits for "Select numbers to toggle". See
+  # docs/plans/onboarding-reinstatement.md §5.
   cat >"$expect_file" <<'EOF'
 expect "Selection*"
 send "2\r"
 expect "Choose adopt collision behavior"
 expect "Selection*"
 send "2\r"
-expect "Select numbers to toggle"
-send "\r"
 EOF
 
   run_expect_install "$home_dir" "$home_dir/out" "$expect_file"
@@ -137,21 +142,21 @@ EOF
   assert_file_contains "$home_dir/out" "Choose install mode" "install mode prompt appears"
   assert_file_contains "$home_dir/out" "Mode:   adopt" "install mode prompt accepts adopt"
   assert_file_contains "$home_dir/out" "state: .* mode=adopt on-conflict=keep" "adopt keep policy is persisted"
-  assert_file_contains "$home_dir/out" "roborepo onboard" "install starts onboarding after core install"
+  assert_file_contains "$home_dir/out" "Applying default configuration" "install applies defaults headlessly after core install"
   [[ -f "$home_dir/.roborepo/presets/state.json" ]] \
-    && pass "post-install onboarding records preset state" \
-    || fail "post-install onboarding records preset state" "$home_dir/out"
+    && pass "post-install default apply records preset state" \
+    || fail "post-install default apply records preset state" "$home_dir/out"
 }
 
 test_mode_prompt_allows_managed_selection() {
   local home_dir expect_file
   home_dir="$(make_home)"
   expect_file="$home_dir/expect.tcl"
+  # Onboarding wizard disabled (in-progress feature): no toggle prompt; install applies defaults
+  # headlessly. See docs/plans/onboarding-reinstatement.md §5.
   cat >"$expect_file" <<'EOF'
 expect "Selection*"
 send "1\r"
-expect "Select numbers to toggle"
-send "\r"
 EOF
 
   run_expect_install "$home_dir" "$home_dir/out" "$expect_file"
@@ -159,7 +164,7 @@ EOF
   assert_file_contains "$home_dir/out" "Choose install mode" "install mode prompt appears for managed"
   assert_file_contains "$home_dir/out" "Mode:   managed" "install mode prompt accepts managed"
   assert_file_contains "$home_dir/out" "state: .* mode=managed on-conflict=overwrite" "managed overwrite policy is persisted"
-  assert_file_contains "$home_dir/out" "roborepo onboard" "managed install starts onboarding after core install"
+  assert_file_contains "$home_dir/out" "Applying default configuration" "managed install applies defaults headlessly after core install"
 }
 
 test_managed_mode_backs_up_existing_configs() {

@@ -379,30 +379,23 @@ try {
 ' "$(roborepo_state_dir)/presets/state.json"
 }
 
+# Onboarding wizard is disabled (in-progress feature). Install applies the default bundles headlessly
+# instead of launching the interactive `roborepo onboard` UI. The original UI-launching version is
+# recorded in docs/plans/onboarding-reinstatement.md.
 run_post_install_onboarding() {
   if [[ $dry_run -eq 1 ]]; then
-    echo "Next: install will start roborepo onboard after core install."
-    return 0
-  fi
-
-  if [[ "${skip_presets_onboard}" -eq 1 || "${ROBOREPO_PRESETS_ONBOARD:-}" == "skip" ]]; then
-    echo "Onboarding skipped. Run later: roborepo onboard"
+    echo "Next: install will apply the default configuration after core install."
     return 0
   fi
 
   if presets_onboarded; then
-    echo "Onboarding already complete. Run roborepo onboard to change behavior bundles."
+    echo "Default configuration already applied."
     return 0
   fi
 
-  if ! stdin_is_interactive || [[ ! -t 1 ]]; then
-    echo "Onboarding not started because this install is noninteractive."
-    echo "Run later: roborepo onboard"
-    return 0
-  fi
-
-  echo "Starting onboarding."
+  echo "Applying default configuration."
   echo ""
+  # `onboard` now headlessly applies the default bundles and records onboarding state (no UI).
   node "${repo_root}/scripts/cli/main.mjs" onboard
 }
 

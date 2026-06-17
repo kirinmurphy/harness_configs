@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { repoRoot } from "./paths.mjs";
-import { makePrompter } from "./prompts.mjs";
 import { installStatePath, presetsStatePath } from "./state-paths.mjs";
 
 const PRESET_MANIFEST = path.join(repoRoot, "manifests", "platform", "presets.json");
@@ -14,21 +13,12 @@ const MANIFEST_HOME = {
   agents: path.join(os.homedir(), ".agents"),
 };
 
+// Onboarding wizard disabled: install auto-applies all default bundles, so nothing is gated on an
+// onboarding step. The forced-gate body is recorded in docs/plans/onboarding-reinstatement.md.
+// Kept as a pass-through (still called from main.mjs) so the gate can be reinstated in one place.
 export async function maybeRunPresetOnboarding(args) {
-  if (process.env.ROBOREPO_PRESETS_ONBOARD === "skip") return args;
   const filtered = args.filter((arg) => arg !== "--no-presets-onboard");
-  if (filtered.length !== args.length) return filtered;
-  if (!isInstalledCore()) return args;
-  if (isBypassCommand(args)) return args;
-  const state = readPresetState();
-  if (state.onboardedAt) return args;
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    console.error("onboarding has not run. Run: roborepo onboard");
-    console.error("For automation, pass --no-presets-onboard or set ROBOREPO_PRESETS_ONBOARD=skip.");
-    process.exit(2);
-  }
-  await presetsOnboard([]);
-  return args;
+  return filtered.length !== args.length ? filtered : args;
 }
 
 export async function presetsCommand(rest) {
@@ -69,38 +59,26 @@ export async function bundleCommand(args) {
   }
 }
 
+// The interactive bundle-toggle wizard is an in-progress feature and is intentionally not shown to
+// users yet (see docs/plans/item-level-onboarding.md for the planned replacement). Until it ships,
+// `roborepo onboard` applies the default bundles headlessly — the same packages install would apply —
+// and prints an in-progress notice instead of opening the toggle UI. The original interactive body is
+// recorded in docs/plans/onboarding-reinstatement.md.
 export async function presetsOnboard(args) {
   rejectUnknownFlags(args, new Set());
+  console.log("Onboarding is an in-progress feature and is not interactive yet.");
+  console.log("Applying the default configuration (the same packages install sets up automatically).");
+  presetsApply(["--default"]);
   const catalog = readPresetCatalog();
   const state = readPresetState();
-  const current = new Set(state.selected ?? catalog.default);
-  const prompter = makePrompter();
-  if (!prompter.ask) {
-    console.error("bundle onboarding needs an interactive terminal.");
-    process.exit(2);
-  }
-
-  try {
-    console.log("roborepo onboard");
-    console.log("These are optional behavior packages you can add.");
-    console.log("You can opt in or out of some or all of them.");
-    console.log("You can change these settings later by running: roborepo onboard");
-    console.log("");
-    console.log("Toggle behavior groups. Blank keeps current selection.");
-    printBundleChoices(catalog, current);
-    const answer = await prompter.ask("Select numbers to toggle, or 'all'/'none': ");
-    const selected = withDependencies(resolveSelection(answer, catalog, current));
-    applySelection(selected, catalog, { reconcile: true });
-    writePresetState({
-      selected: [...selected],
-      onboardedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      bundles: bundleStates(catalog, selected),
-    });
-    console.log(`bundles: ${selected.size} selected`);
-  } finally {
-    prompter.close();
-  }
+  const selected = withDependencies(new Set(state.selected ?? catalog.default));
+  writePresetState({
+    selected: [...selected],
+    onboardedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    bundles: bundleStates(catalog, selected),
+  });
+  console.log(`bundles: ${selected.size} applied`);
 }
 
 export function presetsApply(args) {
@@ -232,6 +210,8 @@ function bundleStates(catalog, selected) {
   return states;
 }
 
+// Retained for the disabled interactive onboarding wizard (see docs/plans/onboarding-reinstatement.md).
+// Currently unused; restored to use when the wizard is reinstated.
 function printBundleChoices(catalog, current) {
   catalog.bundles.forEach((bundle, index) => {
     const mark = current.has(bundle.id) ? "x" : " ";

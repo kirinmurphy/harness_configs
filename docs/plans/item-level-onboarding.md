@@ -25,6 +25,17 @@ Define the nouns before the workflow.
 - **Selection** — the set of item IDs the user picked, per category. Source of truth for *what the
   user wants*. Persisted in preset state (`~/.roborepo/presets/state.json`, path from
   `state-paths.mjs:6`).
+- **Item ID** — the stable string that identifies one item within its category, used in state and in
+  the wizard. Defined per category:
+  - **skill** — the skill folder name under `globals/agents/skills/` (e.g. `blog`, `react`). No
+    extension, no path.
+  - **slash command** — the command basename without `.md` (e.g. `blog`, `inventory`), matching the
+    skill ID where a command wraps a skill.
+  - **MCP server** — the preset `name` field from `manifests/inventory/mcp-presets.json` (e.g.
+    `jcodemunch`), not an alias. Aliases resolve to the canonical `name` before storage.
+
+  IDs are stored canonical and validated against the current full inventory on read; an unknown ID is
+  an error, not a silent skip (see Data Integrity).
 - **Active set** — the items actually installed into the harness, derived from (full inventory ∩
   selection). In this plan, the active set is represented by individual symlinks for filesystem-
   backed items and direct writes/merges for root-config-backed items.
@@ -39,7 +50,10 @@ Define the nouns before the workflow.
   rules, hooks, permission profiles, telemetry. These keep a simple on/off control.
 - **Item dependency** — an item that pulls in another when selected (e.g. the `react` skill pairs
   with `javascript-typescript`; `telemetry` already pulls `hooks` via `withDependencies()` in
-  `presets.mjs:281`).
+  `presets.mjs:281`). Item-level deps are **declared data, not hardcoded**: each item entry in the
+  catalog manifest carries an optional `requires: [id, ...]` field. The existing bundle-level
+  `telemetry→hooks` rule stays in `withDependencies()`; item deps are resolved from the catalog by an
+  extended version of that function. The implementer must not scatter dependency rules across code.
 - **Install state** — the first-install ownership mode recorded in
   `~/.roborepo/install-state.json`: `managed` or `adopt`. `managed` means roborepo owns clean
   read-mostly harness links. `adopt` means existing root config stays user-owned, while clean
@@ -100,14 +114,27 @@ harness home instead of symlinking whole folders. A skill becomes one symlink pe
 command becomes one symlink per command file.
 
 ```
+# Claude home
 ~/.claude/skills/blog      -> <repo>/globals/agents/skills/blog
 ~/.claude/skills/tighten   -> <repo>/globals/agents/skills/tighten
-~/.claude/commands/foo.md  -> <repo>/globals/claude/commands/foo.md
+~/.claude/commands/blog.md -> <repo>/globals/claude/commands/blog.md
+# Codex home (same selection)
+~/.agents/skills/blog      -> <repo>/globals/agents/skills/blog
+~/.agents/skills/tighten   -> <repo>/globals/agents/skills/tighten
+~/.codex/commands/blog.md  -> <repo>/globals/codex/commands/blog.md
 ```
 
 This keeps installed items live against repo source. It also means the install surface is now many
 small links instead of one big link per category, so selection, verification, prune, and repair all
 have to reason about item-level ownership.
+
+**Both harnesses honor the same selection.** A skill or command exists in two install locations —
+Claude reads `~/.claude/skills`, Codex scans `~/.agents/skills` (Codex never reads `.codex/skills`).
+The per-item installer writes the chosen subset into *both* home trees, so a skipped item is absent
+in Claude and Codex alike. This replaces today's whole-folder `agents:skills` link with per-item
+links on the Codex side, matching the Claude layer (`globals/claude/skills/`) which is already
+per-skill. Keeping the two harnesses aligned is a core repo goal; a subset honored in one harness but
+not the other would be exactly the drift the repo exists to prevent.
 
 MCP servers and permission profiles are **root-config-backed**, not folder-linked. Their selection
 drives config-block writes or merge prompts in the same files that already hold mutable root config:
@@ -129,7 +156,7 @@ Item-level onboarding must keep first-install ownership clear:
 
 | Area | `managed` install state | `adopt` install state |
 |---|---|---|
-| Skills and slash commands | Symlink selected items individually into the user home. Roborepo owns those links. Existing user-owned paths must be handled by the current conflict policy before replacement. | Same, only if the target path is missing or already roborepo-owned. If a user-owned folder/file exists, preserve it until the user explicitly adopts or overwrites. |
+| Skills and slash commands | Symlink selected items individually into both the Claude home and the Codex home. Roborepo owns those links. Existing user-owned paths must be handled by the current conflict policy before replacement. | Same, only if the target path is missing or already roborepo-owned. If a user-owned folder/file exists, preserve it until the user explicitly adopts or overwrites. |
 | Hooks, rules, markers, base guidance | Keep current clean repo symlink model from `manifest.tsv`. | Keep current behavior: clean non-root links can be installed; user-owned non-root conflicts stop before mutation. |
 | Root config baselines | Export repo baseline to local active root config when missing, then item selections can update managed sections. | Do not silently rewrite existing root config. Stage selected MCP/permission changes, print merge prompt, or apply only under an explicit overwrite/merge policy. |
 | Update | Refresh selected symlinked items if the repo source path still exists and the target is still owned by roborepo. Root-config-backed selected items may refresh only managed/generated sections. | Refresh selected symlinked items if their targets are roborepo-owned. Root-config-backed items require the adopt merge path again; update must not silently change user-owned root config. |
@@ -187,14 +214,6 @@ Per-item symlinks are the lower-invasive option, but they do introduce new rules
 Guardrail: do not use symlinks to pretend that `managed` and `adopt` are the same. They diverge
 wherever the install writes directly into user-owned files.
 
-### Ownership Boundary
-
-Per-item symlinks for skills and commands must not create a second owner for the same paths. The
-onboarding installer should reuse the same underlying link helper as `link-skills.sh`, so one code
-path owns item-link creation and pruning. If the installer writes those paths directly, it should be
-the only writer; if it calls out to the shared helper, that helper remains the source of truth for
-the link primitives.
-
 ### Onboarding UI: multi-step wizard
 
 `roborepo onboard` becomes a sequence of steps, each a numbered multi-select checkbox screen:
@@ -229,16 +248,29 @@ layer. Instead, update should re-evaluate the current selection, recreate missin
 links that no longer belong to the saved selection. It should never add brand-new repo items unless
 the user selected them during onboard.
 
-That behavior is still not free:
+For each selected item, `update` resolves to exactly one outcome per home path:
 
-- update must distinguish "link is present and correct" from "path exists but points somewhere else"
-- if the repo source path disappears, the installed symlink becomes dangling and should be reported
-- if a user edits or replaces the target path locally, update should treat that as a collision, not
-  silently fix it
-- if the source item moves inside the repo, the installer needs a relocation story or a mapping layer
+- **present and correct** — link points at the expected repo source. Leave it alone (content edits
+  show up live; no relink needed).
+- **missing or pointing elsewhere (roborepo-owned)** — recreate/repoint the link to current source.
+- **repo source gone, item still selected** — the repo deleted an item the user had chosen, so the
+  link is now dangling. `update` **prunes the dangling link from both home trees, warns the user**
+  (e.g. `react no longer ships; removed`), **and drops the item from the saved selection** so it does
+  not re-dangle on the next run. This is the only case where `update` removes an item the user once
+  selected, and it does so because the repo, not the user, removed it.
+- **user-owned collision** — the path exists but holds the user's own content (they replaced or
+  hand-edited the target). `update` must **not** auto-remove or overwrite it; it warns and preserves,
+  per the existing conflict policy (`readInstallPolicy`). This is deliberately distinct from the
+  dangling-prune case above: a dangling roborepo link is dead and gets pruned; user content is live
+  and gets preserved.
 
-This keeps `update` = "reconcile my accepted items with current repo source" and `onboard` =
-"choose/add items", with no hidden snapshot layer.
+`update` still never *adds* a brand-new repo item the user did not select — new items are opt-in via
+`onboard`. And if a selected item *moves* inside the repo (rather than being deleted), the installer
+needs the relocation story shared with `docs/plans/portable-install-relocation.md`.
+
+This keeps `update` = "reconcile my accepted items with current repo source — repoint what moved,
+prune what the repo deleted, preserve what the user owns" and `onboard` = "choose/add items", with no
+hidden snapshot layer.
 
 ## Happy Path
 
@@ -251,10 +283,11 @@ This keeps `update` = "reconcile my accepted items with current repo source" and
 7. CLI resolves dependencies, writes selection to preset state, renders
    the selected skills/commands as per-item symlinks into the harness homes, and applies
    MCP/bundle selections according to the current install state.
-8. Later, the repo ships a fix to `blog` and a brand-new skill `foo`. User runs `roborepo update`.
-   For each selected item, update sees the symlinked source directly: `blog` now points at the new
-   repo content automatically; `foo` was never selected, so it does **not** appear. To
-   add `foo`, the user re-runs `roborepo onboard`.
+8. Later, the repo ships a fix to `blog`, a brand-new skill `foo`, and **deletes** `tighten`. User
+   runs `roborepo update`. For each selected item, update sees the symlinked source directly: `blog`
+   now points at the new repo content automatically; `foo` was never selected, so it does **not**
+   appear; `tighten`'s link is now dangling, so update prunes it from both home trees, warns, and
+   drops `tighten` from the saved selection. To add `foo`, the user re-runs `roborepo onboard`.
 
 ## Required Rules
 
@@ -270,16 +303,22 @@ This keeps `update` = "reconcile my accepted items with current repo source" and
 - `managed` and `adopt` differ only where ownership differs: filesystem-backed items may be roborepo-
   owned in both states, but root-config-backed items must not silently mutate adopted root config.
 - `roborepo update` reconciles the saved selection only; it never adds items the user did not select.
-- Re-running onboard or update is idempotent — same selection produces the same link set.
-- Removing an item (unchecking on a later onboard run) removes its symlink or config entry; collision
-  and backup behavior follows the existing install policy (`readInstallPolicy`, `presets.mjs:466`).
+  The one removal it performs is pruning a dangling link whose repo source the repo itself deleted,
+  dropping that item from the selection too.
+- A dangling roborepo-owned link (dead source) is pruned; a user-owned path (live user content) is
+  preserved. Never treat the two the same.
+- Re-running onboard or update is idempotent — same selection against the same repo produces the same
+  link set, with no dangling links left behind.
+- Removing an item (unchecking on a later onboard run) removes its symlink or config entry from both
+  home trees; collision and backup behavior follows the existing install policy (`readInstallPolicy`,
+  `presets.mjs:466`).
 
 ## Operational Workflow
 
 | Command | When | Gives the user | Does not do |
 |---|---|---|---|
 | `roborepo onboard` | First install; adding/removing items | Full multi-step item selection; writes selection + installs per-item symlinks; applies or stages root-config-backed choices according to install state | Not needed just to get fixes to already-selected filesystem-backed items |
-| `roborepo update` | Picking up repo changes | Reconciles selected symlinks with current repo source; re-runs managed plumbing | Does not auto-add brand-new repo items; does not silently edit adopted root config; does not touch unchanged selections |
+| `roborepo update` | Picking up repo changes | Reconciles selected symlinks with current repo source; repoints moved links; prunes links the repo deleted (and deselects them); re-runs managed plumbing | Does not auto-add brand-new repo items; does not silently edit adopted root config; does not remove or overwrite user-owned content; does not touch present-correct links |
 | `roborepo bundle apply/remove <id>` | Scripted/non-interactive | Apply or remove a whole bundle | No per-item granularity (bundle-level only) |
 
 ## Data Integrity And Validation
@@ -293,10 +332,11 @@ This keeps `update` = "reconcile my accepted items with current repo source" and
 - **State split:** install state (`managed`/`adopt`) remains separate from item selection state. The
   former answers "who owns root config and repo-owned links"; the latter answers "which shipped items
   did the user pick." Avoid deriving one from the other.
-- **Collision handling:** a user-owned `~/.claude/skills`, `~/.claude/commands`, or
-  `~/.codex/commands` path must be treated like any other non-root harness conflict before it is
-  replaced by an item symlink. Do not silently move or merge arbitrary user content into a generated
-  staging location; the install model here is direct.
+- **Collision handling:** a user-owned `~/.claude/skills`, `~/.claude/commands`, `~/.agents/skills`,
+  or `~/.codex/commands` path must be treated like any other non-root harness conflict before it is
+  replaced by an item symlink. Because each item installs into both home trees, a collision in one
+  harness must not silently skip the other; handle each home path on its own. Do not silently move or
+  merge arbitrary user content into a generated staging location; the install model here is direct.
 - **Direct-write items:** `~/.claude/settings.json` and `~/.codex/config.toml` are not symlinked in
   either state. They are active local files. `managed` may export repo baselines into them; `adopt`
   must leave user-owned files in place unless the chosen conflict policy explicitly says otherwise.
@@ -310,9 +350,10 @@ No state migration is needed: this ships fresh. There is no legacy bundle-level 
 
 ## Edge Cases
 
-- **Item removed from repo.** A saved selection references a skill or command the repo no longer
-  ships. Render skips it and warns. Update must report a dangling or missing target instead of
-  silently preserving it.
+- **Item removed from repo (still selected).** A saved selection references a skill or command the
+  repo no longer ships, leaving a dangling link. `update` prunes the dangling link from both home
+  trees, warns the user, and drops the item from the saved selection so it does not re-dangle (see
+  Update vs onboard). This is distinct from a user-owned collision, which is preserved, not pruned.
 - **Source path moved.** If a selected item moves inside the repo, the direct symlink model needs an
   explicit relocation map or the install path becomes invalid. This is the main maintenance cost of
   item-level symlinks, and it should be cross-linked to [`portable-install-relocation.md`](portable-install-relocation.md).
@@ -343,23 +384,115 @@ No state migration is needed: this ships fresh. There is no legacy bundle-level 
 - **Windows path.** `install-windows.ps1` reads the manifest too. Any item-level link strategy has to
   be representable there, or the Bash and PowerShell installers will drift.
 
+## Risk And Phased Rollout
+
+This change touches the install spine — how config lands in the live harness dirs `~/.claude`,
+`~/.codex`, and `~/.agents`. The whole-directory symlink (`~/.claude/skills -> repo/.../skills`) is
+not just an install detail; it is an invariant that roughly fifteen scripts assume. Changing it to
+per-item links means every reader of that invariant must change in lockstep or they disagree about
+whether an install is healthy.
+
+### Files that share the invariant
+
+These read `manifest.tsv` / the install library / preset state and assume folder-level ownership:
+`scripts/install/main.sh`, `install-claude.sh`, `install-codex.sh`, `install-lib.sh`,
+`install-windows.ps1`, `repair.sh`, `uninstall.sh`, `scripts/lib/manifests-data.sh`,
+`scripts/sync-from-home.sh`, `scripts/doctor.sh`, `scripts/verify-install.sh`,
+`scripts/cli/presets.mjs`, `scripts/test/test-roborepo.sh`, `scripts/test/test-install-collisions.sh`.
+Any one of them left on the old model becomes a source of false health readings or fights the new
+installer over the same paths.
+
+### Ranked risks
+
+1. **Data loss in `~/.claude` / `~/.agents` (high).** The installer writes into live harness dirs. A
+   bug in the roborepo-owned vs user-owned decision could delete or overwrite a skill or command the
+   user created. The prune-vs-preserve rule (Update vs onboard) is exactly this boundary and is the
+   easiest thing to get subtly wrong. Mitigation: route every link/remove through the existing,
+   tested collision primitives (`link_item`, `ensureSymlink`) — never hand-roll `ln`/`rm`.
+2. **Backfill pollutes the repo (high).** `sync-from-home.sh` reads live config and writes it back
+   into repo source. If it does not understand per-item layout, it can corrupt
+   `globals/agents/skills` itself — the source of truth. Recoverable via git, but it is the only
+   risk that writes the repo. Mitigation: teach backfill the per-item model before enabling it, and
+   test it against a throwaway home.
+3. **Doctor / verify give false readings (medium).** They check whole-folder links today; until
+   updated they fail a correctly-installed per-item layout. Not destructive, but it removes the
+   safety net during the risky work. Mitigation: update them in the same phase that flips the model,
+   not after.
+4. **Half-migrated state (medium).** Node installer does per-item while bash/PowerShell still do
+   whole-dir. Running `update` (Node) then an older script makes them fight over the same paths.
+   Mitigation: keep `manifest.tsv` bundle-level (resolved decision) so only the Node path changes,
+   shrinking the cross-language surface.
+5. **Dangling links degrade the harness silently (medium).** A dangling `~/.claude/skills/<x>` — does
+   the harness skip it or error? Untested. Mitigation: cover dangling-link behavior in tests before
+   shipping (see Edge Cases / checklist item 11).
+
+### Why this is less fragile than it looks
+
+- The repo is under git, so the one repo-writing risk (backfill) is recoverable.
+- Symlinks have no content state — a link resolves or dangles, with no merge logic — so the model is
+  simpler to reason about than the copies alternative.
+- The collision/backup primitives already exist and are tested; reusing them keeps the dangerous
+  path on proven code.
+
+### Phased rollout
+
+Each phase is independently revertible, and the destructive capability (touching real harness dirs
+with the new model) does not exist until Phase 2 — and only against throwaway homes until Phase 4.
+
+- **Phase 1 — additive only, no install change.** Build inventory readers, catalog shape, state
+  shape, and the wizard UI (checklist 1–5). `applySelection` still installs whole-dir as today, so
+  the new selection experience is visible and testable without changing how anything installs. Fully
+  reversible.
+- **Phase 2 — per-item installer behind a flag, throwaway homes only.** Implement the per-item
+  installer (checklist 6–7) gated behind an opt-in flag/env var, exercised only against the test
+  suite's throwaway `$HOME` dirs. Never touches the developer's real `~/.claude`.
+- **Phase 3 — spine parity.** Update `doctor.sh`, `verify-install.sh`, `install-windows.ps1`,
+  `sync-from-home.sh`, `repair.sh`, `uninstall.sh`, and tests for the per-item model (checklist
+  8–11). Prove green on throwaway homes before any default flips.
+- **Phase 4 — flip the default.** Make per-item the default install for both harnesses (checklist
+  10, 12) only after Phases 1–3 are green. Update docs last.
+
+A phase does not begin until the previous one's checks pass. If a phase regresses, revert that phase
+alone — earlier phases stand on their own.
+
 ## Implementation Checklist
 
 1. **Inventory readers.** Add functions to enumerate the full inventory per category: skills (reuse
    `listSourceSkills` from `skill-lib`), commands (read `globals/{claude,codex}/commands/`), MCP
    (read `manifests/inventory/mcp-presets.json`).
 2. **Catalog shape.** Extend `presets.json` (or a new inventory manifest) to declare which categories
-   are item-level vs toggle, plus per-item dependencies.
+   are item-level vs toggle, and to carry per-item entries with `id`, `label`, `description`, and
+   optional `requires: [id, ...]`. Item deps live in this data, resolved by the extended
+   `withDependencies()` — not hardcoded in installer code.
 3. **State shape.** Extend preset state to store per-category item selections (no migration — fresh
-   start, see Data Integrity).
+   start, see Data Integrity). Current state is `{ selected: [...bundleIds], onboardedAt, updatedAt,
+   bundles }`. Add an `items` map keyed by category, each holding canonical item IDs:
+
+   ```json
+   {
+     "selected": ["base", "skills", "commands", "mcp"],
+     "items": {
+       "skills":   ["blog", "tighten"],
+       "commands": ["blog"],
+       "mcp":      ["jcodemunch", "jdocmunch"]
+     },
+     "onboardedAt": "2026-06-17T00:00:00Z",
+     "updatedAt":   "2026-06-17T00:00:00Z",
+     "bundles": { }
+   }
+   ```
+
+   `selected` keeps toggle-bundle state; `items` holds per-category item selections. A category absent
+   from `items` means nothing in it is selected.
 4. **Wizard helper.** Add a multi-step, numbered multi-select helper to `prompts.mjs` built on
    `ask()` (toggle by number, blank/Enter = next, `b` = back, final submit). Keep `selectMenu` for
    single-select menus.
 5. **Rewrite `presetsOnboard()`** to drive the wizard across the step sequence and write the new
    state.
 6. **Per-item installer.** New module or extension: given a selection + full inventory, install
-   selected items as symlinks into the relevant home paths. Reuse the existing collision primitives
-   from `presets.mjs`/`install-lib.sh`; do not hand-roll `cp`/`ln`.
+   selected items as symlinks into **both** home trees — Claude (`~/.claude/skills`,
+   `~/.claude/commands`) and Codex (`~/.agents/skills`, `~/.codex/commands`). Reuse the existing
+   collision primitives from `presets.mjs`/`install-lib.sh`; do not hand-roll `cp`/`ln`.
 7. **Apply/remove path.** Update `applySelection`/`applyBundle`/`removeBundle` so filesystem-backed
    categories go through item-level link management, root-config-backed categories go through the
    managed/adopt merge path, and toggle bundles keep current behavior.
@@ -370,14 +503,19 @@ No state migration is needed: this ships fresh. There is no legacy bundle-level 
    `install-windows.ps1` for the item-level link model; keep the bash/Node skill-list parity guard
    intact. Verification should check item-level link ownership separately from repo-source link
    ownership.
-10. **Manifest rows.** Change `claude:skills`, `claude:commands`, `codex:commands`, `agents:skills`
-    from whole-repo-dir links to item-level link definitions (or route them through the installer).
-    Prefer an explicit row kind/name over overloading `link`, because the target is no longer one
-    directory.
-11. **Tests.** Extend `scripts/test/test-roborepo.sh`: per-item selection links only chosen items;
-    update re-evaluates links and never adds unselected items; collision/backup of a user-populated
-    home folder; managed vs adopt root-config-backed MCP behavior; repo relocation repair; non-TTY
-    fallback. Update `test-install-collisions.sh` if the skills/commands collision path changes.
+10. **Manifest rows.** Per the resolved manifest strategy (Proposed Behavior), keep `manifest.tsv` at
+    bundle-level: stop installing `claude:skills`, `claude:commands`, `codex:commands`, `agents:skills`
+    as whole-repo-dir links, and route those categories through the item-level installer instead — for
+    both home trees (the `agents:skills` whole-folder link becomes per-item links). Do **not** add a
+    new `item_link` row kind unless the manifest itself must express item inventory — that would force
+    matching updates in all three readers (`manifests-data.sh`, `install-windows.ps1`, Node CLI).
+11. **Tests.** Extend `scripts/test/test-roborepo.sh`: per-item selection links only chosen items into
+    both Claude and Codex homes; the same subset appears in both harnesses; update re-evaluates links
+    and never adds unselected items; **repo-deleted selected item → update prunes the dangling link
+    from both homes and drops it from the selection**; **user-owned collision → update preserves it,
+    does not prune**; collision/backup of a user-populated home folder in either harness; managed vs
+    adopt root-config-backed MCP behavior; repo relocation repair; non-TTY fallback. Update
+    `test-install-collisions.sh` if the skills/commands collision path changes.
 12. **Docs.** Update `README.md` (the onboarding code block + Global Behavior section), the
     setup/daily-use guide, and `docs/reference/services/roborepo.md` to describe the wizard, the
     item-level link model, the managed/adopt split, and update-vs-onboard reconciliation semantics.
@@ -399,6 +537,10 @@ No state migration is needed: this ships fresh. There is no legacy bundle-level 
     permission profiles, and telemetry stay whole on/off toggles.
 5. **Update never auto-adds.** `roborepo update` refreshes only already-selected items. Brand-new
     repo items are opt-in via `roborepo onboard`.
+6. **Both harnesses honor the selection.** Per-item skills/commands install into both the Claude home
+    (`~/.claude`) and the Codex home (`~/.agents/skills`, `~/.codex/commands`) from one saved
+    selection. The whole-folder `agents:skills` link is replaced by per-item links. No Claude-only
+    first cut — a subset must look the same to both harnesses.
 
 ## Open Decisions
 
@@ -410,7 +552,7 @@ No state migration is needed: this ships fresh. There is no legacy bundle-level 
 - `roborepo onboard` presents one step per item type, each with numbered individual checkboxes, with
   next/back navigation and a final submit; nothing applies until submit.
 - A user can install a strict subset of skills/commands/MCP servers; unselected items are absent from
-  the harness home.
+  both harness homes (Claude and Codex), so the two harnesses see the same selection.
 - `roborepo update` re-links only selected items whose target is missing, dangling, or moved, and
   never adds unselected items.
 - `doctor` and `verify` pass against the item-level link model with no weakening of their checks.

@@ -19,8 +19,9 @@ Install on a new machine:
 ./bin/roborepo update
 ```
 
-Interactive installs ask for the install mode, then start the onboarding wizard automatically.
-If you skip onboarding or run install noninteractively, start the same wizard later with:
+Interactive installs ask for the install mode, then apply the default configuration automatically
+(all default bundles; telemetry stays off). The onboarding wizard is an in-progress feature and is
+not shown yet. Running `roborepo onboard` re-applies the defaults headlessly:
 
 ```sh
 roborepo onboard
@@ -41,7 +42,7 @@ The installer has two ownership models:
 
 | Workflow | Use when | Result |
 | --- | --- | --- |
-| `managed` | This repo owns the global defaults, or the machine is clean. | Core config paths point into this repo through symlinks, then you choose optional bundles separately. |
+| `managed` | This repo owns the global defaults, or the machine is clean. | Core config paths point into this repo through symlinks, then the default bundles are applied automatically. |
 | `adopt` | You already have local Claude/Codex config you want to keep. | Local config remains user-owned while repo defaults are copied, staged, or merged intentionally. |
 
 No install workflow deletes existing user config. When the installer finds a collision it preserves

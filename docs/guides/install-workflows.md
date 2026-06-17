@@ -123,15 +123,14 @@ Core install complete.
   Codex:  available
 ```
 
-Then the onboarding workflow starts:
+Then the default configuration is applied automatically:
 
 ```sh
-Starting onboarding.
+Applying default configuration.
 
-roborepo onboard
-These are optional behavior packages you can add.
-You can opt in or out of some or all of them.
-You can change these settings later by running: roborepo onboard
+Onboarding is an in-progress feature and is not interactive yet.
+Applying the default configuration (the same packages install sets up automatically).
+bundles: 7 applied
 ```
 
 ## Step 3: Managed Versus Adopt
@@ -282,76 +281,37 @@ Merge instructions:
 
 If there is no meaningful existing content, the installer does not print backup text.
 
-## Step 5: Onboarding
+## Step 5: Default Configuration
 
-Interactive install starts the onboarding wizard after the core install. You can also run the same workflow later:
+Install applies all default bundles automatically after the core install — base guidance, skills,
+Codex rules, hooks, slash commands, permission profiles, and the default MCP servers. Telemetry is
+the one default-off bundle. There is no interactive step to work through.
 
 ```sh
 $ roborepo onboard
 
-roborepo onboard
-These are optional behavior packages you can add.
-You can opt in or out of some or all of them.
-You can change these settings later by running: roborepo onboard
-
-Toggle behavior groups. Blank keeps current selection.
-  1) [x] Base guidance (base)
-      AGENTS/CLAUDE guidance, managed markers, and root config baselines.
-  2) [x] Skills (skills)
-      Shared global skills for Claude and Codex.
-  3) [x] Codex rules (rules)
-      Generated Codex command permission rules.
-  4) [x] Hooks (hooks)
-      Claude and Codex lifecycle hooks.
-  5) [x] Slash commands (commands)
-      Global slash command wrappers.
-  6) [x] Permission profiles (permissions)
-      Rendered harness permission defaults inside root config.
-  7) [x] MCP defaults (mcp)
-      Default jcodemunch and jdocmunch MCP config inside root config.
-  8) [ ] Telemetry (telemetry)
-      Local cross-repo metadata capture and reports. Installed off unless selected.
-Select numbers to toggle, or 'all'/'none':
+Onboarding is an in-progress feature and is not interactive yet.
+Applying the default configuration (the same packages install sets up automatically).
+bundles: 7 applied
 ```
 
-Select telemetry by toggling item `8`:
+> **Note:** A per-item onboarding experience (choose individual skills, commands, and MCP servers)
+> is in progress; see [`item-level-onboarding.md`](../plans/item-level-onboarding.md). Until it
+> ships, the interactive bundle-toggle wizard is disabled and `roborepo onboard` applies the defaults
+> headlessly. The previous interactive walkthrough is recorded in
+> [`onboarding-reinstatement.md`](../plans/onboarding-reinstatement.md).
 
-```sh
-Select numbers to toggle, or 'all'/'none': 8
-```
-
-The wizard applies the selected bundles and prints the count:
-
-```sh
-bundles: 8 selected
-```
-
-Leave selections unchanged by pressing enter at the prompt:
-
-```sh
-Select numbers to toggle, or 'all'/'none':
-```
-
-The wizard keeps the current selection and prints the count:
-
-```sh
-bundles: 7 selected
-```
-
-Telemetry is shown in the wizard by default, but it stays off until you select it. You can also enable it later with:
+Telemetry stays off until you turn it on:
 
 ```sh
 roborepo telemetry enable
 ```
 
-The wizard is the machine-level chooser for optional bundles. Re-running it later shows selected options checked and unselected options unchecked so you can turn any behavior on or off.
-When you turn a bundle off, `roborepo onboard` removes the bundle artifact from the place it was installed: staged updates are deleted in keep-originals mode, and backed-up content is restored in overwrite or managed mode when a backup exists.
-
 ## What Onboarding Does
 
-- Stores bundle selections locally on the machine.
-- Applies the selected bundles idempotently.
-- Lets you rerun the same workflow later to change your choices.
+- Applies the default bundles idempotently on the machine.
+- Stores the applied selection locally.
+- The `roborepo bundle apply|status|check|remove` subcommands remain available for scripted control.
 - Gives `roborepo` enough state to require onboarding before normal commands when the machine has not been set up yet.
 
 ## What Onboarding Does Not Do

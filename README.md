@@ -41,36 +41,14 @@ Use the CLI to update items and configuation to your global setup that will work
 
 ## Global Behavior
 
-Once you install the `roborepo` core, you will be prompted to install default packages and configurations. You can opt in/out of each one.
+Installing the `roborepo` core applies a default set of global packages and configurations automatically — skills, rules, hooks, commands, permission profiles, and the default MCP servers. (Telemetry is the one exception: it stays off unless you turn it on.) There is no setup step to work through; everything below is installed for you.
 
-After CLI install, you can choose which packages/tools to enable:
-
-```text
-== roborepo onboarding =================
-These are optional behavior packages you can add.
-You can opt in or out of some or all of them.
-
-You can change these settings later by running: roborepo onboard
-
-Toggle behavior groups. Blank keeps current selection.
-  1) [x] Base guidance (base)
-      AGENTS/CLAUDE guidance, managed markers, and root config baselines.
-  2) [x] Skills (skills)
-      Shared global skills for Claude and Codex.
-  3) [x] Codex rules (rules)
-      Generated Codex command permission rules.
-  4) [x] Hooks (hooks)
-      Claude and Codex lifecycle hooks.
-  5) [x] Slash commands (commands)
-      Global slash command wrappers.
-  6) [x] Permission profiles (permissions)
-      Rendered harness permission defaults inside root config.
-  7) [x] MCP defaults (mcp)
-      Default jcodemunch and jdocmunch MCP config inside root config.
-  8) [ ] Telemetry (telemetry)
-      Local cross-repo metadata capture and reports. Installed off unless selected.
-Select numbers to toggle, or 'all'/'none':
-```
+<!--
+A per-item onboarding experience (choose individual skills/commands/MCP servers) is in progress; see
+docs/plans/item-level-onboarding.md. Until it ships, the interactive bundle-toggle wizard that
+previously appeared here is disabled and not shown to users. The removed terminal block and copy are
+recorded in docs/plans/onboarding-reinstatement.md §4.
+-->
 
 - [Token Optimization / Efficiency](#token-optimization--efficiency)
 - [Automatic Skill Helpers](#automatic-skill-helpers)

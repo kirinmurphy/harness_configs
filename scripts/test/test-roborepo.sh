@@ -368,14 +368,17 @@ assert "bundle apply: adopt overwrite policy backs up local item" \
 assert "bundle remove: adopt overwrite policy restores backed up item" \
   bash -c "HOME='${adopt_overwrite_home}' ROBOREPO_STATE_DIR='${adopt_overwrite_home}/.roborepo' node '${cli}' bundle remove hooks >/dev/null && grep -q 'local hooks' '${adopt_overwrite_home}/.claude/hooks' && ! test -e '${adopt_overwrite_home}/.claude/hooks_original_20260615-101500'"
 
-gate_home="${work}/gate-home"
-mkdir -p "${gate_home}/.roborepo"
-node -e 'const fs = require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({ repo: process.argv[2], mode: "managed" }));' \
-  "${gate_home}/.roborepo/install-state.json" "${repo_root}"
-assert "onboard gate: noninteractive command fails before onboarding" \
-  bash -c "cd '${repo_root}' && HOME='${gate_home}' ROBOREPO_STATE_DIR='${gate_home}/.roborepo' ROBOREPO_PRESETS_ONBOARD= node '${cli}' run true >/dev/null 2>&1; test \$? -eq 2"
-assert "onboard gate: explicit bypass allows command" \
-  bash -c "cd '${repo_root}' && HOME='${gate_home}' ROBOREPO_STATE_DIR='${gate_home}/.roborepo' ROBOREPO_PRESETS_ONBOARD= node '${cli}' --no-presets-onboard run true >/dev/null"
+# Onboarding gate disabled (in-progress feature): install auto-applies defaults, so no command is
+# gated on onboarding. These two assertions are kept here, disabled, for reinstatement — see
+# docs/plans/onboarding-reinstatement.md §5. They test the forced gate that no longer exists.
+# gate_home="${work}/gate-home"
+# mkdir -p "${gate_home}/.roborepo"
+# node -e 'const fs = require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({ repo: process.argv[2], mode: "managed" }));' \
+#   "${gate_home}/.roborepo/install-state.json" "${repo_root}"
+# assert "onboard gate: noninteractive command fails before onboarding" \
+#   bash -c "cd '${repo_root}' && HOME='${gate_home}' ROBOREPO_STATE_DIR='${gate_home}/.roborepo' ROBOREPO_PRESETS_ONBOARD= node '${cli}' run true >/dev/null 2>&1; test \$? -eq 2"
+# assert "onboard gate: explicit bypass allows command" \
+#   bash -c "cd '${repo_root}' && HOME='${gate_home}' ROBOREPO_STATE_DIR='${gate_home}/.roborepo' ROBOREPO_PRESETS_ONBOARD= node '${cli}' --no-presets-onboard run true >/dev/null"
 
 # ---------------------------------------------------------------------------
 # roborepo mcp add

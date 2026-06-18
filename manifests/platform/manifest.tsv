@@ -37,6 +37,7 @@ codex	link	globals/codex/AGENTS.md	AGENTS.md	codex	-
 codex	link	globals/codex/commands	commands	codex	nodoctor
 codex	link	globals/codex/MANAGED_BY_ROBOREPO.md	MANAGED_BY_ROBOREPO.md	codex	nodoctor
 codex	link	globals/codex/hooks.json	hooks.json	codex	-
+codex	link	globals/codex/hooks	hooks	codex	-
 codex	link	globals/codex/rules	rules	codex	-
 codex	cleanup	-	MANAGED_BY_HARNESS_CONFIGS.md	codex	-
 agents	link	globals/agents/skills	skills	agents	nosync

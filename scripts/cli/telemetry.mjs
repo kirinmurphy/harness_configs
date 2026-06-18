@@ -356,7 +356,32 @@ function telemetryCapture(args) {
     biggest_result: stats ? stats.biggest_result : null,
   };
   ensureTelemetryDirs();
-  fs.appendFileSync(path.join(telemetrySpoolDir, `${options.harness}.jsonl`), JSON.stringify(record) + "\n");
+  const spoolFile = path.join(telemetrySpoolDir, `${options.harness}.jsonl`);
+  fs.appendFileSync(spoolFile, JSON.stringify(record) + "\n");
+  capSpool(spoolFile);
+}
+
+// Spool files are append-only and grow forever otherwise. Cap each harness file so an enabled,
+// long-lived install can't fill the disk: when it exceeds SPOOL_MAX_BYTES, drop the oldest lines and
+// keep the newest tail (records are chronological). Cheap — only reads/rewrites when over the cap,
+// which is rare relative to per-event appends.
+const SPOOL_MAX_BYTES = 25 * 1024 * 1024; // ~25 MB per harness (tens of thousands of records)
+const SPOOL_KEEP_FRACTION = 0.7; // on trim, keep the newest ~70% so trims are infrequent
+function capSpool(spoolFile) {
+  let size;
+  try {
+    size = fs.statSync(spoolFile).size;
+  } catch {
+    return;
+  }
+  if (size <= SPOOL_MAX_BYTES) return;
+  try {
+    const lines = fs.readFileSync(spoolFile, "utf8").split("\n").filter((l) => l.trim());
+    const keep = lines.slice(Math.floor(lines.length * (1 - SPOOL_KEEP_FRACTION)));
+    fs.writeFileSync(spoolFile, keep.join("\n") + "\n");
+  } catch {
+    // Best-effort: a failed trim just means the file stays large until the next successful capture.
+  }
 }
 
 function ensureTelemetryDirs() {

@@ -195,6 +195,20 @@ The `telemetry` bundle is selected from the same workflow. When enabled, the har
 to `~/.roborepo/telemetry/spool/<harness>.jsonl`. Everything stays local — no record ever leaves the
 machine, and the dashboard binds to `127.0.0.1` only.
 
+**Opt-in by design.** A fresh install deploys the capture hooks but does NOT enable capture — the
+hooks no-op until `roborepo telemetry enable` writes `~/.roborepo/telemetry/state.json {enabled:true}`.
+This is deliberate: an always-on spool grows with every session, so capture is something the user
+turns on (`enable`) and off (`disable`) explicitly. To keep an enabled spool bounded, each
+`<harness>.jsonl` is size-capped (~25 MB): when exceeded, the oldest records are dropped and the
+newest ~70% kept (records are chronological), so the file can't fill the disk.
+
+**Codex hook trust.** Codex only runs hooks the user has trusted. After install, the next Codex
+session prompts to trust the roborepo-managed `~/.codex/hooks.json` — approve it once and capture (and
+the shell-output minimization hook) fire from then on. This is normal Codex UX, not a roborepo step;
+sessions started *before* the hooks were installed won't have them (Codex loads hooks at session
+start), so a brand-new session is needed the first time. The install does not bypass Codex's
+hook-trust gate.
+
 ### Record schema
 
 Records are versioned by a `schema` field so the spool stays backward compatible. Legacy records
@@ -234,6 +248,24 @@ whose `delta_tokens` exceed mean + 2σ); top token contributors by repo / tool /
 spike-vs-normal comparison (average delta, tool calls, MCP rate). The spike-cause classifier keys off
 `last_result` size, degrading to tool name for records that predate result-size capture.
 `roborepo telemetry export` dumps the raw spool as JSON.
+
+**Conclusions, not just data.** The report leads with a deterministic "what this means" block
+(`scripts/cli/telemetry-insights.mjs`) — ranked, plain-English findings derived from threshold rules
+over the analysis: native read/grep vs each MCP package's cost-per-call (agnostic — compares
+`native-read` against every MCP server present, so it covers any MCP, not just jcodemunch), spike
+tail-risk (a group with spike-lift ≫ baseline), the dominant cost center, runaway loops, regression,
+and the heaviest single call. Per-tool cost is attributed by **result size** (`last_result.chars` →
+approx tokens), not by `delta_tokens`-by-hook, which mis-credits whichever hook fired. `report --deep`
+appends an optional LLM synthesis via the headless `claude -p` (the user's existing auth — no API
+key); only the computed summary is sent, never raw spool/prompts/results, and it degrades to a note if
+`claude` is unavailable. The dashboard mirrors all of this: a top "what this means" panel with a
+"deeper read" button, a chart with per-turn-delta / cumulative-per-session / cumulative-by-tool-group
+views, and flagged spikes/loops that link back to the originating chat (transcript located by session
+id, heaviest turns surfaced, plus a copy-paste analysis prompt).
+
+> Note: MCP tool attribution resolves both the prefixed wire name (`mcp__<server>__<tool>`) and the
+> bare tool names Codex sometimes logs (e.g. `search_symbols`), via a known-tool table in
+> `telemetry-transcript.mjs` — without it, Codex MCP usage is undercounted.
 
 `roborepo telemetry serve [--port <n>]` (default `4317`) starts a dependency-free local web dashboard
 on `127.0.0.1`. It serves the same analysis as JSON and renders it with a self-contained `<canvas>`

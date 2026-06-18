@@ -53,15 +53,30 @@ enough to analyze token spikes and what caused them over time. See the
 
 ## Part 2 — Codex-specific
 
-### Enforcement lives in rules, not tool hooks
+### Shell-output minimization — PreToolUse (shell tools)
 
-The notable Codex-specific point is what is **absent**. Codex does not block
-`Grep`/`Glob`, minimize Bash output, or guard writes via tool hooks the way Claude
-does — those are PreToolUse hooks acting on Claude-only tools and protocols.
+Codex **does** minimize shell output via a PreToolUse hook, parallel to Claude's
+`minimize-bash-output.mjs`. `globals/codex/hooks/minimize-bash-output.mjs` acts on
+Codex's shell tool (`exec_command` / `shell` / `local_shell`): it appends
+`2>&1 | tail -n 120` to noisy build/lint/typecheck commands, forces
+`tsc --pretty false`, and denies `--watch`/`--verbose`/`--debug` flags. Codex
+PreToolUse hooks support the same `hookSpecificOutput { permissionDecision,
+updatedInput }` protocol as Claude (verified against the Codex wire schema) and
+receive the same `tool_name` / `tool_input` fields, so the rewrite/deny logic is
+shared in intent with the Claude hook.
 
-jcodemunch enforcement in Codex instead relies on rules in
-`globals/codex/rules/default.rules` and the generated `globals/codex/AGENTS.md`,
-not tool-level hooks. See [jcodemunch.md](jcodemunch.md) for full details.
+This was added after telemetry showed uncapped Codex shell output was the dominant
+token cost (~22.8M tok of shell results vs ~49K on Claude, where this minimization
+already ran).
+
+### jcodemunch enforcement still lives in rules
+
+Unlike Claude, Codex does not block `Grep`/`Glob` or guard writes via tool hooks —
+jcodemunch enforcement in Codex relies on rules in
+`globals/codex/rules/default.rules` and the generated `globals/codex/AGENTS.md`.
+See [jcodemunch.md](jcodemunch.md) for full details. (Porting the
+source-exploration nudge to a Codex hook is a possible future parity step; the
+shell-output minimization above is the first PreToolUse enforcement hook on Codex.)
 
 ### Available events
 

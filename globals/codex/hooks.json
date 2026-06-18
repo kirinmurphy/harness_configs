@@ -27,6 +27,10 @@
           {
             "type": "command",
             "command": "roborepo telemetry capture --harness codex --event PreToolUse"
+          },
+          {
+            "type": "command",
+            "command": "node \"$HOME/.codex/hooks/minimize-bash-output.mjs\""
           }
         ]
       }

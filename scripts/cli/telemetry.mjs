@@ -7,6 +7,7 @@ import { telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDi
 import { mcpServerOf, transcriptStats } from "./telemetry-transcript.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { startTelemetryServer } from "./telemetry-serve.mjs";
+import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
 
 // Record shape version. v1 records (no `schema` key) are metadata-only and predate token capture;
 // readers treat missing token/session fields as zero so old spool files keep reporting.
@@ -213,8 +214,13 @@ function telemetryServe(args) {
   }
   // The server re-reads the spool on each request so a running dashboard reflects live captures.
   // A `window` ({ rangeMs, end }) scopes the whole report to a trailing time slice before analysis,
-  // so every panel — not just the chart — reflects the dashboard's time filter.
-  startTelemetryServer({ port: options.port, loadAnalysis: (window) => analyzeTelemetry(filterByWindow(readSpoolEvents(), window)) });
+  // so every panel — not just the chart — reflects the dashboard's time filter. loadSession bridges
+  // a flagged event to its chat transcript (file I/O lives here, not in the server).
+  startTelemetryServer({
+    port: options.port,
+    loadAnalysis: (window) => analyzeTelemetry(filterByWindow(readSpoolEvents(), window)),
+    loadSession: (req) => loadSessionDetail(req),
+  });
 }
 
 function parseServeArgs(args) {
@@ -369,6 +375,29 @@ function filterByWindow(events, window) {
     const ms = Date.parse(event.ts);
     return Number.isFinite(ms) && ms >= start && ms <= end;
   });
+}
+
+// Resolve a flagged event to its chat: find the transcript, surface the heaviest turns, and build a
+// paste-ready analysis prompt. Best-effort — a missing transcript returns found:false, never throws.
+function loadSessionDetail({ id, harness, finding, repo }) {
+  const transcriptPath = locateTranscript(id, harness);
+  if (!transcriptPath) {
+    return {
+      found: false,
+      session_id: id,
+      harness,
+      analysis_prompt: buildAnalysisPrompt({ sessionId: id, harness, repo, finding, transcriptPath: null }),
+    };
+  }
+  return {
+    found: true,
+    session_id: id,
+    harness,
+    transcript_path: transcriptPath,
+    title: transcriptTitle(transcriptPath),
+    heavy_turns: extractHeavyTurns(transcriptPath, { limit: 8 }),
+    analysis_prompt: buildAnalysisPrompt({ sessionId: id, harness, repo, finding, transcriptPath }),
+  };
 }
 
 function countBy(events, keyFor) {

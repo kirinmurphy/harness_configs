@@ -14,6 +14,9 @@ export function analyzeTelemetry(events) {
   const sessions = rollupSessions(captures);
   const spikeThreshold = deltaSpikeThreshold(captures);
   const spikeCaptures = captures.filter((event) => (event.delta_tokens || 0) >= spikeThreshold && spikeThreshold > 0);
+  // Session-context lookup so every flagged event (spike, loop) can carry the same "which chat was
+  // this" markers the sessions table shows — title (first prompt), activity summary, repo/branch.
+  const sessionsById = new Map(sessions.map((s) => [s.session_id, s]));
   return {
     // Cheap change token for the dashboard's poll loop: spool is append-only, so event count plus the
     // newest timestamp changes whenever a capture lands. The client redraws only when this differs.
@@ -23,7 +26,7 @@ export function analyzeTelemetry(events) {
     sessions,
     spike_threshold: spikeThreshold,
     spikes: spikeCaptures
-      .map(spikeRow)
+      .map((event) => spikeRow(event, sessionsById))
       .sort((a, b) => b.delta_tokens - a.delta_tokens),
     top_repos: topBy(captures, (event) => event.repo?.label ?? "unknown"),
     top_tools: topBy(captures, (event) => event.tool?.name ?? event.event ?? "unknown"),
@@ -62,7 +65,7 @@ export function analyzeTelemetry(events) {
     spike_anatomy: spikeAnatomy(captures, spikeCaptures),
     package_cost: packageCost(captures),
     regression: regression(captures),
-    loops: detectLoops(captures),
+    loops: detectLoops(captures, sessionsById),
   };
 }
 
@@ -224,7 +227,7 @@ function cohortStats(cohort) {
   };
 }
 
-function spikeRow(event) {
+function spikeRow(event, sessionsById) {
   return {
     ts: event.ts,
     session_id: event.session_id,
@@ -233,7 +236,17 @@ function spikeRow(event) {
     tool: event.tool?.name ?? null,
     delta_tokens: event.delta_tokens || 0,
     total_tokens: event.tokens?.total ?? 0,
+    harness: event.harness ?? null,
+    context: sessionContext(event.session_id, sessionsById),
   };
+}
+
+// The "which chat was this" markers, pulled from the session rollup so every flagged event speaks
+// the same language as the sessions table: opening prompt, activity summary, repo/branch/harness.
+function sessionContext(sessionId, sessionsById) {
+  const s = sessionsById?.get(sessionId);
+  if (!s) return null;
+  return { title: s.title ?? null, activity: s.activity ?? null, repo: s.repo, branch: s.branch ?? null, harness: s.harness ?? null };
 }
 
 // =================================================================================================
@@ -391,7 +404,7 @@ function regression(captures) {
 // Runaway detection: per session, the longest run of the SAME tool fired consecutively (from the
 // ordered PostToolUse captures). A long run is the "this skill went off on endless lookups" signal.
 const LOOP_REPEAT_THRESHOLD = 8;
-function detectLoops(captures) {
+function detectLoops(captures, sessionsById) {
   const bySession = new Map();
   for (const event of captures) {
     if (event.event !== "PostToolUse" || !event.tool?.name) continue;
@@ -402,22 +415,25 @@ function detectLoops(captures) {
   const loops = [];
   for (const [id, events] of bySession) {
     events.sort((a, b) => a.ts.localeCompare(b.ts));
-    let runTool = null, run = 0, bestTool = null, best = 0;
+    let runTool = null, run = 0, bestTool = null, best = 0, bestStartTs = null, runStartTs = null;
     for (const e of events) {
       const t = e.tool.mcp_tool || e.tool.name;
       if (t === runTool) run += 1;
-      else { runTool = t; run = 1; }
-      if (run > best) { best = run; bestTool = t; }
+      else { runTool = t; run = 1; runStartTs = e.ts; }
+      if (run > best) { best = run; bestTool = t; bestStartTs = runStartTs; }
     }
     if (best >= LOOP_REPEAT_THRESHOLD) {
       loops.push({
         session_id: id,
         repo: events[0].repo?.label ?? "unknown",
+        harness: events[0].harness ?? null,
         tool: bestTool,
         max_repeat: best,
+        ts: bestStartTs,
         hint: mcpServerOf(events.find((e) => (e.tool.mcp_tool || e.tool.name) === bestTool)?.tool?.name)
           ? "MCP tool firing in a tight loop — check the agent/skill that calls it"
           : bestTool + " repeated " + best + "× in a row — likely a runaway loop",
+        context: sessionContext(id, sessionsById),
       });
     }
   }

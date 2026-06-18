@@ -8,6 +8,7 @@ import { mcpServerOf, transcriptStats } from "./telemetry-transcript.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { startTelemetryServer } from "./telemetry-serve.mjs";
 import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
+import { insightsSummary } from "./telemetry-insights.mjs";
 
 // Record shape version. v1 records (no `schema` key) are metadata-only and predate token capture;
 // readers treat missing token/session fields as zero so old spool files keep reporting.
@@ -68,6 +69,7 @@ function telemetryStatus(args) {
 
 function telemetryReport(args) {
   rejectSupportedReportArgs(args);
+  const deep = args.includes("--deep");
   const state = readTelemetryState();
   const events = readSpoolEvents();
   if (events.length === 0) {
@@ -76,7 +78,10 @@ function telemetryReport(args) {
     return;
   }
   const report = analyzeTelemetry(events);
-  console.log(`events: ${report.event_count}  (with token data: ${report.capture_count})`);
+  // Headline first: the deterministic "what this means" conclusions, before any raw table.
+  printInsights(report.insights);
+  if (deep) printDeepRead(report);
+  console.log(`\nevents: ${report.event_count}  (with token data: ${report.capture_count})`);
   printTop("repos", countBy(events, (event) => event.repo?.label ?? "unknown"));
   printTop("tools/events", countBy(events, (event) => event.tool?.name ?? event.event ?? "unknown"));
   if (report.capture_count === 0) {
@@ -117,6 +122,30 @@ function printSpikeCauses(causes) {
     console.log(`  ${cause.cause.padEnd(22)} n=${String(cause.spikes).padEnd(3)} avg Δ=${fmt(cause.avg_delta).padStart(9)} tok  worst @${cause.worst_repo}`);
     console.log(`    → ${cause.hint}`);
   }
+}
+
+// The headline: deterministic conclusions, before any raw table. Severity-marked so the high-signal
+// findings (tail risk, loops) stand out.
+function printInsights(insights) {
+  if (!insights || insights.length === 0) return;
+  const mark = { high: "▲", warn: "△", info: "·" };
+  console.log("\n══ what this means ══");
+  for (const f of insights) {
+    console.log(`  ${mark[f.severity] || "·"} ${f.headline}`);
+    console.log(`      ${f.detail}`);
+  }
+}
+
+// Optional LLM "deeper read": send the computed summary (not raw spool) to `claude -p` for a written
+// synthesis. Best-effort — degrades to a note if the claude CLI is unavailable.
+function printDeepRead(report) {
+  const result = runDeepRead(report);
+  console.log("\n══ deeper read (claude) ══");
+  console.log(result.ok ? indent(result.text.trim(), "  ") : `  (${result.note})`);
+}
+
+function indent(text, pad) {
+  return text.split("\n").map((l) => pad + l).join("\n");
 }
 
 // Native-vs-MCP head-to-head: avg context-tokens dropped per call, by functional group. The signal
@@ -220,6 +249,7 @@ function telemetryServe(args) {
     port: options.port,
     loadAnalysis: (window) => analyzeTelemetry(filterByWindow(readSpoolEvents(), window)),
     loadSession: (req) => loadSessionDetail(req),
+    loadInsightsLlm: () => loadInsightsLlm(),
   });
 }
 
@@ -398,6 +428,35 @@ function loadSessionDetail({ id, harness, finding, repo }) {
     heavy_turns: extractHeavyTurns(transcriptPath, { limit: 8 }),
     analysis_prompt: buildAnalysisPrompt({ sessionId: id, harness, repo, finding, transcriptPath }),
   };
+}
+
+// The deeper-read prompt: only the computed summary goes out — never raw spool, prompts, or results.
+const DEEP_READ_PROMPT =
+  "Below is a local telemetry summary of an AI coding session (deterministic facts only). " +
+  "Give 3-5 terse, actionable conclusions a developer can act on: call out the biggest token cost, " +
+  "any tail risks, and one concrete thing to change. No preamble.\n\n";
+
+// Run the optional LLM synthesis via the headless `claude` CLI (uses the user's existing Claude Code
+// auth — no API key). Best-effort: returns { ok:false, note } when claude is missing/errors so every
+// caller degrades to deterministic-only.
+function runDeepRead(report) {
+  const prompt = DEEP_READ_PROMPT + insightsSummary(report);
+  let result;
+  try {
+    result = spawnSync("claude", ["-p", prompt], { encoding: "utf8", timeout: 60000 });
+  } catch (err) {
+    return { ok: false, note: `claude CLI not available: ${err.message}` };
+  }
+  if (result.error) return { ok: false, note: `claude CLI not available: ${result.error.message}` };
+  if (result.status !== 0) return { ok: false, note: `claude exited ${result.status}: ${(result.stderr || "").trim().slice(0, 200)}` };
+  const text = (result.stdout || "").trim();
+  return text ? { ok: true, text } : { ok: false, note: "claude returned no output" };
+}
+
+// Server closure: deeper-read on demand from the dashboard. Re-reads the spool so it reflects live
+// captures, mirroring loadAnalysis.
+function loadInsightsLlm() {
+  return runDeepRead(analyzeTelemetry(readSpoolEvents()));
 }
 
 function countBy(events, keyFor) {
@@ -588,7 +647,7 @@ function rejectArgs(args) {
 }
 
 function rejectSupportedReportArgs(args) {
-  const allowed = new Set(["--since", "--repo", "--group", "--format"]);
+  const allowed = new Set(["--since", "--repo", "--group", "--format", "--deep"]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg.includes("=")) {

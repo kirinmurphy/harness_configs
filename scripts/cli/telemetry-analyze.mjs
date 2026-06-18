@@ -4,6 +4,7 @@
 // no I/O — so the server and CLI can each read the spool their own way.
 
 import { mcpServerOf } from "./telemetry-transcript.mjs";
+import { deriveInsights } from "./telemetry-insights.mjs";
 
 // A capture counts as a spike when its token delta exceeds the mean by this many standard
 // deviations. Tunable, but kept conservative so quiet sessions never trip the threshold.
@@ -17,7 +18,7 @@ export function analyzeTelemetry(events) {
   // Session-context lookup so every flagged event (spike, loop) can carry the same "which chat was
   // this" markers the sessions table shows — title (first prompt), activity summary, repo/branch.
   const sessionsById = new Map(sessions.map((s) => [s.session_id, s]));
-  return {
+  const report = {
     // Cheap change token for the dashboard's poll loop: spool is append-only, so event count plus the
     // newest timestamp changes whenever a capture lands. The client redraws only when this differs.
     version: `${events.length}:${events[events.length - 1]?.ts ?? "0"}`,
@@ -70,6 +71,9 @@ export function analyzeTelemetry(events) {
     regression: regression(captures),
     loops: detectLoops(captures, sessionsById),
   };
+  // Ranked plain-English conclusions derived from the facts above — the "what this means" headline.
+  report.insights = deriveInsights(report);
+  return report;
 }
 
 // A tool result this many characters or larger is treated as the likely cause of a spike. ~1 token

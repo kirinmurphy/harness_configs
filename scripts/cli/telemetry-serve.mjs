@@ -6,10 +6,10 @@ import { dashboardHtml } from "./telemetry-dashboard.mjs";
 // keeps the install dependency-free, matching the rest of the CLI.
 const LOOPBACK = "127.0.0.1";
 
-export function startTelemetryServer({ port, loadAnalysis, loadSession }) {
+export function startTelemetryServer({ port, loadAnalysis, loadSession, loadInsightsLlm }) {
   const server = http.createServer((req, res) => {
     try {
-      route(req, res, loadAnalysis, loadSession);
+      route(req, res, loadAnalysis, loadSession, loadInsightsLlm);
     } catch (err) {
       send(res, 500, "application/json", JSON.stringify({ error: String(err?.message || err) }));
     }
@@ -24,9 +24,13 @@ export function startTelemetryServer({ port, loadAnalysis, loadSession }) {
   return server;
 }
 
-function route(req, res, loadAnalysis, loadSession) {
+function route(req, res, loadAnalysis, loadSession, loadInsightsLlm) {
   const [path, qs = ""] = (req.url || "/").split("?");
   if (path === "/") return send(res, 200, "text/html; charset=utf-8", dashboardHtml());
+  if (path === "/api/insights-llm") {
+    // On-demand LLM synthesis of the deterministic facts. May take seconds (shells to claude -p).
+    return send(res, 200, "application/json", JSON.stringify(loadInsightsLlm()));
+  }
   if (path === "/api/data") {
     // The client passes ?range=<ms> to scope the WHOLE report (every panel) to a trailing time
     // window, and an optional &end=<ms epoch> when panning to a fixed window rather than "latest".

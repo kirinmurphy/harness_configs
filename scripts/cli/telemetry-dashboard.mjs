@@ -29,6 +29,16 @@ export function dashboardHtml() {
   .linkbtn:hover { color:var(--ink); }
   .sesschip { display:inline-flex; align-items:center; margin:2px 6px 2px 0; text-decoration:none; border:1px solid var(--line); border-radius:5px; padding:2px 8px; }
   .sesschip:hover { border-color:var(--accent); }
+  #insightspanel { border-color:var(--accent); }
+  .insight { display:flex; gap:10px; padding:7px 0; border-top:1px solid var(--line); }
+  .insight:first-child { border-top:none; }
+  .insight .dot { flex:none; width:8px; height:8px; border-radius:50%; margin-top:5px; }
+  .insight.high .dot { background:var(--spike); }
+  .insight.warn .dot { background:var(--accent); }
+  .insight.info .dot { background:var(--dim); }
+  .insight .body .hl { color:var(--ink); }
+  .insight .body .dt { color:var(--dim); font-size:11px; margin-top:2px; }
+  #deepreadout { white-space:pre-wrap; font-size:12px; color:var(--ink); }
   .chartwrap { position:relative; }
   canvas { width:100%; height:280px; display:block; cursor:crosshair; }
   .tooltip { position:absolute; pointer-events:none; z-index:5; background:#0b0e13; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-size:11px; line-height:1.5; color:var(--ink); box-shadow:0 4px 16px rgba(0,0,0,.5); display:none; max-width:280px; }
@@ -93,6 +103,14 @@ export function dashboardHtml() {
   </div>
 </div>
 <main>
+  <section class="panel" id="insightspanel">
+    <h2>what this means</h2>
+    <div id="insights"></div>
+    <div class="modalactions">
+      <button class="linkbtn" id="deepread">deeper read (claude) ›</button>
+    </div>
+    <div class="modalextra" id="deepreadout"></div>
+  </section>
   <h2 class="sectionhead">overview <span class="sub">when tokens were spent, and the patterns driving spikes</span></h2>
   <section class="panel">
     <h2>token usage over time</h2>
@@ -210,6 +228,7 @@ async function load(force) {
   allTimeline = data.timeline || [];
   curThreshold = data.spike_threshold || 0;
   redrawChart();
+  renderInsights(data.insights);
   renderGroupCost(data.group_cost);
   renderToolCost(data.tool_cost);
   renderAnatomy(data.spike_anatomy);
@@ -742,6 +761,30 @@ function renderContrib(id, rows) {
 // --- conclusion panels --------------------------------------------------------------------------
 const emptyPanel = (id, msg) => { document.getElementById(id).innerHTML = "<p style='color:#8b949e'>" + msg + "</p>"; };
 
+// The headline panel: deterministic conclusions, severity-marked. This is the "what this means"
+// read so the user does not scan tables.
+function renderInsights(rows) {
+  const el = document.getElementById("insights");
+  if (!rows || !rows.length) { el.innerHTML = "<p style='color:#8b949e'>not enough data yet for conclusions</p>"; return; }
+  el.innerHTML = rows.map((f) =>
+    "<div class='insight " + esc(f.severity) + "'><span class='dot'></span><div class='body'>"
+    + "<div class='hl'>" + esc(f.headline) + "</div><div class='dt'>" + esc(f.detail) + "</div></div></div>"
+  ).join("");
+}
+
+// Optional LLM synthesis on demand. Hits /api/insights-llm (shells to claude -p server-side). Slow
+// (seconds); shows a spinner, degrades to a note if claude is unavailable.
+async function runDeepRead() {
+  const out = document.getElementById("deepreadout");
+  out.textContent = "asking claude… (this can take a few seconds)";
+  try {
+    const data = await (await fetch("/api/insights-llm")).json();
+    out.textContent = data.ok ? data.text : "deeper read unavailable: " + (data.note || "unknown");
+  } catch (err) {
+    out.textContent = "deeper read failed: " + (err && err.message || err);
+  }
+}
+
 function renderGroupCost(rows) {
   if (!rows || !rows.length) { emptyPanel("groupcost", "no tool-result data yet"); return; }
   table("groupcost", ["group", "avg tokens/call", "calls", "total"], rows.map((r) => [
@@ -848,6 +891,7 @@ function table(id, headers, rows, details) {
 // Delegated clicks for dynamic content: table rows, the delta show-all toggle, and cumulative
 // session chips (all rendered fresh on each repaint, so static listeners would go stale).
 document.addEventListener("click", (e) => {
+  if (e.target.closest("#deepread")) { runDeepRead(); return; }
   if (e.target.closest("#deltafilter")) { showAllDeltas = !showAllDeltas; redrawChart(); return; }
   const chip = e.target.closest(".sesschip");
   if (chip) { const s = sessionById(chip.dataset.sid); if (s) openSessionModal(s); return; }

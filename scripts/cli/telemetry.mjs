@@ -84,6 +84,12 @@ function telemetryReport(args) {
   }
   printUsageWindows(report.usage_windows);
   printSpikeCauses(report.spike_causes);
+  // Conclusions first — the actionable headlines before the raw contributor tables.
+  printGroupCost(report.group_cost);
+  printToolCost(report.tool_cost);
+  printSpikeAnatomy(report.spike_anatomy);
+  printRegression(report.regression);
+  printLoops(report.loops);
   printSessions(report.sessions);
   printSpikes(report);
   printTokenContributors("token by repo", report.top_repos);
@@ -112,11 +118,59 @@ function printSpikeCauses(causes) {
   }
 }
 
+// Native-vs-MCP head-to-head: avg context-tokens dropped per call, by functional group. The signal
+// for "is the MCP cheaper than the Read/Grep it replaces". Approximate (result size ÷ 4).
+function printGroupCost(groups) {
+  if (!groups || groups.length === 0) return;
+  console.log("\ncost per call by group (approx tokens from result size):");
+  for (const g of groups) {
+    console.log(`  ${g.group.padEnd(14)} ${fmt(g.avg_tokens).padStart(7)} tok/call  (${g.calls} calls)`);
+  }
+}
+
+function printToolCost(tools) {
+  if (!tools || tools.length === 0) return;
+  console.log("\ncost per call by tool (approx tokens from result size):");
+  for (const t of tools.slice(0, 10)) {
+    console.log(`  ${t.tool.padEnd(24)} avg ${fmt(t.avg_tokens).padStart(7)}  max ${fmt(t.max_tokens).padStart(8)}  (${t.calls})`);
+  }
+}
+
+// Lift > 1 means that group drives spikes more than its everyday share — "spikes are X-heavy".
+function printSpikeAnatomy(anatomy) {
+  if (!anatomy || anatomy.groups.length === 0) return;
+  console.log(`\nwhat's different in spikes (${anatomy.spike_count} spike vs ${anatomy.normal_count} normal results):`);
+  for (const g of anatomy.groups.slice(0, 6)) {
+    const lift = g.lift == null ? "only-in-spikes" : `${g.lift}× vs normal`;
+    console.log(`  ${g.group.padEnd(14)} ${lift.padEnd(16)} ${Math.round(g.spike_share * 100)}% of spike results  avg ${fmt(g.avg_tokens)} tok`);
+  }
+}
+
+// Earlier vs later half: a positive delta means that group got more expensive over time — the
+// "did my recent change make context heavier" signal.
+function printRegression(regression) {
+  if (!regression || regression.groups.length === 0) return;
+  console.log(`\nregression (earlier vs later half, split @ ${regression.split_ts?.slice(0, 19)}):`);
+  for (const g of regression.groups.slice(0, 6)) {
+    const arrow = g.delta_tokens > 0 ? "↑" : g.delta_tokens < 0 ? "↓" : "·";
+    console.log(`  ${g.group.padEnd(14)} ${fmt(g.before_avg_tokens).padStart(6)} → ${fmt(g.after_avg_tokens).padStart(6)} tok/call  ${arrow}${fmt(Math.abs(g.delta_tokens))}`);
+  }
+}
+
+function printLoops(loops) {
+  if (!loops || loops.length === 0) return;
+  console.log("\n⚠ loops detected (same tool fired repeatedly in one session):");
+  for (const l of loops.slice(0, 6)) {
+    console.log(`  ${l.repo}/${shortId(l.session_id)}  ${l.tool} ×${l.max_repeat}  → ${l.hint}`);
+  }
+}
+
 function printSessions(sessions) {
   console.log("\nsessions (by total tokens):");
   for (const session of sessions.slice(0, 8)) {
-    const label = `${session.repo}/${shortId(session.session_id)}`;
-    console.log(`  ${label.padEnd(28)} ${fmt(session.total_tokens).padStart(10)} tok  ${session.tool_calls} tools  ${session.mcp_calls} mcp`);
+    const repoBranch = session.repo + (session.branch ? `@${session.branch}` : "");
+    const label = `${repoBranch} ${session.harness ?? ""} ${shortId(session.session_id)}`.trim();
+    console.log(`  ${label.padEnd(36)} ${fmt(session.total_tokens).padStart(10)} tok  ${session.tool_calls} tools  ${session.mcp_calls} mcp`);
   }
 }
 
@@ -158,7 +212,9 @@ function telemetryServe(args) {
     console.log("telemetry is disabled; serving whatever is already in the spool.");
   }
   // The server re-reads the spool on each request so a running dashboard reflects live captures.
-  startTelemetryServer({ port: options.port, loadAnalysis: () => analyzeTelemetry(readSpoolEvents()) });
+  // A `window` ({ rangeMs, end }) scopes the whole report to a trailing time slice before analysis,
+  // so every panel — not just the chart — reflects the dashboard's time filter.
+  startTelemetryServer({ port: options.port, loadAnalysis: (window) => analyzeTelemetry(filterByWindow(readSpoolEvents(), window)) });
 }
 
 function parseServeArgs(args) {
@@ -229,15 +285,23 @@ function telemetryCapture(args) {
   const sessionId = input.session_id || input.conversation_id || null;
   const transcriptPath = input.transcript_path || input.transcriptPath || null;
   const stats = transcriptStats(transcriptPath);
+  const event = options.event || input.hook_event_name || input.hookEventName || "unknown";
+  const tool = toolMetadata(input);
   const record = {
     schema: SCHEMA_VERSION,
     ts: new Date().toISOString(),
     harness: options.harness,
-    event: options.event || input.hook_event_name || input.hookEventName || "unknown",
+    event,
     session_id: sessionId,
     cwd_hash: hash(cwd),
+    // Trailing path segment of the working dir — orients "where" without exposing the full path
+    // (which stays hashed in cwd_hash).
+    cwd_name: path.basename(cwd),
     repo: repoMetadata(cwd),
-    tool: toolMetadata(input),
+    tool,
+    // Wall-clock tool latency: PreToolUse stamps a start cursor, PostToolUse reads it back. Null for
+    // non-tool events or an unmatched pair. Helps spot slow tools independent of token cost.
+    duration_ms: toolDuration(event, sessionId, tool.name),
     prompt: promptMetadata(input),
     tokens: stats ? stats.tokens : null,
     delta_tokens: stats ? deltaTokens(sessionId, stats.tokens.total) : null,
@@ -290,6 +354,23 @@ function readSpoolEvents() {
   return events;
 }
 
+// Restrict events to a trailing time window before analysis so the dashboard's time filter scopes
+// the entire report. `end` (epoch ms) pins the window's right edge for panning; null follows the
+// latest event. Null window returns everything unchanged. Events lacking a parseable ts are dropped
+// when a window is active (they cannot be placed on the timeline).
+function filterByWindow(events, window) {
+  if (!window || !(window.rangeMs > 0) || events.length === 0) return events;
+  const times = events.map((event) => Date.parse(event.ts)).filter((ms) => Number.isFinite(ms));
+  if (times.length === 0) return events;
+  const dataEnd = Math.max(...times);
+  const end = Number.isFinite(window.end) ? window.end : dataEnd;
+  const start = end - window.rangeMs;
+  return events.filter((event) => {
+    const ms = Date.parse(event.ts);
+    return Number.isFinite(ms) && ms >= start && ms <= end;
+  });
+}
+
 function countBy(events, keyFor) {
   const counts = new Map();
   for (const event of events) {
@@ -327,11 +408,14 @@ function repoMetadata(cwd) {
   const root = git(cwd, ["rev-parse", "--show-toplevel"]);
   const branch = git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"]);
   const remote = git(cwd, ["remote", "get-url", "origin"]);
+  const sha = git(cwd, ["rev-parse", "--short", "HEAD"]);
   return {
     label: root ? path.basename(root) : path.basename(cwd),
     git_root_hash: root ? hash(root) : null,
     remote_hash: remote ? hash(remote) : null,
     branch: branch || null,
+    // Short SHA correlates a spike to the code state it happened on; safe to keep in the clear.
+    sha: sha || null,
   };
 }
 
@@ -340,22 +424,51 @@ function toolMetadata(input) {
   const name = input.tool_name || input.toolName || input.tool || null;
   const command = typeof toolInput.command === "string" ? toolInput.command : null;
   const mcpServer = mcpServerOf(name);
+  // For MCP tools the wire name is `mcp__<server>__<tool>`; expose the bare tool so the dashboard
+  // can attribute spikes to a specific call (e.g. get_context_bundle) instead of just the server.
+  const mcpTool = mcpServer && typeof name === "string" ? name.split("__").slice(2).join("__") || null : null;
+  // File path of a Read/Write/Edit-style tool, if any. Path itself is content-sensitive so it is
+  // hashed; only the extension is kept in the clear — enough to say "spikes come from .jsonl reads".
+  const filePath = typeof toolInput.file_path === "string" ? toolInput.file_path : typeof toolInput.path === "string" ? toolInput.path : null;
   return {
     name,
     is_mcp: mcpServer !== null,
     mcp_server: mcpServer,
+    mcp_tool: mcpTool,
     command_hash: command ? hash(command) : null,
     command_chars: command ? command.length : 0,
     command_lines: command ? command.split("\n").length : 0,
+    file_ext: filePath ? fileExt(filePath) : null,
+    file_path_hash: filePath ? hash(filePath) : null,
   };
 }
+
+// Lowercase extension without the dot, or null. Used as a clear-text spike dimension while the full
+// path stays hashed.
+function fileExt(filePath) {
+  const ext = path.extname(filePath).replace(/^\./, "").toLowerCase();
+  return ext || null;
+}
+
+// Max characters of a user prompt kept in the clear. Enough to identify what a session was about
+// ("fix the telemetry dashboard alignment") without storing whole pasted blocks. The full prompt is
+// never stored — only this leading slice plus a hash for dedup/length.
+const PROMPT_PREVIEW_CHARS = 200;
 
 function promptMetadata(input) {
   const prompt = typeof input.prompt === "string" ? input.prompt : typeof input.user_prompt === "string" ? input.user_prompt : null;
   return {
     chars: prompt ? prompt.length : 0,
     hash: prompt ? hash(prompt) : null,
+    // Single-line leading slice so sessions are identifiable in the dashboard. Newlines collapsed so
+    // it renders as one tidy title; truncation marked with an ellipsis.
+    preview: prompt ? promptPreview(prompt) : null,
   };
+}
+
+function promptPreview(prompt) {
+  const oneLine = prompt.replace(/\s+/g, " ").trim();
+  return oneLine.length > PROMPT_PREVIEW_CHARS ? oneLine.slice(0, PROMPT_PREVIEW_CHARS) + "…" : oneLine;
 }
 
 // Tokens consumed since the previous capture in the same session — the spike signal. Transcript
@@ -377,6 +490,34 @@ function deltaTokens(sessionId, cumulativeTotal) {
     // Cursor write is best-effort; a failure just means the next delta restarts from this point.
   }
   return Math.max(0, cumulativeTotal - previous);
+}
+
+// Wall-clock latency of a single tool call. PreToolUse writes a start stamp into a per-session
+// cursor; PostToolUse reads and clears it, returning the elapsed ms. Best-effort: a missing start
+// (hook race, restart) yields null rather than a bogus duration. Cursor keyed by session so
+// concurrent sessions do not collide.
+function toolDuration(event, sessionId, toolName) {
+  if (!sessionId) return null;
+  const cursorPath = path.join(telemetryCollectorDir, `tool-${hash(sessionId)}.json`);
+  if (event === "PreToolUse") {
+    try {
+      fs.writeFileSync(cursorPath, JSON.stringify({ start: Date.now(), tool: toolName }));
+    } catch {
+      // Best-effort; a failed write just means the matching PostToolUse reports null.
+    }
+    return null;
+  }
+  if (event === "PostToolUse") {
+    let start = null;
+    try {
+      start = JSON.parse(fs.readFileSync(cursorPath, "utf8")).start;
+      fs.rmSync(cursorPath, { force: true });
+    } catch {
+      return null;
+    }
+    return typeof start === "number" ? Math.max(0, Date.now() - start) : null;
+  }
+  return null;
 }
 
 function git(cwd, args) {

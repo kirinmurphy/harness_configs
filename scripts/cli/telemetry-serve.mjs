@@ -25,9 +25,17 @@ export function startTelemetryServer({ port, loadAnalysis }) {
 }
 
 function route(req, res, loadAnalysis) {
-  const url = (req.url || "/").split("?")[0];
-  if (url === "/") return send(res, 200, "text/html; charset=utf-8", dashboardHtml());
-  if (url === "/api/data") return send(res, 200, "application/json", JSON.stringify(loadAnalysis()));
+  const [path, qs = ""] = (req.url || "/").split("?");
+  if (path === "/") return send(res, 200, "text/html; charset=utf-8", dashboardHtml());
+  if (path === "/api/data") {
+    // The client passes ?range=<ms> to scope the WHOLE report (every panel) to a trailing time
+    // window, and an optional &end=<ms epoch> when panning to a fixed window rather than "latest".
+    const params = new URLSearchParams(qs);
+    const rangeMs = params.has("range") ? Number(params.get("range")) : null;
+    const end = params.has("end") ? Number(params.get("end")) : null;
+    const window = Number.isFinite(rangeMs) && rangeMs > 0 ? { rangeMs, end: Number.isFinite(end) ? end : null } : null;
+    return send(res, 200, "application/json", JSON.stringify(loadAnalysis(window)));
+  }
   send(res, 404, "text/plain", "not found");
 }
 

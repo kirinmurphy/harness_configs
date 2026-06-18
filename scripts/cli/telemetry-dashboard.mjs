@@ -255,11 +255,13 @@ const CUMULATIVE_CONCERN = 5_000_000;
 const SESSION_COLORS = ["#58a6ff", "#3fb950", "#f0883e", "#bc8cff", "#f85149", "#56d4dd", "#e3b341", "#ff7b72"];
 // Tool-group colors for the cumulative-by-group view.
 const GROUP_COLORS = { "native-read": "#58a6ff", "mcp-code": "#3fb950", "mcp-docs": "#56d4dd", "mcp-other": "#bc8cff", bash: "#f0883e", edit: "#e3b341", other: "#8b949e" };
-// Which group a result-bearing point belongs to (mirrors analyze.toolGroup, client-side).
+// Group for a timeline point. The server now computes group (with bare-MCP-name resolution) and puts
+// it on each point, so prefer that; fall back to a local guess only for older payloads.
 function pointGroup(p) {
+  if (p.group) return p.group;
   const t = p.tool;
   if (!t) return "other";
-  if (t.indexOf("mcp__jcodemunch") === 0 || (p.mcp_tool && p.tool && p.tool.indexOf("jcodemunch") > -1)) return "mcp-code";
+  if (t.indexOf("mcp__jcodemunch") === 0) return "mcp-code";
   if (t.indexOf("mcp__jdocmunch") === 0) return "mcp-docs";
   if (t.indexOf("mcp__") === 0) return "mcp-other";
   if (t === "Read" || t === "Grep" || t === "Glob") return "native-read";

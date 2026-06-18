@@ -54,6 +54,9 @@ export function analyzeTelemetry(events) {
         result_chars: event.last_result?.chars ?? null,
         prompt: event.prompt?.preview ?? null,
         cause: spikeCause(event).cause,
+        // Functional group, computed server-side (with bare-MCP-name resolution) so the
+        // cumulative-by-group chart doesn't re-derive it client-side and diverge.
+        group: toolGroup(event.last_result?.tool ?? event.tool?.name ?? null),
       }))
       .sort((a, b) => a.ts.localeCompare(b.ts)),
     // --- conclusions: actionable rollups, not raw rows -------------------------------------------

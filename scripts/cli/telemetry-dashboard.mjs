@@ -39,6 +39,15 @@ export function dashboardHtml() {
   .insight .body .hl { color:var(--ink); }
   .insight .body .dt { color:var(--dim); font-size:11px; margin-top:2px; }
   #deepreadout { white-space:pre-wrap; font-size:12px; color:var(--ink); }
+  .detailsblock { border-top:1px solid var(--line); padding-top:8px; }
+  .detailsblock > summary { font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--dim); font-weight:700; cursor:pointer; padding:6px 0; list-style:none; }
+  .detailsblock > summary::-webkit-details-marker { display:none; }
+  .detailsblock > summary::before { content:"▸ "; color:var(--accent); }
+  .detailsblock[open] > summary::before { content:"▾ "; }
+  .detailsblock > summary:hover { color:var(--ink); }
+  .detailsblock > summary .sub { text-transform:none; letter-spacing:0; font-weight:400; margin-left:8px; }
+  .detailsblock[open] > summary { margin-bottom:12px; }
+  #insightspanel h2 { color:var(--accent); }
   .chartwrap { position:relative; }
   canvas { width:100%; height:280px; display:block; cursor:crosshair; }
   .tooltip { position:absolute; pointer-events:none; z-index:5; background:#0b0e13; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-size:11px; line-height:1.5; color:var(--ink); box-shadow:0 4px 16px rgba(0,0,0,.5); display:none; max-width:280px; }
@@ -103,17 +112,19 @@ export function dashboardHtml() {
   </div>
 </div>
 <main>
+  <!-- TIER 1 — conclusions & action items (the headline; always first) -->
   <section class="panel" id="insightspanel">
-    <h2>what this means</h2>
+    <h2>① what this means · action items</h2>
     <div id="insights"></div>
     <div class="modalactions">
       <button class="linkbtn" id="deepread">deeper read (claude) ›</button>
     </div>
     <div class="modalextra" id="deepreadout"></div>
   </section>
-  <h2 class="sectionhead">overview <span class="sub">when tokens were spent, and the patterns driving spikes</span></h2>
+
+  <!-- TIER 2 — visualize (the chart) -->
   <section class="panel">
-    <h2>token usage over time</h2>
+    <h2>② token usage over time</h2>
     <div class="ranges" id="chartmodes">
       <span class="flabel">view</span>
       <button data-mode="deltas" class="active">per-turn deltas</button>
@@ -126,48 +137,61 @@ export function dashboardHtml() {
     </div>
     <div class="legend" id="chartlegend"></div>
   </section>
-  <section class="panel">
-    <h2>what's causing spikes</h2>
-    <div id="causes"></div>
-    <div class="legend">grouped by the pattern that drove each token spike · each row is a behavior you can change</div>
-  </section>
 
-  <h2 class="sectionhead">sessions &amp; chats <span class="sub">click any row to open the chat context — surface the heavy turns or copy an analysis prompt</span></h2>
-  <section class="panel"><h2>top sessions</h2><div id="sessions"></div></section>
-  <section class="panel"><h2>token spikes</h2><div id="spikes"></div></section>
+  <!-- TIER 3 — warnings & abnormalities (spikes, loops, causes) -->
+  <h2 class="sectionhead">③ warnings &amp; abnormalities <span class="sub">spikes, loops, and the patterns behind them — click any row to open the chat</span></h2>
   <section class="panel" id="loopspanel" style="display:none">
     <h2>⚠ loops detected</h2>
     <div id="loops"></div>
     <div class="legend">a tool fired many times consecutively in one session — likely a runaway agent/skill loop · click to investigate</div>
   </section>
-
-  <h2 class="sectionhead">cost analysis <span class="sub">what each tool/package puts into context, and what changed over time</span></h2>
   <section class="panel">
-    <h2>native vs MCP exploration</h2>
-    <div id="groupcost"></div>
-    <div class="legend">avg context tokens dropped per call, by tool group · the head-to-head for "is the MCP cheaper than the Read/Grep it replaces" · approx (result size ÷ 4)</div>
+    <h2>token spikes</h2>
+    <div id="spikes"></div>
   </section>
   <section class="panel">
-    <h2>cost per tool call</h2>
-    <div id="toolcost"></div>
-    <div class="legend">what an average call of each tool puts into your context · click a row for detail</div>
+    <h2>what's causing spikes</h2>
+    <div id="causes"></div>
+    <div class="legend">grouped by the pattern that drove each token spike · each row is a behavior you can change</div>
   </section>
   <section class="panel">
     <h2>what's different in spikes</h2>
     <div id="anatomy"></div>
     <div class="legend">lift = how much more a group drives spikes than its everyday share · &gt;1 means spike-heavy</div>
   </section>
-  <section class="panel">
-    <h2>package cost &amp; regression</h2>
-    <div id="packagecost"></div>
-    <div id="regression"></div>
-    <div class="legend">per package: avg tokens/call · regression compares the earlier vs later half (↑ = got more expensive)</div>
-  </section>
 
-  <h2 class="sectionhead">raw breakdowns <span class="sub">supporting totals</span></h2>
-  <section class="panel"><h2>token by tool</h2><div id="tools"></div></section>
-  <section class="panel"><h2>token by MCP server</h2><div id="mcp"></div></section>
-  <section class="panel"><h2>spike vs normal</h2><div id="comparison"></div></section>
+  <!-- TIER 4 — details (collapsed by default; summaries lead, raw is on-demand) -->
+  <details class="detailsblock">
+    <summary>④ cost analysis <span class="sub">what each tool/package puts into context, and what changed</span></summary>
+    <section class="panel">
+      <h2>native vs MCP exploration</h2>
+      <div id="groupcost"></div>
+      <div class="legend">avg context tokens dropped per call, by tool group · the head-to-head for "is the MCP cheaper than the Read/Grep it replaces" · approx (result size ÷ 4)</div>
+    </section>
+    <section class="panel">
+      <h2>cost per tool call</h2>
+      <div id="toolcost"></div>
+      <div class="legend">what an average call of each tool puts into your context · click a row for detail</div>
+    </section>
+    <section class="panel">
+      <h2>package cost &amp; regression</h2>
+      <div id="packagecost"></div>
+      <div id="regression"></div>
+      <div class="legend">per package: avg tokens/call · regression compares the earlier vs later half (↑ = got more expensive)</div>
+    </section>
+  </details>
+
+  <details class="detailsblock">
+    <summary>⑤ sessions <span class="sub">every session by tokens — click a row to open its chat</span></summary>
+    <section class="panel"><h2>top sessions</h2><div id="sessions"></div></section>
+  </details>
+
+  <details class="detailsblock">
+    <summary>⑥ raw breakdowns <span class="sub">supporting totals</span></summary>
+    <section class="panel"><h2>token by tool</h2><div id="tools"></div></section>
+    <section class="panel"><h2>token by MCP server</h2><div id="mcp"></div></section>
+    <section class="panel"><h2>spike vs normal</h2><div id="comparison"></div></section>
+  </details>
 </main>
 <div class="modal-back" id="modalback">
   <div class="modal" id="modal">

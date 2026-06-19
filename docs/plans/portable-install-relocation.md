@@ -10,7 +10,7 @@ at a different path on a second machine, and every one of those symlinks dangles
 The `roborepo` command itself disappears from `PATH` because `~/.local/bin/roborepo`
 points at the old location.
 
-This actually happened: the checkout was renamed `harness_configs -> roborepo`,
+This actually happened: the checkout was renamed `old_repo -> roborepo`,
 which orphaned ~10 symlinks and removed `roborepo` from `PATH`. Recovery required a
 manual walkthrough (delete the stale bin link by hand, re-run install with
 `--on-conflict overwrite`) because the installer and uninstaller could not
@@ -35,14 +35,14 @@ on any machine — without the manual cleanup.
   `~/.roborepo/current -> <checkout>`. All managed links and the bin link point
   through this stable path instead of at the checkout directly.
 
-Source of truth for *what* is linked is `manifests/platform/manifest.tsv`. Source of truth
-for *where the checkout is* becomes the stable root link, with the recorded `repo`
+Source of truth for _what_ is linked is `manifests/platform/manifest.tsv`. Source of truth
+for _where the checkout is_ becomes the stable root link, with the recorded `repo`
 in install state as the authoritative fallback for detection and repair.
 
 ## Current Behavior
 
 - `scripts/install/main.sh` computes `repo_root` fresh from its own script location
-  every run, so the installer always knows the *current* checkout. The stale path
+  every run, so the installer always knows the _current_ checkout. The stale path
   only survives baked into existing home symlinks and the state file.
 - Managed links are created absolute: home path -> `${repo_root}/${src_rel}`
   (`install-claude.sh:42`, via `install_link_item`).
@@ -50,7 +50,7 @@ in install state as the authoritative fallback for detection and repair.
   (`install-global-commands.sh::link_command`).
 - `scripts/doctor.sh --installed` resolves each link with `realpath` and compares
   against the expected current `repo_root` (`check_link`, lines 71-88). A moved
-  checkout therefore makes doctor *fail* — drift is already detected, just not
+  checkout therefore makes doctor _fail_ — drift is already detected, just not
   repaired.
 - `install-state.json` stores `repo` = absolute checkout path (`state-lib.sh::write_install_state`),
   but no consumer reads it.
@@ -59,13 +59,13 @@ in install state as the authoritative fallback for detection and repair.
 
 1. **`install-global-commands.sh` treats any non-matching bin link as a hard
    conflict.** Both `check_command_target` (preflight) and `link_command` (apply)
-   compare the existing link's target only against the *current* source path. A
+   compare the existing link's target only against the _current_ source path. A
    dangling link from a prior checkout — exactly the auto-healable case — blocks
    the install with a merge prompt, and ignores `--on-conflict`. This is why the
    bin link had to be removed by hand.
 
 2. **`scripts/install/uninstall.sh` only removes links whose target starts with the
-   *current* `repo_root`** (lines 24-25, 40, 84). A link left by a prior checkout
+   _current_ `repo_root`** (lines 24-25, 40, 84). A link left by a prior checkout
    path is silently skipped, so uninstall cannot clean an install made before the
    checkout moved. This is the untested-until-now uninstall bug.
 
@@ -136,12 +136,12 @@ Relocating the checkout later:
 
 ## Operational Workflow
 
-| Command | When | Gives | Does not do |
-| --- | --- | --- | --- |
-| `scripts/install/main.sh` | first install, or full reinstall | full link tree + state + stable root | minimal targeted repair |
-| `roborepo doctor --installed` | verify, or after a suspected move | pass/fail + drift diagnosis pointing at repair | change anything |
-| `roborepo repair` | checkout moved/renamed | re-point stable root, reclaim stale links | re-export mutable root config |
-| `scripts/install/uninstall.sh` | remove install | remove managed + bin links (incl. stale) | delete adopted/copied root config |
+| Command                        | When                              | Gives                                          | Does not do                       |
+| ------------------------------ | --------------------------------- | ---------------------------------------------- | --------------------------------- |
+| `scripts/install/main.sh`      | first install, or full reinstall  | full link tree + state + stable root           | minimal targeted repair           |
+| `roborepo doctor --installed`  | verify, or after a suspected move | pass/fail + drift diagnosis pointing at repair | change anything                   |
+| `roborepo repair`              | checkout moved/renamed            | re-point stable root, reclaim stale links      | re-export mutable root config     |
+| `scripts/install/uninstall.sh` | remove install                    | remove managed + bin links (incl. stale)       | delete adopted/copied root config |
 
 ## Edge Cases
 

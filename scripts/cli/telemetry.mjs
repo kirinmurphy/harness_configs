@@ -247,7 +247,17 @@ function telemetryServe(args) {
   // a flagged event to its chat transcript (file I/O lives here, not in the server).
   startTelemetryServer({
     port: options.port,
-    loadAnalysis: (window) => analyzeTelemetry(filterByWindow(readSpoolEvents(), window)),
+    loadAnalysis: (window, harness) => {
+      const allEvents = readSpoolEvents();
+      // Expose all harnesses found in the spool, before any harness filter, so the dashboard can
+      // always render the full filter even when one harness is selected.
+      const availableHarnesses = [...new Set(allEvents.map((e) => e.harness).filter(Boolean))].sort();
+      const events = harness ? allEvents.filter((e) => e.harness === harness) : allEvents;
+      const report = analyzeTelemetry(filterByWindow(events, window));
+      report.available_harnesses = availableHarnesses;
+      report.deepread_cli = findDeepReadCli();
+      return report;
+    },
     loadSession: (req) => loadSessionDetail(req),
     loadInsightsLlm: () => loadInsightsLlm(),
   });
@@ -461,21 +471,31 @@ const DEEP_READ_PROMPT =
   "Give 3-5 terse, actionable conclusions a developer can act on: call out the biggest token cost, " +
   "any tail risks, and one concrete thing to change. No preamble.\n\n";
 
-// Run the optional LLM synthesis via the headless `claude` CLI (uses the user's existing Claude Code
-// auth — no API key). Best-effort: returns { ok:false, note } when claude is missing/errors so every
-// caller degrades to deterministic-only.
+// Find the first available AI CLI for the deeper-read feature: prefer claude, fall back to codex.
+function findDeepReadCli() {
+  for (const cmd of ["claude", "codex"]) {
+    const check = spawnSync("which", [cmd], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    if (check.status === 0 && check.stdout.trim()) return cmd;
+  }
+  return null;
+}
+
+// Run the optional LLM synthesis via the headless AI CLI (claude or codex, whichever is available).
+// Best-effort: returns { ok:false, note } when no CLI is available so callers degrade gracefully.
 function runDeepRead(report) {
+  const cli = findDeepReadCli();
+  if (!cli) return { ok: false, note: "no AI CLI available (tried claude, codex)", cli: null };
   const prompt = DEEP_READ_PROMPT + insightsSummary(report);
   let result;
   try {
-    result = spawnSync("claude", ["-p", prompt], { encoding: "utf8", timeout: 60000 });
+    result = spawnSync(cli, ["-p", prompt], { encoding: "utf8", timeout: 60000 });
   } catch (err) {
-    return { ok: false, note: `claude CLI not available: ${err.message}` };
+    return { ok: false, note: `${cli} CLI not available: ${err.message}`, cli };
   }
-  if (result.error) return { ok: false, note: `claude CLI not available: ${result.error.message}` };
-  if (result.status !== 0) return { ok: false, note: `claude exited ${result.status}: ${(result.stderr || "").trim().slice(0, 200)}` };
+  if (result.error) return { ok: false, note: `${cli} CLI not available: ${result.error.message}`, cli };
+  if (result.status !== 0) return { ok: false, note: `${cli} exited ${result.status}: ${(result.stderr || "").trim().slice(0, 200)}`, cli };
   const text = (result.stdout || "").trim();
-  return text ? { ok: true, text } : { ok: false, note: "claude returned no output" };
+  return text ? { ok: true, text, cli } : { ok: false, note: `${cli} returned no output`, cli };
 }
 
 // Server closure: deeper-read on demand from the dashboard. Re-reads the spool so it reflects live

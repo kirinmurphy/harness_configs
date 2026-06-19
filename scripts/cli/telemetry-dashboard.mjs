@@ -63,7 +63,12 @@ export function dashboardHtml() {
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
   @media (max-width:760px){ .grid2{ grid-template-columns:1fr; } }
   .legend { font-size:11px; color:var(--dim); margin-top:8px; }
-  .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:4px; }
+  .legend-list { list-style:none; margin:6px 0 0; padding:0; display:flex; flex-direction:column; gap:2px; }
+  .legend-list li { display:flex; align-items:center; gap:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .legend-list li .lbl { overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .viewmore { background:none; border:none; color:var(--accent); font:inherit; font-size:11px; cursor:pointer; padding:3px 0; text-decoration:underline dotted; margin-top:4px; display:block; }
+  .viewmore:hover { color:var(--ink); }
+  .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:4px; flex:none; }
   .filterbar { position:sticky; top:0; z-index:10; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 20px; }
   .flabel { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; margin-right:4px; }
   .ranges { display:flex; gap:6px; flex-wrap:wrap; align-items:center; max-width:1200px; }
@@ -71,6 +76,10 @@ export function dashboardHtml() {
   .ranges button:hover { color:var(--ink); border-color:var(--accent); }
   .ranges button.active { color:var(--bg); background:var(--accent); border-color:var(--accent); font-weight:600; }
   .ranges .pan { color:var(--dim); font-size:11px; margin-left:auto; }
+  #harnessfilt { display:none; margin-left:auto; gap:6px; align-items:center; }
+  #harnessfilt.visible { display:flex; }
+  .copybtn { background:var(--bg); color:var(--dim); border:1px solid var(--line); border-radius:5px; padding:3px 10px; font:inherit; font-size:11px; cursor:pointer; }
+  .copybtn:hover { color:var(--ink); border-color:var(--accent); }
   canvas.panning { cursor:grabbing; }
   tr.clickable { cursor:pointer; }
   tr.clickable:hover td { background:#1c2230; }
@@ -109,6 +118,9 @@ export function dashboardHtml() {
     <button data-range="604800000">1w</button>
     <button data-range="all" class="active">all</button>
     <span class="pan" id="panhint"></span>
+    <div id="harnessfilt">
+      <span class="flabel">source</span>
+    </div>
   </div>
 </div>
 <main>
@@ -117,9 +129,12 @@ export function dashboardHtml() {
     <h2>① what this means · action items</h2>
     <div id="insights"></div>
     <div class="modalactions">
-      <button class="linkbtn" id="deepread">deeper read (claude) ›</button>
+      <button class="linkbtn" id="deepread">deeper read ›</button>
     </div>
     <div class="modalextra" id="deepreadout"></div>
+    <div id="deepreadcopy" style="display:none;margin-top:6px">
+      <button class="copybtn" id="copydeepread">copy response</button>
+    </div>
   </section>
 
   <!-- TIER 2 — visualize (the chart) -->
@@ -127,9 +142,9 @@ export function dashboardHtml() {
     <h2>② token usage over time</h2>
     <div class="ranges" id="chartmodes">
       <span class="flabel">view</span>
-      <button data-mode="deltas" class="active">per-turn deltas</button>
-      <button data-mode="cumulative">cumulative per session</button>
+      <button data-mode="cumulative" class="active">cumulative per session</button>
       <button data-mode="bygroup">cumulative by tool group</button>
+      <button data-mode="deltas">per-turn deltas</button>
     </div>
     <div class="chartwrap">
       <canvas id="timeline"></canvas>
@@ -215,12 +230,19 @@ let lastVersion = null;
 // resize or pan can redraw the chart without refetching.
 let allTimeline = [];
 let curThreshold = 0;
+let curCumulativeConcern = 20_000_000;
 // Most recent session rollups, kept so the cumulative chart's session chips can open full detail.
 let allSessions = [];
 // Global time filter, applied SERVER-SIDE so every panel reflects it. rangeMs = trailing span
 // (null = all data). panEnd = epoch ms at the window's right edge (null = follow latest so live
-// captures keep arriving). Dragging the chart sets panEnd.
-let view = { rangeMs: null, panEnd: null };
+// captures keep arriving). Dragging the chart sets panEnd. harness = null means all.
+let view = { rangeMs: null, panEnd: null, harness: null };
+// Which AI CLI is available for the deeper-read feature (claude / codex / null).
+let deepReadCli = null;
+// Last deeper-read text for the copy button.
+let lastDeepReadText = null;
+// How many legend items to show per chart mode (starts at 5, "view more" adds 10 each time).
+let legendShown = { cumulative: 5, bygroup: 5 };
 
 function updatePanHint() {
   const hint = document.getElementById("panhint");
@@ -238,19 +260,29 @@ function redrawChart() {
 // repaint even when the server's version is unchanged (range/pan/resize). The version embeds the
 // windowed event set, so a normal 5s poll only repaints when that window's data actually changed.
 async function load(force) {
-  const qs = view.rangeMs == null ? "" : "?range=" + view.rangeMs + (view.panEnd == null ? "" : "&end=" + view.panEnd);
+  let qs = view.rangeMs == null ? "" : "?range=" + view.rangeMs + (view.panEnd == null ? "" : "&end=" + view.panEnd);
+  if (view.harness) qs += (qs ? "&" : "?") + "harness=" + encodeURIComponent(view.harness);
   const data = await (await fetch("/api/data" + qs)).json();
   if (!force && data.version === lastVersion) return;
   lastVersion = data.version;
   const w = data.usage_windows || {};
   const scope = view.rangeMs == null ? "" : " · filtered";
+  const harnessScope = view.harness ? " · " + view.harness + " only" : "";
   document.getElementById("meta").textContent =
     data.capture_count + " captures · " + data.sessions.length + " sessions · spike ≥ " + fmt(data.spike_threshold) + " tok"
-    + " · ~" + fmt(w.five_hour) + " tok last 5h / ~" + fmt(w.seven_day) + " last 7d (local estimate)" + scope;
+    + " · ~" + fmt(w.five_hour) + " tok last 5h / ~" + fmt(w.seven_day) + " last 7d (local estimate)" + scope + harnessScope;
+  // Update the deeper-read button label based on which CLI is available.
+  if (data.deepread_cli !== undefined) {
+    deepReadCli = data.deepread_cli;
+    document.getElementById("deepread").textContent = "deeper read" + (deepReadCli ? " (" + deepReadCli + ")" : " (unavailable)") + " ›";
+  }
+  // Render harness filter only when more than one harness exists in the spool.
+  if (data.available_harnesses) updateHarnessFilter(data.available_harnesses);
   renderCauses(data.spike_causes);
   document.body.dataset.threshold = data.spike_threshold || 0;
   allTimeline = data.timeline || [];
   curThreshold = data.spike_threshold || 0;
+  curCumulativeConcern = data.cumulative_concern || 20_000_000;
   redrawChart();
   renderInsights(data.insights);
   renderGroupCost(data.group_cost);
@@ -265,6 +297,27 @@ async function load(force) {
   renderContrib("tools", data.top_tools);
   renderContrib("mcp", data.top_mcp);
   renderComparison(data.comparison);
+}
+
+function updateHarnessFilter(harnesses) {
+  const el = document.getElementById("harnessfilt");
+  if (harnesses.length <= 1) { el.classList.remove("visible"); return; }
+  el.classList.add("visible");
+  // Rebuild buttons only when the harness list changes.
+  const cur = [...el.querySelectorAll("button[data-harness]")].map((b) => b.dataset.harness).join(",");
+  if (cur === ["all", ...harnesses].join(",")) return;
+  const existing = [...el.querySelectorAll("button[data-harness]")];
+  for (const b of existing) b.remove();
+  const allBtn = document.createElement("button");
+  allBtn.dataset.harness = "all"; allBtn.textContent = "all";
+  if (!view.harness) allBtn.classList.add("active");
+  el.appendChild(allBtn);
+  for (const h of harnesses) {
+    const btn = document.createElement("button");
+    btn.dataset.harness = h; btn.textContent = h;
+    if (view.harness === h) btn.classList.add("active");
+    el.appendChild(btn);
+  }
 }
 
 // Plot margins leave room for the y-axis token labels (left) and x-axis time labels (bottom).
@@ -286,7 +339,7 @@ function clockLabel(ts) {
 }
 
 // Current chart view + the index of the hovered bar (for highlight). Set by the mode toggle / hover.
-let chartMode = "deltas";
+let chartMode = "cumulative";
 let hoverIdx = -1;
 // Per-turn deltas: hide trivially-cheap markers below the median delta unless "show all" is on, so
 // the chart highlights the notable turns instead of noise. Toggled by the delta filter button.
@@ -388,13 +441,15 @@ function drawDeltas(points, threshold, geo, legend) {
   }
   const drawn = buckets.map((p, c) => (p ? { p, c } : null)).filter(Boolean);
   // Bar width: wide when sparse (≤ a column per several pixels), down to 1px when dense.
+  // Gap of 1px between bars for visual separation; applied only when bars are wider than 2px.
   const barW = Math.max(1, Math.min(24, Math.floor(plotW / Math.max(1, drawn.length)) - 1));
+  const barGap = barW > 2 ? 1 : 0;
   const max = Math.max(threshold || 0, ...points.map((p) => p.delta)) || 1;
   const yOf = drawAxes(ctx, geo, max, t0, span);
 
   drawn.forEach((d, i) => {
     const x = M.left + d.c, y = yOf(d.p.delta), h = M.top + plotH - y;
-    const w = barW;
+    const w = barW - barGap;
     const hovered = i === hoverIdx;
     ctx.fillStyle = hovered ? "#a9d1ff" : "#58a6ff";
     if (h > 0) ctx.fillRect(x, y, w, h);
@@ -422,25 +477,42 @@ function drawCumulative(points, geo, legend) {
   const series = perSessionSeries(points);
   const t0 = Math.min(...series.map((s) => s.first)), tN = Math.max(...series.map((s) => s.last));
   const span = Math.max(1, tN - t0);
-  const max = Math.max(CUMULATIVE_CONCERN, ...points.map((p) => p.total || 0));
+  const max = Math.max(curCumulativeConcern, ...points.map((p) => p.total || 0));
   const yOf = drawAxes(ctx, geo, max, t0, span);
   const xOf = (ts) => M.left + ((Date.parse(ts) - t0) / span) * plotW;
-  series.slice(0, SESSION_COLORS.length).forEach((s, i) => {
+  const drawnSeries = series.slice(0, SESSION_COLORS.length);
+  drawnSeries.forEach((s, i) => {
     ctx.strokeStyle = SESSION_COLORS[i]; ctx.lineWidth = 1.5; ctx.beginPath();
-    s.pts.forEach((p, j) => { const x = xOf(p.ts), y = yOf(p.total || 0); j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    s.pts.forEach((p, j) => {
+      const x = xOf(p.ts), y = yOf(p.total || 0);
+      j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      // Store hit areas for hover/click on line chart points.
+      chartBars.push({ x, y, w: 8, h: 8, idx: chartBars.length, point: p, sessId: s.id, color: SESSION_COLORS[i], mode: "cumulative" });
+    });
     ctx.stroke();
+    // Draw small dots at each data point for visual hit affordance.
+    for (const p of s.pts) {
+      const x = xOf(p.ts), y = yOf(p.total || 0);
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fillStyle = SESSION_COLORS[i]; ctx.fill();
+    }
   });
   // Concern line.
-  const cy = yOf(CUMULATIVE_CONCERN);
+  const cy = yOf(curCumulativeConcern);
   ctx.strokeStyle = "#f85149"; ctx.setLineDash([4, 3]); ctx.beginPath();
   ctx.moveTo(M.left, cy); ctx.lineTo(W - M.right, cy); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle = "#f85149"; ctx.textAlign = "left"; ctx.fillText("concern " + tokShort(CUMULATIVE_CONCERN), M.left + 4, cy - 4);
-  legend.innerHTML = "cumulative session tokens (context size) over time · <span class='swatch' style='background:var(--spike)'></span>concern limit · click a session to inspect its chat:<br>"
-    + series.slice(0, SESSION_COLORS.length).map((s, i) => {
-      const sess = sessionById(s.id);
-      const label = sess && sess.title ? clip(sess.title, 32) : short(s.id);
-      return "<button class='linkbtn sesschip' data-sid='" + esc(s.id) + "'><span class='swatch' style='background:" + SESSION_COLORS[i] + "'></span>" + esc(label) + " (" + tokShort(s.total) + ")</button>";
-    }).join(" ");
+  ctx.fillStyle = "#f85149"; ctx.textAlign = "left"; ctx.fillText("concern " + tokShort(curCumulativeConcern), M.left + 4, cy - 4);
+  // Paginated legend: top N sessions with "view more" if there are more.
+  const shown = legendShown.cumulative;
+  const legendItems = drawnSeries.slice(0, shown).map((s, i) => {
+    const sess = sessionById(s.id);
+    const label = sess && sess.title ? clip(sess.title, 48) : short(s.id);
+    return "<li><span class='swatch' style='background:" + SESSION_COLORS[i] + ";flex:none'></span>"
+      + "<button class='linkbtn sesschip lbl' data-sid='" + esc(s.id) + "' title='" + esc(sess?.title || s.id) + "'>" + esc(label) + " <span style='color:var(--dim)'>(" + tokShort(s.total) + ")</span></button></li>";
+  });
+  const moreCount = drawnSeries.length - shown;
+  legend.innerHTML = "cumulative session tokens (context size) over time · <span class='swatch' style='background:var(--spike)'></span>concern limit · click a session to inspect its chat:"
+    + "<ul class='legend-list'>" + legendItems.join("") + "</ul>"
+    + (moreCount > 0 ? "<button class='viewmore' id='viewmore-cumulative'>show " + Math.min(moreCount, 10) + " more (" + moreCount + " remaining)</button>" : "");
 }
 
 // Cumulative tokens BY TOOL GROUP within the window: a running total line per functional group
@@ -466,27 +538,48 @@ function drawCumulativeByGroup(points, geo, legend) {
   const xOf = (ts) => M.left + ((Date.parse(ts) - t0) / span) * plotW;
   const order = Object.keys(groups).sort((a, b) => (running[b] || 0) - (running[a] || 0));
   for (const g of order) {
-    ctx.strokeStyle = GROUP_COLORS[g] || "#8b949e"; ctx.lineWidth = 1.5; ctx.beginPath();
-    groups[g].forEach((pt, j) => { const x = xOf(pt.ts), y = yOf(pt.total); j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    const color = GROUP_COLORS[g] || "#8b949e";
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
+    groups[g].forEach((pt, j) => {
+      const x = xOf(pt.ts), y = yOf(pt.total);
+      j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      chartBars.push({ x, y, w: 8, h: 8, idx: chartBars.length, point: pt, group: g, color, mode: "bygroup" });
+    });
     ctx.stroke();
+    // Small dots at data points.
+    for (const pt of groups[g]) {
+      const x = xOf(pt.ts), y = yOf(pt.total);
+      ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+    }
   }
-  legend.innerHTML = "cumulative tokens by tool group (approx, result size) · what drives the context climb:<br>"
-    + order.map((g) => "<span class='swatch' style='background:" + (GROUP_COLORS[g] || "#8b949e") + "'></span>" + esc(g) + " (" + tokShort(running[g]) + ")").join(" · ");
+  const shown = legendShown.bygroup;
+  const legendItems = order.slice(0, shown).map((g) => {
+    const color = GROUP_COLORS[g] || "#8b949e";
+    return "<li><span class='swatch' style='background:" + color + ";flex:none'></span><span class='lbl'>" + esc(g) + " <span style='color:var(--dim)'>(" + tokShort(running[g]) + ")</span></span></li>";
+  });
+  const moreCount = order.length - shown;
+  legend.innerHTML = "cumulative tokens by tool group (approx, result size) · what drives the context climb:"
+    + "<ul class='legend-list'>" + legendItems.join("") + "</ul>"
+    + (moreCount > 0 ? "<button class='viewmore' id='viewmore-bygroup'>show " + Math.min(moreCount, 10) + " more (" + moreCount + " remaining)</button>" : "");
 }
 
-// Nearest drawn bar to a client-x, or null if none within the hit tolerance.
-function barAt(clientX) {
+// Nearest drawn bar/point to a cursor position, or null if none within hit tolerance.
+// For bar charts: nearest by x. For line charts: nearest by combined x+y distance (2D proximity).
+function barAt(clientX, clientY) {
   if (!chartBars.length) return null;
   const rect = document.getElementById("timeline").getBoundingClientRect();
-  const x = clientX - rect.left;
-  let best = null, bestDx = Infinity;
+  const cx = clientX - rect.left;
+  const cy = clientY != null ? clientY - rect.top : null;
+  const isLine = chartMode !== "deltas";
+  let best = null, bestD = Infinity;
   for (const b of chartBars) {
-    const dx = Math.abs(b.x - x);
-    if (dx < bestDx) { bestDx = dx; best = b; }
+    const dx = Math.abs(b.x - cx);
+    const dy = cy != null ? Math.abs(b.y - cy) : 0;
+    const d = isLine ? Math.sqrt(dx * dx + dy * dy) : dx;
+    if (d < bestD) { bestD = d; best = b; }
   }
-  // Hit tolerance scales with bar width (wider bars at low ranges) but stays generous for thin ones.
-  const tol = best ? Math.max(6, (best.w || 1) / 2 + 2) : 6;
-  return best && bestDx <= tol ? best : null;
+  const tol = isLine ? 18 : (best ? Math.max(6, (best.w || 1) / 2 + 2) : 6);
+  return best && bestD <= tol ? best : null;
 }
 
 // Map cursor to the nearest drawn bar: show a context tooltip AND highlight that bar. Nearest-by-x

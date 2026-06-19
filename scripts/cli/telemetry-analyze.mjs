@@ -9,6 +9,9 @@ import { deriveInsights } from "./telemetry-insights.mjs";
 // A capture counts as a spike when its token delta exceeds the mean by this many standard
 // deviations. Tunable, but kept conservative so quiet sessions never trip the threshold.
 const SPIKE_SIGMA = 2;
+// Minimum absolute delta (tokens) to ever count as a spike — prevents statistical noise from
+// flagging trivially small events in very quiet sessions.
+const MIN_SPIKE_THRESHOLD = 50_000;
 
 export function analyzeTelemetry(events) {
   const captures = events.filter(hasTokens);
@@ -18,6 +21,20 @@ export function analyzeTelemetry(events) {
   // Session-context lookup so every flagged event (spike, loop) can carry the same "which chat was
   // this" markers the sessions table shows — title (first prompt), activity summary, repo/branch.
   const sessionsById = new Map(sessions.map((s) => [s.session_id, s]));
+  // Deduplicate spikes: show only the worst spike per session, with count so the user sees how
+  // many turns exceeded the threshold without seeing the same session repeated on every row.
+  const spikeCountBySess = new Map();
+  for (const event of spikeCaptures) {
+    const id = event.session_id || "unknown";
+    spikeCountBySess.set(id, (spikeCountBySess.get(id) || 0) + 1);
+  }
+  const bestSpikeBySess = new Map();
+  for (const event of spikeCaptures) {
+    const id = event.session_id || "unknown";
+    if (!bestSpikeBySess.has(id) || (event.delta_tokens || 0) > (bestSpikeBySess.get(id)?.delta_tokens ?? 0)) {
+      bestSpikeBySess.set(id, event);
+    }
+  }
   const report = {
     // Cheap change token for the dashboard's poll loop: spool is append-only, so event count plus the
     // newest timestamp changes whenever a capture lands. The client redraws only when this differs.
@@ -26,9 +43,15 @@ export function analyzeTelemetry(events) {
     capture_count: captures.length,
     sessions,
     spike_threshold: spikeThreshold,
-    spikes: spikeCaptures
-      .map((event) => spikeRow(event, sessionsById))
+    // One row per session (worst spike), with spike_count showing how many turns crossed the threshold.
+    spikes: [...bestSpikeBySess.values()]
+      .map((event) => ({ ...spikeRow(event, sessionsById), spike_count: spikeCountBySess.get(event.session_id || "unknown") || 1 }))
       .sort((a, b) => b.delta_tokens - a.delta_tokens),
+    // Also expose harnesses present in the data so the dashboard can render a filter.
+    harnesses: [...new Set(events.map((e) => e.harness).filter(Boolean))].sort(),
+    // Computed concern threshold for the cumulative chart: 2× the 90th-percentile session total,
+    // floored at 10M so it is always a visible limit even in low-activity installs.
+    cumulative_concern: computeCumulativeConcern(sessions),
     top_repos: topBy(captures, (event) => event.repo?.label ?? "unknown"),
     top_tools: topBy(captures, (event) => event.tool?.name ?? event.event ?? "unknown"),
     top_mcp: topBy(captures.filter((event) => event.tool?.is_mcp), (event) => event.tool?.mcp_server ?? "unknown"),
@@ -104,7 +127,9 @@ export function spikeCause(event) {
   if ((event.prompt?.chars ?? 0) >= 8_000) {
     return { cause: "big-prompt", hint: "trim pasted context from the prompt" };
   }
-  return { cause: "other", hint: "inspect the session transcript for the heavy turn" };
+  // Delta is large but no oversized result or prompt: context is accumulating across many turns.
+  // Check the transcript to see which earlier turns are still inflating the window.
+  return { cause: "context-accumulation", hint: "context growing through many turns — use /compact or start a fresh session" };
 }
 
 function rollupCauses(spikeCaptures) {
@@ -207,10 +232,18 @@ function activitySummary(toolCounts, extCounts) {
 
 function deltaSpikeThreshold(captures) {
   const deltas = captures.map((event) => event.delta_tokens || 0).filter((value) => value > 0);
-  if (deltas.length < 2) return 0;
+  if (deltas.length < 2) return MIN_SPIKE_THRESHOLD;
   const mean = deltas.reduce((sum, value) => sum + value, 0) / deltas.length;
   const variance = deltas.reduce((sum, value) => sum + (value - mean) ** 2, 0) / deltas.length;
-  return Math.round(mean + SPIKE_SIGMA * Math.sqrt(variance));
+  return Math.max(MIN_SPIKE_THRESHOLD, Math.round(mean + SPIKE_SIGMA * Math.sqrt(variance)));
+}
+
+function computeCumulativeConcern(sessions) {
+  if (!sessions.length) return 20_000_000;
+  const totals = sessions.map((s) => s.total_tokens).filter((t) => t > 0).sort((a, b) => a - b);
+  if (!totals.length) return 20_000_000;
+  const p90 = totals[Math.floor(totals.length * 0.9)] ?? totals[totals.length - 1];
+  return Math.max(10_000_000, Math.round(p90 * 2));
 }
 
 function compareSpikeVsNormal(captures, threshold) {
@@ -313,17 +346,31 @@ function toolCost(captures) {
 }
 
 // Per functional group: the head-to-head (native-read vs mcp-code vs …) on avg tokens per call.
+// Also tracks calls per session to make high-call-count groups comparable to high-avg groups.
 function groupCost(captures) {
   const byGroup = new Map();
+  const groupSessions = new Map();
+  const totalSessions = new Set(captures.map((e) => e.session_id).filter(Boolean)).size || 1;
   for (const event of resultCaptures(captures)) {
     const g = toolGroup(event.last_result.tool);
     const cur = byGroup.get(g) ?? { group: g, calls: 0, total_chars: 0 };
     cur.calls += 1;
     cur.total_chars += event.last_result.chars;
     byGroup.set(g, cur);
+    if (!groupSessions.has(g)) groupSessions.set(g, new Set());
+    if (event.session_id) groupSessions.get(g).add(event.session_id);
   }
   return [...byGroup.values()]
-    .map((r) => ({ group: r.group, calls: r.calls, avg_tokens: approxTokens(r.total_chars / r.calls), total_tokens: approxTokens(r.total_chars) }))
+    .map((r) => {
+      const sessions = (groupSessions.get(r.group) || new Set()).size || 1;
+      return {
+        group: r.group,
+        calls: r.calls,
+        avg_tokens: approxTokens(r.total_chars / r.calls),
+        total_tokens: approxTokens(r.total_chars),
+        calls_per_session: Math.round(r.calls / sessions),
+      };
+    })
     .sort((a, b) => b.avg_tokens - a.avg_tokens);
 }
 

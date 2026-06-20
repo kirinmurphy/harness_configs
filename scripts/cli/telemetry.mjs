@@ -83,14 +83,19 @@ function wireBinSymlink() {
   let existing = null;
   try { existing = fs.lstatSync(target); } catch {}
   if (existing) {
-    const current = existing.isSymbolicLink() ? fs.readlinkSync(target) : null;
-    if (current && path.resolve(path.dirname(target), current) === source) {
+    // Already exists: report ok if it's already pointing to this repo's bin; otherwise skip — never
+    // overwrite a symlink the user may have pointing to a different roborepo clone.
+    const current = existing.isSymbolicLink()
+      ? path.resolve(path.dirname(target), fs.readlinkSync(target))
+      : null;
+    if (current === source) {
       console.log(`ok: ${target}`);
-      return;
+    } else {
+      console.log(`skip: ${target} already exists — link it manually if needed`);
     }
+    return;
   }
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  if (existing) fs.rmSync(target, { force: true });
   fs.symlinkSync(source, target);
   console.log(`link: ${target} -> ${source}`);
 }

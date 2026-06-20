@@ -17,7 +17,7 @@ backlog reads honestly.
   `.codex/skills` without losing global skill parity. (Originally listed under the
   stale name `skill symlink-local`.)
 - **Skill / plugin / MCP / memory native alignment — DONE** (see
-  [`native-alignment.md`](native-alignment.md)).
+  [`native-alignment.md`](completed/native-alignment.md)).
   Skills now fan per-skill into each harness's native dir (`~/.claude/skills`,
   `~/.codex/skills`) instead of the invented `~/.agents` path; Claude MCP servers are
   version-controlled in `manifests/inventory/mcp-servers.json` and re-applied by
@@ -85,7 +85,7 @@ shape — track it there, not here.
 
 ## Cross-References
 
-- [`native-alignment.md`](native-alignment.md) — runtime-store parity (skills, MCP,
+- [`native-alignment.md`](completed/native-alignment.md) — runtime-store parity (skills, MCP,
   plugins, memory); complete.
 - [`managed-adopt-update-installer.md`](managed-adopt-update-installer.md) —
   install-mode mechanics (managed / adopt / update); the consumer of item 1's

@@ -34,7 +34,7 @@ Use the CLI to update items and configuation to your global setup that will work
 | `roborepo update`                | Re-apply harness config on this machine to pick up new or changed global config.                     |
 | `roborepo mcp add <name-or-url>` | Register an MCP server with both Claude and Codex in one step.                                       |
 | `roborepo index code [path]`     | Index a repo's source for jcodemunch so agents find code via symbol search instead of reading files. |
-| `roborepo telemetry status`      | Show local token-usage capture state; `telemetry serve` opens the local token-spike dashboard (with spike-cause attribution). `telemetry purge --all --backup` resets capture, backing up first. |
+| `roborepo telemetry start` / `stop` | Start (or stop) token-usage capture plus the local token-spike dashboard, served detached at `http://127.0.0.1:4317` (with spike-cause attribution). `telemetry status` shows capture state; `telemetry serve [--detach]` runs just the dashboard; `telemetry purge --all --backup` resets capture, backing up first. |
 | `roborepo doctor`                | Health-check the install and report what is linked, missing, or drifted.                             |
 
 [View all roborepo commands](docs/reference/services/roborepo-cli.md)
@@ -42,6 +42,8 @@ Use the CLI to update items and configuation to your global setup that will work
 ## Global Behavior
 
 Installing the `roborepo` core applies a default set of global packages and configurations automatically — skills, rules, hooks, commands, permission profiles, and the default MCP servers. (Telemetry is the one exception: it stays off unless you turn it on.) There is no setup step to work through; everything below is installed for you.
+
+> **Just want token telemetry?** You can install only the local telemetry capture + dashboard — without the rest of the global config — with `roborepo telemetry install` (or `./bin/roborepo telemetry install` from a fresh clone). It wires just the capture hooks, so you can measure your token usage before adopting the full suite; upgrade later by re-running the normal install. Then `roborepo telemetry start` to capture and open the dashboard.
 
 <!--
 A per-item onboarding experience (choose individual skills/commands/MCP servers) is in progress; see

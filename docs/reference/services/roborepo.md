@@ -17,7 +17,7 @@ subcommand implementations live under `scripts/cli/`, one module per category:
 | `scripts/cli/project-context.mjs` | `project-context inventory` (deterministic repo scan) |
 | `scripts/cli/mcp.mjs` | `mcp add` (Claude + Codex registration) |
 | `scripts/cli/presets.mjs` | `onboard`, `bundle status\|apply\|check\|remove` |
-| `scripts/cli/telemetry.mjs` | `telemetry enable\|disable\|status\|report\|export\|serve\|backup\|purge` |
+| `scripts/cli/telemetry.mjs` | `telemetry install\|start\|stop\|enable\|disable\|status\|report\|export\|serve\|backup\|purge\|capture` |
 | `scripts/cli/telemetry-transcript.mjs` | parse harness transcript -> token/tool/MCP session stats + tool-result sizes |
 | `scripts/cli/telemetry-analyze.mjs` | sessions, spikes, spike causes, token contributors, usage windows, spike-vs-normal |
 | `scripts/cli/telemetry-serve.mjs` + `telemetry-dashboard.mjs` | loopback-only charting dashboard |
@@ -85,6 +85,8 @@ roborepo — choose an action:
   project-context inventory  scan a repo and write generated project-context facts
   onboard         choose behavior bundles
   bundle status   inspect selected behavior bundles
+  telemetry start   capture + open the local dashboard (detached)
+  telemetry stop    stop the dashboard + capture
   telemetry status  show telemetry capture state
   run            run a command with trimmed output
 
@@ -122,7 +124,8 @@ roborepo watch code  [path]
 roborepo project-context inventory [path] [--summary]
 roborepo onboard
 roborepo bundle status|apply|check|remove [bundle...]
-roborepo telemetry enable|disable|status|report|export|serve|backup|purge
+roborepo telemetry install|start|stop|enable|disable|status|report|export|serve|backup|purge
+roborepo telemetry serve [--detach] [--port <n>]
 
 roborepo run <cmd> [args...]
 
@@ -149,8 +152,9 @@ relative or absolute — roborepo resolves it to an absolute path before use.
 - **Day to day** — `index code|docs` are one-shot indexers; `watch code` runs a live indexer (and
   writes the pidfile the Claude SessionStart hook reads to report watcher status); `mcp add`
   registers MCP servers with Claude + Codex; `bundle` manages the optional bundle selections;
-  `telemetry` enables or disables the local capture/reporting path; `run` executes a command and
-  prints only a trimmed tail of its output.
+  `telemetry start`/`stop` are the everyday commands (capture + detached dashboard on/off), with
+  `enable`/`disable` and `serve` as the lower-level primitives, and `telemetry install` for a
+  telemetry-only install; `run` executes a command and prints only a trimmed tail of its output.
 - **Skills** — `skill new` scaffolds a shared automatic helper, skill-backed command, or standalone
   command and updates the relevant manifests, generated links, generated slash commands, and README
   rows. `skill export-to-local` bundles the shared skills into a `.zip` and copies them into the
@@ -198,9 +202,26 @@ machine, and the dashboard binds to `127.0.0.1` only.
 **Opt-in by design.** A fresh install deploys the capture hooks but does NOT enable capture — the
 hooks no-op until `roborepo telemetry enable` writes `~/.roborepo/telemetry/state.json {enabled:true}`.
 This is deliberate: an always-on spool grows with every session, so capture is something the user
-turns on (`enable`) and off (`disable`) explicitly. To keep an enabled spool bounded, each
-`<harness>.jsonl` is size-capped (~25 MB): when exceeded, the oldest records are dropped and the
-newest ~70% kept (records are chronological), so the file can't fill the disk.
+turns on and off explicitly. To keep an enabled spool bounded, each `<harness>.jsonl` is size-capped
+(~25 MB): when exceeded, the oldest records are dropped and the newest ~70% kept (records are
+chronological), so the file can't fill the disk.
+
+**Lifecycle — `start` / `stop`.** These are the everyday commands and compose the lower-level
+primitives: `roborepo telemetry start` runs `enable` (capture on), then forks the dashboard server
+detached and prints its URL (`http://127.0.0.1:4317`); `roborepo telemetry stop` kills the detached
+server and runs `disable`. The detached server's PID is tracked in
+`~/.local/state/roborepo/telemetry-server.pid` so `stop` (and a later `start`, which restarts to pick
+up code changes) can find it; a stale PID file (process gone) is detected and cleaned up. `enable`,
+`disable`, and `serve` remain as primitives for edge cases — e.g. `serve` alone to browse historical
+spool data with capture off.
+
+**Telemetry-only install.** `roborepo telemetry install` formalizes a standalone telemetry setup
+without the rest of roborepo: it symlinks `~/.local/bin/roborepo` (if not already present), writes
+`state.json {enabled:true}` directly, and wires only the 5 capture hooks into `~/.claude/settings.json`
+and `~/.codex/hooks.json` — none of the full operational hook set. This is the supported path for
+measuring baseline token usage before adopting the full suite; upgrading is just re-running the normal
+install. (Note: `telemetry start`/`enable` apply the full telemetry *preset* including operational
+hooks, which is correct for a full install — `telemetry install` intentionally bypasses that.)
 
 **Codex hook trust.** Codex only runs hooks the user has trusted. After install, the next Codex
 session prompts to trust the roborepo-managed `~/.codex/hooks.json` — approve it once and capture (and
@@ -267,8 +288,9 @@ id, heaviest turns surfaced, plus a copy-paste analysis prompt).
 > bare tool names Codex sometimes logs (e.g. `search_symbols`), via a known-tool table in
 > `telemetry-transcript.mjs` — without it, Codex MCP usage is undercounted.
 
-`roborepo telemetry serve [--port <n>]` (default `4317`) starts a dependency-free local web dashboard
-on `127.0.0.1`. It serves the same analysis as JSON and renders it with a self-contained `<canvas>`
+`roborepo telemetry serve [--detach] [--port <n>]` (default `4317`) starts a dependency-free local web
+dashboard on `127.0.0.1` (`--detach` forks it into the background and writes the PID file; this is
+what `telemetry start` uses under the hood). It serves the same analysis as JSON and renders it with a self-contained `<canvas>`
 UI: a "what's causing spikes" panel leads with the spike-cause breakdown (each row a behavior to
 change), the recent-usage estimate shows in the header, and the token-delta timeline buckets to one
 column per pixel client-side, so dense histories with thousands of captures stay fast and the spike

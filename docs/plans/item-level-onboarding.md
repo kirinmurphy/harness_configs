@@ -266,7 +266,7 @@ For each selected item, `update` resolves to exactly one outcome per home path:
 
 `update` still never *adds* a brand-new repo item the user did not select — new items are opt-in via
 `onboard`. And if a selected item *moves* inside the repo (rather than being deleted), the installer
-needs the relocation story shared with `docs/plans/portable-install-relocation.md`.
+needs the relocation story shared with `docs/plans/completed/portable-install-relocation.md`.
 
 This keeps `update` = "reconcile my accepted items with current repo source — repoint what moved,
 prune what the repo deleted, preserve what the user owns" and `onboard` = "choose/add items", with no
@@ -356,7 +356,7 @@ No state migration is needed: this ships fresh. There is no legacy bundle-level 
   Update vs onboard). This is distinct from a user-owned collision, which is preserved, not pruned.
 - **Source path moved.** If a selected item moves inside the repo, the direct symlink model needs an
   explicit relocation map or the install path becomes invalid. This is the main maintenance cost of
-  item-level symlinks, and it should be cross-linked to [`portable-install-relocation.md`](portable-install-relocation.md).
+  item-level symlinks, and it should be cross-linked to [`portable-install-relocation.md`](completed/portable-install-relocation.md).
 - **User's own skills in the home folder.** Because the home path now receives item-level symlinks,
   a user who hand-added skills directly into `~/.claude/skills` would collide one item at a time.
   Collision policy must back up or preserve per existing rules — this is still the highest-risk
@@ -374,7 +374,7 @@ No state migration is needed: this ships fresh. There is no legacy bundle-level 
   selected skills/commands until repair runs — this is a live hazard the copies model did not have.
   `repair` should relink repo-owned manifest rows; `update` should re-evaluate selections from the new
   checkout. This interacts directly with the existing relocation work in
-  `docs/plans/portable-install-relocation.md`; item-level links must be covered by the same repair
+  `docs/plans/completed/portable-install-relocation.md`; item-level links must be covered by the same repair
   story, not a separate one.
 - **Non-interactive / non-TTY.** Wizard needs a TTY. Non-TTY must fall back (error with guidance, or
   `bundle apply` for scripted use), consistent with current `maybeRunPresetOnboarding` behavior

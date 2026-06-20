@@ -1,9 +1,11 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 import { markTelemetrySelected, presetsApply } from "./presets.mjs";
-import { telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
+import { repoRoot } from "./paths.mjs";
+import { telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetryPidPath, telemetrySpoolDir } from "./state-paths.mjs";
 import { mcpServerOf, transcriptStats } from "./telemetry-transcript.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { startTelemetryServer } from "./telemetry-serve.mjs";
@@ -17,6 +19,12 @@ const SCHEMA_VERSION = 2;
 export function telemetryCommand(rest) {
   const [sub, ...args] = rest;
   switch (sub) {
+    case "install":
+      return telemetryInstall(args);
+    case "start":
+      return telemetryStart(args);
+    case "stop":
+      return telemetryStop(args);
     case "enable":
       return telemetryEnable(args);
     case "disable":
@@ -36,9 +44,102 @@ export function telemetryCommand(rest) {
     case "capture":
       return telemetryCapture(args);
     default:
-      console.error("usage: roborepo telemetry enable|disable|status|report|export|serve|backup|purge");
+      console.error("usage: roborepo telemetry install|start|stop|enable|disable|status|report|export|serve|backup|purge");
       process.exit(2);
   }
+}
+
+// Telemetry-only install: wires just the 5 capture hooks into the harness settings files, without
+// touching the rest of roborepo's operational hooks or presets. Intended for Claude/Codex users who
+// want token visibility before committing to a full roborepo install.
+function telemetryInstall(args) {
+  rejectArgs(args);
+  // Symlink ~/.local/bin/roborepo → repo bin (only if not already there).
+  wireBinSymlink();
+  // Write state directly — no presetsApply, so operational hooks are not touched.
+  ensureTelemetryDirs();
+  writeTelemetryState({ enabled: true });
+  markTelemetrySelected(true);
+  // Wire capture hooks into whichever harness config files exist.
+  const claudeSettings = path.join(os.homedir(), ".claude", "settings.json");
+  if (fs.existsSync(path.join(os.homedir(), ".claude"))) {
+    wireCaptureHooks(claudeSettings, "claude");
+  }
+  const codexDir = path.join(os.homedir(), ".codex");
+  if (fs.existsSync(codexDir)) {
+    wireCaptureHooks(path.join(codexDir, "hooks.json"), "codex");
+  }
+  console.log("telemetry-only install complete.");
+  console.log("start the dashboard:   roborepo telemetry start");
+  console.log("view reports:          roborepo telemetry report");
+  console.log("upgrade to full suite: re-run the roborepo install script");
+}
+
+const CAPTURE_EVENTS = ["SessionStart", "PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"];
+
+function wireBinSymlink() {
+  const target = path.join(os.homedir(), ".local", "bin", "roborepo");
+  const source = path.join(repoRoot, "bin", "roborepo");
+  let existing = null;
+  try { existing = fs.lstatSync(target); } catch {}
+  if (existing) {
+    const current = existing.isSymbolicLink() ? fs.readlinkSync(target) : null;
+    if (current && path.resolve(path.dirname(target), current) === source) {
+      console.log(`ok: ${target}`);
+      return;
+    }
+  }
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  if (existing) fs.rmSync(target, { force: true });
+  fs.symlinkSync(source, target);
+  console.log(`link: ${target} -> ${source}`);
+}
+
+// Merge only the telemetry capture hooks into a harness settings file (settings.json or hooks.json).
+// Idempotent: skips events whose capture command is already present. Does not touch other hooks.
+function wireCaptureHooks(settingsPath, harness) {
+  let settings = {};
+  try { settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")); } catch {}
+  const hooks = settings.hooks || {};
+  let added = 0;
+  for (const event of CAPTURE_EVENTS) {
+    const cmd = `roborepo telemetry capture --harness ${harness} --event ${event}`;
+    const entries = hooks[event] || [];
+    const exists = entries.some((e) => (e.hooks || []).some((h) => h.command === cmd));
+    if (!exists) {
+      entries.push({ matcher: "", hooks: [{ type: "command", command: cmd }] });
+      hooks[event] = entries;
+      added++;
+    }
+  }
+  if (added > 0) {
+    settings.hooks = hooks;
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    console.log(`wired: ${added} capture hooks → ${settingsPath}`);
+  } else {
+    console.log(`ok: capture hooks already present → ${settingsPath}`);
+  }
+}
+
+function telemetryStart(args) {
+  rejectArgs(args);
+  ensureTelemetryDirs();
+  writeTelemetryState({ enabled: true });
+  presetsApply(["telemetry"]);
+  killExistingServer();
+  const port = 4317;
+  spawnDetachedServer(port);
+  console.log(`telemetry: capturing · dashboard: http://127.0.0.1:${port}`);
+}
+
+function telemetryStop(args) {
+  rejectArgs(args);
+  const stopped = stopServer();
+  ensureTelemetryDirs();
+  writeTelemetryState({ enabled: false });
+  markTelemetrySelected(false);
+  console.log(stopped ? "telemetry: disabled · server stopped" : "telemetry: disabled · no server was running");
 }
 
 function telemetryEnable(args) {
@@ -238,6 +339,14 @@ function telemetryExport(args) {
 
 function telemetryServe(args) {
   const options = parseServeArgs(args);
+  if (options.detach) {
+    killExistingServer();
+    spawnDetachedServer(options.port);
+    console.log(`telemetry dashboard: http://127.0.0.1:${options.port}  (detached · use: roborepo telemetry stop)`);
+    return;
+  }
+  // Clean up the PID file when the server exits cleanly (SIGTERM from stop or OS shutdown).
+  process.on("SIGTERM", () => { clearPid(); process.exit(0); });
   if (readTelemetryState().enabled !== true) {
     console.log("telemetry is disabled; serving whatever is already in the spool.");
   }
@@ -254,6 +363,14 @@ function telemetryServe(args) {
       const availableHarnesses = [...new Set(allEvents.map((e) => e.harness).filter(Boolean))].sort();
       const events = harness ? allEvents.filter((e) => e.harness === harness) : allEvents;
       const report = analyzeTelemetry(filterByWindow(events, window));
+      // Backfill session titles from transcripts: the transcript always has the first user message
+      // (turn 1), whereas the spool only captures prompts when hooks fired — so new sessions or
+      // sessions started before telemetry was enabled may have no spool title or a mid-chat title.
+      // Cap at top 20 sessions to bound latency; results are cached so 5s polls don't re-read files.
+      for (const s of report.sessions.slice(0, 20)) {
+        const t = cachedTranscriptTitle(s.session_id, s.harness || harness || "claude");
+        if (t) s.title = t;
+      }
       report.available_harnesses = availableHarnesses;
       report.deepread_cli = findDeepReadCli();
       return report;
@@ -264,15 +381,16 @@ function telemetryServe(args) {
 }
 
 function parseServeArgs(args) {
-  const options = { port: 4317 };
+  const options = { port: 4317, detach: false };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--port") options.port = Number(args[++i]);
     else if (arg.startsWith("--port=")) options.port = Number(arg.slice("--port=".length));
+    else if (arg === "--detach") options.detach = true;
     else rejectArgs([arg]);
   }
   if (!Number.isInteger(options.port) || options.port <= 0) {
-    console.error("usage: roborepo telemetry serve [--port <n>]");
+    console.error("usage: roborepo telemetry serve [--detach] [--port <n>]");
     process.exit(2);
   }
   return options;
@@ -440,6 +558,17 @@ function filterByWindow(events, window) {
     const ms = Date.parse(event.ts);
     return Number.isFinite(ms) && ms >= start && ms <= end;
   });
+}
+
+// Title cache: transcripts are append-only so the first user message never changes. Cache by id so
+// the 5-second dashboard poll doesn't re-stat/re-read files for every session on every tick.
+const _titleCache = new Map();
+function cachedTranscriptTitle(sessionId, harness) {
+  if (_titleCache.has(sessionId)) return _titleCache.get(sessionId);
+  const p = locateTranscript(sessionId, harness || "claude");
+  const t = p ? transcriptTitle(p) : null;
+  if (t) _titleCache.set(sessionId, t);
+  return t;
 }
 
 // Resolve a flagged event to its chat: find the transcript, surface the heaviest turns, and build a
@@ -682,6 +811,58 @@ function writeTelemetryState(patch) {
   ensureTelemetryDirs();
   const state = { ...readTelemetryState(), ...patch, updatedAt: new Date().toISOString() };
   fs.writeFileSync(telemetryStatePath(), JSON.stringify(state, null, 2) + "\n");
+}
+
+// --- PID management for the detached dashboard server ------------------------------------------
+
+function readPid() {
+  try {
+    return parseInt(fs.readFileSync(telemetryPidPath, "utf8").trim(), 10) || null;
+  } catch {
+    return null;
+  }
+}
+
+function isProcessRunning(pid) {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+function writePid(pid) {
+  fs.mkdirSync(path.dirname(telemetryPidPath), { recursive: true });
+  fs.writeFileSync(telemetryPidPath, String(pid));
+}
+
+function clearPid() {
+  try { fs.rmSync(telemetryPidPath, { force: true }); } catch {}
+}
+
+// Kill any existing detached server (stale or live). Clears the PID file unconditionally.
+function killExistingServer() {
+  const pid = readPid();
+  if (pid == null) return;
+  if (isProcessRunning(pid)) {
+    try { process.kill(pid, "SIGTERM"); } catch {}
+  }
+  clearPid();
+}
+
+// Kill the running server. Returns true if a live process was found and signalled.
+function stopServer() {
+  const pid = readPid();
+  if (pid == null) return false;
+  clearPid();
+  if (!isProcessRunning(pid)) return false;
+  try { process.kill(pid, "SIGTERM"); return true; } catch { return false; }
+}
+
+// Spawn a new foreground `serve` process in the background, write its PID, and detach.
+function spawnDetachedServer(port) {
+  const child = spawn(process.execPath, [process.argv[1], "telemetry", "serve", "--port", String(port)], {
+    detached: true,
+    stdio: "ignore",
+  });
+  writePid(child.pid);
+  child.unref();
 }
 
 function rejectArgs(args) {

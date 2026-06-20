@@ -11,3 +11,6 @@ export const telemetryCollectorDir = path.join(telemetryDir, "collector");
 // Backups live OUTSIDE telemetryDir so `purge --all` (which removes telemetryDir) can't delete the
 // snapshot it just took.
 export const telemetryBackupDir = path.join(roborepoStateDir, "telemetry-backups");
+// PID file for the detached dashboard server. Env override enables sandboxed testing.
+export const telemetryPidPath = process.env.ROBOREPO_TELEMETRY_PID_PATH
+  || path.join(os.homedir(), ".local", "state", "roborepo", "telemetry-server.pid");

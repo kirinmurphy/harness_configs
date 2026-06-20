@@ -344,9 +344,6 @@ let hoverIdx = -1;
 // Per-turn deltas: hide trivially-cheap markers below the median delta unless "show all" is on, so
 // the chart highlights the notable turns instead of noise. Toggled by the delta filter button.
 let showAllDeltas = false;
-// Cumulative concern line: a chat whose cumulative tokens cross this is "getting heavy" — drawn as
-// the same dashed red limit as the spike threshold. Tunable.
-const CUMULATIVE_CONCERN = 5_000_000;
 // Distinct colors for per-session lines in the cumulative views.
 const SESSION_COLORS = ["#58a6ff", "#3fb950", "#f0883e", "#bc8cff", "#f85149", "#56d4dd", "#e3b341", "#ff7b72"];
 // Tool-group colors for the cumulative-by-group view.
@@ -501,6 +498,14 @@ function drawCumulative(points, geo, legend) {
   ctx.strokeStyle = "#f85149"; ctx.setLineDash([4, 3]); ctx.beginPath();
   ctx.moveTo(M.left, cy); ctx.lineTo(W - M.right, cy); ctx.stroke(); ctx.setLineDash([]);
   ctx.fillStyle = "#f85149"; ctx.textAlign = "left"; ctx.fillText("concern " + tokShort(curCumulativeConcern), M.left + 4, cy - 4);
+  // Hover highlight: larger ring around the hovered point.
+  if (hoverIdx >= 0 && chartBars[hoverIdx]) {
+    const b = chartBars[hoverIdx];
+    ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, Math.PI * 2);
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, Math.PI * 2);
+    ctx.strokeStyle = b.color || "#fff"; ctx.lineWidth = 1; ctx.stroke();
+  }
   // Paginated legend: top N sessions with "view more" if there are more.
   const shown = legendShown.cumulative;
   const legendItems = drawnSeries.slice(0, shown).map((s, i) => {
@@ -552,6 +557,14 @@ function drawCumulativeByGroup(points, geo, legend) {
       ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
     }
   }
+  // Hover highlight for bygroup.
+  if (hoverIdx >= 0 && chartBars[hoverIdx]) {
+    const b = chartBars[hoverIdx];
+    ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
+    ctx.strokeStyle = b.color || "#fff"; ctx.lineWidth = 1; ctx.stroke();
+  }
   const shown = legendShown.bygroup;
   const legendItems = order.slice(0, shown).map((g) => {
     const color = GROUP_COLORS[g] || "#8b949e";
@@ -582,36 +595,47 @@ function barAt(clientX, clientY) {
   return best && bestD <= tol ? best : null;
 }
 
-// Map cursor to the nearest drawn bar: show a context tooltip AND highlight that bar. Nearest-by-x
-// so thin bars are still easy to hit. Hidden when the pointer is past the last bar or there is no data.
+// Map cursor to the nearest drawn bar/point: show a tooltip AND highlight it.
 function onTimelineHover(e) {
   const tip = document.getElementById("tooltip");
-  if (panState.dragging || chartMode !== "deltas") { tip.style.display = "none"; return; }
+  if (panState.dragging) { tip.style.display = "none"; return; }
   const canvas = document.getElementById("timeline");
   const rect = canvas.getBoundingClientRect();
-  const best = barAt(e.clientX);
-  // Repaint only when the highlighted bar changes, so hover stays cheap.
+  const best = barAt(e.clientX, e.clientY);
   const newIdx = best ? best.idx : -1;
   if (newIdx !== hoverIdx) { hoverIdx = newIdx; redrawChart(); }
   if (!best) { tip.style.display = "none"; return; }
   const p = best.point;
-  const spike = best.point.delta && document.body.dataset.threshold && p.delta >= Number(document.body.dataset.threshold);
-  const tool = p.mcp_tool ? p.tool + " (" + p.mcp_tool + ")" : p.tool || p.event || "—";
-  const rows = [
-    ["when", clockLabel(p.ts) + " · " + p.ts.slice(0, 10)],
-    ["event", p.event || "—"],
-    ["tool", tool],
-    p.file_ext ? ["file", "." + p.file_ext] : null,
-    p.result_chars != null ? ["result", fmt(p.result_chars) + " chars"] : null,
-    p.duration_ms != null ? ["took", p.duration_ms + " ms"] : null,
-    ["cause", p.cause || "—"],
-    ["repo", p.repo + (p.session_id ? " / " + short(p.session_id) : "")],
-  ].filter(Boolean);
-  tip.innerHTML =
-    "<div class='t-head" + (spike ? " t-spike" : "") + "'>" + (spike ? "▲ " : "") + "+" + fmt(p.delta) + " tok</div>" +
-    rows.map((r) => "<div class='t-row'><span>" + r[0] + ":</span> " + r[1] + "</div>").join("");
+  let tipHTML;
+  if (chartMode === "cumulative") {
+    const sess = sessionById(best.sessId);
+    const label = sess && sess.title ? clip(sess.title, 40) : short(best.sessId);
+    tipHTML = "<div class='t-head' style='color:" + (best.color || "var(--accent)") + "'>" + esc(label) + "</div>"
+      + "<div class='t-row'><span>total:</span> " + fmt(p.total || 0) + " tok</div>"
+      + "<div class='t-row'><span>when:</span> " + clockLabel(p.ts) + " · " + p.ts.slice(0, 10) + "</div>"
+      + "<div class='t-row'><span>click</span> to open session detail</div>";
+  } else if (chartMode === "bygroup") {
+    tipHTML = "<div class='t-head' style='color:" + (best.color || "var(--accent)") + "'>" + esc(best.group || "group") + "</div>"
+      + "<div class='t-row'><span>cumulative:</span> " + fmt(p.total || 0) + " tok</div>"
+      + "<div class='t-row'><span>when:</span> " + clockLabel(p.ts) + " · " + p.ts.slice(0, 10) + "</div>";
+  } else {
+    const spike = p.delta && document.body.dataset.threshold && p.delta >= Number(document.body.dataset.threshold);
+    const tool = p.mcp_tool ? p.tool + " (" + p.mcp_tool + ")" : p.tool || p.event || "—";
+    const rows = [
+      ["when", clockLabel(p.ts) + " · " + p.ts.slice(0, 10)],
+      ["event", p.event || "—"],
+      ["tool", tool],
+      p.file_ext ? ["file", "." + p.file_ext] : null,
+      p.result_chars != null ? ["result", fmt(p.result_chars) + " chars"] : null,
+      p.duration_ms != null ? ["took", p.duration_ms + " ms"] : null,
+      ["cause", p.cause || "—"],
+      ["repo", p.repo + (p.session_id ? " / " + short(p.session_id) : "")],
+    ].filter(Boolean);
+    tipHTML = "<div class='t-head" + (spike ? " t-spike" : "") + "'>" + (spike ? "▲ " : "") + "+" + fmt(p.delta) + " tok</div>"
+      + rows.map((r) => "<div class='t-row'><span>" + r[0] + ":</span> " + r[1] + "</div>").join("");
+  }
+  tip.innerHTML = tipHTML;
   tip.style.display = "block";
-  // Position near the cursor, flipping left when close to the right edge so it stays on-screen.
   const tipW = tip.offsetWidth;
   const left = best.x + tipW + 14 > rect.width ? best.x - tipW - 8 : best.x + 8;
   tip.style.left = Math.max(0, left) + "px";
@@ -770,22 +794,40 @@ function onTimelineUp(e) {
   // any click on a button or table — which this window-level mouseup also receives — from opening a
   // bar modal.
   if (pressedOnCanvas && e.target === timelineCanvas && panState.distMoved < 4) {
-    const best = barAt(e.clientX);
-    if (best) openCaptureModal(best.point);
+    const best = barAt(e.clientX, e.clientY);
+    if (best) {
+      if (chartMode === "cumulative" && best.sessId) {
+        const s = sessionById(best.sessId);
+        if (s) openSessionModal(s);
+      } else if (chartMode !== "bygroup") {
+        openCaptureModal(best.point);
+      }
+    }
   }
 }
 
-// The headline panel: each spike cause as a row, biggest token cost first, with the fix to apply.
+// The headline panel: each spike cause as a row, biggest token cost first. Click a row for what to do.
 function renderCauses(rows) {
   if (!rows || !rows.length) { document.getElementById("causes").innerHTML = "<p style='color:#8b949e'>no spikes yet — nothing blowing up your tokens</p>"; return; }
-  table("causes", ["cause", "spikes", "avg Δ", "worst Δ", "where", "what to change"], rows.slice(0, 8).map((c) => [
+  const data = rows.slice(0, 8);
+  table("causes", ["cause", "spikes", "avg Δ", "worst Δ", "repo"], data.map((c) => [
     c.cause,
     { num: c.spikes },
     { num: fmt(c.avg_delta) },
     { num: "+" + fmt(c.worst_delta), cls: "spike" },
     c.worst_repo || "unknown",
-    c.hint || "",
-  ]));
+  ]), data.map((c) => () => openModal(
+    c.cause + " — what to do",
+    c.spikes + " spikes · worst +" + fmt(c.worst_delta) + " tok in " + (c.worst_repo || "unknown"),
+    [
+      ["cause", c.cause],
+      ["total spikes", c.spikes],
+      ["avg delta", fmt(c.avg_delta) + " tok"],
+      ["worst delta", "+" + fmt(c.worst_delta) + " tok"],
+      ["worst repo", c.worst_repo || "unknown"],
+      ["what to change", c.hint || "inspect the session transcript"],
+    ]
+  )));
 }
 // Human-readable session duration from first→last capture: "18m", "2h 5m", "<1m".
 function durLabel(first, last) {
@@ -843,19 +885,21 @@ function renderSessions(rows) {
   }), data.map((s) => () => openSessionModal(s)));
 }
 function renderSpikes(rows) {
-  if (!rows.length) { document.getElementById("spikes").innerHTML = "<p style='color:#8b949e'>no spikes</p>"; return; }
+  if (!rows || !rows.length) { document.getElementById("spikes").innerHTML = "<p style='color:#8b949e'>no spikes</p>"; return; }
   const data = rows.slice(0, 12);
-  table("spikes", ["time", "where", "Δ tokens", "event"], data.map((s) => [
+  table("spikes", ["time", "where", "worst Δ", "event", "hits"], data.map((s) => [
     s.ts.slice(0, 19),
-    esc(s.context?.title ? clip(s.context.title, 28) : short(s.session_id)),
+    esc(s.context?.title ? clip(s.context.title, 32) : short(s.session_id)),
     { num: "+" + fmt(s.delta_tokens), cls: "spike" },
     s.tool ? s.event + " (" + s.tool + ")" : s.event,
+    s.spike_count > 1 ? { num: "×" + s.spike_count } : "—",
   ]), data.map((s) => () => flaggedEventModal({
     title: "▲ +" + fmt(s.delta_tokens) + " tokens",
-    sub: s.event + (s.tool ? " · " + s.tool : ""),
+    sub: s.event + (s.tool ? " · " + s.tool : "") + (s.spike_count > 1 ? " · " + s.spike_count + " turns above threshold" : ""),
     rows: [
       ["timestamp", s.ts],
-      ["delta tokens", fmt(s.delta_tokens)],
+      ["worst delta", fmt(s.delta_tokens) + " tok"],
+      ["turns above threshold", s.spike_count],
       ["cumulative total", fmt(s.total_tokens)],
       ["event", s.event],
       ["tool", s.tool],
@@ -889,14 +933,24 @@ function renderInsights(rows) {
   ).join("");
 }
 
-// Optional LLM synthesis on demand. Hits /api/insights-llm (shells to claude -p server-side). Slow
-// (seconds); shows a spinner, degrades to a note if claude is unavailable.
+// Optional LLM synthesis on demand. Hits /api/insights-llm (shells to claude/codex -p server-side).
+// Slow (seconds); shows a spinner, degrades to a note if no CLI is available.
 async function runDeepRead() {
   const out = document.getElementById("deepreadout");
-  out.textContent = "asking claude… (this can take a few seconds)";
+  const copyWrap = document.getElementById("deepreadcopy");
+  copyWrap.style.display = "none";
+  lastDeepReadText = null;
+  const cli = deepReadCli || "claude";
+  out.textContent = "asking " + cli + "… (this can take a few seconds)";
   try {
     const data = await (await fetch("/api/insights-llm")).json();
-    out.textContent = data.ok ? data.text : "deeper read unavailable: " + (data.note || "unknown");
+    if (data.ok) {
+      out.textContent = data.text;
+      lastDeepReadText = data.text;
+      copyWrap.style.display = "";
+    } else {
+      out.textContent = "deeper read unavailable: " + (data.note || "unknown");
+    }
   } catch (err) {
     out.textContent = "deeper read failed: " + (err && err.message || err);
   }
@@ -904,8 +958,8 @@ async function runDeepRead() {
 
 function renderGroupCost(rows) {
   if (!rows || !rows.length) { emptyPanel("groupcost", "no tool-result data yet"); return; }
-  table("groupcost", ["group", "avg tokens/call", "calls", "total"], rows.map((r) => [
-    esc(r.group), { num: fmt(r.avg_tokens) }, { num: r.calls }, { num: fmt(r.total_tokens) },
+  table("groupcost", ["group", "avg tokens/call", "calls/session", "calls", "total"], rows.map((r) => [
+    esc(r.group), { num: fmt(r.avg_tokens) }, { num: r.calls_per_session ?? "—" }, { num: r.calls }, { num: fmt(r.total_tokens) },
   ]));
 }
 function renderToolCost(rows) {
@@ -954,9 +1008,9 @@ function renderLoops(rows) {
   if (!rows || !rows.length) { panel.style.display = "none"; return; }
   panel.style.display = "";
   const data = rows.slice(0, 10);
-  table("loops", ["session", "tool", "repeats", "hint"], data.map((l) => [
-    esc(l.context?.title ? clip(l.context.title, 28) : l.repo + "/" + short(l.session_id)),
-    esc(l.tool), { num: l.max_repeat, cls: "spike" }, esc(l.hint),
+  table("loops", ["session", "tool", "repeats"], data.map((l) => [
+    esc(l.context?.title ? clip(l.context.title, 36) : l.repo + "/" + short(l.session_id)),
+    esc(l.tool), { num: l.max_repeat, cls: "spike" },
   ]), data.map((l) => () => flaggedEventModal({
     title: "⚠ loop · " + l.tool + " ×" + l.max_repeat,
     sub: l.repo + (l.harness ? " · " + l.harness : ""),
@@ -1005,11 +1059,36 @@ function table(id, headers, rows, details) {
   tableDetails[id] = details || null;
 }
 
-// Delegated clicks for dynamic content: table rows, the delta show-all toggle, and cumulative
-// session chips (all rendered fresh on each repaint, so static listeners would go stale).
+// Delegated clicks for dynamic content: table rows, the delta show-all toggle, session chips,
+// harness filter, view-more legend buttons, and copy response (all rendered fresh on each repaint).
 document.addEventListener("click", (e) => {
   if (e.target.closest("#deepread")) { runDeepRead(); return; }
+  if (e.target.closest("#copydeepread")) {
+    if (lastDeepReadText) {
+      copyText(lastDeepReadText).then(() => {
+        const btn = document.getElementById("copydeepread");
+        const orig = btn.textContent;
+        btn.textContent = "copied ✓";
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      });
+    }
+    return;
+  }
   if (e.target.closest("#deltafilter")) { showAllDeltas = !showAllDeltas; redrawChart(); return; }
+  if (e.target.closest("#viewmore-cumulative")) {
+    legendShown.cumulative += 10; redrawChart(); return;
+  }
+  if (e.target.closest("#viewmore-bygroup")) {
+    legendShown.bygroup += 10; redrawChart(); return;
+  }
+  // Harness filter buttons.
+  const harnessBtn = e.target.closest("#harnessfilt button[data-harness]");
+  if (harnessBtn) {
+    view.harness = harnessBtn.dataset.harness === "all" ? null : harnessBtn.dataset.harness;
+    for (const b of document.querySelectorAll("#harnessfilt button")) b.classList.toggle("active", b === harnessBtn);
+    load(true);
+    return;
+  }
   const chip = e.target.closest(".sesschip");
   if (chip) { const s = sessionById(chip.dataset.sid); if (s) openSessionModal(s); return; }
   const tr = e.target.closest("tr.clickable");
@@ -1038,9 +1117,10 @@ window.addEventListener("mouseup", onTimelineUp);
 document.getElementById("ranges").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-range]");
   if (!btn) return;
-  for (const b of document.querySelectorAll("#ranges button")) b.classList.toggle("active", b === btn);
+  for (const b of document.querySelectorAll("#ranges button[data-range]")) b.classList.toggle("active", b === btn);
   view.rangeMs = btn.dataset.range === "all" ? null : Number(btn.dataset.range);
   view.panEnd = null;
+  legendShown = { cumulative: 5, bygroup: 5 };
   load(true);
 });
 

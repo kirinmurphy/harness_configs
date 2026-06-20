@@ -24,7 +24,7 @@ export function listSourceSkills(srcDir) {
 export function resolveClientSkillDirs(repoRoot, { create = false } = {}) {
   const candidates = [
     { dir: path.join(repoRoot, ".claude", "skills") },
-    { dir: path.join(repoRoot, ".agents", "skills") },
+    { dir: path.join(repoRoot, ".codex", "skills") },
   ];
   if (!create) return candidates.filter((c) => fs.existsSync(c.dir)).map((c) => c.dir);
 

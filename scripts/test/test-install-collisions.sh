@@ -206,7 +206,7 @@ test_direct_harness_installers_export_root_configs() {
   assert_regular_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "direct Codex installer copies root config as local file"
   assert_symlink_target "$home_dir/.claude/CLAUDE.md" "$repo_root/globals/claude/CLAUDE.md" "direct Claude installer links read-mostly assets"
   assert_symlink_target "$home_dir/.codex/AGENTS.md" "$repo_root/globals/codex/AGENTS.md" "direct Codex installer links read-mostly assets"
-  assert_symlink_target "$home_dir/.agents/skills" "$repo_root/globals/agents/skills" "direct Codex installer links canonical .agents skills"
+  assert_symlink_target "$home_dir/.codex/skills/blog" "$repo_root/globals/agents/skills/blog" "direct Codex installer links per-skill symlinks into ~/.codex/skills"
 }
 
 test_direct_harness_installers_convert_root_symlinks() {
@@ -247,16 +247,14 @@ test_old_repo_managed_symlinks_are_migrated() {
   assert_regular_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "old Codex root config symlink converts to local file"
   assert_symlink_target "$home_dir/.claude/CLAUDE.md" "$repo_root/globals/claude/CLAUDE.md" "old Claude asset symlink relinks to globals"
   assert_symlink_target "$home_dir/.claude/hooks" "$repo_root/globals/claude/hooks" "old Claude hooks symlink relinks to globals"
-  assert_symlink_target "$home_dir/.claude/skills" "$repo_root/globals/claude/skills" "old Claude skills symlink relinks to globals"
   assert_symlink_target "$home_dir/.codex/AGENTS.md" "$repo_root/globals/codex/AGENTS.md" "old Codex AGENTS symlink relinks to globals"
   assert_symlink_target "$home_dir/.codex/hooks.json" "$repo_root/globals/codex/hooks.json" "old Codex hooks symlink relinks to globals"
   assert_symlink_target "$home_dir/.codex/rules" "$repo_root/globals/codex/rules" "old Codex rules symlink relinks to globals"
-  assert_symlink_target "$home_dir/.agents/skills" "$repo_root/globals/agents/skills" "old .agents skills symlink relinks to globals"
-  # ~/.codex/skills is no longer managed (it is Codex's own writable skill dir). An old
-  # repo-symlink there must be PRUNED, not relinked — so installs don't land in the repo.
-  [[ ! -e "$home_dir/.codex/skills" && ! -L "$home_dir/.codex/skills" ]] \
-    && pass "old transitional Codex skills symlink is pruned" \
-    || fail "old transitional Codex skills symlink is pruned"
+  # Old dir-level ~/.claude/skills symlink is cleaned up by the migration cleanup row.
+  # Old ~/.agents/skills and transitional ~/.codex/skills dir-level symlinks are no longer managed.
+  # After install, ~/.codex/skills/ is a real directory with per-skill managed symlinks.
+  assert_symlink_target "$home_dir/.codex/skills/blog" "$repo_root/globals/agents/skills/blog" "old machine migrated: per-skill Codex links created"
+  assert_symlink_target "$home_dir/.claude/skills/blog" "$repo_root/globals/agents/skills/blog" "old machine migrated: per-skill Claude links created"
 }
 
 test_direct_claude_installer_removes_stale_retired_symlink() {
@@ -594,7 +592,7 @@ test_windows_installer_root_preflight_order() {
   local windows_script root_line claude_line
   windows_script="$repo_root/scripts/install/install-windows.ps1"
   root_line="$(awk '/^Invoke-RootConfigPreflight$/ { print NR; exit }' "$windows_script")"
-  claude_line="$(awk '/^# Claude managed links and root config export$/ { print NR; exit }' "$windows_script")"
+  claude_line="$(awk '/^# Claude managed links/ { print NR; exit }' "$windows_script")"
 
   [[ -n "$root_line" && -n "$claude_line" && "$root_line" -lt "$claude_line" ]] \
     && pass "Windows installer resolves root config collisions before linking" \
@@ -602,7 +600,7 @@ test_windows_installer_root_preflight_order() {
   assert_file_contains "$windows_script" 'function Get-ManifestRows' "Windows installer reads manifest rows"
   assert_file_contains "$windows_script" 'Resolve-ManifestHomeRoot' "Windows installer resolves manifest home roots"
   assert_file_contains "$windows_script" 'Invoke-ManifestRows "Claude" @\("claude"\)' "Windows installer applies Claude manifest rows"
-  assert_file_contains "$windows_script" 'Invoke-ManifestRows "Codex" @\("codex", "agents"\)' "Windows installer applies Codex and agents manifest rows"
+  assert_file_contains "$windows_script" 'Invoke-ManifestRows "Codex" @\("codex"\)' "Windows installer applies Codex manifest rows"
   assert_file_contains "$windows_script" 'if \(-not \$adoptRootConfig\[\$row.Harness\]\)' "Windows installer skips adopted root config from manifest"
   assert_file_not_contains "$windows_script" 'Link-Item "globals/codex/AGENTS.md"' "Windows installer does not hand-list Codex AGENTS link"
   assert_file_not_contains "$windows_script" 'Link-Item "globals/agents/skills"[[:space:]]+\(Join-Path \$agentsHome "skills"\)' "Windows installer does not hand-list canonical Codex skills link"

@@ -1,4 +1,4 @@
 # Harness metadata for install presence checks.
 # Columns: harness<TAB>home_roots_csv<TAB>presence_home_roots_csv<TAB>display_name
 claude	claude	claude	Claude
-codex	codex,agents	codex,agents	Codex
+codex	codex	codex	Codex

@@ -18,7 +18,7 @@
 #   resolved to an absolute path. Output columns:
 #       harness <TAB> kind <TAB> src_rel <TAB> home_abs <TAB> flags
 #   Filters (each optional, "-" or empty = no filter):
-#       harness : claude | codex | agents
+#       harness : claude | codex
 #       kind    : link | root_config | cleanup
 #   Comment lines (#...) and blank lines are skipped. Callers split with IFS=$'\t'.
 #
@@ -28,12 +28,11 @@ manifest_path() {
   echo "${repo_root}/manifests/platform/manifest.tsv"
 }
 
-# Resolve a home_root token (claude|codex|agents) to an absolute dir.
+# Resolve a home_root token (claude|codex) to an absolute dir.
 _manifest_home_root() {
   case "$1" in
     claude) echo "${HOME}/.claude" ;;
     codex)  echo "${HOME}/.codex" ;;
-    agents) echo "${HOME}/.agents" ;;
     *) echo "manifest: unknown home_root '$1'" >&2; return 1 ;;
   esac
 }

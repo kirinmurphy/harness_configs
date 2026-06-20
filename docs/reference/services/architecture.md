@@ -38,7 +38,7 @@ flowchart LR
 
 Most files are symlinked directly from the repo into the tool home directory. Root config files are different: `~/.claude/settings.json` and `~/.codex/config.toml` are mutable active files, so the installer copies repo baselines when missing or identical and asks before merging existing local content.
 
-Codex (`~/.codex/` ← `globals/codex/`, plus skills under `~/.agents/` ← `globals/agents/`):
+Codex (`~/.codex/` ← `globals/codex/`, plus per-skill links into `~/.codex/skills/`):
 
 - `AGENTS.md`
 - `config.toml` exported as a local active file
@@ -46,8 +46,7 @@ Codex (`~/.codex/` ← `globals/codex/`, plus skills under `~/.agents/` ← `glo
 - `MANAGED_BY_ROBOREPO.md`
 - `commands/`
 - `rules/`
-- `skills/` — Codex scans `~/.agents/skills` **exclusively**, so the canonical link is
-  `~/.agents/skills → globals/agents/skills`.
+- `skills/<name>/` — per-skill symlinks: `~/.codex/skills/<name> → globals/agents/skills/<name>`
 
 Claude (`~/.claude/` ← `globals/claude/`):
 
@@ -67,15 +66,15 @@ Root config files are mutable user state. The repo keeps portable baseline templ
 Repo files are the source of truth for read-mostly assets. The global harness path observes them through symlinks.
 
 ```text
-~/.codex/AGENTS.md      -> <repo>/globals/codex/AGENTS.md
-~/.codex/commands       -> <repo>/globals/codex/commands
-~/.codex/hooks.json     -> <repo>/globals/codex/hooks.json
-~/.codex/rules          -> <repo>/globals/codex/rules
-~/.agents/skills        -> <repo>/globals/agents/skills
-~/.claude/CLAUDE.md     -> <repo>/globals/claude/CLAUDE.md
-~/.claude/commands      -> <repo>/globals/claude/commands
-~/.claude/hooks         -> <repo>/globals/claude/hooks
-~/.claude/skills        -> <repo>/globals/claude/skills
+~/.codex/AGENTS.md              -> <repo>/globals/codex/AGENTS.md
+~/.codex/commands               -> <repo>/globals/codex/commands
+~/.codex/hooks.json             -> <repo>/globals/codex/hooks.json
+~/.codex/rules                  -> <repo>/globals/codex/rules
+~/.codex/skills/<name>          -> <repo>/globals/agents/skills/<name>   (per-skill, enumerate-step)
+~/.claude/CLAUDE.md             -> <repo>/globals/claude/CLAUDE.md
+~/.claude/commands              -> <repo>/globals/claude/commands
+~/.claude/hooks                 -> <repo>/globals/claude/hooks
+~/.claude/skills/<name>         -> <repo>/globals/agents/skills/<name>   (per-skill, enumerate-step)
 ```
 
 Implication: updates in this repo become active globally for these assets. User edits at the global path edit the repo file through the symlink.
@@ -171,35 +170,31 @@ This needs either native harness include support or a generated/merged config pi
 ### Shared skills: canonical source + per-harness fan-out
 
 The canonical shared source is `globals/agents/skills/<name>/` (each a folder with a `SKILL.md`).
-The two harnesses reach it differently because Codex and Claude scan different paths:
+Both harnesses reach skills via their native skill dirs:
 
-- **Codex** scans `~/.agents/skills` exclusively. So `install/main.sh` links
-  `~/.agents/skills → globals/agents/skills` directly. Codex needs **no** per-skill intermediate dir, and there
-  is no longer a `globals/codex/skills/` directory in the repo. Codex's own `.system/` skills
-  (imagegen, openai-docs, skill-creator, …) are real files living at `globals/agents/skills/.system/`,
-  so they ride into `~/.agents/skills/.system` automatically.
-- **Claude** scans `~/.claude/skills`. That is a folder symlink to the repo's `globals/claude/skills/`,
-  inside which each shared skill is an individual symlink `<name> -> ../../agents/skills/<name>`.
-  The per-skill layer lets Claude carry the shared skills alongside any Claude-only ones.
+- **Codex** reads `~/.codex/skills`. The installer creates `~/.codex/skills/<name> →
+  globals/agents/skills/<name>` for each shared skill. Codex's own native skills are real
+  directories at `~/.codex/skills/.system/` and are left untouched.
+- **Claude** reads `~/.claude/skills`. The installer creates `~/.claude/skills/<name> →
+  globals/agents/skills/<name>` for each shared skill.
 
-A skill's source folder alone is therefore not enough for Claude; without the per-skill
-symlinks Claude does not see it. `scripts/build/link-skills.sh` derives the Claude per-skill symlinks
-from `globals/agents/skills/` — it creates any missing links and prunes orphaned ones (symlinks whose
-source is gone), and is idempotent. `scripts/doctor.sh` verifies the same set, also derived
-from `globals/agents/skills/`, so neither needs editing when a skill is added or removed.
+Skills are linked by an **enumerate-step** (`install-lib.sh:link_global_skills`), not by
+manifest rows. This keeps the manifest focused on static paths while skills grow dynamically.
+`scripts/doctor.sh --installed` checks the live per-skill links; `scripts/doctor.sh` checks
+that source dirs exist in the repo.
 
 ### Two skill layers: shared vs. internal
 
 There are two distinct, firewalled skill layers:
 
-- **Shared** — `globals/agents/skills/<name>/`, the canonical source. Linked into `globals/claude/skills` (for
-  Claude) and reached by Codex via `~/.agents/skills`; thus global on both harnesses, and
-  exportable to other repos. Advisory coding skills any repo may receive.
+- **Shared** — `globals/agents/skills/<name>/`, the canonical source. Linked per-skill into
+  each harness's native skills dir at install time; global on both harnesses and exportable to
+  other repos. Advisory coding skills any repo may receive.
 - **Internal** — `local/skills/<name>/`, linked **only** into this repo's own project-scope
-  dotdirs (`.claude/skills`, `.agents/skills`) by a second pass of
-  `link-skills.sh`. These describe how to develop/maintain this repo and are **never** global and
-  **never** exported. The separation is structural: the export/installer tools read only
-  `globals/agents/skills/`, with no code path to `local/skills/`.
+  dotdirs (`.claude/skills`, `.agents/skills`) by `link-skills.sh`. These describe how to
+  develop/maintain this repo and are **never** global and **never** exported. The separation is
+  structural: the export/installer tools read only `globals/agents/skills/`, with no code path
+  to `local/skills/`.
 
 ### Client utilities (same model, for other repos)
 
@@ -214,14 +209,12 @@ list). For the dual-harness skill model it offers:
   a root is missing, it asks whether to create/link that target. Noninteractive runs do not create
   new agent roots.
 
-This is purely in-repo and never touches global `~/.claude`, `~/.codex`, or `~/.agents`.
-`.agents/skills` is canonical because Codex scans that path directly; Claude fan-out links point
-at that source.
+This is purely in-repo and never touches global `~/.claude` or `~/.codex`.
 
-`roborepo` also folds in `mcp add`/`index`/`watch`/`run` and dispatches the lifecycle verbs
-`update`/`sync`/`doctor`/`verify` to the existing bash scripts (the first install is the shell
-bootstrap `install/main.sh`, so there is no root-level `install` verb). Shared skill logic lives
-in `scripts/cli/skill-lib.mjs`.
+`roborepo` also folds in `mcp add`/`mcp apply`/`index`/`watch`/`run` and dispatches the lifecycle
+verbs `update`/`sync`/`doctor`/`verify` to the existing bash scripts (the first install is the
+shell bootstrap `install/main.sh`, so there is no root-level `install` verb). Shared skill logic
+lives in `scripts/cli/skill-lib.mjs`.
 
 ## Sync Flow
 

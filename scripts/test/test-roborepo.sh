@@ -58,26 +58,25 @@ mk_skill() {
 # ---------------------------------------------------------------------------
 local_repo="${work}/local"
 mkdir -p "${local_repo}/.claude" "${local_repo}/.codex"
-mk_skill "${local_repo}/.agents/skills" "app-deploy"
-mk_skill "${local_repo}/.agents/skills" "app-test"
+mk_skill "${local_repo}/.codex/skills" "app-deploy"
+mk_skill "${local_repo}/.codex/skills" "app-test"
 
 ( cd "${local_repo}" && node "${cli}" skill symlink-repo >/dev/null )
 assert "skill symlink-repo: .claude link created" test -L "${local_repo}/.claude/skills/app-deploy"
-assert "skill symlink-repo: .codex link created"  test -L "${local_repo}/.codex/skills/app-test"
-assert "skill symlink-repo: link is relative to source" \
-  test "$(readlink "${local_repo}/.claude/skills/app-deploy")" = "../../.agents/skills/app-deploy"
+assert "skill symlink-repo: link points into .codex/skills source" \
+  test "$(readlink "${local_repo}/.claude/skills/app-deploy")" = "../../.codex/skills/app-deploy"
+assert "skill symlink-repo: no circular .codex link created" \
+  bash -c "! test -L '${local_repo}/.codex/skills/app-deploy'"
 
 rerun="$( cd "${local_repo}" && node "${cli}" skill symlink-repo )"
 assert "skill symlink-repo: idempotent re-run reports already ok" \
   bash -c "echo '${rerun}' | grep -q 'already ok'"
 
-# Prune: delete a source skill, re-run, stale links removed.
-rm -rf "${local_repo}/.agents/skills/app-test"
+# Prune: delete a source skill, re-run, stale .claude link removed.
+rm -rf "${local_repo}/.codex/skills/app-test"
 ( cd "${local_repo}" && node "${cli}" skill symlink-repo >/dev/null )
 assert "skill symlink-repo: orphan .claude link pruned" \
   bash -c "! test -e '${local_repo}/.claude/skills/app-test'"
-assert "skill symlink-repo: orphan .codex link pruned" \
-  bash -c "! test -e '${local_repo}/.codex/skills/app-test'"
 assert "skill symlink-repo: live link kept after prune" test -L "${local_repo}/.claude/skills/app-deploy"
 
 # Uninstall: removes only owned links.
@@ -88,24 +87,22 @@ assert "skill symlink-repo: uninstall removes owned links" \
 # Dry-run: reports planned links without creating harness skill dirs.
 dry_repo="${work}/dry-link"
 mkdir -p "${dry_repo}/.claude" "${dry_repo}/.codex"
-mk_skill "${dry_repo}/.agents/skills" "app-deploy"
+mk_skill "${dry_repo}/.codex/skills" "app-deploy"
 ( cd "${dry_repo}" && node "${cli}" skill symlink-repo --dry-run >/dev/null )
 assert "skill symlink-repo: dry-run does not create .claude link" \
   bash -c "! test -e '${dry_repo}/.claude/skills/app-deploy'"
-assert "skill symlink-repo: dry-run does not create .codex link" \
-  bash -c "! test -e '${dry_repo}/.codex/skills/app-deploy'"
 
-no_agent_repo="${work}/no-agent-target"
-mk_skill "${no_agent_repo}/.agents/skills" "app-deploy"
-( cd "${no_agent_repo}" && node "${cli}" skill symlink-repo >/dev/null )
-assert "skill symlink-repo: skips .claude when .claude root is absent" \
-  bash -c "! test -e '${no_agent_repo}/.claude/skills/app-deploy'"
-assert "skill symlink-repo: skips .codex when .codex root is absent" \
-  bash -c "! test -e '${no_agent_repo}/.codex/skills/app-deploy'"
+no_claude_repo="${work}/no-claude-target"
+mk_skill "${no_claude_repo}/.codex/skills" "app-deploy"
+( cd "${no_claude_repo}" && node "${cli}" skill symlink-repo >/dev/null )
+assert "skill symlink-repo: skips .claude link when .claude root is absent" \
+  bash -c "! test -L '${no_claude_repo}/.claude/skills/app-deploy'"
+assert "skill symlink-repo: .codex source untouched when no .claude" \
+  bash -c "test -d '${no_claude_repo}/.codex/skills/app-deploy'"
 
 # Conflict: a real (non-symlink) dir at the target is never clobbered.
 conflict_repo="${work}/conflict"
-mk_skill "${conflict_repo}/.agents/skills" "app-deploy"
+mk_skill "${conflict_repo}/.codex/skills" "app-deploy"
 mkdir -p "${conflict_repo}/.claude/skills/app-deploy"
 echo "REAL" > "${conflict_repo}/.claude/skills/app-deploy/marker"
 ( cd "${conflict_repo}" && node "${cli}" skill symlink-repo >/dev/null 2>&1 ) || true
@@ -113,23 +110,23 @@ assert "skill symlink-repo: real dir at target left intact (conflict)" \
   test -f "${conflict_repo}/.claude/skills/app-deploy/marker"
 
 foreign_repo="${work}/foreign-link"
-mk_skill "${foreign_repo}/.agents/skills" "app-deploy"
-mkdir -p "${foreign_repo}/elsewhere" "${foreign_repo}/.codex/skills"
-ln -s "../../elsewhere/app-deploy" "${foreign_repo}/.codex/skills/app-deploy"
+mk_skill "${foreign_repo}/.codex/skills" "app-deploy"
+mkdir -p "${foreign_repo}/elsewhere" "${foreign_repo}/.claude" "${foreign_repo}/.claude/skills"
+ln -s "../../elsewhere/app-deploy" "${foreign_repo}/.claude/skills/app-deploy"
 ( cd "${foreign_repo}" && node "${cli}" skill symlink-repo --uninstall >/dev/null 2>&1 ) || true
-assert "skill symlink-repo: uninstall leaves foreign symlink intact" \
-  test "$(readlink "${foreign_repo}/.codex/skills/app-deploy")" = "../../elsewhere/app-deploy"
+assert "skill symlink-repo: uninstall leaves foreign .claude symlink intact" \
+  test "$(readlink "${foreign_repo}/.claude/skills/app-deploy")" = "../../elsewhere/app-deploy"
 
-# Missing .agents/skills dir: clear error, non-zero exit.
+# Missing .codex/skills dir: clear error, non-zero exit.
 empty_repo="${work}/empty"
 mkdir -p "${empty_repo}"
-assert "skill symlink-repo: missing .agents exits non-zero" \
+assert "skill symlink-repo: missing .codex exits non-zero" \
   bash -c "cd '${empty_repo}' && ! node '${cli}' skill symlink-repo >/dev/null 2>&1"
 
-empty_agents_repo="${work}/empty-agents"
-mkdir -p "${empty_agents_repo}/.agents"
-assert "skill symlink-repo: missing .agents/skills exits non-zero" \
-  bash -c "cd '${empty_agents_repo}' && ! node '${cli}' skill symlink-repo >/dev/null 2>&1"
+empty_codex_repo="${work}/empty-codex"
+mkdir -p "${empty_codex_repo}/.codex"
+assert "skill symlink-repo: missing .codex/skills exits non-zero" \
+  bash -c "cd '${empty_codex_repo}' && ! node '${cli}' skill symlink-repo >/dev/null 2>&1"
 
 assert "skill symlink-repo: re-run after missing-source checks works" \
   bash -c "cd '${local_repo}' && node '${cli}' skill symlink-repo >/dev/null"
@@ -152,8 +149,8 @@ assert "skill render-commands: check dispatches generated command verifier" \
   bash -c "cd '${repo_root}' && node '${cli}' skill render-commands --check >/dev/null"
 assert "skill render-commands: generated Claude wrapper exists" \
   grep -q 'Use the `technical-planning-docs` skill' "${repo_root}/globals/claude/commands/technical-planning.md"
-assert "skill render-commands: generated Codex wrapper uses agents skill path" \
-  grep -q '~/.agents/skills/technical-planning-docs/SKILL.md' "${repo_root}/globals/codex/commands/technical-planning.md"
+assert "skill render-commands: generated Codex wrapper uses codex skill path" \
+  grep -q '~/.codex/skills/technical-planning-docs/SKILL.md' "${repo_root}/globals/codex/commands/technical-planning.md"
 assert "skill render-commands: capture observer has no slash command" \
   bash -c "! test -e '${repo_root}/globals/claude/commands/capture-convention.md'"
 assert "skill render-commands: capture observer absent from Codex commands" \
@@ -169,12 +166,12 @@ mkdir -p \
   "${new_harness}/manifests/inventory" \
   "${new_harness}/manifests/platform" \
   "${new_harness}/globals/agents/skills" \
-  "${new_harness}/globals/claude/skills" \
   "${new_harness}/globals/claude/commands" \
   "${new_harness}/globals/codex/commands" \
   "${new_harness}/local/skills"
 cp "${repo_root}"/scripts/cli/*.mjs "${new_harness}/scripts/cli/"
 cp "${repo_root}/scripts/build/link-skills.sh" "${new_harness}/scripts/build/link-skills.sh"
+cp "${repo_root}/scripts/build/link-global-skills.sh" "${new_harness}/scripts/build/link-global-skills.sh"
 cp "${repo_root}/scripts/build/skill-lib.sh" "${new_harness}/scripts/build/skill-lib.sh"
 cp "${repo_root}/scripts/build/render-slash-commands.mjs" "${new_harness}/scripts/build/render-slash-commands.mjs"
 printf '{"skills":[]}\n' > "${new_harness}/manifests/inventory/skill-invocation.json"
@@ -243,8 +240,8 @@ mkdir -p "${export_repo}"
 ( cd "${export_repo}" && node "${cli}" skill export-to-local --yes >/dev/null )
 assert "skill export-to-local: .claude/skills created and populated" \
   test -f "${export_repo}/.claude/skills/test-harness/SKILL.md"
-assert "skill export-to-local: fresh repo creates .agents/skills for Codex" \
-  test -f "${export_repo}/.agents/skills/test-harness/SKILL.md"
+assert "skill export-to-local: fresh repo creates .codex/skills for Codex" \
+  test -f "${export_repo}/.codex/skills/test-harness/SKILL.md"
 assert "skill export-to-local: shareable zip produced" \
   bash -c "ls '${export_repo}'/global_agent_skills_*.zip >/dev/null 2>&1"
 if command -v unzip >/dev/null 2>&1; then
@@ -257,21 +254,21 @@ assert "skill export-to-local: override moves old skill to archived/" \
   bash -c "ls '${export_repo}'/.claude/skills/archived/test-harness_backup_* >/dev/null 2>&1"
 
 skip_repo="${work}/export-skip"
-mkdir -p "${skip_repo}/.claude/skills/test-harness" "${skip_repo}/.agents/skills"
+mkdir -p "${skip_repo}/.claude/skills/test-harness" "${skip_repo}/.codex/skills"
 echo "LOCAL" > "${skip_repo}/.claude/skills/test-harness/local.txt"
 ( cd "${skip_repo}" && node "${cli}" skill export-to-local --yes --on-conflict=skip >/dev/null )
 assert "skill export-to-local: skip preserves existing skill content" \
   grep -q "LOCAL" "${skip_repo}/.claude/skills/test-harness/local.txt"
-assert "skill export-to-local: existing .agents/skills is populated" \
-  test -f "${skip_repo}/.agents/skills/test-harness/SKILL.md"
+assert "skill export-to-local: existing .codex/skills is populated" \
+  test -f "${skip_repo}/.codex/skills/test-harness/SKILL.md"
 assert "skill export-to-local: invalid on-conflict rejected" \
   bash -c "cd '${skip_repo}' && ! node '${cli}' skill export-to-local --yes --on-conflict=merge >/dev/null 2>&1"
 
 claude_only_repo="${work}/export-claude-only"
 mkdir -p "${claude_only_repo}/.claude/skills"
 ( cd "${claude_only_repo}" && node "${cli}" skill export-to-local --yes >/dev/null )
-assert "skill export-to-local: creates .agents/skills even when only .claude exists" \
-  test -f "${claude_only_repo}/.agents/skills/test-harness/SKILL.md"
+assert "skill export-to-local: creates .codex/skills even when only .claude exists" \
+  test -f "${claude_only_repo}/.codex/skills/test-harness/SKILL.md"
 
 assert "skill export-to-local: internal skill NOT exported (firewall)" \
   bash -c "! test -e '${export_repo}/.claude/skills/harness-platform-dev'"
@@ -298,7 +295,7 @@ assert "run: no command exits non-zero" \
 # roborepo bundles / telemetry
 # ---------------------------------------------------------------------------
 presets_home="${work}/presets-home"
-mkdir -p "${presets_home}/.claude" "${presets_home}/.codex" "${presets_home}/.agents"
+mkdir -p "${presets_home}/.claude" "${presets_home}/.codex"
 assert "bundle apply: selected bundles apply into harness homes" \
   bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' bundle apply base hooks skills >/dev/null"
 assert "bundle check: selected bundles verify" \
@@ -486,21 +483,19 @@ assert "mcp add: Claude failure does not write Codex config" \
 # roborepo lifecycle dispatch (doctor + update --dry-run, both read-only)
 # ---------------------------------------------------------------------------
 update_home="${work}/update-home"
-mkdir -p "${update_home}/.claude" "${update_home}/.codex" "${update_home}/.agents"
+mkdir -p "${update_home}/.claude" "${update_home}/.codex"
 cp "${repo_root}/globals/claude/settings.json" "${update_home}/.claude/settings.json"
 cp "${repo_root}/globals/codex/config.toml" "${update_home}/.codex/config.toml"
 ln -s "${repo_root}/globals/claude/CLAUDE.md" "${update_home}/.claude/CLAUDE.md"
 ln -s "${repo_root}/globals/claude/MANAGED_BY_ROBOREPO.md" "${update_home}/.claude/MANAGED_BY_ROBOREPO.md"
 ln -s "${repo_root}/globals/claude/commands" "${update_home}/.claude/commands"
 ln -s "${repo_root}/globals/claude/hooks" "${update_home}/.claude/hooks"
-ln -s "${repo_root}/globals/claude/skills" "${update_home}/.claude/skills"
 ln -s "${repo_root}/globals/codex/AGENTS.md" "${update_home}/.codex/AGENTS.md"
 ln -s "${repo_root}/globals/codex/commands" "${update_home}/.codex/commands"
 ln -s "${repo_root}/globals/codex/hooks.json" "${update_home}/.codex/hooks.json"
 ln -s "${repo_root}/globals/codex/MANAGED_BY_ROBOREPO.md" "${update_home}/.codex/MANAGED_BY_ROBOREPO.md"
 ln -s "${repo_root}/globals/codex/rules" "${update_home}/.codex/rules"
-ln -s "${repo_root}/globals/agents/skills" "${update_home}/.agents/skills"
-# ~/.codex/skills intentionally NOT pre-linked — it is no longer managed (Codex owns it).
+# Skills are linked per-skill by the installer's enumerate-step, not as dir-level links.
 
 assert "lifecycle: roborepo doctor dispatches and passes" \
   bash -c "node '${cli}' doctor >/dev/null 2>&1"
@@ -624,7 +619,7 @@ mv "${un_old}" "${un_new}"   # rename -> all managed links now dangle to the old
 HOME="${un_home}" ROBOREPO_STATE_DIR="${un_home}/.roborepo" \
   bash "${un_new}/scripts/install/uninstall.sh" >/dev/null 2>&1 || true
 assert "repair: stale uninstall removes dangling prior-path managed links" \
-  bash -c "test \"\$(find '${un_home}/.claude' '${un_home}/.codex' '${un_home}/.agents' '${un_home}/.local/bin' -maxdepth 2 -type l 2>/dev/null | wc -l | tr -d ' ')\" = 0"
+  bash -c "test \"\$(find '${un_home}/.claude' '${un_home}/.codex' '${un_home}/.local/bin' -maxdepth 2 -type l 2>/dev/null | wc -l | tr -d ' ')\" = 0"
 
 # -- repair after relocation --
 rp_home="${reloc_root}/reloc-repair/home"
@@ -642,10 +637,10 @@ HOME="${rp_home}" ROBOREPO_STATE_DIR="${rp_state}" \
   bash "${rp_new}/scripts/install/repair.sh" >/dev/null 2>&1 || true
 assert "repair: bin link healed to new checkout" \
   bash -c "test \"\$(readlink '${rp_home}/.local/bin/roborepo')\" = '${rp_new}/bin/roborepo'"
-assert "repair: managed skills link healed to new checkout" \
-  bash -c "test -e '${rp_home}/.claude/skills' && test \"\$(readlink '${rp_home}/.claude/skills')\" = '${rp_new}/globals/claude/skills'"
-assert "repair: agents skills link healed to new checkout" \
-  bash -c "test -e '${rp_home}/.agents/skills'"
+assert "repair: per-skill Claude links created after repair" \
+  bash -c "test -L '${rp_home}/.claude/skills/blog' && test \"\$(readlink '${rp_home}/.claude/skills/blog')\" = '${rp_new}/globals/agents/skills/blog'"
+assert "repair: per-skill Codex links created after repair" \
+  bash -c "test -L '${rp_home}/.codex/skills/blog' && test \"\$(readlink '${rp_home}/.codex/skills/blog')\" = '${rp_new}/globals/agents/skills/blog'"
 assert "repair: install state records the new checkout path" \
   grep -q "\"repo\": \"${rp_new}\"" "${rp_state}/install-state.json"
 # Idempotent: a second repair reclaims nothing (everything already points at the new checkout).
@@ -659,6 +654,32 @@ ln -s "${reloc_root}/heal-bin/gone/bin/roborepo" "${heal_home}/.local/bin/robore
 heal_out="$(HOME="${heal_home}" bash "${repo_root}/scripts/install/install-global-commands.sh" --dry-run 2>&1 || true)"
 assert "install: dangling bin link is reclaimed, not a conflict" \
   bash -c "echo '${heal_out}' | grep -q 'was dangling' && ! echo '${heal_out}' | grep -q 'conflict:'"
+
+# ---------------------------------------------------------------------------
+# legacy ~/.agents/skills teardown (native-alignment item 0.5 migration).
+# Pre-native-alignment installs fanned skills via a dir-level ~/.agents/skills managed symlink that
+# Codex also scanned. After migrating to per-skill native-dir links, that leftover causes duplicate
+# discovery. install must reclaim the managed legacy link (and only the managed one).
+# Copy-free: the checkout never moves here, so install runs against the real repo_root into an
+# isolated HOME (no repo copy needed, unlike the relocation tests above).
+# ---------------------------------------------------------------------------
+la_home="${reloc_root}/legacy-agents/home"
+mkdir -p "${la_home}/.claude" "${la_home}/.codex" "${la_home}/.local/bin" "${la_home}/.agents"
+ln -s "${repo_root}/globals/agents/skills" "${la_home}/.agents/skills"  # the old dir-level managed link
+HOME="${la_home}" ROBOREPO_STATE_DIR="${la_home}/.roborepo" ROBOREPO_ASSUME_INTERACTIVE=0 \
+  ROBOREPO_ON_CONFLICT=overwrite bash "${repo_root}/scripts/install/main.sh" >/dev/null 2>&1 || true
+assert "legacy: managed ~/.agents/skills link removed after install" \
+  bash -c "! test -L '${la_home}/.agents/skills'"
+assert "legacy: per-skill Codex link created in place of the legacy dir link" \
+  bash -c "test -L '${la_home}/.codex/skills/blog' && test \"\$(readlink '${la_home}/.codex/skills/blog')\" = '${repo_root}/globals/agents/skills/blog'"
+
+# A user's real ~/.agents/skills (not a managed symlink) must be left untouched.
+lu_home="${reloc_root}/legacy-agents-userdir/home"
+mkdir -p "${lu_home}/.claude" "${lu_home}/.codex" "${lu_home}/.local/bin" "${lu_home}/.agents/skills/mine"
+HOME="${lu_home}" ROBOREPO_STATE_DIR="${lu_home}/.roborepo" ROBOREPO_ASSUME_INTERACTIVE=0 \
+  ROBOREPO_ON_CONFLICT=overwrite bash "${repo_root}/scripts/install/main.sh" >/dev/null 2>&1 || true
+assert "legacy: real ~/.agents/skills user dir is preserved, not reclaimed" \
+  bash -c "test -d '${lu_home}/.agents/skills/mine'"
 
 # ---------------------------------------------------------------------------
 echo ""

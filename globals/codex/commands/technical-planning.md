@@ -8,7 +8,7 @@ description: Create or revise a durable technical planning document.
 
 Use the `technical-planning-docs` skill for this request.
 
-Read `~/.agents/skills/technical-planning-docs/SKILL.md`, then follow its workflow.
+Read `~/.codex/skills/technical-planning-docs/SKILL.md`, then follow its workflow.
 
 Keep the skill as the source of truth; this command is only the explicit entry
 point.

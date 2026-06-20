@@ -5,12 +5,12 @@
 # install-windows.ps1 (PowerShell); TBD Node.
 #
 # Columns (tab-separated):
-#   harness   claude | codex | agents        which harness this row belongs to
+#   harness   claude | codex                 which harness this row belongs to
 #   kind      link | root_config | cleanup    behavior (see below)
 #   src_rel   path under repo root, or "-" for cleanup rows (no repo source)
-#   home_sub  path relative to the harness home dir (claude=~/.claude, codex=~/.codex,
-#             agents=~/.agents); the reader joins the home root
-#   home_root home dir token: claude=~/.claude  codex=~/.codex  agents=~/.agents
+#   home_sub  path relative to the harness home dir (claude=~/.claude, codex=~/.codex);
+#             the reader joins the home root
+#   home_root home dir token: claude=~/.claude  codex=~/.codex
 #   flags     comma list, or "-". Flags:
 #               nodoctor  = not checked by doctor --installed (verify still checks)
 #               nosync    = not pulled from live home config by sync-from-home.sh
@@ -28,10 +28,16 @@ claude	link	globals/claude/CLAUDE.md	CLAUDE.md	claude	-
 claude	link	globals/claude/MANAGED_BY_ROBOREPO.md	MANAGED_BY_ROBOREPO.md	claude	nodoctor
 claude	link	globals/claude/commands	commands	claude	nodoctor
 claude	link	globals/claude/hooks	hooks	claude	-
-claude	link	globals/claude/skills	skills	claude	nosync
 claude	cleanup	-	MANAGED_BY_HARNESS_CONFIGS.md	claude	-
 claude	cleanup	-	plugins/known_marketplaces.json	claude	-
 claude	cleanup	-	plugins/installed_plugins.json	claude	-
+# ^^^ plugin cleanup rows: legacy guards from the era when roborepo dir-linked plugins/ into the repo.
+# That dir-linking was removed; these rows now serve uninstall (remove orphaned managed links) and
+# relocation (reclaim a stale managed link after a repo move). The live plugin registry
+# (installed_plugins.json, known_marketplaces.json) is always a native real file — these rows never touch it.
+claude	cleanup	-	skills	claude	-
+# ^^^ migration: removes any old dir-level ~/.claude/skills -> globals/claude/skills symlink.
+# skills/ is now managed per-skill by the installer's enumerate-step, not as a dir-level link.
 codex	root_config	globals/codex/config.toml	config.toml	codex	-
 codex	link	globals/codex/AGENTS.md	AGENTS.md	codex	-
 codex	link	globals/codex/commands	commands	codex	nodoctor
@@ -40,5 +46,6 @@ codex	link	globals/codex/hooks.json	hooks.json	codex	-
 codex	link	globals/codex/hooks	hooks	codex	-
 codex	link	globals/codex/rules	rules	codex	-
 codex	cleanup	-	MANAGED_BY_HARNESS_CONFIGS.md	codex	-
-agents	link	globals/agents/skills	skills	agents	nosync
 codex	cleanup	-	skills	codex	-
+# ^^^ migration: removes any old dir-level ~/.codex/skills -> repo symlink (pre-native-alignment era).
+# skills/ is now managed per-skill by the installer's enumerate-step.

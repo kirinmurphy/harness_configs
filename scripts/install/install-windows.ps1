@@ -28,7 +28,6 @@ function Resolve-ManifestHomeRoot {
   switch ($HomeRoot) {
     "claude" { return (Join-Path $env:APPDATA "Claude") }
     "codex"  { return (Join-Path $env:USERPROFILE ".codex") }
-    "agents" { return (Join-Path $env:USERPROFILE ".agents") }
     default { throw "manifest: unknown home_root '$HomeRoot'" }
   }
 }
@@ -395,13 +394,60 @@ function Get-PresentHarnesses {
   }
   if ($hasCodex) {
     $harnesses += "codex"
-    $harnesses += "agents"
   }
   return $harnesses
 }
 
 function Get-PresentManifestRows {
   return Get-ManifestRows (Get-PresentHarnesses)
+}
+
+function Link-GlobalSkills {
+  param($HomeDir)
+  $srcDir = Join-Path $repoRoot "globals\agents\skills"
+  $skillsHome = Join-Path $HomeDir "skills"
+
+  if (-not (Test-Path $srcDir)) { return }
+
+  Get-ChildItem $srcDir -Directory | ForEach-Object {
+    $name = $_.Name
+    if ($name.StartsWith(".")) { return }
+    $skillMd = Join-Path $srcDir "$name\SKILL.md"
+    if (-not (Test-Path $skillMd)) { return }
+    if ($_.LinkType -eq "SymbolicLink") { return }  # skip symlinked source dirs
+
+    $target = Join-Path $skillsHome $name
+    $src = Join-Path $srcDir $name
+
+    if (Test-Path $target) {
+      $existing = Get-Item $target -Force
+      if ($existing.LinkType -eq "SymbolicLink" -and $existing.Target -eq $src) {
+        Write-Host "ok: $target"
+        return
+      }
+      if ($existing.LinkType -ne "SymbolicLink") {
+        Write-Host "skip (native skill): $target"
+        return
+      }
+    }
+
+    if (-not (Test-Path $skillsHome)) {
+      if (-not $DryRun) { New-Item -ItemType Directory -Path $skillsHome -Force | Out-Null }
+    }
+
+    if ($DryRun) {
+      Write-Host "link: $target -> $src"
+      return
+    }
+
+    try {
+      New-Item -ItemType SymbolicLink -Path $target -Target $src -Force | Out-Null
+      Write-Host "link: $target -> $src"
+    } catch {
+      Write-Warning "Failed to create skill symlink: $target"
+      Write-Warning "Enable Windows Developer Mode or run PowerShell as Administrator."
+    }
+  }
 }
 
 function Invoke-ManifestRows {
@@ -428,10 +474,10 @@ function Invoke-ManifestRows {
 
 # Detect which harnesses are present
 $hasClaude = Test-Path (Join-Path $env:APPDATA "Claude")
-$hasCodex  = (Test-Path (Join-Path $env:USERPROFILE ".codex")) -or (Test-Path (Join-Path $env:USERPROFILE ".agents"))
+$hasCodex  = Test-Path (Join-Path $env:USERPROFILE ".codex")
 
 if (-not $hasClaude -and -not $hasCodex) {
-  Write-Warning "Neither Claude Code (~AppData\Roaming\Claude) nor Codex (~\.codex/~\.agents) found."
+  Write-Warning "Neither Claude Code (~AppData\Roaming\Claude) nor Codex (~\.codex) found."
   Write-Warning "Install Claude Code or Codex first, then re-run this script."
   exit 1
 }
@@ -439,18 +485,22 @@ if (-not $hasClaude -and -not $hasCodex) {
 Invoke-CleanTargetPreflight
 Invoke-RootConfigPreflight
 
-# Claude managed links and root config export
+# Claude managed links, root config export, and per-skill links
 if ($hasClaude) {
   Invoke-ManifestRows "Claude" @("claude")
+  $claudeHome = Resolve-ManifestHomeRoot "claude"
+  Link-GlobalSkills $claudeHome
 } else {
   Write-Host "skip: Claude — AppData\Roaming\Claude not found"
 }
 
-# Codex managed links and root config export
+# Codex managed links, root config export, and per-skill links
 if ($hasCodex) {
-  Invoke-ManifestRows "Codex" @("codex", "agents")
+  Invoke-ManifestRows "Codex" @("codex")
+  $codexHome = Resolve-ManifestHomeRoot "codex"
+  Link-GlobalSkills $codexHome
 } else {
-  Write-Host "skip: Codex — ~/.codex/~/.agents not found"
+  Write-Host "skip: Codex — ~/.codex not found"
 }
 
 # Post-install summary

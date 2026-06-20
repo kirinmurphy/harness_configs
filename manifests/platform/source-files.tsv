@@ -21,13 +21,14 @@ manifests/platform/presets.json
 manifests/inventory/skill-invocation.json
 manifests/inventory/slash-commands.json
 manifests/inventory/mcp-presets.json
+manifests/inventory/mcp-servers.json
+manifests/inventory/reserved-commands.json
 manifests/platform/prompts/install-root-config-merge.md
 manifests/platform/prompts/sync-merge.md
 manifests/platform/rule-targets.tsv
 manifests/platform/shell-snippets.tsv
 manifests/platform/verify-content.tsv
 globals/agents/skills
-globals/claude/skills
 local/skills
 globals/rules/shared/00-communication.md
 globals/rules/shared/10-exploration.md
@@ -38,6 +39,7 @@ globals/rules/codex/90-codex-specific.md
 scripts/build/render-rules.sh
 scripts/build/render-agent-permissions.mjs
 scripts/build/render-slash-commands.mjs
+scripts/build/link-global-skills.sh
 scripts/cli/skill-command-config.mjs
 scripts/build/skill-lib.sh
 scripts/cli/prompts.mjs

@@ -8,7 +8,7 @@ description: Apply Claude's frontend design workflow to build or review a substa
 
 Use the `frontend-design` skill for this request.
 
-Read `~/.agents/skills/frontend-design/SKILL.md`, then follow its workflow.
+Read `~/.codex/skills/frontend-design/SKILL.md`, then follow its workflow.
 
 Keep the skill as the source of truth; this command is only the explicit entry
 point.

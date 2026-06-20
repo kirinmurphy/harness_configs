@@ -16,6 +16,10 @@
           {
             "type": "command",
             "command": "roborepo telemetry capture --harness codex --event SessionStart"
+          },
+          {
+            "type": "command",
+            "command": "count=0; for d in \"${HOME}/.codex/skills\"/*/; do name=\"$(basename \"${d%/}\")\"; case \"${name}\" in .*) continue;; esac; [ -L \"${d%/}\" ] || count=$((count+1)); done; for d in \"${HOME}/.claude/skills\"/*/; do name=\"$(basename \"${d%/}\")\"; case \"${name}\" in .*) continue;; esac; [ -L \"${d%/}\" ] || count=$((count+1)); done; [ \"${count}\" -gt 0 ] && echo \"unmanaged skills: ${count} — run 'roborepo skill adopt <name>' to version-control\" || true"
           }
         ]
       }

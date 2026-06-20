@@ -2,12 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { ensureSymlink, listSourceSkills, readlinkSafe } from "./skill-files.mjs";
 
-const LOCAL_LINK_PREFIX = path.join("..", "..", ".agents", "skills");
+// Source skills live at <repo>/.codex/skills/<name>/ — Codex reads there directly.
+// Only .claude/skills/<name> needs a symlink; creating one in .codex/skills/ would be circular.
+const LOCAL_LINK_PREFIX = path.join("..", "..", ".codex", "skills");
 
 export function linkLocalSkills(repoRoot, { dryRun = false, uninstall = false, targetRoots = null } = {}) {
-  const srcDir = path.join(repoRoot, ".agents", "skills");
+  const srcDir = path.join(repoRoot, ".codex", "skills");
   const harnessRoots =
-    targetRoots ?? [path.join(repoRoot, ".claude"), path.join(repoRoot, ".codex")].filter((root) => fs.existsSync(root));
+    targetRoots ?? [path.join(repoRoot, ".claude")].filter((root) => fs.existsSync(root));
   const harnessDirs = harnessRoots.map((root) => path.join(root, "skills"));
   const names = listSourceSkills(srcDir);
   const tally = {

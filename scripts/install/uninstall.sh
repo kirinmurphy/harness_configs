@@ -104,6 +104,41 @@ while IFS=$'\t' read -r _h kind _src_rel home_abs _flags; do
   esac
 done < <(manifest_rows)
 
+# Per-skill global skill links: not in manifest, so manifest_rows won't remove them.
+is_roborepo_skill_link() {
+  local link="$1"
+  local target
+  [[ -L "${link}" ]] || return 1
+  target="$(readlink "${link}")"
+  # Current or recorded-prior checkout
+  case "${target}" in
+    "${repo_root}"/globals/agents/skills/*) return 0 ;;
+  esac
+  if [[ -n "${recorded_repo}" ]]; then
+    case "${target}" in
+      "${recorded_repo}"/globals/agents/skills/*) return 0 ;;
+    esac
+  fi
+  # Dangling link that points into globals/agents/skills/ of any roborepo checkout
+  if [[ ! -e "${link}" ]]; then
+    case "${target}" in
+      */globals/agents/skills/*) return 0 ;;
+    esac
+  fi
+  return 1
+}
+
+remove_skill_links() {
+  local skills_home="$1"
+  [[ -d "${skills_home}" ]] || return 0
+  local link
+  for link in "${skills_home}"/*; do
+    is_roborepo_skill_link "${link}" && remove_repo_symlink "${link}" || true
+  done
+}
+remove_skill_links "${HOME}/.claude/skills"
+remove_skill_links "${HOME}/.codex/skills"
+
 remove_file_if_repo_symlink "${HOME}/.local/bin/roborepo" "${repo_root}/bin/roborepo"
 remove_shell_wiring
 

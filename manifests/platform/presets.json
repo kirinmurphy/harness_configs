@@ -17,8 +17,8 @@
     {
       "id": "skills",
       "label": "Skills",
-      "description": "Shared global skills for Claude and Codex.",
-      "rows": ["claude:skills", "agents:skills"]
+      "description": "Shared global skills for Claude and Codex. Skills are linked per-skill by the install enumerate-step (not manifest rows); this bundle entry is informational.",
+      "rows": []
     },
     {
       "id": "rules",

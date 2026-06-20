@@ -285,9 +285,8 @@ check_clean_target() {
 }
 
 # Preflight every managed link target (from manifests/platform/manifest.tsv) for the present harnesses.
-# Claude uses the claude rows; Codex uses codex + agents rows (skills live under ~/.agents).
-# root_config and cleanup rows are not preflighted here — root config is mutable user state
-# handled by preflight_root_config below.
+# Claude uses the claude rows; Codex uses the codex rows.
+# root_config and cleanup rows are not preflighted here — root config is mutable user state.
 preflight_clean_targets() {
   local conflict=0
   local _h kind src_rel home_abs _flags
@@ -300,10 +299,7 @@ preflight_clean_targets() {
   }
 
   [[ $has_claude -eq 1 ]] && preflight_harness claude
-  if [[ $has_codex -eq 1 ]]; then
-    preflight_harness codex
-    preflight_harness agents
-  fi
+  [[ $has_codex  -eq 1 ]] && preflight_harness codex
 
   if [[ $conflict -eq 1 ]]; then
     echo "Install has non-root config conflicts. No files were changed." >&2
@@ -344,10 +340,7 @@ preflight_unattended_conflicts() {
   }
 
   [[ $has_claude -eq 1 ]] && preflight_harness_conflicts claude
-  if [[ $has_codex -eq 1 ]]; then
-    preflight_harness_conflicts codex
-    preflight_harness_conflicts agents
-  fi
+  [[ $has_codex  -eq 1 ]] && preflight_harness_conflicts codex
   if [[ "${conflict}" -eq 1 ]]; then
     echo "Run interactively, pass --on-conflict overwrite|keep, or use --dry-run to inspect collisions." >&2
     exit 1
@@ -366,6 +359,17 @@ if [[ $dry_run -eq 0 ]]; then
 fi
 
 write_install_state "${install_mode}" "${on_conflict}"
+
+# Link shared skills per-skill into each present harness's native skills dir.
+if [[ $dry_run -eq 0 ]]; then
+  bash "${repo_root}/scripts/build/link-global-skills.sh" || true
+fi
+
+# Re-apply Claude MCP live store from mcp-servers.json so the recorded set is portable.
+# (Codex reads config.toml directly from the repo; only Claude's live store needs reapplication.)
+if [[ $dry_run -eq 0 ]] && command -v node >/dev/null 2>&1; then
+  node "${repo_root}/scripts/cli/main.mjs" mcp apply || true
+fi
 
 presets_onboarded() {
   node -e '

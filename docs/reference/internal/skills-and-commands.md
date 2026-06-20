@@ -196,3 +196,29 @@ The scaffold asks whether to create:
 
 It updates the manifests, source files, README tables, generated links, and
 generated command files together.
+
+## Skill Storage and Fan-Out
+
+Skills live at `globals/agents/skills/<name>/SKILL.md` in version control.
+At install time, the installer fans each skill per-skill into each harness's
+native skills dir: `~/.claude/skills/<name>` and `~/.codex/skills/<name>` are
+symlinks into the repo source. There is no intermediate `globals/claude/skills/`
+directory.
+
+Roborepo manages only the skill names it owns. Skills created out-of-band (via
+native `init_skill.py` or `skill-installer`) at unrecognized names are left
+untouched. They appear as adoptable drift in `roborepo doctor --installed` and
+the SessionStart nudge. To bring them under version control:
+
+```sh
+roborepo skill adopt <name>   # move into globals/agents/skills/<name>, re-link, register manifest
+```
+
+## Memory — Defer
+
+Both harnesses have native persistent memory: Codex (`~/.codex/memories/`,
+`memories_*.sqlite`) and Claude (`/memory` under `~/.claude/projects/*/memory/`).
+Memory is per-machine, per-session, written continuously at runtime, and has no
+stable export contract. roborepo does not manage, sync, or carry memory across
+machines. `roborepo update` does not restore memory. This is a deliberate stance
+(Defer), not a gap.

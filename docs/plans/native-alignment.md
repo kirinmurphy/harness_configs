@@ -84,22 +84,52 @@ in conversation context.
 
 | Item | Topic | Design status | Implemented? |
 | ---- | ----- | ------------- | ------------ |
-| 0 | Remove `~/.agents/*` runtime target; fan into native dirs | ✅ decided | ☐ no |
-| 1 | Skills — wrap native creation, one universal output | ✅ decided | ☐ no |
-| 2 | Plugins (Claude) — already aligned; keep as-is | ✅ decided (no behavior change; add comment + No-Sync note) | ☐ comment only |
-| 3 | MCP — version-control Claude MCP, symmetric w/ Codex | ✅ decided (`mcp-servers.json` = state; presets = catalog) | ☐ no |
-| 4 | Slash commands — collision detection | ✅ decided (warn-only in `--check`) | ☐ no |
-| 5 | Out-of-band skill drift — hook nudge + doctor | ✅ decided | ☐ no |
-| 6 | Memory — formally Defer + document | ✅ decided | ☐ no |
+| 0 | Remove `~/.agents/*` runtime target; fan into native dirs | ✅ decided | ✅ yes |
+| 1 | Skills — wrap native creation, one universal output | ✅ decided | ✅ yes (1.1 .system removed; 1.2/1.3 native-backed new + openai.yaml; 1.4 adopt) |
+| 2 | Plugins (Claude) — already aligned; keep as-is | ✅ decided (no behavior change; add comment + No-Sync note) | ✅ manifest comments added |
+| 3 | MCP — version-control Claude MCP, symmetric w/ Codex | ✅ decided (`mcp-servers.json` = state; presets = catalog) | ✅ yes (`mcp-servers.json` + `mcp apply`) |
+| 4 | Slash commands — collision detection | ✅ decided (warn-only in `--check`) | ✅ yes (`reserved-commands.json` + warn in renderSlashCommands) |
+| 5 | Out-of-band skill drift — hook nudge + doctor | ✅ decided | ✅ yes (SessionStart nudge + doctor drift report) |
+| 6 | Memory — formally Defer + document | ✅ decided | ✅ yes (documented in harness-anatomy.md + skills-and-commands.md) |
 
 **Decided-but-unbuilt** means the approach is settled in this doc; no code or
 user-doc change has shipped yet. Implementation order is in **Sequencing**.
 
-**All design items are now decided. Both gating spikes PASS. Pre-build audits
-clean.** Remaining work is implementation per the Sequencing section. The only
-open implementation choice is the per-skill link mechanism (Open Question 2:
-generated manifest rows vs installer enumerate-step) — recommendation: generated
-manifest rows, to keep the manifest the single source of truth.
+**All design items are decided, built, and verified.** Both gating spikes passed. The
+per-skill link mechanism (Open Question 2) was resolved: enumerate-step (option b) was
+chosen over generated manifest rows. Skills are linked at install time by
+`scripts/install/install-lib.sh:link_global_skills`, called from both bash installers
+and `scripts/build/link-global-skills.sh` (post-`skill new`). `skill new` uses native
+`init_skill.py` when present, roborepo template otherwise.
+
+## Resolved — old `~/.agents/skills` teardown (item 0.5 migration)
+
+**Status: done (2026-06-20).** The last gap — migrating machines off the legacy
+`~/.agents/skills` location — is now implemented (option 1 below).
+
+- **Already handled:** the old dir-level `~/.claude/skills` and `~/.codex/skills`
+  symlinks are torn down via the `cleanup` rows in `manifests/platform/manifest.tsv`
+  (lines 38, 49 — `remove_repo_link`), and per-skill links are created by
+  `link_global_skills`.
+- **Now handled:** `remove_legacy_agents_skills` in `scripts/install/install-lib.sh`
+  reclaims a `~/.agents/skills` symlink **when it points into the repo** (the old
+  dir-level managed link), backs it up via `unique_backup_path` mirroring
+  `remove_repo_link`, and `rmdir`s an emptied `~/.agents`. It is called at the top of
+  `link_global_skills`, so every install/update/post-`skill new` run migrates the
+  machine. It is self-contained (defaults `backup_root`/`dry_run`) and idempotent —
+  the redundant per-harness second call is a no-op.
+- **Safety:** a real `~/.agents/skills` directory (user content) and any symlink that
+  does *not* point into the repo are left untouched — only the roborepo-managed
+  dir-level link is reclaimed.
+- **Why option 1:** smallest and self-cleaning; no need to reintroduce the `agents`
+  home-root token this plan deleted (rejected option 2), and it heals automatically
+  rather than leaving cleanup to the user (rejected option 3 — surface-only).
+
+**Tests:** `scripts/test/test-roborepo.sh` covers the upgrade fixture (pre-seed
+`~/.agents/skills` as a managed link → install → assert it is gone and per-skill links
+exist) and the preservation case (a real `~/.agents/skills` user dir survives install).
+Verified directly: managed link reclaimed + backed up, empty `~/.agents` removed,
+per-skill links created, second run no-op, real dirs and foreign symlinks preserved.
 
 ## Decisions Locked
 
@@ -194,6 +224,9 @@ it. It is roborepo-invented plumbing mis-documented as a "universal standard"
    `~/.agents/skills` + a dir-level `~/.claude/skills`. `update` must tear those down
    (back up, per the managed-link rules) and re-create per-skill links, without
    destroying any native-installed skills already in `~/.codex/skills`.
+   **Done — the `~/.agents/skills` teardown is implemented via
+   `remove_legacy_agents_skills`; see [Resolved — old `~/.agents/skills`
+   teardown](#resolved--old-agentsskills-teardown-item-05-migration) above.**
 6. **Fix the docs** (`harness-anatomy.md`, `skills-and-commands.md`) to describe
    `globals/agents/skills` as roborepo's version-controlled source fanned per-skill
    into each harness's native dir — not a globally observed standard. (`harness-anatomy.md`

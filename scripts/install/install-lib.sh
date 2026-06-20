@@ -511,6 +511,122 @@ remove_repo_link() {
   esac
 }
 
+# Link a single skill into a harness's skills dir. Unlike install_link_item, skill collisions
+# with real directories (native-installed skills with the same name) are skipped gracefully —
+# native skills are out-of-band drift that doctor will surface via "roborepo skill adopt".
+link_skill_item() {
+  local repo_rel="$1"
+  local home_path="$2"
+  local src="${repo_root}/${repo_rel}"
+
+  if [[ ! -e "${src}" ]]; then
+    echo "missing source: ${src}" >&2
+    return 1
+  fi
+
+  if [[ -L "${home_path}" ]]; then
+    local current
+    current="$(readlink "${home_path}")"
+    if [[ "${current}" == "${src}" ]]; then
+      echo "ok: ${home_path}"
+      return 0
+    fi
+    case "${current}" in
+      "${repo_root}"/*)
+        if [[ "${dry_run}" -eq 0 ]]; then
+          ln -sfn "${src}" "${home_path}"
+        fi
+        echo "relink: ${home_path} -> ${src}"
+        return 0
+        ;;
+    esac
+    echo "skip (unmanaged symlink): ${home_path}"
+    return 0
+  fi
+
+  if [[ ! -e "${home_path}" && ! -L "${home_path}" ]]; then
+    if [[ "${dry_run}" -eq 0 ]]; then
+      mkdir -p "$(dirname "${home_path}")"
+      ln -s "${src}" "${home_path}"
+    fi
+    echo "link: ${home_path} -> ${src}"
+    return 0
+  fi
+
+  # Exists as a real dir/file — a native-installed skill with the same name. Leave it.
+  echo "skip (native skill): ${home_path}"
+}
+
+# One-shot migration: tear down the legacy ~/.agents/skills runtime tree.
+# Pre-native-alignment, roborepo fanned skills into ~/.agents/skills via a single dir-level managed
+# symlink (agents link globals/agents/skills -> ~/.agents/skills), and Codex also scans ~/.agents.
+# Now that skills are linked per-skill into each harness's native dir, a leftover ~/.agents/skills
+# link makes Codex discover the same skills twice. Reclaim it only when it is a roborepo-managed
+# symlink into the repo (back up first, mirroring remove_repo_link); never touch a user's real
+# ~/.agents content (a real dir/file is left alone). Idempotent: a no-op once removed.
+# Self-contained (provides defaults for backup_root/dry_run) so it is safe from every call site.
+remove_legacy_agents_skills() {
+  local legacy="${HOME}/.agents/skills"
+
+  [[ -L "${legacy}" ]] || return 0
+  local current
+  current="$(readlink "${legacy}")"
+  case "${current}" in
+    "${repo_root}"/*) ;;
+    *) return 0 ;;
+  esac
+
+  local backup_root="${backup_root:-${HOME}/.roborepo-backups/$(date +%Y%m%d-%H%M%S)}"
+  local dry_run="${dry_run:-0}"
+  local backup_path
+  backup_path="$(unique_backup_path "${legacy}")"
+  if [[ "${dry_run}" -eq 0 ]]; then
+    mkdir -p "$(dirname "${backup_path}")"
+    mv "${legacy}" "${backup_path}"
+    rmdir "${HOME}/.agents" 2>/dev/null || true  # remove ~/.agents only if now empty
+  fi
+  echo "cleanup (legacy ~/.agents/skills): ${legacy} -> ${backup_path}"
+}
+
+# Enumerate globals/agents/skills/* and link each into <home_dir>/skills/<name>.
+# Also prunes stale managed symlinks (skill removed from repo source).
+# Requires: ${repo_root}, ${dry_run}, list_source_skills (from skill-lib.sh).
+link_global_skills() {
+  local home_dir="$1"
+  local src_dir="${repo_root}/globals/agents/skills"
+  local skills_home="${home_dir}/skills"
+
+  # Migrate off the legacy ~/.agents/skills location before linking. Idempotent and global, so the
+  # redundant second call (this runs once per harness) is a cheap no-op.
+  remove_legacy_agents_skills
+
+  [[ -d "${src_dir}" ]] || return 0
+
+  local name
+  while IFS= read -r name; do
+    [[ -n "${name}" ]] || continue
+    link_skill_item "globals/agents/skills/${name}" "${skills_home}/${name}"
+  done < <(list_source_skills "${src_dir}")
+
+  # Prune managed skill symlinks whose source has been removed
+  [[ -d "${skills_home}" ]] || return 0
+  local link target skill_name
+  for link in "${skills_home}"/*; do
+    [[ -L "${link}" ]] || continue
+    target="$(readlink "${link}")"
+    case "${target}" in
+      "${repo_root}/globals/agents/skills/"*) ;;
+      *) continue ;;
+    esac
+    skill_name="$(basename "${link}")"
+    [[ -f "${src_dir}/${skill_name}/SKILL.md" ]] && continue
+    if [[ "${dry_run}" -eq 0 ]]; then
+      rm "${link}"
+    fi
+    echo "prune: ${link} (source removed)"
+  done
+}
+
 describe_user_config() {
   local harness="$1"
   local home_path="$2"

@@ -20,7 +20,7 @@ export const SLASH_COMMAND_HARNESSES = {
   },
   codex: {
     dir: "globals/codex/commands",
-    skillPath: (skill) => `~/.agents/skills/${skill}/SKILL.md`,
+    skillPath: (skill) => `~/.codex/skills/${skill}/SKILL.md`,
   },
 };
 export const SLASH_COMMAND_HARNESS_NAMES = Object.keys(SLASH_COMMAND_HARNESSES);

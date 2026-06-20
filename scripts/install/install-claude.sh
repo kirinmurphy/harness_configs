@@ -25,6 +25,8 @@ export ROBOREPO_ON_CONFLICT="${on_conflict}"
 source "${repo_root}/scripts/install/install-lib.sh"
 # shellcheck source=scripts/lib/manifests-data.sh
 source "${repo_root}/scripts/lib/manifests-data.sh"  # provides manifest_rows
+# shellcheck source=scripts/build/skill-lib.sh
+source "${repo_root}/scripts/build/skill-lib.sh"  # provides list_source_skills (for link_global_skills)
 
 if [[ ! -d "${HOME}/.claude" ]]; then
   echo "skip: ~/.claude not found — Claude Code does not appear to be installed" >&2
@@ -44,3 +46,8 @@ while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
     cleanup) remove_repo_link "${home_abs}" ;;
   esac
 done < <(manifest_rows claude)
+
+# Per-skill links: each globals/agents/skills/<name> -> ~/.claude/skills/<name>.
+# Skills roborepo does not own (hand-dropped files) are left untouched.
+# Stale managed links (skill removed from repo source) are pruned.
+link_global_skills "${HOME}/.claude"

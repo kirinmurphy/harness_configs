@@ -1,6 +1,6 @@
 # Post-install content checks for verify-install.sh.
 # Columns: home_root<TAB>home_sub<TAB>regex<TAB>label
-# home_root tokens match manifests/manifest.tsv: claude | codex | agents.
+# home_root tokens match manifests/manifest.tsv: claude | codex.
 codex	config.toml	^[[:space:]]*hooks[[:space:]]*=[[:space:]]*true[[:space:]]*$	Codex hooks feature enabled
 codex	hooks.json	CAVEMAN MODE ACTIVE	Codex caveman startup hook configured
 codex	AGENTS.md	Use caveman full by default	Codex AGENTS caveman default configured

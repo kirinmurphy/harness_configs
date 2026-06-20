@@ -16,7 +16,7 @@ A _harness_ is the program that runs an AI coding agent on your machine — it l
 exposes tools, runs the model, and reacts to events. This repo configures two of them:
 
 - **Claude Code** — reads its config from `~/.claude/`.
-- **Codex** — reads its config from `~/.codex/` (and skills from `~/.agents/`).
+- **Codex** — reads its config from `~/.codex/` (and global skills from `~/.codex/skills/`).
 
 They do the same _kind_ of thing but disagree on file names, file formats, and which directory they
 scan. That disagreement is the entire reason this repo exists: we want to write a behavior **once**

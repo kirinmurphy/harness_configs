@@ -221,23 +221,22 @@ for old_root in agents claude codex skills-local; do
   fi
 done
 # Derive the shared-skill list from globals/agents/skills/*/SKILL.md so this never goes stale.
-# Claude gets a per-skill symlink (globals/claude/skills/<n> -> ../../agents/skills/<n>). Codex has
-# NO per-skill intermediate: it reads ~/.agents/skills -> globals/agents/skills directly.
+# globals/agents/skills/ is the canonical source; the installer fans each skill per-skill into
+# ~/.claude/skills/<n> and ~/.codex/skills/<n> (native dirs, no intermediate repo dir).
 for skill_src in "${repo_root}"/globals/agents/skills/*/SKILL.md; do
   [[ -e "${skill_src}" ]] || continue
   skill_name="$(basename "$(dirname "${skill_src}")")"
   check_file "globals/agents/skills/${skill_name}/SKILL.md"
-  check_repo_symlink "globals/claude/skills/${skill_name}" "../../agents/skills/${skill_name}"
 done
 check_readme_skill_coverage
 # Internal (repo-only) skills: source in local/skills/, linked into THIS repo's project-scope
-# dotdirs (.claude/skills, .agents/skills) — never global, never exported.
+# dotdirs (.claude/skills, .codex/skills) — never global, never exported.
 for skill_src in "${repo_root}"/local/skills/*/SKILL.md; do
   [[ -e "${skill_src}" ]] || continue
   skill_name="$(basename "$(dirname "${skill_src}")")"
   check_file "local/skills/${skill_name}/SKILL.md"
   check_repo_symlink ".claude/skills/${skill_name}" "../../local/skills/${skill_name}"
-  check_repo_symlink ".agents/skills/${skill_name}" "../../local/skills/${skill_name}"
+  check_repo_symlink ".codex/skills/${skill_name}" "../../local/skills/${skill_name}"
 done
 check_skill_lib_parity
 check_manifest_sources
@@ -282,6 +281,30 @@ if [[ "${check_installed}" -eq 1 ]]; then
   else
     node "${repo_root}/scripts/cli/main.mjs" bundle check || failed=1
   fi
+  # Check per-skill live links in each harness's native skills dir.
+  installed_has_claude=0; installed_has_codex=0
+  harness_present claude && installed_has_claude=1
+  harness_present codex  && installed_has_codex=1
+  for skill_src in "${repo_root}"/globals/agents/skills/*/SKILL.md; do
+    [[ -e "${skill_src}" ]] || continue
+    skill_name="$(basename "$(dirname "${skill_src}")")"
+    [[ "${installed_has_claude}" -eq 1 ]] && check_link "globals/agents/skills/${skill_name}" "${HOME}/.claude/skills/${skill_name}"
+    [[ "${installed_has_codex}"  -eq 1 ]] && check_link "globals/agents/skills/${skill_name}" "${HOME}/.codex/skills/${skill_name}"
+  done
+  # Drift report: unmanaged skills in native dirs (real dirs, not roborepo-managed symlinks).
+  drift_count=0
+  for skills_home in "${HOME}/.claude/skills" "${HOME}/.codex/skills"; do
+    [[ -d "${skills_home}" ]] || continue
+    for skill_dir in "${skills_home}"/*/; do
+      [[ -d "${skill_dir}" ]] || continue
+      skill_name="$(basename "${skill_dir%/}")"
+      case "${skill_name}" in .*) continue ;; esac  # skip dotfolders
+      [[ -L "${skills_home}/${skill_name}" ]] && continue  # managed symlink
+      echo "drift: ${skill_dir} is unmanaged — run: roborepo skill adopt ${skill_name}"
+      drift_count=$((drift_count + 1))
+    done
+  done
+  [[ "${drift_count}" -gt 0 ]] || ok "no unmanaged skills found in harness skill dirs"
 fi
 
 if [[ "${failed}" -ne 0 ]]; then

@@ -1,0 +1,9 @@
+{
+  "_comment": "Command names that roborepo must not shadow. Seeded from caveman plugin and known harness built-ins. Collision check is warn-only (see render-slash-commands.mjs). Update when new plugins or harness built-ins are added.",
+  "reserved": [
+    "caveman",
+    "caveman-commit",
+    "caveman-review",
+    "caveman-init"
+  ]
+}

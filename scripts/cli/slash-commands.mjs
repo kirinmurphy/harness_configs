@@ -138,8 +138,24 @@ export function loadSlashCommandPlan() {
   return { commands, expected: expectedCommands(commands) };
 }
 
+function checkCommandCollisions(commands) {
+  const reservedPath = path.join(repoRoot, "manifests", "inventory", "reserved-commands.json");
+  let reserved;
+  try {
+    reserved = new Set(JSON.parse(fs.readFileSync(reservedPath, "utf8")).reserved);
+  } catch {
+    return;
+  }
+  for (const command of commands) {
+    if (reserved.has(command.name)) {
+      console.warn(`warn: command /${command.name} collides with a reserved native/plugin command`);
+    }
+  }
+}
+
 export function renderSlashCommands({ checkOnly = false, quiet = false } = {}) {
   const { commands, expected } = loadSlashCommandPlan();
+  checkCommandCollisions(commands);
   let changed = 0;
   let failed = 0;
 

@@ -154,19 +154,15 @@ roborepo index docs path/to/dir
 
 ### Add a shared skill
 
-A shared skill's content lives once in `globals/agents/skills/<name>/`, the canonical source. Codex
-reaches it via `~/.agents/skills`; Claude reaches it through a per-skill symlink (see
-[architecture.md](../reference/services/architecture.md#shared-skills-canonical-source--per-harness-fan-out)).
-After creating `globals/agents/skills/<name>/SKILL.md`, run the linker — it creates any missing
-Claude per-skill symlinks and prunes orphaned ones, deriving everything from `globals/agents/skills/`:
+Use `roborepo skill new` — it scaffolds, registers manifests, and fans per-skill links into
+both `~/.claude/skills/<name>` and `~/.codex/skills/<name>` in one step. The canonical source
+lives once in `globals/agents/skills/<name>/`. If you created a skill out-of-band:
 
 ```sh
-scripts/build/link-skills.sh          # create/prune links for all skills
-scripts/build/link-skills.sh --check  # verify only, non-zero exit if out of sync
+roborepo skill new              # scaffold + fan out per-skill links to both harnesses
+roborepo skill adopt <name>     # ingest a skill created natively (init_skill.py / by hand)
+scripts/doctor.sh --installed   # verify live per-skill links are current
 ```
-
-The source folder alone is not enough; without the symlinks the harnesses won't see the
-skill (and the active skill list only refreshes on harness reload).
 
 ### Edit global rules
 
@@ -194,7 +190,7 @@ Something feels off — commands missing, config not loading, hooks not firing. 
 
 ```sh
 roborepo doctor        # (dispatches to scripts/doctor.sh)
-scripts/doctor.sh --installed     # also checks the global ~/.claude·~/.codex·~/.agents links
+scripts/doctor.sh --installed     # also checks the global ~/.claude·~/.codex links and per-skill links
 scripts/doctor.sh --installed -q  # --quiet: failures + a one-line summary only
 ```
 

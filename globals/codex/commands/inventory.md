@@ -8,7 +8,7 @@ description: Scan this repo and refresh its Project Context handoff docs (glossa
 
 Use the `project-context` skill for this request.
 
-Read `~/.agents/skills/project-context/SKILL.md`, then follow its workflow.
+Read `~/.codex/skills/project-context/SKILL.md`, then follow its workflow.
 
 Keep the skill as the source of truth; this command is only the explicit entry
 point.

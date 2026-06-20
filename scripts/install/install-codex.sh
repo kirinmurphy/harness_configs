@@ -25,22 +25,19 @@ export ROBOREPO_ON_CONFLICT="${on_conflict}"
 source "${repo_root}/scripts/install/install-lib.sh"
 # shellcheck source=scripts/lib/manifests-data.sh
 source "${repo_root}/scripts/lib/manifests-data.sh"  # provides manifest_rows
+# shellcheck source=scripts/build/skill-lib.sh
+source "${repo_root}/scripts/build/skill-lib.sh"  # provides list_source_skills (for link_global_skills)
 
-# Codex is "installed" if either its config home (~/.codex) or its skills home (~/.agents)
-# exists. AGENTS.md / config.toml / rules live under ~/.codex; skills live under ~/.agents
-# (Codex scans .agents/skills exclusively). ~/.codex/skills is NOT managed: it is Codex's own
-# writable skill dir (its .system skill-installer reads/writes $CODEX_HOME/skills). Any old
-# repo-symlink there is pruned via the codex `cleanup` row so installs don't land in the repo.
+# Codex is "installed" if ~/.codex exists.
+# AGENTS.md / config.toml / rules live under ~/.codex.
+# Skills are linked per-skill into ~/.codex/skills/<name> by link_global_skills below.
 harness_present codex || {
-  echo "skip: neither ~/.codex nor ~/.agents found — Codex does not appear to be installed" >&2
+  echo "skip: ~/.codex not found — Codex does not appear to be installed" >&2
   exit 0
 }
 
-# Managed rows come from manifests/platform/manifest.tsv: codex harness (AGENTS.md, hooks.json, rules,
-# config.toml, plus cleanup of the retired ~/.codex/skills link) and agents harness (the
-# canonical ~/.agents/skills link -> globals/agents/skills).
-codex_rows() { manifest_rows codex; manifest_rows agents; }
-
+# Managed rows come from manifests/platform/manifest.tsv: codex harness (AGENTS.md, hooks.json,
+# rules, config.toml, plus migration cleanup of any old dir-level skills link).
 while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
   case "${kind}" in
     root_config) export_user_config "codex" "${src_rel}" "${home_abs}" ;;
@@ -53,4 +50,9 @@ while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
       ;;
     cleanup) remove_repo_link "${home_abs}" ;;
   esac
-done < <(codex_rows)
+done < <(manifest_rows codex)
+
+# Per-skill links: each globals/agents/skills/<name> -> ~/.codex/skills/<name>.
+# Skills roborepo does not own (native-installed via init_skill.py / skill-installer) are left
+# untouched. Stale managed links (skill removed from repo source) are pruned.
+link_global_skills "${HOME}/.codex"

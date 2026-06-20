@@ -89,7 +89,6 @@ const state = {
   harnesses: {
     claude: { mode, onConflict: persistedOnConflict },
     codex: { mode, onConflict: persistedOnConflict },
-    agents: { mode, onConflict: persistedOnConflict },
   },
 };
 fs.mkdirSync(path.dirname(stateFile), { recursive: true });

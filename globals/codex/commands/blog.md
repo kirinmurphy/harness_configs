@@ -8,7 +8,7 @@ description: Write a long-form architecture blog post about a real design decisi
 
 Use the `blog` skill for this request.
 
-Read `~/.agents/skills/blog/SKILL.md`, then follow its workflow.
+Read `~/.codex/skills/blog/SKILL.md`, then follow its workflow.
 
 Keep the skill as the source of truth; this command is only the explicit entry
 point.

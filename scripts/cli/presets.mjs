@@ -10,7 +10,6 @@ const INSTALL_MANIFEST = path.join(repoRoot, "manifests", "platform", "manifest.
 const MANIFEST_HOME = {
   claude: path.join(os.homedir(), ".claude"),
   codex: path.join(os.homedir(), ".codex"),
-  agents: path.join(os.homedir(), ".agents"),
 };
 
 // Onboarding wizard disabled: install auto-applies all default bundles, so nothing is gated on an
@@ -649,8 +648,7 @@ function readManifestRows() {
 
 function harnessAvailable(harness) {
   if (harness === "claude") return fs.existsSync(MANIFEST_HOME.claude);
-  if (harness === "codex") return fs.existsSync(MANIFEST_HOME.codex) || fs.existsSync(MANIFEST_HOME.agents);
-  if (harness === "agents") return fs.existsSync(MANIFEST_HOME.codex) || fs.existsSync(MANIFEST_HOME.agents);
+  if (harness === "codex") return fs.existsSync(MANIFEST_HOME.codex);
   return false;
 }
 

@@ -3,14 +3,15 @@ set -euo pipefail
 
 # roborepo repair — fix an install after the checkout was moved or renamed.
 #
-# Symptom this fixes: every managed link under ~/.claude / ~/.codex / ~/.agents and the
-# ~/.local/bin/roborepo command point at the checkout's old absolute path, so they dangle and
-# `roborepo` drops off PATH. (See docs/plans/portable-install-relocation.md.)
+# Symptom this fixes: every managed link under ~/.claude and ~/.codex (including per-skill links
+# under skills/) and the ~/.local/bin/roborepo command point at the checkout's old absolute path,
+# so they dangle and `roborepo` drops off PATH. (See docs/plans/portable-install-relocation.md.)
 #
 # What it does: for each managed link in manifests/platform/manifest.tsv, reclaim a stale link (one that
 # is dangling, or targets the recorded prior checkout) and recreate it against the CURRENT
-# checkout, then re-link the bin command and rewrite the recorded root. Relink only — mutable
-# root config (settings.json / config.toml) is user-owned and left untouched.
+# checkout; then re-link per-skill global skills, re-link the bin command, and rewrite the
+# recorded root. Relink only — mutable root config (settings.json / config.toml) is
+# user-owned and left untouched.
 #
 # Idempotent: a no-op when every link already points at the current checkout.
 
@@ -27,7 +28,9 @@ case "${1:-}" in
 esac
 
 # shellcheck source=scripts/install/install-lib.sh
-source "${repo_root}/scripts/install/install-lib.sh"   # provides install_link_item (relinks repo_root/* targets)
+source "${repo_root}/scripts/install/install-lib.sh"   # provides install_link_item, link_global_skills
+# shellcheck source=scripts/build/skill-lib.sh
+source "${repo_root}/scripts/build/skill-lib.sh"       # provides list_source_skills (for link_global_skills)
 # shellcheck source=scripts/lib/manifests-data.sh
 source "${repo_root}/scripts/lib/manifests-data.sh"    # provides manifest_rows
 # shellcheck source=scripts/install/state-lib.sh
@@ -81,11 +84,38 @@ repair_harness() {
   done < <(manifest_rows "$1")
 }
 
+# Per-skill links: reclaim dangling managed symlinks, then re-link via enumerate-step.
+# Always runs link_global_skills regardless of whether skills_home exists — repair creates it.
+repair_skill_links() {
+  local skills_home="$1"
+  if [[ -d "${skills_home}" ]]; then
+    local link current
+    for link in "${skills_home}"/*; do
+      [[ -L "${link}" ]] || continue
+      current="$(readlink "${link}")"
+      case "${current}" in
+        "${repo_root}"/globals/agents/skills/*) continue ;;  # already current
+      esac
+      local stale=0
+      [[ -n "${recorded_repo}" ]] && case "${current}" in "${recorded_repo}"/globals/agents/skills/*) stale=1 ;; esac
+      [[ ! -e "${link}" ]] && stale=1
+      [[ "${stale}" -eq 1 ]] || continue
+      if [[ "${dry_run}" -eq 1 ]]; then
+        echo "reclaim (skill): ${link} (was ${current})"
+      else
+        rm "${link}"
+        echo "reclaim (skill): ${link} (was ${current})"
+      fi
+    done
+  fi
+  link_global_skills "${skills_home%/skills}"
+}
+
 [[ -d "${HOME}/.claude" ]] && repair_harness claude
-if [[ -d "${HOME}/.codex" ]]; then
-  repair_harness codex
-  repair_harness agents
-fi
+[[ -d "${HOME}/.codex" ]]  && repair_harness codex
+
+repair_skill_links "${HOME}/.claude/skills"
+repair_skill_links "${HOME}/.codex/skills"
 
 # Bin command: install-global-commands.sh now self-heals a dangling link. Pass --dry-run
 # only when set; avoid expanding an empty array under `set -u` (unbound on bash 3.2 / macOS).

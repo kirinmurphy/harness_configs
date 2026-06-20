@@ -34,13 +34,15 @@ to them plus the judgment that isn't written down. Read the doc, then apply the 
 
 ## Repo dir convention (the one thing to internalize first)
 
-- `globals/claude/` + `globals/codex/` + `globals/agents/` = SOURCE symlinked into the user's GLOBAL
-  `~/.claude`/`~/.codex`/`~/.agents`.
+- `globals/claude/` + `globals/codex/` + `globals/agents/` = SOURCE symlinked/linked into the user's
+  GLOBAL `~/.claude`/`~/.codex` at install time.
 - `.claude/` + `.agents/` (dotdirs) = THIS repo's own PROJECT-SCOPE skill config, NOT global.
-- `globals/agents/skills/` = canonical shared/advisory layer (global + exportable; Codex reads it via
-  `~/.agents/skills`, Claude via per-skill links in `globals/claude/skills/`). `local/skills/` = internal
-  layer (this repo only). The firewall between them is structural — see below.
-- Codex scans `.agents/skills` **exclusively** for project skills (no `.codex/skills` fallback).
+- `globals/agents/skills/<name>/` = canonical shared/advisory layer (global + exportable). At install
+  time, per-skill symlinks are created in each harness's native dir: `~/.claude/skills/<name>` and
+  `~/.codex/skills/<name>` → `globals/agents/skills/<name>`. No intermediate `globals/claude/skills/`
+  directory exists. `local/skills/` = internal layer (this repo only, via `.claude/skills` + `.codex/skills`
+  project-scope dotdirs). The firewall between them is structural — see below.
+- Codex scans `.agents/skills` for project-scope skills (the repo's `.agents/skills/` dotdir).
 - Shared skills use `globals/agents/skills/` as canonical source; repo-local skills use `local/skills/`
   as canonical source and symlink into project-scope harness folders.
 - Mutable global config files should not be direct symlinks to repo source; use a generated or
@@ -78,16 +80,14 @@ Everything else (the two symlink levels, the layer table) lives in
   print every failure plus a one-line `… (N checks)` / `N passed, M failed` summary, exit code
   unchanged. Use the bare script + `--quiet` for a readable, permissionable check — never pipe a
   verifier through `grep`/`head` to trim output. `doctor.sh` also folds `link-skills.sh --check`,
-  so it is the single repo-health entrypoint (`--installed` adds the global ~/.claude·~/.codex·
-  ~/.agents link checks); `test-roborepo.sh` stays the separate test suite.
+  so it is the single repo-health entrypoint (`--installed` adds global ~/.claude·~/.codex live
+  link checks including per-skill skill links); `test-roborepo.sh` stays the separate test suite.
 - **Cross-platform floor:** Node cores use only `node:` built-ins (no shelling to
   `zip`/`unzip`/`ln`), so the same code runs on macOS/Linux/Windows. Keep it that way.
-- **Codex skill discovery path (VERIFIED).** Codex scans `.agents/skills` — repo-up-to-root for
-  project scope, and `~/.agents/skills` globally — and does NOT read any `.codex/skills` path
-  (per OpenAI Codex docs). Claude Code auto-loads `<repo>/.claude/skills/` for project scope. The
-  Codex ignores `.codex/skills`
-  for discovery. Symlinked skill folders are followed, so linking these dirs at the canonical
-  `globals/agents/skills` source works.
+- **Skill discovery paths.** Project scope: `.codex/skills` (Codex) and `.claude/skills` (Claude).
+  Global scope: `~/.codex/skills/<name>` (Codex) and `~/.claude/skills/<name>` (Claude) — roborepo
+  links per-skill symlinks at install time (`link_global_skills` in install-lib.sh). Symlinked skill
+  folders are followed. No `.agents/skills` anywhere.
 
 ## The `roborepo` CLI (the single consumer front door)
 

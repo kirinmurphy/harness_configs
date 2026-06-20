@@ -7,10 +7,10 @@ import path from "node:path";
 import { selectMenu } from "./skill-lib.mjs";
 import { repoRoot } from "./paths.mjs";
 import { runRepoCommand } from "./repo-script-runner.mjs";
-import { skillLink, skillExport } from "./skills.mjs";
+import { skillLink, skillExport, skillAdopt } from "./skills.mjs";
 import { skillNew } from "./skill-new.mjs";
 import { indexCode, indexDocs, watchCode, runCmd } from "./index.mjs";
-import { mcpAdd } from "./mcp.mjs";
+import { mcpAdd, mcpApply } from "./mcp.mjs";
 import { projectContextInventory } from "./project-context.mjs";
 import { maybeRunPresetOnboarding, presetsCommand } from "./presets.mjs";
 import { telemetryCommand } from "./telemetry.mjs";
@@ -66,6 +66,7 @@ async function dispatch(args) {
     case "skill":
       if (sub === "export-to-local") return skillExport(new Set(rest), `skill ${sub}`);
       if (sub === "new") return skillNew(rest);
+      if (sub === "adopt") return skillAdopt(rest);
       if (sub === "symlink-repo") {
         return skillLink(flags, `skill ${sub}`);
       }
@@ -84,6 +85,7 @@ async function dispatch(args) {
 
     case "mcp":
       if (sub === "add") return mcpAdd(rest);
+      if (sub === "apply") return mcpApply({ dryRun: rest.includes("--dry-run") });
       console.error(`unknown: roborepo mcp ${sub ?? ""}`.trim());
       return usageError();
 

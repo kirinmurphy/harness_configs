@@ -1,22 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Two-layer skill linking for this repo.
-#
-# SHARED layer (advisory, global + exportable):
-#   globals/agents/skills/<name>  ->  globals/claude/skills/<name>   (../../agents/skills/<name>)
-#   globals/agents/skills/ is the canonical shared source. globals/claude/skills is symlinked into
-#   ~/.claude/skills by install/main.sh (Claude reads ~/.claude/skills). Codex has NO
-#   per-skill intermediate dir: Codex reads ~/.agents/skills, which install/main.sh
-#   points straight at globals/agents/skills/ (Codex scans .agents/skills exclusively — there is no
-#   .codex/skills fallback). The export tool reads globals/agents/skills/ directly.
+# Internal skill linking for this repo.
 #
 # INTERNAL layer (repo-only firewall, NEVER global, NEVER exported):
-#   local/skills/<name>  ->  .claude/skills/<name>, .agents/skills/<name>
+#   local/skills/<name>  ->  .claude/skills/<name>, .codex/skills/<name>
 #                            (../../local/skills/<name>)
 #   The repo dotdirs are project-scope only; Claude Code auto-loads <repo>/.claude/skills/
-#   and Codex scans <repo>/.agents/skills/ when an agent works inside this repo. These are
+#   and Codex reads <repo>/.codex/skills/ when an agent works inside this repo. These are
 #   not symlinked to global and have no path into the export tool — the separation is structural.
+#
+# SHARED layer (global, per-harness native dirs):
+#   globals/agents/skills/<name>  ->  ~/.claude/skills/<name>  AND  ~/.codex/skills/<name>
+#   The install scripts (install-claude.sh, install-codex.sh) handle shared skill linking at
+#   install time by enumerating globals/agents/skills/* and linking per-skill into each harness's
+#   native dir. This build script does NOT manage shared skill links — they are a runtime install
+#   concern, not a build/repo-structure concern. See install-lib.sh:link_global_skills.
 #
 # Idempotent: creates what's missing, prunes symlinks whose source is gone, leaves correct
 # links untouched. Run after adding/removing a skill, or anytime to heal drift. Use --check
@@ -27,7 +26,7 @@ set -euo pipefail
 #
 # Safety: prune only ever removes a SYMLINK whose target points back into the layer's source
 # (../../agents/skills/<name> or ../../local/skills/<name>). It never touches real files or
-# directories (e.g. globals/agents/skills/.system/ Codex system skills, or .claude/settings.local.json).
+# directories (e.g. .claude/settings.local.json).
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${repo_root}"
@@ -56,7 +55,7 @@ total=0
 # link_layer <src_dir> <expected_prefix> <harness_dir_1> [<harness_dir_2> ...]
 #   src_dir        : where skill sources live (relative to repo root), e.g. "skills"
 #   expected_prefix: the symlink target prefix, e.g. "../../skills"
-#   harness_dir_*  : per-harness skills dirs to populate, e.g. "globals/claude/skills" ".claude/skills"
+#   harness_dir_*  : per-harness skills dirs to populate, e.g. ".claude/skills" ".codex/skills"
 link_layer() {
   local src_dir="$1"; shift
   local expected_prefix="$1"; shift
@@ -131,13 +130,9 @@ prune_layer() {
   done
 }
 
-# SHARED layer — Claude only (Codex reads ~/.agents/skills -> globals/agents/skills directly).
-link_layer  "globals/agents/skills" "../../agents/skills" "globals/claude/skills"
-prune_layer "globals/agents/skills" "../../agents/skills" "globals/claude/skills"
-
-# INTERNAL layer (repo-only): Claude project dir, plus Codex via .agents (canonical).
-link_layer  "local/skills" "../../local/skills" ".claude/skills" ".agents/skills"
-prune_layer "local/skills" "../../local/skills" ".claude/skills" ".agents/skills"
+# INTERNAL layer (repo-only): Claude project dir and Codex project dir.
+link_layer  "local/skills" "../../local/skills" ".claude/skills" ".codex/skills"
+prune_layer "local/skills" "../../local/skills" ".claude/skills" ".codex/skills"
 
 if [[ ${check_only} -eq 1 ]]; then
   if [[ ${missing} -gt 0 || ${orphans} -gt 0 ]]; then

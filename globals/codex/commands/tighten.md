@@ -8,7 +8,7 @@ description: Clean up code against this project's own patterns with specific, an
 
 Use the `tighten` skill for this request.
 
-Read `~/.agents/skills/tighten/SKILL.md`, then follow its workflow.
+Read `~/.codex/skills/tighten/SKILL.md`, then follow its workflow.
 
 Keep the skill as the source of truth; this command is only the explicit entry
 point.

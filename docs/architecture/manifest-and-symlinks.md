@@ -1,7 +1,7 @@
 # Manifest & Symlink Model
 
 How roborepo gets its version-controlled config from the repo into a user's harness homes
-(`~/.claude`, `~/.codex`, `~/.agents`), and how every script agrees on what is managed.
+(`~/.claude`, `~/.codex`), and how every script agrees on what is managed.
 
 ## The one-sentence version
 
@@ -18,9 +18,9 @@ Grouped by the kind of thing each term names.
 
 | Term | Meaning |
 | --- | --- |
-| **harness** | An agent runtime that reads config from a home dir. Here: **Claude** (`~/.claude`) and **Codex** (`~/.codex` + `~/.agents`). |
+| **harness** | An agent runtime that reads config from a home dir. Here: **Claude** (`~/.claude`) and **Codex** (`~/.codex`). |
 | **globals/** | Repo dir holding the real, version-controlled config meant to go global. Subdirs: `claude/`, `codex/`, `agents/`, `rules/`. |
-| **harness home** | The per-harness config dir in `$HOME`: `~/.claude`, `~/.codex`, `~/.agents`. |
+| **harness home** | The per-harness config dir in `$HOME`: `~/.claude`, `~/.codex`. |
 
 ### Data files (the lists, and who reads them)
 
@@ -53,8 +53,8 @@ Grouped by the kind of thing each term names.
 ## How a managed file flows from repo to home
 
 The example below uses one Claude file (`CLAUDE.md`), but the flow is identical for **every
-`link` row of every harness** — `~/.codex/AGENTS.md`, `~/.agents/skills`, etc. all work the
-same way: real file in `globals/`, symlink in the home dir, agent reads the symlink.
+`link` row of every harness** — `~/.codex/AGENTS.md`, etc. all work the same way: real file
+in `globals/`, symlink in the home dir, agent reads the symlink.
 
 ```mermaid
 flowchart LR
@@ -124,61 +124,34 @@ flowchart TD
 
 ## The skills layout
 
-roborepo manages Codex's shared skills at `~/.agents/skills` (the modern open "Agent Skills"
-path). It does **not** manage `~/.codex/skills` — that legacy path is left to Codex's own
-tooling (see below).
+roborepo manages shared skills via `globals/agents/skills/<name>/SKILL.md` in version control.
+At install time, per-skill symlinks are created in **each harness's native skills dir**:
+`~/.claude/skills/<name>` and `~/.codex/skills/<name>` both point into the repo source.
 
 ```mermaid
 flowchart LR
-  agsrc["repo: globals/agents/skills<br/>(real shared skills)"]
-  agents["~/.agents/skills<br/>(roborepo-managed)"]
-  codexsk["~/.codex/skills<br/>(NOT managed:<br/>Codex's own writable dir)"]
-  claudesk["~/.claude/skills/&lt;name&gt;<br/>(per-skill links)"]
+  agsrc["repo: globals/agents/skills/&lt;name&gt;<br/>(canonical source)"]
+  claudesk["~/.claude/skills/&lt;name&gt;<br/>(managed per-skill symlink)"]
+  codexsk["~/.codex/skills/&lt;name&gt;<br/>(managed per-skill symlink)"]
+  nativetool["Codex native skill tools<br/>(init_skill.py / skill-installer)"]
+  nativesk["~/.codex/skills/&lt;other-name&gt;<br/>(unmanaged, native-installed)"]
 
-  agents -- symlink --> agsrc
-  claudesk -- per-skill symlink --> agsrc
-
-  codexreads["Codex discovers shared skills"] --> agents
-  claudereads["Claude discovers shared skills"] --> claudesk
-  nativetool["Codex skill-installer<br/>(.system helper)"] -- "writes ad-hoc installs" --> codexsk
+  claudesk -- "symlink" --> agsrc
+  codexsk -- "symlink" --> agsrc
+  nativetool -- "writes" --> nativesk
 ```
 
-### Why `~/.codex/skills` is not managed (legacy-decoupling)
+Skills are not manifest rows — they are linked by an **enumerate-step** in the installer
+(`install-lib.sh:link_global_skills`), called by `install-claude.sh` and `install-codex.sh`
+after the manifest rows. This keeps the manifest focused on static paths while skills grow
+dynamically.
 
-OpenAI is mid-migration and is internally inconsistent about the skills path:
+### Ownership boundary
 
-- The **modern standard** is `~/.agents/skills` (open "Agent Skills"). roborepo targets this,
-  and Codex discovers shared skills there.
-- But Codex's **own bundled `.system` helper** `skill-installer` still hardcodes the **legacy**
-  `$CODEX_HOME/skills` (= `~/.codex/skills`): `list-skills.py` reads it, and
-  `install-skill-from-github.py` writes downloaded skills into it. That helper has not caught
-  up to the new path.
-
-These two tools do different jobs and are complementary:
-
-| roborepo (this repo) | Codex `skill-installer` (.system helper) |
-| --- | --- |
-| Curated, version-controlled, shared-across-machines skill set | Ad-hoc, per-user, fetched on demand |
-| Serves only what is committed to `globals/agents/skills/` | Downloads arbitrary skills from `openai/skills` or any GitHub repo |
-| Targets the modern `~/.agents/skills` | Writes to the legacy `~/.codex/skills` |
-
-**The bug we removed:** the installer used to symlink `~/.codex/skills` → the repo's
-read-only `globals/agents/skills`. If the native helper ever ran, its downloaded skills would
-land **inside the version-controlled repo**, mixing personal installs into the shared set.
-
-**Resolution (implemented):** roborepo commits to the modern path and fully decouples from the
-legacy one.
-- `~/.agents/skills` → repo shared skills (managed `link`).
-- `~/.codex/skills` → left as a plain local dir Codex's helper owns; any old repo-symlink
-  there is pruned via a `cleanup` row so installs never reach the repo.
-
-When OpenAI updates `skill-installer` to the `.agents/skills` standard, the two converge with
-no change needed here.
-
-> Note on "exclusively": prior code comments claimed Codex scans `~/.agents/skills`
-> *exclusively*. That came from in-repo comments, not verified Codex docs. The decoupling above
-> does not depend on it — even if Codex also reads `~/.codex/skills`, keeping it unmanaged is
-> correct, because that dir is exactly where the native helper expects to own its installs.
+roborepo manages only the skill names it owns. Native-installed skills (created via
+`init_skill.py` or `skill-installer` directly) land at unrecognized names and are left
+untouched. `roborepo doctor --installed` and the SessionStart hook report them as drift;
+`roborepo skill adopt <name>` moves them into version control.
 
 ## Related
 

@@ -22,42 +22,38 @@ the gotchas that are easy to get wrong; it does not duplicate the repo's own doc
 - `docs/config-collision-handling.md` — conflict rules.
 - `docs/claude-hooks.md`, `docs/codex-hooks.md` — hook behavior.
 
-## The skill symlink model (the #1 thing to get right)
+## The skill model (the #1 thing to get right)
 
-The canonical shared source is **`globals/agents/skills/<name>/`**. The two harnesses reach it
-differently because Codex and Claude scan different paths:
+The canonical shared source is **`globals/agents/skills/<name>/`**. Both harnesses read skills
+from their native skill dir:
 
-1. **HOME → repo (install-time).** `scripts/install/main.sh` links HOME dirs into the
-   repo. Codex scans `~/.agents/skills` **exclusively** (no `~/.codex/skills` fallback), so
-   the canonical link is `~/.agents/skills -> <repo>/globals/agents/skills`. Claude
-   scans `~/.claude/skills -> <repo>/globals/claude/skills`. Already done on a set-up machine;
-   you normally do NOT touch this.
+- `~/.claude/skills/<name>` → `<repo>/globals/agents/skills/<name>` (per-skill symlink)
+- `~/.codex/skills/<name>` → `<repo>/globals/agents/skills/<name>` (per-skill symlink)
 
-2. **Claude per-skill → shared source (in-repo).** Inside the repo, `globals/claude/skills/<name>` is
-   an individual symlink pointing to `../../agents/skills/<name>`. Codex needs NO per-skill
-   intermediate — it reads `globals/agents/skills/` directly via `~/.agents/skills`.
+These per-skill symlinks are created by the installer's enumerate-step (`install-lib.sh:link_global_skills`),
+called from `install-claude.sh`, `install-codex.sh`, and `scripts/build/link-global-skills.sh`
+(run by `skill new`). There is no intermediate `globals/claude/skills/` directory.
 
-Net: a skill's source lives once in `globals/agents/skills/<name>/`. Codex sees it directly; Claude
-sees it through its per-skill symlink.
+`roborepo doctor --installed` verifies all live per-skill links are current.
+`roborepo doctor` (without `--installed`) checks that source dirs exist in the repo.
 
 ## Adding a shared skill
 
-1. Create the source: `globals/agents/skills/<name>/SKILL.md` (plus any support files).
-2. Create the Claude per-skill symlink. **Always use the script** — it derives links from
-   `globals/agents/skills/` and is idempotent, so it can't drift:
-   ```bash
-   scripts/build/link-skills.sh
-   ```
-   (Manual equivalent, if ever needed: `ln -s ../../agents/skills/<name> globals/claude/skills/<name>`.
-   Prefer the script.)
-3. Add a one-line entry under **Shared Skills** in `README.md`.
-4. Verify everything resolves: `scripts/build/link-skills.sh --check` (or `scripts/doctor.sh`,
-   which derives the skill list the same way).
+Use `roborepo skill new` — it scaffolds, registers, and fans out to both harnesses in one step:
+```bash
+roborepo skill new
+```
+If you created a skill out-of-band (via native `init_skill.py` or by hand in `~/.codex/skills/<name>`):
+```bash
+roborepo skill adopt <name>
+```
 
-The source folder alone is NOT enough for Claude — without its per-skill symlink Claude
-won't see the skill, and the active skill list only refreshes on harness reload.
-There is no auto-link-on-create; `link-skills.sh` is the mechanism that makes it
-reliable, so run it after adding any skill.
+Manual add (for reference only — prefer the commands above):
+1. Create `globals/agents/skills/<name>/SKILL.md`
+2. Register in `manifests/inventory/skill-invocation.json`
+3. Run `scripts/build/link-global-skills.sh` to fan out per-skill links
+4. Add a one-line entry under **Shared Skills** in `README.md`
+5. Verify: `scripts/doctor.sh --installed --quiet`
 
 A `Write|Edit` PreToolUse hook (`globals/claude/hooks/roborepo-write-guard.mjs`,
 registered in `globals/claude/settings.json`) fires from any repo when a path under

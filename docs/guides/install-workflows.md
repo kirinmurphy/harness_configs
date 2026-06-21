@@ -346,6 +346,42 @@ The renderer updates:
 
 These are global harness defaults. The installer does not keep a separate permission profile registry per consumer repo. For a different posture on one machine or project, render/install that profile for that run, or use the agent harness's one-off launch flags when starting a session.
 
+## Uninstall
+
+To remove all roborepo artifacts from the machine:
+
+```sh
+./scripts/install/uninstall.sh
+```
+
+Preview what will be removed without making any changes:
+
+```sh
+./scripts/install/uninstall.sh --dry-run
+```
+
+Uninstall removes:
+
+- All manifest-managed symlinks (skills, hooks, commands, rules, markers)
+- Root config files (`~/.claude/settings.json`, `~/.codex/config.toml`)
+- Per-skill links in `~/.claude/skills/` and `~/.codex/skills/`
+- `~/.local/bin/roborepo`
+- Roborepo shell wiring from `~/.zshrc` / `~/.bashrc`
+- MCP server registrations for roborepo-managed servers
+- Preset state (`~/.roborepo/presets/`)
+- Install state (`~/.roborepo/install-state.json`)
+- Timestamped collision backups (`*_original_*` in `~/.claude/` and `~/.codex/`)
+- Pre-install backups (`~/.roborepo/backups/pre-install/`)
+
+### Root Config Restore Behavior
+
+At install time, the installer saves the pre-existing root config to `~/.roborepo/backups/pre-install/<harness>/` before writing the repo version for the first time. On uninstall:
+
+- If a pre-install backup exists for `~/.claude/settings.json` or `~/.codex/config.toml`, uninstall **restores** the original file instead of deleting it.
+- If no backup exists (roborepo was the first to create the file), uninstall **deletes** the file.
+
+This means uninstalling on a machine that had prior Claude or Codex config returns that machine to its pre-roborepo state.
+
 ## Related References
 
 - [First-Time Setup](first-time-setup.md)

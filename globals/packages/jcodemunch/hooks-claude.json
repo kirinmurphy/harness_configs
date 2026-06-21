@@ -1,0 +1,24 @@
+{
+  "SessionStart": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "dir=\"$(pwd)\"; hash=\"$(echo -n \"$dir\" | md5sum 2>/dev/null | cut -c1-32 || echo -n \"$dir\" | md5)\"; pidfile=\"/tmp/jcmwatch-${hash}.pid\"; if [ -f \"$pidfile\" ]; then pid=$(awk '{print $1}' \"$pidfile\"); stored_start=$(cut -d' ' -f2- \"$pidfile\"); actual_start=$(ps -p \"$pid\" -o lstart= 2>/dev/null | tr -s ' ' || ps -p \"$pid\" -o start= 2>/dev/null | tr -s ' ' || echo ''); if [ \"$stored_start\" = \"$actual_start\" ]; then echo '{\"systemMessage\": \"jcodemunch is available and the code watcher is running — index is kept current automatically. Use resolve_repo, search_symbols, get_file_outline, find_references, get_context_bundle for code exploration.\"}'; else echo '{\"systemMessage\": \"jcodemunch is available. Use resolve_repo, search_symbols, get_file_outline, find_references, get_context_bundle — NOT Grep/Read — for code exploration. the code watcher is NOT running; run `roborepo index code` if the index may be stale.\"}'; fi; else echo '{\"systemMessage\": \"jcodemunch is available. Use resolve_repo, search_symbols, get_file_outline, find_references, get_context_bundle — NOT Grep/Read — for code exploration. the code watcher is NOT running; run `roborepo index code` if the index may be stale.\"}'; fi"
+        }
+      ]
+    }
+  ],
+  "PreToolUse": [
+    {
+      "matcher": "Grep|Glob",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "echo '{\"continue\": false, \"stopReason\": \"Grep and Glob are blocked. Use jcodemunch tools instead: search_symbols, get_file_outline, find_references, or get_context_bundle.\"}'"
+        }
+      ]
+    }
+  ]
+}

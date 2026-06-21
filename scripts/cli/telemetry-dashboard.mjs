@@ -14,9 +14,13 @@ export function dashboardHtml() {
   :root { color-scheme: dark; --bg:#0e1116; --panel:#161b22; --line:#2d333b; --ink:#c9d1d9; --dim:#8b949e; --accent:#58a6ff; --spike:#f85149; }
   * { box-sizing: border-box; }
   body { margin:0; font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--bg); color:var(--ink); }
-  header { padding:16px 20px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:baseline; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:baseline; }
   header h1 { font-size:15px; margin:0; font-weight:600; }
   header .meta { color:var(--dim); font-size:12px; }
+  nav { display:flex; gap:2px; margin-left:auto; }
+  nav a { color:var(--dim); font-size:12px; text-decoration:none; padding:3px 10px; border-radius:5px; border:1px solid transparent; }
+  nav a:hover { color:var(--ink); border-color:var(--line); }
+  nav a.active { color:var(--ink); background:var(--panel); border-color:var(--line); }
   main { padding:20px; display:grid; gap:20px; max-width:1200px; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; }
   .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 12px; }
@@ -106,8 +110,12 @@ export function dashboardHtml() {
 </head>
 <body>
 <header>
-  <h1>roborepo telemetry</h1>
+  <h1>roborepo</h1>
   <span class="meta" id="meta">loading…</span>
+  <nav>
+    <a href="/" class="active">Telemetry</a>
+    <a href="/config">Config</a>
+  </nav>
 </header>
 <div class="filterbar">
   <div class="ranges" id="ranges">

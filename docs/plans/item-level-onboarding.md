@@ -47,7 +47,37 @@ Define the nouns before the workflow.
   inside `~/.claude/settings.json` or `~/.codex/config.toml`. In this plan: MCP servers and
   permission profiles. These must respect `managed` vs `adopt` root-config ownership.
 - **Toggle bundle** — a whole-on/whole-off behavior with no per-item choice: base guidance, Codex
-  rules, hooks, permission profiles, telemetry. These keep a simple on/off control.
+  rules, hooks, permission profiles, telemetry. These keep a simple on/off control. Mechanically
+  identical to a Package — the distinction is conceptual: toggle bundles are roborepo-internal
+  plumbing (do you want this harness behavior?); packages are named external tool integrations (do
+  you want this tool?). Both use the same composite installer under the hood; the UI may group them
+  differently ("Behaviors" vs "Tools").
+- **Package** — a named, externally-identifiable tool integration that spans multiple harness
+  dimensions. A package declares a list of components, each of a specific type:
+
+  | Component type | What it does |
+  |---|---|
+  | `mcp` | Adds the MCP server to the harness (via `roborepo mcp add <preset>`) |
+  | `permissions` | Merges a set of `allow` entries into `~/.claude/settings.json` |
+  | `hooks` | Merges hook entries from a fragment file into `~/.claude/settings.json` |
+  | `cliCommands` | **Documentation only.** Lists roborepo CLI subcommands that belong to this package. No enforcement — the commands exist in `main.mjs` regardless of selection. Lists what to surface in help text and onboarding summaries. Gating would require a dynamic command registry not yet built. |
+
+  Package definitions live in `manifests/inventory/packages.json`. Hook fragments live in
+  `globals/packages/<id>/hooks-claude.json`. The enable command is `roborepo enable <id>`.
+
+  Example entry:
+  ```json
+  {
+    "id": "jcodemunch",
+    "label": "JCodeMunch code intelligence",
+    "cliCommands": ["index code", "watch code"],
+    "components": [
+      { "type": "mcp", "preset": "jcodemunch" },
+      { "type": "hooks", "source": "globals/packages/jcodemunch/hooks-claude.json", "harness": "claude" },
+      { "type": "permissions", "allow": ["mcp__jcodemunch__resolve_repo", "..."] }
+    ]
+  }
+  ```
 - **Item dependency** — an item that pulls in another when selected (e.g. the `react` skill pairs
   with `javascript-typescript`; `telemetry` already pulls `hooks` via `withDependencies()` in
   `presets.mjs:281`). Item-level deps are **declared data, not hardcoded**: each item entry in the
@@ -523,6 +553,15 @@ alone — earlier phases stand on their own.
     run the smallest repo-native verification that proves the touched behavior. Update docs any time
     the supported workflow changes, especially when adding a new package type, changing direct-write
     handling, changing the managed/adopt ownership split, or changing uninstall/relink behavior.
+14. **Package catalog and enable command.** ✓ **DONE (partial).** `manifests/inventory/packages.json`
+    ships with the jcodemunch package definition; `scripts/cli/packages.mjs` implements `enablePackage()`
+    with idempotent mcp, hooks, rules, and permissions components; `roborepo enable <id>` wires all
+    components atomically. Still to do: add a "Packages" step to the onboarding wizard once the wizard
+    exists (Phase 1); integrate package selection into preset state under `items.packages: [...]` when
+    the full state shape is implemented (checklist item 3).
+15. **Dynamic command registry** (deferred). For `cliCommands` in the package catalog to gate CLI
+    subcommands, `main.mjs` needs a dynamic dispatch registry that checks package selection state.
+    Until then, `cliCommands` is documentation only — commands always exist regardless of selection.
 
 ## Resolved Decisions
 
@@ -534,7 +573,17 @@ alone — earlier phases stand on their own.
     source, not a generated copy cache.
 3. **No legacy migration.** Ships fresh; no bundle-level item state to convert.
 4. **Item-level categories — skills, slash commands, MCP servers.** Base, Codex rules, hooks,
-    permission profiles, and telemetry stay whole on/off toggles.
+    permission profiles, and telemetry stay whole on/off toggles. Named tool integrations
+    (jcodemunch, etc.) are Packages, not toggle bundles — same mechanism, different grouping.
+7. **Package concept.** Multi-dimension tool integrations are Packages with a component list (mcp,
+    hooks, permissions, cliCommands). The `cliCommands` field is documentation only — no enforcement
+    until a dynamic command registry is built. Package definitions live in
+    `manifests/inventory/packages.json`; hook fragments in `globals/packages/<id>/hooks-claude.json`.
+    Installed via `roborepo enable <id>`.
+8. **Bootstrap telemetry-only path.** `scripts/install/main.sh --telemetry-only` (or
+    `--mode telemetry-only`) delegates to `roborepo telemetry install` logic, making the light
+    install accessible before roborepo is on PATH. `roborepo telemetry install` remains valid as a
+    re-run path once roborepo is installed.
 5. **Update never auto-adds.** `roborepo update` refreshes only already-selected items. Brand-new
     repo items are opt-in via `roborepo onboard`.
 6. **Both harnesses honor the selection.** Per-item skills/commands install into both the Claude home

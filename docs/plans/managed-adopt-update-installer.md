@@ -4,6 +4,12 @@
 
 Design and implement the next installer model for managed/adopt/update behavior.
 
+> **Note:** [`item-level-onboarding.md`](item-level-onboarding.md) is now the
+> detailed spec for per-item install mechanics, managed/adopt semantics,
+> update/repair behavior, and the wizard UI. This doc remains the high-level
+> backlog and is cross-referenced from `harness-parity-todo.md` for the
+> layered root-config inheritance work (item 6 below).
+
 ## Context
 
 - This repo installs global Claude/Codex harness config.

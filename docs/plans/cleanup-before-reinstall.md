@@ -5,21 +5,33 @@ roborepo install. The "uninstall to test from scratch" left shim artifacts and
 one stale skill behind. Do these steps **before** `main.sh` so the installer
 writes onto clean state instead of fighting hand-made files.
 
-Full rationale for the telemetry pieces lives in
-[`telemetry-standalone-revert.md`](telemetry-standalone-revert.md). This file is
-the short checklist.
+## Background
+
+Telemetry was wired up **without installing roborepo** to measure baseline token
+traffic (read/grep activity) before the full CLI + default bundles were
+reinstalled. This was a deliberate shoehorn: a symlinked `roborepo` command +
+hand-written hook configs that fire only `telemetry capture`, with nothing else
+(no jcodemunch, no skills, no rules, no MCP, no block-source-exploration guard,
+no caveman).
+
+`roborepo telemetry enable` calls `presetsApply(["telemetry"])`, which pulls in
+the `hooks` preset — that installs the *full* hook set (jcodemunch nudges,
+source-exploration guard, write-guard). For a clean baseline we needed capture
+firing with none of those, so the state file was written by hand to bypass
+`enable`'s preset side-effect. Once per-package install exists, that toggle is
+first-class and this bypass is unnecessary.
 
 ## What's actually left in home dirs
 
 | Path | What it is | Action |
 |------|-----------|--------|
-| `~/.claude/settings.json` | Shim: 5 telemetry capture hooks only | **remove** — installer re-renders full version |
+| `~/.claude/settings.json` | Grew beyond shim: has telemetry hooks + jcodemunch permissions/hooks + broad Bash allow/ask list | **review then remove** — installer re-renders full version; generic Bash allows and ask→deny shift for git push/rm won't survive (see step 2a) |
 | `~/.codex/hooks.json` | Shim: 5 capture hooks only | **remove** — installer re-renders |
 | `~/.codex/config.toml` | Got a `[features] hooks=true` block prepended | **edit** — drop the block (keep project/nux entries) |
 | `~/.local/bin/roborepo` | Symlink → repo bin | leave (installer overwrites) or remove for clean slate |
 | `~/.roborepo/telemetry/` | Hand-written `state.json` + captured baseline data | **decide**: keep (backup first) or purge |
 | `~/.agents/skills/blog/` | Stale repo skill (real dir, not symlink) — leftover, not a manual add | **remove** — installer re-links it |
-| `~/.claude/settings.local.json` | Your 2 permissions, untouched by shim | **leave** |
+| `~/.claude/settings.local.json` | Your 3 permissions (`find`, `docker system`, `open -a Docker`), untouched by shim | **leave** |
 | `~/.claude/telemetry/*.json` | Anthropic's own `1p_failed_events` — not roborepo | leave (vendor) |
 | `~/.codex/skills/.system/*` | Codex built-in skills — not roborepo | leave (vendor) |
 
@@ -38,7 +50,23 @@ Lives in `~/.roborepo/telemetry/spool/`.
   roborepo telemetry purge --all
   ```
 
-### 2. Remove shim harness configs
+### 2a. Rescue any permissions from `settings.json` that should survive reinstall
+
+The current `~/.claude/settings.json` has a broad `allow` list (generic `git add *`, `rm *`, etc.) and an `ask` list (`git push`, `git checkout`, etc.) that were added manually. The repo's version does **not** have these — it actively **denies** `rm`, `git push`, `git pull`, and `git rm`.
+
+Before removing the file, decide what to keep and move it to `~/.claude/settings.local.json`:
+
+```bash
+# View what's currently allowed in the shim vs the repo version:
+jq '.permissions' ~/.claude/settings.json
+jq '.permissions' <repo>/globals/claude/settings.json
+
+# Add any keepers to settings.local.json (already has 3 entries — append to the allow array)
+```
+
+Anything already in the repo's `settings.json` (jcodemunch tools, hooks) does not need to be rescued — the installer restores it.
+
+### 2b. Remove shim harness configs
 
 ```bash
 rm -f ~/.claude/settings.json     # shim-only; installer re-renders full version
@@ -79,7 +107,7 @@ cd <repo>
 ls ~/.roborepo/install-state.json     # should EXIST (proves real install ran)
 roborepo telemetry status             # enabled + paths
 
-# settings.json should match the full rendered version, NOT the 5-hook shim:
+# settings.json should match the repo's full rendered version:
 diff <(cat ~/.claude/settings.json) <(cat <repo>/globals/claude/settings.json)
 ```
 

@@ -64,6 +64,27 @@ Config collision handling avoids replacement instead of depending on backups. Th
 
 If a backup path already exists, the installer adds a numeric suffix instead of overwriting the older backup.
 
+### Pre-Install Backup
+
+When the installer first copies a root config file over an existing file, it saves the original to:
+
+```text
+~/.roborepo/backups/pre-install/<harness>/<filename>
+```
+
+For example:
+
+```text
+~/.roborepo/backups/pre-install/claude/settings.json
+~/.roborepo/backups/pre-install/codex/config.toml
+```
+
+This backup is written only once — if the backup already exists, the installer leaves it unchanged. This preserves the state from before roborepo was ever installed, regardless of how many reinstalls follow.
+
+On uninstall (`scripts/install/uninstall.sh`), when a pre-install backup exists for a root config file, uninstall restores it rather than deleting the file. If no pre-install backup exists (the root config file was created by roborepo on a clean machine), uninstall deletes the file. The pre-install backup directory is removed after restoration.
+
+The timestamped `*_original_*` backups written by collision handling during managed installs are separate from the pre-install backup and are also removed on uninstall.
+
 ## Noninteractive Runs
 
 If stdin is not interactive and a config collision exists, the installer exits before making unrelated changes unless an explicit or previously saved collision policy is available. Use `--dry-run` to inspect the collision, then run the installer interactively, pass `--on-conflict overwrite|keep`, or move the config aside yourself.

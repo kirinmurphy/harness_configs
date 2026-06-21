@@ -70,6 +70,87 @@ remove_file_if_repo_symlink() {
   fi
 }
 
+remove_root_config() {
+  local home_abs="$1"
+  local harness="${2:-}"
+  [[ -f "${home_abs}" ]] || return 0
+
+  local pre_install_backup=""
+  if [[ -n "${harness}" ]]; then
+    pre_install_backup="${HOME}/.roborepo/backups/pre-install/${harness}/$(basename "${home_abs}")"
+  fi
+
+  if [[ -n "${pre_install_backup}" && -f "${pre_install_backup}" ]]; then
+    if [[ "${dry_run}" -eq 1 ]]; then
+      echo "restore (root_config): ${pre_install_backup} -> ${home_abs}"
+    else
+      mv "${pre_install_backup}" "${home_abs}"
+      echo "restore (root_config): ${pre_install_backup} -> ${home_abs}"
+    fi
+  else
+    if [[ "${dry_run}" -eq 1 ]]; then
+      echo "remove (root_config): ${home_abs}"
+    else
+      rm "${home_abs}"
+      echo "remove (root_config): ${home_abs}"
+    fi
+  fi
+}
+
+remove_mcp_servers() {
+  local mcp_file="${repo_root}/manifests/inventory/mcp-servers.json"
+  [[ -f "${mcp_file}" ]] || return 0
+  command -v claude >/dev/null 2>&1 || return 0
+  while IFS= read -r name; do
+    if [[ "${dry_run}" -eq 1 ]]; then
+      echo "mcp remove (claude): ${name}"
+    else
+      claude mcp remove "${name}" 2>/dev/null && echo "mcp remove (claude): ${name}" || true
+    fi
+  done < <(node -e "
+const d = JSON.parse(require('fs').readFileSync('${mcp_file}', 'utf8'));
+d.servers.filter(s => s.harnesses.includes('claude')).forEach(s => console.log(s.name));
+")
+}
+
+remove_install_backups() {
+  local dir file
+  for dir in "${HOME}/.claude" "${HOME}/.codex"; do
+    [[ -d "${dir}" ]] || continue
+    for file in "${dir}"/*_original_*; do
+      [[ -e "${file}" ]] || continue
+      if [[ "${dry_run}" -eq 1 ]]; then
+        echo "remove (backup): ${file}"
+      else
+        rm -rf "${file}"
+        echo "remove (backup): ${file}"
+      fi
+    done
+  done
+
+  local pre_install_dir="${HOME}/.roborepo/backups/pre-install"
+  if [[ -d "${pre_install_dir}" ]]; then
+    if [[ "${dry_run}" -eq 1 ]]; then
+      echo "remove (pre-install backups): ${pre_install_dir}/"
+    else
+      rm -rf "${pre_install_dir}"
+      echo "remove (pre-install backups): ${pre_install_dir}/"
+    fi
+  fi
+}
+
+remove_preset_state() {
+  local presets_dir
+  presets_dir="$(roborepo_state_dir)/presets"
+  [[ -d "${presets_dir}" ]] || return 0
+  if [[ "${dry_run}" -eq 1 ]]; then
+    echo "remove: ${presets_dir}/"
+  else
+    rm -rf "${presets_dir}"
+    echo "remove: ${presets_dir}/"
+  fi
+}
+
 remove_shell_wiring() {
   local profile line tmp
   line='export PATH="${HOME}/.local/bin:${PATH}"'
@@ -100,7 +181,8 @@ remove_shell_wiring() {
 
 while IFS=$'\t' read -r _h kind _src_rel home_abs _flags; do
   case "${kind}" in
-    link|cleanup) remove_repo_symlink "${home_abs}" ;;
+    link|cleanup)   remove_repo_symlink "${home_abs}" ;;
+    root_config)    remove_root_config  "${home_abs}" "${_h}" ;;
   esac
 done < <(manifest_rows)
 
@@ -152,4 +234,8 @@ if [[ -f "${state_file}" ]]; then
   fi
 fi
 
-echo "Uninstall complete. Local root configs and adopted copied files were left in place."
+remove_mcp_servers
+remove_preset_state
+remove_install_backups
+
+echo "Uninstall complete."

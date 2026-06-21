@@ -345,8 +345,20 @@ function linkItem(row, policy) {
   console.log(`link: ${row.homeAbs} -> ${expected}`);
 }
 
+function savePreInstallBackup(row) {
+  if (!row.harness) return;
+  if (readlink(row.homeAbs)) return;
+  if (!pathExists(row.homeAbs)) return;
+  const dest = path.join(os.homedir(), ".roborepo", "backups", "pre-install", row.harness, path.basename(row.homeAbs));
+  if (fs.existsSync(dest)) return;
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  copyTree(row.homeAbs, dest);
+  console.log(`pre-install backup: ${row.homeAbs} -> ${dest}`);
+}
+
 function copyItem(row, policy) {
   const source = path.join(repoRoot, row.srcRel);
+  savePreInstallBackup(row);
   fs.mkdirSync(path.dirname(row.homeAbs), { recursive: true });
   const link = readlink(row.homeAbs);
   if (link && resolvesInsideRepo(row.homeAbs)) fs.unlinkSync(row.homeAbs);

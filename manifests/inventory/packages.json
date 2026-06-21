@@ -1,0 +1,57 @@
+{
+  "packages": [
+    {
+      "id": "jcodemunch",
+      "label": "JCodeMunch code intelligence",
+      "description": "Local code index with symbol search, outline, references, and context bundling. Blocks Grep/Glob and routes code exploration through jcodemunch tools.",
+      "cliCommands": ["index code", "watch code"],
+      "components": [
+        { "type": "mcp", "preset": "jcodemunch" },
+        {
+          "type": "rules",
+          "source": "globals/packages/jcodemunch/rules.md",
+          "harness": "claude"
+        },
+        {
+          "type": "hooks",
+          "source": "globals/packages/jcodemunch/hooks-claude.json",
+          "harness": "claude"
+        },
+        {
+          "type": "permissions",
+          "allow": [
+            "mcp__jcodemunch__resolve_repo",
+            "mcp__jcodemunch__search_symbols",
+            "mcp__jcodemunch__get_file_outline",
+            "mcp__jcodemunch__find_references",
+            "mcp__jcodemunch__get_context_bundle",
+            "mcp__jcodemunch__search_text",
+            "mcp__jcodemunch__index_repo",
+            "mcp__jcodemunch__list_repos",
+            "mcp__jcodemunch__get_symbol_context"
+          ]
+        }
+      ]
+    }
+    ,
+    {
+      "id": "jdocmunch",
+      "label": "JDocMunch doc intelligence",
+      "description": "Local docs index with section search, TOC, and context retrieval. Routes doc exploration through jdocmunch tools instead of reading full files.",
+      "cliCommands": ["index docs"],
+      "components": [
+        { "type": "mcp", "preset": "jdocmunch" },
+        {
+          "type": "rules",
+          "source": "globals/packages/jdocmunch/rules.md",
+          "harness": "claude"
+        },
+        {
+          "type": "hooks",
+          "source": "globals/packages/jdocmunch/hooks-claude.json",
+          "harness": "claude"
+        }
+      ]
+    }
+  ]
+}

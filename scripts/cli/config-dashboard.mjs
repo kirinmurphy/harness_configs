@@ -1,0 +1,280 @@
+// Config state dashboard. Organized by user-facing behavior (matching README § Global Behavior),
+// not by internal technical categories (packages / bundles). Zero dependencies, dark theme.
+
+export function configHtml() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>roborepo config</title>
+<style>
+  :root { color-scheme: dark; --bg:#0e1116; --panel:#161b22; --line:#2d333b; --ink:#c9d1d9; --dim:#8b949e; --accent:#58a6ff; --ok:#3fb950; --off:#484f58; --warn:#e3b341; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--bg); color:var(--ink); }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; gap:20px; align-items:center; }
+  header h1 { font-size:15px; margin:0; font-weight:600; }
+  nav { display:flex; gap:2px; margin-left:auto; }
+  nav a { color:var(--dim); font-size:12px; text-decoration:none; padding:3px 10px; border-radius:5px; border:1px solid transparent; }
+  nav a:hover { color:var(--ink); border-color:var(--line); }
+  nav a.active { color:var(--ink); background:var(--panel); border-color:var(--line); }
+  #status { color:var(--dim); font-size:11px; }
+  main { padding:20px; display:grid; gap:16px; max-width:960px; grid-template-columns:1fr; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; }
+  .panel.wide { grid-column:1/-1; }
+  .panel-head { margin:0 0 4px; }
+  .panel-head h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:0; font-weight:600; display:inline; }
+  .panel-desc { font-size:11px; color:var(--off); margin:0 0 12px; }
+  .item { display:flex; align-items:flex-start; gap:10px; padding:8px 0; border-top:1px solid var(--line); }
+  .item:first-of-type { border-top:none; }
+  .dot { flex:none; width:8px; height:8px; border-radius:50%; margin-top:6px; }
+  .dot.on { background:var(--ok); }
+  .dot.off { background:var(--off); }
+  .item-body { min-width:0; flex:1; }
+  .item-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .item-label { color:var(--ink); font-size:13px; line-height:1.4; }
+  .item-label.dim { color:var(--dim); }
+  .item-desc { color:var(--dim); font-size:11px; margin-top:2px; line-height:1.4; }
+  .item-hint { color:var(--accent); font-size:11px; margin-top:3px; }
+  /* badges */
+  .badge { display:inline-block; font-size:10px; padding:1px 5px; border-radius:3px; border:1px solid; line-height:1.4; white-space:nowrap; }
+  .badge-skill { color:#79c0ff; border-color:#1f6feb; background:#0d1b2e; }
+  .badge-cmd  { color:#7ee787; border-color:#238636; background:#0d2214; }
+  /* permissions section */
+  .perm-row { padding:8px 0; border-top:1px solid var(--line); font-size:12px; }
+  .perm-row:first-of-type { border-top:none; }
+  .perm-profile { display:flex; align-items:baseline; gap:10px; }
+  .perm-name { color:var(--ink); font-weight:600; }
+  .perm-desc { color:var(--dim); }
+  .perm-label { color:var(--dim); font-size:11px; margin-bottom:4px; }
+  .perm-value { color:var(--ink); }
+  .expand-btn { font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace; background:none; border:1px solid var(--line); color:var(--dim); padding:2px 7px; border-radius:4px; cursor:pointer; margin-top:4px; }
+  .expand-btn:hover { color:var(--ink); border-color:var(--dim); }
+  .expand-list { display:none; margin-top:6px; column-count:2; column-gap:16px; font-size:11px; color:var(--dim); }
+  .expand-list.open { display:block; }
+  .expand-list li { list-style:none; padding:1px 0; }
+  .panel-footnote { font-size:11px; color:var(--off); margin:10px 0 0; border-top:1px solid var(--line); padding-top:8px; }
+  /* install panel */
+  .install-kv { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:12px; }
+  .install-kv .k { color:var(--dim); }
+  .install-kv .v { color:var(--ink); }
+  .install-kv .ok { color:var(--ok); }
+  .install-kv .off { color:var(--off); }
+</style>
+</head>
+<body>
+<header>
+  <h1>roborepo</h1>
+  <span id="status">loading…</span>
+  <nav>
+    <a href="/">Telemetry</a>
+    <a href="/config" class="active">Config</a>
+  </nav>
+</header>
+<main id="main"></main>
+<script>
+// --------------------------------------------------------------------------- behavior view
+
+// Mirrors buildBehaviorView() in config.mjs — derives the user-facing sections from raw snapshot.
+function behaviorView(snap) {
+  const pkg = (id) => (snap.packages || []).find((p) => p.id === id);
+  const bundle = (id) => (snap.bundles || []).find((b) => b.id === id);
+  const tel = snap.telemetry || {};
+  const perms = snap.agentPermissions || null;
+  return [
+    {
+      category: "Token Optimization", wide: false,
+      items: [
+        { id:"jcodemunch", label:"jcodemunch",     desc:"Code indexer — find code via symbol search instead of reading files", active: pkg("jcodemunch")?.enabled ?? false, hint: pkg("jcodemunch")?.enabled ? null : "roborepo enable jcodemunch" },
+        { id:"jdocmunch",  label:"jdocmunch",      desc:"Docs indexer — query sections instead of reading whole files",        active: pkg("jdocmunch")?.enabled  ?? false, hint: pkg("jdocmunch")?.enabled  ? null : "roborepo enable jdocmunch  (coming soon)" },
+        { id:"caveman",    label:"Caveman plugin", desc:"Keeps agent output terse to reduce token use",                        active: snap.plugins?.caveman ?? false,       hint: snap.plugins?.caveman ? null : "install via Claude plugin marketplace" },
+        { id:"telemetry",  label:"Telemetry",      desc:"Capture and visualize token usage across harnesses",                  active: !!tel.enabled,                        hint: tel.enabled ? "roborepo telemetry serve" : "roborepo telemetry enable" },
+      ],
+    },
+    {
+      category: "Workflows", wide: false,
+      desc: "Named commands that frame a specific use case.",
+      items: (snap.tools || [])
+        .filter((t) => t.command && t.id !== "roborepo-support")
+        .map((t) => ({
+          id: t.id, label: t.label, desc: t.description, active: t.installed,
+          badges: ["skill", "/" + t.command],
+        })),
+    },
+    {
+      category: "Code Conventions", wide: false,
+      desc: "Skills auto-loaded when relevant — shape output without an explicit command.",
+      footnote: "roborepo-support — help skill for this repo, always loaded.",
+      items: (snap.tools || [])
+        .filter((t) => !t.command && t.id !== "roborepo-support")
+        .map((t) => ({
+          id: t.id, label: t.label, desc: t.description, active: t.installed,
+          badges: ["skill"],
+        })),
+    },
+    {
+      category: "Permissions", wide: false,
+      kind: "permissions",
+      items: [
+        {
+          id: "profile",
+          label: perms?.default_profile || "interactive",
+          desc: perms?.profiles?.[perms?.default_profile]?.description || null,
+          kind: "profile",
+        },
+        {
+          id: "deny",
+          label: (perms?.commands?.deny?.length || 0) + " blocked",
+          value: (perms?.commands?.deny || []).map((c) => c.join(" ")).join(" · "),
+          kind: "info",
+        },
+        {
+          id: "allow",
+          label: (perms?.commands?.allow?.length || 0) + " pre-approved",
+          kind: "expandable",
+          detail: (perms?.commands?.allow || []).map((c) => c.join(" ")),
+        },
+      ],
+    },
+  ];
+}
+
+// --------------------------------------------------------------------------- render helpers
+
+function el(tag, cls, ...children) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  for (const c of children) {
+    if (c == null) continue;
+    e.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+  }
+  return e;
+}
+
+function dot(on) { return el("span", "dot " + (on ? "on" : "off")); }
+
+function badge(text) {
+  const isCmd = text.startsWith("/");
+  return el("span", "badge " + (isCmd ? "badge-cmd" : "badge-skill"), text);
+}
+
+// --------------------------------------------------------------------------- section renderers
+
+function renderPermissionsSection(section) {
+  const panel = el("div", "panel");
+  panel.appendChild(el("div", "panel-head", el("h2", null, section.category)));
+
+  for (const item of section.items) {
+    const row = document.createElement("div");
+    row.className = "perm-row";
+
+    if (item.kind === "profile") {
+      const line = el("div", "perm-profile");
+      line.appendChild(el("span", "perm-name", item.label));
+      if (item.desc) line.appendChild(el("span", "perm-desc", item.desc));
+      row.appendChild(line);
+    } else if (item.kind === "info") {
+      row.appendChild(el("div", "perm-label", item.label));
+      if (item.value) row.appendChild(el("div", "perm-value", item.value));
+    } else if (item.kind === "expandable") {
+      row.appendChild(el("div", "perm-label", item.label));
+      const btn = el("button", "expand-btn", "show all ▸");
+      const list = document.createElement("ul");
+      list.className = "expand-list";
+      for (const d of (item.detail || [])) {
+        list.appendChild(el("li", null, d));
+      }
+      btn.addEventListener("click", () => {
+        const open = list.classList.toggle("open");
+        btn.textContent = open ? "hide ▴" : "show all ▸";
+      });
+      row.appendChild(btn);
+      row.appendChild(list);
+    }
+    panel.appendChild(row);
+  }
+  return panel;
+}
+
+function renderStandardSection(section) {
+  const panel = el("div", "panel" + (section.wide ? " wide" : ""));
+  const head = el("div", "panel-head");
+  head.appendChild(el("h2", null, section.category));
+  panel.appendChild(head);
+  if (section.desc) panel.appendChild(el("p", "panel-desc", section.desc));
+
+  for (const item of section.items) {
+    const row = el("div", "item");
+    row.appendChild(dot(item.active));
+    const body = el("div", "item-body");
+    const top = el("div", "item-row");
+    top.appendChild(el("span", "item-label" + (item.active ? "" : " dim"), item.label));
+    for (const b of (item.badges || [])) top.appendChild(badge(b));
+    body.appendChild(top);
+    if (item.desc) body.appendChild(el("div", "item-desc", item.desc));
+    if (item.hint) body.appendChild(el("div", "item-hint", "→ " + item.hint));
+    row.appendChild(body);
+    panel.appendChild(row);
+  }
+  if (section.footnote) {
+    const note = el("p", "panel-footnote", "* " + section.footnote);
+    panel.appendChild(note);
+  }
+  return panel;
+}
+
+function renderSection(section) {
+  if (section.kind === "permissions") return renderPermissionsSection(section);
+  return renderStandardSection(section);
+}
+
+function renderInstall(snap) {
+  const panel = el("div", "panel wide");
+  panel.appendChild(el("div", "panel-head", el("h2", null, "Install")));
+
+  const kv = el("div", "install-kv");
+  const row = (k, vText, cls) => {
+    kv.appendChild(el("span", "k", k));
+    kv.appendChild(el("span", cls ? "v " + cls : "v", vText));
+  };
+
+  const mode = snap.install?.mode;
+  row("mode", mode || "not installed  (shim / manual config)");
+  if (snap.install?.updatedAt) row("updated", new Date(snap.install.updatedAt).toLocaleString());
+  if (snap.onboardedAt)        row("onboarded", new Date(snap.onboardedAt).toLocaleString());
+
+  const telOn = snap.telemetry?.enabled;
+  row("telemetry", telOn ? "enabled" : "disabled", telOn ? "ok" : "off");
+
+  panel.appendChild(kv);
+  return panel;
+}
+
+function render(snap) {
+  const main = document.getElementById("main");
+  main.innerHTML = "";
+  const view = behaviorView(snap);
+  for (const section of view) main.appendChild(renderSection(section));
+  main.appendChild(renderInstall(snap));
+}
+
+// --------------------------------------------------------------------------- poll
+
+let last = null;
+async function load() {
+  try {
+    const snap = await fetch("/api/config").then((r) => r.json());
+    const sig = JSON.stringify(snap);
+    if (sig !== last) { last = sig; render(snap); }
+    document.getElementById("status").textContent = "updated " + new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById("status").textContent = "error: " + e.message;
+  }
+}
+
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>`;
+}

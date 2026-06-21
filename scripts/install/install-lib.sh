@@ -172,6 +172,17 @@ install_copy_item() {
     return 1
   fi
 
+  if [[ -n "${harness}" && -e "${home_path}" && ! -L "${home_path}" ]]; then
+    local pre_install_backup="${HOME}/.roborepo/backups/pre-install/${harness}/$(basename "${home_path}")"
+    if [[ ! -e "${pre_install_backup}" ]]; then
+      if [[ "${dry_run}" -eq 0 ]]; then
+        mkdir -p "$(dirname "${pre_install_backup}")"
+        cp -a "${home_path}" "${pre_install_backup}"
+      fi
+      echo "pre-install backup: ${home_path} -> ${pre_install_backup}"
+    fi
+  fi
+
   if [[ ! -e "${home_path}" && ! -L "${home_path}" ]]; then
     if [[ "${dry_run}" -eq 0 ]]; then
       copy_tree "${src}" "${home_path}"

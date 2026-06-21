@@ -1,9 +1,8 @@
 # Skills vs. Commands: Invocation & Risk Policy
 
-> **Status: PROPOSAL.** This plan decides how user-facing context should enter
-> Claude and Codex: always-on rules, auto-invokable skills, manual commands,
-> snippets, or hooks. The goal is predictable behavior with Claude/Codex parity.
-> No code change has been made yet.
+> **Status: ACTIVE.** Control-plane manifests (`skill-invocation.json`,
+> `slash-commands.json`) shipped. Remaining work: skill audit command, settings
+> checker, slash-command renderer, and any trigger / risk reclassifications.
 
 ## Purpose
 
@@ -359,17 +358,25 @@ read-only skills lightweight.
 
 ## Next Recommended Work
 
+### Completed
+
+- **`manifests/inventory/skill-invocation.json`** — shipped as the source of
+  truth for skill risk tier and desired invocation behavior.
+- **`manifests/inventory/slash-commands.json`** — shipped with the command
+  catalog (skill-backed and standalone entries, harness targets).
+
+### Remaining
+
 Do these before making more behavior changes:
 
 1. Add an automated skill audit command that generates the current inventory from
    actual skill files and flags dynamic shell, broad tool grants, and missing
    harness metadata.
-2. Add `manifests/inventory/skill-invocation.json` as the source of truth for skill risk
-   tier and desired invocation behavior.
-3. Add a checker that validates Claude and Codex settings against that manifest,
-   including manual-only policy when used.
-4. Add `manifests/inventory/slash-commands.json` plus a small renderer that turns command
-   entries into harness-specific slash-command files.
+2. Add a checker that validates Claude and Codex settings against
+   `skill-invocation.json`, including manual-only policy when used.
+3. Build the slash-command renderer that turns `slash-commands.json` entries into
+   harness-specific slash-command files (`globals/claude/commands/`,
+   `globals/codex/commands/`).
 
 This gives the repo a control plane before converting more skills to commands or
 manual-only behavior.

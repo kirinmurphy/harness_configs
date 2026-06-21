@@ -37,8 +37,12 @@ while [[ $# -gt 0 ]]; do
       agent_permission_profile="${1#*=}"
       shift
       ;;
+    --telemetry-only)
+      install_mode="telemetry-only"
+      shift
+      ;;
     --mode)
-      [[ $# -ge 2 ]] || { echo "usage: $0 [--dry-run] [--no-presets-onboard] [--mode managed|adopt] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2; }
+      [[ $# -ge 2 ]] || { echo "usage: $0 [--dry-run] [--no-presets-onboard] [--mode managed|adopt|telemetry-only] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2; }
       install_mode="$2"
       shift 2
       ;;
@@ -67,7 +71,10 @@ done
 case "${install_mode}" in
   "" ) ;;
   managed|adopt) ;;
-  *) echo "usage: $0 [--dry-run] [--no-presets-onboard] [--mode managed|adopt] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2 ;;
+  telemetry-only)
+    exec node "${repo_root}/scripts/cli/main.mjs" telemetry install
+    ;;
+  *) echo "usage: $0 [--dry-run] [--no-presets-onboard] [--mode managed|adopt|telemetry-only] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2 ;;
 esac
 
 case "${on_conflict}" in

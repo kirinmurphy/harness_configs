@@ -15,6 +15,8 @@
     "roborepo project-context inventory [path] [--summary]   scan a repo and write generated facts",
     "roborepo onboard",
     "roborepo bundle status|apply|check|remove [bundle...]",
+    "roborepo enable  <package-id> [--dry-run]   wire a package (mcp/hooks/rules/permissions)",
+    "roborepo disable <package-id> [--dry-run]   remove a package's wiring",
     "roborepo telemetry install                 wire only capture hooks (no full roborepo required)",
     "roborepo telemetry start                  enable capture + start detached dashboard",
     "roborepo telemetry stop                   stop detached dashboard + disable capture",

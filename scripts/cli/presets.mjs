@@ -4,6 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { repoRoot } from "./paths.mjs";
 import { installStatePath, presetsStatePath } from "./state-paths.mjs";
+import { readConfigSnapshot, buildBehaviorView } from "./config.mjs";
+import { mutatePackage, setSkillInstalled } from "./config-mutate.mjs";
+import { selectMenu } from "./skill-lib.mjs";
 
 const PRESET_MANIFEST = path.join(repoRoot, "manifests", "platform", "presets.json");
 const INSTALL_MANIFEST = path.join(repoRoot, "manifests", "platform", "manifest.tsv");
@@ -58,26 +61,85 @@ export async function bundleCommand(args) {
   }
 }
 
-// The interactive bundle-toggle wizard is an in-progress feature and is intentionally not shown to
-// users yet (see docs/plans/item-level-onboarding.md for the planned replacement). Until it ships,
-// `roborepo onboard` applies the default bundles headlessly — the same packages install would apply —
-// and prints an in-progress notice instead of opening the toggle UI. The original interactive body is
-// recorded in docs/plans/onboarding-reinstatement.md.
+// Interactive onboarding, organized around the four user-facing behavior sections that the /config
+// web portal shows (Token Optimization, Workflows, Code Conventions, Permissions) rather than the
+// internal bundle list. Each toggleable item drives the same config-mutate primitives the web POST
+// endpoints use, so terminal and web stay in lockstep. Permissions are read-only here (Phase 2).
+// Non-TTY (headless) keeps applying the default configuration, the same set install wires up.
 export async function presetsOnboard(args) {
   rejectUnknownFlags(args, new Set());
-  console.log("Onboarding is an in-progress feature and is not interactive yet.");
-  console.log("Applying the default configuration (the same packages install sets up automatically).");
-  presetsApply(["--default"]);
+
+  const tty = process.stdin.isTTY && process.stdout.isTTY;
+  if (!tty) {
+    console.log("Non-interactive shell: applying the default configuration (same as install).");
+    presetsApply(["--default"]);
+    markOnboarded();
+    return;
+  }
+
+  await runInteractiveOnboard();
+  markOnboarded();
+}
+
+function markOnboarded() {
   const catalog = readPresetCatalog();
   const state = readPresetState();
   const selected = withDependencies(new Set(state.selected ?? catalog.default));
   writePresetState({
+    ...state,
     selected: [...selected],
-    onboardedAt: new Date().toISOString(),
+    onboardedAt: state.onboardedAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     bundles: bundleStates(catalog, selected),
   });
-  console.log(`bundles: ${selected.size} applied`);
+}
+
+// Each toggleable item maps to a config-mutate call. Returns true on success so the loop can re-read.
+function applyItemToggle(section, item) {
+  const enabled = !item.active;
+  if (section.category === "Token Optimization") {
+    if (item.id === "jcodemunch" || item.id === "jdocmunch") return mutatePackage(item.id, enabled);
+    return { ok: false, message: `${item.label} is managed elsewhere (not toggleable here)` };
+  }
+  if (section.category === "Workflows" || section.category === "Code Conventions") {
+    return setSkillInstalled(item.id, enabled);
+  }
+  return { ok: false, message: `${section.category} is read-only in onboarding` };
+}
+
+async function runInteractiveOnboard() {
+  console.log("roborepo onboarding — toggle behavior, then choose Done.\n");
+
+  for (;;) {
+    const view = buildBehaviorView(readConfigSnapshot());
+    const menu = [];
+    const actions = [];
+    for (const section of view) {
+      if (section.category === "Permissions") continue; // read-only (Phase 2)
+      menu.push({ header: section.category });
+      for (const item of section.items) {
+        const toggleable =
+          (section.category === "Token Optimization" && (item.id === "jcodemunch" || item.id === "jdocmunch")) ||
+          section.category === "Workflows" ||
+          section.category === "Code Conventions";
+        if (!toggleable) continue;
+        const mark = item.active ? "[x]" : "[ ]";
+        menu.push({ label: `${mark} ${item.label}`, desc: item.description || "", value: actions.length });
+        actions.push({ section, item });
+      }
+    }
+    menu.push({ header: "" });
+    menu.push({ label: "Done", desc: "finish onboarding", value: "done" });
+
+    const choice = await selectMenu("Toggle an item (Enter), or Done:", menu);
+    if (choice === null || choice === "done") break;
+
+    const { section, item } = actions[choice];
+    const result = applyItemToggle(section, item);
+    console.log(result.ok ? `✓ ${result.message}` : `✗ ${result.message}`);
+  }
+
+  console.log("\nOnboarding complete.");
 }
 
 export function presetsApply(args) {

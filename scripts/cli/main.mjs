@@ -14,7 +14,7 @@ import { mcpAdd, mcpApply } from "./mcp.mjs";
 import { projectContextInventory } from "./project-context.mjs";
 import { maybeRunPresetOnboarding, presetsCommand } from "./presets.mjs";
 import { telemetryCommand } from "./telemetry.mjs";
-import { enablePackage } from "./packages.mjs";
+import { enablePackage, disablePackage } from "./packages.mjs";
 import { configCommand } from "./config.mjs";
 
 const argv = await maybeRunPresetOnboarding(process.argv.slice(2));
@@ -110,6 +110,9 @@ async function dispatch(args) {
 
     case "enable":
       return enablePackage(sub === undefined ? rest : [sub, ...rest]);
+
+    case "disable":
+      return disablePackage(sub === undefined ? rest : [sub, ...rest]);
 
     case "config":
       return configCommand(sub === undefined ? [] : [sub, ...rest]);

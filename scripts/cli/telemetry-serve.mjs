@@ -7,10 +7,11 @@ import { configHtml } from "./config-dashboard.mjs";
 // keeps the install dependency-free, matching the rest of the CLI.
 const LOOPBACK = "127.0.0.1";
 
-export function startTelemetryServer({ port, loadAnalysis, loadSession, loadInsightsLlm, loadConfig }) {
+export function startTelemetryServer(handlers) {
+  const { port } = handlers;
   const server = http.createServer((req, res) => {
     try {
-      route(req, res, loadAnalysis, loadSession, loadInsightsLlm, loadConfig);
+      route(req, res, handlers);
     } catch (err) {
       send(res, 500, "application/json", JSON.stringify({ error: String(err?.message || err) }));
     }
@@ -27,8 +28,26 @@ export function startTelemetryServer({ port, loadAnalysis, loadSession, loadInsi
   return server;
 }
 
-function route(req, res, loadAnalysis, loadSession, loadInsightsLlm, loadConfig) {
+function route(req, res, handlers) {
+  const { loadAnalysis, loadSession, loadInsightsLlm, loadConfig, mutatePackage, mutateSkill } = handlers;
   const [urlPath, qs = ""] = (req.url || "/").split("?");
+
+  // Mutations: local-only loopback server, so no auth — but still POST-only and JSON-bodied.
+  // Each writes config then returns the fresh snapshot so the client re-renders from one response.
+  if (req.method === "POST" && (urlPath === "/api/config/packages" || urlPath === "/api/config/skills")) {
+    return readJsonBody(req, (body, err) => {
+      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
+      const { id, enabled } = body || {};
+      if (typeof id !== "string" || typeof enabled !== "boolean") {
+        return send(res, 400, "application/json", JSON.stringify({ error: "expected { id: string, enabled: boolean }" }));
+      }
+      const mutate = urlPath === "/api/config/packages" ? mutatePackage : mutateSkill;
+      const result = mutate(id, enabled);
+      const status = result.ok ? 200 : 400;
+      return send(res, status, "application/json", JSON.stringify({ ...result, config: loadConfig() }));
+    });
+  }
+
   if (urlPath === "/") return send(res, 200, "text/html; charset=utf-8", dashboardHtml());
   if (urlPath === "/config") return send(res, 200, "text/html; charset=utf-8", configHtml());
   if (urlPath === "/api/config") {
@@ -62,6 +81,20 @@ function route(req, res, loadAnalysis, loadSession, loadInsightsLlm, loadConfig)
     return send(res, 200, "application/json", JSON.stringify(loadSession({ id, harness, finding, repo })));
   }
   send(res, 404, "text/plain", "not found");
+}
+
+function readJsonBody(req, cb) {
+  let raw = "";
+  let tooBig = false;
+  req.on("data", (chunk) => {
+    raw += chunk;
+    if (raw.length > 64 * 1024) { tooBig = true; req.destroy(); } // local control payloads are tiny
+  });
+  req.on("end", () => {
+    if (tooBig) return cb(null, new Error("body too large"));
+    try { cb(raw ? JSON.parse(raw) : {}, null); } catch (err) { cb(null, err); }
+  });
+  req.on("error", (err) => cb(null, err));
 }
 
 function send(res, status, type, body) {

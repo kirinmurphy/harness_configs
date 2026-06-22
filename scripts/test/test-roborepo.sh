@@ -305,6 +305,65 @@ assert "bundle remove: unlinks owned link bundle" \
 assert "telemetry enable: creates local state dirs" \
   bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' telemetry enable >/dev/null && test -d '${presets_home}/.roborepo/telemetry/spool'"
 
+# ---------------------------------------------------------------------------
+# Phase 1: interactive config controls — enable/disable package round-trip,
+# skill install/remove into both harnesses, and the dashboard POST endpoints.
+# Runs against a throwaway harness root so it never touches the real ~/.claude.
+# ---------------------------------------------------------------------------
+cfg_home="${work}/config-home"
+mkdir -p "${cfg_home}/.claude/skills" "${cfg_home}/.codex/skills"
+echo '{}' > "${cfg_home}/.claude/settings.json"
+cfg_env="HOME='${cfg_home}' ROBOREPO_STATE_DIR='${cfg_home}/.roborepo'"
+
+# disable on a fresh home is a clean no-op (idempotent); dry-run never writes.
+assert "config: disable dry-run does not write settings" \
+  bash -c "${cfg_env} node '${cli}' disable jcodemunch --dry-run >/dev/null && [ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" = 0 ]"
+assert "config: disable unknown package exits non-zero" \
+  bash -c "! ${cfg_env} node '${cli}' disable nope-pkg >/dev/null 2>&1"
+
+# enable writes perms+hooks+rules; disable reverses them. (mcp add fails gracefully w/o claude CLI.)
+bash -c "${cfg_env} node '${cli}' enable jcodemunch >/dev/null 2>&1" || true
+assert "config: enable wires package permissions" \
+  bash -c "[ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" -gt 0 ]"
+assert "config: enable wires CLAUDE.md rules" test -f "${cfg_home}/.claude/CLAUDE.md"
+bash -c "${cfg_env} node '${cli}' disable jcodemunch >/dev/null 2>&1" || true
+assert "config: disable removes package permissions" \
+  bash -c "[ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" = 0 ]"
+assert "config: disable removes package hooks" \
+  bash -c "[ \"\$(node -e \"console.log(Object.keys(require('${cfg_home}/.claude/settings.json').hooks||{}).length)\")\" = 0 ]"
+
+# Skill toggle links into both ~/.claude/skills and ~/.codex/skills, then removes only owned links.
+cfg_skill="$(ls "${repo_root}/globals/agents/skills" | head -1)"
+assert "config: setSkillInstalled links both harnesses" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',true);process.exit(r.ok?0:1)})\" && test -L '${cfg_home}/.claude/skills/${cfg_skill}' && test -L '${cfg_home}/.codex/skills/${cfg_skill}'"
+assert "config: skill link is absolute into shared source" \
+  bash -c "[ \"\$(readlink '${cfg_home}/.claude/skills/${cfg_skill}')\" = '${repo_root}/globals/agents/skills/${cfg_skill}' ]"
+assert "config: setSkillInstalled removes owned links" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',false);process.exit(r.ok?0:1)})\" && ! test -e '${cfg_home}/.claude/skills/${cfg_skill}' && ! test -e '${cfg_home}/.codex/skills/${cfg_skill}'"
+assert "config: setSkillInstalled rejects unknown skill" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('zzz-not-real',true);process.exit(r.ok?1:0)})\""
+assert "config: setSkillInstalled skips native skill dir (real dir collision)" \
+  bash -c "mkdir -p '${cfg_home}/.claude/skills/${cfg_skill}' && ${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',true);process.exit(r.ok&&!require('fs').lstatSync('${cfg_home}/.claude/skills/${cfg_skill}').isSymbolicLink()?0:1)})\"; rm -rf '${cfg_home}/.claude/skills/${cfg_skill}'"
+
+# Dashboard POST endpoints: start the loopback server, exercise both routes, assert JSON contract.
+cfg_port=4391
+env HOME="${cfg_home}" ROBOREPO_STATE_DIR="${cfg_home}/.roborepo" node "${cli}" telemetry serve --port ${cfg_port} >/dev/null 2>&1 &
+cfg_srv=$!
+for _ in $(seq 1 25); do curl -s "http://127.0.0.1:${cfg_port}/api/config" >/dev/null 2>&1 && break; sleep 0.2; done
+# Capture the JSON to a file so the snapshot body (which contains apostrophes in skill descriptions)
+# never has to round-trip through a shell-quoted string.
+curl -s -X POST "http://127.0.0.1:${cfg_port}/api/config/skills" -H 'Content-Type: application/json' \
+  -d "{\"id\":\"${cfg_skill}\",\"enabled\":true}" > "${cfg_home}/post-skill.json"
+assert "config: POST /api/config/skills installs and returns snapshot" \
+  bash -c "node -e \"const j=require('${cfg_home}/post-skill.json');process.exit(j.ok&&j.config&&Array.isArray(j.config.tools)?0:1)\" && test -L '${cfg_home}/.claude/skills/${cfg_skill}'"
+assert "config: POST with bad body returns 400" \
+  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -d '{\"id\":123}')\" = 400 ]"
+assert "config: POST unknown skill returns ok:false" \
+  bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -d '{\"id\":\"zzz\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok===false?0:1)})\""
+assert "config: GET /config still served" \
+  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:${cfg_port}/config')\" = 200 ]"
+kill "${cfg_srv}" 2>/dev/null || true
+
 # Token capture reads the harness transcript (transcript_path on hook stdin) and records cumulative
 # token totals + a per-session delta. These tests use a fixture transcript so they never depend on a
 # live agent session.

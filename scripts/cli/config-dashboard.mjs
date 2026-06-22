@@ -40,6 +40,16 @@ export function configHtml() {
   .badge { display:inline-block; font-size:10px; padding:1px 5px; border-radius:3px; border:1px solid; line-height:1.4; white-space:nowrap; }
   .badge-skill { color:#79c0ff; border-color:#1f6feb; background:#0d1b2e; }
   .badge-cmd  { color:#7ee787; border-color:#238636; background:#0d2214; }
+  /* toggle switch */
+  .switch { flex:none; position:relative; display:inline-flex; align-items:center; cursor:pointer; margin-top:2px; }
+  .switch input { position:absolute; opacity:0; width:0; height:0; }
+  .switch-track { width:34px; height:18px; border-radius:9px; background:var(--off); transition:background .15s; display:inline-block; }
+  .switch-knob { position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#fff; transition:transform .15s; }
+  .switch input:checked + .switch-track { background:var(--ok); }
+  .switch input:checked + .switch-track .switch-knob { transform:translateX(16px); }
+  .switch input:disabled + .switch-track { opacity:.5; }
+  .item-err { color:#f85149; font-size:11px; margin-top:3px; }
+  .item-err:empty { display:none; }
   /* permissions section */
   .perm-row { padding:8px 0; border-top:1px solid var(--line); font-size:12px; }
   .perm-row:first-of-type { border-top:none; }
@@ -85,8 +95,8 @@ function behaviorView(snap) {
     {
       category: "Token Optimization", wide: false,
       items: [
-        { id:"jcodemunch", label:"jcodemunch",     desc:"Code indexer — find code via symbol search instead of reading files", active: pkg("jcodemunch")?.enabled ?? false, hint: pkg("jcodemunch")?.enabled ? null : "roborepo enable jcodemunch" },
-        { id:"jdocmunch",  label:"jdocmunch",      desc:"Docs indexer — query sections instead of reading whole files",        active: pkg("jdocmunch")?.enabled  ?? false, hint: pkg("jdocmunch")?.enabled  ? null : "roborepo enable jdocmunch  (coming soon)" },
+        { id:"jcodemunch", label:"jcodemunch",     desc:"Code indexer — find code via symbol search instead of reading files", active: pkg("jcodemunch")?.enabled ?? false, toggle:"package" },
+        { id:"jdocmunch",  label:"jdocmunch",      desc:"Docs indexer — query sections instead of reading whole files",        active: pkg("jdocmunch")?.enabled  ?? false, toggle:"package" },
         { id:"caveman",    label:"Caveman plugin", desc:"Keeps agent output terse to reduce token use",                        active: snap.plugins?.caveman ?? false,       hint: snap.plugins?.caveman ? null : "install via Claude plugin marketplace" },
         { id:"telemetry",  label:"Telemetry",      desc:"Capture and visualize token usage across harnesses",                  active: !!tel.enabled,                        hint: tel.enabled ? "roborepo telemetry serve" : "roborepo telemetry enable" },
       ],
@@ -98,7 +108,7 @@ function behaviorView(snap) {
         .filter((t) => t.command && t.id !== "roborepo-support")
         .map((t) => ({
           id: t.id, label: t.label, desc: t.description, active: t.installed,
-          badges: ["skill", "/" + t.command],
+          badges: ["skill", "/" + t.command], toggle: "skill",
         })),
     },
     {
@@ -109,7 +119,7 @@ function behaviorView(snap) {
         .filter((t) => !t.command && t.id !== "roborepo-support")
         .map((t) => ({
           id: t.id, label: t.label, desc: t.description, active: t.installed,
-          badges: ["skill"],
+          badges: ["skill"], toggle: "skill",
         })),
     },
     {
@@ -156,6 +166,47 @@ function dot(on) { return el("span", "dot " + (on ? "on" : "off")); }
 function badge(text) {
   const isCmd = text.startsWith("/");
   return el("span", "badge " + (isCmd ? "badge-cmd" : "badge-skill"), text);
+}
+
+const TOGGLE_ENDPOINT = { package: "/api/config/packages", skill: "/api/config/skills" };
+
+// One switch per mutable item. Optimistic-disable while the POST is in flight; on success the
+// poll re-render (driven by the returned snapshot, applied immediately) reflects the new state.
+function toggleSwitch(item, errSlot) {
+  const wrap = el("label", "switch");
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = !!item.active;
+  input.setAttribute("aria-label", item.label);
+  const knob = el("span", "switch-track", el("span", "switch-knob"));
+  wrap.appendChild(input);
+  wrap.appendChild(knob);
+
+  input.addEventListener("change", async () => {
+    const enabled = input.checked;
+    input.disabled = true;
+    errSlot.textContent = "";
+    try {
+      const res = await fetch(TOGGLE_ENDPOINT[item.toggle], {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, enabled }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        input.checked = !enabled; // revert
+        errSlot.textContent = data.error || data.message || "failed";
+      } else if (data.config) {
+        applySnapshot(data.config); // re-render from the authoritative post-mutation snapshot
+      }
+    } catch (e) {
+      input.checked = !enabled;
+      errSlot.textContent = e.message;
+    } finally {
+      input.disabled = false;
+    }
+  });
+  return wrap;
 }
 
 // --------------------------------------------------------------------------- section renderers
@@ -213,7 +264,10 @@ function renderStandardSection(section) {
     body.appendChild(top);
     if (item.desc) body.appendChild(el("div", "item-desc", item.desc));
     if (item.hint) body.appendChild(el("div", "item-hint", "→ " + item.hint));
+    const errSlot = el("div", "item-err");
+    body.appendChild(errSlot);
     row.appendChild(body);
+    if (item.toggle) row.appendChild(toggleSwitch(item, errSlot));
     panel.appendChild(row);
   }
   if (section.footnote) {
@@ -261,12 +315,14 @@ function render(snap) {
 // --------------------------------------------------------------------------- poll
 
 let last = null;
+function applySnapshot(snap) {
+  const sig = JSON.stringify(snap);
+  if (sig !== last) { last = sig; render(snap); }
+  document.getElementById("status").textContent = "updated " + new Date().toLocaleTimeString();
+}
 async function load() {
   try {
-    const snap = await fetch("/api/config").then((r) => r.json());
-    const sig = JSON.stringify(snap);
-    if (sig !== last) { last = sig; render(snap); }
-    document.getElementById("status").textContent = "updated " + new Date().toLocaleTimeString();
+    applySnapshot(await fetch("/api/config").then((r) => r.json()));
   } catch (e) {
     document.getElementById("status").textContent = "error: " + e.message;
   }

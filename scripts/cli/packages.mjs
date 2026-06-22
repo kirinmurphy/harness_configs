@@ -4,19 +4,23 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { repoRoot } from "./paths.mjs";
 
-const PACKAGES_PATH = path.join(repoRoot, "manifests", "inventory", "packages.json");
-const USER_CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
-const USER_CLAUDE_MD = path.join(os.homedir(), ".claude", "CLAUDE.md");
+export const PACKAGES_PATH = path.join(repoRoot, "manifests", "inventory", "packages.json");
+export const USER_CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
+export const USER_CLAUDE_MD = path.join(os.homedir(), ".claude", "CLAUDE.md");
 
-function loadPackageCatalog() {
+export function loadPackageCatalog() {
   return JSON.parse(fs.readFileSync(PACKAGES_PATH, "utf8")).packages;
 }
 
-function readSettings(settingsPath) {
+export function findPackage(pkgId) {
+  return loadPackageCatalog().find((p) => p.id === pkgId) || null;
+}
+
+export function readSettings(settingsPath) {
   try { return JSON.parse(fs.readFileSync(settingsPath, "utf8")); } catch { return {}; }
 }
 
-function writeSettings(settingsPath, settings) {
+export function writeSettings(settingsPath, settings) {
   fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
 }
@@ -140,5 +144,118 @@ export function enablePackage(rest) {
 
   if (!dryRun && pkg.cliCommands?.length) {
     console.log(`\ncli commands available: ${pkg.cliCommands.map((c) => `roborepo ${c}`).join(", ")}`);
+  }
+}
+
+// --------------------------------------------------------------------------- disable (reversal)
+
+function unmergePermissions(settingsPath, allow) {
+  const settings = readSettings(settingsPath);
+  const existing = settings.permissions?.allow || [];
+  const toRemove = new Set(allow);
+  const next = existing.filter((p) => !toRemove.has(p));
+  if (next.length === existing.length) { console.log("ok: permissions already absent"); return; }
+  settings.permissions = { ...settings.permissions, allow: next };
+  writeSettings(settingsPath, settings);
+  console.log(`removed: ${existing.length - next.length} permissions ← ${settingsPath}`);
+}
+
+function unmergeHooks(settingsPath, hooksFragment) {
+  const settings = readSettings(settingsPath);
+  const hooks = settings.hooks || {};
+  let removed = 0;
+  for (const [event, entries] of Object.entries(hooksFragment)) {
+    const cmds = new Set(entries.map((e) => e.hooks?.[0]?.command).filter(Boolean));
+    const existing = hooks[event] || [];
+    const next = existing.filter((e) => {
+      const cmd = e.hooks?.[0]?.command;
+      if (cmd && cmds.has(cmd)) { removed++; return false; }
+      return true;
+    });
+    if (next.length) hooks[event] = next;
+    else delete hooks[event];
+  }
+  if (removed > 0) {
+    settings.hooks = hooks;
+    writeSettings(settingsPath, settings);
+    console.log(`removed: ${removed} hook entries ← ${settingsPath}`);
+  } else {
+    console.log(`ok: hooks already absent ← ${settingsPath}`);
+  }
+}
+
+function unmergeRules(claudeMdPath, rulesContent) {
+  if (!fs.existsSync(claudeMdPath)) { console.log(`ok: rules already absent → ${claudeMdPath}`); return; }
+  const existing = fs.readFileSync(claudeMdPath, "utf8");
+  const block = rulesContent.trimEnd();
+  const idx = existing.indexOf(block);
+  if (idx === -1) {
+    // Fall back to the first-line anchor enablePackage uses, in case trailing whitespace drifted.
+    const firstLine = block.split("\n").find((l) => l.trim());
+    if (!firstLine || !existing.includes(firstLine)) { console.log(`ok: rules already absent → ${claudeMdPath}`); return; }
+    console.log(`warn: rules block in ${claudeMdPath} drifted from source; leaving in place for manual review`);
+    return;
+  }
+  // Remove the block plus a single leading/trailing blank-line separator so we don't leave a gap.
+  let start = idx;
+  let end = idx + block.length;
+  if (existing.slice(0, start).endsWith("\n\n")) start -= 1;
+  if (existing.slice(end).startsWith("\n")) end += 1;
+  const next = (existing.slice(0, start) + existing.slice(end)).replace(/\n{3,}/g, "\n\n");
+  fs.writeFileSync(claudeMdPath, next.endsWith("\n") ? next : next + "\n");
+  console.log(`removed: rules ← ${claudeMdPath}`);
+}
+
+function removeMcpPreset(presetId, dryRun) {
+  if (dryRun) { console.log(`  [dry-run] mcp remove ${presetId}`); return; }
+  const result = spawnSync("claude", ["mcp", "remove", presetId], { encoding: "utf8" });
+  if (result.error || (result.status !== 0 && result.status !== null)) {
+    console.log(`  ok: mcp ${presetId} not registered (or claude CLI unavailable)`);
+    return;
+  }
+  console.log(`  removed: mcp ${presetId}`);
+}
+
+export function disablePackage(rest) {
+  const [pkgId, ...flags] = rest;
+  if (!pkgId) {
+    console.error("usage: roborepo disable <package-id>");
+    console.error(`available: ${loadPackageCatalog().map((p) => p.id).join(", ")}`);
+    process.exit(2);
+  }
+  const pkg = findPackage(pkgId);
+  if (!pkg) {
+    console.error(`unknown package: ${pkgId}`);
+    console.error(`available: ${loadPackageCatalog().map((p) => p.id).join(", ")}`);
+    process.exit(2);
+  }
+
+  const dryRun = flags.includes("--dry-run");
+  console.log(dryRun ? `[dry-run] would disable: ${pkg.label}` : `disabling: ${pkg.label}`);
+
+  for (const component of pkg.components) {
+    switch (component.type) {
+      case "mcp":
+        removeMcpPreset(component.preset, dryRun);
+        break;
+      case "permissions":
+        if (dryRun) { console.log(`  [dry-run] remove ${component.allow.length} permissions`); break; }
+        unmergePermissions(USER_CLAUDE_SETTINGS, component.allow);
+        break;
+      case "rules": {
+        if (dryRun) { console.log(`  [dry-run] remove rules from ${component.source}`); break; }
+        const rulesContent = fs.readFileSync(path.join(repoRoot, component.source), "utf8");
+        if (component.harness === "claude") unmergeRules(USER_CLAUDE_MD, rulesContent);
+        break;
+      }
+      case "hooks": {
+        if (dryRun) { console.log(`  [dry-run] remove hooks from ${component.source}`); break; }
+        const hooksFragment = JSON.parse(fs.readFileSync(path.join(repoRoot, component.source), "utf8"));
+        if (component.harness === "claude") unmergeHooks(USER_CLAUDE_SETTINGS, hooksFragment);
+        break;
+      }
+      default:
+        console.log(`  skip: unknown component type: ${component.type}`);
+    }
   }
 }

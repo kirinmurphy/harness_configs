@@ -262,10 +262,10 @@ function profileSelector(item) {
   async function apply(profile, looser) {
     if (looser) {
       const ok = window.confirm(
-        "Switching " + scope + " to '" + profile + "' loosens safety:\n\n" +
+        "Switching " + scope + " to '" + profile + "' loosens safety:\\n\\n" +
         (profile === "workspace" ? "the agent stops asking before blocked actions." :
          profile === "networked" ? "the agent's sandbox gets internet access." : "") +
-        "\n\nApply anyway?");
+        "\\nApply anyway?");
       if (!ok) return;
     }
     err.textContent = "";

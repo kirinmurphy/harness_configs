@@ -416,6 +416,11 @@ assert "config: POST unknown skill returns ok:false" \
   bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -d '{\"id\":\"zzz\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok===false?0:1)})\""
 assert "config: GET /config still served" \
   bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:${cfg_port}/config')\" = 200 ]"
+# The /config page's inline JS must parse — a syntax error there crashes the whole dashboard at
+# load (no panels render) and is invisible to HTTP-status checks. Extract the served <script> and
+# node --check it. Guards the template-literal trap (a literal newline inside a JS string, etc.).
+assert "config: served /config dashboard JS parses" \
+  bash -c "dashjs=\"${cfg_home}/dash.js\"; curl -s 'http://127.0.0.1:${cfg_port}/config' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const m=s.match(/<script>([\\\\s\\\\S]*?)<\\\\/script>/);require('fs').writeFileSync(process.argv[1],m?m[1]:'syntax error');})\" \"\${dashjs}\" && node --check \"\${dashjs}\""
 
 # Phase 2: permission profile switch writes the LIVE home config (not the repo template).
 # Seed a codex config.toml so the renderer has a marker block to merge into.

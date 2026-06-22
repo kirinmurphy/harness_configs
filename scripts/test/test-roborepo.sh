@@ -354,6 +354,15 @@ assert "config: disable plugin removes bool + marketplace" \
 assert "config: caveman package reports disabled after removal" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='caveman');process.exit(p&&!p.enabled?0:1)})\""
 
+# Service component (telemetry as a package): enable via the generic package path flips its state +
+# snapshot, disable reverses. The service handler owns telemetry's bespoke install (hooks + spool).
+bash -c "${cfg_env} node '${cli}' enable telemetry >/dev/null 2>&1" || true
+assert "config: enable service package flips telemetry state" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(s.telemetry.enabled&&s.packages.find(p=>p.id==='telemetry')?.enabled?0:1)})\""
+bash -c "${cfg_env} node '${cli}' disable telemetry >/dev/null 2>&1" || true
+assert "config: disable service package clears telemetry state" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(!s.telemetry.enabled&&!s.packages.find(p=>p.id==='telemetry')?.enabled?0:1)})\""
+
 # Skill toggle links into both ~/.claude/skills and ~/.codex/skills, then removes only owned links.
 cfg_skill="$(ls "${repo_root}/globals/agents/skills" | head -1)"
 assert "config: setSkillInstalled links both harnesses" \
@@ -424,13 +433,11 @@ assert "config: POST permissions looser with confirm returns 200" \
 assert "config: POST permissions bad body returns 400" \
   bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"profile\":123}')\" = 400 ]"
 
-# Telemetry capture toggle: enable/disable flips state + returns the updated snapshot.
-assert "config: POST /api/config/telemetry enable flips snapshot" \
-  bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/telemetry' -H 'Content-Type: application/json' -d '{\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===true?0:1)})\""
-assert "config: POST /api/config/telemetry disable flips snapshot" \
-  bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/telemetry' -H 'Content-Type: application/json' -d '{\"enabled\":false}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===false?0:1)})\""
-assert "config: POST telemetry bad body returns 400" \
-  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/telemetry' -H 'Content-Type: application/json' -d '{\"enabled\":\"yes\"}')\" = 400 ]"
+# Telemetry is a package via a service component: it toggles through the generic package endpoint.
+assert "config: POST package telemetry (service component) enables + flips snapshot" \
+  bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/packages' -H 'Content-Type: application/json' -d '{\"id\":\"telemetry\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===true&&j.config?.packages?.find(p=>p.id==='telemetry')?.enabled===true?0:1)})\""
+assert "config: POST package telemetry disable flips snapshot" \
+  bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/packages' -H 'Content-Type: application/json' -d '{\"id\":\"telemetry\",\"enabled\":false}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===false?0:1)})\""
 
 kill "${cfg_srv}" 2>/dev/null || true
 

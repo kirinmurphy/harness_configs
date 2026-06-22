@@ -112,7 +112,7 @@ function behaviorView(snap) {
         { id:"jcodemunch", label:"jcodemunch",     desc:"Code indexer — find code via symbol search instead of reading files", active: pkg("jcodemunch")?.enabled ?? false, toggle:"package" },
         { id:"jdocmunch",  label:"jdocmunch",      desc:"Docs indexer — query sections instead of reading whole files",        active: pkg("jdocmunch")?.enabled  ?? false, toggle:"package" },
         { id:"caveman",    label:"Caveman plugin", desc:"Keeps agent output terse to reduce token use",                        active: pkg("caveman")?.enabled ?? snap.plugins?.caveman ?? false, toggle:"package", hint: (pkg("caveman")?.enabled ?? snap.plugins?.caveman) ? null : "enables on the harness's next launch" },
-        { id:"telemetry",  label:"Telemetry",      desc:"Capture and visualize token usage across harnesses",                  active: !!tel.enabled,                        toggle:"telemetry" },
+        { id:"telemetry",  label:"Telemetry",      desc:"Capture and visualize token usage across harnesses",                  active: pkg("telemetry")?.enabled ?? !!tel.enabled, toggle:"package" },
       ],
     },
     {
@@ -190,7 +190,7 @@ function badge(text) {
   return el("span", "badge " + (isCmd ? "badge-cmd" : "badge-skill"), text);
 }
 
-const TOGGLE_ENDPOINT = { package: "/api/config/packages", skill: "/api/config/skills", telemetry: "/api/config/telemetry" };
+const TOGGLE_ENDPOINT = { package: "/api/config/packages", skill: "/api/config/skills" };
 
 // One switch per mutable item. Optimistic-disable while the POST is in flight; on success the
 // poll re-render (driven by the returned snapshot, applied immediately) reflects the new state.
@@ -209,12 +209,10 @@ function toggleSwitch(item, errSlot) {
     input.disabled = true;
     errSlot.textContent = "";
     try {
-      // The telemetry endpoint keys off { enabled } only; package/skill also need the item id.
-      const body = item.toggle === "telemetry" ? { enabled } : { id: item.id, enabled };
       const res = await fetch(TOGGLE_ENDPOINT[item.toggle], {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ id: item.id, enabled }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {

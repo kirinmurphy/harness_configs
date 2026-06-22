@@ -29,33 +29,20 @@ export function startTelemetryServer(handlers) {
 }
 
 function route(req, res, handlers) {
-  const { loadAnalysis, loadSession, loadInsightsLlm, loadConfig, mutatePackage, mutateSkill, mutateProfile, mutateTelemetry } = handlers;
+  const { loadAnalysis, loadSession, loadInsightsLlm, loadConfig, mutatePackage, mutateSkill, mutateProfile } = handlers;
   const [urlPath, qs = ""] = (req.url || "/").split("?");
 
   // Mutations: local-only loopback server, so no auth — but still POST-only and JSON-bodied.
   // Each writes config then returns the fresh snapshot so the client re-renders from one response.
   if (req.method === "POST" && (urlPath === "/api/config/packages" || urlPath === "/api/config/skills")) {
-    return readJsonBody(req, (body, err) => {
+    return readJsonBody(req, async (body, err) => {
       if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
       const { id, enabled } = body || {};
       if (typeof id !== "string" || typeof enabled !== "boolean") {
         return send(res, 400, "application/json", JSON.stringify({ error: "expected { id: string, enabled: boolean }" }));
       }
       const mutate = urlPath === "/api/config/packages" ? mutatePackage : mutateSkill;
-      const result = mutate(id, enabled);
-      const status = result.ok ? 200 : 400;
-      return send(res, status, "application/json", JSON.stringify({ ...result, config: loadConfig() }));
-    });
-  }
-
-  if (req.method === "POST" && urlPath === "/api/config/telemetry") {
-    return readJsonBody(req, (body, err) => {
-      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
-      const { enabled } = body || {};
-      if (typeof enabled !== "boolean") {
-        return send(res, 400, "application/json", JSON.stringify({ error: "expected { enabled: boolean }" }));
-      }
-      const result = mutateTelemetry(enabled);
+      const result = await mutate(id, enabled); // mutatePackage is async (service components)
       const status = result.ok ? 200 : 400;
       return send(res, status, "application/json", JSON.stringify({ ...result, config: loadConfig() }));
     });

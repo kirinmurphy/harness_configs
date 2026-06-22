@@ -399,7 +399,6 @@ function telemetryServe(args) {
     mutatePackage: (id, enabled) => mutatePackage(id, enabled),
     mutateSkill: (id, enabled) => setSkillInstalled(id, enabled),
     mutateProfile: (profile, confirmedLooser, scope) => setPermissionProfile(profile, { confirmedLooser, scope }),
-    mutateTelemetry: (enabled) => setTelemetryEnabled(enabled),
   });
 }
 

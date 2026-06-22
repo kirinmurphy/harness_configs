@@ -16,12 +16,17 @@ function readJson(filePath, fallback = null) {
   try { return JSON.parse(fs.readFileSync(filePath, "utf8")); } catch { return fallback; }
 }
 
-function isPackageEnabled(pkg, settings) {
+function isPackageEnabled(pkg, settings, serviceState) {
   // A plugin package is enabled iff its enabledPlugins bool is true. Checked first so plugin-only
   // packages (e.g. caveman) are identified by their own marker, not by other component types.
   const pluginComp = pkg.components.find((c) => c.type === "plugin");
   if (pluginComp) {
     return settings?.enabledPlugins?.[pluginComp.id] === true;
+  }
+  // A service package is enabled iff its handler's state says so (telemetry: the spool state file).
+  const serviceComp = pkg.components.find((c) => c.type === "service");
+  if (serviceComp) {
+    return serviceState?.[serviceComp.id] === true;
   }
   const permComp = pkg.components.find((c) => c.type === "permissions");
   if (permComp) {
@@ -66,7 +71,7 @@ export function readConfigSnapshot() {
     label: pkg.label,
     description: pkg.description || null,
     cliCommands: pkg.cliCommands || [],
-    enabled: isPackageEnabled(pkg, settings),
+    enabled: isPackageEnabled(pkg, settings, { telemetry: !!telemetryState?.enabled }),
     components: pkg.components.map((c) => c.type),
   }));
 
@@ -164,9 +169,9 @@ export function buildBehaviorView(snap) {
           id: "telemetry",
           label: "Telemetry",
           description: "Capture and visualize token usage across harnesses",
-          active: !!tel?.enabled,
-          toggle: "telemetry",
-          hint: tel?.enabled ? "roborepo telemetry serve" : "roborepo telemetry enable",
+          active: pkg("telemetry")?.enabled ?? !!tel?.enabled,
+          toggle: "package",
+          hint: (pkg("telemetry")?.enabled ?? tel?.enabled) ? "roborepo telemetry serve" : null,
         },
       ],
     },

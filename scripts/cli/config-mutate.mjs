@@ -21,12 +21,12 @@ const HARNESS_SKILL_DIRS = [
 
 // --------------------------------------------------------------------------- packages
 
-export function mutatePackage(id, enabled, { dryRun = false } = {}) {
+export async function mutatePackage(id, enabled, { dryRun = false } = {}) {
   if (!findPackage(id)) return { ok: false, message: `unknown package: ${id}` };
   try {
     const flags = dryRun ? ["--dry-run"] : [];
-    if (enabled) enablePackage([id, ...flags]);
-    else disablePackage([id, ...flags]);
+    if (enabled) await enablePackage([id, ...flags]);
+    else await disablePackage([id, ...flags]);
     return { ok: true, message: `${enabled ? "enabled" : "disabled"}: ${id}` };
   } catch (err) {
     return { ok: false, message: String(err?.message || err) };

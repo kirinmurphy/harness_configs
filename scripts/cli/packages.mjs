@@ -94,7 +94,7 @@ function installMcpPreset(presetId) {
   }
 }
 
-export function enablePackage(rest) {
+export async function enablePackage(rest) {
   const [pkgId, ...flags] = rest;
   if (!pkgId) {
     console.error("usage: roborepo enable <package-id>");
@@ -115,6 +115,7 @@ export function enablePackage(rest) {
   if (dryRun) { console.log(`[dry-run] would enable: ${pkg.label}`); }
   else { console.log(`enabling: ${pkg.label}`); }
 
+  const servicePromises = [];
   for (const component of pkg.components) {
     switch (component.type) {
       case "mcp":
@@ -145,10 +146,17 @@ export function enablePackage(rest) {
         if (dryRun) { console.log(`  [dry-run] enable plugin ${component.id}`); break; }
         enablePlugin(USER_CLAUDE_SETTINGS, component);
         break;
+      case "service":
+        if (dryRun) { console.log(`  [dry-run] enable service ${component.id}`); break; }
+        servicePromises.push(setService(component.id, true));
+        break;
       default:
         console.log(`  skip: unknown component type: ${component.type}`);
     }
   }
+  // Service components run async handlers (lazy-imported to avoid import cycles); await them so the
+  // function doesn't resolve before the side effects land.
+  if (servicePromises.length) await Promise.all(servicePromises);
 
   if (!dryRun && pkg.cliCommands?.length) {
     console.log(`\ncli commands available: ${pkg.cliCommands.map((c) => `roborepo ${c}`).join(", ")}`);
@@ -224,7 +232,7 @@ function removeMcpPreset(presetId, dryRun) {
   console.log(`  removed: mcp ${presetId}`);
 }
 
-export function disablePackage(rest) {
+export async function disablePackage(rest) {
   const [pkgId, ...flags] = rest;
   if (!pkgId) {
     console.error("usage: roborepo disable <package-id>");
@@ -241,6 +249,7 @@ export function disablePackage(rest) {
   const dryRun = flags.includes("--dry-run");
   console.log(dryRun ? `[dry-run] would disable: ${pkg.label}` : `disabling: ${pkg.label}`);
 
+  const servicePromises = [];
   for (const component of pkg.components) {
     switch (component.type) {
       case "mcp":
@@ -266,10 +275,34 @@ export function disablePackage(rest) {
         if (dryRun) { console.log(`  [dry-run] disable plugin ${component.id}`); break; }
         disablePlugin(USER_CLAUDE_SETTINGS, component);
         break;
+      case "service":
+        if (dryRun) { console.log(`  [dry-run] disable service ${component.id}`); break; }
+        servicePromises.push(setService(component.id, false));
+        break;
       default:
         console.log(`  skip: unknown component type: ${component.type}`);
     }
   }
+  if (servicePromises.length) await Promise.all(servicePromises);
+}
+
+// --------------------------------------------------------------------------- service component
+//
+// A service component delegates to a registered async handler that owns the feature's bespoke
+// install (state file, hooks, server, …) — telemetry is the first. Handlers are lazy-imported so
+// packages.mjs has no static dependency on (and no import cycle with) the feature modules. Adding a
+// new service = register its { id → loader } here; the package model itself stays generic.
+const SERVICE_HANDLERS = {
+  telemetry: async () => (await import("./telemetry.mjs")).setTelemetryEnabled,
+};
+
+async function setService(id, enabled) {
+  const loader = SERVICE_HANDLERS[id];
+  if (!loader) { console.log(`  skip: unknown service: ${id}`); return; }
+  const handler = await loader();
+  const result = handler(enabled);
+  if (result?.message) console.log(`  ${result.message}`);
+  return result;
 }
 
 // --------------------------------------------------------------------------- plugin component

@@ -99,11 +99,9 @@ function markOnboarded() {
 async function applyItemToggle(section, item) {
   const enabled = !item.active;
   if (section.category === "Token Optimization") {
-    if (item.id === "jcodemunch" || item.id === "jdocmunch" || item.id === "caveman") return mutatePackage(item.id, enabled);
-    if (item.id === "telemetry") {
-      const { setTelemetryEnabled } = await import("./telemetry.mjs");
-      return setTelemetryEnabled(enabled);
-    }
+    // jcodemunch / jdocmunch / caveman / telemetry are all packages now (telemetry via a service
+    // component), so they route through the one generic package mutate.
+    if (["jcodemunch", "jdocmunch", "caveman", "telemetry"].includes(item.id)) return mutatePackage(item.id, enabled);
     return { ok: false, message: `${item.label} is managed elsewhere (not toggleable here)` };
   }
   if (section.category === "Workflows" || section.category === "Code Conventions") {

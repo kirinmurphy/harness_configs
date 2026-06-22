@@ -55,6 +55,15 @@
     }
     ,
     {
+      "id": "telemetry",
+      "label": "Telemetry",
+      "description": "Capture and visualize token usage across harnesses. Wires capture hooks and a local spool; the dashboard server is started separately with `roborepo telemetry serve`.",
+      "components": [
+        { "type": "service", "id": "telemetry" }
+      ]
+    }
+    ,
+    {
       "id": "caveman",
       "label": "Caveman plugin",
       "description": "Claude plugin that keeps agent output terse to cut token use (statusline badge, /caveman commands, mode-tracker hook). The caveman behavior rule is separate and lives in the global rules.",

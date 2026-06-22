@@ -151,19 +151,30 @@ function telemetryStop(args) {
 
 function telemetryEnable(args) {
   rejectArgs(args);
-  ensureTelemetryDirs();
-  writeTelemetryState({ enabled: true });
-  presetsApply(["telemetry"]);
+  setTelemetryEnabled(true);
   console.log("telemetry: enabled");
   telemetryStatus([]);
 }
 
 function telemetryDisable(args) {
   rejectArgs(args);
-  ensureTelemetryDirs();
-  writeTelemetryState({ enabled: false });
-  markTelemetrySelected(false);
+  setTelemetryEnabled(false);
   console.log("telemetry: disabled");
+}
+
+// Programmatic capture toggle, shared by the CLI verbs and the config controls. Flips capture state
+// and wires/unwires the capture hooks (via the telemetry bundle) without starting/stopping the
+// dashboard server — the dashboard toggle is about capture, not the server. Returns { ok, message }.
+export function setTelemetryEnabled(enabled) {
+  try {
+    ensureTelemetryDirs();
+    writeTelemetryState({ enabled });
+    if (enabled) presetsApply(["telemetry"]);
+    else markTelemetrySelected(false);
+    return { ok: true, message: `telemetry ${enabled ? "enabled" : "disabled"}` };
+  } catch (err) {
+    return { ok: false, message: String(err?.message || err) };
+  }
 }
 
 function telemetryStatus(args) {
@@ -388,6 +399,7 @@ function telemetryServe(args) {
     mutatePackage: (id, enabled) => mutatePackage(id, enabled),
     mutateSkill: (id, enabled) => setSkillInstalled(id, enabled),
     mutateProfile: (profile, confirmedLooser, scope) => setPermissionProfile(profile, { confirmedLooser, scope }),
+    mutateTelemetry: (enabled) => setTelemetryEnabled(enabled),
   });
 }
 

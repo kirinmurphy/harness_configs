@@ -29,7 +29,7 @@ export function startTelemetryServer(handlers) {
 }
 
 function route(req, res, handlers) {
-  const { loadAnalysis, loadSession, loadInsightsLlm, loadConfig, mutatePackage, mutateSkill, mutateProfile } = handlers;
+  const { loadAnalysis, loadSession, loadInsightsLlm, loadConfig, mutatePackage, mutateSkill, mutateProfile, mutateTelemetry } = handlers;
   const [urlPath, qs = ""] = (req.url || "/").split("?");
 
   // Mutations: local-only loopback server, so no auth — but still POST-only and JSON-bodied.
@@ -43,6 +43,19 @@ function route(req, res, handlers) {
       }
       const mutate = urlPath === "/api/config/packages" ? mutatePackage : mutateSkill;
       const result = mutate(id, enabled);
+      const status = result.ok ? 200 : 400;
+      return send(res, status, "application/json", JSON.stringify({ ...result, config: loadConfig() }));
+    });
+  }
+
+  if (req.method === "POST" && urlPath === "/api/config/telemetry") {
+    return readJsonBody(req, (body, err) => {
+      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
+      const { enabled } = body || {};
+      if (typeof enabled !== "boolean") {
+        return send(res, 400, "application/json", JSON.stringify({ error: "expected { enabled: boolean }" }));
+      }
+      const result = mutateTelemetry(enabled);
       const status = result.ok ? 200 : 400;
       return send(res, status, "application/json", JSON.stringify({ ...result, config: loadConfig() }));
     });

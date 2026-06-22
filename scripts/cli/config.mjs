@@ -158,6 +158,7 @@ export function buildBehaviorView(snap) {
           label: "Telemetry",
           description: "Capture and visualize token usage across harnesses",
           active: !!tel?.enabled,
+          toggle: "telemetry",
           hint: tel?.enabled ? "roborepo telemetry serve" : "roborepo telemetry enable",
         },
       ],

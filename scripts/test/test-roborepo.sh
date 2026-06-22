@@ -411,6 +411,14 @@ assert "config: POST permissions looser with confirm returns 200" \
 assert "config: POST permissions bad body returns 400" \
   bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"profile\":123}')\" = 400 ]"
 
+# Telemetry capture toggle: enable/disable flips state + returns the updated snapshot.
+assert "config: POST /api/config/telemetry enable flips snapshot" \
+  bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/telemetry' -H 'Content-Type: application/json' -d '{\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===true?0:1)})\""
+assert "config: POST /api/config/telemetry disable flips snapshot" \
+  bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/telemetry' -H 'Content-Type: application/json' -d '{\"enabled\":false}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===false?0:1)})\""
+assert "config: POST telemetry bad body returns 400" \
+  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/telemetry' -H 'Content-Type: application/json' -d '{\"enabled\":\"yes\"}')\" = 400 ]"
+
 kill "${cfg_srv}" 2>/dev/null || true
 
 # Token capture reads the harness transcript (transcript_path on hook stdin) and records cumulative

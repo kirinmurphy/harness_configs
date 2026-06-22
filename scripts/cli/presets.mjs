@@ -94,11 +94,16 @@ function markOnboarded() {
   });
 }
 
-// Each toggleable item maps to a config-mutate call. Returns true on success so the loop can re-read.
-function applyItemToggle(section, item) {
+// Each toggleable item maps to a mutate call. Telemetry is imported lazily to avoid a static import
+// cycle (telemetry.mjs → presets.mjs). Returns { ok, message }.
+async function applyItemToggle(section, item) {
   const enabled = !item.active;
   if (section.category === "Token Optimization") {
     if (item.id === "jcodemunch" || item.id === "jdocmunch") return mutatePackage(item.id, enabled);
+    if (item.id === "telemetry") {
+      const { setTelemetryEnabled } = await import("./telemetry.mjs");
+      return setTelemetryEnabled(enabled);
+    }
     return { ok: false, message: `${item.label} is managed elsewhere (not toggleable here)` };
   }
   if (section.category === "Workflows" || section.category === "Code Conventions") {
@@ -124,7 +129,7 @@ async function runInteractiveOnboard() {
       menu.push({ header: section.category });
       for (const item of section.items) {
         const toggleable =
-          (section.category === "Token Optimization" && (item.id === "jcodemunch" || item.id === "jdocmunch")) ||
+          (section.category === "Token Optimization" && (item.id === "jcodemunch" || item.id === "jdocmunch" || item.id === "telemetry")) ||
           section.category === "Workflows" ||
           section.category === "Code Conventions";
         if (!toggleable) continue;
@@ -149,7 +154,7 @@ async function runInteractiveOnboard() {
     }
 
     const { section, item } = actions[choice];
-    const result = applyItemToggle(section, item);
+    const result = await applyItemToggle(section, item);
     console.log(result.ok ? `✓ ${result.message}` : `✗ ${result.message}`);
   }
 

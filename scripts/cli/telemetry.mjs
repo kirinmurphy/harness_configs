@@ -10,7 +10,7 @@ import { mcpServerOf, transcriptStats } from "./telemetry-transcript.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { startTelemetryServer } from "./telemetry-serve.mjs";
 import { readConfigSnapshot } from "./config.mjs";
-import { mutatePackage, setSkillInstalled } from "./config-mutate.mjs";
+import { mutatePackage, setSkillInstalled, setPermissionProfile } from "./config-mutate.mjs";
 import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
 
@@ -387,6 +387,7 @@ function telemetryServe(args) {
     loadConfig: () => readConfigSnapshot(),
     mutatePackage: (id, enabled) => mutatePackage(id, enabled),
     mutateSkill: (id, enabled) => setSkillInstalled(id, enabled),
+    mutateProfile: (profile, confirmedLooser) => setPermissionProfile(profile, { confirmedLooser }),
   });
 }
 

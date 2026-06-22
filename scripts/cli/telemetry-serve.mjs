@@ -29,7 +29,7 @@ export function startTelemetryServer(handlers) {
 }
 
 function route(req, res, handlers) {
-  const { loadAnalysis, loadSession, loadInsightsLlm, loadConfig, mutatePackage, mutateSkill } = handlers;
+  const { loadAnalysis, loadSession, loadInsightsLlm, loadConfig, mutatePackage, mutateSkill, mutateProfile } = handlers;
   const [urlPath, qs = ""] = (req.url || "/").split("?");
 
   // Mutations: local-only loopback server, so no auth — but still POST-only and JSON-bodied.
@@ -44,6 +44,21 @@ function route(req, res, handlers) {
       const mutate = urlPath === "/api/config/packages" ? mutatePackage : mutateSkill;
       const result = mutate(id, enabled);
       const status = result.ok ? 200 : 400;
+      return send(res, status, "application/json", JSON.stringify({ ...result, config: loadConfig() }));
+    });
+  }
+
+  if (req.method === "POST" && urlPath === "/api/config/permissions") {
+    return readJsonBody(req, (body, err) => {
+      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
+      const { profile, confirmedLooser } = body || {};
+      if (typeof profile !== "string") {
+        return send(res, 400, "application/json", JSON.stringify({ error: "expected { profile: string, confirmedLooser?: boolean }" }));
+      }
+      const result = mutateProfile(profile, !!confirmedLooser);
+      // needsConfirm is a soft rejection (looser profile, no confirm yet) — 409 so the client can
+      // prompt then retry with confirmedLooser, distinct from a 400 validation error.
+      const status = result.ok ? 200 : result.needsConfirm ? 409 : 400;
       return send(res, status, "application/json", JSON.stringify({ ...result, config: loadConfig() }));
     });
   }

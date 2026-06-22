@@ -4,6 +4,8 @@ import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 import { enablePackage, disablePackage, findPackage } from "./packages.mjs";
 import { ensureSymlink, listSourceSkills, readlinkSafe } from "./skill-files.mjs";
+import { loadPermissionManifest, renderProfileToHome } from "./permissions-render.mjs";
+import { activeProfilePath } from "./state-paths.mjs";
 
 // Shared mutation core for the interactive config controls (terminal `onboard` + web POST endpoints).
 // Every function here is harness-agnostic and returns a plain { ok, message } result instead of
@@ -67,4 +69,50 @@ export function setSkillInstalled(id, enabled, { dryRun = false } = {}) {
 
   for (const line of touched) console.log(line);
   return { ok: true, message: `${enabled ? "installed" : "removed"} skill: ${id}` };
+}
+
+// --------------------------------------------------------------------------- permissions
+
+// Looser profiles drop guardrails: workspace stops prompting before blocked actions, networked
+// grants the sandbox internet access. The dashboard requires an explicit confirm before these.
+export const LOOSER_PROFILES = new Set(["workspace", "networked"]);
+
+export function listPermissionProfiles() {
+  const manifest = loadPermissionManifest();
+  return Object.keys(manifest.profiles ?? {});
+}
+
+// Switch the LIVE machine config to a permission profile by rendering it directly into
+// ~/.claude/settings.json + ~/.codex/config.toml. The repo-source template (globals/) is left
+// untouched — this is a per-machine active choice, mirroring how package toggles write home config.
+export function setPermissionProfile(profileName, { confirmedLooser = false } = {}) {
+  let manifest;
+  try {
+    manifest = loadPermissionManifest();
+  } catch (err) {
+    return { ok: false, message: `cannot read permission manifest: ${String(err?.message || err)}` };
+  }
+  if (!Object.keys(manifest.profiles ?? {}).includes(profileName)) {
+    return { ok: false, message: `unknown profile: ${profileName}` };
+  }
+  if (LOOSER_PROFILES.has(profileName) && !confirmedLooser) {
+    return { ok: false, needsConfirm: true, message: `'${profileName}' loosens safety — confirm to apply` };
+  }
+  try {
+    const { touched } = renderProfileToHome(profileName, { home: os.homedir(), manifest });
+    for (const t of touched) console.log(`profile ${profileName}: ${t}`);
+    fs.mkdirSync(path.dirname(activeProfilePath), { recursive: true });
+    fs.writeFileSync(activeProfilePath, JSON.stringify({ profile: profileName, updatedAt: new Date().toISOString() }, null, 2) + "\n");
+    return { ok: true, message: `permission profile set: ${profileName}` };
+  } catch (err) {
+    return { ok: false, message: String(err?.message || err) };
+  }
+}
+
+export function readActiveProfile() {
+  try {
+    return JSON.parse(fs.readFileSync(activeProfilePath, "utf8")).profile || null;
+  } catch {
+    return null;
+  }
 }

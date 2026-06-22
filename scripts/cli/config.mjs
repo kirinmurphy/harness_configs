@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { repoRoot } from "./paths.mjs";
-import { installStatePath, presetsStatePath, telemetryDir } from "./state-paths.mjs";
+import { installStatePath, presetsStatePath, telemetryDir, activeProfilePath } from "./state-paths.mjs";
 
 const PACKAGES_PATH = path.join(repoRoot, "manifests", "inventory", "packages.json");
 const PRESETS_PATH = path.join(repoRoot, "manifests", "platform", "presets.json");
@@ -47,6 +47,8 @@ export function readConfigSnapshot() {
   const skillInvocation = readJson(SKILL_INVOCATION_PATH, { skills: [] });
   const slashCommands = readJson(SLASH_COMMANDS_PATH, { commands: [] });
   const agentPermissions = readJson(AGENT_PERMISSIONS_PATH, null);
+  // Active per-machine profile recorded by the config controls; falls back to the repo default.
+  const activeProfile = readJson(activeProfilePath, {})?.profile || agentPermissions?.default_profile || null;
 
   const selectedBundles = new Set(presetState.selected ?? presetsCatalog.default);
 
@@ -93,6 +95,8 @@ export function readConfigSnapshot() {
     bundles,
     tools,
     agentPermissions,
+    activeProfile,
+    profiles: Object.keys(agentPermissions?.profiles ?? {}),
     plugins: {
       caveman: settings?.enabledPlugins?.["caveman@caveman"] === true,
     },
@@ -186,10 +190,17 @@ export function buildBehaviorView(snap) {
       items: [
         {
           id: "profile",
-          label: perms?.default_profile || "interactive",
-          description: perms?.profiles?.[perms?.default_profile]?.description || null,
+          label: snap.activeProfile || perms?.default_profile || "interactive",
+          description: perms?.profiles?.[snap.activeProfile || perms?.default_profile]?.description || null,
           active: true,
           kind: "profile",
+          // Selectable profiles for the interactive controls (terminal onboarding + web toggle).
+          options: (snap.profiles || []).map((id) => ({
+            id,
+            description: perms?.profiles?.[id]?.description || null,
+            current: id === (snap.activeProfile || perms?.default_profile),
+            looser: id === "workspace" || id === "networked",
+          })),
         },
         {
           id: "deny",

@@ -50,6 +50,15 @@ export function configHtml() {
   .switch input:disabled + .switch-track { opacity:.5; }
   .item-err { color:#f85149; font-size:11px; margin-top:3px; }
   .item-err:empty { display:none; }
+  /* permission profile selector */
+  .profile-box { width:100%; }
+  .profile-choices { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .profile-btn { font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--bg); border:1px solid var(--line); color:var(--ink); padding:4px 10px; border-radius:5px; cursor:pointer; }
+  .profile-btn:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+  .profile-btn.current { border-color:var(--ok); color:var(--ok); cursor:default; }
+  .profile-btn.looser { color:var(--warn); border-color:#5a4a1a; }
+  .profile-btn.looser:hover:not(:disabled) { border-color:var(--warn); }
+  .profile-btn:disabled { opacity:.7; }
   /* permissions section */
   .perm-row { padding:8px 0; border-top:1px solid var(--line); font-size:12px; }
   .perm-row:first-of-type { border-top:none; }
@@ -128,9 +137,15 @@ function behaviorView(snap) {
       items: [
         {
           id: "profile",
-          label: perms?.default_profile || "interactive",
-          desc: perms?.profiles?.[perms?.default_profile]?.description || null,
+          label: snap.activeProfile || perms?.default_profile || "interactive",
+          desc: perms?.profiles?.[snap.activeProfile || perms?.default_profile]?.description || null,
           kind: "profile",
+          active: snap.activeProfile || perms?.default_profile || "interactive",
+          options: (snap.profiles || []).map((id) => ({
+            id,
+            desc: perms?.profiles?.[id]?.description || null,
+            looser: id === "workspace" || id === "networked",
+          })),
         },
         {
           id: "deny",
@@ -209,6 +224,55 @@ function toggleSwitch(item, errSlot) {
   return wrap;
 }
 
+// Permission profile selector. Switching to a looser profile (workspace / networked) loosens the
+// agent's guardrails, so those require an explicit confirm; the server also enforces this (409
+// needsConfirm) so the rule holds even if the client is bypassed.
+function profileSelector(item) {
+  const box = el("div", "profile-box");
+  const current = item.active;
+  const head = el("div", "perm-profile");
+  head.appendChild(el("span", "perm-name", "profile: " + current));
+  if (item.desc) head.appendChild(el("span", "perm-desc", item.desc));
+  box.appendChild(head);
+
+  const err = el("div", "item-err");
+  const choices = el("div", "profile-choices");
+
+  async function apply(profile, looser) {
+    if (looser && profile !== current) {
+      const ok = window.confirm(
+        "Switching to '" + profile + "' loosens safety:\n\n" +
+        (profile === "workspace" ? "the agent stops asking before blocked actions." :
+         profile === "networked" ? "the agent's sandbox gets internet access." : "") +
+        "\n\nApply anyway?");
+      if (!ok) return;
+    }
+    err.textContent = "";
+    try {
+      const res = await fetch("/api/config/permissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile, confirmedLooser: looser }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { err.textContent = data.error || data.message || "failed"; return; }
+      if (data.config) applySnapshot(data.config);
+    } catch (e) { err.textContent = e.message; }
+  }
+
+  for (const opt of (item.options || [])) {
+    const btn = el("button", "profile-btn" + (opt.id === current ? " current" : "") + (opt.looser ? " looser" : ""),
+      opt.id + (opt.looser ? " ⚠" : ""));
+    btn.title = opt.desc || "";
+    btn.disabled = opt.id === current;
+    btn.addEventListener("click", () => apply(opt.id, opt.looser));
+    choices.appendChild(btn);
+  }
+  box.appendChild(choices);
+  box.appendChild(err);
+  return box;
+}
+
 // --------------------------------------------------------------------------- section renderers
 
 function renderPermissionsSection(section) {
@@ -220,10 +284,7 @@ function renderPermissionsSection(section) {
     row.className = "perm-row";
 
     if (item.kind === "profile") {
-      const line = el("div", "perm-profile");
-      line.appendChild(el("span", "perm-name", item.label));
-      if (item.desc) line.appendChild(el("span", "perm-desc", item.desc));
-      row.appendChild(line);
+      row.appendChild(profileSelector(item));
     } else if (item.kind === "info") {
       row.appendChild(el("div", "perm-label", item.label));
       if (item.value) row.appendChild(el("div", "perm-value", item.value));

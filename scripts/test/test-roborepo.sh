@@ -362,6 +362,31 @@ assert "config: POST unknown skill returns ok:false" \
   bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -d '{\"id\":\"zzz\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok===false?0:1)})\""
 assert "config: GET /config still served" \
   bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:${cfg_port}/config')\" = 200 ]"
+
+# Phase 2: permission profile switch writes the LIVE home config (not the repo template).
+# Seed a codex config.toml so the renderer has a marker block to merge into.
+cp "${repo_root}/globals/codex/config.toml" "${cfg_home}/.codex/config.toml"
+assert "config: setPermissionProfile rewrites live home config + preserves other keys" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const fs=require('fs');const before=JSON.parse(fs.readFileSync('${cfg_home}/.claude/settings.json'));const r=m.setPermissionProfile('readonly');const after=JSON.parse(fs.readFileSync('${cfg_home}/.claude/settings.json'));const codex=fs.readFileSync('${cfg_home}/.codex/config.toml','utf8');process.exit(r.ok&&/sandbox_mode = .read-only./.test(codex)&&m.readActiveProfile()==='readonly'?0:1)})\""
+assert "config: setPermissionProfile blocks looser profile without confirm" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setPermissionProfile('workspace');process.exit(r.ok===false&&r.needsConfirm?0:1)})\""
+assert "config: setPermissionProfile applies looser profile when confirmed" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setPermissionProfile('workspace',{confirmedLooser:true});process.exit(r.ok&&m.readActiveProfile()==='workspace'?0:1)})\""
+assert "config: setPermissionProfile rejects unknown profile" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setPermissionProfile('bogus');process.exit(r.ok?1:0)})\""
+assert "config: snapshot reports active profile + profile list" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(s.activeProfile==='workspace'&&Array.isArray(s.profiles)&&s.profiles.includes('readonly')?0:1)})\""
+
+# Permission POST endpoint: 200 normal, 409 needsConfirm for looser, 200 with confirm, 400 bad body.
+assert "config: POST /api/config/permissions switches profile (200)" \
+  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"profile\":\"interactive\"}')\" = 200 ]"
+assert "config: POST permissions looser without confirm returns 409" \
+  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"profile\":\"networked\"}')\" = 409 ]"
+assert "config: POST permissions looser with confirm returns 200" \
+  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"profile\":\"networked\",\"confirmedLooser\":true}')\" = 200 ]"
+assert "config: POST permissions bad body returns 400" \
+  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"profile\":123}')\" = 400 ]"
+
 kill "${cfg_srv}" 2>/dev/null || true
 
 # Token capture reads the harness transcript (transcript_path on hook stdin) and records cumulative

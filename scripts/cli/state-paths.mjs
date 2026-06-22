@@ -4,6 +4,9 @@ import path from "node:path";
 export const roborepoStateDir = process.env.ROBOREPO_STATE_DIR || path.join(os.homedir(), ".roborepo");
 export const installStatePath = path.join(roborepoStateDir, "install-state.json");
 export const presetsStatePath = path.join(roborepoStateDir, "presets", "state.json");
+// Records the permission profile last applied to the LIVE machine config by the config controls.
+// Lets the dashboard show the active per-machine profile (which can differ from the repo default).
+export const activeProfilePath = path.join(roborepoStateDir, "active-profile.json");
 export const telemetryDir = path.join(roborepoStateDir, "telemetry");
 export const telemetryDbPath = path.join(telemetryDir, "telemetry.sqlite");
 export const telemetrySpoolDir = path.join(telemetryDir, "spool");

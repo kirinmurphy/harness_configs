@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { repoRoot } from "./paths.mjs";
 import { installStatePath, presetsStatePath } from "./state-paths.mjs";
 import { readConfigSnapshot, buildBehaviorView } from "./config.mjs";
-import { mutatePackage, setSkillInstalled } from "./config-mutate.mjs";
-import { selectMenu } from "./skill-lib.mjs";
+import { mutatePackage, setSkillInstalled, setPermissionProfile, LOOSER_PROFILES } from "./config-mutate.mjs";
+import { selectMenu, confirmYesNo, makePrompter } from "./skill-lib.mjs";
 
 const PRESET_MANIFEST = path.join(repoRoot, "manifests", "platform", "presets.json");
 const INSTALL_MANIFEST = path.join(repoRoot, "manifests", "platform", "manifest.tsv");
@@ -114,8 +114,13 @@ async function runInteractiveOnboard() {
     const view = buildBehaviorView(readConfigSnapshot());
     const menu = [];
     const actions = [];
+    let profileItem = null;
     for (const section of view) {
-      if (section.category === "Permissions") continue; // read-only (Phase 2)
+      if (section.category === "Permissions") {
+        // Permissions surfaces as a single "change profile" entry that opens a sub-menu.
+        profileItem = section.items.find((it) => it.kind === "profile") || null;
+        continue;
+      }
       menu.push({ header: section.category });
       for (const item of section.items) {
         const toggleable =
@@ -128,11 +133,20 @@ async function runInteractiveOnboard() {
         actions.push({ section, item });
       }
     }
+    if (profileItem) {
+      menu.push({ header: "Permissions" });
+      menu.push({ label: `profile: ${profileItem.label}`, desc: "change permission profile", value: "profile" });
+    }
     menu.push({ header: "" });
     menu.push({ label: "Done", desc: "finish onboarding", value: "done" });
 
     const choice = await selectMenu("Toggle an item (Enter), or Done:", menu);
     if (choice === null || choice === "done") break;
+
+    if (choice === "profile") {
+      await chooseProfile(profileItem);
+      continue;
+    }
 
     const { section, item } = actions[choice];
     const result = applyItemToggle(section, item);
@@ -140,6 +154,33 @@ async function runInteractiveOnboard() {
   }
 
   console.log("\nOnboarding complete.");
+}
+
+// Profile sub-menu. Looser profiles (workspace / networked) require an explicit yes before applying.
+async function chooseProfile(profileItem) {
+  const menu = [{ header: "Choose a permission profile" }];
+  for (const opt of (profileItem.options || [])) {
+    const tag = opt.current ? " (current)" : opt.looser ? " ⚠ looser" : "";
+    menu.push({ label: `${opt.id}${tag}`, desc: opt.description || "", value: opt.id });
+  }
+  menu.push({ header: "" });
+  menu.push({ label: "Back", desc: "keep current profile", value: null });
+
+  const profile = await selectMenu("Permission profile:", menu);
+  if (!profile || profile === profileItem.active) return;
+
+  let confirmed = false;
+  if (LOOSER_PROFILES.has(profile)) {
+    const prompter = makePrompter();
+    const warn = profile === "workspace"
+      ? "the agent stops asking before blocked actions"
+      : "the agent's sandbox gets internet access";
+    confirmed = await confirmYesNo(prompter, `'${profile}' loosens safety — ${warn}. Apply?`, false);
+    prompter.close?.();
+    if (!confirmed) { console.log("✗ profile unchanged"); return; }
+  }
+  const result = setPermissionProfile(profile, { confirmedLooser: confirmed });
+  console.log(result.ok ? `✓ ${result.message}` : `✗ ${result.message}`);
 }
 
 export function presetsApply(args) {

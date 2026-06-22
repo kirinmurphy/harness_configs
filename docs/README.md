@@ -11,6 +11,7 @@ Use these when setting up, operating, or deciding what to do:
 - [Install Workflows](guides/install-workflows.md)
 - [roborepo CLI Commands](reference/services/roborepo-cli.md)
 - [roborepo CLI Reference](reference/services/roborepo.md)
+- [Config Control Panel](reference/services/config-control-panel.md)
 - [jcodemunch](reference/services/jcodemunch.md)
 - [jdocmunch](reference/services/jdocmunch.md)
 - [Convention Capture](reference/services/convention-capture.md)

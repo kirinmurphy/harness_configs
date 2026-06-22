@@ -1,5 +1,13 @@
 # Config Control Panel + Phased Onboarding
 
+> **Status: shipped (archived).** The read-only config view, the interactive
+> package/skill/permission/telemetry/caveman toggles, per-project permission scope,
+> the typed-component model (`mcp`/`rules`/`hooks`/`permissions`/`plugin`/`service`/
+> `skill`), and package composition (`requires`) are all built. Current behavior is
+> documented in
+> [`docs/reference/services/config-control-panel.md`](../../reference/services/config-control-panel.md).
+> This plan is kept for history; do not treat it as current behavior.
+
 ## Purpose
 
 The repo has been running in a hand-assembled interim state since the full install

@@ -23,7 +23,16 @@ for arg in "$@"; do
 done
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/roborepo-test.XXXXXX")"
-trap 'rm -rf "${work}"' EXIT
+# Cleanup must never change the suite's exit status: some tests chmod dirs to 000 (permission
+# checks), so `rm -rf` can hit "Directory not empty". Restore write perms, ignore rm errors, and
+# preserve the real exit code (the pass/fail tally) so CI reflects the tests, not the cleanup.
+cleanup() {
+  local status=$?
+  chmod -R u+rwx "${work}" 2>/dev/null || true
+  rm -rf "${work}" 2>/dev/null || true
+  exit "${status}"
+}
+trap cleanup EXIT
 export ROBOREPO_PRESETS_ONBOARD=skip
 
 assert() {

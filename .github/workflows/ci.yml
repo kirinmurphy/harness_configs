@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel an in-progress run when a newer commit lands on the same ref (branch or PR), so only the
+# latest commit's checks finish. group is per-workflow + ref; PRs use the PR ref, main uses its own.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The repo is zero-dependency (pure node + bash + curl); nothing to install.
+      - name: doctor (repo health + generated-file drift)
+        run: bash scripts/doctor.sh --quiet
+
+      - name: test suite
+        run: bash scripts/test/test-roborepo.sh --quiet

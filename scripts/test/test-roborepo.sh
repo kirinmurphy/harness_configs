@@ -386,6 +386,21 @@ assert "config: setPermissionProfile rejects unknown profile" \
 assert "config: snapshot reports active profile + profile list" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(s.activeProfile==='workspace'&&Array.isArray(s.profiles)&&s.profiles.includes('readonly')?0:1)})\""
 
+# Project scope: writes <proj>/.claude/settings.json as an override, leaves global home untouched,
+# and is detected back via the roborepoProfile stamp (allow-list alone can't distinguish profiles).
+cfg_proj="${cfg_home}/sample-project"
+mkdir -p "${cfg_proj}"
+assert "config: project-scope profile writes project .claude, not global" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const fs=require('fs');const r=m.setPermissionProfile('readonly',{scope:'project',cwd:'${cfg_proj}'});const wrote=fs.existsSync('${cfg_proj}/.claude/settings.json');process.exit(r.ok&&wrote?0:1)})\""
+assert "config: project-scope profile detected via stamp" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{process.exit(m.readProjectProfile('${cfg_proj}')==='readonly'?0:1)})\""
+assert "config: project-scope switch does not change global active profile" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{process.exit(m.readActiveProfile()==='workspace'?0:1)})\""
+assert "config: snapshot reports projectProfile when cwd has an override" \
+  bash -c "cd '${cfg_proj}' && ${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(s.projectProfile==='readonly'?0:1)})\""
+assert "config: setPermissionProfile rejects unknown scope" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setPermissionProfile('readonly',{scope:'bogus'});process.exit(r.ok?1:0)})\""
+
 # Permission POST endpoint: 200 normal, 409 needsConfirm for looser, 200 with confirm, 400 bad body.
 assert "config: POST /api/config/permissions switches profile (200)" \
   bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"profile\":\"interactive\"}')\" = 200 ]"

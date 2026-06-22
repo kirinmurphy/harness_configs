@@ -59,6 +59,11 @@ export function configHtml() {
   .profile-btn.looser { color:var(--warn); border-color:#5a4a1a; }
   .profile-btn.looser:hover:not(:disabled) { border-color:var(--warn); }
   .profile-btn:disabled { opacity:.7; }
+  .scope-row { display:flex; gap:0; margin-top:8px; }
+  .scope-btn { font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--bg); border:1px solid var(--line); color:var(--dim); padding:3px 12px; cursor:pointer; }
+  .scope-btn:first-child { border-radius:5px 0 0 5px; }
+  .scope-btn:last-child { border-radius:0 5px 5px 0; border-left:none; }
+  .scope-btn.on { background:var(--panel); color:var(--accent); border-color:var(--accent); }
   /* permissions section */
   .perm-row { padding:8px 0; border-top:1px solid var(--line); font-size:12px; }
   .perm-row:first-of-type { border-top:none; }
@@ -141,6 +146,8 @@ function behaviorView(snap) {
           desc: perms?.profiles?.[snap.activeProfile || perms?.default_profile]?.description || null,
           kind: "profile",
           active: snap.activeProfile || perms?.default_profile || "interactive",
+          globalProfile: snap.activeProfile || perms?.default_profile || null,
+          projectProfile: snap.projectProfile || null,
           options: (snap.profiles || []).map((id) => ({
             id,
             desc: perms?.profiles?.[id]?.description || null,
@@ -224,24 +231,38 @@ function toggleSwitch(item, errSlot) {
   return wrap;
 }
 
-// Permission profile selector. Switching to a looser profile (workspace / networked) loosens the
-// agent's guardrails, so those require an explicit confirm; the server also enforces this (409
-// needsConfirm) so the rule holds even if the client is bypassed.
+// Permission profile selector with a Global / This-project scope switch. Project scope writes the
+// current repo's .claude/.codex (a per-project override of the global default — last-wins, not
+// merged). Looser profiles (workspace / networked) require an explicit confirm; the server enforces
+// the same rule (409 needsConfirm) so it holds even if the client is bypassed.
 function profileSelector(item) {
   const box = el("div", "profile-box");
-  const current = item.active;
+  let scope = "global"; // which scope the buttons currently target
+
   const head = el("div", "perm-profile");
-  head.appendChild(el("span", "perm-name", "profile: " + current));
-  if (item.desc) head.appendChild(el("span", "perm-desc", item.desc));
+  head.appendChild(el("span", "perm-name", "global: " + (item.globalProfile || "—")));
+  head.appendChild(el("span", "perm-desc",
+    item.projectProfile ? "this project overrides → " + item.projectProfile : "no project override"));
   box.appendChild(head);
 
-  const err = el("div", "item-err");
+  // Scope switch.
+  const scopeRow = el("div", "scope-row");
+  const mkScopeBtn = (val, label) => {
+    const b = el("button", "scope-btn" + (val === scope ? " on" : ""), label);
+    b.addEventListener("click", () => { scope = val; rerender(); });
+    return b;
+  };
   const choices = el("div", "profile-choices");
+  const err = el("div", "item-err");
+
+  function currentFor(sc) {
+    return sc === "project" ? item.projectProfile : item.globalProfile;
+  }
 
   async function apply(profile, looser) {
-    if (looser && profile !== current) {
+    if (looser) {
       const ok = window.confirm(
-        "Switching to '" + profile + "' loosens safety:\n\n" +
+        "Switching " + scope + " to '" + profile + "' loosens safety:\n\n" +
         (profile === "workspace" ? "the agent stops asking before blocked actions." :
          profile === "networked" ? "the agent's sandbox gets internet access." : "") +
         "\n\nApply anyway?");
@@ -252,7 +273,7 @@ function profileSelector(item) {
       const res = await fetch("/api/config/permissions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile, confirmedLooser: looser }),
+        body: JSON.stringify({ profile, confirmedLooser: looser, scope }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) { err.textContent = data.error || data.message || "failed"; return; }
@@ -260,14 +281,25 @@ function profileSelector(item) {
     } catch (e) { err.textContent = e.message; }
   }
 
-  for (const opt of (item.options || [])) {
-    const btn = el("button", "profile-btn" + (opt.id === current ? " current" : "") + (opt.looser ? " looser" : ""),
-      opt.id + (opt.looser ? " ⚠" : ""));
-    btn.title = opt.desc || "";
-    btn.disabled = opt.id === current;
-    btn.addEventListener("click", () => apply(opt.id, opt.looser));
-    choices.appendChild(btn);
+  function rerender() {
+    scopeRow.innerHTML = "";
+    scopeRow.appendChild(mkScopeBtn("global", "Global"));
+    scopeRow.appendChild(mkScopeBtn("project", "This project"));
+    choices.innerHTML = "";
+    const cur = currentFor(scope);
+    for (const opt of (item.options || [])) {
+      const isCur = opt.id === cur;
+      const btn = el("button", "profile-btn" + (isCur ? " current" : "") + (opt.looser ? " looser" : ""),
+        opt.id + (opt.looser ? " ⚠" : ""));
+      btn.title = opt.desc || "";
+      btn.disabled = isCur;
+      btn.addEventListener("click", () => apply(opt.id, opt.looser));
+      choices.appendChild(btn);
+    }
   }
+
+  rerender();
+  box.appendChild(scopeRow);
   box.appendChild(choices);
   box.appendChild(err);
   return box;

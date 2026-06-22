@@ -4,7 +4,7 @@ import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 import { enablePackage, disablePackage, findPackage } from "./packages.mjs";
 import { ensureSymlink, listSourceSkills, readlinkSafe } from "./skill-files.mjs";
-import { loadPermissionManifest, renderProfileToHome } from "./permissions-render.mjs";
+import { loadPermissionManifest, renderProfileTo } from "./permissions-render.mjs";
 import { activeProfilePath } from "./state-paths.mjs";
 
 // Shared mutation core for the interactive config controls (terminal `onboard` + web POST endpoints).
@@ -82,10 +82,14 @@ export function listPermissionProfiles() {
   return Object.keys(manifest.profiles ?? {});
 }
 
-// Switch the LIVE machine config to a permission profile by rendering it directly into
-// ~/.claude/settings.json + ~/.codex/config.toml. The repo-source template (globals/) is left
-// untouched — this is a per-machine active choice, mirroring how package toggles write home config.
-export function setPermissionProfile(profileName, { confirmedLooser = false } = {}) {
+export const PERMISSION_SCOPES = new Set(["global", "project"]);
+
+// Switch a permission profile by rendering it into native harness config.
+//   scope "global"  → ~/.claude/settings.json + ~/.codex/config.toml (machine-wide default).
+//   scope "project" → <cwd>/.claude/settings.json + <cwd>/.codex/config.toml, which the harness
+//                     reads as a per-project OVERRIDE of the global config (last-wins, not merged).
+// The repo-source template (globals/) is never touched — this is an active runtime choice.
+export function setPermissionProfile(profileName, { confirmedLooser = false, scope = "global", cwd = process.cwd() } = {}) {
   let manifest;
   try {
     manifest = loadPermissionManifest();
@@ -95,15 +99,26 @@ export function setPermissionProfile(profileName, { confirmedLooser = false } = 
   if (!Object.keys(manifest.profiles ?? {}).includes(profileName)) {
     return { ok: false, message: `unknown profile: ${profileName}` };
   }
+  if (!PERMISSION_SCOPES.has(scope)) {
+    return { ok: false, message: `unknown scope: ${scope} (expected global | project)` };
+  }
   if (LOOSER_PROFILES.has(profileName) && !confirmedLooser) {
     return { ok: false, needsConfirm: true, message: `'${profileName}' loosens safety — confirm to apply` };
   }
   try {
-    const { touched } = renderProfileToHome(profileName, { home: os.homedir(), manifest });
-    for (const t of touched) console.log(`profile ${profileName}: ${t}`);
-    fs.mkdirSync(path.dirname(activeProfilePath), { recursive: true });
-    fs.writeFileSync(activeProfilePath, JSON.stringify({ profile: profileName, updatedAt: new Date().toISOString() }, null, 2) + "\n");
-    return { ok: true, message: `permission profile set: ${profileName}` };
+    // Project scope creates .claude on demand so a fresh repo can be given a profile; global scope
+    // only writes harness homes that already exist.
+    const baseDir = scope === "project" ? cwd : os.homedir();
+    const { touched } = renderProfileTo(profileName, { baseDir, manifest, createClaude: scope === "project" });
+    if (touched.length === 0) {
+      return { ok: false, message: `no harness config found to write (${scope})` };
+    }
+    for (const t of touched) console.log(`profile ${profileName} (${scope}): ${t}`);
+    if (scope === "global") {
+      fs.mkdirSync(path.dirname(activeProfilePath), { recursive: true });
+      fs.writeFileSync(activeProfilePath, JSON.stringify({ profile: profileName, updatedAt: new Date().toISOString() }, null, 2) + "\n");
+    }
+    return { ok: true, message: `permission profile set (${scope}): ${profileName}` };
   } catch (err) {
     return { ok: false, message: String(err?.message || err) };
   }
@@ -112,6 +127,19 @@ export function setPermissionProfile(profileName, { confirmedLooser = false } = 
 export function readActiveProfile() {
   try {
     return JSON.parse(fs.readFileSync(activeProfilePath, "utf8")).profile || null;
+  } catch {
+    return null;
+  }
+}
+
+// The project-scope active profile is read from the `roborepoProfile` stamp that setPermissionProfile
+// writes into <cwd>/.claude/settings.json. Returns null when there's no project override (the repo
+// uses the global default). The stamp is authoritative because some profiles share a Claude
+// allow-list, so the permissions alone can't identify the profile.
+export function readProjectProfile(cwd = process.cwd()) {
+  try {
+    const settings = JSON.parse(fs.readFileSync(path.join(cwd, ".claude", "settings.json"), "utf8"));
+    return settings?.roborepoProfile || null;
   } catch {
     return null;
   }

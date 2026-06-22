@@ -156,18 +156,29 @@ async function runInteractiveOnboard() {
   console.log("\nOnboarding complete.");
 }
 
-// Profile sub-menu. Looser profiles (workspace / networked) require an explicit yes before applying.
+// Profile sub-menu. First pick scope (global default vs this-project override), then a profile.
+// Looser profiles (workspace / networked) require an explicit yes before applying.
 async function chooseProfile(profileItem) {
-  const menu = [{ header: "Choose a permission profile" }];
+  const scope = await selectMenu("Apply profile to:", [
+    { header: "Scope" },
+    { label: `Global default${profileItem.globalProfile ? ` (now: ${profileItem.globalProfile})` : ""}`, desc: "machine-wide ~/.claude + ~/.codex", value: "global" },
+    { label: `This project${profileItem.projectProfile ? ` (now: ${profileItem.projectProfile})` : " (no override)"}`, desc: "override for this repo only", value: "project" },
+    { header: "" },
+    { label: "Back", desc: "cancel", value: null },
+  ]);
+  if (!scope) return;
+
+  const currentForScope = scope === "project" ? profileItem.projectProfile : profileItem.globalProfile;
+  const menu = [{ header: `Profile for ${scope}` }];
   for (const opt of (profileItem.options || [])) {
-    const tag = opt.current ? " (current)" : opt.looser ? " ⚠ looser" : "";
+    const tag = opt.id === currentForScope ? " (current)" : opt.looser ? " ⚠ looser" : "";
     menu.push({ label: `${opt.id}${tag}`, desc: opt.description || "", value: opt.id });
   }
   menu.push({ header: "" });
   menu.push({ label: "Back", desc: "keep current profile", value: null });
 
   const profile = await selectMenu("Permission profile:", menu);
-  if (!profile || profile === profileItem.active) return;
+  if (!profile || profile === currentForScope) return;
 
   let confirmed = false;
   if (LOOSER_PROFILES.has(profile)) {
@@ -175,11 +186,11 @@ async function chooseProfile(profileItem) {
     const warn = profile === "workspace"
       ? "the agent stops asking before blocked actions"
       : "the agent's sandbox gets internet access";
-    confirmed = await confirmYesNo(prompter, `'${profile}' loosens safety — ${warn}. Apply?`, false);
+    confirmed = await confirmYesNo(prompter, `'${profile}' loosens safety — ${warn}. Apply to ${scope}?`, false);
     prompter.close?.();
     if (!confirmed) { console.log("✗ profile unchanged"); return; }
   }
-  const result = setPermissionProfile(profile, { confirmedLooser: confirmed });
+  const result = setPermissionProfile(profile, { confirmedLooser: confirmed, scope });
   console.log(result.ok ? `✓ ${result.message}` : `✗ ${result.message}`);
 }
 

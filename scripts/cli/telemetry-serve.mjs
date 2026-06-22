@@ -51,11 +51,11 @@ function route(req, res, handlers) {
   if (req.method === "POST" && urlPath === "/api/config/permissions") {
     return readJsonBody(req, (body, err) => {
       if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
-      const { profile, confirmedLooser } = body || {};
+      const { profile, confirmedLooser, scope } = body || {};
       if (typeof profile !== "string") {
-        return send(res, 400, "application/json", JSON.stringify({ error: "expected { profile: string, confirmedLooser?: boolean }" }));
+        return send(res, 400, "application/json", JSON.stringify({ error: "expected { profile: string, scope?: 'global'|'project', confirmedLooser?: boolean }" }));
       }
-      const result = mutateProfile(profile, !!confirmedLooser);
+      const result = mutateProfile(profile, !!confirmedLooser, scope || "global");
       // needsConfirm is a soft rejection (looser profile, no confirm yet) — 409 so the client can
       // prompt then retry with confirmedLooser, distinct from a 400 validation error.
       const status = result.ok ? 200 : result.needsConfirm ? 409 : 400;

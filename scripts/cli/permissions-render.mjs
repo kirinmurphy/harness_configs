@@ -131,22 +131,36 @@ export function claudePermissions(manifest, profile) {
 
 // Merge generated permissions into existing Claude settings, preserving every other key
 // (hooks, plugins, model, …). `current` may be "" for a fresh file.
-export function renderClaudeSettings(current, manifest, profile) {
+//
+// stampProfileName: when set, record the profile name under `roborepoProfile` so it can be read back
+// unambiguously. Needed because some profiles share a Claude allow-list (interactive vs workspace
+// differ only in Codex approval policy), so the allow-list alone can't identify the profile. The
+// repo-source build render does NOT stamp (keeps globals/claude/settings.json free of runtime state).
+export function renderClaudeSettings(current, manifest, profile, stampProfileName = null) {
   const settings = current.trim() ? JSON.parse(current) : {};
   settings.permissions = claudePermissions(manifest, profile);
+  if (stampProfileName) settings.roborepoProfile = stampProfileName;
   return `${JSON.stringify(settings, null, 2)}\n`;
 }
 
-// Render the given profile directly into a consumer's live home config. Returns the files touched.
-export function renderProfileToHome(profileName, { home = os.homedir(), manifest = loadPermissionManifest() } = {}) {
+// Render a profile into the .claude/.codex config under `baseDir`. For scope "global" the base is
+// the home dir (~/.claude, ~/.codex); for scope "project" it's a repo root (<repo>/.claude,
+// <repo>/.codex), which the harness reads as a per-project override of the global config.
+//
+// createClaude: when true (project scope), create <baseDir>/.claude even if it doesn't exist, so a
+// fresh project can be given a profile. When false (global scope), only write where the dir already
+// exists — we never fabricate a missing harness home.
+export function renderProfileTo(profileName, { baseDir, manifest = loadPermissionManifest(), createClaude = false } = {}) {
   const { name, profile } = resolveProfile(manifest, profileName);
-  const claudeSettings = path.join(home, ".claude", "settings.json");
-  const codexConfig = path.join(home, ".codex", "config.toml");
+  const claudeDir = path.join(baseDir, ".claude");
+  const claudeSettings = path.join(claudeDir, "settings.json");
+  const codexConfig = path.join(baseDir, ".codex", "config.toml");
   const touched = [];
 
-  if (fs.existsSync(path.dirname(claudeSettings))) {
+  if (createClaude || fs.existsSync(claudeDir)) {
+    fs.mkdirSync(claudeDir, { recursive: true });
     const cur = fs.existsSync(claudeSettings) ? fs.readFileSync(claudeSettings, "utf8") : "";
-    fs.writeFileSync(claudeSettings, renderClaudeSettings(cur, manifest, profile));
+    fs.writeFileSync(claudeSettings, renderClaudeSettings(cur, manifest, profile, name));
     touched.push(claudeSettings);
   }
   if (fs.existsSync(codexConfig)) {
@@ -157,4 +171,9 @@ export function renderProfileToHome(profileName, { home = os.homedir(), manifest
     touched.push(codexConfig);
   }
   return { profile: name, touched };
+}
+
+// Back-compat shim: global-scope render into the home dir.
+export function renderProfileToHome(profileName, { home = os.homedir(), manifest = loadPermissionManifest() } = {}) {
+  return renderProfileTo(profileName, { baseDir: home, manifest });
 }

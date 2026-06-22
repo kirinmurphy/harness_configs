@@ -306,7 +306,7 @@ assert "run: no command exits non-zero" \
 presets_home="${work}/presets-home"
 mkdir -p "${presets_home}/.claude" "${presets_home}/.codex"
 assert "bundle apply: selected bundles apply into harness homes" \
-  bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' bundle apply base hooks skills >/dev/null"
+  bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' bundle apply base hooks commands >/dev/null"
 assert "bundle check: selected bundles verify" \
   bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' bundle check >/dev/null"
 assert "bundle remove: unlinks owned link bundle" \

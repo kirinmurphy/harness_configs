@@ -266,6 +266,13 @@ export function presetsRemove(args) {
   });
 }
 
+// Telemetry is intentionally listed in BOTH catalogs: a hollow bundle here (rows: []) AND a real
+// service component in packages.json. The bundle entry's only job is bookkeeping in presetState +
+// letting `presetsApply(["telemetry"])` trigger withDependencies() → link the base `hooks` bundle
+// (belt-and-suspenders so capture-dense-bash.mjs in ~/.claude/hooks/ is reachable). On a full install
+// the base bundle already links those hooks, so this is redundant-but-harmless; the telemetry-only
+// install path (telemetryInstall) skips presetsApply deliberately. The real enable/disable lives in
+// telemetry.mjs setTelemetryEnabled. Safe to untangle into a single package-only path later.
 export function markTelemetrySelected(enabled) {
   const catalog = readPresetCatalog();
   const state = readPresetState();

@@ -99,6 +99,10 @@ async function dispatch(args) {
     case "onboard":
       return presetsCommand(["onboard", ...rest]);
 
+    // `bundle` / `presets` are internal install-time verbs (run by scripts/install/main.sh), not
+    // user-facing — deliberately absent from usage/menu in cli-commands.json. Kept dispatchable so
+    // install and back-compat callers still work. Users manage the platform via update/uninstall and
+    // features via enable/disable.
     case "bundle":
       return presetsCommand(sub === undefined ? ["bundle"] : ["bundle", sub, ...rest]);
 

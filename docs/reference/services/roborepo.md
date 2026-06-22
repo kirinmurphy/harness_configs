@@ -123,7 +123,6 @@ roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--d
 roborepo watch code  [path]
 roborepo project-context inventory [path] [--summary]
 roborepo onboard
-roborepo bundle status|apply|check|remove [bundle...]
 roborepo telemetry install|start|stop|enable|disable|status|report|export|serve|backup|purge
 roborepo telemetry serve [--detach] [--port <n>]
 
@@ -183,16 +182,16 @@ documented maintainer workflows.
 
 ## Preset Onboarding
 
-`roborepo onboard` is the machine-level chooser for behavior bundles. Interactive install starts it
-after the core install completes; the CLI also gates normal commands until onboarding has completed
-at least once, unless you bypass the gate for automation. Re-running the onboarding workflow shows
-selected options checked and unselected options unchecked so you can turn a bundle on or off later.
+`roborepo onboard` is the machine-level chooser for global harness behaviors. Interactive install
+starts it after the core install completes; the CLI also gates normal commands until onboarding has
+completed at least once, unless you bypass the gate for automation. Re-running it shows enabled
+options checked and disabled options unchecked so you can turn a behavior on or off later.
 
-`roborepo bundle status` shows which bundles are selected and whether they are applied. `check`
-verifies selected bundles are still present on disk. `apply` and `remove` are the lower-level
-bundle operations the onboarding flow uses; removing a bundle reverses the installed artifact for
-that bundle, deleting staged updates in keep-originals mode and restoring backed-up content when an
-overwrite or managed install had replaced it.
+The platform's install-time file operations (root config baselines, command links, hook links, Codex
+rules) are applied internally by the install pipeline. There is no user-facing verb for them:
+`roborepo update` re-applies them, `roborepo uninstall` reverses them. The internal `roborepo bundle`
+verb exists only for `scripts/install/main.sh` and back-compat scripts, and is intentionally absent
+from the usage and menu.
 
 The `telemetry` bundle is selected from the same workflow. When enabled, the harness hooks call
 `roborepo telemetry capture` on session/tool/prompt/stop events and append one JSON record per event

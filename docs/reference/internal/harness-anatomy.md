@@ -20,7 +20,7 @@ the matching step in [the teaching doc](harnesses-explained.md).
 | Global rules | The always-on instruction file each harness reads at startup. | Claude: `globals/claude/CLAUDE.md` (generated)<br>Codex: `globals/codex/AGENTS.md` (generated) | `roborepo rules [--check]` |
 | Skills | On-demand capability/instruction bundles the agent loads when relevant. | `globals/agents/skills/<name>/SKILL.md` — linked per-skill into `~/.claude/skills/` and `~/.codex/skills/` at install time | `roborepo skill new`, `roborepo skill adopt <name>` |
 | Slash commands | Named workflows the user starts explicitly (`/blog`, etc.). | Claude: `globals/claude/commands/` (generated)<br>Codex: `globals/codex/commands/` (generated) | `roborepo skill render-commands [--check]` |
-| Preset bundles | Named behavior groups chosen during onboarding or later reconfiguration. | `manifests/platform/presets.json` | `roborepo onboard`, `roborepo bundle status\|apply\|check\|remove` |
+| Install bundles | Named groups of install-time file operations applied at install/update. Internal to the install pipeline — not a user-facing verb. | `manifests/platform/presets.json` | `roborepo update` (applies them); `roborepo bundle …` is an internal verb called by `scripts/install/main.sh` |
 | Hooks | Scripts the harness runs on lifecycle/tool events. | Claude: `globals/claude/hooks/*.mjs` + `settings.json` wiring<br>Codex: `globals/codex/hooks.json` | edit source, then `roborepo update` |
 | MCP servers | External tool servers (jcodemunch, jdocmunch, …) registered with both harnesses. | Claude: `~/.claude` registration<br>Codex: `~/.codex` registration | `roborepo mcp add <name-or-url>` |
 | Permissions | Allowed/denied commands, tools, and profile defaults. | Claude: `settings.json` `permissions.*`<br>Codex: `config.toml` + `rules/default.rules` | `roborepo permissions [--check]` |
@@ -207,5 +207,4 @@ roborepo doctor   # health-check links, helper commands, deps, and generated-out
 
 `roborepo doctor` runs the `rules --check` / `permissions --check` / `skill symlink-globals --check`
 drift checks for you, so it is the fastest way to confirm every generated element is current.
-`roborepo bundle status` shows which bundles are selected, and `roborepo telemetry status`
-shows whether local capture is enabled.
+`roborepo telemetry status` shows whether local capture is enabled.

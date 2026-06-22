@@ -311,7 +311,7 @@ roborepo telemetry enable
 
 - Applies the default bundles idempotently on the machine.
 - Stores the applied selection locally.
-- The `roborepo bundle apply|status|check|remove` subcommands remain available for scripted control.
+- The platform's install-time file operations are driven internally by `scripts/install/main.sh` (which calls the undocumented `roborepo bundle` verb); users do not run them directly — `roborepo update` re-applies them.
 - Gives `roborepo` enough state to require onboarding before normal commands when the machine has not been set up yet.
 
 ## What Onboarding Does Not Do

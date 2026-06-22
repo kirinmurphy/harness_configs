@@ -16,7 +16,20 @@ function readJson(filePath, fallback = null) {
   try { return JSON.parse(fs.readFileSync(filePath, "utf8")); } catch { return fallback; }
 }
 
-function isPackageEnabled(pkg, settings, serviceState) {
+// A composite package (one with `requires`) is enabled iff its own components are enabled AND every
+// required package is enabled. Cycle-safe via `seen`. `byId` is the catalog map for dependency lookup.
+function isPackageEnabled(pkg, settings, serviceState, byId = new Map(), seen = new Set()) {
+  if (seen.has(pkg.id)) return true; // already counted in this traversal (cycle guard)
+  seen.add(pkg.id);
+  if (!ownComponentsEnabled(pkg, settings, serviceState)) return false;
+  for (const depId of pkg.requires ?? []) {
+    const dep = byId.get(depId);
+    if (dep && !isPackageEnabled(dep, settings, serviceState, byId, seen)) return false;
+  }
+  return true;
+}
+
+function ownComponentsEnabled(pkg, settings, serviceState) {
   // A plugin package is enabled iff its enabledPlugins bool is true. Checked first so plugin-only
   // packages (e.g. caveman) are identified by their own marker, not by other component types.
   const pluginComp = pkg.components.find((c) => c.type === "plugin");
@@ -27,6 +40,12 @@ function isPackageEnabled(pkg, settings, serviceState) {
   const serviceComp = pkg.components.find((c) => c.type === "service");
   if (serviceComp) {
     return serviceState?.[serviceComp.id] === true;
+  }
+  // A skill package is enabled iff every bundled skill is linked into the Claude skills dir.
+  const skillComps = pkg.components.filter((c) => c.type === "skill");
+  if (skillComps.length) {
+    const skillsDir = path.join(os.homedir(), ".claude", "skills");
+    return skillComps.every((c) => fs.existsSync(path.join(skillsDir, c.id)));
   }
   const permComp = pkg.components.find((c) => c.type === "permissions");
   if (permComp) {
@@ -45,8 +64,11 @@ function isPackageEnabled(pkg, settings, serviceState) {
         if (cmd && existing.some((e) => (e.hooks || []).some((h) => h.command === cmd))) return true;
       }
     }
+    return false;
   }
-  return false;
+  // No recognized own components → a pure-composite package; its enabled state is decided entirely
+  // by its `requires` (handled by the caller).
+  return pkg.components.length === 0;
 }
 
 export function readConfigSnapshot() {
@@ -66,13 +88,15 @@ export function readConfigSnapshot() {
 
   const selectedBundles = new Set(presetState.selected ?? presetsCatalog.default);
 
+  const packagesById = new Map((packagesCatalog.packages || []).map((p) => [p.id, p]));
   const packages = packagesCatalog.packages.map((pkg) => ({
     id: pkg.id,
     label: pkg.label,
     description: pkg.description || null,
     cliCommands: pkg.cliCommands || [],
-    enabled: isPackageEnabled(pkg, settings, { telemetry: !!telemetryState?.enabled }),
+    enabled: isPackageEnabled(pkg, settings, { telemetry: !!telemetryState?.enabled }, packagesById),
     components: pkg.components.map((c) => c.type),
+    requires: pkg.requires || [],
   }));
 
   const bundles = presetsCatalog.bundles.map((b) => ({

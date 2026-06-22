@@ -94,7 +94,7 @@ function installMcpPreset(presetId) {
   }
 }
 
-export async function enablePackage(rest) {
+export async function enablePackage(rest, _seen = new Set()) {
   const [pkgId, ...flags] = rest;
   if (!pkgId) {
     console.error("usage: roborepo enable <package-id>");
@@ -111,7 +111,21 @@ export async function enablePackage(rest) {
     process.exit(2);
   }
 
+  if (_seen.has(pkg.id)) return; // already handled in this enable pass (cycle / shared dependency)
+  _seen.add(pkg.id);
+
   const dryRun = flags.includes("--dry-run");
+
+  // A package can compose others via `requires`: enable its dependencies first (deduped, cycle-safe),
+  // so a "preset" package is just a package that requires the component-packages it bundles.
+  for (const depId of pkg.requires ?? []) {
+    if (!catalog.find((p) => p.id === depId)) {
+      console.warn(`  warn: ${pkg.id} requires unknown package: ${depId}`);
+      continue;
+    }
+    await enablePackage([depId, ...flags], _seen);
+  }
+
   if (dryRun) { console.log(`[dry-run] would enable: ${pkg.label}`); }
   else { console.log(`enabling: ${pkg.label}`); }
 
@@ -150,12 +164,16 @@ export async function enablePackage(rest) {
         if (dryRun) { console.log(`  [dry-run] enable service ${component.id}`); break; }
         servicePromises.push(setService(component.id, true));
         break;
+      case "skill":
+        if (dryRun) { console.log(`  [dry-run] install skill ${component.id}`); break; }
+        servicePromises.push(setSkillComponent(component.id, true));
+        break;
       default:
         console.log(`  skip: unknown component type: ${component.type}`);
     }
   }
-  // Service components run async handlers (lazy-imported to avoid import cycles); await them so the
-  // function doesn't resolve before the side effects land.
+  // Service/skill components run async handlers (lazy-imported to avoid import cycles); await them so
+  // the function doesn't resolve before the side effects land.
   if (servicePromises.length) await Promise.all(servicePromises);
 
   if (!dryRun && pkg.cliCommands?.length) {
@@ -279,6 +297,10 @@ export async function disablePackage(rest) {
         if (dryRun) { console.log(`  [dry-run] disable service ${component.id}`); break; }
         servicePromises.push(setService(component.id, false));
         break;
+      case "skill":
+        if (dryRun) { console.log(`  [dry-run] remove skill ${component.id}`); break; }
+        servicePromises.push(setSkillComponent(component.id, false));
+        break;
       default:
         console.log(`  skip: unknown component type: ${component.type}`);
     }
@@ -301,6 +323,15 @@ async function setService(id, enabled) {
   if (!loader) { console.log(`  skip: unknown service: ${id}`); return; }
   const handler = await loader();
   const result = handler(enabled);
+  if (result?.message) console.log(`  ${result.message}`);
+  return result;
+}
+
+// Skill component: link/unlink a shared skill into the harness skill dirs. setSkillInstalled lives
+// in config-mutate.mjs (which imports this module), so it's lazy-imported to avoid the cycle.
+async function setSkillComponent(id, enabled) {
+  const { setSkillInstalled } = await import("./config-mutate.mjs");
+  const result = setSkillInstalled(id, enabled);
   if (result?.message) console.log(`  ${result.message}`);
   return result;
 }

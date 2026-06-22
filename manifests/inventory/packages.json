@@ -55,6 +55,23 @@
     }
     ,
     {
+      "id": "blog-pack",
+      "label": "Blog skill",
+      "description": "Bundles the blog skill via a skill component — demonstrates a package whose payload is a shared skill link.",
+      "components": [
+        { "type": "skill", "id": "blog" }
+      ]
+    }
+    ,
+    {
+      "id": "code-intel",
+      "label": "Code intelligence (preset)",
+      "description": "Composite preset: enables both the jcodemunch code index and the jdocmunch doc index together. A preset is just a package that requires other packages.",
+      "requires": ["jcodemunch", "jdocmunch"],
+      "components": []
+    }
+    ,
+    {
       "id": "telemetry",
       "label": "Telemetry",
       "description": "Capture and visualize token usage across harnesses. Wires capture hooks and a local spool; the dashboard server is started separately with `roborepo telemetry serve`.",

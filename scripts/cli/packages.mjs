@@ -116,8 +116,10 @@ export async function enablePackage(rest, _seen = new Set()) {
 
   const dryRun = flags.includes("--dry-run");
 
-  // A package can compose others via `requires`: enable its dependencies first (deduped, cycle-safe),
-  // so a "preset" package is just a package that requires the component-packages it bundles.
+  // A package can compose others via `requires`: enable its dependencies first (deduped, cycle-safe).
+  // A composite package (one with `requires`) bundles the component-packages it depends on. NOTE:
+  // distinct from an install "bundle" (manifests/platform/presets.json), which groups file-copy rows
+  // at install time — composition here is runtime feature enablement.
   for (const depId of pkg.requires ?? []) {
     if (!catalog.find((p) => p.id === depId)) {
       console.warn(`  warn: ${pkg.id} requires unknown package: ${depId}`);

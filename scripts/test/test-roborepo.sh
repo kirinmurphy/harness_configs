@@ -375,8 +375,8 @@ bash -c "${cfg_env} node '${cli}' disable blog-pack >/dev/null 2>&1" || true
 assert "config: disabling a skill-component package removes the skill links" \
   bash -c "! test -e '${cfg_home}/.claude/skills/blog' && ! test -e '${cfg_home}/.codex/skills/blog'"
 
-# Composite package: a preset is a package that `requires` others. Enabling the preset enables every
-# dependency (deps first), and the composite reports enabled iff all deps are.
+# Composite package: a package that `requires` others. Enabling it enables every dependency (deps
+# first), and the composite reports enabled iff all deps are.
 bash -c "${cfg_env} node '${cli}' enable code-intel >/dev/null 2>&1" || true
 assert "config: enabling a composite package enables its required packages" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const e=id=>s.packages.find(p=>p.id===id)?.enabled;process.exit(e('jcodemunch')&&e('jdocmunch')&&e('code-intel')?0:1)})\""

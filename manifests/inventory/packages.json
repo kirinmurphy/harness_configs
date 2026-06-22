@@ -65,8 +65,8 @@
     ,
     {
       "id": "code-intel",
-      "label": "Code intelligence (preset)",
-      "description": "Composite preset: enables both the jcodemunch code index and the jdocmunch doc index together. A preset is just a package that requires other packages.",
+      "label": "Code intelligence",
+      "description": "Enables both the jcodemunch code index and the jdocmunch doc index together — a package that requires (composes) other packages.",
       "requires": ["jcodemunch", "jdocmunch"],
       "components": []
     }

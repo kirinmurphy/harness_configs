@@ -111,7 +111,7 @@ function behaviorView(snap) {
       items: [
         { id:"jcodemunch", label:"jcodemunch",     desc:"Code indexer — find code via symbol search instead of reading files", active: pkg("jcodemunch")?.enabled ?? false, toggle:"package" },
         { id:"jdocmunch",  label:"jdocmunch",      desc:"Docs indexer — query sections instead of reading whole files",        active: pkg("jdocmunch")?.enabled  ?? false, toggle:"package" },
-        { id:"caveman",    label:"Caveman plugin", desc:"Keeps agent output terse to reduce token use",                        active: snap.plugins?.caveman ?? false,       hint: snap.plugins?.caveman ? null : "install via Claude plugin marketplace" },
+        { id:"caveman",    label:"Caveman plugin", desc:"Keeps agent output terse to reduce token use",                        active: pkg("caveman")?.enabled ?? snap.plugins?.caveman ?? false, toggle:"package", hint: (pkg("caveman")?.enabled ?? snap.plugins?.caveman) ? null : "enables on the harness's next launch" },
         { id:"telemetry",  label:"Telemetry",      desc:"Capture and visualize token usage across harnesses",                  active: !!tel.enabled,                        toggle:"telemetry" },
       ],
     },

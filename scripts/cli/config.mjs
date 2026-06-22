@@ -17,6 +17,12 @@ function readJson(filePath, fallback = null) {
 }
 
 function isPackageEnabled(pkg, settings) {
+  // A plugin package is enabled iff its enabledPlugins bool is true. Checked first so plugin-only
+  // packages (e.g. caveman) are identified by their own marker, not by other component types.
+  const pluginComp = pkg.components.find((c) => c.type === "plugin");
+  if (pluginComp) {
+    return settings?.enabledPlugins?.[pluginComp.id] === true;
+  }
   const permComp = pkg.components.find((c) => c.type === "permissions");
   if (permComp) {
     const allow = settings?.permissions?.allow || [];
@@ -150,8 +156,9 @@ export function buildBehaviorView(snap) {
           id: "caveman",
           label: "Caveman plugin",
           description: "Keeps agent output terse to reduce token use",
-          active: !!snap.plugins?.caveman,
-          hint: snap.plugins?.caveman ? null : "install via Claude plugin marketplace",
+          active: pkg("caveman")?.enabled ?? !!snap.plugins?.caveman,
+          toggle: "package",
+          hint: (pkg("caveman")?.enabled ?? snap.plugins?.caveman) ? null : "enables on the harness's next launch",
         },
         {
           id: "telemetry",

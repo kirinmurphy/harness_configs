@@ -141,6 +141,10 @@ export function enablePackage(rest) {
         if (settingsPath) mergeHooks(settingsPath, hooksFragment);
         break;
       }
+      case "plugin":
+        if (dryRun) { console.log(`  [dry-run] enable plugin ${component.id}`); break; }
+        enablePlugin(USER_CLAUDE_SETTINGS, component);
+        break;
       default:
         console.log(`  skip: unknown component type: ${component.type}`);
     }
@@ -258,8 +262,69 @@ export function disablePackage(rest) {
         if (component.harness === "claude") unmergeHooks(USER_CLAUDE_SETTINGS, hooksFragment);
         break;
       }
+      case "plugin":
+        if (dryRun) { console.log(`  [dry-run] disable plugin ${component.id}`); break; }
+        disablePlugin(USER_CLAUDE_SETTINGS, component);
+        break;
       default:
         console.log(`  skip: unknown component type: ${component.type}`);
     }
+  }
+}
+
+// --------------------------------------------------------------------------- plugin component
+//
+// A plugin component owns two settings keys: extraKnownMarketplaces[<marketplace.name>] (so the
+// harness knows where to fetch it) and enabledPlugins[<id>] (the on/off bool). enable writes both;
+// the harness performs the actual download on its next launch — we can't fetch it from here, so a
+// freshly enabled plugin shows as enabled but only takes effect once the harness installs it.
+// disable flips the bool to false and removes our marketplace entry, leaving any already-downloaded
+// plugin files for the harness to clean up.
+
+function enablePlugin(settingsPath, component) {
+  const settings = readSettings(settingsPath);
+  let changed = false;
+
+  if (component.marketplace?.name) {
+    settings.extraKnownMarketplaces ||= {};
+    if (!settings.extraKnownMarketplaces[component.marketplace.name]) {
+      settings.extraKnownMarketplaces[component.marketplace.name] = { source: component.marketplace.source };
+      changed = true;
+    }
+  }
+
+  settings.enabledPlugins ||= {};
+  if (settings.enabledPlugins[component.id] !== true) {
+    settings.enabledPlugins[component.id] = true;
+    changed = true;
+  }
+
+  if (changed) {
+    writeSettings(settingsPath, settings);
+    console.log(`  plugin enabled: ${component.id} → ${settingsPath}`);
+    console.log(`  note: the harness installs the plugin from the marketplace on its next launch`);
+  } else {
+    console.log(`  ok: plugin ${component.id} already enabled`);
+  }
+}
+
+function disablePlugin(settingsPath, component) {
+  const settings = readSettings(settingsPath);
+  let changed = false;
+
+  if (settings.enabledPlugins && component.id in settings.enabledPlugins) {
+    delete settings.enabledPlugins[component.id];
+    changed = true;
+  }
+  if (component.marketplace?.name && settings.extraKnownMarketplaces?.[component.marketplace.name]) {
+    delete settings.extraKnownMarketplaces[component.marketplace.name];
+    changed = true;
+  }
+
+  if (changed) {
+    writeSettings(settingsPath, settings);
+    console.log(`  plugin disabled: ${component.id} ← ${settingsPath}`);
+  } else {
+    console.log(`  ok: plugin ${component.id} already absent`);
   }
 }

@@ -53,5 +53,21 @@
         }
       ]
     }
+    ,
+    {
+      "id": "caveman",
+      "label": "Caveman plugin",
+      "description": "Claude plugin that keeps agent output terse to cut token use (statusline badge, /caveman commands, mode-tracker hook). The caveman behavior rule is separate and lives in the global rules.",
+      "components": [
+        {
+          "type": "plugin",
+          "id": "caveman@caveman",
+          "marketplace": {
+            "name": "caveman",
+            "source": { "source": "github", "repo": "JuliusBrussee/caveman" }
+          }
+        }
+      ]
+    }
   ]
 }

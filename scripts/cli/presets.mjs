@@ -99,7 +99,7 @@ function markOnboarded() {
 async function applyItemToggle(section, item) {
   const enabled = !item.active;
   if (section.category === "Token Optimization") {
-    if (item.id === "jcodemunch" || item.id === "jdocmunch") return mutatePackage(item.id, enabled);
+    if (item.id === "jcodemunch" || item.id === "jdocmunch" || item.id === "caveman") return mutatePackage(item.id, enabled);
     if (item.id === "telemetry") {
       const { setTelemetryEnabled } = await import("./telemetry.mjs");
       return setTelemetryEnabled(enabled);
@@ -129,7 +129,7 @@ async function runInteractiveOnboard() {
       menu.push({ header: section.category });
       for (const item of section.items) {
         const toggleable =
-          (section.category === "Token Optimization" && (item.id === "jcodemunch" || item.id === "jdocmunch" || item.id === "telemetry")) ||
+          (section.category === "Token Optimization" && (item.id === "jcodemunch" || item.id === "jdocmunch" || item.id === "telemetry" || item.id === "caveman")) ||
           section.category === "Workflows" ||
           section.category === "Code Conventions";
         if (!toggleable) continue;

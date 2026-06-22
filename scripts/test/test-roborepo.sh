@@ -341,6 +341,19 @@ assert "config: disable removes package hooks" \
 assert "config: enable/disable did not mutate tracked repo source" \
   bash -c "[ \"\$(git -C '${repo_root}' status --porcelain globals/claude/settings.json manifests/inventory/mcp-servers.json)\" = '${cfg_settings_before}' ]"
 
+# Plugin component type (caveman package): enable writes enabledPlugins bool + marketplace entry,
+# disable removes both. The harness performs the actual fetch on next launch — not asserted here.
+bash -c "${cfg_env} node '${cli}' enable caveman >/dev/null 2>&1" || true
+assert "config: enable plugin sets enabledPlugins bool + marketplace" \
+  bash -c "node -e \"const s=require('${cfg_home}/.claude/settings.json');process.exit(s.enabledPlugins?.['caveman@caveman']===true&&!!s.extraKnownMarketplaces?.caveman?0:1)\""
+assert "config: caveman package reports enabled in snapshot" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='caveman');process.exit(p&&p.enabled?0:1)})\""
+bash -c "${cfg_env} node '${cli}' disable caveman >/dev/null 2>&1" || true
+assert "config: disable plugin removes bool + marketplace" \
+  bash -c "node -e \"const s=require('${cfg_home}/.claude/settings.json');process.exit(!s.enabledPlugins?.['caveman@caveman']&&!s.extraKnownMarketplaces?.caveman?0:1)\""
+assert "config: caveman package reports disabled after removal" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='caveman');process.exit(p&&!p.enabled?0:1)})\""
+
 # Skill toggle links into both ~/.claude/skills and ~/.codex/skills, then removes only owned links.
 cfg_skill="$(ls "${repo_root}/globals/agents/skills" | head -1)"
 assert "config: setSkillInstalled links both harnesses" \

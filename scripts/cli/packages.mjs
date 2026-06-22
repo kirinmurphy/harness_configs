@@ -77,6 +77,10 @@ function mcpAlreadyPresent(serverName) {
 }
 
 function installMcpPreset(presetId) {
+  // `roborepo mcp add` writes repo source (globals/claude/settings.json + manifests mcp-servers.json)
+  // and shells out to the real `claude` CLI. Tests set ROBOREPO_SKIP_MCP=1 to exercise the rest of
+  // the enable/disable flow without that registration (and without polluting tracked files).
+  if (process.env.ROBOREPO_SKIP_MCP === "1") { console.log(`skip: mcp ${presetId} (ROBOREPO_SKIP_MCP)`); return; }
   if (mcpAlreadyPresent(presetId)) { console.log(`ok: mcp ${presetId} already present`); return; }
   // Delegate to `roborepo mcp add` subprocess: handles Claude CLI, Codex config, and preset
   // resolution. mcpAdd calls process.exit(0) directly, so we can't call it inline.

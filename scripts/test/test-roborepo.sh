@@ -313,7 +313,14 @@ assert "telemetry enable: creates local state dirs" \
 cfg_home="${work}/config-home"
 mkdir -p "${cfg_home}/.claude/skills" "${cfg_home}/.codex/skills"
 echo '{}' > "${cfg_home}/.claude/settings.json"
-cfg_env="HOME='${cfg_home}' ROBOREPO_STATE_DIR='${cfg_home}/.roborepo'"
+# ROBOREPO_SKIP_MCP=1: `enable` would otherwise shell out to `roborepo mcp add`, which writes
+# TRACKED repo source (globals/claude/settings.json + manifests/inventory/mcp-servers.json) and the
+# real `claude` CLI. Skip that step so the test exercises perms/hooks/rules without polluting the
+# working tree or depending on global mcp state.
+cfg_env="HOME='${cfg_home}' ROBOREPO_STATE_DIR='${cfg_home}/.roborepo' ROBOREPO_SKIP_MCP=1"
+
+# Guard: enabling a package must not mutate tracked repo source (it writes the consumer's home only).
+cfg_settings_before="$(git -C "${repo_root}" status --porcelain globals/claude/settings.json manifests/inventory/mcp-servers.json)"
 
 # disable on a fresh home is a clean no-op (idempotent); dry-run never writes.
 assert "config: disable dry-run does not write settings" \
@@ -331,6 +338,8 @@ assert "config: disable removes package permissions" \
   bash -c "[ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" = 0 ]"
 assert "config: disable removes package hooks" \
   bash -c "[ \"\$(node -e \"console.log(Object.keys(require('${cfg_home}/.claude/settings.json').hooks||{}).length)\")\" = 0 ]"
+assert "config: enable/disable did not mutate tracked repo source" \
+  bash -c "[ \"\$(git -C '${repo_root}' status --porcelain globals/claude/settings.json manifests/inventory/mcp-servers.json)\" = '${cfg_settings_before}' ]"
 
 # Skill toggle links into both ~/.claude/skills and ~/.codex/skills, then removes only owned links.
 cfg_skill="$(ls "${repo_root}/globals/agents/skills" | head -1)"

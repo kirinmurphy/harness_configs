@@ -70,6 +70,20 @@ remove_file_if_repo_symlink() {
   fi
 }
 
+# Path to the repo's bare starter for a harness's root_config file, or empty if none exists. The
+# starter is the clean baseline (no roborepo hooks/MCP/perms) we fall back to when the user had no
+# config of their own before install — so uninstall leaves a working, roborepo-free file instead of
+# deleting it outright.
+starter_for_root_config() {
+  local home_abs="$1"
+  local base; base="$(basename "${home_abs}")"
+  case "${base}" in
+    settings.json) echo "${repo_root}/globals/claude/settings.starter.json" ;;
+    config.toml)   echo "${repo_root}/globals/codex/config.starter.toml" ;;
+    *)             echo "" ;;
+  esac
+}
+
 remove_root_config() {
   local home_abs="$1"
   local harness="${2:-}"
@@ -81,19 +95,35 @@ remove_root_config() {
   fi
 
   if [[ -n "${pre_install_backup}" && -f "${pre_install_backup}" ]]; then
+    # User had their own config before install — restore it verbatim.
     if [[ "${dry_run}" -eq 1 ]]; then
       echo "restore (root_config): ${pre_install_backup} -> ${home_abs}"
     else
       mv "${pre_install_backup}" "${home_abs}"
       echo "restore (root_config): ${pre_install_backup} -> ${home_abs}"
     fi
-  else
+    return 0
+  fi
+
+  local starter; starter="$(starter_for_root_config "${home_abs}")"
+  if [[ -n "${starter}" && -f "${starter}" ]]; then
+    # No pre-install backup (clean machine, or backup already consumed) — reset to the bare starter
+    # rather than deleting, so the harness keeps a clean roborepo-free config.
     if [[ "${dry_run}" -eq 1 ]]; then
-      echo "remove (root_config): ${home_abs}"
+      echo "reset (root_config): ${starter} -> ${home_abs}"
     else
-      rm "${home_abs}"
-      echo "remove (root_config): ${home_abs}"
+      cp "${starter}" "${home_abs}"
+      echo "reset (root_config): ${starter} -> ${home_abs}"
     fi
+    return 0
+  fi
+
+  # No backup and no starter — remove the roborepo-installed file.
+  if [[ "${dry_run}" -eq 1 ]]; then
+    echo "remove (root_config): ${home_abs}"
+  else
+    rm "${home_abs}"
+    echo "remove (root_config): ${home_abs}"
   fi
 }
 

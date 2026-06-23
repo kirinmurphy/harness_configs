@@ -1,0 +1,6 @@
+# Bare Codex config — the clean baseline roborepo restores on uninstall when no pre-install backup
+# of the user's own config.toml exists. Intentionally minimal: no roborepo hooks, MCP servers, or
+# generated permission blocks. Codex applies its own defaults for anything omitted here.
+model = "gpt-5.5"
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"

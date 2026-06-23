@@ -363,6 +363,28 @@ assert "config: disable plugin removes bool + marketplace" \
 assert "config: caveman package reports disabled after removal" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='caveman');process.exit(p&&!p.enabled?0:1)})\""
 
+# Chat-Time Output: rules-only packages with harness "both" — enable merges the block into BOTH
+# CLAUDE.md and AGENTS.md; snapshot reports enabled; toggles are independent; disable removes from
+# both. The throwaway home has .claude and .codex dirs, so "both" targets both rules files.
+bash -c "${cfg_env} node '${cli}' enable impact-awareness >/dev/null 2>&1" || true
+assert "config: rules pkg merges into Claude CLAUDE.md" \
+  bash -c "grep -q 'Impact Awareness' '${cfg_home}/.claude/CLAUDE.md'"
+assert "config: rules pkg merges into Codex AGENTS.md (both-harness parity)" \
+  bash -c "grep -q 'Impact Awareness' '${cfg_home}/.codex/AGENTS.md'"
+assert "config: rules pkg reports enabled in snapshot" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='impact-awareness');process.exit(p&&p.enabled?0:1)})\""
+# Independence: enabling a second behavior must not disturb the first; disabling the first must leave
+# the second in place in both harnesses.
+bash -c "${cfg_env} node '${cli}' enable skill-visibility >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' disable impact-awareness >/dev/null 2>&1" || true
+assert "config: disable rules pkg removes its block from both harnesses" \
+  bash -c "! grep -q 'Impact Awareness' '${cfg_home}/.claude/CLAUDE.md' && ! grep -q 'Impact Awareness' '${cfg_home}/.codex/AGENTS.md'"
+assert "config: disabling one rules pkg leaves the others (Claude)" \
+  bash -c "grep -q 'Skill Visibility' '${cfg_home}/.claude/CLAUDE.md'"
+assert "config: disabling one rules pkg leaves the others (Codex)" \
+  bash -c "grep -q 'Skill Visibility' '${cfg_home}/.codex/AGENTS.md'"
+bash -c "${cfg_env} node '${cli}' disable skill-visibility >/dev/null 2>&1" || true
+
 # Service component (telemetry as a package): enable via the generic package path flips its state +
 # snapshot, disable reverses. The service handler owns telemetry's bespoke install (hooks + spool).
 bash -c "${cfg_env} node '${cli}' enable telemetry >/dev/null 2>&1" || true

@@ -33,7 +33,6 @@ local/skills
 globals/rules/shared/00-communication.md
 globals/rules/shared/10-exploration.md
 globals/rules/shared/20-verification.md
-globals/rules/shared/30-session-capture.md
 globals/rules/claude/90-claude-specific.md
 globals/rules/codex/90-codex-specific.md
 scripts/build/render-rules.sh

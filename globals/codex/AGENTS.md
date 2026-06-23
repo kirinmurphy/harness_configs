@@ -22,15 +22,6 @@ Load the matching skill before doing the work, so its guidance shapes the output
 Load only the skills the current task actually needs; do not preload skills for work you are not doing.
 
 
-## Skill Visibility
-
-At the end of any response where a skill shaped the work, list the skills you used on their own line:
-
-`> 🧩 **Skills loaded:** [comma-separated skill names, or "none"]`
-
-Report the skills you knowingly applied this turn. This is self-reported, not harness-verified; when no skill influenced the response, write "none". Keep it to one line and do not embed it in a paragraph.
-
-
 ## Code Exploration
 
 - Use jcodemunch-mcp for code lookup whenever available.
@@ -54,38 +45,6 @@ Report the skills you knowingly applied this turn. This is self-reported, not ha
 - Avoid watch, verbose, and debug modes unless explicitly requested.
 - Keep command output small; use `roborepo run <command> ...` when a command may print a large log.
 - Final response should include `Verified: <command> -> <pass|fail|blocked>` when verification was run or attempted.
-
-
-## Session Capture
-
-When a convention, architectural decision, or behavior is confirmed by explicit user signal or clear mutual agreement, flag it prominently on its own line:
-
-`> 📌 **Capture candidate:** [one-line description]`
-
-Use that exact format every time. Never embed it in a paragraph.
-
-Do not write to any file automatically. Flagging only; the user triggers capture when ready.
-
-Qualifies: naming/file/import conventions, architectural decisions, business logic, tool choices, explicit user request.
-
-Does not qualify: debugging steps, temp fixes, generic knowledge, already-documented things, in-progress work.
-
-
-## Impact Awareness
-
-When the user proposes a new idea, feature, or change, before building it, surface how it interacts with existing functionality. Flag the interaction prominently on its own line:
-
-`> 🧭 **Impact:** [one-line description]`
-
-Use that exact format. Never embed it in a paragraph. Base the assessment on the actual code, and on Project Context inventory docs when they exist; do not guess.
-
-Flag when the change:
-
-- **Affects existing behavior** — `this affects "XX" and requires re-evaluating how YY works`.
-- **Is already partly implemented** — `this is partly implemented at <path>; combine with the existing behavior, or keep separate?`
-- **Forces a tradeoff** — `this changes current behavior XX; let's evaluate options before building`.
-
-Flag only real collisions with existing functionality. Do not flag for net-new behavior that touches nothing, and do not block product work — make the impact visible so the user can choose knowingly.
 
 
 ## Temporary Files and Cleanup

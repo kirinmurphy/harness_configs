@@ -52,6 +52,19 @@ function ownComponentsEnabled(pkg, settings, serviceState) {
     const allow = settings?.permissions?.allow || [];
     return permComp.allow.every((p) => allow.includes(p));
   }
+  // A rules package is enabled iff its block (anchored by its unique first line) is present in the
+  // live harness rules file. For harness "both"/"claude" we read CLAUDE.md; for "codex" AGENTS.md.
+  // CLAUDE.md is the panel's primary read since it always exists when Claude is installed.
+  const rulesComp = pkg.components.find((c) => c.type === "rules");
+  if (rulesComp) {
+    const rulesFile = rulesComp.harness === "codex"
+      ? path.join(os.homedir(), ".codex", "AGENTS.md")
+      : path.join(os.homedir(), ".claude", "CLAUDE.md");
+    let live = "";
+    try { live = fs.readFileSync(rulesFile, "utf8"); } catch { return false; }
+    const firstLine = fs.readFileSync(path.join(repoRoot, rulesComp.source), "utf8").split("\n").find((l) => l.trim());
+    return !!firstLine && live.includes(firstLine);
+  }
   const hookComp = pkg.components.find((c) => c.type === "hooks");
   if (hookComp) {
     const hooksPath = path.join(repoRoot, hookComp.source);
@@ -225,6 +238,33 @@ export function buildBehaviorView(snap) {
           badges: ["skill"],
         })),
       footnote: "roborepo-support — help skill for this repo, always loaded.",
+    },
+    {
+      category: "Chat-Time Output",
+      description: "Inline chat notes the agent adds while responding — no files written, no workflow started.",
+      items: [
+        {
+          id: "convention-capture",
+          label: "Convention capture",
+          description: "Surfaces newly confirmed conventions inline (> 📌 Capture candidate:)",
+          active: pkg("convention-capture")?.enabled ?? false,
+          toggle: "package",
+        },
+        {
+          id: "impact-awareness",
+          label: "Impact awareness",
+          description: "Flags how a proposed change collides with existing functionality (> 🧭 Impact:)",
+          active: pkg("impact-awareness")?.enabled ?? false,
+          toggle: "package",
+        },
+        {
+          id: "skill-visibility",
+          label: "Skill visibility",
+          description: "Reports which skills shaped a response (> 🧩 Skills loaded:)",
+          active: pkg("skill-visibility")?.enabled ?? false,
+          toggle: "package",
+        },
+      ],
     },
     {
       category: "Permissions",

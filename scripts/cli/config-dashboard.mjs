@@ -137,6 +137,15 @@ function behaviorView(snap) {
         })),
     },
     {
+      category: "Chat-Time Output", wide: false,
+      desc: "Inline chat notes the agent adds while responding — no files written, no workflow started.",
+      items: [
+        { id:"convention-capture", label:"Convention capture", desc:"Surfaces newly confirmed conventions inline (\u{1F4CC} Capture candidate)", active: pkg("convention-capture")?.enabled ?? false, toggle:"package" },
+        { id:"impact-awareness",   label:"Impact awareness",   desc:"Flags how a proposed change collides with existing functionality (\u{1F9ED} Impact)", active: pkg("impact-awareness")?.enabled ?? false, toggle:"package" },
+        { id:"skill-visibility",   label:"Skill visibility",   desc:"Reports which skills shaped a response (\u{1F9E9} Skills loaded)", active: pkg("skill-visibility")?.enabled ?? false, toggle:"package" },
+      ],
+    },
+    {
       category: "Permissions", wide: false,
       kind: "permissions",
       items: [

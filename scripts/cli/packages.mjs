@@ -7,6 +7,19 @@ import { repoRoot } from "./paths.mjs";
 export const PACKAGES_PATH = path.join(repoRoot, "manifests", "inventory", "packages.json");
 export const USER_CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
 export const USER_CLAUDE_MD = path.join(os.homedir(), ".claude", "CLAUDE.md");
+export const USER_CODEX_AGENTS = path.join(os.homedir(), ".codex", "AGENTS.md");
+
+// A `rules` component declares which harness rules file(s) it merges into. "claude" → CLAUDE.md,
+// "codex" → AGENTS.md, "both" → each present harness. Returns only the rules files whose harness
+// home dir exists, so a Codex-less machine quietly skips AGENTS.md (and vice versa).
+function rulesTargetsForHarness(harness) {
+  const targets = [];
+  const wantClaude = harness === "claude" || harness === "both";
+  const wantCodex = harness === "codex" || harness === "both";
+  if (wantClaude && fs.existsSync(path.dirname(USER_CLAUDE_MD))) targets.push(USER_CLAUDE_MD);
+  if (wantCodex && fs.existsSync(path.dirname(USER_CODEX_AGENTS))) targets.push(USER_CODEX_AGENTS);
+  return targets;
+}
 
 export function loadPackageCatalog() {
   return JSON.parse(fs.readFileSync(PACKAGES_PATH, "utf8")).packages;
@@ -144,10 +157,9 @@ export async function enablePackage(rest, _seen = new Set()) {
         break;
       case "rules": {
         const rulesPath = path.join(repoRoot, component.source);
-        if (dryRun) { console.log(`  [dry-run] merge rules from ${component.source}`); break; }
+        if (dryRun) { console.log(`  [dry-run] merge rules from ${component.source} (${component.harness})`); break; }
         const rulesContent = fs.readFileSync(rulesPath, "utf8");
-        const claudeMdPath = component.harness === "claude" ? USER_CLAUDE_MD : null;
-        if (claudeMdPath) mergeRules(claudeMdPath, rulesContent);
+        for (const target of rulesTargetsForHarness(component.harness)) mergeRules(target, rulesContent);
         break;
       }
       case "hooks": {
@@ -280,9 +292,9 @@ export async function disablePackage(rest) {
         unmergePermissions(USER_CLAUDE_SETTINGS, component.allow);
         break;
       case "rules": {
-        if (dryRun) { console.log(`  [dry-run] remove rules from ${component.source}`); break; }
+        if (dryRun) { console.log(`  [dry-run] remove rules from ${component.source} (${component.harness})`); break; }
         const rulesContent = fs.readFileSync(path.join(repoRoot, component.source), "utf8");
-        if (component.harness === "claude") unmergeRules(USER_CLAUDE_MD, rulesContent);
+        for (const target of rulesTargetsForHarness(component.harness)) unmergeRules(target, rulesContent);
         break;
       }
       case "hooks": {

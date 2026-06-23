@@ -95,5 +95,32 @@
         }
       ]
     }
+    ,
+    {
+      "id": "convention-capture",
+      "label": "Convention capture",
+      "description": "Agents surface newly confirmed conventions as an inline `> 📌 Capture candidate:` note during the chat. A Chat-Time Output behavior; merges its rules block into both harnesses.",
+      "components": [
+        { "type": "rules", "source": "globals/packages/convention-capture/rules.md", "harness": "both" }
+      ]
+    }
+    ,
+    {
+      "id": "impact-awareness",
+      "label": "Impact awareness",
+      "description": "When you propose a change, agents flag (`> 🧭 Impact:`) how it collides with or duplicates existing functionality. A Chat-Time Output behavior; merges its rules block into both harnesses.",
+      "components": [
+        { "type": "rules", "source": "globals/packages/impact-awareness/rules.md", "harness": "both" }
+      ]
+    }
+    ,
+    {
+      "id": "skill-visibility",
+      "label": "Skill visibility",
+      "description": "Agents report which skills shaped a response (`> 🧩 Skills loaded:`) so behavior changes are traceable. A Chat-Time Output behavior; merges its rules block into both harnesses.",
+      "components": [
+        { "type": "rules", "source": "globals/packages/skill-visibility/rules.md", "harness": "both" }
+      ]
+    }
   ]
 }

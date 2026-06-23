@@ -104,6 +104,10 @@ async function applyItemToggle(section, item) {
     if (["jcodemunch", "jdocmunch", "caveman", "telemetry"].includes(item.id)) return mutatePackage(item.id, enabled);
     return { ok: false, message: `${item.label} is managed elsewhere (not toggleable here)` };
   }
+  if (section.category === "Chat-Time Output") {
+    // The three inline chat-note behaviors are rules packages; route through the generic mutate.
+    return mutatePackage(item.id, enabled);
+  }
   if (section.category === "Commands" || section.category === "Code Conventions") {
     return setSkillInstalled(item.id, enabled);
   }
@@ -128,6 +132,7 @@ async function runInteractiveOnboard() {
       for (const item of section.items) {
         const toggleable =
           (section.category === "Token Optimization" && (item.id === "jcodemunch" || item.id === "jdocmunch" || item.id === "telemetry" || item.id === "caveman")) ||
+          section.category === "Chat-Time Output" ||
           section.category === "Commands" ||
           section.category === "Code Conventions";
         if (!toggleable) continue;

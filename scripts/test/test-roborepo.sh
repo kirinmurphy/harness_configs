@@ -876,6 +876,22 @@ HOME="${lu_home}" ROBOREPO_STATE_DIR="${lu_home}/.roborepo" ROBOREPO_ASSUME_INTE
 assert "legacy: real ~/.agents/skills user dir is preserved, not reclaimed" \
   bash -c "test -d '${lu_home}/.agents/skills/mine'"
 
+# --------------------------------------------------------------------------- onboarding / defaults
+# Minimal default: install seeds only the `base` bundle; everything else is opt-in via the wizard.
+assert "onboard: presets.json default is base-only" \
+  bash -c "node -e 'const d=require(\"${repo_root}/manifests/platform/presets.json\"); process.exit(JSON.stringify(d.default)===JSON.stringify([\"base\"])?0:1)'"
+
+# Non-TTY `onboard` takes the headless path: applies the default + records onboardedAt (no prompt,
+# no hang). Run in an isolated HOME/state so it never touches the real machine.
+ob_home="$(mktemp -d "${work}/onboard-home.XXXXXX")"
+mkdir -p "${ob_home}/.claude" "${ob_home}/.codex"
+HOME="${ob_home}" ROBOREPO_STATE_DIR="${ob_home}/.roborepo" \
+  node "${cli}" onboard < /dev/null > "${ob_home}/out.txt" 2>&1 || true
+assert "onboard: non-TTY reports headless apply" \
+  grep -q "applying the default configuration" "${ob_home}/out.txt"
+assert "onboard: non-TTY records onboardedAt in preset state" \
+  bash -c "test -f '${ob_home}/.roborepo/presets/state.json' && grep -q onboardedAt '${ob_home}/.roborepo/presets/state.json'"
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"

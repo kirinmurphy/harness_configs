@@ -87,6 +87,126 @@ export async function selectMenu(title, items) {
   });
 }
 
+// Multi-step toggle wizard. One step (section) shown at a time; ←/→ move between steps, ↑/↓ move the
+// cursor within a step, Space toggles the highlighted item, Enter advances (Enter on the last step
+// finishes), Esc/q finishes early. Toggling calls the item's `onToggle(item)` which performs the real
+// mutation and returns the new `active` state, so the on-screen [x]/[ ] reflects the persisted truth.
+//
+// steps: [{ title, hint?, readonly?, items: [{ label, description?, active, toggleable, onToggle? }] }]
+// Read-only steps (or non-toggleable items) render but cannot flip. Non-TTY: returns immediately (the
+// caller handles the headless path); the wizard is interactive-only.
+export async function wizard(steps) {
+  const tty = process.stdin.isTTY && process.stdout.isTTY;
+  if (!tty || steps.length === 0) return;
+
+  const out = process.stdout;
+  let stepIdx = 0;
+  let cursor = 0;
+  let lastHeight = 0; // lines drawn by the previous render, to clear before redraw
+
+  const cursorablePositions = (step) =>
+    step.items.map((it, i) => (it.toggleable && !step.readonly ? i : -1)).filter((i) => i >= 0);
+
+  const clampCursor = (step) => {
+    const sel = cursorablePositions(step);
+    if (sel.length === 0) { cursor = -1; return; }
+    if (cursor < 0 || !sel.includes(cursor)) cursor = sel[0];
+  };
+
+  // Clip plain text to fit the terminal width so each rendered line occupies exactly one row — the
+  // redraw math counts lines, not wrapped visual rows, so a wrapped line would drift the cursor.
+  const cols = () => process.stdout.columns || 80;
+  const clip = (text, width) => (text.length <= width ? text : text.slice(0, Math.max(0, width - 1)) + "…");
+
+  const render = () => {
+    const step = steps[stepIdx];
+    const width = cols();
+    const lines = [];
+    lines.push(`\x1b[1m${clip(`Step ${stepIdx + 1}/${steps.length} · ${step.title}`, width)}\x1b[0m`);
+    const hint = step.hint || "←/→ sections · ↑/↓ move · Space toggle · Enter next · Esc finish";
+    lines.push(`\x1b[2m${clip(`  ${hint}`, width)}\x1b[0m`);
+    lines.push("");
+    if (step.description) { lines.push(`\x1b[2m${clip(`  ${step.description}`, width)}\x1b[0m`); lines.push(""); }
+    step.items.forEach((it, i) => {
+      const sel = i === cursor;
+      const mark = it.toggleable && !step.readonly ? (it.active ? "[x]" : "[ ]") : "   ";
+      // Compose the plain line first, truncate to width, then re-apply color — measuring plain text
+      // keeps the visible length correct (ANSI escapes are zero-width).
+      const head = `${sel ? "> " : "  "}${mark} ${it.label}`;
+      const descSep = it.description ? "  " : "";
+      const plain = clip(`${head}${descSep}${it.description || ""}`, width);
+      // Split back so the description stays dim and the selected row stays cyan.
+      const headPart = plain.slice(0, head.length);
+      const descPart = plain.slice(head.length);
+      const colored = sel
+        ? `\x1b[36m${headPart}\x1b[0m${descPart ? `\x1b[2m${descPart}\x1b[0m` : ""}`
+        : `${headPart}${descPart ? `\x1b[2m${descPart}\x1b[0m` : ""}`;
+      lines.push(colored);
+    });
+    if (step.footnote) { lines.push(""); lines.push(`\x1b[2m${clip(`  ${step.footnote}`, width)}\x1b[0m`); }
+
+    if (lastHeight > 0) out.write(`\x1b[${lastHeight}A`);
+    for (const l of lines) out.write(`\x1b[2K${l}\n`);
+    // If this render is shorter than the last, clear the leftover lines below.
+    for (let i = lines.length; i < lastHeight; i++) out.write("\x1b[2K\n");
+    if (lines.length < lastHeight) out.write(`\x1b[${lastHeight - lines.length}A`);
+    lastHeight = Math.max(lines.length, lastHeight);
+  };
+
+  clampCursor(steps[stepIdx]);
+
+  return new Promise((resolve) => {
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    render();
+
+    const cleanup = () => {
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      process.stdin.removeListener("keypress", onKey);
+      out.write("\n");
+    };
+
+    let busy = false; // guard re-entrancy while an async onToggle runs
+    const onKey = async (_str, key) => {
+      if (!key || busy) return;
+      const step = steps[stepIdx];
+      const sel = cursorablePositions(step);
+
+      if (key.name === "left" || key.name === "h") {
+        stepIdx = (stepIdx - 1 + steps.length) % steps.length;
+        clampCursor(steps[stepIdx]);
+        render();
+      } else if (key.name === "right" || key.name === "l") {
+        stepIdx = (stepIdx + 1) % steps.length;
+        clampCursor(steps[stepIdx]);
+        render();
+      } else if (key.name === "up" || key.name === "k") {
+        if (sel.length) { const at = sel.indexOf(cursor); cursor = sel[(at - 1 + sel.length) % sel.length]; render(); }
+      } else if (key.name === "down" || key.name === "j") {
+        if (sel.length) { const at = sel.indexOf(cursor); cursor = sel[(at + 1) % sel.length]; render(); }
+      } else if (key.name === "space") {
+        const it = step.items[cursor];
+        if (it && it.toggleable && !step.readonly && it.onToggle) {
+          busy = true;
+          try { it.active = await it.onToggle(it); }
+          finally { busy = false; }
+          render();
+        }
+      } else if (key.name === "return" || key.name === "enter") {
+        if (stepIdx === steps.length - 1) { cleanup(); resolve(); }
+        else { stepIdx += 1; clampCursor(steps[stepIdx]); render(); }
+      } else if (key.name === "escape" || key.name === "q" || (key.ctrl && key.name === "c")) {
+        cleanup();
+        resolve();
+      }
+    };
+
+    process.stdin.on("keypress", onKey);
+  });
+}
+
 function numberedFallback(title, items, isHeader) {
   console.log(title);
   const order = [];

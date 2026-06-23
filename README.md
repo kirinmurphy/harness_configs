@@ -30,7 +30,7 @@ Use the CLI to update items and configuation to your global setup that will work
 | Command                          | What it does                                                                                         |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `roborepo`                       | Open the interactive menu — browse and run any command without memorizing flags.                     |
-| `roborepo onboard`               | Choose which global behavior bundles (rules, skills, hooks) are active across both harnesses.        |
+| `roborepo onboard`               | Run the onboarding wizard to choose which behaviors (skills, commands, packages) are active.         |
 | `roborepo update`                | Re-apply harness config on this machine to pick up new or changed global config.                     |
 | `roborepo mcp add <name-or-url>` | Register an MCP server with both Claude and Codex in one step.                                       |
 | `roborepo index code [path]`     | Index a repo's source for jcodemunch so agents find code via symbol search instead of reading files. |
@@ -41,7 +41,7 @@ Use the CLI to update items and configuation to your global setup that will work
 
 ## Global Behavior
 
-Installing the `roborepo` core applies a default set of global packages and configurations automatically — skills, rules, hooks, commands, permission profiles, and the default MCP servers. (Telemetry is the one exception: it stays off unless you turn it on.) There is no setup step to work through; everything below is installed for you.
+Installing the `roborepo` core applies a minimal baseline, then launches an onboarding wizard so you choose which behaviors to enable — skills, commands, code conventions, chat-time output, and token-optimization packages. The wizard mirrors the `/config` sections, one section per step (`←`/`→` between sections, `Space` to toggle, `Enter` to advance). Only the baseline is applied automatically; everything else is opt-in, and telemetry stays off unless you turn it on. Rerun the wizard any time with `roborepo onboard`. Noninteractive installs skip the wizard and apply the baseline headlessly.
 
 > **Just want token telemetry?** You can install only the local telemetry capture + dashboard — without the rest of the global config — with `roborepo telemetry install` (or `./bin/roborepo telemetry install` from a fresh clone). It wires just the capture hooks, so you can measure your token usage before adopting the full suite; upgrade later by re-running the normal install. Then `roborepo telemetry start` to capture and open the dashboard.
 

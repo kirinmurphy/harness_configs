@@ -83,8 +83,7 @@ roborepo — choose an action:
   mcp add        register an MCP server with Claude + Codex
   watch code     live-index code as files change
   project-context inventory  scan a repo and write generated project-context facts
-  onboard         choose behavior bundles
-  bundle status   inspect selected behavior bundles
+  onboard         run the onboarding wizard (choose behaviors per section)
   telemetry start   capture + open the local dashboard (detached)
   telemetry stop    stop the dashboard + capture
   telemetry status  show telemetry capture state
@@ -147,7 +146,7 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   root config export, command install, and shell install to pick up new config). The *first*
   install is the shell bootstrap `scripts/install/main.sh` — that is what puts `roborepo` on
   `PATH` — so the CLI has no separate `install` verb; once `roborepo` exists you only ever
-  `update`. After that, `onboard` chooses the optional behavior bundles for this machine.
+  `update`. After that, `onboard` runs the wizard to choose the optional behaviors for this machine.
 - **Day to day** — `index code|docs` are one-shot indexers; `watch code` runs a live indexer (and
   writes the pidfile the Claude SessionStart hook reads to report watcher status); `mcp add`
   registers MCP servers with Claude + Codex; `bundle` manages the optional bundle selections;

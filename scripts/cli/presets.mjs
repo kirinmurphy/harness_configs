@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { repoRoot } from "./paths.mjs";
 import { installStatePath, presetsStatePath } from "./state-paths.mjs";
 import { readConfigSnapshot, buildBehaviorView } from "./config.mjs";
-import { mutatePackage, setSkillInstalled, setPermissionProfile, LOOSER_PROFILES } from "./config-mutate.mjs";
-import { selectMenu, confirmYesNo, makePrompter } from "./skill-lib.mjs";
+import { mutatePackage, setSkillInstalled } from "./config-mutate.mjs";
+import { wizard } from "./skill-lib.mjs";
 
 const PRESET_MANIFEST = path.join(repoRoot, "manifests", "platform", "presets.json");
 const INSTALL_MANIFEST = path.join(repoRoot, "manifests", "platform", "manifest.tsv");
@@ -114,92 +114,73 @@ async function applyItemToggle(section, item) {
   return { ok: false, message: `${section.category} is read-only in onboarding` };
 }
 
-async function runInteractiveOnboard() {
-  console.log("roborepo onboarding — toggle behavior, then choose Done.\n");
-
-  for (;;) {
-    const view = buildBehaviorView(readConfigSnapshot());
-    const menu = [];
-    const actions = [];
-    let profileItem = null;
-    for (const section of view) {
-      if (section.category === "Permissions") {
-        // Permissions surfaces as a single "change profile" entry that opens a sub-menu.
-        profileItem = section.items.find((it) => it.kind === "profile") || null;
-        continue;
-      }
-      menu.push({ header: section.category });
-      for (const item of section.items) {
-        const toggleable =
-          (section.category === "Token Optimization" && (item.id === "jcodemunch" || item.id === "jdocmunch" || item.id === "telemetry" || item.id === "caveman")) ||
-          section.category === "Chat-Time Output" ||
-          section.category === "Commands" ||
-          section.category === "Code Conventions";
-        if (!toggleable) continue;
-        const mark = item.active ? "[x]" : "[ ]";
-        menu.push({ label: `${mark} ${item.label}`, desc: item.description || "", value: actions.length });
-        actions.push({ section, item });
-      }
-    }
-    if (profileItem) {
-      menu.push({ header: "Permissions" });
-      menu.push({ label: `profile: ${profileItem.label}`, desc: "change permission profile", value: "profile" });
-    }
-    menu.push({ header: "" });
-    menu.push({ label: "Done", desc: "finish onboarding", value: "done" });
-
-    const choice = await selectMenu("Toggle an item (Enter), or Done:", menu);
-    if (choice === null || choice === "done") break;
-
-    if (choice === "profile") {
-      await chooseProfile(profileItem);
-      continue;
-    }
-
-    const { section, item } = actions[choice];
-    const result = await applyItemToggle(section, item);
-    console.log(result.ok ? `✓ ${result.message}` : `✗ ${result.message}`);
+// Is this view item user-toggleable in the wizard? Mirrors applyItemToggle's coverage: the four
+// Token-Optimization packages, all Chat-Time Output rules, and every Commands / Code Conventions
+// skill. Permissions is read-only here (see buildOnboardSteps).
+function isToggleableItem(section, item) {
+  if (section.category === "Token Optimization") {
+    return ["jcodemunch", "jdocmunch", "telemetry", "caveman"].includes(item.id);
   }
-
-  console.log("\nOnboarding complete.");
+  return section.category === "Chat-Time Output"
+    || section.category === "Commands"
+    || section.category === "Code Conventions";
 }
 
-// Profile sub-menu. First pick scope (global default vs this-project override), then a profile.
-// Looser profiles (workspace / networked) require an explicit yes before applying.
-async function chooseProfile(profileItem) {
-  const scope = await selectMenu("Apply profile to:", [
-    { header: "Scope" },
-    { label: `Global default${profileItem.globalProfile ? ` (now: ${profileItem.globalProfile})` : ""}`, desc: "machine-wide ~/.claude + ~/.codex", value: "global" },
-    { label: `This project${profileItem.projectProfile ? ` (now: ${profileItem.projectProfile})` : " (no override)"}`, desc: "override for this repo only", value: "project" },
-    { header: "" },
-    { label: "Back", desc: "cancel", value: null },
-  ]);
-  if (!scope) return;
+// Translate the live /config behavior view into wizard steps, in the user-facing order: token
+// optimization first, then commands, code conventions, chat-time output, and finally a read-only
+// Permissions panel. The wizard re-reads state after each toggle, so marks always reflect truth.
+function buildOnboardSteps() {
+  const view = buildBehaviorView(readConfigSnapshot());
+  const byCategory = (name) => view.find((s) => s.category === name);
+  const steps = [];
 
-  const currentForScope = scope === "project" ? profileItem.projectProfile : profileItem.globalProfile;
-  const menu = [{ header: `Profile for ${scope}` }];
-  for (const opt of (profileItem.options || [])) {
-    const tag = opt.id === currentForScope ? " (current)" : opt.looser ? " ⚠ looser" : "";
-    menu.push({ label: `${opt.id}${tag}`, desc: opt.description || "", value: opt.id });
+  for (const name of ["Token Optimization", "Commands", "Code Conventions", "Chat-Time Output"]) {
+    const section = byCategory(name);
+    if (!section) continue;
+    const items = section.items
+      .filter((item) => isToggleableItem(section, item))
+      .map((item) => ({
+        label: item.label,
+        description: item.description || "",
+        active: item.active,
+        toggleable: true,
+        onToggle: async () => {
+          const result = await applyItemToggle(section, item);
+          if (!result.ok) return item.active; // mutate refused: leave mark unchanged
+          // Re-read the snapshot so the displayed state matches what was actually persisted.
+          const fresh = buildBehaviorView(readConfigSnapshot())
+            .find((s) => s.category === name)?.items.find((it) => it.id === item.id);
+          return fresh ? fresh.active : !item.active;
+        },
+      }));
+    if (items.length === 0) continue;
+    steps.push({ title: name, description: section.description, footnote: section.footnote, items });
   }
-  menu.push({ header: "" });
-  menu.push({ label: "Back", desc: "keep current profile", value: null });
 
-  const profile = await selectMenu("Permission profile:", menu);
-  if (!profile || profile === currentForScope) return;
-
-  let confirmed = false;
-  if (LOOSER_PROFILES.has(profile)) {
-    const prompter = makePrompter();
-    const warn = profile === "workspace"
-      ? "the agent stops asking before blocked actions"
-      : "the agent's sandbox gets internet access";
-    confirmed = await confirmYesNo(prompter, `'${profile}' loosens safety — ${warn}. Apply to ${scope}?`, false);
-    prompter.close?.();
-    if (!confirmed) { console.log("✗ profile unchanged"); return; }
+  // Read-only Permissions panel (Phase 2: not editable in onboarding; change via `roborepo config`).
+  const perms = byCategory("Permissions");
+  if (perms) {
+    const profile = perms.items.find((it) => it.kind === "profile");
+    const deny = perms.items.find((it) => it.id === "deny");
+    const items = [];
+    if (profile) items.push({ label: `profile: ${profile.label}`, description: profile.description || "", active: true, toggleable: false });
+    if (deny) items.push({ label: deny.label, description: deny.description || "", active: true, toggleable: false });
+    if (!profile) items.push({ label: "(no profile configured)", active: true, toggleable: false });
+    steps.push({
+      title: "Permissions",
+      description: "Read-only here. Change the permission profile later with: roborepo config",
+      readonly: true,
+      items,
+    });
   }
-  const result = setPermissionProfile(profile, { confirmedLooser: confirmed, scope });
-  console.log(result.ok ? `✓ ${result.message}` : `✗ ${result.message}`);
+
+  return steps;
+}
+
+async function runInteractiveOnboard() {
+  console.log("roborepo onboarding — toggle behavior across the sections, then press Enter on the last step.\n");
+  await wizard(buildOnboardSteps());
+  console.log("Onboarding complete.");
 }
 
 export function presetsApply(args) {
@@ -336,35 +317,6 @@ function bundleStates(catalog, selected) {
     };
   }
   return states;
-}
-
-// Retained for the disabled interactive onboarding wizard (see docs/plans/onboarding-reinstatement.md).
-// Currently unused; restored to use when the wizard is reinstated.
-function printBundleChoices(catalog, current) {
-  catalog.bundles.forEach((bundle, index) => {
-    const mark = current.has(bundle.id) ? "x" : " ";
-    console.log(`  ${index + 1}) [${mark}] ${bundle.label} (${bundle.id})`);
-    console.log(`      ${bundle.description}`);
-  });
-}
-
-function resolveSelection(answer, catalog, current) {
-  const next = new Set(current);
-  const trimmed = answer.trim().toLowerCase();
-  if (trimmed === "") return next;
-  if (trimmed === "all") return new Set(catalog.bundles.map((bundle) => bundle.id));
-  if (trimmed === "none") return new Set();
-  for (const part of trimmed.split(/[,\s]+/).filter(Boolean)) {
-    const index = Number.parseInt(part, 10);
-    if (!Number.isInteger(index) || index < 1 || index > catalog.bundles.length) {
-      console.error(`invalid preset selection: ${part}`);
-      process.exit(2);
-    }
-    const id = catalog.bundles[index - 1].id;
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-  }
-  return next;
 }
 
 function requestedBundles(args, catalog) {

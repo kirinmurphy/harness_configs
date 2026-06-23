@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This repo installs the shared harness baseline first, then lets each machine choose which optional behavior bundles to turn on. The guide below walks the install path step by step and shows the fork points the installer expects.
+This repo installs the shared harness baseline first, then lets each machine choose which optional behaviors to turn on through the onboarding wizard. The guide below walks the install path step by step and shows the fork points the installer expects.
 
 The examples are simulated terminal screens. Prompt text matches the current macOS/Linux scripts; file paths and timestamps are representative.
 
@@ -11,7 +11,7 @@ The examples are simulated terminal screens. Prompt text matches the current mac
 1. Pick an install mode: `managed` or `adopt`.
 2. Preview the install or run it for real.
 3. Let the installer handle any collisions.
-4. Let interactive install start `roborepo onboard`, then opt into the behavior bundles you want.
+4. Let interactive install start the `roborepo onboard` wizard, then opt into the behaviors you want.
 
 Each prompt is shown in its own terminal block. The next block shows the selected answer or the output that follows.
 
@@ -41,7 +41,7 @@ Choose `adopt` when the machine should keep local root config active:
 Selection [1/2/q]: 2
 ```
 
-Adopt mode also asks how later collisions should behave. The answer is saved in `~/.roborepo/install-state.json` and reused by later `roborepo onboard` or bundle commands.
+Adopt mode also asks how later collisions should behave. The answer is saved in `~/.roborepo/install-state.json` and reused by later `roborepo onboard` runs.
 
 ```sh
 Choose adopt collision behavior:
@@ -93,7 +93,7 @@ Core install complete.
   Claude: available
   Codex:  available
 
-Next: install will start roborepo onboard after core install.
+dry-run: a real install would apply the base configuration, then start the onboarding wizard.
 ```
 
 Run the real install when the preview looks right:
@@ -123,14 +123,16 @@ Core install complete.
   Codex:  available
 ```
 
-Then the default configuration is applied automatically:
+Then the baseline is applied and the onboarding wizard starts:
 
 ```sh
-Applying default configuration.
+Applying base configuration.
 
-Onboarding is an in-progress feature and is not interactive yet.
-Applying the default configuration (the same packages install sets up automatically).
-bundles: 7 applied
+roborepo onboarding — toggle behavior across the sections, then press Enter on the last step.
+Step 1/5 · Token Optimization
+  ←/→ sections · ↑/↓ move · Space toggle · Enter next · Esc finish
+  ...
+Onboarding complete.
 ```
 
 ## Step 3: Managed Versus Adopt
@@ -281,18 +283,22 @@ Merge instructions:
 
 If there is no meaningful existing content, the installer does not print backup text.
 
-## Step 5: Default Configuration
+## Step 5: Onboarding
 
-Install applies all default bundles automatically after the core install — base guidance, skills,
-Codex rules, hooks, slash commands, permission profiles, and the default MCP servers. Telemetry is
-the one default-off bundle. There is no interactive step to work through.
+After the core install, the installer applies a minimal baseline (`base` — root config baselines and
+managed markers), then launches the onboarding wizard so you opt into the rest: skills, commands,
+code conventions, chat-time output, and token-optimization packages. Permissions are shown read-only.
+Telemetry stays off unless you turn it on. Noninteractive installs skip the wizard and apply the
+baseline headlessly. Rerun any time with `roborepo onboard`.
 
 ```sh
 $ roborepo onboard
 
-Onboarding is an in-progress feature and is not interactive yet.
-Applying the default configuration (the same packages install sets up automatically).
-bundles: 7 applied
+roborepo onboarding — toggle behavior across the sections, then press Enter on the last step.
+Step 1/5 · Token Optimization
+  ←/→ sections · ↑/↓ move · Space toggle · Enter next · Esc finish
+  ...
+Onboarding complete.
 ```
 
 > **Note:** Per-feature configuration (individual skills, commands, packages, and Chat-Time Output

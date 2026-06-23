@@ -22,9 +22,19 @@ Install on a new machine:
 ./scripts/install/main.sh
 ```
 
-Interactive installs ask for the install mode, then apply the default configuration automatically
-(all default bundles; telemetry stays off). The onboarding wizard is an in-progress feature and is
-not shown yet. Running `roborepo onboard` re-applies the defaults headlessly:
+Interactive installs ask for the install mode, apply a minimal baseline, then launch the onboarding
+wizard so you choose which behaviors to enable. The wizard walks the same sections the `/config`
+display shows — Token Optimization, Commands, Code Conventions, Chat-Time Output, and a read-only
+Permissions panel — one section per step:
+
+- `←` / `→` move between sections
+- `↑` / `↓` move within a section
+- `Space` toggles the highlighted item
+- `Enter` advances (and finishes on the last step); `Esc` finishes early
+
+Only the baseline is applied automatically; everything else is opt-in (telemetry stays off unless you
+turn it on). Noninteractive installs skip the wizard and apply the baseline headlessly. Rerun the
+wizard any time to change your choices:
 
 ```sh
 roborepo onboard

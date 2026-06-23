@@ -111,15 +111,15 @@ test_fresh_managed() {
 
   HOME="$home_dir" "$repo_root/scripts/install/main.sh" >"$home_dir/out"
 
-  # Onboarding wizard disabled (in-progress feature): install now applies the default bundles
-  # headlessly even non-interactively, instead of deferring them to an onboarding step. The previous
-  # "defers onboarding / leaves bundles uninstalled" assertions are recorded in
-  # docs/plans/onboarding-reinstatement.md §5.
+  # Install applies the minimal base bundle, then hands off to onboarding. Non-interactively the
+  # onboard step takes its headless path (applies the default set, no wizard), so a noninteractive
+  # install still lands a working harness without prompting.
   assert_file_contains "$home_dir/out" "Core install complete" "main install completes core"
-  assert_file_contains "$home_dir/out" "Applying default configuration" "noninteractive install applies defaults headlessly"
+  assert_file_contains "$home_dir/out" "Applying base configuration" "noninteractive install applies the base bundle"
+  assert_file_contains "$home_dir/out" "applying the default configuration" "noninteractive onboard runs headlessly"
   [[ -e "$home_dir/.claude/settings.json" && -e "$home_dir/.codex/config.toml" ]] \
-    && pass "main install applies harness bundles automatically" \
-    || fail "main install applies harness bundles automatically"
+    && pass "main install applies harness root config automatically" \
+    || fail "main install applies harness root config automatically"
 }
 
 test_mode_prompt_allows_adopt_on_clean_machine() {

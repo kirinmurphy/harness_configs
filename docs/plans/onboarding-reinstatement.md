@@ -1,5 +1,11 @@
 # Onboarding UI — Reinstatement Record
 
+> **SUPERSEDED.** The old bundle-toggle onboarding UI described here was *not* restored. It was
+> replaced by the item-level, multi-step onboarding wizard (mirrors the `/config` sections, one step
+> per section, ←/→ navigation). See [`onboarding-wizard.md`](onboarding-wizard.md) for the live
+> design. This file is kept only as a historical record of the bundle-toggle surface and how it was
+> wired — useful for parity reference, not for restoration.
+
 ## Purpose
 
 The bundle-toggle onboarding UI was disabled (not deleted) so that installation auto-applies every

@@ -1,6 +1,6 @@
 # Setup and Daily Use
 
-This repo owns your agent harness config (Claude Code, Codex) and exposes it at the paths agents already read. Setup installs the core once, then starts onboarding so you can choose which behavior bundles you want on that machine.
+This repo owns your agent harness config (Claude Code, Codex) and exposes it at the paths agents already read. Setup installs the core once, then starts the onboarding wizard so you can choose which behaviors you want on that machine.
 
 For install workflow tradeoffs, see [install-workflows.md](install-workflows.md). For system details, see [../reference/services/architecture.md](../reference/services/architecture.md).
 

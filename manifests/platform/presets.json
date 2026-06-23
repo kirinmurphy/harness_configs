@@ -1,5 +1,5 @@
 {
-  "default": ["base", "rules", "hooks", "commands"],
+  "default": ["base"],
   "bundles": [
     {
       "id": "base",

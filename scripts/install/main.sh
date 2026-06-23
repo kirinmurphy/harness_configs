@@ -390,23 +390,36 @@ try {
 ' "$(roborepo_state_dir)/presets/state.json"
 }
 
-# Onboarding wizard is disabled (in-progress feature). Install applies the default bundles headlessly
-# instead of launching the interactive `roborepo onboard` UI. The original UI-launching version is
-# recorded in docs/plans/onboarding-reinstatement.md.
+# After core install, apply the minimal default bundle set (just `base`), then hand off to the
+# onboarding wizard so the user opts into the rest. The wizard (`roborepo onboard`) is interactive on
+# a TTY and falls back to a headless default apply when not — so noninteractive and skipped installs
+# still land a working baseline without prompting.
 run_post_install_onboarding() {
   if [[ $dry_run -eq 1 ]]; then
-    echo "dry-run: a real install would apply the default configuration after core install."
+    echo "dry-run: a real install would apply the base configuration, then start the onboarding wizard."
     return 0
   fi
 
   if presets_onboarded; then
-    echo "Default configuration already applied."
+    echo "Already onboarded. Run 'roborepo onboard' to change which behaviors are enabled."
     return 0
   fi
 
-  echo "Applying default configuration."
+  # Always land the minimal baseline first, so the harness works even if the user exits the wizard
+  # immediately (the interactive wizard does not re-apply the default set itself).
+  echo "Applying base configuration."
+  node "${repo_root}/scripts/cli/main.mjs" bundle apply --default
+
+  if [[ "${skip_presets_onboard}" -eq 1 || "${ROBOREPO_PRESETS_ONBOARD:-}" == "skip" ]]; then
+    # Mark onboarded without the wizard: feeding /dev/null makes `onboard` take its headless path
+    # (apply default + record onboardedAt), so later commands don't re-prompt.
+    node "${repo_root}/scripts/cli/main.mjs" onboard < /dev/null >/dev/null 2>&1 || true
+    echo "Onboarding skipped. Choose optional behaviors later with: roborepo onboard"
+    return 0
+  fi
+
   echo ""
-  # `onboard` now headlessly applies the default bundles and records onboarding state (no UI).
+  # Interactive on a TTY -> the wizard; non-TTY -> headless default apply + marks onboarded.
   node "${repo_root}/scripts/cli/main.mjs" onboard
 }
 

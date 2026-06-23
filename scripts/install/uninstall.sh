@@ -130,17 +130,73 @@ remove_root_config() {
 remove_mcp_servers() {
   local mcp_file="${repo_root}/manifests/inventory/mcp-servers.json"
   [[ -f "${mcp_file}" ]] || return 0
-  command -v claude >/dev/null 2>&1 || return 0
+
+  local names=()
   while IFS= read -r name; do
-    if [[ "${dry_run}" -eq 1 ]]; then
-      echo "mcp remove (claude): ${name}"
-    else
-      claude mcp remove "${name}" 2>/dev/null && echo "mcp remove (claude): ${name}" || true
-    fi
+    [[ -n "${name}" ]] && names+=("${name}")
   done < <(node -e "
 const d = JSON.parse(require('fs').readFileSync('${mcp_file}', 'utf8'));
 d.servers.filter(s => s.harnesses.includes('claude')).forEach(s => console.log(s.name));
 ")
+  [[ ${#names[@]} -gt 0 ]] || return 0
+
+  # `claude mcp add` registers at a chosen scope (default `user`); `claude mcp remove` without
+  # --scope only checks the default (`local`), so a single remove leaks the other scopes. Remove from
+  # every scope via the CLI when available, then prune ~/.claude.json directly as a fallback so the
+  # entry is gone even when the `claude` binary isn't present.
+  local name scope
+  if command -v claude >/dev/null 2>&1; then
+    for name in "${names[@]}"; do
+      if [[ "${dry_run}" -eq 1 ]]; then
+        echo "mcp remove (claude, all scopes): ${name}"
+      else
+        for scope in user local project; do
+          claude mcp remove "${name}" --scope "${scope}" >/dev/null 2>&1 || true
+        done
+        echo "mcp remove (claude, all scopes): ${name}"
+      fi
+    done
+  fi
+
+  # Direct prune of ~/.claude.json: top-level mcpServers and every project-scoped mcpServers map.
+  local claude_json="${HOME}/.claude.json"
+  [[ -f "${claude_json}" ]] || return 0
+  if [[ "${dry_run}" -eq 1 ]]; then
+    echo "mcp prune (~/.claude.json): ${names[*]}"
+    return 0
+  fi
+  ROBOREPO_MCP_NAMES="${names[*]}" node -e '
+const fs = require("fs");
+const file = process.env.HOME + "/.claude.json";
+const names = new Set((process.env.ROBOREPO_MCP_NAMES || "").split(" ").filter(Boolean));
+let d;
+try { d = JSON.parse(fs.readFileSync(file, "utf8")); } catch { process.exit(0); }
+let changed = false;
+const prune = (m) => { if (!m) return; for (const n of names) if (n in m) { delete m[n]; changed = true; } };
+prune(d.mcpServers);
+for (const p of Object.values(d.projects || {})) prune(p.mcpServers);
+if (changed) fs.writeFileSync(file, JSON.stringify(d, null, 2) + "\n");
+' && echo "mcp prune (~/.claude.json): ${names[*]}" || true
+}
+
+# Reverse install-gitignore-globals.sh: drop the .jdm-indexed entry it appended to
+# ~/.gitignore_global. Leave git core.excludesfile alone — it may have been the user's own setting,
+# and an otherwise-empty global gitignore is harmless.
+remove_gitignore_globals() {
+  local gitignore_global="${HOME}/.gitignore_global"
+  [[ -f "${gitignore_global}" ]] || return 0
+  grep -Fqx ".jdm-indexed" "${gitignore_global}" || return 0
+
+  if [[ "${dry_run}" -eq 1 ]]; then
+    echo "prune: would remove .jdm-indexed from ${gitignore_global}"
+    return 0
+  fi
+
+  local tmp
+  tmp="$(mktemp "${TMPDIR:-/tmp}/roborepo-gitignore.XXXXXX")"
+  grep -Fvx ".jdm-indexed" "${gitignore_global}" > "${tmp}"
+  mv "${tmp}" "${gitignore_global}"
+  echo "prune: removed .jdm-indexed from ${gitignore_global}"
 }
 
 remove_install_backups() {
@@ -269,6 +325,7 @@ if [[ -f "${state_file}" ]]; then
 fi
 
 remove_mcp_servers
+remove_gitignore_globals
 remove_preset_state
 remove_install_backups
 

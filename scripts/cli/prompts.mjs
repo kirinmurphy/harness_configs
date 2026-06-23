@@ -89,13 +89,18 @@ export async function selectMenu(title, items) {
 
 // Multi-step toggle wizard. One step (section) shown at a time; ←/→ move between steps, ↑/↓ move the
 // cursor within a step, Space toggles the highlighted item, Enter advances (Enter on the last step
-// finishes), Esc/q finishes early. Toggling calls the item's `onToggle(item)` which performs the real
-// mutation and returns the new `active` state, so the on-screen [x]/[ ] reflects the persisted truth.
+// finishes), Esc/q finishes early.
 //
-// steps: [{ title, hint?, readonly?, items: [{ label, description?, active, toggleable, onToggle? }] }]
+// Space flips the item's `active` flag IN MEMORY only — instant, no I/O. The real install work is
+// deferred: when the wizard exits it calls the optional `onFinish(steps)`, where the caller diffs each
+// item's final `active` against its original and applies the changes in one batch. This keeps the raw-
+// mode repaint loop free of blocking subprocesses and of any stray stdout (which would scroll the
+// screen and break the cursor-up redraw math).
+//
+// steps: [{ title, hint?, readonly?, items: [{ label, description?, active, toggleable }] }]
 // Read-only steps (or non-toggleable items) render but cannot flip. Non-TTY: returns immediately (the
 // caller handles the headless path); the wizard is interactive-only.
-export async function wizard(steps) {
+export async function wizard(steps, onFinish) {
   const tty = process.stdin.isTTY && process.stdout.isTTY;
   if (!tty || steps.length === 0) return;
 
@@ -168,9 +173,17 @@ export async function wizard(steps) {
       out.write("\n");
     };
 
-    let busy = false; // guard re-entrancy while an async onToggle runs
-    const onKey = async (_str, key) => {
-      if (!key || busy) return;
+    let finished = false; // guard against double-finish (Enter then a queued key)
+    const finish = async () => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      if (onFinish) await onFinish(steps);
+      resolve();
+    };
+
+    const onKey = (_str, key) => {
+      if (!key || finished) return;
       const step = steps[stepIdx];
       const sel = cursorablePositions(step);
 
@@ -188,18 +201,12 @@ export async function wizard(steps) {
         if (sel.length) { const at = sel.indexOf(cursor); cursor = sel[(at + 1) % sel.length]; render(); }
       } else if (key.name === "space") {
         const it = step.items[cursor];
-        if (it && it.toggleable && !step.readonly && it.onToggle) {
-          busy = true;
-          try { it.active = await it.onToggle(it); }
-          finally { busy = false; }
-          render();
-        }
+        if (it && it.toggleable && !step.readonly) { it.active = !it.active; render(); } // instant in-memory flip
       } else if (key.name === "return" || key.name === "enter") {
-        if (stepIdx === steps.length - 1) { cleanup(); resolve(); }
+        if (stepIdx === steps.length - 1) { void finish(); }
         else { stepIdx += 1; clampCursor(steps[stepIdx]); render(); }
       } else if (key.name === "escape" || key.name === "q" || (key.ctrl && key.name === "c")) {
-        cleanup();
-        resolve();
+        void finish();
       }
     };
 

@@ -1,6 +1,43 @@
 #!/usr/bin/env bash
 # Shared helpers for install scripts. Source this file, do not execute directly.
 
+# --------------------------------------------------------------------------- output styling
+# Color only when stdout is a real terminal, so redirected/captured logs stay plain. Guarded with
+# ROBOREPO_NO_COLOR for an explicit opt-out. Set once; reused by main.sh and every sub-script.
+if [[ -t 1 && -z "${ROBOREPO_NO_COLOR:-}" ]]; then
+  RR_BOLD=$'\033[1m'; RR_DIM=$'\033[2m'; RR_RESET=$'\033[0m'
+  RR_CYAN=$'\033[36m'; RR_GREEN=$'\033[32m'; RR_YELLOW=$'\033[33m'
+else
+  RR_BOLD=""; RR_DIM=""; RR_RESET=""; RR_CYAN=""; RR_GREEN=""; RR_YELLOW=""
+fi
+
+# Bold cyan section header preceded by a blank line: visually breaks the install log into stages.
+install_section() {
+  printf '\n%s━━━ %s %s%s\n' "${RR_CYAN}${RR_BOLD}" "$1" "$(install_rule "$1")" "${RR_RESET}"
+}
+
+# Colorize a leading action keyword (link/copy/backup/ok/skip/relink) then print the rest plain.
+# Usage: say link "${home} -> ${src}"   ->  "  <green>link<reset> ${home} -> ${src}"
+say() {
+  local kw="$1"; shift
+  local color="${RR_DIM}"
+  case "${kw}" in
+    link|relink|added) color="${RR_GREEN}" ;;
+    copy) color="${RR_CYAN}" ;;
+    backup|"pre-install backup") color="${RR_YELLOW}" ;;
+    ok) color="${RR_DIM}" ;;
+  esac
+  printf '  %s%s%s %s\n' "${color}" "${kw}" "${RR_RESET}" "$*"
+}
+
+# Pad a section title's trailing rule out to a fixed width so headers line up.
+install_rule() {
+  local width=44 used=$(( ${#1} + 4 )) n=0 out=""
+  n=$(( width - used )); (( n < 0 )) && n=0
+  while (( n-- > 0 )); do out+="━"; done
+  printf '%s' "${out}"
+}
+
 unique_backup_path() {
   local home_path="$1"
   local backup_path="${backup_root}${home_path}"
@@ -195,7 +232,7 @@ install_copy_item() {
         mkdir -p "$(dirname "${pre_install_backup}")"
         cp -a "${home_path}" "${pre_install_backup}"
       fi
-      echo "pre-install backup: ${home_path} -> ${pre_install_backup}"
+      say "pre-install backup" "${home_path} -> ${pre_install_backup}"
     fi
   fi
 
@@ -203,12 +240,12 @@ install_copy_item() {
     if [[ "${dry_run}" -eq 0 ]]; then
       copy_tree "${src}" "${home_path}"
     fi
-    echo "copy: ${home_path} <- ${src}"
+    say copy "${home_path} <- ${src}"
     return 0
   fi
 
   if paths_equivalent_for_copy "${src}" "${home_path}"; then
-    echo "ok: ${home_path}"
+    say ok "${home_path}"
     return 0
   fi
 
@@ -221,15 +258,15 @@ install_copy_item() {
         mv "${home_path}" "${original_path}"
         copy_tree "${src}" "${home_path}"
       fi
-      echo "backup: ${home_path} -> ${original_path}"
-      echo "copy: ${home_path} <- ${src}"
+      say backup "${home_path} -> ${original_path}"
+      say copy "${home_path} <- ${src}"
       print_install_conflict_prompt "${repo_rel}" "${home_path}"
       return 0
     fi
     if [[ "${dry_run}" -eq 0 ]]; then
       copy_tree "${src}" "${home_path}"
     fi
-    echo "copy: ${home_path} <- ${src}"
+    say copy "${home_path} <- ${src}"
     return 0
   fi
 
@@ -247,8 +284,8 @@ install_copy_item() {
         mv "${home_path}" "${original_path}"
         copy_tree "${src}" "${home_path}"
       fi
-      echo "backup: ${home_path} -> ${original_path}"
-      echo "copy: ${home_path} <- ${src}"
+      say backup "${home_path} -> ${original_path}"
+      say copy "${home_path} <- ${src}"
       print_install_conflict_prompt "${repo_rel}" "${home_path}"
       ;;
     keep)
@@ -276,7 +313,7 @@ install_link_item() {
     local current
     current="$(readlink "${home_path}")"
     if [[ "${current}" == "${src}" ]]; then
-      echo "ok: ${home_path}"
+      say ok "${home_path}"
       return 0
     fi
     case "${current}" in
@@ -284,7 +321,7 @@ install_link_item() {
         if [[ "${dry_run}" -eq 0 ]]; then
           ln -sfn "${src}" "${home_path}"
         fi
-        echo "relink: ${home_path} -> ${src}"
+        say relink "${home_path} -> ${src}"
         return 0
         ;;
     esac
@@ -295,7 +332,7 @@ install_link_item() {
       mkdir -p "$(dirname "${home_path}")"
       ln -s "${src}" "${home_path}"
     fi
-    echo "link: ${home_path} -> ${src}"
+    say link "${home_path} -> ${src}"
     return 0
   fi
 
@@ -308,15 +345,15 @@ install_link_item() {
         mv "${home_path}" "${original_path}"
         ln -s "${src}" "${home_path}"
       fi
-      echo "backup: ${home_path} -> ${original_path}"
-      echo "link: ${home_path} -> ${src}"
+      say backup "${home_path} -> ${original_path}"
+      say link "${home_path} -> ${src}"
       print_install_conflict_prompt "${repo_rel}" "${home_path}"
       return 0
     fi
     if [[ "${dry_run}" -eq 0 ]]; then
       ln -s "${src}" "${home_path}"
     fi
-    echo "link: ${home_path} -> ${src}"
+    say link "${home_path} -> ${src}"
     return 0
   fi
 
@@ -331,8 +368,8 @@ install_link_item() {
         mv "${home_path}" "${original_path}"
         ln -s "${src}" "${home_path}"
       fi
-      echo "backup: ${home_path} -> ${original_path}"
-      echo "link: ${home_path} -> ${src}"
+      say backup "${home_path} -> ${original_path}"
+      say link "${home_path} -> ${src}"
       print_install_conflict_prompt "${repo_rel}" "${home_path}"
       ;;
     keep)
@@ -364,7 +401,7 @@ link_item() {
     local current
     current="$(readlink "${home_path}")"
     if [[ "${current}" == "${src}" ]]; then
-      echo "ok: ${home_path}"
+      say ok "${home_path}"
       return 0
     fi
     case "${current}" in
@@ -372,7 +409,7 @@ link_item() {
         if [[ "${dry_run}" -eq 0 ]]; then
           ln -sfn "${src}" "${home_path}"
         fi
-        echo "relink: ${home_path} -> ${src}"
+        say relink "${home_path} -> ${src}"
         return 0
         ;;
     esac
@@ -385,13 +422,13 @@ link_item() {
       mkdir -p "$(dirname "${backup_path}")"
       mv "${home_path}" "${backup_path}"
     fi
-    echo "backup: ${home_path} -> ${backup_path}"
+    say backup "${home_path} -> ${backup_path}"
   fi
 
   if [[ "${dry_run}" -eq 0 ]]; then
     ln -s "${src}" "${home_path}"
   fi
-  echo "link: ${home_path} -> ${src}"
+  say link "${home_path} -> ${src}"
 }
 
 print_install_conflict_prompt() {
@@ -400,8 +437,8 @@ print_install_conflict_prompt() {
   local src="${repo_root}/${repo_rel}"
 
   echo ""
-  echo "Merge review prompt:"
-  echo "-----"
+  echo "${RR_YELLOW}${RR_BOLD}⚠ Merge review prompt${RR_RESET} ${RR_DIM}(${home_path})${RR_RESET}"
+  echo "${RR_DIM}─────────────────────────────────────────────${RR_RESET}"
   cat <<EOF
 Resolve this harness install conflict.
 
@@ -424,7 +461,7 @@ Merge instructions:
 - Do not delete, replace, or move the local path unless the user explicitly approves that exact action.
 - Report the files changed and the conflicts left unresolved.
 EOF
-  echo "-----"
+  echo "${RR_DIM}─────────────────────────────────────────────${RR_RESET}"
   echo ""
 }
 
@@ -446,7 +483,7 @@ link_item_clean() {
     local current
     current="$(readlink "${home_path}")"
     if [[ "${current}" == "${src}" ]]; then
-      echo "ok: ${home_path}"
+      say ok "${home_path}"
       return 0
     fi
     case "${current}" in
@@ -454,7 +491,7 @@ link_item_clean() {
         if [[ "${dry_run}" -eq 0 ]]; then
           ln -sfn "${src}" "${home_path}"
         fi
-        echo "relink: ${home_path} -> ${src}"
+        say relink "${home_path} -> ${src}"
         return 0
         ;;
     esac
@@ -469,7 +506,7 @@ link_item_clean() {
   if [[ "${dry_run}" -eq 0 ]]; then
     ln -s "${src}" "${home_path}"
   fi
-  echo "link: ${home_path} -> ${src}"
+  say link "${home_path} -> ${src}"
 }
 
 export_user_config() {
@@ -555,7 +592,7 @@ link_skill_item() {
     local current
     current="$(readlink "${home_path}")"
     if [[ "${current}" == "${src}" ]]; then
-      echo "ok: ${home_path}"
+      say ok "${home_path}"
       return 0
     fi
     case "${current}" in
@@ -563,7 +600,7 @@ link_skill_item() {
         if [[ "${dry_run}" -eq 0 ]]; then
           ln -sfn "${src}" "${home_path}"
         fi
-        echo "relink: ${home_path} -> ${src}"
+        say relink "${home_path} -> ${src}"
         return 0
         ;;
     esac
@@ -576,7 +613,7 @@ link_skill_item() {
       mkdir -p "$(dirname "${home_path}")"
       ln -s "${src}" "${home_path}"
     fi
-    echo "link: ${home_path} -> ${src}"
+    say link "${home_path} -> ${src}"
     return 0
   fi
 

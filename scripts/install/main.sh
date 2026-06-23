@@ -354,6 +354,7 @@ preflight_unattended_conflicts() {
   fi
 }
 
+install_section "Shell & PATH"
 preflight_shell_setup
 
 # Harness-agnostic setup
@@ -368,12 +369,14 @@ fi
 write_install_state "${install_mode}" "${on_conflict}"
 
 # Link shared skills per-skill into each present harness's native skills dir.
+install_section "Skills"
 if [[ $dry_run -eq 0 ]]; then
   bash "${repo_root}/scripts/build/link-global-skills.sh" || true
 fi
 
 # Re-apply Claude MCP live store from mcp-servers.json so the recorded set is portable.
 # (Codex reads config.toml directly from the repo; only Claude's live store needs reapplication.)
+install_section "MCP Servers"
 if [[ $dry_run -eq 0 ]] && command -v node >/dev/null 2>&1; then
   node "${repo_root}/scripts/cli/main.mjs" mcp apply || true
 fi
@@ -407,7 +410,7 @@ run_post_install_onboarding() {
 
   # Always land the minimal baseline first, so the harness works even if the user exits the wizard
   # immediately (the interactive wizard does not re-apply the default set itself).
-  echo "Applying base configuration."
+  install_section "Base Configuration"
   node "${repo_root}/scripts/cli/main.mjs" bundle apply --default
 
   if [[ "${skip_presets_onboard}" -eq 1 || "${ROBOREPO_PRESETS_ONBOARD:-}" == "skip" ]]; then
@@ -424,12 +427,10 @@ run_post_install_onboarding() {
 }
 
 # Post-install summary
-echo ""
-echo "Core install complete."
-echo "  Mode:   ${install_mode}"
-echo "  Claude: $([ $has_claude -eq 1 ] && echo 'available' || echo 'not installed')"
-echo "  Codex:  $([ $has_codex  -eq 1 ] && echo 'available' || echo 'not installed')"
-echo ""
+install_section "Core Install Complete"
+echo "  ${RR_BOLD}Mode${RR_RESET}    ${install_mode}"
+echo "  ${RR_BOLD}Claude${RR_RESET}  $([ $has_claude -eq 1 ] && echo "${RR_GREEN}available${RR_RESET}" || echo "${RR_DIM}not installed${RR_RESET}")"
+echo "  ${RR_BOLD}Codex${RR_RESET}   $([ $has_codex  -eq 1 ] && echo "${RR_GREEN}available${RR_RESET}" || echo "${RR_DIM}not installed${RR_RESET}")"
 run_post_install_onboarding
 if [[ $has_claude -eq 0 || $has_codex -eq 0 ]]; then
   echo ""

@@ -94,10 +94,10 @@ function markOnboarded() {
   });
 }
 
-// Each toggleable item maps to a mutate call. Telemetry is imported lazily to avoid a static import
-// cycle (telemetry.mjs → presets.mjs). Returns { ok, message }.
-async function applyItemToggle(section, item) {
-  const enabled = !item.active;
+// Each toggleable item maps to a mutate call. `enabled` is the DESIRED final state (the wizard already
+// flipped the in-memory flag; here we persist it). Telemetry is imported lazily to avoid a static
+// import cycle (telemetry.mjs → presets.mjs). Returns { ok, message }.
+async function applyItemToggle(section, item, enabled) {
   if (section.category === "Token Optimization") {
     // jcodemunch / jdocmunch / caveman / telemetry are all packages now (telemetry via a service
     // component), so they route through the one generic package mutate.
@@ -143,15 +143,11 @@ function buildOnboardSteps() {
         label: item.label,
         description: item.description || "",
         active: item.active,
+        wasActive: item.active, // original state; diffed against `active` on finish to batch the work
         toggleable: true,
-        onToggle: async () => {
-          const result = await applyItemToggle(section, item);
-          if (!result.ok) return item.active; // mutate refused: leave mark unchanged
-          // Re-read the snapshot so the displayed state matches what was actually persisted.
-          const fresh = buildBehaviorView(readConfigSnapshot())
-            .find((s) => s.category === name)?.items.find((it) => it.id === item.id);
-          return fresh ? fresh.active : !item.active;
-        },
+        // Carried so onFinish can route the change to the right mutate primitive.
+        section,
+        item,
       }));
     if (items.length === 0) continue;
     steps.push({ title: name, description: section.description, footnote: section.footnote, items });
@@ -177,9 +173,35 @@ function buildOnboardSteps() {
   return steps;
 }
 
+// Deferred applier: run once when the wizard exits. Walk every step's items, diff each item's final
+// `active` against `wasActive`, and persist only the ones that changed. All blocking work (mcp add/
+// remove, symlinks) happens here, after raw mode is off — so it can log freely without corrupting the
+// in-place repaint that ran during the wizard.
+async function applyWizardChanges(steps) {
+  const pending = [];
+  for (const step of steps) {
+    if (step.readonly) continue;
+    for (const row of step.items) {
+      if (!row.toggleable || row.active === row.wasActive) continue;
+      pending.push(row);
+    }
+  }
+  if (pending.length === 0) {
+    console.log("\nNo changes.");
+    return;
+  }
+  console.log("\nApplying changes…");
+  for (const row of pending) {
+    const verb = row.active ? "enable" : "disable";
+    const result = await applyItemToggle(row.section, row.item, row.active);
+    const status = result.ok ? "ok" : `failed: ${result.message}`;
+    console.log(`  ${verb} ${row.item.id ?? row.label} — ${status}`);
+  }
+}
+
 async function runInteractiveOnboard() {
   console.log("roborepo onboarding — toggle behavior across the sections, then press Enter on the last step.\n");
-  await wizard(buildOnboardSteps());
+  await wizard(buildOnboardSteps(), applyWizardChanges);
   console.log("Onboarding complete.");
 }
 

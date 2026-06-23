@@ -163,15 +163,19 @@ remove_shell_wiring() {
         continue
       fi
       tmp="$(mktemp "${TMPDIR:-/tmp}/roborepo-profile.XXXXXX")"
+      # Drop roborepo wiring lines and their marker comments. Both marker strings are written
+      # verbatim by the installer (shell-snippets.sh -> "# Harness config shell helpers" before
+      # its `source` lines; install-global-commands.sh -> "# Harness config global commands"
+      # before the PATH export) and are removed unconditionally — a user is not expected to have
+      # authored these exact strings. Dropping the marker regardless of what follows also cleans
+      # up comments orphaned by earlier uninstall runs that pruned the wiring line but not the
+      # marker. Blank lines elsewhere in the profile are left untouched.
       awk -v repo_root="${repo_root}" -v path_line="${line}" '
         $0 == path_line { next }
         index($0, "source \"" repo_root "/shell/") == 1 { next }
-        $0 == "# Harness config shell helpers" { held = $0; next }
-        {
-          if (held != "") { print held; held = "" }
-          print
-        }
-        END { if (held != "") print held }
+        $0 == "# Harness config shell helpers" { next }
+        $0 == "# Harness config global commands" { next }
+        { print }
       ' "${profile}" > "${tmp}"
       mv "${tmp}" "${profile}"
       echo "prune: removed roborepo shell wiring from ${profile}"

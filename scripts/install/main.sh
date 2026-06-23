@@ -395,7 +395,7 @@ try {
 # recorded in docs/plans/onboarding-reinstatement.md.
 run_post_install_onboarding() {
   if [[ $dry_run -eq 1 ]]; then
-    echo "Next: install will apply the default configuration after core install."
+    echo "dry-run: a real install would apply the default configuration after core install."
     return 0
   fi
 

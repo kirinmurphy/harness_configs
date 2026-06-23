@@ -7,16 +7,19 @@ less tested.
 
 ## Install Configs And CLI
 
+The first install runs the installer script directly — this is what puts `roborepo` on your `PATH`.
+Clone the repo, then from its root:
+
 Preview install changes:
 
 ```sh
-./bin/roborepo update --dry-run
+./scripts/install/main.sh --dry-run
 ```
 
 Install on a new machine:
 
 ```sh
-./bin/roborepo update
+./scripts/install/main.sh
 ```
 
 Interactive installs ask for the install mode, then apply the default configuration automatically
@@ -27,7 +30,8 @@ not shown yet. Running `roborepo onboard` re-applies the defaults headlessly:
 roborepo onboard
 ```
 
-After the first install, use `roborepo` from anywhere:
+After the first install, use `roborepo` from anywhere. `roborepo update` re-runs the same installer
+to pick up new or changed config (there is no separate `install` verb):
 
 ```sh
 roborepo

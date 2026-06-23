@@ -161,6 +161,16 @@ stage_update_item() {
   echo "stage: ${update_path} <- ${src}"
 }
 
+# A root_config file is "roborepo-authored" once install has written its hooks/markers into it.
+# Backing such a file up as a "pre-install" original would poison the backup: a later uninstall would
+# restore roborepo hooks into a supposedly-clean file. Detect the install-injected signatures so we
+# only ever back up a genuine pre-roborepo file. Conservative: any hit means do-not-back-up.
+is_roborepo_authored() {
+  local file="$1"
+  [[ -f "${file}" ]] || return 1
+  grep -Eq "roborepo telemetry capture|roborepo-write-guard|BEGIN GENERATED AGENT PERMISSIONS|MANAGED_BY_ROBOREPO" "${file}" 2>/dev/null
+}
+
 install_copy_item() {
   local repo_rel="$1"
   local home_path="$2"
@@ -174,7 +184,13 @@ install_copy_item() {
 
   if [[ -n "${harness}" && -e "${home_path}" && ! -L "${home_path}" ]]; then
     local pre_install_backup="${HOME}/.roborepo/backups/pre-install/${harness}/$(basename "${home_path}")"
-    if [[ ! -e "${pre_install_backup}" ]]; then
+    if [[ -e "${pre_install_backup}" ]]; then
+      : # already have the user's original — never overwrite it
+    elif is_roborepo_authored "${home_path}"; then
+      # The live file is already roborepo's (prior install or stray apply). Backing it up would
+      # capture roborepo hooks as a fake "original" — skip, so a real original isn't replaced by poison.
+      echo "skip pre-install backup: ${home_path} is already roborepo-authored"
+    else
       if [[ "${dry_run}" -eq 0 ]]; then
         mkdir -p "$(dirname "${pre_install_backup}")"
         cp -a "${home_path}" "${pre_install_backup}"

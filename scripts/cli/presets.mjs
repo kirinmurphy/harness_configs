@@ -474,12 +474,29 @@ function linkItem(row, policy) {
   console.log(`link: ${row.homeAbs} -> ${expected}`);
 }
 
+// A root_config file is "roborepo-authored" once install has written its hooks/markers in. Backing
+// such a file up as a "pre-install" original poisons the backup — a later uninstall would restore
+// roborepo hooks into a supposedly-clean file. Only ever back up a genuine pre-roborepo file.
+function isRoborepoAuthored(file) {
+  try {
+    const text = fs.readFileSync(file, "utf8");
+    return /roborepo telemetry capture|roborepo-write-guard|BEGIN GENERATED AGENT PERMISSIONS|MANAGED_BY_ROBOREPO/.test(text);
+  } catch {
+    return false;
+  }
+}
+
 function savePreInstallBackup(row) {
   if (!row.harness) return;
   if (readlink(row.homeAbs)) return;
   if (!pathExists(row.homeAbs)) return;
   const dest = path.join(os.homedir(), ".roborepo", "backups", "pre-install", row.harness, path.basename(row.homeAbs));
-  if (fs.existsSync(dest)) return;
+  if (fs.existsSync(dest)) return; // already have the user's original — never overwrite it
+  if (isRoborepoAuthored(row.homeAbs)) {
+    // Live file is already roborepo's (prior install or stray apply) — skip so poison isn't captured.
+    console.log(`skip pre-install backup: ${row.homeAbs} is already roborepo-authored`);
+    return;
+  }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   copyTree(row.homeAbs, dest);
   console.log(`pre-install backup: ${row.homeAbs} -> ${dest}`);

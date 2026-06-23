@@ -32,3 +32,8 @@
 # Skill export bundles produced by `harness_helper --export-skill` (shareable artifacts,
 # not source). Pattern guards against accidentally committing a test/export run.
 global_agent_skills_*.zip
+
+# jdocmunch index marker written into indexed dirs. Normally covered by ~/.gitignore_global, but
+# uninstall removes that entry — ignore it here too so the marker never shows up as untracked.
+.jdm-indexed
+**/.jdm-indexed

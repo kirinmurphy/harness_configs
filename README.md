@@ -46,9 +46,10 @@ Installing the `roborepo` core applies a default set of global packages and conf
 > **Just want token telemetry?** You can install only the local telemetry capture + dashboard — without the rest of the global config — with `roborepo telemetry install` (or `./bin/roborepo telemetry install` from a fresh clone). It wires just the capture hooks, so you can measure your token usage before adopting the full suite; upgrade later by re-running the normal install. Then `roborepo telemetry start` to capture and open the dashboard.
 
 <!--
-A per-item onboarding experience (choose individual skills/commands/MCP servers) is in progress; see
-docs/plans/item-level-onboarding.md. Until it ships, the interactive bundle-toggle wizard that
-previously appeared here is disabled and not shown to users. The removed terminal block and copy are
+Per-feature configuration (choose individual skills/commands/packages/behaviors) ships through the
+package model and the config control panel — `roborepo onboard` and the `/config` dashboard. See
+docs/reference/services/config-control-panel.md and the completed plan
+docs/plans/completed/config-panel-behavior-sections.md. The earlier bundle-toggle wizard copy is
 recorded in docs/plans/onboarding-reinstatement.md §4.
 -->
 
@@ -98,7 +99,7 @@ Use these when you want to intentionally start a named workflow.
 
 ### Chat-Time Output
 
-Lighter-weight behaviors that only generate messages in the conversation — no files written, no workflow started.
+Lighter-weight behaviors that only generate messages in the conversation — no files written, no workflow started. Each is an independently toggleable package (on by default), surfaced in the config panel's **Chat-Time Output** section and merged into both the Claude and Codex rules files.
 
 |                                                                     |                                                                                                                    |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |

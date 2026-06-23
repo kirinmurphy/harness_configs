@@ -7,7 +7,8 @@ Claude and Codex should share the same global behavior defaults without hand-mai
 ## Current Behavior
 
 - `globals/claude/CLAUDE.md` and `globals/codex/AGENTS.md` are generated tracked files.
-- Both files express the same core behavior through shared fragments: caveman mode, skill loading and visibility, code/doc exploration, verification, session capture, impact awareness, temp-file hygiene, and project-context orientation.
+- Both files express the same core behavior through shared fragments: caveman mode, skill loading, code/doc exploration, verification, temp-file hygiene, and project-context orientation.
+- The three Chat-Time Output behaviors (skill visibility, session capture, impact awareness) are no longer base fragments. They ship as default-on rules packages under `globals/packages/<id>/rules.md` and merge into both harness rules files when enabled, so they can be toggled per behavior. See [config-control-panel.md](../services/config-control-panel.md).
 - Harness-specific fragments hold Claude-only or Codex-only differences.
 - Root harness config files are conditional defaults:
   - `~/.claude/settings.json`
@@ -26,11 +27,8 @@ rules/
   shared/
     00-communication.md
     05-skill-loading.md
-    06-skill-visibility.md
     10-exploration.md
     20-verification.md
-    30-session-capture.md
-    35-impact-awareness.md
     40-temp-files.md
     50-project-context.md
   globals/claude/

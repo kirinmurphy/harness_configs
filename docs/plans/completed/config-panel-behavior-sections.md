@@ -1,14 +1,20 @@
 # Config Panel Behavior Sections — Plan
 
+> **Status: implemented.** Both additions below shipped — the Commands section and the
+> default-on, toggleable Chat-Time Output section (convention capture, impact awareness,
+> skill visibility) merged into both harnesses. Current behavior is documented in
+> [config-control-panel.md](../reference/services/config-control-panel.md); this plan is
+> retained for the design rationale and the superseded-wizard history.
+
 ## Purpose
 
 `roborepo` exposes harness configuration through one inspectable, editable surface: the
 web dashboard (`/config`) and the terminal `roborepo onboard` flow. Both render the same
 snapshot and write through the same mutate primitives. The surface is organized into
-user-facing **behavior sections** (Token Optimization, Workflows, Code Conventions,
-Permissions) rather than the internal install machinery.
+user-facing **behavior sections** (Token Optimization, Commands, Code Conventions,
+Chat-Time Output, Permissions) rather than the internal install machinery.
 
-This plan covers two remaining additions to that section model:
+This plan covered two additions to that section model:
 
 1. **Commands as their own section.** Slash commands currently appear inside the
    "Workflows" section framed as skills. Surface them as commands.

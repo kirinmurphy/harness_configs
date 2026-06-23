@@ -33,7 +33,9 @@ to change it.
 ## Global rules (`CLAUDE.md` / `AGENTS.md`)
 
 **What they do:** the always-loaded behavior defaults — caveman mode, code/doc exploration policy,
-verification discipline, session-capture flagging.
+verification discipline, temp-file hygiene. (The inline chat-note behaviors — convention capture,
+impact awareness, skill visibility — moved out of base rules into default-on Chat-Time Output rules
+packages; see [rules-parity-and-layering.md](rules-parity-and-layering.md).)
 
 **Parity model:** generated from shared fragments under `globals/rules/shared/`, plus harness-only
 fragments under `globals/rules/claude/` and `globals/rules/codex/`. You never edit `CLAUDE.md` or

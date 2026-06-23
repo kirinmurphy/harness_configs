@@ -9,8 +9,8 @@ A user can see the current state and change it from either the web dashboard
 hand-editing `~/.claude/settings.json`, `~/.codex/config.toml`, or symlinks.
 
 The panel is organized around user-facing behavior sections, not the internal
-install machinery: **Token Optimization**, **Commands**, **Code Conventions**, and
-**Permissions**.
+install machinery: **Token Optimization**, **Commands**, **Code Conventions**,
+**Chat-Time Output**, and **Permissions**.
 
 ## Concept Model
 
@@ -33,7 +33,7 @@ applies each component; the enable/disable switch dispatches on `component.type`
 | type | Wires | Notes |
 | --- | --- | --- |
 | `mcp` | An MCP server registration | via `roborepo mcp add` |
-| `rules` | A rules block in `~/.claude/CLAUDE.md` | merged by unique first line |
+| `rules` | A rules block in the harness rules file(s) | `harness: claude` → `CLAUDE.md`, `codex` → `AGENTS.md`, `both` → each present harness; merged/removed by unique first line |
 | `hooks` | Hook entries in `~/.claude/settings.json` | merged by command |
 | `permissions` | `permissions.allow` entries | exact-match add/remove |
 | `plugin` | `extraKnownMarketplaces` + `enabledPlugins[id]` | harness downloads the plugin on its next launch |
@@ -68,6 +68,9 @@ panel renders:
 - **Commands** — skills that pair with a slash command, labelled by their `/command`.
   Toggle installs/removes the skill link.
 - **Code Conventions** — auto-loaded skills (no command). Same skill-link toggle.
+- **Chat-Time Output** — the inline chat-note behaviors (convention capture, impact
+  awareness, skill visibility), each a `rules` package merged into both harnesses. On by
+  default; toggling adds/removes the behavior's rules block.
 - **Permissions** — the active permission profile, with a global / per-project scope
   switch. Blocked/allowed command summaries are read-only.
 

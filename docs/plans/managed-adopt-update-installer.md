@@ -4,9 +4,11 @@
 
 Design and implement the next installer model for managed/adopt/update behavior.
 
-> **Note:** [`item-level-onboarding.md`](item-level-onboarding.md) is now the
-> detailed spec for per-item install mechanics, managed/adopt semantics,
-> update/repair behavior, and the wizard UI. This doc remains the high-level
+> **Note:** Per-feature configuration shipped through the package model and config
+> control panel; see [`config-control-panel.md`](../reference/services/config-control-panel.md)
+> and the completed plan
+> [`config-panel-behavior-sections.md`](completed/config-panel-behavior-sections.md).
+> This doc remains the high-level
 > backlog and is cross-referenced from `harness-parity-todo.md` for the
 > layered root-config inheritance work (item 6 below).
 

@@ -126,8 +126,9 @@ flag, they can make an ordinary chat request such as "update CLAUDE.md with
 this" or "add this to the technical-planning-docs skill."
 
 If capture later grows a stricter multi-step workflow that users should invoke
-by name, make it a skill-backed command. Until then, keep it as always-on
-observation plus normal chat.
+by name, make it a skill-backed command. Until then, keep it as a default-on
+observer behavior (the toggleable convention-capture rules package) plus normal
+chat.
 
 ## Plan And Tighten
 
@@ -141,9 +142,9 @@ fixes, and verifies. It must not silently trigger from vague prompts such as
 
 **Plan** did not become a command. The useful product behavior — surfacing how a
 proposed change collides with or duplicates existing functionality — is the
-always-on **Impact Awareness** convention (a `> 🧭 Impact:` inline flag), the
-same observer shape as convention capture. It needs no slash command because the
-value is the proactive flag, not a named workflow. The deeper architecture-fit
+**Impact Awareness** convention (a `> 🧭 Impact:` inline flag), a default-on
+toggleable observer behavior with the same shape as convention capture. It needs
+no slash command because the value is the proactive flag, not a named workflow. The deeper architecture-fit
 analysis happens conversationally once the flag surfaces.
 
 ## Decision Rules

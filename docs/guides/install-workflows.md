@@ -295,10 +295,12 @@ Applying the default configuration (the same packages install sets up automatica
 bundles: 7 applied
 ```
 
-> **Note:** A per-item onboarding experience (choose individual skills, commands, and MCP servers)
-> is in progress; see [`item-level-onboarding.md`](../plans/item-level-onboarding.md). Until it
-> ships, the interactive bundle-toggle wizard is disabled and `roborepo onboard` applies the defaults
-> headlessly. The previous interactive walkthrough is recorded in
+> **Note:** Per-feature configuration (individual skills, commands, packages, and Chat-Time Output
+> behaviors) is handled by the package model and the config control panel — `roborepo onboard` and the
+> `/config` dashboard. See [`config-control-panel.md`](../reference/services/config-control-panel.md)
+> and the completed plan
+> [`config-panel-behavior-sections.md`](../plans/completed/config-panel-behavior-sections.md). The
+> earlier bundle-toggle wizard is recorded in
 > [`onboarding-reinstatement.md`](../plans/onboarding-reinstatement.md).
 
 Telemetry stays off until you turn it on:

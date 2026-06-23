@@ -3,8 +3,10 @@
 ## Purpose
 
 The bundle-toggle onboarding UI was disabled (not deleted) so that installation auto-applies every
-default package/tool silently, with no user-facing wizard, until the item-level onboarding workflow
-in [`item-level-onboarding.md`](item-level-onboarding.md) is ready to ship.
+default package/tool silently. Per-feature configuration now lives in the package model and config
+control panel (`roborepo onboard` + the `/config` dashboard); see
+[`config-control-panel.md`](../reference/services/config-control-panel.md) and the completed plan
+[`config-panel-behavior-sections.md`](completed/config-panel-behavior-sections.md).
 
 This doc records exactly what was removed or changed and how to restore it, so the working,
 previously-tested behavior can be brought back without archaeology. It covers all surfaces touched:

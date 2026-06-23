@@ -309,9 +309,9 @@ validates the data model before adding controls.
 
 ## Related
 
-- [`item-level-onboarding.md`](item-level-onboarding.md) — full spec for per-item
-  install mechanics, managed/adopt semantics, and the complete wizard architecture.
-  This doc covers only the phases we are building now.
+- [`config-panel-behavior-sections.md`](config-panel-behavior-sections.md) — the
+  config-panel section model (Commands, Chat-Time Output) and the superseded-wizard
+  history. This doc covers the control-panel phases built earlier.
 - [`onboarding-reinstatement.md`](onboarding-reinstatement.md) — exact code and test
   changes needed to restore the bundle-toggle wizard (Phase 1 source).
 - [`cleanup-before-reinstall.md`](cleanup-before-reinstall.md) — steps to get from

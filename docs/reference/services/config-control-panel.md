@@ -8,8 +8,8 @@ A user can see the current state and change it from either the web dashboard
 (`/config`) or the interactive terminal flow (`roborepo onboard`), without
 hand-editing `~/.claude/settings.json`, `~/.codex/config.toml`, or symlinks.
 
-The panel is organized around four user-facing behavior sections, not the internal
-install machinery: **Token Optimization**, **Workflows**, **Code Conventions**, and
+The panel is organized around user-facing behavior sections, not the internal
+install machinery: **Token Optimization**, **Commands**, **Code Conventions**, and
 **Permissions**.
 
 ## Concept Model
@@ -58,15 +58,15 @@ are enabled.
 > **bundle** (`manifests/platform/presets.json`), which groups file-copy/link rows at
 > install time. Both exist; they operate at different layers.
 
-### The four sections
+### The sections
 
 `buildBehaviorView()` (`scripts/cli/config.mjs`) maps the snapshot onto the sections the
 panel renders:
 
 - **Token Optimization** — the jcodemunch / jdocmunch packages, the Caveman plugin
   package, and Telemetry (a service package). All toggle.
-- **Workflows** — skills that pair with a slash command. Toggle installs/removes the
-  skill link.
+- **Commands** — skills that pair with a slash command, labelled by their `/command`.
+  Toggle installs/removes the skill link.
 - **Code Conventions** — auto-loaded skills (no command). Same skill-link toggle.
 - **Permissions** — the active permission profile, with a global / per-project scope
   switch. Blocked/allowed command summaries are read-only.

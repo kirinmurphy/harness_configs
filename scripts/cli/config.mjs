@@ -200,16 +200,16 @@ export function buildBehaviorView(snap) {
       ],
     },
     {
-      category: "Workflows",
-      description: "Named commands that frame a specific use case.",
+      category: "Commands",
+      description: "Named slash-command workflows you start intentionally.",
       items: snap.tools
         .filter((t) => t.command && t.id !== "roborepo-support")
         .map((t) => ({
           id: t.id,
-          label: t.label,
+          label: `/${t.command}`,
           description: t.description,
           active: t.installed,
-          badges: ["skill", `/${t.command}`],
+          badges: [`/${t.command}`, "skill"],
         })),
     },
     {

@@ -62,7 +62,7 @@ export async function bundleCommand(args) {
 }
 
 // Interactive onboarding, organized around the four user-facing behavior sections that the /config
-// web portal shows (Token Optimization, Workflows, Code Conventions, Permissions) rather than the
+// web portal shows (Token Optimization, Commands, Code Conventions, Permissions) rather than the
 // internal bundle list. Each toggleable item drives the same config-mutate primitives the web POST
 // endpoints use, so terminal and web stay in lockstep. Permissions are read-only here (Phase 2).
 // Non-TTY (headless) keeps applying the default configuration, the same set install wires up.
@@ -104,7 +104,7 @@ async function applyItemToggle(section, item) {
     if (["jcodemunch", "jdocmunch", "caveman", "telemetry"].includes(item.id)) return mutatePackage(item.id, enabled);
     return { ok: false, message: `${item.label} is managed elsewhere (not toggleable here)` };
   }
-  if (section.category === "Workflows" || section.category === "Code Conventions") {
+  if (section.category === "Commands" || section.category === "Code Conventions") {
     return setSkillInstalled(item.id, enabled);
   }
   return { ok: false, message: `${section.category} is read-only in onboarding` };
@@ -128,7 +128,7 @@ async function runInteractiveOnboard() {
       for (const item of section.items) {
         const toggleable =
           (section.category === "Token Optimization" && (item.id === "jcodemunch" || item.id === "jdocmunch" || item.id === "telemetry" || item.id === "caveman")) ||
-          section.category === "Workflows" ||
+          section.category === "Commands" ||
           section.category === "Code Conventions";
         if (!toggleable) continue;
         const mark = item.active ? "[x]" : "[ ]";

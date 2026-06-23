@@ -116,13 +116,13 @@ function behaviorView(snap) {
       ],
     },
     {
-      category: "Workflows", wide: false,
-      desc: "Named commands that frame a specific use case.",
+      category: "Commands", wide: false,
+      desc: "Named slash-command workflows you start intentionally.",
       items: (snap.tools || [])
         .filter((t) => t.command && t.id !== "roborepo-support")
         .map((t) => ({
-          id: t.id, label: t.label, desc: t.description, active: t.installed,
-          badges: ["skill", "/" + t.command], toggle: "skill",
+          id: t.id, label: "/" + t.command, desc: t.description, active: t.installed,
+          badges: ["/" + t.command, "skill"], toggle: "skill",
         })),
     },
     {

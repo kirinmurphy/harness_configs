@@ -77,9 +77,15 @@ run_expect_install() {
   local script="$3"
 
   command -v expect >/dev/null 2>&1 || fail "expect is required for interactive installer tests"
+  # These tests cover the install-mode + collision prompts, not onboarding, so run with
+  # ROBOREPO_PRESETS_ONBOARD=skip: main.sh applies the base configuration and then skips the
+  # interactive wizard (no keypress to drive, no timing-dependent dismissal that can hang under
+  # load). The wizard itself is covered by test_onboarding_wizard_toggles_and_applies, which spawns
+  # `onboard` alone so it reaches the wizard instantly. 120s tolerates the full install under load
+  # (main.sh always terminates in skip mode, so eof is guaranteed — the timeout just bounds install).
   HC_REPO="$repo_root" HC_HOME="$home_dir" HC_EXPECT_SCRIPT="$script" expect <<'EOF' >"$output" 2>&1
-set timeout 20
-spawn env HOME=$env(HC_HOME) ROBOREPO_ASSUME_INTERACTIVE=1 $env(HC_REPO)/scripts/install/main.sh
+set timeout 120
+spawn env HOME=$env(HC_HOME) ROBOREPO_ASSUME_INTERACTIVE=1 ROBOREPO_PRESETS_ONBOARD=skip $env(HC_REPO)/scripts/install/main.sh
 source $env(HC_EXPECT_SCRIPT)
 expect eof
 set wait_result [wait]
@@ -114,8 +120,8 @@ test_fresh_managed() {
   # Install applies the minimal base bundle, then hands off to onboarding. Non-interactively the
   # onboard step takes its headless path (applies the default set, no wizard), so a noninteractive
   # install still lands a working harness without prompting.
-  assert_file_contains "$home_dir/out" "Core install complete" "main install completes core"
-  assert_file_contains "$home_dir/out" "Applying base configuration" "noninteractive install applies the base bundle"
+  assert_file_contains "$home_dir/out" "Core Install Complete" "main install completes core"
+  assert_file_contains "$home_dir/out" "Base Configuration" "noninteractive install applies the base bundle"
   assert_file_contains "$home_dir/out" "applying the default configuration" "noninteractive onboard runs headlessly"
   [[ -e "$home_dir/.claude/settings.json" && -e "$home_dir/.codex/config.toml" ]] \
     && pass "main install applies harness root config automatically" \
@@ -126,9 +132,7 @@ test_mode_prompt_allows_adopt_on_clean_machine() {
   local home_dir expect_file
   home_dir="$(make_home)"
   expect_file="$home_dir/expect.tcl"
-  # Onboarding wizard disabled (in-progress feature): install applies defaults headlessly with no
-  # toggle prompt. The expect script no longer waits for "Select numbers to toggle". See
-  # docs/plans/onboarding-reinstatement.md §5.
+  # Covers the mode + collision prompts only; onboarding is skipped (see run_expect_install).
   cat >"$expect_file" <<'EOF'
 expect "Selection*"
 send "2\r"
@@ -140,9 +144,9 @@ EOF
   run_expect_install "$home_dir" "$home_dir/out" "$expect_file"
 
   assert_file_contains "$home_dir/out" "Choose install mode" "install mode prompt appears"
-  assert_file_contains "$home_dir/out" "Mode:   adopt" "install mode prompt accepts adopt"
+  assert_file_contains "$home_dir/out" "Mode.*adopt" "install mode prompt accepts adopt"
   assert_file_contains "$home_dir/out" "state: .* mode=adopt on-conflict=keep" "adopt keep policy is persisted"
-  assert_file_contains "$home_dir/out" "Applying default configuration" "install applies defaults headlessly after core install"
+  assert_file_contains "$home_dir/out" "Base Configuration" "install applies base configuration after core install"
   [[ -f "$home_dir/.roborepo/presets/state.json" ]] \
     && pass "post-install default apply records preset state" \
     || fail "post-install default apply records preset state" "$home_dir/out"
@@ -152,8 +156,8 @@ test_mode_prompt_allows_managed_selection() {
   local home_dir expect_file
   home_dir="$(make_home)"
   expect_file="$home_dir/expect.tcl"
-  # Onboarding wizard disabled (in-progress feature): no toggle prompt; install applies defaults
-  # headlessly. See docs/plans/onboarding-reinstatement.md §5.
+  # Managed mode on a clean machine has no collision prompt; onboarding is skipped (see
+  # run_expect_install), so only the mode prompt needs driving.
   cat >"$expect_file" <<'EOF'
 expect "Selection*"
 send "1\r"
@@ -162,9 +166,34 @@ EOF
   run_expect_install "$home_dir" "$home_dir/out" "$expect_file"
 
   assert_file_contains "$home_dir/out" "Choose install mode" "install mode prompt appears for managed"
-  assert_file_contains "$home_dir/out" "Mode:   managed" "install mode prompt accepts managed"
+  assert_file_contains "$home_dir/out" "Mode.*managed" "install mode prompt accepts managed"
   assert_file_contains "$home_dir/out" "state: .* mode=managed on-conflict=overwrite" "managed overwrite policy is persisted"
-  assert_file_contains "$home_dir/out" "Applying default configuration" "managed install applies defaults headlessly after core install"
+  assert_file_contains "$home_dir/out" "Base Configuration" "managed install applies base configuration after core install"
+}
+
+# End-to-end coverage of the interactive onboarding wizard: a real keypress toggles an item (instant
+# in-memory flip), and on exit the deferred batch apply runs after raw mode is off and applies only
+# the changed item. The pure diff selection is unit-tested separately (wizard-diff-check.mjs).
+test_onboarding_wizard_toggles_and_applies() {
+  local home_dir
+  home_dir="$(make_home)"
+  # Core-install (headless) first so the wizard has a real config to build its steps from.
+  HOME="$home_dir" "$repo_root/scripts/install/main.sh" < /dev/null >/dev/null 2>&1
+
+  command -v expect >/dev/null 2>&1 || fail "expect is required for interactive installer tests"
+  # Space toggles the highlighted item; Esc finishes, triggering the deferred batch apply.
+  HC_HOME="$home_dir" HC_REPO="$repo_root" expect <<'EOF' >"$home_dir/wiz.out" 2>&1
+set timeout 45
+spawn env HOME=$env(HC_HOME) ROBOREPO_STATE_DIR=$env(HC_HOME)/.roborepo node $env(HC_REPO)/scripts/cli/main.mjs onboard
+expect "Step 1"
+send " "
+send "\033"
+expect eof
+EOF
+
+  assert_file_contains "$home_dir/wiz.out" "Applying changes" "wizard runs deferred batch apply after a toggle"
+  assert_file_not_contains "$home_dir/wiz.out" "failed:" "wizard toggle applies without error"
+  assert_file_contains "$home_dir/wiz.out" "Onboarding complete" "wizard finishes cleanly"
 }
 
 test_managed_mode_backs_up_existing_configs() {
@@ -608,11 +637,19 @@ test_windows_installer_root_preflight_order() {
   assert_file_not_contains "$windows_script" 'Link-Item "globals/codex/skills"' "Windows installer does not reference removed globals/codex/skills source"
 }
 
-test_repo_local_codex_skill_layer_removed() {
+test_repo_local_codex_skill_layer_present() {
+  # Repo-local skills under local/skills/ are linked into BOTH .claude/skills and .codex/skills
+  # (Codex reads <repo>/.codex/skills when an agent works inside this repo, mirroring .claude).
+  # link-skills.sh is the source of truth: --check must pass and both per-harness links must
+  # resolve to the local source.
   "$repo_root/scripts/build/link-skills.sh" --check >/dev/null
-  [[ ! -e "$repo_root/.codex/skills/harness-platform-dev" ]] \
-    && pass "repo-local .codex skill link is absent" \
-    || fail "repo-local .codex skill link is absent"
+  local name="harness-platform-dev"
+  [[ "$(readlink "$repo_root/.claude/skills/$name" 2>/dev/null)" == "../../local/skills/$name" ]] \
+    && pass "repo-local .claude skill link resolves to local source" \
+    || fail "repo-local .claude skill link resolves to local source"
+  [[ "$(readlink "$repo_root/.codex/skills/$name" 2>/dev/null)" == "../../local/skills/$name" ]] \
+    && pass "repo-local .codex skill link resolves to local source" \
+    || fail "repo-local .codex skill link resolves to local source"
 }
 
 test_write_guard_root_config_message() {
@@ -645,6 +682,7 @@ test_global_command_conflict_blocks_before_mutation
 test_direct_harness_conflict_dry_run_reports
 test_mode_prompt_allows_adopt_on_clean_machine
 test_mode_prompt_allows_managed_selection
+test_onboarding_wizard_toggles_and_applies
 test_managed_mode_backs_up_existing_configs
 test_adopt_keep_originals_prints_merge_prompt
 test_adopt_overwrite_policy_backs_up_originals
@@ -656,7 +694,7 @@ test_sync_guard
 test_sync_interactive_choices
 test_sync_overwrite_rollback_on_replace_failure
 test_windows_installer_root_preflight_order
-test_repo_local_codex_skill_layer_removed
+test_repo_local_codex_skill_layer_present
 test_write_guard_root_config_message
 
 echo "all install collision tests passed"

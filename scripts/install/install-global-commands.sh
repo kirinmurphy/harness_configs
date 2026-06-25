@@ -2,6 +2,9 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=scripts/install/install-lib.sh
+source "${repo_root}/scripts/install/install-lib.sh"  # RR_* colors + say() (this script's own
+# choose_profile() is defined below and intentionally overrides install-lib's simpler one)
 bin_dir="${HOME}/.local/bin"
 path_line='export PATH="${HOME}/.local/bin:${PATH}"'
 backup_root="${ROBOREPO_BACKUP_ROOT:-${HOME}/.roborepo-backups/$(date +%Y%m%d-%H%M%S)}"
@@ -123,7 +126,7 @@ preflight_commands() {
 preflight_commands
 
 if [[ "${dry_run}" -eq 1 ]]; then
-  [[ -d "${bin_dir}" ]] || echo "would mkdir: ${bin_dir}"
+  [[ -d "${bin_dir}" ]] || say "would mkdir" "${bin_dir}"
 else
   mkdir -p "${bin_dir}"
 fi
@@ -137,18 +140,18 @@ link_command() {
     local current
     current="$(readlink "${target}" 2>/dev/null || true)"
     if [[ "${current}" == "${source_path}" ]]; then
-      echo "ok: ${target}"
+      say ok "${target}"
       return
     fi
     # Reclaim a dangling link (stale prior-checkout path) by replacing it. Any other
     # mismatch is a real conflict (live file or link to something that still exists).
     if [[ -L "${target}" && ! -e "${target}" ]]; then
       if [[ "${dry_run}" -eq 1 ]]; then
-        echo "relink: ${target} -> ${source_path} (was dangling)"
+        say relink "${target} -> ${source_path} (was dangling)"
         return
       fi
       ln -sfn "${source_path}" "${target}"
-      echo "relink: ${target} -> ${source_path} (was dangling)"
+      say relink "${target} -> ${source_path} (was dangling)"
       return
     fi
     print_command_conflict_prompt "${name}" "${target}" "${source_path}"
@@ -156,11 +159,11 @@ link_command() {
   fi
 
   if [[ "${dry_run}" -eq 1 ]]; then
-    echo "link: ${target} -> ${source_path}"
+    say link "${target} -> ${source_path}"
     return
   fi
   ln -s "${source_path}" "${target}"
-  echo "link: ${target} -> ${source_path}"
+  say link "${target} -> ${source_path}"
 }
 
 link_command "roborepo"
@@ -177,21 +180,21 @@ if [[ -z "${profile_path}" ]]; then
   exit 0
 fi
 if [[ "${dry_run}" -eq 1 ]]; then
-  [[ -e "${profile_path}" ]] || echo "would touch: ${profile_path}"
+  [[ -e "${profile_path}" ]] || say "would touch" "${profile_path}"
 else
   touch "${profile_path}"
 fi
 
 if [[ -e "${profile_path}" ]] && grep -Fqx "${path_line}" "${profile_path}"; then
-  echo "ok: ${profile_path} already includes ${bin_dir}"
+  say ok "${profile_path} already includes ${bin_dir}"
 else
   if [[ "${dry_run}" -eq 1 ]]; then
-    echo "path: ${path_line}"
+    say path "${path_line}"
     exit 0
   fi
   mkdir -p "${backup_root}$(dirname "${profile_path}")"
   cp -p "${profile_path}" "${backup_root}${profile_path}"
   printf '\n# Harness config global commands\n%s\n' "${path_line}" >> "${profile_path}"
-  echo "backup: ${profile_path} -> ${backup_root}${profile_path}"
-  echo "path: ${path_line}"
+  say backup "${profile_path} -> ${backup_root}${profile_path}"
+  say path "${path_line}"
 fi

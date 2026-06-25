@@ -177,7 +177,11 @@ function buildOnboardSteps() {
 // `active` against `wasActive`, and persist only the ones that changed. All blocking work (mcp add/
 // remove, symlinks) happens here, after raw mode is off — so it can log freely without corrupting the
 // in-place repaint that ran during the wizard.
-async function applyWizardChanges(steps) {
+// Pure diff: the wizard flips each item's `active` in memory; this picks the rows that actually
+// changed (toggleable, not in a readonly step, and `active` differs from the original `wasActive`),
+// preserving step/item order. Exported so the deferred-apply selection can be unit-tested without
+// driving the interactive keypress loop.
+export function pendingWizardChanges(steps) {
   const pending = [];
   for (const step of steps) {
     if (step.readonly) continue;
@@ -186,6 +190,11 @@ async function applyWizardChanges(steps) {
       pending.push(row);
     }
   }
+  return pending;
+}
+
+async function applyWizardChanges(steps) {
+  const pending = pendingWizardChanges(steps);
   if (pending.length === 0) {
     console.log("\nNo changes.");
     return;

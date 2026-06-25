@@ -16,8 +16,9 @@ install_section() {
   printf '\n%s━━━ %s %s%s\n' "${RR_CYAN}${RR_BOLD}" "$1" "$(install_rule "$1")" "${RR_RESET}"
 }
 
-# Colorize a leading action keyword (link/copy/backup/ok/skip/relink) then print the rest plain.
-# Usage: say link "${home} -> ${src}"   ->  "  <green>link<reset> ${home} -> ${src}"
+# Colorize a leading action keyword, preserving the legacy "<keyword>: <rest>" plain text exactly
+# (tests assert on these strings, and the color codes are empty when stdout is not a TTY).
+# Usage: say link "${home} -> ${src}"   ->  "<green>link<reset>: ${home} -> ${src}"
 say() {
   local kw="$1"; shift
   local color="${RR_DIM}"
@@ -27,7 +28,7 @@ say() {
     backup|"pre-install backup") color="${RR_YELLOW}" ;;
     ok) color="${RR_DIM}" ;;
   esac
-  printf '  %s%s%s %s\n' "${color}" "${kw}" "${RR_RESET}" "$*"
+  printf '%s%s%s: %s\n' "${color}" "${kw}" "${RR_RESET}" "$*"
 }
 
 # Pad a section title's trailing rule out to a fixed width so headers line up.
@@ -437,7 +438,7 @@ print_install_conflict_prompt() {
   local src="${repo_root}/${repo_rel}"
 
   echo ""
-  echo "${RR_YELLOW}${RR_BOLD}⚠ Merge review prompt${RR_RESET} ${RR_DIM}(${home_path})${RR_RESET}"
+  echo "${RR_YELLOW}${RR_BOLD}⚠ Merge review prompt:${RR_RESET} ${RR_DIM}${home_path}${RR_RESET}"
   echo "${RR_DIM}─────────────────────────────────────────────${RR_RESET}"
   cat <<EOF
 Resolve this harness install conflict.
@@ -524,7 +525,7 @@ export_user_config() {
         rm "${home_path}"
         cp "${src}" "${home_path}"
       fi
-      echo "copy: ${home_path} <- ${src} (converted from repo symlink)"
+      say copy "${home_path} <- ${src} ${RR_DIM}(converted from repo symlink)${RR_RESET}"
       return 0
       ;;
     esac

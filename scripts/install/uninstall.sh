@@ -194,7 +194,9 @@ remove_gitignore_globals() {
 
   local tmp
   tmp="$(mktemp "${TMPDIR:-/tmp}/roborepo-gitignore.XXXXXX")"
-  grep -Fvx ".jdm-indexed" "${gitignore_global}" > "${tmp}"
+  # grep -v exits 1 when nothing remains (".jdm-indexed" was the only line); that is success here —
+  # the resulting empty global gitignore is harmless (see header) — so don't let set -e abort.
+  grep -Fvx ".jdm-indexed" "${gitignore_global}" > "${tmp}" || true
   mv "${tmp}" "${gitignore_global}"
   echo "prune: removed .jdm-indexed from ${gitignore_global}"
 }

@@ -892,6 +892,12 @@ assert "onboard: non-TTY reports headless apply" \
 assert "onboard: non-TTY records onboardedAt in preset state" \
   bash -c "test -f '${ob_home}/.roborepo/presets/state.json' && grep -q onboardedAt '${ob_home}/.roborepo/presets/state.json'"
 
+# The wizard flips item.active in memory during the keypress loop, then applies only the changed rows
+# on exit. Unit-test that deferred-apply selection directly (pure, fast); the pty/keypress path is
+# covered by test-install-collisions.sh.
+assert "onboard: wizard diff selects only changed toggleable items" \
+  node "${repo_root}/scripts/test/wizard-diff-check.mjs"
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"

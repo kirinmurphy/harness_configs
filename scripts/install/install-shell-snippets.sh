@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=scripts/install/install-lib.sh
+source "${repo_root}/scripts/install/install-lib.sh"  # RR_* colors + say()
 zshrc="${HOME}/.zshrc"
 backup_root="${ROBOREPO_BACKUP_ROOT:-${HOME}/.roborepo-backups/$(date +%Y%m%d-%H%M%S)}"
 dry_run=0
@@ -28,7 +30,7 @@ done < <(shell_snippet_rows)
 # and no existing profile, do nothing — don't leave behind an empty ~/.zshrc the user never had.
 if [[ ${#source_snippets[@]} -gt 0 ]]; then
   if [[ "${dry_run}" -eq 1 ]]; then
-    [[ -e "${zshrc}" ]] || echo "would touch: ${zshrc}"
+    [[ -e "${zshrc}" ]] || say "would touch" "${zshrc}"
   else
     touch "${zshrc}"
   fi
@@ -39,20 +41,20 @@ needs_backup=true
 for snippet in "${source_snippets[@]+"${source_snippets[@]}"}"; do
   source_line="source \"${repo_root}/${snippet}\""
   if [[ -e "${zshrc}" ]] && grep -Fqx "${source_line}" "${zshrc}"; then
-    echo "ok: ${zshrc} already sources ${snippet}"
+    say ok "${zshrc} already sources ${snippet}"
   else
     if [[ "${dry_run}" -eq 1 ]]; then
-      echo "source: ${source_line}"
+      say source "${source_line}"
       continue
     fi
     if [[ "${needs_backup}" == "true" ]]; then
       mkdir -p "${backup_root}${HOME}"
       cp -p "${zshrc}" "${backup_root}${zshrc}"
-      echo "backup: ${zshrc} -> ${backup_root}${zshrc}"
+      say backup "${zshrc} -> ${backup_root}${zshrc}"
       needs_backup=false
     fi
     printf '\n# Harness config shell helpers\n%s\n' "${source_line}" >> "${zshrc}"
-    echo "source: ${source_line}"
+    say source "${source_line}"
   fi
 done
 
@@ -94,14 +96,14 @@ prune_stale_snippets() {
   [[ "${stale_found}" -eq 0 ]] && return 0
 
   if [[ "${dry_run}" -eq 1 ]]; then
-    echo "prune: would remove stale shell snippet source line(s) from ${zshrc}"
+    say prune "would remove stale shell snippet source line(s) from ${zshrc}"
     return 0
   fi
 
   if [[ "${needs_backup}" == "true" ]]; then
     mkdir -p "${backup_root}${HOME}"
     cp -p "${zshrc}" "${backup_root}${zshrc}"
-    echo "backup: ${zshrc} -> ${backup_root}${zshrc}"
+    say backup "${zshrc} -> ${backup_root}${zshrc}"
     needs_backup=false
   fi
 
@@ -124,6 +126,6 @@ prune_stale_snippets() {
     END { if (held != "") print held }
   ' "${zshrc}" > "${tmp}"
   mv "${tmp}" "${zshrc}"
-  echo "prune: removed stale shell snippet source line(s) from ${zshrc}"
+  say prune "removed stale shell snippet source line(s) from ${zshrc}"
 }
 prune_stale_snippets

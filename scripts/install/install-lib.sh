@@ -109,6 +109,28 @@ paths_equivalent_for_copy() {
   return 1
 }
 
+# True when ${dest} is a REAL (non-symlink) file or dir whose content is byte-for-byte identical to
+# repo source ${src}: files compared with cmp, directories with `diff -r`. This is how we tell a
+# roborepo-authored copy (adopt-mode install, or a legacy materialized link) apart from genuine user
+# content. Any divergence — an extra file, one edited line — returns false, so callers never treat
+# user content as a disposable repo copy, and never capture a roborepo copy as a fake "original".
+content_matches_repo_source() {
+  local src="$1"
+  local dest="$2"
+
+  [[ -e "${src}" ]] || return 1
+  [[ -e "${dest}" && ! -L "${dest}" ]] || return 1
+  if [[ -f "${src}" && -f "${dest}" ]]; then
+    cmp -s "${src}" "${dest}"
+    return $?
+  fi
+  if [[ -d "${src}" && -d "${dest}" ]]; then
+    diff -r "${src}" "${dest}" >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
 path_has_meaningful_content() {
   local path="$1"
 
@@ -209,6 +231,93 @@ is_roborepo_authored() {
   grep -Eq "roborepo telemetry capture|roborepo-write-guard|BEGIN GENERATED AGENT PERMISSIONS|MANAGED_BY_ROBOREPO" "${file}" 2>/dev/null
 }
 
+# Persist the user's genuine pre-roborepo file/dir at ${home_path} to
+# ~/.roborepo/backups/pre-install/<harness>/<basename>, exactly once, so uninstall can restore it
+# verbatim. Applies to both root_config files and managed link targets (CLAUDE.md, AGENTS.md, hooks,
+# rules, …) — anything roborepo replaces. Skips, so the backup can never be poisoned with roborepo
+# content: missing harness, a symlink/absent target, an already-captured backup, a file roborepo
+# itself authored, or content byte-identical to the repo source (a roborepo copy, not a user
+# original). ${src} is the repo source used for the identical-content check.
+save_pre_install_backup() {
+  local home_path="$1"
+  local harness="$2"
+  local src="$3"
+
+  [[ -n "${harness}" ]] || return 0
+  [[ -e "${home_path}" && ! -L "${home_path}" ]] || return 0
+
+  local pre_install_backup="${HOME}/.roborepo/backups/pre-install/${harness}/$(basename "${home_path}")"
+  if [[ -e "${pre_install_backup}" ]]; then
+    return 0  # already have the user's original — never overwrite it
+  fi
+  if is_roborepo_authored "${home_path}"; then
+    # The live file is already roborepo's (prior install or stray apply). Backing it up would
+    # capture roborepo hooks as a fake "original" — skip, so a real original isn't replaced by poison.
+    echo "skip pre-install backup: ${home_path} is already roborepo-authored"
+    return 0
+  fi
+  if content_matches_repo_source "${src}" "${home_path}"; then
+    # The live path is byte-identical to what roborepo installs (a prior adopt-mode copy / legacy
+    # materialized link). It is roborepo's, not a user original — skip so we don't capture it as one.
+    echo "skip pre-install backup: ${home_path} matches repo source (roborepo copy, not a user original)"
+    return 0
+  fi
+  if [[ "${dry_run}" -eq 0 ]]; then
+    mkdir -p "$(dirname "${pre_install_backup}")"
+    cp -a "${home_path}" "${pre_install_backup}"
+  fi
+  say "pre-install backup" "${home_path} -> ${pre_install_backup}"
+}
+
+# One-time, durable snapshot of the user's genuine pre-roborepo config: the small set of paths
+# roborepo can modify (manifest root_config + link targets for present harnesses, shell profiles, the
+# global gitignore). Written ONCE to ~/.roborepo-backups/pre-roborepo-original.tar.gz and never
+# overwritten or deleted by uninstall, so there is always a "this is what my machine looked like
+# before roborepo" image to inspect or hand-restore from (`tar xzf <archive> -C ~`). This is an
+# escape hatch, NOT the uninstall restore path — uninstall still restores per-file surgically.
+# Captures only real, user-authored paths: skips roborepo symlinks, roborepo-authored files, and
+# content byte-identical to the repo, so the archive can never be poisoned with roborepo's own
+# content. Best-effort: silently no-ops without tar. Needs ${repo_root}, ${dry_run}, manifest_rows.
+snapshot_pre_roborepo_original() {
+  local archive="${HOME}/.roborepo-backups/pre-roborepo-original.tar.gz"
+  [[ -e "${archive}" ]] && return 0           # once only — never overwrite the pristine image
+  command -v tar >/dev/null 2>&1 || return 0
+
+  local -a candidates=()
+  local _h kind src_rel home_abs _flags src
+  while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
+    case "${kind}" in root_config|link) ;; *) continue ;; esac
+    src="${repo_root}/${src_rel}"
+    [[ -e "${home_abs}" && ! -L "${home_abs}" ]] || continue   # absent or our symlink — nothing to keep
+    is_roborepo_authored "${home_abs}" && continue
+    content_matches_repo_source "${src}" "${home_abs}" && continue
+    candidates+=("${home_abs}")
+  done < <(manifest_rows)
+
+  local extra
+  for extra in "${HOME}/.zshrc" "${HOME}/.bashrc" "${HOME}/.bash_profile" "${HOME}/.profile" "${HOME}/.gitignore_global"; do
+    [[ -f "${extra}" && ! -L "${extra}" ]] && candidates+=("${extra}")
+  done
+
+  [[ ${#candidates[@]} -gt 0 ]] || return 0    # pristine machine — nothing pre-existing to capture
+
+  if [[ "${dry_run}" -eq 1 ]]; then
+    say "pre-install backup" "would snapshot ${#candidates[@]} original config path(s) -> ${archive}"
+    return 0
+  fi
+
+  # Store HOME-relative so the archive restores cleanly with `tar xzf <archive> -C ~`.
+  local -a rel=()
+  local c
+  for c in "${candidates[@]}"; do rel+=("${c#"${HOME}/"}"); done
+  mkdir -p "$(dirname "${archive}")"
+  if tar czf "${archive}" -C "${HOME}" "${rel[@]}" 2>/dev/null; then
+    say "pre-install backup" "snapshot of ${#candidates[@]} original config path(s) -> ${archive}"
+  else
+    rm -f "${archive}"   # never leave a partial/corrupt image behind
+  fi
+}
+
 install_copy_item() {
   local repo_rel="$1"
   local home_path="$2"
@@ -220,22 +329,7 @@ install_copy_item() {
     return 1
   fi
 
-  if [[ -n "${harness}" && -e "${home_path}" && ! -L "${home_path}" ]]; then
-    local pre_install_backup="${HOME}/.roborepo/backups/pre-install/${harness}/$(basename "${home_path}")"
-    if [[ -e "${pre_install_backup}" ]]; then
-      : # already have the user's original — never overwrite it
-    elif is_roborepo_authored "${home_path}"; then
-      # The live file is already roborepo's (prior install or stray apply). Backing it up would
-      # capture roborepo hooks as a fake "original" — skip, so a real original isn't replaced by poison.
-      echo "skip pre-install backup: ${home_path} is already roborepo-authored"
-    else
-      if [[ "${dry_run}" -eq 0 ]]; then
-        mkdir -p "$(dirname "${pre_install_backup}")"
-        cp -a "${home_path}" "${pre_install_backup}"
-      fi
-      say "pre-install backup" "${home_path} -> ${pre_install_backup}"
-    fi
-  fi
+  save_pre_install_backup "${home_path}" "${harness}" "${src}"
 
   if [[ ! -e "${home_path}" && ! -L "${home_path}" ]]; then
     if [[ "${dry_run}" -eq 0 ]]; then
@@ -303,12 +397,17 @@ install_copy_item() {
 install_link_item() {
   local repo_rel="$1"
   local home_path="$2"
+  local harness="${3:-}"
   local src="${repo_root}/${repo_rel}"
 
   if [[ ! -e "${src}" ]]; then
     echo "missing source: ${src}" >&2
     return 1
   fi
+
+  # Persist a genuine pre-roborepo target before we move it aside below, so uninstall can restore it.
+  # No-op for symlinks/absent targets and roborepo's own content (see save_pre_install_backup).
+  save_pre_install_backup "${home_path}" "${harness}" "${src}"
 
   if [[ -L "${home_path}" ]]; then
     local current

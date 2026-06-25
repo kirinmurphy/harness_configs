@@ -33,14 +33,17 @@ if [[ ! -d "${HOME}/.claude" ]]; then
   exit 0
 fi
 
+# Capture the user's genuine pre-roborepo config once, before the manifest loop mutates anything.
+snapshot_pre_roborepo_original
+
 while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
   case "${kind}" in
     root_config) export_user_config "claude" "${src_rel}" "${home_abs}" ;;
     link)
       if [[ "${install_mode}" == "adopt" ]]; then
-        install_copy_item "${src_rel}" "${home_abs}"
+        install_copy_item "${src_rel}" "${home_abs}" "claude"
       else
-        install_link_item "${src_rel}" "${home_abs}"
+        install_link_item "${src_rel}" "${home_abs}" "claude"
       fi
       ;;
     cleanup) remove_repo_link "${home_abs}" ;;

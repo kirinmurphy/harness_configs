@@ -70,6 +70,77 @@ remove_file_if_repo_symlink() {
   fi
 }
 
+# True when ${dest} is a REAL (non-symlink) file or dir whose content is byte-for-byte identical to
+# repo source ${src}: files via cmp, directories via `diff -r`. Lets uninstall reclaim a roborepo
+# copy (adopt-mode install, or a legacy materialized link like a real ~/.codex/hooks dir) WITHOUT
+# ever deleting native or user-modified content: any divergence — an extra file, one edited line —
+# returns false, so the path is left untouched. Mirrors install-lib.sh's helper of the same name.
+content_matches_repo_source() {
+  local src="$1"
+  local dest="$2"
+
+  [[ -e "${src}" ]] || return 1
+  [[ -e "${dest}" && ! -L "${dest}" ]] || return 1
+  if [[ -f "${src}" && -f "${dest}" ]]; then
+    cmp -s "${src}" "${dest}"
+    return $?
+  fi
+  if [[ -d "${src}" && -d "${dest}" ]]; then
+    diff -r "${src}" "${dest}" >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
+# Restore the user's pre-roborepo original for a link target, if install persisted one to
+# ~/.roborepo/backups/pre-install/<harness>/<basename>. Only restores into a now-vacant slot (the
+# caller has already reclaimed roborepo's symlink/copy), so it never clobbers a user's own file left
+# in place. Mirrors remove_root_config's restore arm for link rows.
+restore_pre_install_link_backup() {
+  local home_abs="$1"
+  local harness="$2"
+  [[ -n "${harness}" ]] || return 0
+
+  local backup="${HOME}/.roborepo/backups/pre-install/${harness}/$(basename "${home_abs}")"
+  [[ -e "${backup}" ]] || return 0
+  [[ ! -e "${home_abs}" && ! -L "${home_abs}" ]] || return 0
+
+  if [[ "${dry_run}" -eq 1 ]]; then
+    echo "restore (link backup): ${backup} -> ${home_abs}"
+  else
+    mkdir -p "$(dirname "${home_abs}")"
+    mv "${backup}" "${home_abs}"
+    echo "restore (link backup): ${backup} -> ${home_abs}"
+  fi
+}
+
+# Reclaim a managed `link` target left by install, in three passes:
+#   1) a roborepo symlink (managed mode) -> remove it (is_managed_link gated).
+#   2) a REAL file/dir byte-identical to the repo source (adopt-mode copy, or a legacy materialized
+#      link) -> remove it. Content-matched so native/user-modified content is never deleted.
+#   3) restore the user's pre-roborepo original, if install persisted one.
+# A real, content-DIVERGENT target (the user edited the copy, or it is genuinely theirs) is left in
+# place by both (1) and (2) — we remove only what roborepo itself put there.
+reclaim_link_target() {
+  local src_rel="$1"
+  local home_abs="$2"
+  local harness="$3"
+  local src="${repo_root}/${src_rel}"
+
+  remove_repo_symlink "${home_abs}"
+
+  if [[ -e "${home_abs}" && ! -L "${home_abs}" ]] && content_matches_repo_source "${src}" "${home_abs}"; then
+    if [[ "${dry_run}" -eq 1 ]]; then
+      echo "remove (repo copy): ${home_abs}"
+    else
+      rm -rf "${home_abs}"
+      echo "remove (repo copy): ${home_abs}"
+    fi
+  fi
+
+  restore_pre_install_link_backup "${home_abs}" "${harness}"
+}
+
 # Path to the repo's bare starter for a harness's root_config file, or empty if none exists. The
 # starter is the clean baseline (no roborepo hooks/MCP/perms) we fall back to when the user had no
 # config of their own before install — so uninstall leaves a working, roborepo-free file instead of
@@ -271,9 +342,10 @@ remove_shell_wiring() {
   done
 }
 
-while IFS=$'\t' read -r _h kind _src_rel home_abs _flags; do
+while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
   case "${kind}" in
-    link|cleanup)   remove_repo_symlink "${home_abs}" ;;
+    link)           reclaim_link_target "${src_rel}" "${home_abs}" "${_h}" ;;
+    cleanup)        remove_repo_symlink "${home_abs}" ;;
     root_config)    remove_root_config  "${home_abs}" "${_h}" ;;
   esac
 done < <(manifest_rows)
@@ -330,5 +402,14 @@ remove_mcp_servers
 remove_gitignore_globals
 remove_preset_state
 remove_install_backups
+
+# Surface (never delete) the durable pre-roborepo snapshot: the escape hatch the per-file restore
+# above does not consume. Lets the user hand-restore anything the surgical restore did not cover.
+original_archive="${HOME}/.roborepo-backups/pre-roborepo-original.tar.gz"
+if [[ -e "${original_archive}" ]]; then
+  echo "kept pre-roborepo snapshot: ${original_archive}"
+  echo "  inspect: tar tzf ${original_archive}"
+  echo "  restore: tar xzf ${original_archive} -C ${HOME}"
+fi
 
 echo "Uninstall complete."

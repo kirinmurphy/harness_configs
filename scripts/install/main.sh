@@ -354,6 +354,10 @@ preflight_unattended_conflicts() {
   fi
 }
 
+# Durable, once-only snapshot of the user's genuine pre-roborepo config — taken before the first
+# mutation below so uninstall/reinstall cycles always have a pristine image to fall back on.
+snapshot_pre_roborepo_original
+
 install_section "Shell & PATH"
 preflight_shell_setup
 

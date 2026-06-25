@@ -36,6 +36,9 @@ harness_present codex || {
   exit 0
 }
 
+# Capture the user's genuine pre-roborepo config once, before the manifest loop mutates anything.
+snapshot_pre_roborepo_original
+
 # Managed rows come from manifests/platform/manifest.tsv: codex harness (AGENTS.md, hooks.json,
 # rules, config.toml, plus migration cleanup of any old dir-level skills link).
 while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
@@ -43,9 +46,9 @@ while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
     root_config) export_user_config "codex" "${src_rel}" "${home_abs}" ;;
     link)
       if [[ "${install_mode}" == "adopt" ]]; then
-        install_copy_item "${src_rel}" "${home_abs}"
+        install_copy_item "${src_rel}" "${home_abs}" "codex"
       else
-        install_link_item "${src_rel}" "${home_abs}"
+        install_link_item "${src_rel}" "${home_abs}" "codex"
       fi
       ;;
     cleanup) remove_repo_link "${home_abs}" ;;

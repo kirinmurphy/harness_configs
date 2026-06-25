@@ -474,6 +474,100 @@ test_uninstall_removes_repo_owned_links() {
     || fail "uninstall removes install state"
 }
 
+test_uninstall_reclaims_repo_copies_and_restores_originals() {
+  local home_dir
+  home_dir="$(make_home)"
+
+  # User-authored CLAUDE.md present before install — must come back verbatim after uninstall.
+  printf 'my own claude rules\n' > "$home_dir/.claude/CLAUDE.md"
+
+  # Adopt install: link rows are installed as REAL copies (not symlinks); the pre-existing CLAUDE.md
+  # is persisted to the pre-install backup.
+  ROBOREPO_INSTALL_MODE=adopt run_harness_install_args "$home_dir" "$home_dir/install.out" --on-conflict overwrite
+
+  assert_not_symlink "$home_dir/.codex/AGENTS.md" "adopt installs AGENTS.md as a real copy"
+  [[ -f "$home_dir/.roborepo/backups/pre-install/claude/CLAUDE.md" ]] \
+    && pass "adopt persists pre-existing CLAUDE.md to pre-install backup" \
+    || fail "adopt persists pre-existing CLAUDE.md to pre-install backup" "$home_dir/install.out"
+
+  HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" >"$home_dir/uninstall.out"
+
+  # AGENTS.md was a roborepo copy with no user original underneath -> reclaimed entirely.
+  [[ ! -e "$home_dir/.codex/AGENTS.md" && ! -L "$home_dir/.codex/AGENTS.md" ]] \
+    && pass "uninstall reclaims adopt-mode AGENTS.md copy" \
+    || fail "uninstall reclaims adopt-mode AGENTS.md copy" "$home_dir/uninstall.out"
+  # CLAUDE.md had a user original -> restored verbatim.
+  assert_regular_file_contains "$home_dir/.claude/CLAUDE.md" "my own claude rules" "uninstall restores user's original CLAUDE.md"
+}
+
+test_uninstall_preserves_user_modified_copy() {
+  local home_dir
+  home_dir="$(make_home)"
+
+  ROBOREPO_INSTALL_MODE=adopt run_harness_install_args "$home_dir" "$home_dir/install.out" --on-conflict overwrite
+  # User edits the installed copy after install — content now diverges from the repo source.
+  printf 'user edit\n' >> "$home_dir/.codex/AGENTS.md"
+
+  HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" >"$home_dir/uninstall.out"
+
+  [[ -f "$home_dir/.codex/AGENTS.md" && ! -L "$home_dir/.codex/AGENTS.md" ]] \
+    && grep -q "user edit" "$home_dir/.codex/AGENTS.md" \
+    && pass "uninstall keeps a user-modified copy (content diverged from repo)" \
+    || fail "uninstall keeps a user-modified copy (content diverged from repo)" "$home_dir/uninstall.out"
+}
+
+test_uninstall_reclaims_real_dir_link_remnant() {
+  local home_dir
+  home_dir="$(make_home)"
+
+  # Simulate a legacy/materialized link: a REAL ~/.codex/hooks dir holding roborepo's own content
+  # (the bug we found — uninstall's symlink-only pass used to skip it).
+  cp -R "$repo_root/globals/codex/hooks" "$home_dir/.codex/hooks"
+  HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" >"$home_dir/uninstall.out"
+
+  [[ ! -e "$home_dir/.codex/hooks" ]] \
+    && pass "uninstall reclaims a real-dir roborepo copy left at a link path" \
+    || fail "uninstall reclaims a real-dir roborepo copy left at a link path" "$home_dir/uninstall.out"
+}
+
+test_install_writes_durable_original_snapshot() {
+  local home_dir archive
+  home_dir="$(make_home)"
+  archive="$home_dir/.roborepo-backups/pre-roborepo-original.tar.gz"
+
+  # Genuine pre-roborepo originals the snapshot must capture.
+  seed_user_configs "$home_dir"
+  printf 'my own claude rules\n' > "$home_dir/.claude/CLAUDE.md"
+  printf '# my shell\n' > "$home_dir/.zshrc"
+
+  run_harness_install_args "$home_dir" "$home_dir/install.out"
+
+  [[ -f "$archive" ]] \
+    && pass "install writes durable pre-roborepo snapshot" \
+    || fail "install writes durable pre-roborepo snapshot" "$home_dir/install.out"
+  local listing
+  listing="$(tar tzf "$archive" 2>/dev/null)"
+  grep -q '\.claude/CLAUDE.md$' <<<"$listing" && grep -q '\.claude/settings.json$' <<<"$listing" \
+    && grep -q '\.codex/config.toml$' <<<"$listing" && grep -q '\.zshrc$' <<<"$listing" \
+    && pass "snapshot bundles the originals roborepo can touch" \
+    || { echo "$listing" >&2; fail "snapshot bundles the originals roborepo can touch"; }
+
+  # The captured CLAUDE.md is the user's original, not roborepo's.
+  mkdir -p "$home_dir/extract"
+  tar xzf "$archive" -C "$home_dir/extract"
+  assert_file_contains "$home_dir/extract/.claude/CLAUDE.md" "my own claude rules" "snapshot preserves the user's original CLAUDE.md"
+
+  # Once-only: a second install must not rewrite the pristine image.
+  local before after
+  before="$(stat -f %m "$archive" 2>/dev/null || stat -c %Y "$archive")"
+  printf 'roborepo changed this later\n' > "$home_dir/.zshrc"
+  run_harness_install_args "$home_dir" "$home_dir/install2.out"
+  after="$(stat -f %m "$archive" 2>/dev/null || stat -c %Y "$archive")"
+  [[ "$before" == "$after" ]] \
+    && pass "durable snapshot is written once and never overwritten" \
+    || fail "durable snapshot is written once and never overwritten"
+}
+
 test_idempotency_no_extra_backups() {
   local home_dir
   home_dir="$(make_home)"
@@ -688,6 +782,10 @@ test_adopt_keep_originals_prints_merge_prompt
 test_adopt_overwrite_policy_backs_up_originals
 test_abort_no_config_replacement
 test_uninstall_removes_repo_owned_links
+test_install_writes_durable_original_snapshot
+test_uninstall_reclaims_repo_copies_and_restores_originals
+test_uninstall_preserves_user_modified_copy
+test_uninstall_reclaims_real_dir_link_remnant
 test_idempotency_no_extra_backups
 test_malformed_claude_config
 test_sync_guard

@@ -104,6 +104,23 @@ check_active_file() {
   fi
 }
 
+# A roborepo-managed skill is a copy carrying the '.roborepo-managed' marker, not a symlink.
+check_managed_skill() {
+  local repo_rel="$1"
+  local home_path="$2"
+  local expected="${repo_root}/${repo_rel}"
+
+  if [[ ! -d "${home_path}" || ! -e "${home_path}/.roborepo-managed" ]]; then
+    fail "${home_path} is not a roborepo-managed skill copy"
+    return 0
+  fi
+  if diff -rq -x '.roborepo-managed' "${expected}" "${home_path}" >/dev/null 2>&1; then
+    ok "${home_path} (managed copy of ${expected})"
+  else
+    fail "${home_path} differs from ${expected} — run: roborepo update"
+  fi
+}
+
 check_repo_symlink() {
   local path="$1"
   local expected="$2"
@@ -288,10 +305,10 @@ if [[ "${check_installed}" -eq 1 ]]; then
   for skill_src in "${repo_root}"/globals/agents/skills/*/SKILL.md; do
     [[ -e "${skill_src}" ]] || continue
     skill_name="$(basename "$(dirname "${skill_src}")")"
-    [[ "${installed_has_claude}" -eq 1 ]] && check_link "globals/agents/skills/${skill_name}" "${HOME}/.claude/skills/${skill_name}"
-    [[ "${installed_has_codex}"  -eq 1 ]] && check_link "globals/agents/skills/${skill_name}" "${HOME}/.codex/skills/${skill_name}"
+    [[ "${installed_has_claude}" -eq 1 ]] && check_managed_skill "globals/agents/skills/${skill_name}" "${HOME}/.claude/skills/${skill_name}"
+    [[ "${installed_has_codex}"  -eq 1 ]] && check_managed_skill "globals/agents/skills/${skill_name}" "${HOME}/.codex/skills/${skill_name}"
   done
-  # Drift report: unmanaged skills in native dirs (real dirs, not roborepo-managed symlinks).
+  # Drift report: unmanaged skills in native dirs (real dirs without our managed-copy marker).
   drift_count=0
   for skills_home in "${HOME}/.claude/skills" "${HOME}/.codex/skills"; do
     [[ -d "${skills_home}" ]] || continue
@@ -299,7 +316,7 @@ if [[ "${check_installed}" -eq 1 ]]; then
       [[ -d "${skill_dir}" ]] || continue
       skill_name="$(basename "${skill_dir%/}")"
       case "${skill_name}" in .*) continue ;; esac  # skip dotfolders
-      [[ -L "${skills_home}/${skill_name}" ]] && continue  # managed symlink
+      [[ -e "${skills_home}/${skill_name}/.roborepo-managed" ]] && continue  # managed copy
       echo "drift: ${skill_dir} is unmanaged — run: roborepo skill adopt ${skill_name}"
       drift_count=$((drift_count + 1))
     done

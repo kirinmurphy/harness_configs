@@ -43,7 +43,8 @@ snapshot_pre_roborepo_original
 # rules, config.toml, plus migration cleanup of any old dir-level skills link).
 while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
   case "${kind}" in
-    root_config) export_user_config "codex" "${src_rel}" "${home_abs}" ;;
+    root_config)    export_user_config "codex" "${src_rel}" "${home_abs}" ;;
+    managed_copy)   install_copy_item "${src_rel}" "${home_abs}" "codex" ;;
     link)
       if [[ "${install_mode}" == "adopt" ]]; then
         install_copy_item "${src_rel}" "${home_abs}" "codex"
@@ -55,7 +56,14 @@ while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
   esac
 done < <(manifest_rows codex)
 
-# Per-skill links: each globals/agents/skills/<name> -> ~/.codex/skills/<name>.
-# Skills roborepo does not own (native-installed via init_skill.py / skill-installer) are left
-# untouched. Stale managed links (skill removed from repo source) are pruned.
+# Per-skill copies: each globals/agents/skills/<name> -> ~/.codex/skills/<name> (managed copy).
+# Skills roborepo does not own (no .roborepo-managed marker) are left untouched.
+# Stale managed copies (skill removed from repo source) are pruned.
 link_global_skills "${HOME}/.codex"
+
+# Guard: this script installs harness config only. The roborepo CLI (and `roborepo index code`)
+# require a full install via scripts/install/main.sh which wires the binary into PATH.
+if [[ "${dry_run}" -eq 0 && ! -e "${HOME}/.local/bin/roborepo" ]]; then
+  echo "warn: roborepo CLI not found at ~/.local/bin/roborepo" >&2
+  echo "      Run scripts/install/main.sh for a complete install including the roborepo command." >&2
+fi

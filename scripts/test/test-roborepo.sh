@@ -394,12 +394,12 @@ bash -c "${cfg_env} node '${cli}' disable telemetry >/dev/null 2>&1" || true
 assert "config: disable service package clears telemetry state" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(!s.telemetry.enabled&&!s.packages.find(p=>p.id==='telemetry')?.enabled?0:1)})\""
 
-# Skill component: a package whose payload is a shared-skill link. Enable links it into both harness
-# skill dirs; disable removes the owned links. Reuses the same skill linker as the Code Conventions
-# toggles.
+# Skill component: a package whose payload is a shared-skill copy. Enable copies it into both harness
+# skill dirs (stamped with .roborepo-managed); disable removes the owned copies. Reuses the same
+# skill materializer as the Code Conventions toggles.
 bash -c "${cfg_env} node '${cli}' enable blog-pack >/dev/null 2>&1" || true
-assert "config: enabling a skill-component package links the skill" \
-  bash -c "test -L '${cfg_home}/.claude/skills/blog' && test -L '${cfg_home}/.codex/skills/blog'"
+assert "config: enabling a skill-component package copies the skill" \
+  bash -c "test -d '${cfg_home}/.claude/skills/blog' && test -e '${cfg_home}/.claude/skills/blog/.roborepo-managed' && test -d '${cfg_home}/.codex/skills/blog' && test -e '${cfg_home}/.codex/skills/blog/.roborepo-managed'"
 assert "config: skill-component package reports enabled" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{process.exit(c.readConfigSnapshot().packages.find(p=>p.id==='blog-pack')?.enabled?0:1)})\""
 bash -c "${cfg_env} node '${cli}' disable blog-pack >/dev/null 2>&1" || true
@@ -419,10 +419,10 @@ assert "config: snapshot exposes a package's requires list" \
 
 # Skill toggle links into both ~/.claude/skills and ~/.codex/skills, then removes only owned links.
 cfg_skill="$(ls "${repo_root}/globals/agents/skills" | head -1)"
-assert "config: setSkillInstalled links both harnesses" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',true);process.exit(r.ok?0:1)})\" && test -L '${cfg_home}/.claude/skills/${cfg_skill}' && test -L '${cfg_home}/.codex/skills/${cfg_skill}'"
-assert "config: skill link is absolute into shared source" \
-  bash -c "[ \"\$(readlink '${cfg_home}/.claude/skills/${cfg_skill}')\" = '${repo_root}/globals/agents/skills/${cfg_skill}' ]"
+assert "config: setSkillInstalled copies to both harnesses" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',true);process.exit(r.ok?0:1)})\" && test -d '${cfg_home}/.claude/skills/${cfg_skill}' && test -e '${cfg_home}/.claude/skills/${cfg_skill}/.roborepo-managed' && test -d '${cfg_home}/.codex/skills/${cfg_skill}' && test -e '${cfg_home}/.codex/skills/${cfg_skill}/.roborepo-managed'"
+assert "config: skill copy matches shared source" \
+  bash -c "diff -rq -x .roborepo-managed '${repo_root}/globals/agents/skills/${cfg_skill}' '${cfg_home}/.claude/skills/${cfg_skill}' >/dev/null 2>&1"
 assert "config: setSkillInstalled removes owned links" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',false);process.exit(r.ok?0:1)})\" && ! test -e '${cfg_home}/.claude/skills/${cfg_skill}' && ! test -e '${cfg_home}/.codex/skills/${cfg_skill}'"
 assert "config: setSkillInstalled rejects unknown skill" \
@@ -440,7 +440,7 @@ for _ in $(seq 1 25); do curl -s "http://127.0.0.1:${cfg_port}/api/config" >/dev
 curl -s -X POST "http://127.0.0.1:${cfg_port}/api/config/skills" -H 'Content-Type: application/json' \
   -d "{\"id\":\"${cfg_skill}\",\"enabled\":true}" > "${cfg_home}/post-skill.json"
 assert "config: POST /api/config/skills installs and returns snapshot" \
-  bash -c "node -e \"const j=require('${cfg_home}/post-skill.json');process.exit(j.ok&&j.config&&Array.isArray(j.config.tools)?0:1)\" && test -L '${cfg_home}/.claude/skills/${cfg_skill}'"
+  bash -c "node -e \"const j=require('${cfg_home}/post-skill.json');process.exit(j.ok&&j.config&&Array.isArray(j.config.tools)?0:1)\" && test -d '${cfg_home}/.claude/skills/${cfg_skill}' && test -e '${cfg_home}/.claude/skills/${cfg_skill}/.roborepo-managed'"
 assert "config: POST with bad body returns 400" \
   bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -d '{\"id\":123}')\" = 400 ]"
 assert "config: POST unknown skill returns ok:false" \
@@ -832,10 +832,10 @@ HOME="${rp_home}" ROBOREPO_STATE_DIR="${rp_state}" \
   bash "${rp_new}/scripts/install/repair.sh" >/dev/null 2>&1 || true
 assert "repair: bin link healed to new checkout" \
   bash -c "test \"\$(readlink '${rp_home}/.local/bin/roborepo')\" = '${rp_new}/bin/roborepo'"
-assert "repair: per-skill Claude links created after repair" \
-  bash -c "test -L '${rp_home}/.claude/skills/blog' && test \"\$(readlink '${rp_home}/.claude/skills/blog')\" = '${rp_new}/globals/agents/skills/blog'"
-assert "repair: per-skill Codex links created after repair" \
-  bash -c "test -L '${rp_home}/.codex/skills/blog' && test \"\$(readlink '${rp_home}/.codex/skills/blog')\" = '${rp_new}/globals/agents/skills/blog'"
+assert "repair: per-skill Claude managed copies created after repair" \
+  bash -c "test -d '${rp_home}/.claude/skills/blog' && test -e '${rp_home}/.claude/skills/blog/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/blog' '${rp_home}/.claude/skills/blog' >/dev/null 2>&1"
+assert "repair: per-skill Codex managed copies created after repair" \
+  bash -c "test -d '${rp_home}/.codex/skills/blog' && test -e '${rp_home}/.codex/skills/blog/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/blog' '${rp_home}/.codex/skills/blog' >/dev/null 2>&1"
 assert "repair: install state records the new checkout path" \
   grep -q "\"repo\": \"${rp_new}\"" "${rp_state}/install-state.json"
 # Idempotent: a second repair reclaims nothing (everything already points at the new checkout).
@@ -853,7 +853,7 @@ assert "install: dangling bin link is reclaimed, not a conflict" \
 # ---------------------------------------------------------------------------
 # legacy ~/.agents/skills teardown (native-alignment item 0.5 migration).
 # Pre-native-alignment installs fanned skills via a dir-level ~/.agents/skills managed symlink that
-# Codex also scanned. After migrating to per-skill native-dir links, that leftover causes duplicate
+# Codex also scanned. After migrating to per-skill managed copies, that leftover causes duplicate
 # discovery. install must reclaim the managed legacy link (and only the managed one).
 # Copy-free: the checkout never moves here, so install runs against the real repo_root into an
 # isolated HOME (no repo copy needed, unlike the relocation tests above).
@@ -865,8 +865,8 @@ HOME="${la_home}" ROBOREPO_STATE_DIR="${la_home}/.roborepo" ROBOREPO_ASSUME_INTE
   ROBOREPO_ON_CONFLICT=overwrite bash "${repo_root}/scripts/install/main.sh" >/dev/null 2>&1 || true
 assert "legacy: managed ~/.agents/skills link removed after install" \
   bash -c "! test -L '${la_home}/.agents/skills'"
-assert "legacy: per-skill Codex link created in place of the legacy dir link" \
-  bash -c "test -L '${la_home}/.codex/skills/blog' && test \"\$(readlink '${la_home}/.codex/skills/blog')\" = '${repo_root}/globals/agents/skills/blog'"
+assert "legacy: per-skill Codex managed copy created in place of the legacy dir link" \
+  bash -c "test -d '${la_home}/.codex/skills/blog' && test -e '${la_home}/.codex/skills/blog/.roborepo-managed' && diff -rq -x .roborepo-managed '${repo_root}/globals/agents/skills/blog' '${la_home}/.codex/skills/blog' >/dev/null 2>&1"
 
 # A user's real ~/.agents/skills (not a managed symlink) must be left untouched.
 lu_home="${reloc_root}/legacy-agents-userdir/home"

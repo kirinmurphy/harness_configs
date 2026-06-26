@@ -344,6 +344,7 @@ remove_shell_wiring() {
 
 while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
   case "${kind}" in
+    managed_copy)   reclaim_link_target "${src_rel}" "${home_abs}" "${_h}" ;;
     link)           reclaim_link_target "${src_rel}" "${home_abs}" "${_h}" ;;
     cleanup)        remove_repo_symlink "${home_abs}" ;;
     root_config)    remove_root_config  "${home_abs}" "${_h}" ;;
@@ -374,12 +375,20 @@ is_roborepo_skill_link() {
   return 1
 }
 
+# Remove roborepo-managed skills: copies carrying the '.roborepo-managed' marker, plus legacy
+# managed symlinks from pre-copy installs. Never touches a user's native skill (a dir without the
+# marker).
 remove_skill_links() {
   local skills_home="$1"
   [[ -d "${skills_home}" ]] || return 0
-  local link
-  for link in "${skills_home}"/*; do
-    is_roborepo_skill_link "${link}" && remove_repo_symlink "${link}" || true
+  local entry
+  for entry in "${skills_home}"/*; do
+    if [[ -e "${entry}/.roborepo-managed" ]]; then
+      rm -rf "${entry}"
+      echo "remove: ${entry}"
+    else
+      is_roborepo_skill_link "${entry}" && remove_repo_symlink "${entry}" || true
+    fi
   done
 }
 remove_skill_links "${HOME}/.claude/skills"

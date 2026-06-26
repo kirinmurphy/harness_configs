@@ -75,12 +75,18 @@ reclaim_stale_link() {
   echo "reclaim: ${home_path} (was ${current})"
 }
 
-# Managed links from the manifest, for whichever harnesses are present.
+# Managed rows from the manifest, for whichever harnesses are present.
 repair_harness() {
   while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
-    [[ "${kind}" == "link" ]] || continue
-    reclaim_stale_link "${home_abs}"
-    install_link_item "${src_rel}" "${home_abs}"
+    case "${kind}" in
+      link)
+        reclaim_stale_link "${home_abs}"
+        install_link_item "${src_rel}" "${home_abs}"
+        ;;
+      managed_copy)
+        install_copy_item "${src_rel}" "${home_abs}"
+        ;;
+    esac
   done < <(manifest_rows "$1")
 }
 

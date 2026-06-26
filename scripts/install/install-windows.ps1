@@ -356,6 +356,44 @@ function Test-CleanTarget {
   return $false
 }
 
+function Copy-ManagedItem {
+  param($RepoRel, $HomePath)
+  $src = Join-Path $repoRoot $RepoRel
+
+  if (-not (Test-Path $src)) {
+    Write-Warning "missing source: $src"
+    return
+  }
+
+  $parentDir = Split-Path -Parent $HomePath
+  if (-not (Test-Path $parentDir)) {
+    if ($DryRun) { Write-Host "would mkdir: $parentDir" }
+    else { New-Item -ItemType Directory -Path $parentDir -Force | Out-Null }
+  }
+
+  if (Test-Path $HomePath) {
+    $existing = Get-Item $HomePath -Force
+    if ($existing.LinkType -eq "SymbolicLink") {
+      if (-not $DryRun) { Remove-Item $HomePath -Force }
+      Write-Host "reclaim (symlink): $HomePath"
+    } else {
+      # Already a real file/dir — check idempotency
+      if ((Test-Path $HomePath -PathType Leaf) -and (Test-Path $src -PathType Leaf)) {
+        $srcHash = (Get-FileHash $src).Hash
+        $homeHash = (Get-FileHash $HomePath).Hash
+        if ($srcHash -eq $homeHash) { Write-Host "ok: $HomePath"; return }
+      } else {
+        Write-Host "ok: $HomePath"
+        return
+      }
+    }
+  }
+
+  if ($DryRun) { Write-Host "copy: $HomePath <- $src"; return }
+  Copy-Item -Path $src -Destination $HomePath -Recurse -Force
+  Write-Host "copy: $HomePath <- $src"
+}
+
 function Invoke-CleanTargetPreflight {
   $conflict = $false
 
@@ -402,7 +440,10 @@ function Get-PresentManifestRows {
   return Get-ManifestRows (Get-PresentHarnesses)
 }
 
-function Link-GlobalSkills {
+# Materialize a shared skill into a harness skills dir as a roborepo-managed copy, stamped with
+# a '.roborepo-managed' marker file. Legacy managed symlinks are migrated to copies. A real dir
+# without the marker is a native skill and is left untouched.
+function Copy-GlobalSkills {
   param($HomeDir)
   $srcDir = Join-Path $repoRoot "globals\agents\skills"
   $skillsHome = Join-Path $HomeDir "skills"
@@ -418,35 +459,59 @@ function Link-GlobalSkills {
 
     $target = Join-Path $skillsHome $name
     $src = Join-Path $srcDir $name
+    $marker = Join-Path $target ".roborepo-managed"
 
-    if (Test-Path $target) {
+    # Legacy managed symlink (pre-copy install) -> replace with an owned copy.
+    if (Test-Path $target -PathType Any) {
       $existing = Get-Item $target -Force
-      if ($existing.LinkType -eq "SymbolicLink" -and $existing.Target -eq $src) {
-        Write-Host "ok: $target"
-        return
-      }
-      if ($existing.LinkType -ne "SymbolicLink") {
-        Write-Host "skip (native skill): $target"
+      if ($existing.LinkType -eq "SymbolicLink") {
+        if ($existing.Target -like "$repoRoot*") {
+          if (-not $DryRun) {
+            Remove-Item $target -Force -Recurse
+            Copy-Item -Path $src -Destination $target -Recurse -Force
+            New-Item -ItemType File -Path $marker -Force | Out-Null
+          }
+          Write-Host "copy: $target <- $src"
+        } else {
+          Write-Host "skip (unmanaged symlink): $target"
+        }
         return
       }
     }
 
-    if (-not (Test-Path $skillsHome)) {
-      if (-not $DryRun) { New-Item -ItemType Directory -Path $skillsHome -Force | Out-Null }
-    }
-
-    if ($DryRun) {
-      Write-Host "link: $target -> $src"
+    # A real dir without our marker is a native-installed skill — leave it.
+    if ((Test-Path $target) -and -not (Test-Path $marker)) {
+      Write-Host "skip (native skill): $target"
       return
     }
 
-    try {
-      New-Item -ItemType SymbolicLink -Path $target -Target $src -Force | Out-Null
-      Write-Host "link: $target -> $src"
-    } catch {
-      Write-Warning "Failed to create skill symlink: $target"
-      Write-Warning "Enable Windows Developer Mode or run PowerShell as Administrator."
+    # Our managed copy already present -> ok (re-copy on roborepo update).
+    if (Test-Path $marker) {
+      Write-Host "ok: $target"
+      return
     }
+
+    # Absent -> fresh copy.
+    if (-not (Test-Path $skillsHome)) {
+      if (-not $DryRun) { New-Item -ItemType Directory -Path $skillsHome -Force | Out-Null }
+    }
+    if ($DryRun) { Write-Host "copy: $target <- $src"; return }
+    Copy-Item -Path $src -Destination $target -Recurse -Force
+    New-Item -ItemType File -Path $marker -Force | Out-Null
+    Write-Host "copy: $target <- $src"
+  }
+
+  # Prune managed skill copies (those carrying our marker) whose source has been removed.
+  if (-not (Test-Path $skillsHome)) { return }
+  Get-ChildItem $skillsHome -Directory | ForEach-Object {
+    $name = $_.Name
+    if ($name.StartsWith(".")) { return }
+    $entryMarker = Join-Path $_.FullName ".roborepo-managed"
+    if (-not (Test-Path $entryMarker)) { return }
+    $skillMd = Join-Path $srcDir "$name\SKILL.md"
+    if (Test-Path $skillMd) { return }
+    if (-not $DryRun) { Remove-Item $_.FullName -Recurse -Force }
+    Write-Host "prune: $($_.FullName) (source removed)"
   }
 }
 
@@ -461,6 +526,9 @@ function Invoke-ManifestRows {
         if (-not $adoptRootConfig[$row.Harness]) {
           Export-UserConfig $row.Harness $row.RepoRel $row.HomePath
         }
+      }
+      "managed_copy" {
+        Copy-ManagedItem $row.RepoRel $row.HomePath
       }
       "link" {
         Link-Item $row.RepoRel $row.HomePath
@@ -489,7 +557,7 @@ Invoke-RootConfigPreflight
 if ($hasClaude) {
   Invoke-ManifestRows "Claude" @("claude")
   $claudeHome = Resolve-ManifestHomeRoot "claude"
-  Link-GlobalSkills $claudeHome
+  Copy-GlobalSkills $claudeHome
 } else {
   Write-Host "skip: Claude — AppData\Roaming\Claude not found"
 }
@@ -498,7 +566,7 @@ if ($hasClaude) {
 if ($hasCodex) {
   Invoke-ManifestRows "Codex" @("codex")
   $codexHome = Resolve-ManifestHomeRoot "codex"
-  Link-GlobalSkills $codexHome
+  Copy-GlobalSkills $codexHome
 } else {
   Write-Host "skip: Codex — ~/.codex not found"
 }

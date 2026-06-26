@@ -183,8 +183,9 @@ sync_item() {
 while IFS=$'\t' read -r _harness kind src_rel home_abs _flags <&3; do
   manifest_has_flag "${_flags}" nosync && continue
   case "${kind}" in
-    link)        sync_item "${home_abs}" "${src_rel}" ;;
-    root_config) sync_item "${home_abs}" "${src_rel}" "user_config" ;;
+    managed_copy) sync_item "${home_abs}" "${src_rel}" ;;
+    link)         sync_item "${home_abs}" "${src_rel}" ;;
+    root_config)  sync_item "${home_abs}" "${src_rel}" "user_config" ;;
   esac
 done 3< <(manifest_rows)
 

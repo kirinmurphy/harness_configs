@@ -102,8 +102,13 @@ paths_equivalent_for_copy() {
   local dest="$2"
 
   [[ -e "${dest}" || -L "${dest}" ]] || return 1
-  if [[ -f "${src}" && -f "${dest}" && ! -L "${dest}" ]]; then
+  [[ -L "${dest}" ]] && return 1
+  if [[ -f "${src}" && -f "${dest}" ]]; then
     cmp -s "${src}" "${dest}"
+    return $?
+  fi
+  if [[ -d "${src}" && -d "${dest}" ]]; then
+    diff -r "${src}" "${dest}" >/dev/null 2>&1
     return $?
   fi
   return 1
@@ -286,7 +291,7 @@ snapshot_pre_roborepo_original() {
   local -a candidates=()
   local _h kind src_rel home_abs _flags src
   while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
-    case "${kind}" in root_config|link) ;; *) continue ;; esac
+    case "${kind}" in root_config|link|managed_copy) ;; *) continue ;; esac
     src="${repo_root}/${src_rel}"
     [[ -e "${home_abs}" && ! -L "${home_abs}" ]] || continue   # absent or our symlink — nothing to keep
     is_roborepo_authored "${home_abs}" && continue
@@ -678,47 +683,71 @@ remove_repo_link() {
 # Link a single skill into a harness's skills dir. Unlike install_link_item, skill collisions
 # with real directories (native-installed skills with the same name) are skipped gracefully —
 # native skills are out-of-band drift that doctor will surface via "roborepo skill adopt".
+# Materialize a shared skill into a harness skills dir as a roborepo-managed COPY. A
+# '.roborepo-managed' marker file inside the copied dir records ownership, so prune and
+# native-skill detection key off the marker rather than a symlink target — the machine state is
+# self-contained and survives the source (repo/package) going away. A legacy managed symlink from a
+# pre-copy install is migrated to a copy; a real dir without our marker is a native skill, left alone.
 link_skill_item() {
   local repo_rel="$1"
   local home_path="$2"
   local src="${repo_root}/${repo_rel}"
+  local marker="${home_path}/.roborepo-managed"
 
   if [[ ! -e "${src}" ]]; then
     echo "missing source: ${src}" >&2
     return 1
   fi
 
+  # Legacy managed symlink (pre-copy install) -> replace with an owned copy.
   if [[ -L "${home_path}" ]]; then
     local current
     current="$(readlink "${home_path}")"
-    if [[ "${current}" == "${src}" ]]; then
-      say ok "${home_path}"
-      return 0
-    fi
     case "${current}" in
       "${repo_root}"/*)
         if [[ "${dry_run}" -eq 0 ]]; then
-          ln -sfn "${src}" "${home_path}"
+          rm -f "${home_path}"
+          copy_tree "${src}" "${home_path}"
+          : > "${marker}"
         fi
-        say relink "${home_path} -> ${src}"
+        say copy "${home_path} <- ${src}"
+        return 0
+        ;;
+      *)
+        echo "skip (unmanaged symlink): ${home_path}"
         return 0
         ;;
     esac
-    echo "skip (unmanaged symlink): ${home_path}"
+  fi
+
+  # A real dir/file without our marker is a native-installed skill — leave it.
+  if [[ -e "${home_path}" && ! -e "${marker}" ]]; then
+    echo "skip (native skill): ${home_path}"
     return 0
   fi
 
-  if [[ ! -e "${home_path}" && ! -L "${home_path}" ]]; then
-    if [[ "${dry_run}" -eq 0 ]]; then
-      mkdir -p "$(dirname "${home_path}")"
-      ln -s "${src}" "${home_path}"
+  # Our managed copy already present -> refresh only if the source changed (ignore the marker file).
+  if [[ -e "${marker}" ]]; then
+    if diff -rq -x '.roborepo-managed' "${src}" "${home_path}" >/dev/null 2>&1; then
+      say ok "${home_path}"
+      return 0
     fi
-    say link "${home_path} -> ${src}"
+    if [[ "${dry_run}" -eq 0 ]]; then
+      rm -rf "${home_path}"
+      copy_tree "${src}" "${home_path}"
+      : > "${marker}"
+    fi
+    say copy "${home_path} <- ${src}"
     return 0
   fi
 
-  # Exists as a real dir/file — a native-installed skill with the same name. Leave it.
-  echo "skip (native skill): ${home_path}"
+  # Absent -> fresh copy.
+  if [[ "${dry_run}" -eq 0 ]]; then
+    mkdir -p "$(dirname "${home_path}")"
+    copy_tree "${src}" "${home_path}"
+    : > "${marker}"
+  fi
+  say copy "${home_path} <- ${src}"
 }
 
 # One-shot migration: tear down the legacy ~/.agents/skills runtime tree.
@@ -772,22 +801,17 @@ link_global_skills() {
     link_skill_item "globals/agents/skills/${name}" "${skills_home}/${name}"
   done < <(list_source_skills "${src_dir}")
 
-  # Prune managed skill symlinks whose source has been removed
+  # Prune managed skill copies (those carrying our marker) whose source has been removed.
   [[ -d "${skills_home}" ]] || return 0
-  local link target skill_name
-  for link in "${skills_home}"/*; do
-    [[ -L "${link}" ]] || continue
-    target="$(readlink "${link}")"
-    case "${target}" in
-      "${repo_root}/globals/agents/skills/"*) ;;
-      *) continue ;;
-    esac
-    skill_name="$(basename "${link}")"
+  local entry skill_name
+  for entry in "${skills_home}"/*; do
+    [[ -d "${entry}" && -e "${entry}/.roborepo-managed" ]] || continue
+    skill_name="$(basename "${entry}")"
     [[ -f "${src_dir}/${skill_name}/SKILL.md" ]] && continue
     if [[ "${dry_run}" -eq 0 ]]; then
-      rm "${link}"
+      rm -rf "${entry}"
     fi
-    echo "prune: ${link} (source removed)"
+    echo "prune: ${entry} (source removed)"
   done
 }
 

@@ -406,6 +406,7 @@ function removeBundle(bundle, rows) {
 function applyRow(row, policy) {
   if (!harnessAvailable(row.harness)) return;
   if (row.kind === "cleanup") return cleanupRow(row);
+  if (row.kind === "managed_copy") return copyItem(row, policy);
   if (row.kind === "link") {
     if (policy.mode === "adopt") return copyItem(row, policy);
     return linkItem(row, policy);
@@ -478,6 +479,11 @@ function savePreInstallBackup(row) {
   if (isRoborepoAuthored(row.homeAbs)) {
     // Live file is already roborepo's (prior install or stray apply) — skip so poison isn't captured.
     console.log(`skip pre-install backup: ${row.homeAbs} is already roborepo-authored`);
+    return;
+  }
+  const source = path.join(repoRoot, row.srcRel);
+  if (pathLooksRepoManaged(source, row.homeAbs)) {
+    // Content matches repo source — this is a roborepo copy, not a user original; skip.
     return;
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -576,6 +582,7 @@ function bundleApplied(bundle, rows, policy = readInstallPolicy()) {
   return bundle.rows.every((key) => {
     const row = rows.get(key);
     if (!row || !harnessAvailable(row.harness)) return true;
+    if (row.kind === "managed_copy") return fs.existsSync(row.homeAbs) && !readlink(row.homeAbs);
     if (row.kind === "root_config") return fs.existsSync(row.homeAbs) && !readlink(row.homeAbs);
     if (row.kind === "link" && policy.mode === "adopt") return fs.existsSync(row.homeAbs) && !readlink(row.homeAbs);
     if (row.kind === "link") return realpath(row.homeAbs) === path.join(repoRoot, row.srcRel);

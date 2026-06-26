@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Link globals/agents/skills/* into each present harness's native skills dir.
+# Materialize globals/agents/skills/* as managed copies into each present harness's native skills dir.
 # Called by skill-new.mjs after a new global skill is created.
 # Also safe to run manually: idempotent, skips native-installed skills.
 #
@@ -9,7 +9,6 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 dry_run=0
-install_mode="managed"
 on_conflict=""
 
 [[ -f "${repo_root}/scripts/install/install-lib.sh" ]] || exit 0

@@ -7,6 +7,7 @@
 - At session start, resolve_repo `.`.
 - If the repo is not indexed, index_folder `.`.
 - After meaningful file edits, re-index changed files before further analysis.
+- If jcodemunch MCP tools are unavailable, index via Bash: `roborepo index code` (requires full roborepo install). Fallback if roborepo is not installed: `uvx jcodemunch-mcp index .`. Do not search npm or pip — jcodemunch is not an npm package.
 
 ## jcodemunch Hooks
 

@@ -103,6 +103,13 @@ changed** so updates are explicit rather than silent.
   `root_config`.)
 - **Skill linking is mode-independent today** (`link_global_skills` always symlinks) — it
   becomes a copy operation in `install-lib.sh` and `config-mutate.mjs` (`setSkillInstalled`).
+- **Copying skills loses the symlink ownership signal.** Today `link_skill_item` and the
+  prune loop identify a roborepo-managed skill by its symlink target resolving inside the
+  repo — that is how a user's native skill of the same name is skipped, and how a managed
+  skill is pruned when its source is removed (`install-lib.sh:778`). A copied dir carries
+  no such signal. Fix: stamp each copied skill with a `.roborepo-managed` marker; prune,
+  overwrite, and native-skill detection key off the marker. Self-contained; no central
+  registry needed.
 - **Base and package block grep differently.** Base `settings.json` blocks `Grep`/`Glob` via
   a `block-source-exploration.mjs` hook; the jcodemunch package's `hooks-claude.json` uses
   an inline `echo`. The base copy must be removed and the package version made canonical.
@@ -112,17 +119,46 @@ changed** so updates are explicit rather than silent.
 - **"Enabled" is currently derived from the file** (`config.mjs:55`, "enabled iff its block
   is present"). The registry replaces this; `config.mjs` reads the registry instead.
 
+## Implementation Status
+
+**Phase 1 (manifest rows):** Done. All 10 `link` manifest rows converted to `managed_copy`.
+Install/uninstall/repair/sync/Windows/doctor/verify chain updated. `paths_equivalent_for_copy`
+extended to handle directories. `savePreInstallBackup` poisoned-backup guard added (prevents
+saving a fake pre-install backup when content already matches repo source). Both test suites
+pass (194 passed, 0 failed).
+
+**Known regression from Phase 1 → Phase 3:** `mergeRules` appends package rules to
+`~/.claude/CLAUDE.md`, which is now a managed copy. A `roborepo update` re-copies from repo
+source and wipes those appended rules. Phase 3 (render-from-fragments) is required before
+package rule injection is durable across updates.
+
+**Phase 1 remainder (skills copy):** Done. `link_skill_item` / `link_global_skills` in
+`install-lib.sh` converted to copy + `.roborepo-managed` marker. `config-mutate.mjs`
+`setSkillInstalled` uses `fs.cpSync` + marker. `doctor.sh` adds `check_managed_skill` (marker
+check, not symlink check); `--installed` loop uses it. `uninstall.sh` `remove_skill_links`
+removes marker-bearing dirs. Tests updated: symlink asserts → marker + diff asserts.
+Both test suites pass.
+
+**Phases 2–5:** Not yet started.
+
+---
+
 ## Implementation Phases
 
 Each phase leaves the system working and verifiable (`doctor.sh`, `test-roborepo.sh`).
 
 ### Phase 1 — Materialization: copy everything, no symlinks
-- Convert all `link` rows in `manifests/platform/manifest.tsv` to a copy kind.
-- Route every materialization through copy in `presets.mjs` (`applyRow`/`copyItem`; remove
-  `linkItem`/symlink paths) and `install-lib.sh`.
-- Skills copy instead of symlink: `install-lib.sh` `link_global_skills`,
-  `config-mutate.mjs` `setSkillInstalled`, `scripts/build/link-global-skills.sh`.
-- Update `doctor.sh` / `verify-install.sh` link checks to copy checks.
+- [x] Convert all `link` rows in `manifests/platform/manifest.tsv` to `managed_copy` kind.
+- [x] Route `managed_copy` through copy in `presets.mjs` (`applyRow`/`bundleApplied`) and
+  `install-lib.sh` (`install_copy_item`). Extend `paths_equivalent_for_copy` to dirs.
+  Add poisoned-backup guard in `savePreInstallBackup`.
+- [x] Update install/uninstall/repair/sync/Windows/doctor/verify for `managed_copy` rows.
+- [x] Skills copy instead of symlink: `install-lib.sh` `link_global_skills` /
+  `link_skill_item`, `config-mutate.mjs` `setSkillInstalled`,
+  `scripts/build/link-global-skills.sh`. Stamp copied skills with a `.roborepo-managed`
+  marker; switch prune / native-skill detection from symlink-target to the marker.
+- [x] Update `doctor.sh` / `verify-install.sh` link checks to copy checks (including the
+  marker for skills).
 
 ### Phase 2 — Remove the managed/adopt gate (always adopt)
 Remove only the managed-vs-adopt choice. The system is always adopt: copy everything, and
@@ -174,8 +210,9 @@ deleted.
 1. **Headless/CI default set.** Minimal (rules + CLI + `roborepo-support`) vs also including
    jcodemunch for unattended installs.
 2. **`update` change-report format.** What it lists and how (per-layer diff vs summary).
-3. **Copy kind naming.** Reuse `root_config`, or add an explicit `managed_copy` kind so the
-   manifest distinguishes "mutable user state" from "generated copy we own and overwrite."
+3. ~~**Copy kind naming.**~~ Resolved: added `managed_copy` kind. `root_config` = mutable user
+   state (settings.json / config.toml); `managed_copy` = roborepo-owned content we always
+   overwrite (CLAUDE.md, AGENTS.md, hooks, rules, commands).
 
 ## Success Criteria
 

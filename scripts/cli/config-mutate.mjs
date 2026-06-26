@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 import { enablePackage, disablePackage, findPackage } from "./packages.mjs";
-import { ensureSymlink, listSourceSkills, readlinkSafe } from "./skill-files.mjs";
+import { listSourceSkills } from "./skill-files.mjs";
 import { loadPermissionManifest, renderProfileTo } from "./permissions-render.mjs";
 import { activeProfilePath } from "./state-paths.mjs";
 
@@ -18,6 +18,22 @@ const HARNESS_SKILL_DIRS = [
   path.join(os.homedir(), ".claude", "skills"),
   path.join(os.homedir(), ".codex", "skills"),
 ];
+// Ownership marker written inside each roborepo-managed skill copy. Copies (not symlinks) carry no
+// intrinsic "this is ours" signal, so the marker is how prune / native-skill detection tell a
+// roborepo copy apart from a user's native skill of the same name.
+const MANAGED_MARKER = ".roborepo-managed";
+
+// A target is a roborepo-managed skill if it carries our marker (a copy) or is a legacy symlink
+// into the shared source (a pre-copy install we should migrate or remove).
+function isManagedSkill(target) {
+  try {
+    const stat = fs.lstatSync(target);
+    if (stat.isSymbolicLink()) return fs.readlinkSync(target).startsWith(SHARED_SKILLS_DIR);
+    return fs.existsSync(path.join(target, MANAGED_MARKER));
+  } catch {
+    return false;
+  }
+}
 
 // --------------------------------------------------------------------------- packages
 
@@ -35,9 +51,11 @@ export async function mutatePackage(id, enabled, { dryRun = false } = {}) {
 
 // --------------------------------------------------------------------------- skills
 
-// Node port of link_global_skills/link_skill_item (install-lib.sh): per-skill absolute-path symlink
-// into every existing harness skills dir. Install validates the skill exists in shared source; native
-// collisions (a real dir with the same name) are skipped, matching the bash behavior.
+// Node port of link_global_skills/link_skill_item (install-lib.sh): materialize a shared skill as a
+// roborepo-managed COPY into every existing harness skills dir, stamped with MANAGED_MARKER. Install
+// validates the skill exists in shared source; a real dir without our marker is a native skill and is
+// left untouched, matching the bash behavior. Copy (not symlink) keeps the machine state
+// self-contained so it survives the source (repo/package) going away.
 export function setSkillInstalled(id, enabled, { dryRun = false } = {}) {
   const known = listSourceSkills(SHARED_SKILLS_DIR);
   if (!known.includes(id)) return { ok: false, message: `unknown skill: ${id}` };
@@ -47,22 +65,26 @@ export function setSkillInstalled(id, enabled, { dryRun = false } = {}) {
   for (const dir of HARNESS_SKILL_DIRS) {
     if (!fs.existsSync(path.dirname(dir))) continue; // harness not installed (no ~/.claude or ~/.codex)
     const target = path.join(dir, id);
+    const exists = fs.existsSync(target) || isManagedSkill(target);
 
     if (enabled) {
-      const result = ensureSymlink(srcAbs, target, { dryRun });
-      if (result === "conflict") {
-        // A real (native-installed) skill dir of the same name. Leave it; surface as a skip.
+      // A real dir without our marker is a native-installed skill. Leave it; surface as a skip.
+      if (exists && !isManagedSkill(target)) {
         touched.push(`skip (native skill): ${target}`);
-      } else if (result === "denied") {
-        return { ok: false, message: `denied: ${target} — OS refused symlink` };
-      } else if (result === "linked") {
-        touched.push(`link: ${target}`);
+        continue;
       }
+      if (!dryRun) {
+        fs.rmSync(target, { recursive: true, force: true }); // clear a stale copy / legacy symlink
+        fs.mkdirSync(dir, { recursive: true });
+        fs.cpSync(srcAbs, target, { recursive: true });
+        fs.writeFileSync(path.join(target, MANAGED_MARKER), "");
+      }
+      touched.push(`copy: ${target}`);
     } else {
-      // Remove only our own managed symlink; never delete a real dir or a foreign link.
-      if (readlinkSafe(target) === srcAbs) {
-        if (!dryRun) fs.unlinkSync(target);
-        touched.push(`unlink: ${target}`);
+      // Remove only our managed copy (or legacy managed symlink); never delete a native skill.
+      if (isManagedSkill(target)) {
+        if (!dryRun) fs.rmSync(target, { recursive: true, force: true });
+        touched.push(`remove: ${target}`);
       }
     }
   }

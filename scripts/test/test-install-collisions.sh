@@ -58,6 +58,20 @@ assert_regular_file_contains() {
   assert_file_contains "$file" "$pattern" "$label"
 }
 
+# A roborepo-managed skill is now a copy carrying the '.roborepo-managed' marker, not a symlink.
+assert_managed_skill() {
+  local skill_path="$1"
+  local source_dir="$2"
+  local label="$3"
+
+  if [[ -d "$skill_path" && -e "$skill_path/.roborepo-managed" ]] \
+    && diff -rq -x '.roborepo-managed' "$source_dir" "$skill_path" >/dev/null 2>&1; then
+    pass "$label"
+  else
+    fail "$label"
+  fi
+}
+
 make_home() {
   local tmp
   tmp="$(mktemp -d)"
@@ -233,9 +247,9 @@ test_direct_harness_installers_export_root_configs() {
 
   assert_regular_file_contains "$home_dir/.claude/settings.json" "permissions" "direct Claude installer copies root config as local file"
   assert_regular_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "direct Codex installer copies root config as local file"
-  assert_symlink_target "$home_dir/.claude/CLAUDE.md" "$repo_root/globals/claude/CLAUDE.md" "direct Claude installer links read-mostly assets"
-  assert_symlink_target "$home_dir/.codex/AGENTS.md" "$repo_root/globals/codex/AGENTS.md" "direct Codex installer links read-mostly assets"
-  assert_symlink_target "$home_dir/.codex/skills/blog" "$repo_root/globals/agents/skills/blog" "direct Codex installer links per-skill symlinks into ~/.codex/skills"
+  assert_not_symlink "$home_dir/.claude/CLAUDE.md" "direct Claude installer copies read-mostly assets (not symlinks)"
+  assert_not_symlink "$home_dir/.codex/AGENTS.md" "direct Codex installer copies read-mostly assets (not symlinks)"
+  assert_managed_skill "$home_dir/.codex/skills/blog" "$repo_root/globals/agents/skills/blog" "direct Codex installer copies per-skill managed dir into ~/.codex/skills"
 }
 
 test_direct_harness_installers_convert_root_symlinks() {
@@ -274,16 +288,16 @@ test_old_repo_managed_symlinks_are_migrated() {
 
   assert_regular_file_contains "$home_dir/.claude/settings.json" "permissions" "old Claude root config symlink converts to local file"
   assert_regular_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "old Codex root config symlink converts to local file"
-  assert_symlink_target "$home_dir/.claude/CLAUDE.md" "$repo_root/globals/claude/CLAUDE.md" "old Claude asset symlink relinks to globals"
-  assert_symlink_target "$home_dir/.claude/hooks" "$repo_root/globals/claude/hooks" "old Claude hooks symlink relinks to globals"
-  assert_symlink_target "$home_dir/.codex/AGENTS.md" "$repo_root/globals/codex/AGENTS.md" "old Codex AGENTS symlink relinks to globals"
-  assert_symlink_target "$home_dir/.codex/hooks.json" "$repo_root/globals/codex/hooks.json" "old Codex hooks symlink relinks to globals"
-  assert_symlink_target "$home_dir/.codex/rules" "$repo_root/globals/codex/rules" "old Codex rules symlink relinks to globals"
+  assert_not_symlink "$home_dir/.claude/CLAUDE.md" "old Claude asset symlink migrated to managed copy"
+  assert_not_symlink "$home_dir/.claude/hooks" "old Claude hooks symlink migrated to managed copy"
+  assert_not_symlink "$home_dir/.codex/AGENTS.md" "old Codex AGENTS symlink migrated to managed copy"
+  assert_not_symlink "$home_dir/.codex/hooks.json" "old Codex hooks symlink migrated to managed copy"
+  assert_not_symlink "$home_dir/.codex/rules" "old Codex rules symlink migrated to managed copy"
   # Old dir-level ~/.claude/skills symlink is cleaned up by the migration cleanup row.
   # Old ~/.agents/skills and transitional ~/.codex/skills dir-level symlinks are no longer managed.
-  # After install, ~/.codex/skills/ is a real directory with per-skill managed symlinks.
-  assert_symlink_target "$home_dir/.codex/skills/blog" "$repo_root/globals/agents/skills/blog" "old machine migrated: per-skill Codex links created"
-  assert_symlink_target "$home_dir/.claude/skills/blog" "$repo_root/globals/agents/skills/blog" "old machine migrated: per-skill Claude links created"
+  # After install, ~/.codex/skills/ is a real directory with per-skill managed copies.
+  assert_managed_skill "$home_dir/.codex/skills/blog" "$repo_root/globals/agents/skills/blog" "old machine migrated: per-skill Codex managed copies created"
+  assert_managed_skill "$home_dir/.claude/skills/blog" "$repo_root/globals/agents/skills/blog" "old machine migrated: per-skill Claude managed copies created"
 }
 
 test_direct_claude_installer_removes_stale_retired_symlink() {
@@ -461,11 +475,11 @@ test_uninstall_removes_repo_owned_links() {
   HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" >"$home_dir/uninstall.out"
 
   [[ ! -e "$home_dir/.claude/CLAUDE.md" && ! -L "$home_dir/.claude/CLAUDE.md" ]] \
-    && pass "uninstall removes Claude repo symlink" \
-    || fail "uninstall removes Claude repo symlink"
+    && pass "uninstall removes Claude managed copy" \
+    || fail "uninstall removes Claude managed copy"
   [[ ! -e "$home_dir/.codex/AGENTS.md" && ! -L "$home_dir/.codex/AGENTS.md" ]] \
-    && pass "uninstall removes Codex repo symlink" \
-    || fail "uninstall removes Codex repo symlink"
+    && pass "uninstall removes Codex managed copy" \
+    || fail "uninstall removes Codex managed copy"
   [[ -f "$home_dir/.claude/settings.json" && -f "$home_dir/.codex/config.toml" ]] \
     && pass "uninstall leaves root configs in place" \
     || fail "uninstall leaves root configs in place"

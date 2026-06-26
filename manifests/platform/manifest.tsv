@@ -16,7 +16,9 @@
 #               nosync    = not pulled from live home config by sync-from-home.sh
 #
 # kind semantics:
-#   link         clean symlink home_sub -> repo/src_rel (link_item_clean / check_link)
+#   managed_copy roborepo-owned copy: repo src copied to home_sub on install/update,
+#                reclaimed on uninstall if content still matches repo source.
+#                (install_copy_item / reclaim_link_target / check_active_file)
 #   root_config  mutable user state: copied not linked, adopt-on-collision
 #                (export_user_config / preflight_root_config / check_active_file)
 #   cleanup      remove a stale repo-managed symlink at home path; src_rel is "-"
@@ -24,10 +26,10 @@
 #
 # harness	kind	src_rel	home_sub	home_root	flags
 claude	root_config	globals/claude/settings.json	settings.json	claude	-
-claude	link	globals/claude/CLAUDE.md	CLAUDE.md	claude	-
-claude	link	globals/claude/MANAGED_BY_ROBOREPO.md	MANAGED_BY_ROBOREPO.md	claude	nodoctor
-claude	link	globals/claude/commands	commands	claude	nodoctor
-claude	link	globals/claude/hooks	hooks	claude	-
+claude	managed_copy	globals/claude/CLAUDE.md	CLAUDE.md	claude	-
+claude	managed_copy	globals/claude/MANAGED_BY_ROBOREPO.md	MANAGED_BY_ROBOREPO.md	claude	nodoctor
+claude	managed_copy	globals/claude/commands	commands	claude	nodoctor
+claude	managed_copy	globals/claude/hooks	hooks	claude	-
 claude	cleanup	-	MANAGED_BY_HARNESS_CONFIGS.md	claude	-
 claude	cleanup	-	plugins/known_marketplaces.json	claude	-
 claude	cleanup	-	plugins/installed_plugins.json	claude	-
@@ -39,12 +41,12 @@ claude	cleanup	-	skills	claude	-
 # ^^^ migration: removes any old dir-level ~/.claude/skills -> globals/claude/skills symlink.
 # skills/ is now managed per-skill by the installer's enumerate-step, not as a dir-level link.
 codex	root_config	globals/codex/config.toml	config.toml	codex	-
-codex	link	globals/codex/AGENTS.md	AGENTS.md	codex	-
-codex	link	globals/codex/commands	commands	codex	nodoctor
-codex	link	globals/codex/MANAGED_BY_ROBOREPO.md	MANAGED_BY_ROBOREPO.md	codex	nodoctor
-codex	link	globals/codex/hooks.json	hooks.json	codex	-
-codex	link	globals/codex/hooks	hooks	codex	-
-codex	link	globals/codex/rules	rules	codex	-
+codex	managed_copy	globals/codex/AGENTS.md	AGENTS.md	codex	-
+codex	managed_copy	globals/codex/commands	commands	codex	nodoctor
+codex	managed_copy	globals/codex/MANAGED_BY_ROBOREPO.md	MANAGED_BY_ROBOREPO.md	codex	nodoctor
+codex	managed_copy	globals/codex/hooks.json	hooks.json	codex	-
+codex	managed_copy	globals/codex/hooks	hooks	codex	-
+codex	managed_copy	globals/codex/rules	rules	codex	-
 codex	cleanup	-	MANAGED_BY_HARNESS_CONFIGS.md	codex	-
 codex	cleanup	-	skills	codex	-
 # ^^^ migration: removes any old dir-level ~/.codex/skills -> repo symlink (pre-native-alignment era).

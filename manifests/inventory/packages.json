@@ -10,7 +10,7 @@
         {
           "type": "rules",
           "source": "globals/packages/jcodemunch/rules.md",
-          "harness": "claude"
+          "harness": "both"
         },
         {
           "type": "hooks",

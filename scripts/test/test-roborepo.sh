@@ -543,7 +543,7 @@ assert "telemetry purge: rejects missing --all" \
 adopt_keep_home="${work}/adopt-keep-home"
 mkdir -p "${adopt_keep_home}/.claude" "${adopt_keep_home}/.roborepo"
 printf 'local hooks\n' > "${adopt_keep_home}/.claude/hooks"
-node -e 'const fs = require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({ repo: process.argv[2], mode: "adopt", onConflict: "keep" }));' \
+node -e 'const fs = require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({ repo: process.argv[2], onConflict: "keep" }));' \
   "${adopt_keep_home}/.roborepo/install-state.json" "${repo_root}"
 assert "bundle apply: adopt keep policy stages repo item" \
   bash -c "HOME='${adopt_keep_home}' ROBOREPO_STATE_DIR='${adopt_keep_home}/.roborepo' ROBOREPO_INSTALL_TIMESTAMP=20260615-101500 node '${cli}' bundle apply hooks >'${adopt_keep_home}/out' && grep -q 'local hooks' '${adopt_keep_home}/.claude/hooks' && test -d '${adopt_keep_home}/.claude/hooks_update_20260615-101500' && grep -q 'stage: .*hooks_update_20260615-101500' '${adopt_keep_home}/out'"
@@ -553,7 +553,7 @@ assert "bundle remove: adopt keep policy removes staged item only" \
 adopt_overwrite_home="${work}/adopt-overwrite-home"
 mkdir -p "${adopt_overwrite_home}/.claude" "${adopt_overwrite_home}/.roborepo"
 printf 'local hooks\n' > "${adopt_overwrite_home}/.claude/hooks"
-node -e 'const fs = require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({ repo: process.argv[2], mode: "adopt", onConflict: "overwrite" }));' \
+node -e 'const fs = require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({ repo: process.argv[2], onConflict: "overwrite" }));' \
   "${adopt_overwrite_home}/.roborepo/install-state.json" "${repo_root}"
 assert "bundle apply: adopt overwrite policy backs up local item" \
   bash -c "HOME='${adopt_overwrite_home}' ROBOREPO_STATE_DIR='${adopt_overwrite_home}/.roborepo' ROBOREPO_INSTALL_TIMESTAMP=20260615-101500 node '${cli}' bundle apply hooks >'${adopt_overwrite_home}/out' && grep -q 'local hooks' '${adopt_overwrite_home}/.claude/hooks_original_20260615-101500' && test -d '${adopt_overwrite_home}/.claude/hooks' && grep -q 'backup: .*hooks_original_20260615-101500' '${adopt_overwrite_home}/out'"

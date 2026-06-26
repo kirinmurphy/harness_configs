@@ -9,24 +9,6 @@ roborepo_state_file() {
   echo "$(roborepo_state_dir)/install-state.json"
 }
 
-read_install_mode() {
-  local state_file
-  state_file="$(roborepo_state_file)"
-  [[ -f "${state_file}" ]] || return 1
-
-  node -e '
-const fs = require("fs");
-try {
-  const state = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-  if (state && (state.mode === "managed" || state.mode === "adopt")) {
-    console.log(state.mode);
-    process.exit(0);
-  }
-} catch {}
-process.exit(1);
-' "${state_file}"
-}
-
 read_install_repo() {
   local state_file
   state_file="$(roborepo_state_file)"
@@ -64,14 +46,13 @@ process.exit(1);
 }
 
 write_install_state() {
-  local mode="$1"
-  local on_conflict="${2:-}"
+  local on_conflict="${1:-}"
   local state_file state_dir
   state_dir="$(roborepo_state_dir)"
   state_file="$(roborepo_state_file)"
 
   if [[ "${dry_run:-0}" -eq 1 ]]; then
-    echo "state: would record install mode ${mode} at ${state_file}"
+    echo "state: would record install state at ${state_file}"
     return 0
   fi
 
@@ -79,24 +60,23 @@ write_install_state() {
   node -e '
 const fs = require("fs");
 const path = require("path");
-const [stateFile, repoRoot, mode, onConflict] = process.argv.slice(1);
+const [stateFile, repoRoot, onConflict] = process.argv.slice(1);
 const persistedOnConflict = onConflict === "overwrite" || onConflict === "keep" ? onConflict : undefined;
 const state = {
   repo: repoRoot,
-  mode,
   onConflict: persistedOnConflict,
   updatedAt: new Date().toISOString(),
   harnesses: {
-    claude: { mode, onConflict: persistedOnConflict },
-    codex: { mode, onConflict: persistedOnConflict },
+    claude: { onConflict: persistedOnConflict },
+    codex: { onConflict: persistedOnConflict },
   },
 };
 fs.mkdirSync(path.dirname(stateFile), { recursive: true });
 fs.writeFileSync(stateFile, JSON.stringify(state, null, 2) + "\n");
-' "${state_file}" "${repo_root}" "${mode}" "${on_conflict}"
+' "${state_file}" "${repo_root}" "${on_conflict}"
   if [[ -n "${on_conflict}" ]]; then
-    echo "state: ${state_file} mode=${mode} on-conflict=${on_conflict}"
+    echo "state: ${state_file} on-conflict=${on_conflict}"
   else
-    echo "state: ${state_file} mode=${mode}"
+    echo "state: ${state_file}"
   fi
 }

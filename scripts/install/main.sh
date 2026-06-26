@@ -5,7 +5,6 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 dry_run=0
 skip_presets_onboard=0
 agent_permission_profile="${ROBOREPO_AGENT_PERMISSION_PROFILE:-${ROBOREPO_CODEX_PERMISSION_PROFILE:-}}"
-install_mode="${ROBOREPO_INSTALL_MODE:-}"
 on_conflict="${ROBOREPO_ON_CONFLICT:-}"
 on_conflict_explicit=0
 on_conflict_persisted=0
@@ -25,7 +24,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --permissions|--agent-permissions|--codex-permissions)
-      [[ $# -ge 2 ]] || { echo "usage: $0 [--dry-run] [--no-presets-onboard] [--mode managed|adopt] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2; }
+      [[ $# -ge 2 ]] || { echo "usage: $0 [--dry-run] [--no-presets-onboard] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2; }
       agent_permission_profile="$2"
       shift 2
       ;;
@@ -38,20 +37,10 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --telemetry-only)
-      install_mode="telemetry-only"
-      shift
-      ;;
-    --mode)
-      [[ $# -ge 2 ]] || { echo "usage: $0 [--dry-run] [--no-presets-onboard] [--mode managed|adopt|telemetry-only] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2; }
-      install_mode="$2"
-      shift 2
-      ;;
-    --mode=*)
-      install_mode="${1#*=}"
-      shift
+      exec node "${repo_root}/scripts/cli/main.mjs" telemetry install
       ;;
     --on-conflict)
-      [[ $# -ge 2 ]] || { echo "usage: $0 [--dry-run] [--no-presets-onboard] [--mode managed|adopt] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2; }
+      [[ $# -ge 2 ]] || { echo "usage: $0 [--dry-run] [--no-presets-onboard] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2; }
       on_conflict="$2"
       on_conflict_explicit=1
       shift 2
@@ -62,25 +51,16 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      echo "usage: $0 [--dry-run] [--no-presets-onboard] [--mode managed|adopt] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2
+      echo "usage: $0 [--dry-run] [--no-presets-onboard] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2
       exit 2
       ;;
   esac
 done
 
-case "${install_mode}" in
-  "" ) ;;
-  managed|adopt) ;;
-  telemetry-only)
-    exec node "${repo_root}/scripts/cli/main.mjs" telemetry install
-    ;;
-  *) echo "usage: $0 [--dry-run] [--no-presets-onboard] [--mode managed|adopt|telemetry-only] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2 ;;
-esac
-
 case "${on_conflict}" in
   "" ) ;;
   overwrite|keep|abort) ;;
-  *) echo "usage: $0 [--dry-run] [--no-presets-onboard] [--mode managed|adopt] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2 ;;
+  *) echo "usage: $0 [--dry-run] [--no-presets-onboard] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2 ;;
 esac
 export ROBOREPO_ON_CONFLICT="${on_conflict}"
 
@@ -94,73 +74,8 @@ source "${repo_root}/scripts/install/state-lib.sh"
 # shellcheck source=scripts/lib/manifests-data.sh
 source "${repo_root}/scripts/lib/manifests-data.sh"  # provides manifest_rows
 
-choose_install_mode() {
-  local choice
-
-  if [[ -n "${install_mode}" ]]; then
-    return 0
-  fi
-
-  if ! stdin_is_interactive; then
-    install_mode="$(read_install_mode 2>/dev/null || true)"
-    install_mode="${install_mode:-managed}"
-    return 0
-  fi
-
-  while true; do
-    echo ""
-    echo "Choose install mode:"
-    echo "  1) managed  backup any existing config first; install repo defaults"
-    echo "  2) adopt    keep local root config active; install repo defaults around it"
-    echo "  q) quit"
-    printf "Selection [1/2/q]: "
-    if ! read -r choice; then
-      install_mode="managed"
-      return 0
-    fi
-
-    case "${choice}" in
-      1|managed)
-        install_mode="managed"
-        return 0
-        ;;
-      2|adopt)
-        install_mode="adopt"
-        return 0
-        ;;
-      q|Q|quit|exit)
-        echo "install canceled by user" >&2
-        exit 1
-        ;;
-      *)
-        echo "Invalid selection."
-        ;;
-    esac
-  done
-}
-
-choose_install_mode
-
-if [[ -z "${install_mode}" ]]; then
-  install_mode="$(read_install_mode 2>/dev/null || true)"
-fi
-install_mode="${install_mode:-managed}"
-
 choose_adopt_conflict_policy() {
   local choice
-
-  if [[ "${install_mode}" == "managed" ]]; then
-    if [[ -z "${on_conflict}" ]]; then
-      on_conflict="$(read_install_on_conflict 2>/dev/null || true)"
-      if [[ -n "${on_conflict}" ]]; then
-        on_conflict_persisted=1
-      else
-        on_conflict="overwrite"
-      fi
-    fi
-    on_conflict="overwrite"
-    return 0
-  fi
 
   if [[ -n "${on_conflict}" ]]; then
     return 0
@@ -210,7 +125,6 @@ choose_adopt_conflict_policy() {
 }
 
 choose_adopt_conflict_policy
-export ROBOREPO_INSTALL_MODE="${install_mode}"
 export ROBOREPO_ON_CONFLICT="${on_conflict}"
 
 run_with_dry_args() {
@@ -266,93 +180,6 @@ preflight_shell_setup() {
   "${repo_root}/scripts/install/install-shell-snippets.sh" --dry-run
 }
 
-check_clean_target() {
-  local repo_rel="$1"
-  local home_path="$2"
-  local src="${repo_root}/${repo_rel}"
-
-  if [[ ! -e "${home_path}" && ! -L "${home_path}" ]]; then
-    return 0
-  fi
-
-  if [[ -L "${home_path}" ]]; then
-    case "$(readlink "${home_path}")" in
-      "${src}"|"${repo_root}"/*) return 0 ;;
-    esac
-  fi
-
-  echo "conflict: ${home_path} already exists and is not managed by this repo." >&2
-  echo "  repo source: ${src}" >&2
-  echo "Merge review prompt:" >&2
-  echo "  Default stance: preserve the existing local path as source of truth unless you can prove a repo change can be added without breaking local behavior." >&2
-  echo "  Required first step: compute your own complete comparison of both paths. Do not rely on this prompt as an exhaustive conflict summary." >&2
-  echo "  For directories, inspect the full recursive file list and content diffs. For structured files, parse the format when possible." >&2
-  echo "  Add repo-only harness behavior only when it does not conflict with local behavior. Flag conflicts instead of guessing." >&2
-  return 1
-}
-
-# Preflight every managed link target (from manifests/platform/manifest.tsv) for the present harnesses.
-# Claude uses the claude rows; Codex uses the codex rows.
-# root_config and cleanup rows are not preflighted here — root config is mutable user state.
-preflight_clean_targets() {
-  local conflict=0
-  local _h kind src_rel home_abs _flags
-
-  preflight_harness() {
-    while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
-      [[ "${kind}" == "link" ]] || continue
-      check_clean_target "${src_rel}" "${home_abs}" || conflict=1
-    done < <(manifest_rows "$1")
-  }
-
-  [[ $has_claude -eq 1 ]] && preflight_harness claude
-  [[ $has_codex  -eq 1 ]] && preflight_harness codex
-
-  if [[ $conflict -eq 1 ]]; then
-    echo "Install has non-root config conflicts. No files were changed." >&2
-    echo "Use the merge prompt above, or merge/move these paths before re-running." >&2
-    exit 1
-  fi
-}
-
-preflight_unattended_conflicts() {
-  [[ "${dry_run}" -eq 0 ]] || return 0
-  [[ "${on_conflict_explicit}" -eq 1 || "${on_conflict_persisted}" -eq 1 ]] && return 0
-  stdin_is_interactive && return 0
-
-  local conflict=0
-  local _h kind src_rel home_abs _flags src current
-  preflight_harness_conflicts() {
-    while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
-      case "${kind}" in
-        root_config|link) ;;
-        *) continue ;;
-      esac
-      src="${repo_root}/${src_rel}"
-      [[ ! -e "${home_abs}" && ! -L "${home_abs}" ]] && continue
-      if [[ "${kind}" == "link" && "${install_mode}" == "managed" && -L "${home_abs}" ]]; then
-        current="$(readlink "${home_abs}")"
-        [[ "${current}" == "${src}" || "${current}" == "${repo_root}"/* ]] && continue
-      fi
-      if [[ "${kind}" == "root_config" && -L "${home_abs}" ]]; then
-        current="$(readlink "${home_abs}")"
-        [[ "${current}" == "${src}" || "${current}" == "${repo_root}"/* ]] && continue
-      fi
-      if paths_equivalent_for_copy "${src}" "${home_abs}"; then
-        continue
-      fi
-      echo "error: ${home_abs} exists and stdin is not interactive." >&2
-      conflict=1
-    done < <(manifest_rows "$1")
-  }
-
-  [[ $has_claude -eq 1 ]] && preflight_harness_conflicts claude
-  [[ $has_codex  -eq 1 ]] && preflight_harness_conflicts codex
-  if [[ "${conflict}" -eq 1 ]]; then
-    echo "Run interactively, pass --on-conflict overwrite|keep, or use --dry-run to inspect collisions." >&2
-    exit 1
-  fi
-}
 
 # Durable, once-only snapshot of the user's genuine pre-roborepo config — taken before the first
 # mutation below so uninstall/reinstall cycles always have a pristine image to fall back on.
@@ -370,7 +197,7 @@ if [[ $dry_run -eq 0 ]]; then
   "${repo_root}/scripts/install/install-shell-snippets.sh"
 fi
 
-write_install_state "${install_mode}" "${on_conflict}"
+write_install_state "${on_conflict}"
 
 # Link shared skills per-skill into each present harness's native skills dir.
 install_section "Skills"
@@ -432,7 +259,6 @@ run_post_install_onboarding() {
 
 # Post-install summary
 install_section "Core Install Complete"
-echo "  ${RR_BOLD}Mode${RR_RESET}    ${install_mode}"
 echo "  ${RR_BOLD}Claude${RR_RESET}  $([ $has_claude -eq 1 ] && echo "${RR_GREEN}available${RR_RESET}" || echo "${RR_DIM}not installed${RR_RESET}")"
 echo "  ${RR_BOLD}Codex${RR_RESET}   $([ $has_codex  -eq 1 ] && echo "${RR_GREEN}available${RR_RESET}" || echo "${RR_DIM}not installed${RR_RESET}")"
 run_post_install_onboarding

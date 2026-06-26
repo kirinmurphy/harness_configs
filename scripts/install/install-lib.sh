@@ -349,27 +349,6 @@ install_copy_item() {
     return 0
   fi
 
-  if [[ "${install_mode}" == "managed" ]]; then
-    if path_has_meaningful_content "${home_path}"; then
-      local original_path
-      original_path="$(timestamped_path "${home_path}" original)"
-      if [[ "${dry_run}" -eq 0 ]]; then
-        mkdir -p "$(dirname "${original_path}")"
-        mv "${home_path}" "${original_path}"
-        copy_tree "${src}" "${home_path}"
-      fi
-      say backup "${home_path} -> ${original_path}"
-      say copy "${home_path} <- ${src}"
-      print_install_conflict_prompt "${repo_rel}" "${home_path}"
-      return 0
-    fi
-    if [[ "${dry_run}" -eq 0 ]]; then
-      copy_tree "${src}" "${home_path}"
-    fi
-    say copy "${home_path} <- ${src}"
-    return 0
-  fi
-
   CONFIG_COLLISION_ACTION=""
   choose_path_conflict_action "${repo_rel}" "${home_path}"
   if [[ "${dry_run}" -eq 1 && -n "${harness}" ]]; then
@@ -435,27 +414,6 @@ install_link_item() {
   if [[ ! -e "${home_path}" && ! -L "${home_path}" ]]; then
     if [[ "${dry_run}" -eq 0 ]]; then
       mkdir -p "$(dirname "${home_path}")"
-      ln -s "${src}" "${home_path}"
-    fi
-    say link "${home_path} -> ${src}"
-    return 0
-  fi
-
-  if [[ "${install_mode}" == "managed" ]]; then
-    if path_has_meaningful_content "${home_path}"; then
-      local original_path
-      original_path="$(timestamped_path "${home_path}" original)"
-      if [[ "${dry_run}" -eq 0 ]]; then
-        mkdir -p "$(dirname "${original_path}")" "$(dirname "${home_path}")"
-        mv "${home_path}" "${original_path}"
-        ln -s "${src}" "${home_path}"
-      fi
-      say backup "${home_path} -> ${original_path}"
-      say link "${home_path} -> ${src}"
-      print_install_conflict_prompt "${repo_rel}" "${home_path}"
-      return 0
-    fi
-    if [[ "${dry_run}" -eq 0 ]]; then
       ln -s "${src}" "${home_path}"
     fi
     say link "${home_path} -> ${src}"

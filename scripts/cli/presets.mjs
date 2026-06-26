@@ -406,11 +406,7 @@ function removeBundle(bundle, rows) {
 function applyRow(row, policy) {
   if (!harnessAvailable(row.harness)) return;
   if (row.kind === "cleanup") return cleanupRow(row);
-  if (row.kind === "managed_copy") return copyItem(row, policy);
-  if (row.kind === "link") {
-    if (policy.mode === "adopt") return copyItem(row, policy);
-    return linkItem(row, policy);
-  }
+  if (row.kind === "managed_copy" || row.kind === "link") return copyItem(row, policy);
   if (row.kind === "root_config") return copyItem(row, policy);
 }
 
@@ -422,41 +418,6 @@ function cleanupRow(row) {
   }
 }
 
-function linkItem(row, policy) {
-  const expected = path.join(repoRoot, row.srcRel);
-  fs.mkdirSync(path.dirname(row.homeAbs), { recursive: true });
-
-  const link = readlink(row.homeAbs);
-  if (link && path.resolve(path.dirname(row.homeAbs), link) === expected) {
-    console.log(`ok: ${row.homeAbs}`);
-    return;
-  }
-  if (link && resolvesInsideRepo(row.homeAbs)) {
-    fs.unlinkSync(row.homeAbs);
-    fs.symlinkSync(expected, row.homeAbs);
-    console.log(`relink: ${row.homeAbs} -> ${expected}`);
-    return;
-  }
-  if (pathExists(row.homeAbs)) {
-    if (policy.onConflict === "keep") {
-      stageUpdate(row);
-      printMergePrompt(row);
-      return;
-    }
-    if (pathHasMeaningfulContent(row.homeAbs)) {
-      const originalPath = timestampedPath(row.homeAbs, "original");
-      fs.mkdirSync(path.dirname(originalPath), { recursive: true });
-      fs.renameSync(row.homeAbs, originalPath);
-      console.log(`backup: ${row.homeAbs} -> ${originalPath}`);
-      printMergePrompt(row);
-    } else {
-      fs.rmSync(row.homeAbs, { recursive: true, force: true });
-    }
-  }
-
-  fs.symlinkSync(expected, row.homeAbs);
-  console.log(`link: ${row.homeAbs} -> ${expected}`);
-}
 
 // A root_config file is "roborepo-authored" once install has written its hooks/markers in. Backing
 // such a file up as a "pre-install" original poisons the backup — a later uninstall would restore
@@ -582,10 +543,8 @@ function bundleApplied(bundle, rows, policy = readInstallPolicy()) {
   return bundle.rows.every((key) => {
     const row = rows.get(key);
     if (!row || !harnessAvailable(row.harness)) return true;
-    if (row.kind === "managed_copy") return fs.existsSync(row.homeAbs) && !readlink(row.homeAbs);
-    if (row.kind === "root_config") return fs.existsSync(row.homeAbs) && !readlink(row.homeAbs);
-    if (row.kind === "link" && policy.mode === "adopt") return fs.existsSync(row.homeAbs) && !readlink(row.homeAbs);
-    if (row.kind === "link") return realpath(row.homeAbs) === path.join(repoRoot, row.srcRel);
+    if (row.kind === "managed_copy" || row.kind === "link" || row.kind === "root_config")
+      return fs.existsSync(row.homeAbs) && !readlink(row.homeAbs);
     return true;
   });
 }
@@ -595,17 +554,14 @@ function readInstallPolicy() {
   try {
     state = JSON.parse(fs.readFileSync(installStatePath, "utf8"));
   } catch {}
-  const mode = state.mode === "adopt" ? "adopt" : "managed";
   const envConflict = process.env.ROBOREPO_ON_CONFLICT;
   const stateConflict = state.onConflict;
   const onConflict = envConflict === "keep" || envConflict === "overwrite"
     ? envConflict
     : stateConflict === "keep" || stateConflict === "overwrite"
       ? stateConflict
-      : mode === "adopt"
-        ? "keep"
-        : "overwrite";
-  return { mode, onConflict };
+      : "keep";
+  return { onConflict };
 }
 
 function timestampedPath(target, tag) {

@@ -1,8 +1,9 @@
 # Skills vs. Commands: Invocation & Risk Policy
 
 > **Status: ACTIVE.** Control-plane manifests (`skill-invocation.json`,
-> `slash-commands.json`) shipped. Remaining work: skill audit command, settings
-> checker, slash-command renderer, and any trigger / risk reclassifications.
+> `slash-commands.json`), the baseline audit doc, and slash-command rendering shipped. Remaining
+> work: automated audit/check commands, trigger tests, settings/manual-only validation, and any
+> trigger or risk reclassifications.
 
 ## Purpose
 
@@ -22,10 +23,10 @@ This policy answers three user-facing questions:
 | Mechanism       | Source location                                                                                                                                     | Invocation                                                        |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Always-on rules | `globals/rules/shared/` + `globals/rules/<harness>/` rendered into `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`                                   | Every turn                                                        |
-| Shared skills   | `globals/agents/skills/<name>/`, exposed to Claude through `globals/claude/skills/<name>` symlinks and to Codex through the shared agents skill dir | Auto-invokable and command-invokable when the harness supports it |
+| Shared skills   | `globals/agents/skills/<name>/`, copied into installed harness skill dirs when enabled (`~/.claude/skills/<name>`, `~/.codex/skills/<name>`) | Auto-invokable and command-invokable when the harness supports it |
 | Slash commands  | `globals/claude/commands/<name>.md`                                                                                                                 | Manual `/name` only                                               |
 | Hooks           | `globals/claude/hooks/` + `settings.json`; `globals/codex/hooks.json`                                                                               | Deterministic harness-executed behavior                           |
-| Per-repo skills | client repo `.agents/skills/<name>/` via `roborepo skill symlink-local`                                                                             | Same risk model as global skills, scoped to that repo             |
+| Per-repo skills | client repo `.agents/skills/<name>/` via `roborepo skill symlink-repo`                                                                              | Same risk model as global skills, scoped to that repo             |
 
 Current shared skills include `blog`, `code-style`, `frontend-design`,
 `javascript-typescript`, `react`, `roborepo-support`,
@@ -344,17 +345,13 @@ read-only skills lightweight.
 
 ## Proposed Implementation Order
 
-1. Add a skill inventory/audit that lists each skill, trigger description, risk,
-   invocation policy, dynamic shell usage, and harness exposure.
+1. Automate the skill inventory/audit so the baseline doc can be regenerated and checked.
 2. Tighten descriptions for medium-risk skills before converting anything.
 3. Add trigger tests for expected matches and near misses.
-4. Run the Claude/Codex compatibility spike for manual-only skills and loaded-skill
-   visibility.
-5. Add a shared invocation manifest only after the compatibility shape is known.
-6. Add a slash-command generator for commands declared in
-   `manifests/inventory/slash-commands.json`.
-7. Split persistent modes from one-shot actions where a skill currently does both.
-8. Convert only high-risk or truly persistent workflows to manual commands.
+4. Add manifest-backed checks for generated command outputs and any manual-only policy.
+5. Run the Claude/Codex visibility spike for loaded-skill metadata.
+6. Split persistent modes from one-shot actions where a skill currently does both.
+7. Convert only high-risk or truly persistent workflows to manual commands.
 
 ## Next Recommended Work
 
@@ -364,19 +361,22 @@ read-only skills lightweight.
   truth for skill risk tier and desired invocation behavior.
 - **`manifests/inventory/slash-commands.json`** — shipped with the command
   catalog (skill-backed and standalone entries, harness targets).
+- **`scripts/build/render-slash-commands.mjs`** — shipped as the renderer/checker for generated
+  Claude and Codex slash-command files.
+- **`docs/reference/internal/skill-invocation-audit.md`** — shipped as a hand-authored baseline
+  audit for current shared skills.
 
 ### Remaining
 
 Do these before making more behavior changes:
 
-1. Add an automated skill audit command that generates the current inventory from
-   actual skill files and flags dynamic shell, broad tool grants, and missing
-   harness metadata.
-2. Add a checker that validates Claude and Codex settings against
-   `skill-invocation.json`, including manual-only policy when used.
-3. Build the slash-command renderer that turns `slash-commands.json` entries into
-   harness-specific slash-command files (`globals/claude/commands/`,
-   `globals/codex/commands/`).
+1. Add an automated skill audit command that regenerates
+   `docs/reference/internal/skill-invocation-audit.md` from actual skill files and flags dynamic
+   shell, broad tool grants, missing harness metadata, and unknown skills.
+2. Add trigger tests for expected matches and near misses, starting with medium-risk skills:
+   `blog`, `frontend-design`, and `technical-planning-docs`.
+3. Add a checker that validates generated command outputs and any manual-only policy against
+   `skill-invocation.json`.
 
 This gives the repo a control plane before converting more skills to commands or
 manual-only behavior.
@@ -418,7 +418,7 @@ itself.
 - High-risk workflows cannot auto-load silently.
 - Generated slash commands match `manifests/inventory/slash-commands.json`. Skill-backed
   commands do not duplicate skill bodies; standalone commands have explicit
-  source files.
+  source files. **Shipped for current commands; keep this as a regression criterion.**
 - Trigger tests cover expected invocation and accidental near misses.
 - Claude/Codex differences are explicit and generated or checked.
 
@@ -426,7 +426,7 @@ itself.
 
 - `docs/reference/internal/skill-invocation-audit.md` records the current shared
   skill inventory, risk tiers, and recommended next actions.
-- `roborepo skill symlink-local` (`scripts/cli/skills.mjs`) installs client-repo
+- `roborepo skill symlink-repo` (`scripts/cli/skills.mjs`) installs client-repo
   `.agents/skills/`, which need the same audit policy.
 - `scripts/build/skill-lib.sh` and `scripts/cli/skill-lib.mjs` already define
   reusable skill discovery and linking rules that a command-wrapper renderer

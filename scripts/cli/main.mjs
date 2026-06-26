@@ -132,8 +132,10 @@ async function dispatch(args) {
     // Lifecycle verbs -> existing bash scripts. The first install always happens via the shell
     // bootstrap (scripts/install/main.sh) — that's how roborepo lands on PATH — so the CLI
     // only ever re-applies: `update` re-runs that same script to pick up new config.
-    case "update":
-      return runRepoCommand(cliCatalog.repoScripts.update, [sub, ...rest].filter(Boolean));
+    case "update": {
+      const { runUpdateWithReport } = await import("./update-report.mjs");
+      return runUpdateWithReport(cliCatalog.repoScripts.update, [sub, ...rest].filter(Boolean));
+    }
     case "repair":
       return runRepoCommand(cliCatalog.repoScripts.repair, [sub, ...rest].filter(Boolean));
     case "uninstall":
@@ -145,6 +147,14 @@ async function dispatch(args) {
     case "verify":
       return runRepoCommand(cliCatalog.repoScripts.verify, [sub, ...rest].filter(Boolean));
     case "rules":
+      if (sub === "render") {
+        const { renderHomeRules } = await import("./rules-render.mjs");
+        return renderHomeRules({ dryRun: flags.has("--dry-run") });
+      }
+      if (sub === "check-home") {
+        const { checkHomeRules } = await import("./rules-render.mjs");
+        process.exit(checkHomeRules() ? 0 : 1);
+      }
       return runRepoCommand(cliCatalog.repoScripts.rules, [sub, ...rest].filter(Boolean));
     case "permissions":
       return runRepoCommand(cliCatalog.repoScripts.permissions, [sub, ...rest].filter(Boolean));

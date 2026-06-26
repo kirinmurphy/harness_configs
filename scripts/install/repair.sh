@@ -47,10 +47,10 @@ repair_harness() {
   done < <(manifest_rows "$1")
 }
 
-# Per-skill copies: link_global_skills handles idempotent copy, legacy-symlink migration,
-# and prune of removed skills. Always safe to run; creates skills_home if absent.
+# Per-skill copies: repair only re-materializes the base support skill. Optional skills are
+# controlled by onboarding/package toggles.
 repair_skill_links() {
-  link_global_skills "${1%/skills}"
+  link_global_skills "${1%/skills}" roborepo-support
 }
 
 [[ -d "${HOME}/.claude" ]] && repair_harness claude

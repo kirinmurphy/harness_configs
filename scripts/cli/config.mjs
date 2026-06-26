@@ -4,6 +4,7 @@ import os from "node:os";
 import { repoRoot } from "./paths.mjs";
 import { installStatePath, presetsStatePath, telemetryDir, activeProfilePath } from "./state-paths.mjs";
 import { readProjectProfile } from "./config-mutate.mjs";
+import { readEnabledPackagesRegistry } from "./rules-render.mjs";
 
 const PACKAGES_PATH = path.join(repoRoot, "manifests", "inventory", "packages.json");
 const PRESETS_PATH = path.join(repoRoot, "manifests", "platform", "presets.json");
@@ -52,11 +53,13 @@ function ownComponentsEnabled(pkg, settings, serviceState) {
     const allow = settings?.permissions?.allow || [];
     return permComp.allow.every((p) => allow.includes(p));
   }
-  // A rules package is enabled iff its block (anchored by its unique first line) is present in the
-  // live harness rules file. For harness "both"/"claude" we read CLAUDE.md; for "codex" AGENTS.md.
-  // CLAUDE.md is the panel's primary read since it always exists when Claude is installed.
+  // A rules package is enabled iff it's in the enabled-packages registry (Phase 3+). On a
+  // pre-Phase-3 machine without the registry, fall back to text scanning the live rules file.
   const rulesComp = pkg.components.find((c) => c.type === "rules");
   if (rulesComp) {
+    const { exists, packages: enabledPkgs } = readEnabledPackagesRegistry();
+    if (exists) return enabledPkgs.includes(pkg.id);
+    // Pre-Phase-3 fallback: text scan
     const rulesFile = rulesComp.harness === "codex"
       ? path.join(os.homedir(), ".codex", "AGENTS.md")
       : path.join(os.homedir(), ".claude", "CLAUDE.md");

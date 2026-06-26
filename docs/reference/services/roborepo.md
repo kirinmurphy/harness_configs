@@ -93,7 +93,7 @@ roborepo — choose an action:
   skill new      scaffold a shared skill or slash command
   skill export-to-local copy shared skills into this repo
   skill symlink-repo      symlink this repo's .agents/skills into selected agent folders
-  skill symlink-globals     symlink shared skill source into global harness folders
+  skill symlink-globals     refresh copied shared skills in global harness folders
   skill render-commands render/check slash commands
 
   Maintenance
@@ -142,11 +142,12 @@ relative or absolute — roborepo resolves it to an absolute path before use.
 
 ### Categories
 
-- **Setup** — `update` re-applies the core harness config on this machine (re-runs managed links,
-  root config export, command install, and shell install to pick up new config). The *first*
-  install is the shell bootstrap `scripts/install/main.sh` — that is what puts `roborepo` on
-  `PATH` — so the CLI has no separate `install` verb; once `roborepo` exists you only ever
-  `update`. After that, `onboard` runs the wizard to choose the optional behaviors for this machine.
+- **Setup** — `update` re-applies the core harness config on this machine (refreshes copied files,
+  rendered rules, root config export, command install, and shell install to pick up new config).
+  The *first* install is the shell bootstrap `scripts/install/main.sh` — that is what puts
+  `roborepo` on `PATH` — so the CLI has no separate `install` verb; once `roborepo` exists you only
+  ever `update`. After that, `onboard` runs the wizard to choose the optional behaviors for this
+  machine.
 - **Day to day** — `index code|docs` are one-shot indexers; `watch code` runs a live indexer (and
   writes the pidfile the Claude SessionStart hook reads to report watcher status); `mcp add`
   registers MCP servers with Claude + Codex; `bundle` manages the optional bundle selections;
@@ -163,9 +164,8 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   scans it directly; Claude fan-out links point at that
   source. Existing `.claude`/`.codex` roots are used automatically; interactive runs ask before
   creating a missing root, and noninteractive runs never create missing roots. `skill symlink-globals`
-  is the maintainer command for this repo: it creates/prunes
-  Claude per-skill links after shared skills are added or removed, and `--check` verifies without
-  changing links. `skill render-commands` renders generated slash commands from
+  is the maintainer command for this repo: it refreshes global shared skill copies after skills are
+  added or removed, and `--check` verifies without changing files. `skill render-commands` renders generated slash commands from
   `manifests/inventory/slash-commands.json`, and `--check` verifies without changing files.
   See [architecture.md](architecture.md#two-skill-layers-shared-vs-internal).
 - **Maintenance** — `backfill` pulls live config back into the repo; `doctor` and `verify` are

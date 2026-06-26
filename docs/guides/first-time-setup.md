@@ -22,8 +22,8 @@ Install on a new machine:
 ./scripts/install/main.sh
 ```
 
-Interactive installs ask for the install mode, apply a minimal baseline, then launch the onboarding
-wizard so you choose which behaviors to enable. The wizard walks the same sections the `/config`
+Interactive installs apply a minimal baseline, then launch the onboarding wizard so you choose
+which behaviors to enable. The wizard walks the same sections the `/config`
 display shows — Token Optimization, Commands, Code Conventions, Chat-Time Output, and a read-only
 Permissions panel — one section per step:
 
@@ -50,21 +50,16 @@ roborepo doctor
 roborepo verify
 ```
 
-## Choose an Install Type
+## Choose Collision Behavior
 
-The installer has two ownership models:
+The installer always materializes config by copying owned files and rendering generated rules. There is no install mode. Existing user config is preserved unless you choose to overwrite it.
 
-| Workflow | Use when | Result |
+| Policy | Use when | Result |
 | --- | --- | --- |
-| `managed` | This repo owns the global defaults, or the machine is clean. | Core config paths point into this repo through symlinks, then the default bundles are applied automatically. |
-| `adopt` | You already have local Claude/Codex config you want to keep. | Local config remains user-owned while repo defaults are copied, staged, or merged intentionally. |
+| `keep` | You already have local Claude/Codex config you want active. | Local files stay active; repo candidates are staged beside them as `*_update_TIMESTAMP`. |
+| `overwrite` | The repo baseline should replace the local file. | Local files are backed up as `*_original_TIMESTAMP`, then the repo file is copied in. |
+| `abort` | You want manual review before any conflict is changed. | Install stops at the conflicting path. |
 
-No install workflow deletes existing user config. When the installer finds a collision it preserves
-the existing file and either asks what to do or stops before changing that path.
-
-Interactive installs always ask you to choose `managed` or `adopt`. Both choices are available on
-clean machines and on machines with existing config. Adopt installs also ask whether later file
-collisions should overwrite with backups or keep originals with staged repo defaults. Use
-`--mode managed` or `--mode adopt` only when you want to skip the interactive mode prompt.
+Use `--on-conflict keep`, `--on-conflict overwrite`, or `--on-conflict abort` to make this explicit. Without a flag, roborepo reuses the saved `onConflict` value from `~/.roborepo/install-state.json`; first noninteractive installs default to `keep`.
 
 For the full decision model and terminal-style walkthroughs, see [Install Workflow Choices](install-workflows.md). For exact collision behavior, see [Config Collision Handling](../reference/internal/config-collision-handling.md).

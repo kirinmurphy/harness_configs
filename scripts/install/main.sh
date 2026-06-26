@@ -69,6 +69,8 @@ dry_args=()
 
 # shellcheck source=scripts/install/install-lib.sh
 source "${repo_root}/scripts/install/install-lib.sh"
+# shellcheck source=scripts/build/skill-lib.sh
+source "${repo_root}/scripts/build/skill-lib.sh"  # provides list_source_skills (for link_global_skills)
 # shellcheck source=scripts/install/state-lib.sh
 source "${repo_root}/scripts/install/state-lib.sh"
 # shellcheck source=scripts/lib/manifests-data.sh
@@ -199,17 +201,10 @@ fi
 
 write_install_state "${on_conflict}"
 
-# Link shared skills per-skill into each present harness's native skills dir.
-install_section "Skills"
+install_section "Base Skill"
 if [[ $dry_run -eq 0 ]]; then
-  bash "${repo_root}/scripts/build/link-global-skills.sh" || true
-fi
-
-# Re-apply Claude MCP live store from mcp-servers.json so the recorded set is portable.
-# (Codex reads config.toml directly from the repo; only Claude's live store needs reapplication.)
-install_section "MCP Servers"
-if [[ $dry_run -eq 0 ]] && command -v node >/dev/null 2>&1; then
-  node "${repo_root}/scripts/cli/main.mjs" mcp apply || true
+  [[ $has_claude -eq 1 ]] && link_global_skills "${HOME}/.claude" roborepo-support
+  [[ $has_codex  -eq 1 ]] && link_global_skills "${HOME}/.codex" roborepo-support
 fi
 
 presets_onboarded() {

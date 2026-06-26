@@ -17,3 +17,5 @@ export const telemetryBackupDir = path.join(roborepoStateDir, "telemetry-backups
 // PID file for the detached dashboard server. Env override enables sandboxed testing.
 export const telemetryPidPath = process.env.ROBOREPO_TELEMETRY_PID_PATH
   || path.join(os.homedir(), ".local", "state", "roborepo", "telemetry-server.pid");
+// Registry of enabled packages — source of truth for rules rendering (Phase 3+).
+export const enabledPackagesPath = path.join(roborepoStateDir, "enabled-packages.json");

@@ -147,6 +147,8 @@ export async function wizard(steps, onFinish) {
         ? `\x1b[36m${headPart}\x1b[0m${descPart ? `\x1b[2m${descPart}\x1b[0m` : ""}`
         : `${headPart}${descPart ? `\x1b[2m${descPart}\x1b[0m` : ""}`;
       lines.push(colored);
+      // Blank spacer between items for legibility; skip after the last so the footnote/footer hugs.
+      if (i < step.items.length - 1) lines.push("");
     });
     if (step.footnote) { lines.push(""); lines.push(`\x1b[2m${clip(`  ${step.footnote}`, width)}\x1b[0m`); }
 

@@ -21,7 +21,7 @@ the user's live harness config, some in repo manifests, some in roborepo state.
 | --- | --- | --- |
 | **Package** | A named feature made of typed components | `manifests/inventory/packages.json` (catalog); live config (enabled state) |
 | **Component** | One typed unit of a package's install | the package definition |
-| **Skill** | A shared skill, linked into harness skill dirs | `globals/agents/skills/<name>` (source); the symlink (enabled state) |
+| **Skill** | A shared skill, copied into harness skill dirs | `globals/agents/skills/<name>` (source); managed skill copy marker (enabled state) |
 | **Permission profile** | A named safety posture (readonly / interactive / workspace / networked) | `manifests/inventory/agent-permissions.json` (definitions); live config (active) |
 | **Snapshot** | The assembled current state the UI renders | computed by `readConfigSnapshot()` |
 

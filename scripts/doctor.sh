@@ -190,7 +190,7 @@ check_skill_lib_parity() {
 check_manifest_sources() {
   local _h kind src_rel _home _flags bad=0
   while IFS=$'\t' read -r _h kind src_rel _home _flags; do
-    [[ "${kind}" == "cleanup" ]] && continue
+    case "${kind}" in cleanup|rendered_rules) continue ;; esac
     if [[ ! -e "${repo_root}/${src_rel}" ]]; then
       fail "manifest source missing: ${src_rel} (referenced by manifests/platform/manifest.tsv)"
       bad=1
@@ -295,19 +295,18 @@ if [[ "${check_installed}" -eq 1 ]]; then
   check_roborepo_on_path
   if [[ "${quiet}" -eq 1 ]]; then
     node "${repo_root}/scripts/cli/main.mjs" bundle check >/dev/null || failed=1
+    node "${repo_root}/scripts/cli/rules-render.mjs" --check --quiet >/dev/null || failed=1
   else
     node "${repo_root}/scripts/cli/main.mjs" bundle check || failed=1
+    node "${repo_root}/scripts/cli/rules-render.mjs" --check || failed=1
   fi
-  # Check per-skill live links in each harness's native skills dir.
+  # Base install owns only roborepo-support. Optional skills are checked through their package/toggle
+  # state, not as unconditional install payload.
   installed_has_claude=0; installed_has_codex=0
   harness_present claude && installed_has_claude=1
   harness_present codex  && installed_has_codex=1
-  for skill_src in "${repo_root}"/globals/agents/skills/*/SKILL.md; do
-    [[ -e "${skill_src}" ]] || continue
-    skill_name="$(basename "$(dirname "${skill_src}")")"
-    [[ "${installed_has_claude}" -eq 1 ]] && check_managed_skill "globals/agents/skills/${skill_name}" "${HOME}/.claude/skills/${skill_name}"
-    [[ "${installed_has_codex}"  -eq 1 ]] && check_managed_skill "globals/agents/skills/${skill_name}" "${HOME}/.codex/skills/${skill_name}"
-  done
+  [[ "${installed_has_claude}" -eq 1 ]] && check_managed_skill "globals/agents/skills/roborepo-support" "${HOME}/.claude/skills/roborepo-support"
+  [[ "${installed_has_codex}"  -eq 1 ]] && check_managed_skill "globals/agents/skills/roborepo-support" "${HOME}/.codex/skills/roborepo-support"
   # Drift report: unmanaged skills in native dirs (real dirs without our managed-copy marker).
   drift_count=0
   for skills_home in "${HOME}/.claude/skills" "${HOME}/.codex/skills"; do

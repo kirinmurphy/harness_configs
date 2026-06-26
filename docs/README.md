@@ -34,4 +34,7 @@ Use these when changing or debugging how the harness is wired:
 Use these for active work and future implementation:
 
 - [Harness Parity Todo](plans/harness-parity-todo.md)
-- [Managed/Adopt/Update Installer](plans/managed-adopt-update-installer.md)
+- [Project Context Plan](plans/project-context-v2-plan.md)
+- [Skills vs. Commands Invocation Policy](plans/skills-vs-commands-invocation-policy.md)
+
+Completed implementation records live in [plans/completed/](plans/completed/).

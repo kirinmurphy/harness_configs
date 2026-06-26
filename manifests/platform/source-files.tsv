@@ -31,7 +31,6 @@ manifests/platform/verify-content.tsv
 globals/agents/skills
 local/skills
 globals/rules/shared/00-communication.md
-globals/rules/shared/10-exploration.md
 globals/rules/shared/20-verification.md
 globals/rules/claude/90-claude-specific.md
 globals/rules/codex/90-codex-specific.md
@@ -57,6 +56,8 @@ scripts/cli/slash-command-validation.mjs
 scripts/cli/slash-commands.mjs
 scripts/cli/zip-writer.mjs
 scripts/cli/main.mjs
+scripts/cli/rules-render.mjs
+scripts/cli/update-report.mjs
 scripts/cli/mcp-claude.mjs
 scripts/cli/mcp-codex.mjs
 scripts/cli/mcp-config.mjs

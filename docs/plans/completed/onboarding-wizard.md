@@ -1,5 +1,9 @@
 # Onboarding Wizard — Implementation Plan
 
+> **Status: completed.** The item-level, multi-step `roborepo onboard` wizard shipped. It mirrors
+> the `/config` behavior sections, uses a base-only default install, and is covered by
+> `test-install-collisions.sh` and `test-roborepo.sh`. This file is kept as implementation history.
+
 ## Goal
 
 Turn the install flow into: **fresh install applies only the `base` baseline, then launches an
@@ -98,7 +102,7 @@ Per decision "base + nothing auto, prompt for rest":
 
 - `presets.mjs`: remove `printBundleChoices()` and `resolveSelection()` (presets.mjs:343-368) — only
   the dead bundle-toggle used them. Confirm no other caller first.
-- `docs/plans/onboarding-reinstatement.md`: this records the OLD bundle-toggle for restoration. Once
+- `docs/plans/completed/onboarding-reinstatement.md`: this records the OLD bundle-toggle for restoration. Once
   the new wizard ships, supersede it — replace its body with a pointer to this plan (keep as historical
   record, mark superseded), or delete. Recommend supersede-pointer.
 

@@ -30,19 +30,7 @@
     "read": ["Read"],
     "write": ["Write", "Edit"]
   },
-  "mcp": {
-    "jcodemunch": [
-      "resolve_repo",
-      "search_symbols",
-      "get_file_outline",
-      "find_references",
-      "get_context_bundle",
-      "search_text",
-      "index_repo",
-      "list_repos",
-      "get_symbol_context"
-    ]
-  },
+  "mcp": {},
   "commands": {
     "deny": [
       ["git", "push"],

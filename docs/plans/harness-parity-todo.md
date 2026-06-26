@@ -18,17 +18,22 @@ backlog reads honestly.
   stale name `skill symlink-local`.)
 - **Skill / plugin / MCP / memory native alignment — DONE** (see
   [`native-alignment.md`](completed/native-alignment.md)).
-  Skills now fan per-skill into each harness's native dir (`~/.claude/skills`,
-  `~/.codex/skills`) instead of the invented `~/.agents` path; Claude MCP servers are
-  version-controlled in `manifests/inventory/mcp-servers.json` and re-applied by
-  `update`, symmetric with Codex; plugins are documented Claude-only; native memory is
-  a documented Defer surface. This closed most of the "two source-of-truth stores"
+  Skills now use each harness's native dir (`~/.claude/skills`, `~/.codex/skills`)
+  instead of the invented `~/.agents` path; package-gated global skills are copied into
+  those dirs by install/update, while project-local skills still use repo-local symlinks.
+  Claude MCP servers are version-controlled in `manifests/inventory/mcp-servers.json` and
+  re-applied by `update`, symmetric with Codex; plugins are documented Claude-only; native
+  memory is a documented Defer surface. This closed most of the "two source-of-truth stores"
   parity gaps that motivated this backlog.
 - **Relocation / repair — DONE** (see
   [`completed/portable-install-relocation.md`](completed/portable-install-relocation.md)).
   `roborepo repair` relinks a moved checkout; uninstall and the bin-link heal handle
   stale prior-checkout links. This was part of the original "redesign the
   managed/adopt/update installer" item.
+- **Copy/render materialization + package-gated install — DONE** (see
+  [`completed/package-gated-install.md`](completed/package-gated-install.md)).
+  Home rules are rendered from fragments plus the enabled package registry; shared skills are copied
+  with `.roborepo-managed` markers; optional packages gate rules/hooks/permissions/MCP/skills.
 - **Placement of global coding conventions — RESOLVED.** Decision: conventions live
   in auto-invokable **helper skills** (`code-style`, `javascript-typescript`,
   `react`), not in always-on global rules. The candidate rule topics from the
@@ -41,14 +46,21 @@ backlog reads honestly.
 
 ## Open Parity Work
 
+### Recommended Next Pick
+
+Start with **layered root-config inheritance** if the next work should reduce install/update
+collisions and make machine-local config safer. Start with
+[`skills-vs-commands-invocation-policy.md`](skills-vs-commands-invocation-policy.md) if the next work
+should improve agent behavior predictability with smaller, testable pieces.
+
 ### 1. Layered root-config inheritance (high priority — not yet started)
 
 The largest remaining parity gap. Native-alignment aligned the *runtime stores*
 (skills, MCP, plugins, memory); it did **not** touch how `~/.claude/settings.json`
 and `~/.codex/config.toml` themselves are layered.
 
-- **Current model:** read-mostly assets are symlinked into the harness homes; mutable
-  root config is *exported* as a local file (`managed`) or left user-owned (`adopt`).
+- **Current model:** read-mostly assets are copied into harness homes, rules are rendered, and
+  mutable root config is exported as a local file or left user-owned according to `onConflict`.
   There is no inheritance — the repo baseline and the user's machine-local config are
   one flat file, so a user edit and a repo update collide instead of layering.
 - **Desired model:** repo provides a baseline; the user's global config can
@@ -56,13 +68,12 @@ and `~/.codex/config.toml` themselves are layered.
   instructions where the harness supports it.
 - **Research first:** whether Claude/Codex support native include / import / layering
   for root config. If not, design a generated/merged config with explicit source
-  ownership and drift checks (the same ownership discipline native-alignment used for
-  per-skill links).
-- **Define interactions** with `managed`, `adopt`, `update`, `repair`,
+  ownership and drift checks (the same ownership discipline used for managed skill copies).
+- **Define interactions** with `onConflict`, `update`, `repair`,
   secrets / machine-local config, and repo-local `CLAUDE.md` / `AGENTS.md`.
 - **Relationship to other plans:** this is the inheritance layer *underneath*
-  [`managed-adopt-update-installer.md`](managed-adopt-update-installer.md); that plan
-  owns the install-mode mechanics, this item owns whether config can layer at all.
+  [`completed/package-gated-install.md`](completed/package-gated-install.md); that plan owns the copy/render
+  materialization mechanics, this item owns whether config can layer at all.
 
 ### 2. Local-vs-global override policy (open decision)
 
@@ -87,9 +98,9 @@ shape — track it there, not here.
 
 - [`native-alignment.md`](completed/native-alignment.md) — runtime-store parity (skills, MCP,
   plugins, memory); complete.
-- [`managed-adopt-update-installer.md`](managed-adopt-update-installer.md) —
-  install-mode mechanics (managed / adopt / update); the consumer of item 1's
-  layering design.
+- [`completed/package-gated-install.md`](completed/package-gated-install.md) —
+  copy/render materialization, package-gated optional behavior, rendered home rules, and update
+  reporting; complete.
 - [`skills-vs-commands-invocation-policy.md`](skills-vs-commands-invocation-policy.md)
   — how context (rules / skills / commands) enters each harness; owns item 3.
 - [`completed/portable-install-relocation.md`](completed/portable-install-relocation.md)

@@ -189,4 +189,4 @@ while IFS=$'\t' read -r _harness kind src_rel home_abs _flags <&3; do
   esac
 done 3< <(manifest_rows)
 
-echo "skip shared skills: maintained in repo/globals/agents/skills and symlinked into both harnesses"
+echo "skip shared skills: maintained in repo/globals/agents/skills and copied into harnesses by install/package toggles"

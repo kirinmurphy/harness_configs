@@ -1,5 +1,9 @@
 # Project Context Plan
 
+> **Status: ACTIVE.** `roborepo project-context inventory [path] [--summary]` shipped and writes
+> deterministic generated facts. Remaining work: `init`, `check`, command/skill trigger polish, and
+> better integration between generated facts and curated docs.
+
 ## Purpose
 
 Project Context is a lightweight handoff system that helps new people understand, discuss, and safely extend an application from a practical product/code perspective.
@@ -48,9 +52,9 @@ Project Context has a few explicit integration points. Each one should have a na
 | `/document` | User command / skill trigger | Explicitly update human-facing docs for recent work, especially `glossary.md` and `inventory.md`. |
 | `/plan` | Planning workflow | Explain implementation path, architecture fit, divergence, consequences, and verification before building. |
 | `/tighten` | Post-build workflow | Preserve UX while improving implementation quality and checking risky areas. |
-| `roborepo project-context inventory [path]` | CLI | Deterministically scan the repo and write generated facts. |
-| `roborepo project-context init [path]` | CLI | Create starter config and lean docs when missing. |
-| `roborepo project-context check [path]` | CLI | Validate generated facts, schema version, configured docs, and staleness. |
+| `roborepo project-context inventory [path]` | CLI | Deterministically scan the repo and write generated facts. Shipped. |
+| `roborepo project-context init [path]` | CLI | Planned: create starter config and lean docs when missing. |
+| `roborepo project-context check [path]` | CLI | Planned: validate generated facts, schema version, configured docs, and staleness. |
 | `project-context.config.json` or `package.json` `projectContext` | Config | Define docs location, generated output location, and curated doc names. |
 | `README.md` | User doc | User API: what commands exist and what the agent guards. |
 | `glossary.md` | User doc | Human-readable product/code vocabulary. |

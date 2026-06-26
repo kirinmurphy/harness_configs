@@ -230,10 +230,13 @@ stage_update_item() {
 # Backing such a file up as a "pre-install" original would poison the backup: a later uninstall would
 # restore roborepo hooks into a supposedly-clean file. Detect the install-injected signatures so we
 # only ever back up a genuine pre-roborepo file. Conservative: any hit means do-not-back-up.
+# Package hook signatures (jcmwatch = jcodemunch, jdm-indexed = jdocmunch) guard against a partial-
+# uninstall state where package hooks survive in settings.json without the main roborepo markers.
+# Mirrors uninstall.sh is_roborepo_authored — keep both in sync.
 is_roborepo_authored() {
   local file="$1"
   [[ -f "${file}" ]] || return 1
-  grep -Eq "roborepo telemetry capture|roborepo-write-guard|BEGIN GENERATED AGENT PERMISSIONS|MANAGED_BY_ROBOREPO" "${file}" 2>/dev/null
+  grep -Eq "roborepo telemetry capture|roborepo-write-guard|BEGIN GENERATED AGENT PERMISSIONS|MANAGED_BY_ROBOREPO|# Generated Harness Rules|jcmwatch|jdm-indexed" "${file}" 2>/dev/null
 }
 
 # Persist the user's genuine pre-roborepo file/dir at ${home_path} to
@@ -291,7 +294,7 @@ snapshot_pre_roborepo_original() {
   local -a candidates=()
   local _h kind src_rel home_abs _flags src
   while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
-    case "${kind}" in root_config|link|managed_copy) ;; *) continue ;; esac
+    case "${kind}" in root_config|link|managed_copy|rendered_rules) ;; *) continue ;; esac
     src="${repo_root}/${src_rel}"
     [[ -e "${home_abs}" && ! -L "${home_abs}" ]] || continue   # absent or our symlink — nothing to keep
     is_roborepo_authored "${home_abs}" && continue
@@ -744,8 +747,10 @@ remove_legacy_agents_skills() {
 # Requires: ${repo_root}, ${dry_run}, list_source_skills (from skill-lib.sh).
 link_global_skills() {
   local home_dir="$1"
+  shift || true
   local src_dir="${repo_root}/globals/agents/skills"
   local skills_home="${home_dir}/skills"
+  local allowed_names=("$@")
 
   # Migrate off the legacy ~/.agents/skills location before linking. Idempotent and global, so the
   # redundant second call (this runs once per harness) is a cheap no-op.
@@ -756,6 +761,13 @@ link_global_skills() {
   local name
   while IFS= read -r name; do
     [[ -n "${name}" ]] || continue
+    if [[ "${#allowed_names[@]}" -gt 0 ]]; then
+      local wanted=0 allowed
+      for allowed in "${allowed_names[@]}"; do
+        [[ "${name}" == "${allowed}" ]] && wanted=1 && break
+      done
+      [[ "${wanted}" -eq 1 ]] || continue
+    fi
     link_skill_item "globals/agents/skills/${name}" "${skills_home}/${name}"
   done < <(list_source_skills "${src_dir}")
 
@@ -765,6 +777,19 @@ link_global_skills() {
   for entry in "${skills_home}"/*; do
     [[ -d "${entry}" && -e "${entry}/.roborepo-managed" ]] || continue
     skill_name="$(basename "${entry}")"
+    if [[ "${#allowed_names[@]}" -gt 0 ]]; then
+      local still_allowed=0 allowed
+      for allowed in "${allowed_names[@]}"; do
+        [[ "${skill_name}" == "${allowed}" ]] && still_allowed=1 && break
+      done
+      [[ "${still_allowed}" -eq 1 ]] || {
+        if [[ "${dry_run}" -eq 0 ]]; then
+          rm -rf "${entry}"
+        fi
+        echo "prune: ${entry} (not in base skill set)"
+        continue
+      }
+    fi
     [[ -f "${src_dir}/${skill_name}/SKILL.md" ]] && continue
     if [[ "${dry_run}" -eq 0 ]]; then
       rm -rf "${entry}"

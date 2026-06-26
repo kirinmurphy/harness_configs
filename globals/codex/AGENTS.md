@@ -16,17 +16,6 @@ Switch to normal mode only when the user explicitly says `normal mode` or `stop 
 Load a matching skill before the work it governs, not after — and only the skills the task actually needs.
 
 
-## Code Exploration
-
-- Use jcodemunch-mcp for code lookup whenever available.
-- Prefer symbol search, outlines, references, and targeted context bundles over reading full files.
-- Do not use Bash for grep/find/cat/head/tail-style source exploration when jcodemunch can answer it.
-- Use native read/search tools only for non-code files or targeted editing reads.
-- At session start, resolve_repo `.`.
-- If the repo is not indexed, index_folder `.`.
-- After meaningful file edits, re-index changed files before further analysis.
-
-
 ## Verification
 
 - Default to smallest check that proves touched behavior.

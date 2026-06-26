@@ -562,7 +562,7 @@ assert "bundle remove: adopt overwrite policy restores backed up item" \
 
 # Onboarding gate disabled (in-progress feature): install auto-applies defaults, so no command is
 # gated on onboarding. These two assertions are kept here, disabled, for reinstatement — see
-# docs/plans/onboarding-reinstatement.md §5. They test the forced gate that no longer exists.
+# docs/plans/completed/onboarding-reinstatement.md §5. They test the forced gate that no longer exists.
 # gate_home="${work}/gate-home"
 # mkdir -p "${gate_home}/.roborepo"
 # node -e 'const fs = require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({ repo: process.argv[2], mode: "managed" }));' \
@@ -692,10 +692,15 @@ ln -s "${repo_root}/globals/codex/MANAGED_BY_ROBOREPO.md" "${update_home}/.codex
 ln -s "${repo_root}/globals/codex/rules" "${update_home}/.codex/rules"
 # Skills are linked per-skill by the installer's enumerate-step, not as dir-level links.
 
+# The mcp-add tests above intentionally exercise source mutation for Claude permissions. Normalize
+# generated permission output before lifecycle doctor, which checks generated source drift.
+node "${repo_root}/scripts/build/render-agent-permissions.mjs" >/dev/null
+
 assert "lifecycle: roborepo doctor dispatches and passes" \
   bash -c "node '${cli}' doctor >/dev/null 2>&1"
-assert "lifecycle: roborepo update --dry-run dispatches (no changes)" \
-  bash -c "HOME='${update_home}' node '${cli}' update --dry-run >/dev/null 2>&1"
+update_out="${work}/update-report.out"
+assert "lifecycle: roborepo update --dry-run dispatches and reports changes" \
+  bash -c "HOME='${update_home}' node '${cli}' update --dry-run >'${update_out}' 2>&1 && grep -q 'Update change report:' '${update_out}' && grep -q 'unchanged: package registry' '${update_out}'"
 assert "lifecycle: roborepo backfill dispatches sync script" \
   bash -c "! HOME='${update_home}' node '${cli}' backfill --bad-flag >/dev/null 2>&1"
 assert "lifecycle: roborepo sync alias removed" \
@@ -832,10 +837,10 @@ HOME="${rp_home}" ROBOREPO_STATE_DIR="${rp_state}" \
   bash "${rp_new}/scripts/install/repair.sh" >/dev/null 2>&1 || true
 assert "repair: bin link healed to new checkout" \
   bash -c "test \"\$(readlink '${rp_home}/.local/bin/roborepo')\" = '${rp_new}/bin/roborepo'"
-assert "repair: per-skill Claude managed copies created after repair" \
-  bash -c "test -d '${rp_home}/.claude/skills/blog' && test -e '${rp_home}/.claude/skills/blog/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/blog' '${rp_home}/.claude/skills/blog' >/dev/null 2>&1"
-assert "repair: per-skill Codex managed copies created after repair" \
-  bash -c "test -d '${rp_home}/.codex/skills/blog' && test -e '${rp_home}/.codex/skills/blog/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/blog' '${rp_home}/.codex/skills/blog' >/dev/null 2>&1"
+assert "repair: base Claude support skill managed copy created after repair" \
+  bash -c "test -d '${rp_home}/.claude/skills/roborepo-support' && test -e '${rp_home}/.claude/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/roborepo-support' '${rp_home}/.claude/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${rp_home}/.claude/skills/blog'"
+assert "repair: base Codex support skill managed copy created after repair" \
+  bash -c "test -d '${rp_home}/.codex/skills/roborepo-support' && test -e '${rp_home}/.codex/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/roborepo-support' '${rp_home}/.codex/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${rp_home}/.codex/skills/blog'"
 assert "repair: install state records the new checkout path" \
   grep -q "\"repo\": \"${rp_new}\"" "${rp_state}/install-state.json"
 # Idempotent: a second repair reclaims nothing (everything already points at the new checkout).
@@ -865,8 +870,8 @@ HOME="${la_home}" ROBOREPO_STATE_DIR="${la_home}/.roborepo" ROBOREPO_ASSUME_INTE
   ROBOREPO_ON_CONFLICT=overwrite bash "${repo_root}/scripts/install/main.sh" >/dev/null 2>&1 || true
 assert "legacy: managed ~/.agents/skills link removed after install" \
   bash -c "! test -L '${la_home}/.agents/skills'"
-assert "legacy: per-skill Codex managed copy created in place of the legacy dir link" \
-  bash -c "test -d '${la_home}/.codex/skills/blog' && test -e '${la_home}/.codex/skills/blog/.roborepo-managed' && diff -rq -x .roborepo-managed '${repo_root}/globals/agents/skills/blog' '${la_home}/.codex/skills/blog' >/dev/null 2>&1"
+assert "legacy: base Codex support skill managed copy created in place of the legacy dir link" \
+  bash -c "test -d '${la_home}/.codex/skills/roborepo-support' && test -e '${la_home}/.codex/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${repo_root}/globals/agents/skills/roborepo-support' '${la_home}/.codex/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${la_home}/.codex/skills/blog'"
 
 # A user's real ~/.agents/skills (not a managed symlink) must be left untouched.
 lu_home="${reloc_root}/legacy-agents-userdir/home"

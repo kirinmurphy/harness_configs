@@ -6,6 +6,7 @@ import { repoRoot } from "./paths.mjs";
 import { installStatePath, presetsStatePath } from "./state-paths.mjs";
 import { readConfigSnapshot, buildBehaviorView } from "./config.mjs";
 import { mutatePackage, setSkillInstalled } from "./config-mutate.mjs";
+import { renderHomeRules, isRenderedRulesOutput } from "./rules-render.mjs";
 import { wizard } from "./skill-lib.mjs";
 
 const PRESET_MANIFEST = path.join(repoRoot, "manifests", "platform", "presets.json");
@@ -16,7 +17,7 @@ const MANIFEST_HOME = {
 };
 
 // Onboarding wizard disabled: install auto-applies all default bundles, so nothing is gated on an
-// onboarding step. The forced-gate body is recorded in docs/plans/onboarding-reinstatement.md.
+// onboarding step. The forced-gate body is recorded in docs/plans/completed/onboarding-reinstatement.md.
 // Kept as a pass-through (still called from main.mjs) so the gate can be reinstated in one place.
 export async function maybeRunPresetOnboarding(args) {
   const filtered = args.filter((arg) => arg !== "--no-presets-onboard");
@@ -406,8 +407,13 @@ function removeBundle(bundle, rows) {
 function applyRow(row, policy) {
   if (!harnessAvailable(row.harness)) return;
   if (row.kind === "cleanup") return cleanupRow(row);
+  if (row.kind === "rendered_rules") return renderRulesItem(row);
   if (row.kind === "managed_copy" || row.kind === "link") return copyItem(row, policy);
   if (row.kind === "root_config") return copyItem(row, policy);
+}
+
+function renderRulesItem(row) {
+  renderHomeRules({ harness: row.harness });
 }
 
 function cleanupRow(row) {
@@ -422,10 +428,11 @@ function cleanupRow(row) {
 // A root_config file is "roborepo-authored" once install has written its hooks/markers in. Backing
 // such a file up as a "pre-install" original poisons the backup — a later uninstall would restore
 // roborepo hooks into a supposedly-clean file. Only ever back up a genuine pre-roborepo file.
+// Also recognizes rendered_rules output (the "# Generated Harness Rules" header).
 function isRoborepoAuthored(file) {
   try {
     const text = fs.readFileSync(file, "utf8");
-    return /roborepo telemetry capture|roborepo-write-guard|BEGIN GENERATED AGENT PERMISSIONS|MANAGED_BY_ROBOREPO/.test(text);
+    return /roborepo telemetry capture|roborepo-write-guard|BEGIN GENERATED AGENT PERMISSIONS|MANAGED_BY_ROBOREPO|# Generated Harness Rules/.test(text);
   } catch {
     return false;
   }
@@ -497,7 +504,36 @@ function removeOwnedLink(row) {
   console.log(`unlink: ${row.homeAbs}`);
 }
 
+function restorePreInstallBackup(row) {
+  if (!row.harness) return;
+  const backup = path.join(os.homedir(), ".roborepo", "backups", "pre-install", row.harness, path.basename(row.homeAbs));
+  if (!fs.existsSync(backup)) return;
+  if (pathExists(row.homeAbs)) return;
+  fs.mkdirSync(path.dirname(row.homeAbs), { recursive: true });
+  fs.renameSync(backup, row.homeAbs);
+  console.log(`restore: ${row.homeAbs} <- ${backup}`);
+}
+
+function removeRenderedRulesRow(row) {
+  // Unlink a legacy repo symlink if present (pre-Phase-3 installs).
+  const link = readlink(row.homeAbs);
+  if (link && resolvesInsideRepo(row.homeAbs)) {
+    fs.unlinkSync(row.homeAbs);
+    console.log(`unlink: ${row.homeAbs}`);
+  }
+  if (!pathExists(row.homeAbs)) {
+    restorePreInstallBackup(row);
+    return;
+  }
+  // Leave genuine user files. Remove only files we rendered.
+  if (!isRoborepoAuthored(row.homeAbs)) return;
+  fs.rmSync(row.homeAbs, { recursive: true, force: true });
+  console.log(`unlink: ${row.homeAbs}`);
+  restorePreInstallBackup(row);
+}
+
 function removeRow(row, policy) {
+  if (row.kind === "rendered_rules") return removeRenderedRulesRow(row);
   const source = path.join(repoRoot, row.srcRel);
   const staged = findSiblingArtifact(row.homeAbs, "update");
   const backup = findSiblingArtifact(row.homeAbs, "original");
@@ -545,6 +581,8 @@ function bundleApplied(bundle, rows, policy = readInstallPolicy()) {
     if (!row || !harnessAvailable(row.harness)) return true;
     if (row.kind === "managed_copy" || row.kind === "link" || row.kind === "root_config")
       return fs.existsSync(row.homeAbs) && !readlink(row.homeAbs);
+    if (row.kind === "rendered_rules")
+      return fs.existsSync(row.homeAbs) && !readlink(row.homeAbs) && isRenderedRulesOutput(row.homeAbs);
     return true;
   });
 }

@@ -195,16 +195,15 @@ The scaffold asks whether to create:
 - `skill-command`: a skill plus a slash-command entry point
 - `standalone`: a slash command with no skill
 
-It updates the manifests, source files, README tables, generated links, and
+It updates the manifests, source files, README tables, generated outputs, and
 generated command files together.
 
 ## Skill Storage and Fan-Out
 
 Skills live at `globals/agents/skills/<name>/SKILL.md` in version control.
-At install time, the installer fans each skill per-skill into each harness's
-native skills dir: `~/.claude/skills/<name>` and `~/.codex/skills/<name>` are
-symlinks into the repo source. There is no intermediate `globals/claude/skills/`
-directory.
+At install/update time, enabled shared skills are copied into each harness's native skills dir:
+`~/.claude/skills/<name>` and `~/.codex/skills/<name>`. Roborepo-owned copies carry a
+`.roborepo-managed` marker. There is no intermediate `globals/claude/skills/` directory.
 
 Roborepo manages only the skill names it owns. Skills created out-of-band (via
 native `init_skill.py` or `skill-installer`) at unrecognized names are left

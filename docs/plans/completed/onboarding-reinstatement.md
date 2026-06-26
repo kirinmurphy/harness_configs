@@ -2,7 +2,7 @@
 
 > **SUPERSEDED.** The old bundle-toggle onboarding UI described here was *not* restored. It was
 > replaced by the item-level, multi-step onboarding wizard (mirrors the `/config` sections, one step
-> per section, ←/→ navigation). See [`onboarding-wizard.md`](onboarding-wizard.md) for the live
+> per section, ←/→ navigation). See [`onboarding-wizard.md`](onboarding-wizard.md) for the shipped
 > design. This file is kept only as a historical record of the bundle-toggle surface and how it was
 > wired — useful for parity reference, not for restoration.
 
@@ -11,8 +11,8 @@
 The bundle-toggle onboarding UI was disabled (not deleted) so that installation auto-applies every
 default package/tool silently. Per-feature configuration now lives in the package model and config
 control panel (`roborepo onboard` + the `/config` dashboard); see
-[`config-control-panel.md`](../reference/services/config-control-panel.md) and the completed plan
-[`config-panel-behavior-sections.md`](completed/config-panel-behavior-sections.md).
+[`config-control-panel.md`](../../reference/services/config-control-panel.md) and the completed plan
+[`config-panel-behavior-sections.md`](config-panel-behavior-sections.md).
 
 This doc records exactly what was removed or changed and how to restore it, so the working,
 previously-tested behavior can be brought back without archaeology. It covers all surfaces touched:

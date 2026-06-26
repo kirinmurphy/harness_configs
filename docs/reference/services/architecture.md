@@ -15,8 +15,8 @@ flowchart LR
   repo --> codexRepo
   repo --> claudeRepo
 
-  codexRepo -. managed links and root config export .-> codexHome
-  claudeRepo -. managed links and root config export .-> claudeHome
+  codexRepo -. copy/render plus root config export .-> codexHome
+  claudeRepo -. copy/render plus root config export .-> claudeHome
 
   codexRuntime --- codexHome
   claudeRuntime --- claudeHome
@@ -34,50 +34,50 @@ flowchart LR
   shellRepo -. sourced .-> zshrc
 ```
 
-## Symlink Map
+## Materialization Map
 
-Most files are symlinked directly from the repo into the tool home directory. Root config files are different: `~/.claude/settings.json` and `~/.codex/config.toml` are mutable active files, so the installer copies repo baselines when missing or identical and asks before merging existing local content.
+Install materializes repo source into harness homes by copying owned files, rendering rules, and preserving mutable root config. Home files do not point back to the checkout, except for the `roborepo` command symlink under `~/.local/bin`.
 
-Codex (`~/.codex/` ← `globals/codex/`, plus per-skill links into `~/.codex/skills/`):
+Codex (`~/.codex/` from `globals/codex/`, plus copied skills into `~/.codex/skills/`):
 
-- `AGENTS.md`
+- `AGENTS.md` rendered from base fragments plus enabled package fragments
 - `config.toml` exported as a local active file
 - `hooks.json`
 - `MANAGED_BY_ROBOREPO.md`
 - `commands/`
 - `rules/`
-- `skills/<name>/` — per-skill symlinks: `~/.codex/skills/<name> → globals/agents/skills/<name>`
+- `skills/roborepo-support/` by default; optional skills are copied by onboarding/package toggles
 
-Claude (`~/.claude/` ← `globals/claude/`):
+Claude (`~/.claude/` from `globals/claude/`):
 
-- `CLAUDE.md`
+- `CLAUDE.md` rendered from base fragments plus enabled package fragments
 - `settings.json` exported as a local active file
 - `MANAGED_BY_ROBOREPO.md`
 - `commands/`
 - `hooks/`
-- `skills/`
+- `skills/roborepo-support/` by default; optional skills are copied by onboarding/package toggles
 
 ## Install Workflow Filesystem Shapes
 
 Root config files are mutable user state. The repo keeps portable baseline templates, but active home files are local copies or user-owned files, not direct symlinks.
 
-### Managed Read-Mostly Assets
+### Managed Copies And Rendered Rules
 
-Repo files are the source of truth for read-mostly assets. The global harness path observes them through symlinks.
+Repo files are source input. The global harness path receives concrete files or directories.
 
 ```text
-~/.codex/AGENTS.md              -> <repo>/globals/codex/AGENTS.md
-~/.codex/commands               -> <repo>/globals/codex/commands
-~/.codex/hooks.json             -> <repo>/globals/codex/hooks.json
-~/.codex/rules                  -> <repo>/globals/codex/rules
-~/.codex/skills/<name>          -> <repo>/globals/agents/skills/<name>   (per-skill, enumerate-step)
-~/.claude/CLAUDE.md             -> <repo>/globals/claude/CLAUDE.md
-~/.claude/commands              -> <repo>/globals/claude/commands
-~/.claude/hooks                 -> <repo>/globals/claude/hooks
-~/.claude/skills/<name>         -> <repo>/globals/agents/skills/<name>   (per-skill, enumerate-step)
+~/.codex/AGENTS.md              # rendered_rules
+~/.codex/commands               # managed_copy
+~/.codex/hooks.json             # managed_copy
+~/.codex/rules                  # managed_copy
+~/.codex/skills/<name>          # managed skill copy with .roborepo-managed marker
+~/.claude/CLAUDE.md             # rendered_rules
+~/.claude/commands              # managed_copy
+~/.claude/hooks                 # managed_copy
+~/.claude/skills/<name>         # managed skill copy with .roborepo-managed marker
 ```
 
-Implication: updates in this repo become active globally for these assets. User edits at the global path edit the repo file through the symlink.
+Implication: updates become active only after `roborepo update`, package enable/disable, or another explicit render/copy action.
 
 ### Root Config Export
 
@@ -99,7 +99,7 @@ Agent permission defaults are authored in `manifests/inventory/agent-permissions
 - `globals/codex/rules/default.rules` receives generated shell command prefix policy such as allowed local commands and denied Git remote commands.
 - `globals/claude/settings.json` receives generated `permissions.allow` and `permissions.deny` arrays from the same command, tool, MCP, and profile data.
 
-Because `~/.codex/rules` is symlinked, command rule changes are live after repo edits. Because `~/.codex/config.toml` is root config, session default changes require the root config export or merge path before they affect an existing machine.
+Because `~/.codex/rules` and root config are copied, repo edits require `roborepo update` or the relevant renderer before they affect an existing machine.
 
 ### Root Config Merge Options
 
@@ -167,29 +167,29 @@ local repo context
 
 This needs either native harness include support or a generated/merged config pipeline. Track this in [../../plans/harness-parity-todo.md](../../plans/harness-parity-todo.md).
 
-### Shared skills: canonical source + per-harness fan-out
+### Shared skills: canonical source + copied fan-out
 
 The canonical shared source is `globals/agents/skills/<name>/` (each a folder with a `SKILL.md`).
 Both harnesses reach skills via their native skill dirs:
 
-- **Codex** reads `~/.codex/skills`. The installer creates `~/.codex/skills/<name> →
-  globals/agents/skills/<name>` for each shared skill. Codex's own native skills are real
-  directories at `~/.codex/skills/.system/` and are left untouched.
-- **Claude** reads `~/.claude/skills`. The installer creates `~/.claude/skills/<name> →
-  globals/agents/skills/<name>` for each shared skill.
+- **Codex** reads `~/.codex/skills`. The installer copies enabled shared skills into
+  `~/.codex/skills/<name>` and stamps roborepo-owned copies with `.roborepo-managed`. Codex's
+  own native skills are real directories at `~/.codex/skills/.system/` and are left untouched.
+- **Claude** reads `~/.claude/skills`. The installer copies enabled shared skills into
+  `~/.claude/skills/<name>` with the same `.roborepo-managed` marker.
 
-Skills are linked by an **enumerate-step** (`install-lib.sh:link_global_skills`), not by
-manifest rows. This keeps the manifest focused on static paths while skills grow dynamically.
-`scripts/doctor.sh --installed` checks the live per-skill links; `scripts/doctor.sh` checks
-that source dirs exist in the repo.
+Skills are copied by an **enumerate-step** (`install-lib.sh:link_global_skills`), not by manifest
+rows. This keeps the manifest focused on static paths while skills grow dynamically.
+`scripts/doctor.sh --installed` checks live managed skill markers and contents; `scripts/doctor.sh`
+checks that source dirs exist in the repo.
 
 ### Two skill layers: shared vs. internal
 
 There are two distinct, firewalled skill layers:
 
-- **Shared** — `globals/agents/skills/<name>/`, the canonical source. Linked per-skill into
-  each harness's native skills dir at install time; global on both harnesses and exportable to
-  other repos. Advisory coding skills any repo may receive.
+- **Shared** — `globals/agents/skills/<name>/`, the canonical source. Copied per-skill into
+  each harness's native skills dir at install/update time; global on both harnesses and exportable
+  to other repos. Advisory coding skills any repo may receive.
 - **Internal** — `local/skills/<name>/`, linked **only** into this repo's own project-scope
   dotdirs (`.claude/skills`, `.agents/skills`) by `link-skills.sh`. These describe how to
   develop/maintain this repo and are **never** global and **never** exported. The separation is
@@ -227,6 +227,6 @@ sequenceDiagram
   Home->>Repo: ./scripts/sync-from-home.sh reviews diffs before copying selected live config
   Repo->>Home: ./scripts/install/main.sh installs repo-owned config
   Home-->>Home: user-owned config collisions are preserved for adopt/agent merge
-  Repo-->>Home: symlinks for read-mostly assets; local copies for root config
+  Repo-->>Home: copied owned assets, rendered rules, local root config
   Home-->>Home: runtime files remain local and ignored
 ```

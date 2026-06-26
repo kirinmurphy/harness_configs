@@ -24,7 +24,7 @@ For install workflow tradeoffs, see [install-workflows.md](install-workflows.md)
 ./scripts/install/main.sh
 ```
 
-This installs the core CLI plus the shared baseline. It detects which harnesses are installed (Claude Code, Codex, or both), installs the core-managed links and baselines, exports mutable root config as local files, installs global commands, and adds shell snippets to your profile.
+This installs the core CLI plus the shared baseline. It detects which harnesses are installed (Claude Code, Codex, or both), copies owned files, renders rules, exports mutable root config as local files, installs global commands, and adds shell snippets to your profile.
 
 Interactive install starts onboarding after the core install completes. If you skip it, or if install ran noninteractively, run:
 
@@ -34,14 +34,13 @@ roborepo onboard
 
 That workflow turns on or skips optional behavior packages such as skills, hooks, commands, rules, MCP defaults, permissions, and telemetry. Re-running `roborepo onboard` later shows selected options checked and unselected options unchecked.
 
-The installer has two install modes. See [install-workflows.md](install-workflows.md) for the step-by-step flow and the collision behavior.
-
-- `managed`: repo defaults win. Existing non-empty config is backed up first, then the repo version is installed.
-- `adopt`: local root config stays active. Collisions offer overwrite or keep-originals handling, and the merge prompt prints after the action.
+The installer has one materialization model: copy owned files, render generated rules, and preserve
+user-authored root config unless the selected collision policy says otherwise. See
+[install-workflows.md](install-workflows.md) for the step-by-step flow and collision behavior.
 
 Root config export is only automatic when the target path is missing, already an identical local copy, or still symlinked to this repo from an older install. The installer does not auto-merge user config or silently replace non-root conflicts. If another harness file or global command target already exists and is not managed by this repo, install stops before changing files and prints a merge prompt after the blocking action. See [Config Collision Handling](../reference/internal/config-collision-handling.md) for exact behavior.
 
-**The script is safe to re-run** — managed links are left alone, fresh paths are linked, identical root config copies are accepted, and user-owned root config files are preserved unless you explicitly merge them later. Re-run it for a new machine, broken symlink, added harness, or new commands/snippets added to the repo.
+**The script is safe to re-run** — owned copies and rendered rules are refreshed, identical root config copies are accepted, and user-owned root config files are preserved unless you explicitly merge them later. Re-run it for a new machine, added harness, or new commands/snippets added to the repo.
 
 If onboarding has not been completed yet, `roborepo` runs that workflow before most normal commands. `--no-presets-onboard` or `ROBOREPO_PRESETS_ONBOARD=skip` bypasses install-time onboarding and the later command gate for automation.
 
@@ -95,7 +94,7 @@ Agent permission defaults start in one manifest:
 roborepo permissions --profile interactive
 ```
 
-Profiles live in `manifests/inventory/agent-permissions.json`. The renderer updates the generated permission block in `globals/codex/config.toml`, the shell prefix rules in `globals/codex/rules/default.rules`, and Claude `permissions.allow` / `permissions.deny` in `globals/claude/settings.json`. Existing `~/.codex/config.toml` and `~/.claude/settings.json` files are local root config, so merge/export is required before a newly rendered session profile affects an already set up machine. `~/.codex/rules` is symlinked, so generated command rules are live immediately.
+Profiles live in `manifests/inventory/agent-permissions.json`. The renderer updates the generated permission block in `globals/codex/config.toml`, the shell prefix rules in `globals/codex/rules/default.rules`, and Claude `permissions.allow` / `permissions.deny` in `globals/claude/settings.json`. Existing `~/.codex/config.toml` and `~/.claude/settings.json` files are local root config, so merge/export is required before a newly rendered session profile affects an already set up machine. `~/.codex/rules` is a managed copy, so run `roborepo update` after rendering to refresh an installed machine.
 
 During install or update, choose a profile with:
 
@@ -154,14 +153,14 @@ roborepo index docs path/to/dir
 
 ### Add a shared skill
 
-Use `roborepo skill new` — it scaffolds, registers manifests, and fans per-skill links into
+Use `roborepo skill new` — it scaffolds, registers manifests, and refreshes copied shared skills in
 both `~/.claude/skills/<name>` and `~/.codex/skills/<name>` in one step. The canonical source
 lives once in `globals/agents/skills/<name>/`. If you created a skill out-of-band:
 
 ```sh
-roborepo skill new              # scaffold + fan out per-skill links to both harnesses
+roborepo skill new              # scaffold + refresh copied shared skills in both harnesses
 roborepo skill adopt <name>     # ingest a skill created natively (init_skill.py / by hand)
-scripts/doctor.sh --installed   # verify live per-skill links are current
+scripts/doctor.sh --installed   # verify live managed skill copies are current
 ```
 
 ### Edit global rules
@@ -190,7 +189,7 @@ Something feels off — commands missing, config not loading, hooks not firing. 
 
 ```sh
 roborepo doctor        # (dispatches to scripts/doctor.sh)
-scripts/doctor.sh --installed     # also checks the global ~/.claude·~/.codex links and per-skill links
+scripts/doctor.sh --installed     # also checks global ~/.claude·~/.codex copies and managed skills
 scripts/doctor.sh --installed -q  # --quiet: failures + a one-line summary only
 ```
 

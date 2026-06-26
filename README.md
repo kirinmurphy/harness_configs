@@ -50,7 +50,7 @@ Per-feature configuration (choose individual skills/commands/packages/behaviors)
 package model and the config control panel — `roborepo onboard` and the `/config` dashboard. See
 docs/reference/services/config-control-panel.md and the completed plan
 docs/plans/completed/config-panel-behavior-sections.md. The earlier bundle-toggle wizard copy is
-recorded in docs/plans/onboarding-reinstatement.md §4.
+recorded in docs/plans/completed/onboarding-reinstatement.md §4.
 -->
 
 - [Token Optimization / Efficiency](#token-optimization--efficiency)

@@ -3,7 +3,7 @@
 > **Status: implemented.** Both additions below shipped — the Commands section and the
 > default-on, toggleable Chat-Time Output section (convention capture, impact awareness,
 > skill visibility) merged into both harnesses. Current behavior is documented in
-> [config-control-panel.md](../reference/services/config-control-panel.md); this plan is
+> [config-control-panel.md](../../reference/services/config-control-panel.md); this plan is
 > retained for the design rationale and the superseded-wizard history.
 
 ## Purpose
@@ -29,7 +29,7 @@ file; see Superseded Approach at the end for what changed and why.
 
 The config panel is built from a few nouns. Source of truth differs per noun — some live
 in the user's live harness config, some in repo manifests, some in roborepo state. Full
-detail lives in [`docs/reference/services/config-control-panel.md`](../reference/services/config-control-panel.md);
+detail lives in [`docs/reference/services/config-control-panel.md`](../../reference/services/config-control-panel.md);
 the essentials:
 
 - **Package** — a named feature made of typed components, defined in

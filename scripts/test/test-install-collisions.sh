@@ -49,6 +49,13 @@ assert_not_symlink() {
   [[ -e "$path" && ! -L "$path" ]] && pass "$label" || fail "$label"
 }
 
+assert_absent() {
+  local path="$1"
+  local label="$2"
+
+  [[ ! -e "$path" && ! -L "$path" ]] && pass "$label" || fail "$label"
+}
+
 assert_regular_file_contains() {
   local file="$1"
   local pattern="$2"
@@ -226,7 +233,8 @@ test_direct_harness_installers_export_root_configs() {
   assert_regular_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "direct Codex installer copies root config as local file"
   assert_not_symlink "$home_dir/.claude/CLAUDE.md" "direct Claude installer copies read-mostly assets (not symlinks)"
   assert_not_symlink "$home_dir/.codex/AGENTS.md" "direct Codex installer copies read-mostly assets (not symlinks)"
-  assert_managed_skill "$home_dir/.codex/skills/blog" "$repo_root/globals/agents/skills/blog" "direct Codex installer copies per-skill managed dir into ~/.codex/skills"
+  assert_managed_skill "$home_dir/.codex/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "direct Codex installer copies base support skill into ~/.codex/skills"
+  assert_absent "$home_dir/.codex/skills/blog" "direct Codex installer does not copy optional skills by default"
 }
 
 test_direct_harness_installers_convert_root_symlinks() {
@@ -261,7 +269,7 @@ test_old_repo_managed_symlinks_are_migrated() {
   ln -s "$repo_root/agents/skills" "$home_dir/.agents/skills"
   ln -s "$repo_root/agents/skills" "$home_dir/.codex/skills"
 
-  run_harness_install_args "$home_dir" "$home_dir/out"
+  run_harness_install_args "$home_dir" "$home_dir/out" --on-conflict overwrite
 
   assert_regular_file_contains "$home_dir/.claude/settings.json" "permissions" "old Claude root config symlink converts to local file"
   assert_regular_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "old Codex root config symlink converts to local file"
@@ -272,9 +280,11 @@ test_old_repo_managed_symlinks_are_migrated() {
   assert_not_symlink "$home_dir/.codex/rules" "old Codex rules symlink migrated to managed copy"
   # Old dir-level ~/.claude/skills symlink is cleaned up by the migration cleanup row.
   # Old ~/.agents/skills and transitional ~/.codex/skills dir-level symlinks are no longer managed.
-  # After install, ~/.codex/skills/ is a real directory with per-skill managed copies.
-  assert_managed_skill "$home_dir/.codex/skills/blog" "$repo_root/globals/agents/skills/blog" "old machine migrated: per-skill Codex managed copies created"
-  assert_managed_skill "$home_dir/.claude/skills/blog" "$repo_root/globals/agents/skills/blog" "old machine migrated: per-skill Claude managed copies created"
+  # After install, ~/.codex/skills/ is a real directory with the base support skill only.
+  assert_managed_skill "$home_dir/.codex/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "old machine migrated: base Codex support skill managed copy created"
+  assert_managed_skill "$home_dir/.claude/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "old machine migrated: base Claude support skill managed copy created"
+  assert_absent "$home_dir/.codex/skills/blog" "old machine migrated: optional Codex skill not copied by default"
+  assert_absent "$home_dir/.claude/skills/blog" "old machine migrated: optional Claude skill not copied by default"
 }
 
 test_direct_claude_installer_removes_stale_retired_symlink() {
@@ -323,7 +333,7 @@ test_dry_run_collision_no_mutation() {
   run_harness_install_args "$home_dir" "$home_dir/out" --dry-run
 
   assert_file_contains "$home_dir/out" "backup: $home_dir/.claude/settings.json" "dry-run previews Claude backup"
-  assert_file_contains "$home_dir/out" "Merge review prompt:" "dry-run previews merge prompt"
+  assert_file_contains "$home_dir/out" "dry-run: would ask overwrite or keep originals" "dry-run previews collision choice"
   [[ ! -L "$home_dir/.claude/settings.json" && ! -L "$home_dir/.codex/config.toml" ]] && pass "dry-run leaves config files untouched" || fail "dry-run leaves config files untouched"
   [[ ! -e "$home_dir/.claude/settings_update_"* && ! -e "$home_dir/.roborepo-backups" ]] && pass "dry-run creates no backups or staged updates" || fail "dry-run creates no backups or staged updates"
 }
@@ -341,20 +351,18 @@ test_noninteractive_block_no_mutation() {
   [[ ! -e "$home_dir/.claude/CLAUDE.md" && ! -e "$home_dir/.codex/AGENTS.md" ]] && pass "noninteractive block prevents partial install" || fail "noninteractive block prevents partial install"
 }
 
-test_non_root_conflict_stages_with_policy() {
+test_rendered_rules_backup_then_render() {
   local home_dir
   home_dir="$(make_home)"
   printf 'existing agents\n' > "$home_dir/.codex/AGENTS.md"
 
   HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" --on-conflict keep >"$home_dir/out" 2>&1
 
-  assert_file_contains "$home_dir/.codex/AGENTS.md" "existing agents" "keep policy preserves existing non-root file"
-  find "$home_dir/.codex" -name 'AGENTS_update_*.md' | grep -q . \
-    && pass "keep policy stages non-root repo update" \
-    || fail "keep policy stages non-root repo update"
+  assert_file_contains "$home_dir/.codex/AGENTS.md" "# Generated Harness Rules" "rendered_rules writes generated home file"
+  assert_file_contains "$home_dir/.roborepo/backups/pre-install/codex/AGENTS.md" "existing agents" "rendered_rules preserves pre-existing user file"
   [[ -f "$home_dir/.codex/config.toml" ]] \
-    && pass "keep policy still installs missing Codex files" \
-    || fail "keep policy still installs missing Codex files"
+    && pass "rendered_rules install still installs missing Codex files" \
+    || fail "rendered_rules install still installs missing Codex files"
 }
 
 test_global_command_conflict_blocks_before_mutation() {
@@ -384,7 +392,8 @@ test_direct_harness_conflict_dry_run_reports() {
 
   HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" --dry-run >"$home_dir/out" 2>&1
 
-  assert_file_contains "$home_dir/out" "collision: $home_dir/.codex/AGENTS.md" "direct Codex installer reports non-root conflict"
+  assert_file_contains "$home_dir/out" "would pre-install backup: $home_dir/.codex/AGENTS.md" "direct Codex dry-run reports rendered rules backup"
+  assert_file_contains "$home_dir/out" "would render: $home_dir/.codex/AGENTS.md" "direct Codex dry-run reports rendered rules output"
   [[ ! -e "$home_dir/.codex/config.toml" && ! -e "$home_dir/.codex/hooks.json" ]] \
     && pass "direct Codex dry-run prevents mutation" \
     || fail "direct Codex dry-run prevents mutation"
@@ -531,7 +540,7 @@ test_install_writes_durable_original_snapshot() {
   printf 'my own claude rules\n' > "$home_dir/.claude/CLAUDE.md"
   printf '# my shell\n' > "$home_dir/.zshrc"
 
-  run_harness_install_args "$home_dir" "$home_dir/install.out"
+  run_harness_install_args "$home_dir" "$home_dir/install.out" --on-conflict keep
 
   [[ -f "$archive" ]] \
     && pass "install writes durable pre-roborepo snapshot" \
@@ -552,7 +561,7 @@ test_install_writes_durable_original_snapshot() {
   local before after
   before="$(stat -f %m "$archive" 2>/dev/null || stat -c %Y "$archive")"
   printf 'roborepo changed this later\n' > "$home_dir/.zshrc"
-  run_harness_install_args "$home_dir" "$home_dir/install2.out"
+  run_harness_install_args "$home_dir" "$home_dir/install2.out" --on-conflict keep
   after="$(stat -f %m "$archive" 2>/dev/null || stat -c %Y "$archive")"
   [[ "$before" == "$after" ]] \
     && pass "durable snapshot is written once and never overwritten" \
@@ -620,20 +629,16 @@ test_sync_interactive_choices() {
   cp "$repo_root/manifests/platform/manifest.tsv" "$sync_repo/manifests/platform/manifest.tsv"
   cp "$repo_root/manifests/platform/prompts/sync-merge.md" "$sync_repo/manifests/platform/prompts/sync-merge.md"
   cp "$repo_root/scripts/lib/manifests-data.sh" "$sync_repo/scripts/lib/manifests-data.sh"
-  printf 'repo agents\n' > "$sync_repo/globals/codex/AGENTS.md"
   printf 'home agents\n' > "$home_dir/.codex/AGENTS.md"
   printf 'repo hooks\n' > "$sync_repo/globals/codex/hooks.json"
   printf 'home hooks\n' > "$home_dir/.codex/hooks.json"
   printf 'repo marker\n' > "$sync_repo/globals/codex/MANAGED_BY_ROBOREPO.md"
   printf 'home marker\n' > "$home_dir/.codex/MANAGED_BY_ROBOREPO.md"
-  # sync processes items in manifest order; for this fixture the present items prompt as:
-  #   1) AGENTS.md   2) MANAGED_BY_ROBOREPO.md   3) hooks.json
-  # Answer so AGENTS is kept, hooks.json is overwritten, MANAGED_BY gets the merge prompt
-  # (matches the assertions below, which are keyed by file, not by prompt order).
+  # sync skips rendered_rules (AGENTS.md) and processes the present managed_copy items in manifest
+  # order: MANAGED_BY_ROBOREPO.md, then hooks.json. Answer so MANAGED_BY gets the merge prompt and
+  # hooks.json is overwritten from home.
   expect_file="$home_dir/expect.tcl"
   cat >"$expect_file" <<'EOF'
-expect "Selection*"
-send "1\r"
 expect "Selection*"
 send "3\r"
 expect "Selection*"
@@ -651,7 +656,6 @@ set exit_code [lindex $wait_result 3]
 exit $exit_code
 EOF
 
-  assert_file_contains "$sync_repo/globals/codex/AGENTS.md" "repo agents" "sync keep repo leaves item unchanged"
   assert_file_contains "$sync_repo/globals/codex/hooks.json" "home hooks" "sync overwrite copies home item"
   assert_file_contains "$sync_repo/globals/codex/MANAGED_BY_ROBOREPO.md" "repo marker" "sync merge prompt skips item"
   assert_file_contains "$home_dir/out" "Merge review prompt:" "sync merge prompt printed"
@@ -762,7 +766,7 @@ test_direct_claude_installer_removes_stale_retired_symlink
 test_verify_install_requires_active_root_configs
 test_dry_run_collision_no_mutation
 test_noninteractive_block_no_mutation
-test_non_root_conflict_stages_with_policy
+test_rendered_rules_backup_then_render
 test_global_command_conflict_blocks_before_mutation
 test_direct_harness_conflict_dry_run_reports
 test_conflict_policy_prompt_on_clean_machine

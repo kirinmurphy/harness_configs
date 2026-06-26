@@ -444,7 +444,7 @@ function Get-PresentManifestRows {
 # a '.roborepo-managed' marker file. Legacy managed symlinks are migrated to copies. A real dir
 # without the marker is a native skill and is left untouched.
 function Copy-GlobalSkills {
-  param($HomeDir)
+  param($HomeDir, [string[]]$AllowedNames = @())
   $srcDir = Join-Path $repoRoot "globals\agents\skills"
   $skillsHome = Join-Path $HomeDir "skills"
 
@@ -453,6 +453,7 @@ function Copy-GlobalSkills {
   Get-ChildItem $srcDir -Directory | ForEach-Object {
     $name = $_.Name
     if ($name.StartsWith(".")) { return }
+    if (($AllowedNames.Count -gt 0) -and ($AllowedNames -notcontains $name)) { return }
     $skillMd = Join-Path $srcDir "$name\SKILL.md"
     if (-not (Test-Path $skillMd)) { return }
     if ($_.LinkType -eq "SymbolicLink") { return }  # skip symlinked source dirs
@@ -508,10 +509,27 @@ function Copy-GlobalSkills {
     if ($name.StartsWith(".")) { return }
     $entryMarker = Join-Path $_.FullName ".roborepo-managed"
     if (-not (Test-Path $entryMarker)) { return }
+    if (($AllowedNames.Count -gt 0) -and ($AllowedNames -notcontains $name)) {
+      if (-not $DryRun) { Remove-Item $_.FullName -Recurse -Force }
+      Write-Host "prune: $($_.FullName) (not in base skill set)"
+      return
+    }
     $skillMd = Join-Path $srcDir "$name\SKILL.md"
     if (Test-Path $skillMd) { return }
     if (-not $DryRun) { Remove-Item $_.FullName -Recurse -Force }
     Write-Host "prune: $($_.FullName) (source removed)"
+  }
+}
+
+function Render-HomeRules {
+  param($Harness)
+  $renderer = Join-Path $repoRoot "scripts\cli\rules-render.mjs"
+  if (-not (Test-Path $renderer)) { return }
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) { return }
+  if ($DryRun) {
+    & node $renderer --dry-run $Harness
+  } else {
+    & node $renderer $Harness
   }
 }
 
@@ -531,7 +549,10 @@ function Invoke-ManifestRows {
         Copy-ManagedItem $row.RepoRel $row.HomePath
       }
       "link" {
-        Link-Item $row.RepoRel $row.HomePath
+        Copy-ManagedItem $row.RepoRel $row.HomePath
+      }
+      "rendered_rules" {
+        # Render after the manifest loop for this harness.
       }
       "cleanup" {
         Remove-RepoLink $row.HomePath
@@ -556,8 +577,9 @@ Invoke-RootConfigPreflight
 # Claude managed links, root config export, and per-skill links
 if ($hasClaude) {
   Invoke-ManifestRows "Claude" @("claude")
+  Render-HomeRules "claude"
   $claudeHome = Resolve-ManifestHomeRoot "claude"
-  Copy-GlobalSkills $claudeHome
+  Copy-GlobalSkills $claudeHome @("roborepo-support")
 } else {
   Write-Host "skip: Claude — AppData\Roaming\Claude not found"
 }
@@ -565,8 +587,9 @@ if ($hasClaude) {
 # Codex managed links, root config export, and per-skill links
 if ($hasCodex) {
   Invoke-ManifestRows "Codex" @("codex")
+  Render-HomeRules "codex"
   $codexHome = Resolve-ManifestHomeRoot "codex"
-  Copy-GlobalSkills $codexHome
+  Copy-GlobalSkills $codexHome @("roborepo-support")
 } else {
   Write-Host "skip: Codex — ~/.codex not found"
 }
@@ -574,8 +597,8 @@ if ($hasCodex) {
 # Post-install summary
 Write-Host ""
 Write-Host "Install complete."
-Write-Host "  Claude: $(if ($hasClaude) { 'linked' } else { 'skipped — not installed' })"
-Write-Host "  Codex:  $(if ($hasCodex)  { 'linked' } else { 'skipped — not installed' })"
+Write-Host "  Claude: $(if ($hasClaude) { 'installed' } else { 'skipped — not installed' })"
+Write-Host "  Codex:  $(if ($hasCodex)  { 'installed' } else { 'skipped — not installed' })"
 Write-Host ""
 Write-Host "IMPORTANT: Hook scripts and bin/ commands require bash."
 Write-Host "  Install Git for Windows: https://git-scm.com"

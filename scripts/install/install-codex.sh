@@ -41,14 +41,23 @@ while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
   case "${kind}" in
     root_config)    export_user_config "codex" "${src_rel}" "${home_abs}" ;;
     managed_copy)   install_copy_item "${src_rel}" "${home_abs}" "codex" ;;
-    cleanup) remove_repo_link "${home_abs}" ;;
+    cleanup)        remove_repo_link "${home_abs}" ;;
+    rendered_rules) ;;  # handled by the render step below
   esac
 done < <(manifest_rows codex)
 
-# Per-skill copies: each globals/agents/skills/<name> -> ~/.codex/skills/<name> (managed copy).
-# Skills roborepo does not own (no .roborepo-managed marker) are left untouched.
-# Stale managed copies (skill removed from repo source) are pruned.
-link_global_skills "${HOME}/.codex"
+# Render AGENTS.md from base rule fragments + enabled-packages registry.
+if command -v node >/dev/null 2>&1; then
+  if [[ "${dry_run}" -eq 1 ]]; then
+    node "${repo_root}/scripts/cli/rules-render.mjs" --dry-run codex
+  else
+    node "${repo_root}/scripts/cli/rules-render.mjs" codex
+  fi
+fi
+
+# Base install copies only the support skill. Other shared skills are installed by onboarding/package
+# toggles, so a minimal install stays small.
+link_global_skills "${HOME}/.codex" roborepo-support
 
 # Guard: this script installs harness config only. The roborepo CLI (and `roborepo index code`)
 # require a full install via scripts/install/main.sh which wires the binary into PATH.

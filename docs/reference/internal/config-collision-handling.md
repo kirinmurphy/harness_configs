@@ -2,118 +2,90 @@
 
 ## Purpose
 
-The harness owns shared Claude Code and Codex defaults, but `~/.claude/settings.json` and `~/.codex/config.toml` can also contain personal config. The installer protects those files from silent replacement when they already exist outside this repo.
+Roborepo installs shared Claude Code and Codex defaults without silently replacing user-authored config. This reference documents the exact collision behavior for copied files, rendered rules, and root config.
 
-For user-facing tradeoffs between `managed` and `adopt`, start with [../../guides/install-workflows.md](../../guides/install-workflows.md). This internal reference documents exact collision behavior.
+For the user-facing walkthrough, start with [../../guides/install-workflows.md](../../guides/install-workflows.md).
 
 ## Concept Model
 
-- **Managed read-mostly asset**: a home path such as skills, hooks, commands, rules, guidance, or marker files is a symlink to this repo. Repo changes flow into the tool automatically.
-- **Root config baseline**: `globals/claude/settings.json` or `globals/codex/config.toml` in this repo. These are portable templates, not live symlink targets.
-- **User-owned config**: a home config file is a regular file, or a symlink somewhere other than this repo.
-- **Collision**: the installer finds a user-owned `~/.claude/settings.json` or `~/.codex/config.toml` where it would otherwise copy the harness baseline.
-- **Non-root harness target**: a harness path such as skills, hooks, commands, rules, or managed marker files. These are not merged by the installer.
+- **Managed copy**: a roborepo-owned home path copied from `globals/` or `manifests/`. Examples include commands, hooks, markers, and Codex rules.
+- **Rendered rules**: `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`, generated from base rule fragments plus the enabled-package registry.
+- **Root config baseline**: `globals/claude/settings.json` or `globals/codex/config.toml`. These are portable templates for mutable harness config.
+- **User-owned config**: an existing regular file or non-roborepo symlink in a harness home.
+- **Collision**: the installer finds a local path that differs from the repo source it would copy.
 
-## Installer Choices
+## Collision Policies
 
-The installer has two install modes:
+There is no managed/adopt install mode. The installer always copies or renders. Only the conflict policy varies:
 
-- `managed`: the repo baseline wins. Read-mostly target paths are created or kept as symlinks. Existing non-empty root config is backed up first, then the repo copy becomes active.
-- `adopt`: local root config stays active. The installer leaves the local root config in place and still installs other clean harness links. Existing collisions offer overwrite or keep-originals handling, then print a merge prompt after the action.
+| Policy | Behavior |
+| --- | --- |
+| `keep` | Leave the local file active and stage the repo candidate beside it as `*_update_TIMESTAMP`. |
+| `overwrite` | Move the local file to `*_original_TIMESTAMP`, then copy the repo item into place. |
+| `abort` | Stop before changing the conflicting path. |
 
-Root config collisions are interactive because root config files are likely to contain personal settings:
+Use:
 
-- `~/.claude/settings.json`
-- `~/.codex/config.toml`
+```sh
+./scripts/install/main.sh --on-conflict keep
+./scripts/install/main.sh --on-conflict overwrite
+./scripts/install/main.sh --on-conflict abort
+```
 
-Root config export is only automatic when the target path is missing or already symlinked to this repo from an older install. Existing repo symlinks are converted to local copies. The installer does not auto-merge config or silently replace non-root conflicts. Claude and Codex do not have identical layering behavior, and MCP/server settings can include machine-specific assumptions.
-
-If any non-root harness target or global command target already exists and is not managed by this repo, install stops before changing files and prints a merge prompt after the blocking action. This keeps `managed` and `adopt` limited to clean installs instead of forcing the user to recover from backups.
+If no flag is supplied, the installer reuses the saved `onConflict` from `~/.roborepo/install-state.json`. First noninteractive installs default to `keep`.
 
 ## Merge Prompt Behavior
 
-Generated merge prompts are intentionally conservative. The installer prints the relevant repo and local paths, but it does not claim to provide an exhaustive conflict summary. The prompt tells the agent to compute a complete comparison first, including recursive file lists for directories and parsed key/table/array comparisons for structured config where possible.
+When a collision creates a staged candidate or backup, roborepo prints a merge review prompt. The prompt lists the repo and local paths, but it is not an exhaustive diff. The agent or human doing the merge must inspect both paths directly, using recursive directory diffs for directories and structured parsers for JSON/TOML where practical.
 
-For install conflicts, the default stance is to preserve local behavior unless the selected install mode says the repo baseline should win. For sync conflicts, the default stance is to keep the repo baseline unless a local live change is clearly intentional and safe to promote.
+Default stance: preserve local behavior unless the user explicitly chooses replacement.
 
-## Happy Path
+## Rendered Rules
 
-Run a preview first:
+Rules files are roborepo-generated home files. They are identified by the `# Generated Harness Rules` header.
 
-```sh
-./scripts/install/main.sh --dry-run
-```
-
-If the preview reports no collisions, run:
-
-```sh
-./scripts/install/main.sh
-```
-
-If a collision is reported, choose the install mode first, then the collision policy when prompted. `managed` backs up and replaces existing non-empty config. `adopt` keeps local config active and uses overwrite or keep-originals handling where needed.
-
-For non-root conflicts, resolve or move the local path first, then rerun the installer.
-
-## Backups
-
-Config collision handling avoids replacement instead of depending on backups. The installer still backs up unrelated shell/global-command files when those helper installers intentionally edit or replace them. Those backups are written under:
-
-```text
-~/.roborepo-backups/<timestamp>/
-```
-
-If a backup path already exists, the installer adds a numeric suffix instead of overwriting the older backup.
-
-### Pre-Install Backup
-
-When the installer first copies a root config file over an existing file, it saves the original to:
+On first render, if a genuine user-authored `CLAUDE.md` or `AGENTS.md` already exists, roborepo saves it once under:
 
 ```text
 ~/.roborepo/backups/pre-install/<harness>/<filename>
 ```
 
-For example:
+Then it writes the rendered file. Uninstall removes rendered files it owns and restores the pre-install backup when present.
+
+## Pre-Install Backups
+
+Before roborepo first replaces a genuine user file, it writes a durable backup:
 
 ```text
 ~/.roborepo/backups/pre-install/claude/settings.json
 ~/.roborepo/backups/pre-install/codex/config.toml
+~/.roborepo/backups/pre-install/claude/CLAUDE.md
+~/.roborepo/backups/pre-install/codex/AGENTS.md
 ```
 
-This backup is written only once — if the backup already exists, the installer leaves it unchanged. This preserves the state from before roborepo was ever installed, regardless of how many reinstalls follow.
-
-On uninstall (`scripts/install/uninstall.sh`), when a pre-install backup exists for a root config file, uninstall restores it rather than deleting the file. If no pre-install backup exists (the root config file was created by roborepo on a clean machine), uninstall deletes the file. The pre-install backup directory is removed after restoration.
-
-The timestamped `*_original_*` backups written by collision handling during managed installs are separate from the pre-install backup and are also removed on uninstall.
-
-## Noninteractive Runs
-
-If stdin is not interactive and a config collision exists, the installer exits before making unrelated changes unless an explicit or previously saved collision policy is available. Use `--dry-run` to inspect the collision, then run the installer interactively, pass `--on-conflict overwrite|keep`, or move the config aside yourself.
+Backups are written only once. Roborepo-authored files and byte-identical repo copies are not captured as "originals", which prevents reinstall cycles from poisoning the backup.
 
 ## Sync Workflow
 
-`scripts/sync-from-home.sh` reviews live home config and lets you selectively copy changes back into this repo. For each changed item, it shows a diff and asks whether to keep the repo version or overwrite the repo from home. Merge prompts print after actions that create backups or staged defaults.
-
-This workflow does not require every path to be a symlink. It reviews the listed home paths and prompts before copying changed content into the repo. For root config files, sync is conservative: adopted root configs are user-owned, so sync skips these files by default:
-
-- `~/.claude/settings.json`
-- `~/.codex/config.toml`
-
-Use `--include-root-config` only when you intentionally want to review and promote those user-owned root config files into the repo baseline:
+`scripts/sync-from-home.sh` reviews selected home paths and lets you copy intentional live changes back into the repo. Root config files are skipped unless `--include-root-config` is supplied:
 
 ```sh
 ./scripts/sync-from-home.sh --include-root-config
 ```
 
-`ROBOREPO_REPO_ROOT` is available for tests that need to point sync at a temporary repo fixture. Do not set it during normal use.
+Rendered rules are not synced back into fragments. Edit `globals/rules/**` or package rule fragments, then run:
 
-Still inspect the final repo diff before committing.
+```sh
+./scripts/build/render-rules.sh
+```
 
 ## Validation
 
-Run the collision regression tests:
+Run:
 
 ```sh
 ./scripts/test/test-install-collisions.sh
+./scripts/test/test-roborepo.sh
 ```
 
-The test uses temporary `HOME` directories only. It covers fresh installs, dry-run collisions, noninteractive blocking, interactive choices, aborts, backup uniqueness, malformed config reporting, idempotency, and sync guards.
+These tests use temporary home directories and cover collision policies, backup behavior, rendered rules, package toggles, and uninstall restoration.

@@ -2,396 +2,112 @@
 
 ## Purpose
 
-This repo installs the shared harness baseline first, then lets each machine choose which optional behaviors to turn on through the onboarding wizard. The guide below walks the install path step by step and shows the fork points the installer expects.
-
-The examples are simulated terminal screens. Prompt text matches the current macOS/Linux scripts; file paths and timestamps are representative.
+Roborepo materializes global harness config onto a machine by copying owned files, rendering rules, and preserving user-authored root config. There is no managed/adopt mode. The only install-time choice is how to handle collisions for mutable root config and other copied paths.
 
 ## Workflow Shape
 
-1. Pick an install mode: `managed` or `adopt`.
-2. Preview the install or run it for real.
-3. Let the installer handle any collisions.
-4. Let interactive install start the `roborepo onboard` wizard, then opt into the behaviors you want.
+1. Run a dry-run preview when you want to inspect planned paths.
+2. Run the installer.
+3. Choose collision handling only if the installer finds a conflicting local file.
+4. Let onboarding enable optional packages and skills.
+5. Verify with `roborepo doctor --installed` or `roborepo verify`.
 
-Each prompt is shown in its own terminal block. The next block shows the selected answer or the output that follows.
-
-## Step 1: Pick An Install Mode
-
-Interactive installs always ask for an install mode. `managed` and `adopt` are always available, even on clean machines and machines with existing config.
+## Preview
 
 ```sh
-$ ./scripts/install/main.sh
-
-Choose install mode:
-  1) managed  backup any existing config first; install repo defaults
-  2) adopt    keep local root config active; install repo defaults around it
-  q) quit
-Selection [1/2/q]:
+./scripts/install/main.sh --dry-run
 ```
 
-Choose `managed` when this repo should own the shared baseline:
+Dry-run reports the shell/PATH actions, install state write, base rule render, and base bundle application it would perform. It does not mutate home config.
+
+## Install
 
 ```sh
-Selection [1/2/q]: 1
+./scripts/install/main.sh
 ```
 
-Choose `adopt` when the machine should keep local root config active:
+The installer writes:
 
-```sh
-Selection [1/2/q]: 2
-```
+- rendered base rules to `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`
+- copied roborepo-owned files such as markers, commands, hooks, and Codex rules
+- copied root config baselines when no local file exists
+- `roborepo-support` in each installed harness skill directory
+- `~/.local/bin/roborepo`
+- install state at `~/.roborepo/install-state.json`
 
-Adopt mode also asks how later collisions should behave. The answer is saved in `~/.roborepo/install-state.json` and reused by later `roborepo onboard` runs.
+Then it applies the default `base` bundle and starts `roborepo onboard` unless onboarding was already completed or explicitly skipped.
 
-```sh
-Choose adopt collision behavior:
-  1) overwrite      backup existing files as *_original_TIMESTAMP; install repo items
-  2) keep originals leave existing files active; stage repo items as *_update_TIMESTAMP
-  q) quit
-Selection [1/2/q]:
-```
+## Collision Policy
 
-Choose `keep originals` when local files should stay active:
+`--on-conflict` controls what happens when an existing local file differs from the repo source:
 
-```sh
-Selection [1/2/q]: 2
-```
-
-On a noninteractive run, the installer uses saved install state if it has one, otherwise it falls back to `managed` and blocks unknown collisions instead of guessing.
-
-## Step 2: Preview Or Run The Install
-
-Run a preview first if you want to see the paths before anything moves:
-
-```sh
-$ ./scripts/install/main.sh --dry-run
-
-Choose install mode:
-  1) managed  backup any existing config first; install repo defaults
-  2) adopt    keep local root config active; install repo defaults around it
-  q) quit
-Selection [1/2/q]:
-```
-
-After selecting `managed`, dry-run records what it would do:
-
-```sh
-Selection [1/2/q]: 1
-```
-
-The dry-run state write is reported separately:
-
-```sh
-state: would record install mode managed at /Users/you/.roborepo/install-state.json
-```
-
-Then the core summary prints:
-
-```sh
-Core install complete.
-  Mode:   managed
-  Claude: available
-  Codex:  available
-
-dry-run: a real install would apply the base configuration, then start the onboarding wizard.
-```
-
-Run the real install when the preview looks right:
-
-```sh
-$ ./scripts/install/main.sh
-
-Choose install mode:
-  1) managed  backup any existing config first; install repo defaults
-  2) adopt    keep local root config active; install repo defaults around it
-  q) quit
-Selection [1/2/q]:
-```
-
-After selecting `managed`, the install continues:
-
-```sh
-Selection [1/2/q]: 1
-```
-
-Then the core summary prints:
-
-```sh
-Core install complete.
-  Mode:   managed
-  Claude: available
-  Codex:  available
-```
-
-Then the baseline is applied and the onboarding wizard starts:
-
-```sh
-Applying base configuration.
-
-roborepo onboarding — toggle behavior across the sections, then press Enter on the last step.
-Step 1/5 · Token Optimization
-  ←/→ sections · ↑/↓ move · Space toggle · Enter next · Esc finish
-  ...
-Onboarding complete.
-```
-
-## Step 3: Managed Versus Adopt
-
-| Mode | Use when | Result |
-| --- | --- | --- |
-| `managed` | You want the repo baseline to win. | Existing non-empty config is backed up first, then the repo version is installed. |
-| `adopt` | You want local config to stay active. | Repo defaults are installed around the local config. Existing collisions prompt for overwrite or keep-originals handling. |
-
-### Managed With Existing Config
-
-`managed` applies the repo version and preserves the original file first when there is meaningful local content.
-
-```sh
-$ ./scripts/install/main.sh
-
-Choose install mode:
-  1) managed  backup any existing config first; install repo defaults
-  2) adopt    keep local root config active; install repo defaults around it
-  q) quit
-Selection [1/2/q]:
-```
-
-Select `managed`:
-
-```sh
-Selection [1/2/q]: 1
-```
-
-If an existing non-empty file must be replaced, the installer shows the backup and install action:
-
-```sh
-backup: /Users/you/.claude/settings.json -> /Users/you/.claude/settings_original_20260615-101500.json
-copy: /Users/you/.claude/settings.json <- /Users/you/projects/roborepo/globals/claude/settings.json
-```
-
-Then it prints the merge review prompt automatically:
-
-```sh
-Merge review prompt:
------
-Resolve this harness install conflict.
-
-Repo harness path:
-  /Users/you/projects/roborepo/globals/claude/settings.json
-
-Existing local path:
-  /Users/you/.claude/settings.json
-
-Default stance: preserve the existing local path as source of truth unless you can prove a repo change can be added without breaking local behavior.
-
-Required first step: compute your own complete comparison of both paths. Do not rely on this prompt as an exhaustive conflict summary. For directories, inspect the full recursive file list and content diffs. For structured files, parse the format when possible instead of using only text matching.
-
-Goal: preserve the user's existing local behavior while installing useful harness behavior from the repo.
-
-Merge instructions:
-- Keep local-only behavior by default.
-- Add repo-only harness behavior only when it does not conflict with local behavior.
-- If both sides edit the same setting, hook, rule, command, skill, or MCP/server entry, explain the conflict and stop for user choice.
-- Do not delete, replace, or move the local path unless the user explicitly approves that exact action.
-- Report the files changed and the conflicts left unresolved.
------
-```
-
-If the existing path is empty, the installer does not print backup text.
-
-### Adopt With Existing Config
-
-`adopt` keeps local root config active and uses repo defaults only where that does not replace the local file blindly.
-
-```sh
-$ ./scripts/install/main.sh --mode adopt
-```
-
-When a user-owned config collision appears, the installer asks how to handle that file:
-
-```sh
-Existing harness target:
-  local:   /Users/you/.claude/settings.json
-  harness: /Users/you/projects/roborepo/globals/claude/settings.json
-
-Choose:
-  1) overwrite     backup local as *_original_TIMESTAMP; install repo item
-  2) keep originals leave local active; stage repo item as *_update_TIMESTAMP
-  q) quit
-Selection [1/2/q]:
-```
-
-Choose `overwrite` when the repo version should become active:
-
-```sh
-Selection [1/2/q]: 1
-```
-
-Overwrite backs up the current local file, then installs the repo item:
-
-```sh
-backup: /Users/you/.claude/settings.json -> /Users/you/.claude/settings_original_20260615-101500.json
-copy: /Users/you/.claude/settings.json <- /Users/you/projects/roborepo/globals/claude/settings.json
-```
-
-Choose `keep originals` when the local file should stay active:
-
-```sh
-Selection [1/2/q]: 2
-```
-
-Keep-originals stages the repo candidate beside the local file:
-
-```sh
-stage: /Users/you/.claude/settings_update_20260615-101500.json <- /Users/you/projects/roborepo/globals/claude/settings.json
-```
-
-After either action creates a backup or staged default, the installer prints the merge review prompt automatically. There is no separate prompt option to choose.
-
-```sh
-Merge review prompt:
------
-Resolve this harness install conflict.
-
-Repo harness path:
-  /Users/you/projects/roborepo/globals/claude/settings.json
-
-Existing local path:
-  /Users/you/.claude/settings.json
-
-Default stance: preserve the existing local path as source of truth unless you can prove a repo change can be added without breaking local behavior.
-
-Required first step: compute your own complete comparison of both paths. Do not rely on this prompt as an exhaustive conflict summary. For directories, inspect the full recursive file list and content diffs. For structured files, parse the format when possible instead of using only text matching.
-
-Goal: preserve the user's existing local behavior while installing useful harness behavior from the repo.
-
-Merge instructions:
-- Keep local-only behavior by default.
-- Add repo-only harness behavior only when it does not conflict with local behavior.
-- If both sides edit the same setting, hook, rule, command, skill, or MCP/server entry, explain the conflict and stop for user choice.
-- Do not delete, replace, or move the local path unless the user explicitly approves that exact action.
-- Report the files changed and the conflicts left unresolved.
------
-```
-
-## Step 4: Collision Policy
-
-| Policy | Active after install | Preserved files |
-| --- | --- | --- |
-| `overwrite` | Repo version becomes active. | Existing local files move beside the original path as `*_original_TIMESTAMP`. |
-| `keep originals` | Existing local version stays active. | Repo candidates are staged beside the original path as `*_update_TIMESTAMP`. Missing files are still installed normally. |
-
-If there is no meaningful existing content, the installer does not print backup text.
-
-## Step 5: Onboarding
-
-After the core install, the installer applies a minimal baseline (`base` — root config baselines and
-managed markers), then launches the onboarding wizard so you opt into the rest: skills, commands,
-code conventions, chat-time output, and token-optimization packages. Permissions are shown read-only.
-Telemetry stays off unless you turn it on. Noninteractive installs skip the wizard and apply the
-baseline headlessly. Rerun any time with `roborepo onboard`.
-
-```sh
-$ roborepo onboard
-
-roborepo onboarding — toggle behavior across the sections, then press Enter on the last step.
-Step 1/5 · Token Optimization
-  ←/→ sections · ↑/↓ move · Space toggle · Enter next · Esc finish
-  ...
-Onboarding complete.
-```
-
-> **Note:** Per-feature configuration (individual skills, commands, packages, and Chat-Time Output
-> behaviors) is handled by the package model and the config control panel — `roborepo onboard` and the
-> `/config` dashboard. See [`config-control-panel.md`](../reference/services/config-control-panel.md)
-> and the completed plan
-> [`config-panel-behavior-sections.md`](../plans/completed/config-panel-behavior-sections.md). The
-> earlier bundle-toggle wizard is recorded in
-> [`onboarding-reinstatement.md`](../plans/onboarding-reinstatement.md).
-
-Telemetry stays off until you turn it on:
-
-```sh
-roborepo telemetry enable
-```
-
-## What Onboarding Does
-
-- Applies the default bundles idempotently on the machine.
-- Stores the applied selection locally.
-- The platform's install-time file operations are driven internally by `scripts/install/main.sh` (which calls the undocumented `roborepo bundle` verb); users do not run them directly — `roborepo update` re-applies them.
-- Gives `roborepo` enough state to require onboarding before normal commands when the machine has not been set up yet.
-
-## What Onboarding Does Not Do
-
-- It does not delete user-owned config.
-- It does not guess which optional bundles you want.
-- It does not merge root config automatically.
-
-## Permission Profile Selection
-
-Permission profiles are rendered from `manifests/inventory/agent-permissions.json` before install or update:
-
-```sh
-./scripts/install/main.sh --permissions interactive
-roborepo update --permissions interactive
-```
-
-Profiles are a render-time choice for this repo's generated harness defaults:
-
-| Profile | Effect |
+| Policy | Result |
 | --- | --- |
-| `readonly` | Claude gets read-oriented permissions; Codex gets `read-only` sandbox defaults. |
-| `interactive` | Claude gets read/write/edit permissions and allowed local commands; Codex gets workspace-write with prompts for sandbox escapes. |
-| `workspace` | Same local workspace posture, with Codex approval prompts disabled for blocked actions. |
-| `networked` | Workspace-write plus Codex sandbox network access. |
+| `keep` | Leave the existing file active and stage the repo candidate beside it as `*_update_TIMESTAMP`. |
+| `overwrite` | Move the existing file to `*_original_TIMESTAMP`, then copy the repo file into place. |
+| `abort` | Stop instead of changing the conflicting path. |
 
-The renderer updates:
+Example:
 
-- `globals/claude/settings.json` permissions
-- `globals/codex/config.toml` generated permission block
-- `globals/codex/rules/default.rules`
+```sh
+./scripts/install/main.sh --on-conflict keep
+```
 
-These are global harness defaults. The installer does not keep a separate permission profile registry per consumer repo. For a different posture on one machine or project, render/install that profile for that run, or use the agent harness's one-off launch flags when starting a session.
+When no policy is supplied, the installer uses the saved `onConflict` value from `~/.roborepo/install-state.json`. On a first noninteractive run it defaults to `keep`.
+
+## Rules Rendering
+
+Home rules files are generated from base fragments plus enabled package rule fragments. The enabled-package registry lives at:
+
+```text
+~/.roborepo/enabled-packages.json
+```
+
+Commands that change package state update the registry and re-render the home rules files:
+
+```sh
+roborepo enable jcodemunch
+roborepo disable jcodemunch
+roborepo rules --check
+```
+
+## Optional Packages
+
+Base install is intentionally minimal. Optional behavior appears only after onboarding or explicit package enablement:
+
+- `jcodemunch` and `jdocmunch` register MCP servers, hooks, permissions, and rule fragments.
+- `telemetry` installs capture state through its service component.
+- packages with skill components copy their skill folders into harness skill dirs.
+
+## Update
+
+```sh
+roborepo update
+```
+
+`roborepo update` re-runs the installer against the current repo source, refreshes copied files, re-renders rules from the registry, and keeps the saved conflict policy unless `--on-conflict` overrides it.
+
+After a successful update it prints a concise change report, for example:
+
+```text
+changed: rules claude
+changed: skill roborepo-support
+unchanged: package registry
+```
 
 ## Uninstall
 
-To remove all roborepo artifacts from the machine:
-
 ```sh
-./scripts/install/uninstall.sh
+roborepo uninstall
 ```
 
-Preview what will be removed without making any changes:
+Uninstall removes roborepo-owned copied files, rendered rules, managed skill copies, shell wiring, and install state. If a genuine pre-install backup exists under `~/.roborepo/backups/pre-install/`, uninstall restores it.
+
+## Verification
 
 ```sh
-./scripts/install/uninstall.sh --dry-run
+roborepo doctor --installed
+roborepo verify
 ```
 
-Uninstall removes:
-
-- All manifest-managed symlinks (skills, hooks, commands, rules, markers)
-- Root config files (`~/.claude/settings.json`, `~/.codex/config.toml`)
-- Per-skill links in `~/.claude/skills/` and `~/.codex/skills/`
-- `~/.local/bin/roborepo`
-- Roborepo shell wiring from `~/.zshrc` / `~/.bashrc`
-- MCP server registrations for roborepo-managed servers
-- Preset state (`~/.roborepo/presets/`)
-- Install state (`~/.roborepo/install-state.json`)
-- Timestamped collision backups (`*_original_*` in `~/.claude/` and `~/.codex/`)
-- Pre-install backups (`~/.roborepo/backups/pre-install/`)
-
-### Root Config Restore Behavior
-
-At install time, the installer saves the pre-existing root config to `~/.roborepo/backups/pre-install/<harness>/` before writing the repo version for the first time. On uninstall:
-
-- If a pre-install backup exists for `~/.claude/settings.json` or `~/.codex/config.toml`, uninstall **restores** the original file instead of deleting it.
-- If no backup exists (roborepo was the first to create the file), uninstall **deletes** the file.
-
-This means uninstalling on a machine that had prior Claude or Codex config returns that machine to its pre-roborepo state.
-
-## Related References
-
-- [First-Time Setup](first-time-setup.md)
-- [Setup And Daily Use](setup-and-daily-use.md)
-- [Config Collision Handling](../reference/internal/config-collision-handling.md)
+`doctor --installed` checks the active machine state, including rendered home rules and base skill copies. `verify` runs the post-install verification wrapper.

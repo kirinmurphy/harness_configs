@@ -1,5 +1,10 @@
 # Cleanup Before Reinstall — Checklist
 
+> **Status: obsolete historical checklist.** This was a one-machine cleanup note from the
+> hand-wired telemetry/bootstrap period. It is archived so old references still resolve, but it is
+> not current install guidance. Use `docs/guides/first-time-setup.md` and
+> `docs/guides/install-workflows.md` for current setup behavior.
+
 Quick reference for getting home dirs to a clean state before running the full
 roborepo install. The "uninstall to test from scratch" left shim artifacts and
 one stale skill behind. Do these steps **before** `main.sh` so the installer

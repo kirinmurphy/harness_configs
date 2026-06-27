@@ -84,6 +84,31 @@ export function configHtml() {
   .install-kv .v { color:var(--ink); }
   .install-kv .ok { color:var(--ok); }
   .install-kv .off { color:var(--off); }
+  /* info-url link badges */
+  .url-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+  .url-link { font-size:10px; padding:1px 6px; border-radius:3px; border:1px solid var(--line); color:var(--accent); text-decoration:none; }
+  .url-link:hover { border-color:var(--accent); }
+  /* clickable (inspectable) item label */
+  .item-label.clickable { cursor:pointer; text-decoration:underline dotted var(--off); text-underline-offset:3px; }
+  .item-label.clickable:hover { color:var(--accent); }
+  /* globals rules preview */
+  .globals-pre { margin:8px 0 0; padding:10px; background:var(--bg); border:1px solid var(--line); border-radius:6px; font-size:11px; color:var(--dim); white-space:pre-wrap; max-height:220px; overflow:auto; }
+  .globals-tabs { display:flex; gap:0; margin-top:8px; }
+  .globals-tab { font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--bg); border:1px solid var(--line); color:var(--dim); padding:3px 12px; cursor:pointer; }
+  .globals-tab:first-child { border-radius:5px 0 0 5px; }
+  .globals-tab:last-child { border-radius:0 5px 5px 0; border-left:none; }
+  .globals-tab.on { background:var(--panel); color:var(--accent); border-color:var(--accent); }
+  /* modal */
+  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; padding:24px; z-index:50; }
+  .modal-backdrop.open { display:flex; }
+  .modal { background:var(--panel); border:1px solid var(--line); border-radius:8px; max-width:900px; width:100%; max-height:85vh; display:flex; flex-direction:column; }
+  .modal-head { padding:12px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; }
+  .modal-title { font-size:13px; color:var(--ink); font-weight:600; }
+  .modal-path { font-size:11px; color:var(--off); }
+  .modal-close { margin-left:auto; background:none; border:1px solid var(--line); color:var(--dim); border-radius:5px; padding:3px 9px; cursor:pointer; }
+  .modal-close:hover { color:var(--ink); border-color:var(--dim); }
+  .modal-body { padding:14px 16px; overflow:auto; }
+  .modal-body pre { margin:0; white-space:pre-wrap; word-break:break-word; font-size:12px; color:var(--ink); }
 </style>
 </head>
 <body>
@@ -96,89 +121,23 @@ export function configHtml() {
   </nav>
 </header>
 <main id="main"></main>
+<div class="modal-backdrop" id="modal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title" id="modal-title"></span>
+      <span class="modal-path" id="modal-path"></span>
+      <button class="modal-close" id="modal-close">close ✕</button>
+    </div>
+    <div class="modal-body"><pre id="modal-content"></pre></div>
+  </div>
+</div>
 <script>
 // --------------------------------------------------------------------------- behavior view
-
-// Mirrors buildBehaviorView() in config.mjs — derives the user-facing sections from raw snapshot.
-function behaviorView(snap) {
-  const pkg = (id) => (snap.packages || []).find((p) => p.id === id);
-  const bundle = (id) => (snap.bundles || []).find((b) => b.id === id);
-  const tel = snap.telemetry || {};
-  const perms = snap.agentPermissions || null;
-  return [
-    {
-      category: "Token Optimization", wide: false,
-      items: [
-        { id:"jcodemunch", label:"jcodemunch",     desc:"Code indexer — find code via symbol search instead of reading files", active: pkg("jcodemunch")?.enabled ?? false, toggle:"package" },
-        { id:"jdocmunch",  label:"jdocmunch",      desc:"Docs indexer — query sections instead of reading whole files",        active: pkg("jdocmunch")?.enabled  ?? false, toggle:"package" },
-        { id:"caveman",    label:"Caveman plugin", desc:"Keeps agent output terse to reduce token use",                        active: pkg("caveman")?.enabled ?? snap.plugins?.caveman ?? false, toggle:"package", hint: (pkg("caveman")?.enabled ?? snap.plugins?.caveman) ? null : "enables on the harness's next launch" },
-        { id:"telemetry",  label:"Telemetry",      desc:"Capture and visualize token usage across harnesses",                  active: pkg("telemetry")?.enabled ?? !!tel.enabled, toggle:"package" },
-      ],
-    },
-    {
-      category: "Commands", wide: false,
-      desc: "Named slash-command workflows you start intentionally.",
-      items: (snap.tools || [])
-        .filter((t) => t.command && t.id !== "roborepo-support")
-        .map((t) => ({
-          id: t.id, label: "/" + t.command, desc: t.description, active: t.installed,
-          badges: ["/" + t.command, "skill"], toggle: "skill",
-        })),
-    },
-    {
-      category: "Code Conventions", wide: false,
-      desc: "Skills auto-loaded when relevant — shape output without an explicit command.",
-      footnote: "roborepo-support — help skill for this repo, always loaded.",
-      items: (snap.tools || [])
-        .filter((t) => !t.command && t.id !== "roborepo-support")
-        .map((t) => ({
-          id: t.id, label: t.label, desc: t.description, active: t.installed,
-          badges: ["skill"], toggle: "skill",
-        })),
-    },
-    {
-      category: "Chat-Time Output", wide: false,
-      desc: "Inline chat notes the agent adds while responding — no files written, no workflow started.",
-      items: [
-        { id:"convention-capture", label:"Convention capture", desc:"Surfaces newly confirmed conventions inline (\u{1F4CC} Capture candidate)", active: pkg("convention-capture")?.enabled ?? false, toggle:"package" },
-        { id:"impact-awareness",   label:"Impact awareness",   desc:"Flags how a proposed change collides with existing functionality (\u{1F9ED} Impact)", active: pkg("impact-awareness")?.enabled ?? false, toggle:"package" },
-        { id:"skill-visibility",   label:"Skill visibility",   desc:"Reports which skills shaped a response (\u{1F9E9} Skills loaded)", active: pkg("skill-visibility")?.enabled ?? false, toggle:"package" },
-      ],
-    },
-    {
-      category: "Permissions", wide: false,
-      kind: "permissions",
-      items: [
-        {
-          id: "profile",
-          label: snap.activeProfile || perms?.default_profile || "interactive",
-          desc: perms?.profiles?.[snap.activeProfile || perms?.default_profile]?.description || null,
-          kind: "profile",
-          active: snap.activeProfile || perms?.default_profile || "interactive",
-          globalProfile: snap.activeProfile || perms?.default_profile || null,
-          projectProfile: snap.projectProfile || null,
-          options: (snap.profiles || []).map((id) => ({
-            id,
-            desc: perms?.profiles?.[id]?.description || null,
-            looser: id === "workspace" || id === "networked",
-          })),
-        },
-        {
-          id: "deny",
-          label: (perms?.commands?.deny?.length || 0) + " blocked",
-          value: (perms?.commands?.deny || []).map((c) => c.join(" ")).join(" · "),
-          kind: "info",
-        },
-        {
-          id: "allow",
-          label: (perms?.commands?.allow?.length || 0) + " pre-approved",
-          kind: "expandable",
-          detail: (perms?.commands?.allow || []).map((c) => c.join(" ")),
-        },
-      ],
-    },
-  ];
-}
+//
+// The user-facing section model is computed ONCE, server-side, in buildBehaviorView() (config.mjs)
+// and shipped in the snapshot as snap.behaviorView. The client renders it directly — there is no
+// client-side reimplementation to drift from the server. Items carry web fields (toggle, inspect,
+// urls, badges) and terminal fields (hint); each renderer reads what it needs.
 
 // --------------------------------------------------------------------------- render helpers
 
@@ -198,6 +157,35 @@ function badge(text) {
   const isCmd = text.startsWith("/");
   return el("span", "badge " + (isCmd ? "badge-cmd" : "badge-skill"), text);
 }
+
+// ---- source-inspect modal: fetch the full file that DEFINES a tool and show it in a popup. ----
+function closeModal() { document.getElementById("modal").classList.remove("open"); }
+async function openSourceModal(inspect) {
+  const backdrop = document.getElementById("modal");
+  document.getElementById("modal-title").textContent = inspect.label || inspect.id;
+  document.getElementById("modal-path").textContent = "loading…";
+  document.getElementById("modal-content").textContent = "";
+  backdrop.classList.add("open");
+  try {
+    const qs = new URLSearchParams({ kind: inspect.kind, id: inspect.id });
+    if (inspect.harness) qs.set("harness", inspect.harness);
+    const data = await fetch("/api/config/source?" + qs.toString()).then((r) => r.json());
+    if (!data.ok) {
+      document.getElementById("modal-path").textContent = "";
+      document.getElementById("modal-content").textContent = "error: " + (data.error || "failed to load");
+      return;
+    }
+    document.getElementById("modal-title").textContent = data.title || inspect.label;
+    document.getElementById("modal-path").textContent = data.path || "";
+    document.getElementById("modal-content").textContent = data.content || "(empty)";
+  } catch (e) {
+    document.getElementById("modal-path").textContent = "";
+    document.getElementById("modal-content").textContent = "error: " + e.message;
+  }
+}
+document.getElementById("modal-close").addEventListener("click", closeModal);
+document.getElementById("modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
 
 const TOGGLE_ENDPOINT = { package: "/api/config/packages", skill: "/api/config/skills" };
 
@@ -300,7 +288,7 @@ function profileSelector(item) {
       const isCur = opt.id === cur;
       const btn = el("button", "profile-btn" + (isCur ? " current" : "") + (opt.looser ? " looser" : ""),
         opt.id + (opt.looser ? " ⚠" : ""));
-      btn.title = opt.desc || "";
+      btn.title = opt.description || "";
       btn.disabled = isCur;
       btn.addEventListener("click", () => apply(opt.id, opt.looser));
       choices.appendChild(btn);
@@ -354,18 +342,36 @@ function renderStandardSection(section) {
   const head = el("div", "panel-head");
   head.appendChild(el("h2", null, section.category));
   panel.appendChild(head);
-  if (section.desc) panel.appendChild(el("p", "panel-desc", section.desc));
+  if (section.description) panel.appendChild(el("p", "panel-desc", section.description));
 
   for (const item of section.items) {
     const row = el("div", "item");
     row.appendChild(dot(item.active));
     const body = el("div", "item-body");
     const top = el("div", "item-row");
-    top.appendChild(el("span", "item-label" + (item.active ? "" : " dim"), item.label));
+    // Inspectable items (skills/commands/chat-time rules) get a clickable label that opens the
+    // source popup. The label still reflects active/dim state.
+    const labelCls = "item-label" + (item.active ? "" : " dim") + (item.inspect ? " clickable" : "");
+    const labelEl = el("span", labelCls, item.label);
+    if (item.inspect) {
+      labelEl.title = "view source";
+      labelEl.addEventListener("click", () => openSourceModal(item.inspect));
+    }
+    top.appendChild(labelEl);
     for (const b of (item.badges || [])) top.appendChild(badge(b));
     body.appendChild(top);
-    if (item.desc) body.appendChild(el("div", "item-desc", item.desc));
+    if (item.description) body.appendChild(el("div", "item-desc", item.description));
     if (item.hint) body.appendChild(el("div", "item-hint", "→ " + item.hint));
+    // Info URLs (GitHub / docs / PyPI) as small link badges.
+    if (item.urls && item.urls.length) {
+      const urlRow = el("div", "url-row");
+      for (const u of item.urls) {
+        const a = el("a", "url-link", u.label || u.url);
+        a.href = u.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+        urlRow.appendChild(a);
+      }
+      body.appendChild(urlRow);
+    }
     const errSlot = el("div", "item-err");
     body.appendChild(errSlot);
     row.appendChild(body);
@@ -382,6 +388,65 @@ function renderStandardSection(section) {
 function renderSection(section) {
   if (section.kind === "permissions") return renderPermissionsSection(section);
   return renderStandardSection(section);
+}
+
+// Globals: harness-agnostic rules + global settings (agnostic + claude + codex). Shown first, above
+// Token Optimization, so the baseline every harness gets is visible before the per-feature toggles.
+function renderGlobals(snap) {
+  const g = snap.globals || {};
+  const rules = g.rules || {};
+  const settings = g.settings || {};
+  const panel = el("div", "panel wide");
+  const head = el("div", "panel-head");
+  head.appendChild(el("h2", null, "Globals"));
+  panel.appendChild(head);
+  panel.appendChild(el("p", "panel-desc", "Harness-agnostic rules and global settings applied to every session."));
+
+  // Rules preview with tabs: shared (agnostic) / claude / codex deltas. Default to shared.
+  const tabsRow = el("div", "globals-tabs");
+  const pre = el("pre", "globals-pre");
+  const sources = {
+    shared: rules.shared || "(none)",
+    claude: rules.claude || "(no claude-specific rules)",
+    codex: rules.codex || "(no codex-specific rules)",
+  };
+  const setTab = (key) => {
+    pre.textContent = sources[key];
+    for (const b of tabsRow.children) b.classList.toggle("on", b.dataset.key === key);
+  };
+  for (const [key, label] of [["shared", "shared (agnostic)"], ["claude", "claude"], ["codex", "codex"]]) {
+    const b = el("button", "globals-tab", label);
+    b.dataset.key = key;
+    b.addEventListener("click", () => setTab(key));
+    tabsRow.appendChild(b);
+  }
+  panel.appendChild(el("p", "perm-label", "Rules"));
+  panel.appendChild(tabsRow);
+  panel.appendChild(pre);
+  setTab("shared");
+
+  // "View full rendered rules" — fetches the complete CLAUDE.md/AGENTS.md output on demand (kept out
+  // of the polled snapshot to keep it lean) and shows it in the source modal.
+  const viewRow = el("div", "url-row");
+  for (const [harness, label] of [["claude", "view full CLAUDE.md"], ["codex", "view full AGENTS.md"]]) {
+    const btn = el("button", "expand-btn", label);
+    btn.addEventListener("click", () => openSourceModal({ kind: "globals-rules", id: harness, harness, label }));
+    viewRow.appendChild(btn);
+  }
+  panel.appendChild(viewRow);
+
+  // Global settings KV.
+  panel.appendChild(el("p", "perm-label", "Global settings"));
+  const kv = el("div", "install-kv");
+  const row = (k, vText, cls) => { kv.appendChild(el("span", "k", k)); kv.appendChild(el("span", cls ? "v " + cls : "v", vText)); };
+  row("active profile", settings.activeProfile || "—");
+  row("project override", settings.projectProfile || "none");
+  row("profiles", (settings.profiles || []).join(", ") || "—");
+  row("caveman plugin", settings.plugins?.caveman ? "enabled" : "disabled", settings.plugins?.caveman ? "ok" : "off");
+  const hookEvents = Object.keys(settings.hooks || {});
+  row("hooks", hookEvents.length ? hookEvents.join(", ") : "none");
+  panel.appendChild(kv);
+  return panel;
 }
 
 function renderInstall(snap) {
@@ -409,7 +474,9 @@ function renderInstall(snap) {
 function render(snap) {
   const main = document.getElementById("main");
   main.innerHTML = "";
-  const view = behaviorView(snap);
+  main.appendChild(renderGlobals(snap));
+  // Section model comes straight from the server snapshot (buildBehaviorView), no client fork.
+  const view = snap.behaviorView || [];
   for (const section of view) main.appendChild(renderSection(section));
   main.appendChild(renderInstall(snap));
 }

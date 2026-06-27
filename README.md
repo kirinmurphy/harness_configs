@@ -34,7 +34,8 @@ Use the CLI to update items and configuation to your global setup that will work
 | `roborepo update`                | Re-apply harness config on this machine to pick up new or changed global config.                     |
 | `roborepo mcp add <name-or-url>` | Register an MCP server with both Claude and Codex in one step.                                       |
 | `roborepo index code [path]`     | Index a repo's source for jcodemunch so agents find code via symbol search instead of reading files. |
-| `roborepo telemetry start` / `stop` | Start (or stop) token-usage capture plus the local token-spike dashboard, served detached at `http://127.0.0.1:4317` (with spike-cause attribution). `telemetry status` shows capture state; `telemetry serve [--detach]` runs just the dashboard; `telemetry purge --all --backup` resets capture, backing up first. |
+| `roborepo serve`                 | Open the local web portal at `http://127.0.0.1:4317/config`; use `--detach` to keep it running in the background. |
+| `roborepo telemetry start` / `stop` | Start (or stop) token-usage capture. `telemetry status` shows capture state; `telemetry purge --all --backup` resets capture, backing up first. |
 | `roborepo doctor`                | Health-check the install and report what is linked, missing, or drifted.                             |
 
 [View all roborepo commands](docs/reference/services/roborepo-cli.md)
@@ -43,7 +44,7 @@ Use the CLI to update items and configuation to your global setup that will work
 
 Installing the `roborepo` core applies a minimal baseline, then launches an onboarding wizard so you choose which behaviors to enable — skills, commands, code conventions, chat-time output, and token-optimization packages. The wizard mirrors the `/config` sections, one section per step (`←`/`→` between sections, `Space` to toggle, `Enter` to advance). Only the baseline is applied automatically; everything else is opt-in, and telemetry stays off unless you turn it on. Rerun the wizard any time with `roborepo onboard`. Noninteractive installs skip the wizard and apply the baseline headlessly.
 
-> **Just want token telemetry?** You can install only the local telemetry capture + dashboard — without the rest of the global config — with `roborepo telemetry install` (or `./bin/roborepo telemetry install` from a fresh clone). It wires just the capture hooks, so you can measure your token usage before adopting the full suite; upgrade later by re-running the normal install. Then `roborepo telemetry start` to capture and open the dashboard.
+> **Just want token telemetry?** You can install only the local telemetry capture + portal — without the rest of the global config — with `roborepo telemetry install` (or `./bin/roborepo telemetry install` from a fresh clone). It wires just the capture hooks, so you can measure your token usage before adopting the full suite; upgrade later by re-running the normal install. Then `roborepo telemetry start` to capture and `roborepo serve` to open the portal.
 
 <!--
 Per-feature configuration (choose individual skills/commands/packages/behaviors) ships through the

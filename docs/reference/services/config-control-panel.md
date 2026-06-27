@@ -123,8 +123,8 @@ identify the profile.
 
 ## Happy Path
 
-1. Run `roborepo telemetry serve` and open the printed `/config` URL (or run
-   `roborepo onboard` in a terminal).
+1. Run `roborepo serve` to open the `/config` portal (or run `roborepo onboard`
+   in a terminal).
 2. The panel renders the four sections from `GET /api/config`.
 3. Toggle a package, skill, or telemetry switch — the client POSTs, the server mutates
    live config and returns a fresh snapshot, the panel re-renders.

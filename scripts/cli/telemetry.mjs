@@ -9,7 +9,7 @@ import { telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDi
 import { mcpServerOf, transcriptStats } from "./telemetry-transcript.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { startTelemetryServer } from "./telemetry-serve.mjs";
-import { readConfigSnapshot } from "./config.mjs";
+import { readConfigSnapshot, loadConfigSource } from "./config.mjs";
 import { mutatePackage, setSkillInstalled, setPermissionProfile } from "./config-mutate.mjs";
 import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
@@ -37,8 +37,6 @@ export function telemetryCommand(rest) {
       return telemetryReport(args);
     case "export":
       return telemetryExport(args);
-    case "serve":
-      return telemetryServe(args);
     case "purge":
       return telemetryPurge(args);
     case "backup":
@@ -46,7 +44,8 @@ export function telemetryCommand(rest) {
     case "capture":
       return telemetryCapture(args);
     default:
-      console.error("usage: roborepo telemetry install|start|stop|enable|disable|status|report|export|serve|backup|purge");
+      console.error("usage: roborepo telemetry install|start|stop|enable|disable|status|report|export|backup|purge");
+      console.error("portal: roborepo serve [--detach] [--no-open] [--port <n>]");
       process.exit(2);
   }
 }
@@ -72,7 +71,8 @@ function telemetryInstall(args) {
     wireCaptureHooks(path.join(codexDir, "hooks.json"), "codex");
   }
   console.log("telemetry-only install complete.");
-  console.log("start the dashboard:   roborepo telemetry start");
+  console.log("start capture:         roborepo telemetry start");
+  console.log("open the portal:       roborepo serve");
   console.log("view reports:          roborepo telemetry report");
   console.log("upgrade to full suite: re-run the roborepo install script");
 }
@@ -129,15 +129,14 @@ function wireCaptureHooks(settingsPath, harness) {
   }
 }
 
-function telemetryStart(args) {
+async function telemetryStart(args) {
   rejectArgs(args);
   ensureTelemetryDirs();
   writeTelemetryState({ enabled: true });
   presetsApply(["telemetry"]);
-  killExistingServer();
   const port = 4317;
-  spawnDetachedServer(port);
-  console.log(`telemetry: capturing · dashboard: http://127.0.0.1:${port}`);
+  await startDetachedPortal(port);
+  console.log(`telemetry: capturing · portal: http://127.0.0.1:${port}/config`);
 }
 
 function telemetryStop(args) {
@@ -355,12 +354,13 @@ function telemetryExport(args) {
   console.log(JSON.stringify(readSpoolEvents(), null, 2));
 }
 
-function telemetryServe(args) {
+export async function serveCommand(args) {
   const options = parseServeArgs(args);
+  const portalUrl = `http://127.0.0.1:${options.port}/config`;
   if (options.detach) {
-    killExistingServer();
-    spawnDetachedServer(options.port);
-    console.log(`telemetry dashboard: http://127.0.0.1:${options.port}  (detached · use: roborepo telemetry stop)`);
+    await startDetachedPortal(options.port);
+    console.log(`roborepo portal: ${portalUrl}  (detached · use: roborepo telemetry stop)`);
+    if (options.open) openLocalUrl(portalUrl);
     return;
   }
   // Clean up the PID file when the server exits cleanly (SIGTERM from stop or OS shutdown).
@@ -396,23 +396,32 @@ function telemetryServe(args) {
     loadSession: (req) => loadSessionDetail(req),
     loadInsightsLlm: () => loadInsightsLlm(),
     loadConfig: () => readConfigSnapshot(),
+    loadConfigSource: (params) => loadConfigSource(params),
     mutatePackage: (id, enabled) => mutatePackage(id, enabled),
     mutateSkill: (id, enabled) => setSkillInstalled(id, enabled),
     mutateProfile: (profile, confirmedLooser, scope) => setPermissionProfile(profile, { confirmedLooser, scope }),
+    onListening: options.open ? () => openLocalUrl(portalUrl) : null,
+    onPortInUse: options.open ? () => {
+      console.log(`roborepo portal already appears to be running: ${portalUrl}`);
+      openLocalUrl(portalUrl);
+      return true;
+    } : null,
   });
 }
 
 function parseServeArgs(args) {
-  const options = { port: 4317, detach: false };
+  const options = { port: 4317, detach: false, open: true };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--port") options.port = Number(args[++i]);
     else if (arg.startsWith("--port=")) options.port = Number(arg.slice("--port=".length));
     else if (arg === "--detach") options.detach = true;
+    else if (arg === "--open") options.open = true;
+    else if (arg === "--no-open") options.open = false;
     else rejectArgs([arg]);
   }
   if (!Number.isInteger(options.port) || options.port <= 0) {
-    console.error("usage: roborepo telemetry serve [--detach] [--port <n>]");
+    console.error("usage: roborepo serve [--detach] [--no-open] [--port <n>]");
     process.exit(2);
   }
   return options;
@@ -877,14 +886,81 @@ function stopServer() {
   try { process.kill(pid, "SIGTERM"); return true; } catch { return false; }
 }
 
-// Spawn a new foreground `serve` process in the background, write its PID, and detach.
-function spawnDetachedServer(port) {
-  const child = spawn(process.execPath, [process.argv[1], "telemetry", "serve", "--port", String(port)], {
-    detached: true,
-    stdio: "ignore",
-  });
+async function startDetachedPortal(port) {
+  killExistingServer();
+  const { child, readyFile } = spawnDetachedServer(port);
+  const ready = await waitForPortalReady(port, child, readyFile);
+  if (!ready.ok) {
+    clearPid();
+    try { fs.rmSync(readyFile, { force: true }); } catch {}
+    if (child.exitCode == null) {
+      try { process.kill(child.pid, "SIGTERM"); } catch {}
+    }
+    throw new Error(ready.message);
+  }
   writePid(child.pid);
   child.unref();
+}
+
+// Spawn a new foreground `serve` process in the background. The caller writes the PID only after the
+// child writes its ready-file from server.listen(), so a failed bind never leaves a stale "running" PID.
+function spawnDetachedServer(port) {
+  const readyFile = path.join(os.tmpdir(), `roborepo-portal-${process.pid}-${Date.now()}.ready`);
+  const child = spawn(process.execPath, [process.argv[1], "serve", "--no-open", "--port", String(port)], {
+    detached: true,
+    stdio: "ignore",
+    env: { ...process.env, ROBOREPO_PORTAL_READY_FILE: readyFile },
+  });
+  return { child, readyFile };
+}
+
+function waitForPortalReady(port, child, readyFile) {
+  const deadline = Date.now() + 3000;
+  return new Promise((resolve) => {
+    let settled = false;
+    let exitCode = null;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    child.once("exit", (code, signal) => {
+      exitCode = signal || code;
+    });
+    const poll = () => {
+      if (exitCode !== null) {
+        finish({ ok: false, message: `portal server exited before it was ready (${exitCode})` });
+        return;
+      }
+      if (Date.now() > deadline) {
+        finish({ ok: false, message: `portal server did not become ready on http://127.0.0.1:${port}/config` });
+        return;
+      }
+      if (fs.existsSync(readyFile) && isProcessRunning(child.pid)) {
+        try { fs.rmSync(readyFile, { force: true }); } catch {}
+        finish({ ok: true });
+        return;
+      }
+      setTimeout(poll, 100);
+    };
+    poll();
+  });
+}
+
+function openLocalUrl(url) {
+  const platform = process.platform;
+  const command = platform === "darwin"
+    ? "open"
+    : platform === "win32"
+      ? "cmd"
+      : "xdg-open";
+  const args = platform === "win32" ? ["/c", "start", "", url] : [url];
+  try {
+    const child = spawn(command, args, { detached: true, stdio: "ignore" });
+    child.unref();
+  } catch (err) {
+    console.error(`open failed: ${err?.message || err}`);
+  }
 }
 
 function rejectArgs(args) {

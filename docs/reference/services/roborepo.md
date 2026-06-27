@@ -84,8 +84,9 @@ roborepo — choose an action:
   watch code     live-index code as files change
   project-context inventory  scan a repo and write generated project-context facts
   onboard         run the onboarding wizard (choose behaviors per section)
-  telemetry start   capture + open the local dashboard (detached)
-  telemetry stop    stop the dashboard + capture
+  serve           open the local web portal
+  telemetry start   start telemetry capture
+  telemetry stop    stop the portal server + capture
   telemetry status  show telemetry capture state
   run            run a command with trimmed output
 
@@ -122,8 +123,8 @@ roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--d
 roborepo watch code  [path]
 roborepo project-context inventory [path] [--summary]
 roborepo onboard
-roborepo telemetry install|start|stop|enable|disable|status|report|export|serve|backup|purge
-roborepo telemetry serve [--detach] [--port <n>]
+roborepo serve [--detach] [--no-open] [--port <n>]
+roborepo telemetry install|start|stop|enable|disable|status|report|export|backup|purge
 
 roborepo run <cmd> [args...]
 
@@ -286,9 +287,9 @@ id, heaviest turns surfaced, plus a copy-paste analysis prompt).
 > bare tool names Codex sometimes logs (e.g. `search_symbols`), via a known-tool table in
 > `telemetry-transcript.mjs` — without it, Codex MCP usage is undercounted.
 
-`roborepo telemetry serve [--detach] [--port <n>]` (default `4317`) starts a dependency-free local web
-dashboard on `127.0.0.1` (`--detach` forks it into the background and writes the PID file; this is
-what `telemetry start` uses under the hood). It serves the same analysis as JSON and renders it with a self-contained `<canvas>`
+`roborepo serve [--detach] [--no-open] [--port <n>]` (default `4317`) starts a dependency-free local
+web portal on `127.0.0.1` and opens `/config` by default (`--detach` forks it into the background and
+writes the PID file; this is what `telemetry start` uses under the hood). It serves the same analysis as JSON and renders it with a self-contained `<canvas>`
 UI: a "what's causing spikes" panel leads with the spike-cause breakdown (each row a behavior to
 change), the recent-usage estimate shows in the header, and the token-delta timeline buckets to one
 column per pixel client-side, so dense histories with thousands of captures stay fast and the spike

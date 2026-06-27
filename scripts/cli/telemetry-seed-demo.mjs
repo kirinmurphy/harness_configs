@@ -3,7 +3,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { telemetrySpoolDir } from "./state-paths.mjs";
 
-// Seeds the telemetry spool with synthetic demo sessions so `roborepo telemetry serve` shows the
+// Seeds the telemetry spool with synthetic demo sessions so `roborepo serve` shows the
 // full range of dashboard outputs (quiet sessions, Bash/MCP-heavy sessions, token spikes, multiple
 // repos and models) without needing real conversations. Records are schema v2 and match the shape
 // telemetryCapture() writes, so the analyze/dashboard path treats them exactly like real captures.
@@ -236,7 +236,7 @@ function main() {
   const body = records.map((record) => JSON.stringify(record)).join("\n") + "\n";
   fs.writeFileSync(target, body);
   console.log(`seeded ${records.length} demo captures across 5 sessions -> ${target}`);
-  console.log("run `roborepo telemetry serve` to view; rerun with --clear to remove.");
+  console.log("run `roborepo serve` to view; rerun with --clear to remove.");
 }
 
 main();

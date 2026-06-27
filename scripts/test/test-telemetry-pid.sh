@@ -45,7 +45,7 @@ str_contains() { [[ "$1" == *"$2"* ]]; }
 # --- stale PID detection ---
 # Write a PID that no real process holds (high enough to be safe on macOS + Linux).
 echo "9999999" > "${pidfile}"
-node "${cli}" telemetry serve --detach --port 14317 > /dev/null 2>&1 || true
+node "${cli}" serve --detach --no-open --port 14317 > /dev/null 2>&1 || true
 
 new_pid=$(cat "${pidfile}" 2>/dev/null || echo "")
 assert "stale PID cleared: PID file updated to new value" test "${new_pid}" != "9999999"
@@ -63,6 +63,21 @@ assert "stop: server process exited" pid_gone "${new_pid}"
 # --- stop with no server is graceful (no crash) ---
 output=$(node "${cli}" telemetry stop 2>&1 || true)
 assert "stop with no server: exits cleanly" str_contains "${output}" "no server"
+
+# --- detached start fails if an unrelated foreground server already owns the port ---
+conflict_port=14318
+node "${cli}" serve --no-open --port "${conflict_port}" > "${work}/foreground.log" 2>&1 &
+foreground_pid=$!
+for _ in $(seq 1 25); do
+  curl -s "http://127.0.0.1:${conflict_port}/api/config" >/dev/null 2>&1 && break
+  sleep 0.2
+done
+echo "9999999" > "${pidfile}"
+conflict_output=$(node "${cli}" serve --detach --no-open --port "${conflict_port}" 2>&1 || true)
+assert "detached start conflict: reports not ready" str_contains "${conflict_output}" "portal server"
+assert "detached start conflict: stale PID cleared" test ! -f "${pidfile}"
+kill "${foreground_pid}" 2>/dev/null || true
+wait "${foreground_pid}" 2>/dev/null || true
 
 echo ""
 echo "results: ${pass} passed, ${fail} failed"

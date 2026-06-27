@@ -240,22 +240,27 @@ run_post_install_onboarding() {
   node "${repo_root}/scripts/cli/main.mjs" bundle apply --default
 
   if [[ "${skip_presets_onboard}" -eq 1 || "${ROBOREPO_PRESETS_ONBOARD:-}" == "skip" ]]; then
-    # Mark onboarded without the wizard: feeding /dev/null makes `onboard` take its headless path
-    # (apply default + record onboardedAt), so later commands don't re-prompt.
-    node "${repo_root}/scripts/cli/main.mjs" onboard < /dev/null >/dev/null 2>&1 || true
+    # Mark onboarded without the intro: feeding /dev/null makes `onboard-intro` take its headless
+    # path (record onboardedAt only — defaults already applied above), so later commands don't
+    # re-prompt and the welcome page never shows.
+    node "${repo_root}/scripts/cli/main.mjs" onboard-intro < /dev/null >/dev/null 2>&1 || true
     echo "Onboarding skipped. Choose optional behaviors later with: roborepo onboard"
     return 0
   fi
 
-  echo ""
-  # Interactive on a TTY -> the wizard; non-TTY -> headless default apply + marks onboarded.
-  node "${repo_root}/scripts/cli/main.mjs" onboard
+  # First install only: the welcome page + 4-option menu. The intro itself prints the full-width
+  # "Welcome to roborepo" banner (node, terminal-width aware), so no separate bash banner here —
+  # it would double up. Onboarding is no longer auto-run; option 1 of the intro launches it. Non-TTY:
+  # intro records onboarding silently.
+  node "${repo_root}/scripts/cli/main.mjs" onboard-intro
 }
 
 # Post-install summary
 install_section "Core Install Complete"
 echo "  ${RR_BOLD}Claude${RR_RESET}  $([ $has_claude -eq 1 ] && echo "${RR_GREEN}available${RR_RESET}" || echo "${RR_DIM}not installed${RR_RESET}")"
 echo "  ${RR_BOLD}Codex${RR_RESET}   $([ $has_codex  -eq 1 ] && echo "${RR_GREEN}available${RR_RESET}" || echo "${RR_DIM}not installed${RR_RESET}")"
+echo ""
+echo "  ${RR_BOLD}Web portal${RR_RESET}  run ${RR_CYAN}roborepo serve --detach${RR_RESET} to manage behavior in the UI"
 run_post_install_onboarding
 if [[ $has_claude -eq 0 || $has_codex -eq 0 ]]; then
   echo ""

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { repoRoot } from "./paths.mjs";
-import { enabledPackagesPath } from "./state-paths.mjs";
+import { enabledPackagesPath, roborepoStateDir } from "./state-paths.mjs";
 
 const PACKAGES_PATH = path.join(repoRoot, "manifests", "inventory", "packages.json");
 
@@ -20,6 +20,10 @@ const HOME_RULES = {
 
 // Marker that distinguishes roborepo render output from user-authored content.
 const RENDER_HEADER = "# Generated Harness Rules";
+const CODE_STYLE_BLOCK = "roborepo-code-style";
+const AGENTS_IMPORT_BLOCK = "roborepo-agents-import";
+const ROBOREPO_RULES_FILE = path.join(roborepoStateDir, "rules", "code-style.md");
+const DEFAULT_ROBOREPO_STATE_DIR = path.join(os.homedir(), ".roborepo");
 
 // --------------------------------------------------------------------------- registry
 
@@ -64,8 +68,8 @@ export function isRenderedRulesOutput(filePath) {
   try {
     const stat = fs.lstatSync(filePath);
     if (stat.isSymbolicLink()) return false;
-    const head = fs.readFileSync(filePath, "utf8").slice(0, RENDER_HEADER.length);
-    return head === RENDER_HEADER;
+    const text = fs.readFileSync(filePath, "utf8");
+    return text.startsWith(RENDER_HEADER) || hasCompleteManagedBlock(text, CODE_STYLE_BLOCK) || hasCompleteManagedBlock(text, AGENTS_IMPORT_BLOCK);
   } catch {
     return false;
   }
@@ -108,26 +112,147 @@ function renderContent(harness, enabledIds) {
   return squashBlankLines(parts.join("\n")).trimEnd() + "\n";
 }
 
-// Pre-install backup path for a harness rules file. Mirrors the path save_pre_install_backup in
-// install-lib.sh uses, so bash and Node uninstall restore from the same location.
-function preInstallBackupPath(harness, fileName) {
-  return path.join(os.homedir(), ".roborepo", "backups", "pre-install", harness, fileName);
+// Read-only preview helpers for the /config web page. Render the same fragments renderContent uses,
+// but return the text instead of writing it. enabledIds defaults to the live registry so the preview
+// matches what's actually rendered into the home rules.
+function readFragmentDir(dir) {
+  const absDir = path.join(repoRoot, dir);
+  if (!fs.existsSync(absDir)) return "";
+  const parts = [];
+  for (const file of fs.readdirSync(absDir).filter((f) => f.endsWith(".md")).sort()) {
+    parts.push(squashBlankLines(fs.readFileSync(path.join(absDir, file), "utf8")).trimEnd());
+  }
+  return parts.join("\n\n");
 }
 
-function copyTree(source, target) {
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  const stat = fs.lstatSync(source);
-  if (stat.isDirectory()) {
-    fs.cpSync(source, target, { recursive: true, preserveTimestamps: true });
-  } else {
-    fs.copyFileSync(source, target);
+// Full rendered home-rules text for one harness (shared + harness fragments + enabled package rules).
+export function renderRulesPreview(harness, enabledIds = readEnabledPackagesRegistry().packages) {
+  return renderContent(harness, enabledIds);
+}
+
+// Just the harness-agnostic shared fragments (globals/rules/shared), no harness-specific rules or
+// package rules — the "Globals" section shows this as the baseline every harness gets.
+export function renderSharedRulesPreview() {
+  return readFragmentDir("globals/rules/shared");
+}
+
+// Just one harness's harness-specific fragments (globals/rules/<harness>), excluding shared.
+export function renderHarnessRulesPreview(harness) {
+  const dirs = { claude: "globals/rules/claude", codex: "globals/rules/codex" };
+  return dirs[harness] ? readFragmentDir(dirs[harness]) : "";
+}
+
+function beginMarker(name) {
+  return `<!-- BEGIN managed:${name} -->`;
+}
+
+function endMarker(name) {
+  return `<!-- END managed:${name} -->`;
+}
+
+function markerCounts(text, name) {
+  const begin = beginMarker(name);
+  const end = endMarker(name);
+  return {
+    begin,
+    end,
+    begins: text.split(begin).length - 1,
+    ends: text.split(end).length - 1,
+  };
+}
+
+function hasCompleteManagedBlock(text, name) {
+  const counts = markerCounts(text, name);
+  if (counts.begins !== 1 || counts.ends !== 1) return false;
+  const beginAt = text.indexOf(counts.begin);
+  const endAt = text.indexOf(counts.end);
+  return beginAt >= 0 && endAt > beginAt;
+}
+
+function assertManageableBlock(text, name, filePath) {
+  const counts = markerCounts(text, name);
+  if (counts.begins === 0 && counts.ends === 0) return counts;
+  if (counts.begins === 1 && counts.ends === 1 && text.indexOf(counts.end) > text.indexOf(counts.begin)) return counts;
+  throw new Error([
+    `Found an incomplete Roborepo managed block in ${path.basename(filePath)}.`,
+    "",
+    "I cannot safely determine which content is Roborepo-owned and which content is user-owned.",
+    "",
+    "Please edit the file manually, then rerun the installer.",
+  ].join("\n"));
+}
+
+function blockText(name, content) {
+  return `${beginMarker(name)}\n${content.trimEnd()}\n${endMarker(name)}\n`;
+}
+
+function claudeRulesImport() {
+  return roborepoStateDir === DEFAULT_ROBOREPO_STATE_DIR
+    ? "@~/.roborepo/rules/code-style.md"
+    : `@${ROBOREPO_RULES_FILE}`;
+}
+
+function replaceManagedBlockText(existing, name, content, filePath) {
+  const counts = assertManageableBlock(existing, name, filePath);
+  const nextBlock = blockText(name, content);
+  if (counts.begins === 0) {
+    const rest = existing.replace(/^\n+/, "");
+    return rest.trim().length > 0 ? `${nextBlock}\n${rest}` : nextBlock;
   }
+  const start = existing.indexOf(counts.begin);
+  const end = existing.indexOf(counts.end, start);
+  let after = end + counts.end.length;
+  if (existing[after] === "\r" && existing[after + 1] === "\n") after += 2;
+  else if (existing[after] === "\n") after += 1;
+  return `${existing.slice(0, start)}${nextBlock}${existing.slice(after)}`.replace(/\n{3,}/g, "\n\n");
+}
+
+function removeManagedBlockText(existing, name, filePath) {
+  const counts = assertManageableBlock(existing, name, filePath);
+  if (counts.begins === 0) return existing;
+  const start = existing.indexOf(counts.begin);
+  const end = existing.indexOf(counts.end, start);
+  let after = end + counts.end.length;
+  if (existing[after] === "\r" && existing[after + 1] === "\n") after += 2;
+  else if (existing[after] === "\n") after += 1;
+  return `${existing.slice(0, start)}${existing.slice(after)}`.replace(/^\n+/, "").replace(/\n{3,}/g, "\n\n");
+}
+
+function readText(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function writeText(filePath, text, dryRun, label = "write") {
+  if (dryRun) {
+    console.log(`[dry-run] would ${label}: ${filePath}`);
+    return;
+  }
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, text);
+  console.log(`${label}: ${filePath}`);
+}
+
+function writeManagedBlock(filePath, name, content, dryRun) {
+  const next = replaceManagedBlockText(readText(filePath), name, content, filePath);
+  writeText(filePath, next, dryRun, "render");
+}
+
+function removeManagedBlock(filePath, name, dryRun) {
+  if (!fs.existsSync(filePath)) return;
+  const current = readText(filePath);
+  const next = removeManagedBlockText(current, name, filePath);
+  if (next === current) return;
+  writeText(filePath, next, dryRun, "remove managed block");
 }
 
 // Write rendered home rules for one or all harnesses:
 //   - Unlinks any legacy symlink into the repo first.
-//   - Backs up a genuine user-authored file (no render header) to pre-install location if needed.
-//   - Writes the rendered content (base + enabled packages from registry).
+//   - Writes Claude's generated source file and a small import block in CLAUDE.md.
+//   - Writes Codex rules inline inside managed blocks, including AGENTS.override.md when present.
 // Skips harnesses whose home dir does not exist (harness not installed on this machine).
 export function renderHomeRules({ dryRun = false, harness: targetHarness } = {}) {
   const registry = readEnabledPackagesRegistry();
@@ -155,29 +280,32 @@ export function renderHomeRules({ dryRun = false, harness: targetHarness } = {})
       }
     }
 
-    // Back up a genuine pre-roborepo user file (not a render output, not already backed up).
-    const fileExists = fs.existsSync(homeFile) && !fs.lstatSync(homeFile).isSymbolicLink();
-    if (fileExists && !isRenderedRulesOutput(homeFile)) {
-      const backupPath = preInstallBackupPath(harness, path.basename(homeFile));
-      if (!fs.existsSync(backupPath)) {
-        if (dryRun) {
-          console.log(`[dry-run] would pre-install backup: ${homeFile} -> ${backupPath}`);
-        } else {
-          copyTree(homeFile, backupPath);
-          console.log(`pre-install backup: ${homeFile} -> ${backupPath}`);
-        }
-      }
-    }
-
-    if (dryRun) {
-      console.log(`[dry-run] would render: ${homeFile}`);
+    const content = renderContent(harness, enabledIds);
+    if (harness === "claude") {
+      writeText(ROBOREPO_RULES_FILE, content, dryRun, "render");
+      writeManagedBlock(homeFile, AGENTS_IMPORT_BLOCK, claudeRulesImport(), dryRun);
       continue;
     }
 
-    const content = renderContent(harness, enabledIds);
-    fs.mkdirSync(homeDir, { recursive: true });
-    fs.writeFileSync(homeFile, content);
-    console.log(`render: ${homeFile}`);
+    writeManagedBlock(homeFile, CODE_STYLE_BLOCK, content, dryRun);
+    const overrideFile = path.join(homeDir, "AGENTS.override.md");
+    if (fs.existsSync(overrideFile)) {
+      writeManagedBlock(overrideFile, CODE_STYLE_BLOCK, content, dryRun);
+    }
+  }
+}
+
+export function removeHomeRules({ dryRun = false, harness: targetHarness } = {}) {
+  const harnesses = targetHarness ? [targetHarness] : Object.keys(HOME_RULES);
+  for (const harness of harnesses) {
+    const homeFile = HOME_RULES[harness];
+    if (harness === "claude") {
+      removeManagedBlock(homeFile, AGENTS_IMPORT_BLOCK, dryRun);
+      continue;
+    }
+    removeManagedBlock(homeFile, CODE_STYLE_BLOCK, dryRun);
+    const overrideFile = path.join(path.dirname(homeFile), "AGENTS.override.md");
+    removeManagedBlock(overrideFile, CODE_STYLE_BLOCK, dryRun);
   }
 }
 
@@ -195,11 +323,28 @@ export function checkHomeRules({ quiet = false } = {}) {
     }
     const expected = renderContent(harness, enabledIds);
     const actual = fs.readFileSync(homeFile, "utf8");
-    if (actual === expected) {
+    const matches = harness === "claude"
+      ? actual.includes(blockText(AGENTS_IMPORT_BLOCK, claudeRulesImport()).trimEnd())
+        && fs.existsSync(ROBOREPO_RULES_FILE)
+        && fs.readFileSync(ROBOREPO_RULES_FILE, "utf8") === expected
+      : actual.includes(blockText(CODE_STYLE_BLOCK, expected).trimEnd());
+    if (matches) {
       if (!quiet) console.log(`ok: ${homeFile}`);
     } else {
       console.error(`fail: ${homeFile} out of date (run roborepo update to refresh)`);
       ok = false;
+    }
+    if (harness === "codex") {
+      const overrideFile = path.join(path.dirname(homeFile), "AGENTS.override.md");
+      if (fs.existsSync(overrideFile)) {
+        const override = fs.readFileSync(overrideFile, "utf8");
+        if (!override.includes(blockText(CODE_STYLE_BLOCK, expected).trimEnd())) {
+          console.error(`fail: ${overrideFile} out of date (run roborepo update to refresh)`);
+          ok = false;
+        } else if (!quiet) {
+          console.log(`ok: ${overrideFile}`);
+        }
+      }
     }
   }
   return ok;
@@ -208,7 +353,10 @@ export function checkHomeRules({ quiet = false } = {}) {
 export function renderedRulesMatches(harness, filePath) {
   try {
     const { packages: enabledIds } = readEnabledPackagesRegistry();
-    return fs.readFileSync(filePath, "utf8") === renderContent(harness, enabledIds);
+    const expected = renderContent(harness, enabledIds);
+    const actual = fs.readFileSync(filePath, "utf8");
+    if (harness === "claude") return actual.includes(blockText(AGENTS_IMPORT_BLOCK, claudeRulesImport()).trimEnd());
+    return actual.includes(blockText(CODE_STYLE_BLOCK, expected).trimEnd());
   } catch {
     return false;
   }
@@ -223,6 +371,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const harness = args.find((a) => a === "claude" || a === "codex");
   if (checkMode) {
     process.exit(checkHomeRules({ quiet: args.includes("--quiet") }) ? 0 : 1);
+  } else if (args.includes("--remove-managed")) {
+    removeHomeRules({ dryRun, harness });
   } else if (args.includes("--matches")) {
     const file = args[args.indexOf("--matches") + 1];
     if (!harness || !file) {

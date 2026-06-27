@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import http from "node:http";
 import { dashboardHtml } from "./telemetry-dashboard.mjs";
 import { configHtml } from "./config-dashboard.mjs";
@@ -17,11 +18,16 @@ export function startTelemetryServer(handlers) {
     }
   });
   server.listen(port, LOOPBACK, () => {
+    if (process.env.ROBOREPO_PORTAL_READY_FILE) {
+      try { fs.writeFileSync(process.env.ROBOREPO_PORTAL_READY_FILE, "ready\n"); } catch {}
+    }
+    console.log(`roborepo portal:     http://${LOOPBACK}:${port}/config`);
     console.log(`telemetry dashboard: http://${LOOPBACK}:${port}`);
-    console.log(`config dashboard:    http://${LOOPBACK}:${port}/config`);
     console.log("(Ctrl-C to stop)");
+    handlers.onListening?.();
   });
   server.on("error", (err) => {
+    if (err.code === "EADDRINUSE" && handlers.onPortInUse?.() === true) return;
     console.error(err.code === "EADDRINUSE" ? `port ${port} is in use; try --port <n>` : String(err));
     process.exit(1);
   });
@@ -29,7 +35,7 @@ export function startTelemetryServer(handlers) {
 }
 
 function route(req, res, handlers) {
-  const { loadAnalysis, loadSession, loadInsightsLlm, loadConfig, mutatePackage, mutateSkill, mutateProfile } = handlers;
+  const { loadAnalysis, loadSession, loadInsightsLlm, loadConfig, loadConfigSource, mutatePackage, mutateSkill, mutateProfile } = handlers;
   const [urlPath, qs = ""] = (req.url || "/").split("?");
 
   // Mutations: local-only loopback server, so no auth — but still POST-only and JSON-bodied.
@@ -67,6 +73,17 @@ function route(req, res, handlers) {
   if (urlPath === "/config") return send(res, 200, "text/html; charset=utf-8", configHtml());
   if (urlPath === "/api/config") {
     return send(res, 200, "application/json", JSON.stringify(loadConfig()));
+  }
+  if (urlPath === "/api/config/source") {
+    // Read-only: returns the full source that defines a tool (skill/command/rules/hooks) for the
+    // /config click-to-inspect popup. loadConfigSource whitelists kind+id against the catalog.
+    const params = new URLSearchParams(qs);
+    const result = loadConfigSource({
+      kind: params.get("kind"),
+      id: params.get("id"),
+      harness: params.get("harness") || "claude",
+    });
+    return send(res, result.ok ? 200 : 400, "application/json", JSON.stringify(result));
   }
   if (urlPath === "/api/insights-llm") {
     // On-demand LLM synthesis of the deterministic facts. May take seconds (shells to claude -p).

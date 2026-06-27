@@ -342,6 +342,10 @@ bash -c "${cfg_env} node '${cli}' enable jcodemunch >/dev/null 2>&1" || true
 assert "config: enable wires package permissions" \
   bash -c "[ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" -gt 0 ]"
 assert "config: enable wires CLAUDE.md rules" test -f "${cfg_home}/.claude/CLAUDE.md"
+assert "config: Claude rules use managed import block" \
+  bash -c "grep -q 'BEGIN managed:roborepo-agents-import' '${cfg_home}/.claude/CLAUDE.md' && grep -q '@.*/.roborepo/rules/code-style.md' '${cfg_home}/.claude/CLAUDE.md'"
+assert "config: Claude source rules are rendered under roborepo state" \
+  bash -c "grep -q 'Generated Harness Rules' '${cfg_home}/.roborepo/rules/code-style.md'"
 bash -c "${cfg_env} node '${cli}' disable jcodemunch >/dev/null 2>&1" || true
 assert "config: disable removes package permissions" \
   bash -c "[ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" = 0 ]"
@@ -363,14 +367,20 @@ assert "config: disable plugin removes bool + marketplace" \
 assert "config: caveman package reports disabled after removal" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='caveman');process.exit(p&&!p.enabled?0:1)})\""
 
-# Chat-Time Output: rules-only packages with harness "both" — enable merges the block into BOTH
-# CLAUDE.md and AGENTS.md; snapshot reports enabled; toggles are independent; disable removes from
-# both. The throwaway home has .claude and .codex dirs, so "both" targets both rules files.
+# Chat-Time Output: rules-only packages with harness "both" — enable merges Claude rules into the
+# imported ~/.roborepo source file and Codex rules inline into AGENTS.md; snapshot reports enabled;
+# toggles are independent; disable removes from both paths. The throwaway home has .claude and
+# .codex dirs, so "both" targets both harnesses.
+printf 'override custom\n' > "${cfg_home}/.codex/AGENTS.override.md"
 bash -c "${cfg_env} node '${cli}' enable impact-awareness >/dev/null 2>&1" || true
-assert "config: rules pkg merges into Claude CLAUDE.md" \
-  bash -c "grep -q 'Impact Awareness' '${cfg_home}/.claude/CLAUDE.md'"
+assert "config: rules pkg merges into Claude source rules" \
+  bash -c "grep -q 'Impact Awareness' '${cfg_home}/.roborepo/rules/code-style.md'"
 assert "config: rules pkg merges into Codex AGENTS.md (both-harness parity)" \
   bash -c "grep -q 'Impact Awareness' '${cfg_home}/.codex/AGENTS.md'"
+assert "config: Codex rules use managed inline block" \
+  bash -c "grep -q 'BEGIN managed:roborepo-code-style' '${cfg_home}/.codex/AGENTS.md'"
+assert "config: existing Codex override also gets managed rules without losing user text" \
+  bash -c "grep -q 'Impact Awareness' '${cfg_home}/.codex/AGENTS.override.md' && grep -q 'override custom' '${cfg_home}/.codex/AGENTS.override.md'"
 assert "config: rules pkg reports enabled in snapshot" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='impact-awareness');process.exit(p&&p.enabled?0:1)})\""
 # Independence: enabling a second behavior must not disturb the first; disabling the first must leave
@@ -378,12 +388,23 @@ assert "config: rules pkg reports enabled in snapshot" \
 bash -c "${cfg_env} node '${cli}' enable skill-visibility >/dev/null 2>&1" || true
 bash -c "${cfg_env} node '${cli}' disable impact-awareness >/dev/null 2>&1" || true
 assert "config: disable rules pkg removes its block from both harnesses" \
-  bash -c "! grep -q 'Impact Awareness' '${cfg_home}/.claude/CLAUDE.md' && ! grep -q 'Impact Awareness' '${cfg_home}/.codex/AGENTS.md'"
+  bash -c "! grep -q 'Impact Awareness' '${cfg_home}/.roborepo/rules/code-style.md' && ! grep -q 'Impact Awareness' '${cfg_home}/.codex/AGENTS.md'"
 assert "config: disabling one rules pkg leaves the others (Claude)" \
-  bash -c "grep -q 'Skill Visibility' '${cfg_home}/.claude/CLAUDE.md'"
+  bash -c "grep -q 'Skill Visibility' '${cfg_home}/.roborepo/rules/code-style.md'"
 assert "config: disabling one rules pkg leaves the others (Codex)" \
   bash -c "grep -q 'Skill Visibility' '${cfg_home}/.codex/AGENTS.md'"
+assert "config: existing Codex override keeps user text after rerender" \
+  bash -c "grep -q 'Skill Visibility' '${cfg_home}/.codex/AGENTS.override.md' && grep -q 'override custom' '${cfg_home}/.codex/AGENTS.override.md'"
 bash -c "${cfg_env} node '${cli}' disable skill-visibility >/dev/null 2>&1" || true
+
+broken_home="${work}/broken-rules-home"
+mkdir -p "${broken_home}/.codex"
+printf '<!-- BEGIN managed:roborepo-code-style -->\n' > "${broken_home}/.codex/AGENTS.md"
+assert "config: managed rules fail safely on broken marker" \
+  bash -c "! HOME='${broken_home}' ROBOREPO_STATE_DIR='${broken_home}/.roborepo' node '${cli}' enable impact-awareness >'${broken_home}/out' 2>&1 && grep -q 'incomplete Roborepo managed block' '${broken_home}/out'"
+printf '<!-- END managed:roborepo-code-style -->\nuser text\n<!-- BEGIN managed:roborepo-code-style -->\n' > "${broken_home}/.codex/AGENTS.md"
+assert "config: managed rules fail safely on reversed markers" \
+  bash -c "! HOME='${broken_home}' ROBOREPO_STATE_DIR='${broken_home}/.roborepo' node '${cli}' enable impact-awareness >'${broken_home}/out-reversed' 2>&1 && grep -q 'incomplete Roborepo managed block' '${broken_home}/out-reversed'"
 
 # Service component (telemetry as a package): enable via the generic package path flips its state +
 # snapshot, disable reverses. The service handler owns telemetry's bespoke install (hooks + spool).
@@ -432,7 +453,7 @@ assert "config: setSkillInstalled skips native skill dir (real dir collision)" \
 
 # Dashboard POST endpoints: start the loopback server, exercise both routes, assert JSON contract.
 cfg_port=4391
-env HOME="${cfg_home}" ROBOREPO_STATE_DIR="${cfg_home}/.roborepo" node "${cli}" telemetry serve --port ${cfg_port} >/dev/null 2>&1 &
+env HOME="${cfg_home}" ROBOREPO_STATE_DIR="${cfg_home}/.roborepo" node "${cli}" serve --no-open --port ${cfg_port} >/dev/null 2>&1 &
 cfg_srv=$!
 for _ in $(seq 1 25); do curl -s "http://127.0.0.1:${cfg_port}/api/config" >/dev/null 2>&1 && break; sleep 0.2; done
 # Capture the JSON to a file so the snapshot body (which contains apostrophes in skill descriptions)
@@ -531,8 +552,10 @@ assert "telemetry report: shows token sections when token data exists" \
   bash -c "env ${tele_env[*]} node '${cli}' telemetry report | grep -q 'token spikes'"
 assert "telemetry report: legacy metadata-only records still report" \
   bash -c "printf '%s\n' '{\"ts\":\"2026-06-10T01:00:00Z\",\"harness\":\"claude\",\"event\":\"Stop\",\"repo\":{\"label\":\"legacy\"},\"tool\":{\"name\":\"Read\"}}' >> '${tele_home}/.roborepo/telemetry/spool/claude.jsonl' && env ${tele_env[*]} node '${cli}' telemetry report | grep -q 'legacy'"
-assert "telemetry serve: rejects invalid port" \
-  bash -c "! env ${tele_env[*]} node '${cli}' telemetry serve --port 0 >/dev/null 2>&1"
+assert "serve: top-level alias rejects invalid port" \
+  bash -c "! env ${tele_env[*]} node '${cli}' serve --port 0 >/dev/null 2>&1"
+assert "telemetry serve: removed" \
+  bash -c "! env ${tele_env[*]} node '${cli}' telemetry serve --port 14317 >/dev/null 2>&1"
 # Reset must be able to snapshot first: purge --backup copies the spool to a backup that lives
 # outside telemetryDir, then removes telemetryDir. The backup (and its spool) must survive.
 assert "telemetry purge --backup: snapshots spool before reset, backup survives purge" \

@@ -2,12 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import { repoRoot } from "./paths.mjs";
 import { installStatePath, presetsStatePath } from "./state-paths.mjs";
 import { readConfigSnapshot, buildBehaviorView } from "./config.mjs";
 import { mutatePackage, setSkillInstalled } from "./config-mutate.mjs";
-import { renderHomeRules, isRenderedRulesOutput } from "./rules-render.mjs";
-import { wizard } from "./skill-lib.mjs";
+import { renderHomeRules, removeHomeRules, isRenderedRulesOutput } from "./rules-render.mjs";
+import { confirmYesNo, makePrompter, selectMenu, wizard } from "./skill-lib.mjs";
 
 const PRESET_MANIFEST = path.join(repoRoot, "manifests", "platform", "presets.json");
 const INSTALL_MANIFEST = path.join(repoRoot, "manifests", "platform", "manifest.tsv");
@@ -29,6 +30,8 @@ export async function presetsCommand(rest) {
   switch (sub) {
     case "onboard":
       return presetsOnboard(args);
+    case "intro":
+      return presetsIntro(args);
     case "bundle":
       return bundleCommand(args);
     case "apply":
@@ -154,6 +157,10 @@ function buildOnboardSteps() {
     steps.push({ title: name, description: section.description, footnote: section.footnote, items });
   }
 
+  if (steps[0]) {
+    steps[0].notice = "Prefer a web UI? Run: roborepo serve";
+  }
+
   // Read-only Permissions panel (Phase 2: not editable in onboarding; change via `roborepo config`).
   const perms = byCategory("Permissions");
   if (perms) {
@@ -209,10 +216,114 @@ async function applyWizardChanges(steps) {
   }
 }
 
-async function runInteractiveOnboard() {
+async function runInteractiveOnboard({ launchPortal = true } = {}) {
   console.log("roborepo onboarding — toggle behavior across the sections, then press Enter on the last step.\n");
+  console.log("Web UI: roborepo serve\n");
   await wizard(buildOnboardSteps(), applyWizardChanges);
+  // The first-install intro owns the "open web?" nudge, so it runs the wizard with launchPortal=false
+  // to avoid a duplicate portal prompt.
+  if (launchPortal) await maybeLaunchPortal();
   console.log("Onboarding complete.");
+}
+
+// First-install welcome page + 4-option menu. A property of the INSTALL workflow only: install calls
+// `roborepo onboard-intro` once, after core install, before any onboarding. Never shown on a direct
+// `roborepo onboard`, and the already-onboarded guard in scripts/install/main.sh keeps it off updates
+// and re-installs. Marks onboarded at the end of every path so it never re-shows.
+export async function presetsIntro(args) {
+  rejectUnknownFlags(args, new Set());
+
+  const tty = process.stdin.isTTY && process.stdout.isTTY;
+  if (!tty) {
+    // Headless install path: defaults are already applied by install; just record onboarding so the
+    // intro never re-shows, mirroring presetsOnboard's headless branch.
+    markOnboarded();
+    return;
+  }
+
+  printIntroBanner();
+  printIntroWelcome();
+
+  const choice = await selectMenu("What next?", [
+    { label: "Install additional tools", value: "tools", desc: "choose which behaviors are enabled (onboarding)" },
+    { label: "Open in web",              value: "web",   desc: "manage your settings in the browser" },
+    { label: "Add telemetry only",       value: "telemetry", desc: "capture token usage, skip everything else" },
+    { label: "Done",                     value: "done",  desc: "finish — change anything later with roborepo" },
+  ]);
+
+  switch (choice) {
+    case "tools":
+      // Run the onboarding wizard inline; the intro owns the web nudge, so skip the portal prompt.
+      await runInteractiveOnboard({ launchPortal: false });
+      break;
+    case "web":
+      spawnSync(process.execPath, [path.join(repoRoot, "scripts", "cli", "main.mjs"), "web"], { stdio: "inherit" });
+      break;
+    case "telemetry": {
+      const result = await mutatePackage("telemetry", true);
+      console.log(result.ok ? "\nTelemetry enabled. View it with: roborepo web" : `\nFailed to enable telemetry: ${result.message}`);
+      break;
+    }
+    case "done":
+    case null:
+    default:
+      break;
+  }
+
+  markOnboarded();
+  printIntroHelp();
+}
+
+function introWidth() {
+  return process.stdout.columns && process.stdout.columns > 0 ? process.stdout.columns : 80;
+}
+
+function printIntroBanner() {
+  const width = introWidth();
+  const rule = "=".repeat(width);
+  const label = "===== Welcome to roborepo ";
+  const tail = "=".repeat(Math.max(0, width - label.length));
+  console.log(`\n${rule}\n${rule}\n${label}${tail}\n${rule}\n${rule}\n`);
+}
+
+function printIntroWelcome() {
+  console.log("roborepo — version-controlled Claude/Codex harness config.\n");
+  console.log("Main commands");
+  console.log("  roborepo web        manage your settings online");
+  console.log("  roborepo onboard    choose which behaviors are enabled");
+  console.log("  roborepo enable X   turn on a package (jcodemunch, telemetry, ...)");
+  console.log("  roborepo update     re-apply config after pulling changes");
+  console.log("");
+  console.log("Run `roborepo --help` for all commands.");
+  console.log("Run `roborepo web` to manage your settings online.\n");
+}
+
+function printIntroHelp() {
+  console.log("\nAll set. Manage roborepo anytime:");
+  console.log("  roborepo --help     all commands");
+  console.log("  roborepo web        manage your settings online");
+}
+
+async function maybeLaunchPortal() {
+  console.log("\nWeb portal:");
+  console.log("  roborepo serve           open the portal and keep the server in this terminal");
+  console.log("  roborepo serve --detach  open the portal and keep the server running in the background");
+  console.log("  URL: http://127.0.0.1:4317/config");
+
+  const prompter = makePrompter();
+  try {
+    const launch = await confirmYesNo(prompter, "Launch the local web portal now?", true);
+    if (!launch) return;
+  } finally {
+    prompter.close();
+  }
+
+  const result = spawnSync(process.execPath, [path.join(repoRoot, "scripts", "cli", "main.mjs"), "serve", "--detach"], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    console.error("Portal launch failed. You can retry with: roborepo serve");
+  }
 }
 
 export function presetsApply(args) {
@@ -432,7 +543,7 @@ function cleanupRow(row) {
 function isRoborepoAuthored(file) {
   try {
     const text = fs.readFileSync(file, "utf8");
-    return /roborepo telemetry capture|roborepo-write-guard|BEGIN GENERATED AGENT PERMISSIONS|MANAGED_BY_ROBOREPO|# Generated Harness Rules/.test(text);
+    return /roborepo telemetry capture|roborepo-write-guard|BEGIN GENERATED AGENT PERMISSIONS|MANAGED_BY_ROBOREPO|# Generated Harness Rules|BEGIN managed:roborepo-code-style|BEGIN managed:roborepo-agents-import/.test(text);
   } catch {
     return false;
   }
@@ -525,6 +636,8 @@ function removeRenderedRulesRow(row) {
     restorePreInstallBackup(row);
     return;
   }
+  removeHomeRules({ harness: row.harness });
+
   // Leave genuine user files. Remove only files we rendered.
   if (!isRoborepoAuthored(row.homeAbs)) return;
   fs.rmSync(row.homeAbs, { recursive: true, force: true });

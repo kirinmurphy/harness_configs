@@ -132,6 +132,7 @@ export async function wizard(steps, onFinish) {
     lines.push(`\x1b[2m${clip(`  ${hint}`, width)}\x1b[0m`);
     lines.push("");
     if (step.description) { lines.push(`\x1b[2m${clip(`  ${step.description}`, width)}\x1b[0m`); lines.push(""); }
+    if (step.notice) { lines.push(`\x1b[1m${clip(`  ${step.notice}`, width)}\x1b[0m`); lines.push(""); }
     step.items.forEach((it, i) => {
       const sel = i === cursor;
       const mark = it.toggleable && !step.readonly ? (it.active ? "[x]" : "[ ]") : "   ";

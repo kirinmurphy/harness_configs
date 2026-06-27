@@ -5,6 +5,9 @@
       "label": "JCodeMunch code intelligence",
       "description": "Local code index with symbol search, outline, references, and context bundling. Blocks Grep/Glob and routes code exploration through jcodemunch tools.",
       "cliCommands": ["index code", "watch code"],
+      "urls": [
+        { "label": "PyPI", "url": "https://pypi.org/project/jcodemunch-mcp/" }
+      ],
       "components": [
         { "type": "mcp", "preset": "jcodemunch" },
         {
@@ -39,6 +42,9 @@
       "label": "JDocMunch doc intelligence",
       "description": "Local docs index with section search, TOC, and context retrieval. Routes doc exploration through jdocmunch tools instead of reading full files.",
       "cliCommands": ["index docs"],
+      "urls": [
+        { "label": "PyPI", "url": "https://pypi.org/project/jdocmunch-mcp/" }
+      ],
       "components": [
         { "type": "mcp", "preset": "jdocmunch" },
         {
@@ -74,7 +80,7 @@
     {
       "id": "telemetry",
       "label": "Telemetry",
-      "description": "Capture and visualize token usage across harnesses. Wires capture hooks and a local spool; the dashboard server is started separately with `roborepo telemetry serve`.",
+      "description": "Capture and visualize token usage across harnesses. Wires capture hooks and a local spool; the web portal is started separately with `roborepo serve`.",
       "components": [
         { "type": "service", "id": "telemetry" }
       ]
@@ -84,6 +90,9 @@
       "id": "caveman",
       "label": "Caveman plugin",
       "description": "Claude plugin that keeps agent output terse to cut token use (statusline badge, /caveman commands, mode-tracker hook). The caveman behavior rule is separate and lives in the global rules.",
+      "urls": [
+        { "label": "GitHub", "url": "https://github.com/JuliusBrussee/caveman" }
+      ],
       "components": [
         {
           "type": "plugin",

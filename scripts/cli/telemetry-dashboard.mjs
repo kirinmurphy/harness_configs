@@ -54,6 +54,18 @@ export function dashboardHtml() {
   #insightspanel h2 { color:var(--accent); }
   .chartwrap { position:relative; }
   canvas { width:100%; height:280px; display:block; cursor:crosshair; }
+  /* loading overlay shown over the chart while a filter change recomputes */
+  .loadoverlay { position:absolute; inset:0; display:none; align-items:center; justify-content:center; gap:8px; background:rgba(14,17,22,.7); color:var(--dim); font-size:12px; z-index:6; }
+  .loadoverlay.on { display:flex; }
+  .spinner { width:14px; height:14px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; display:inline-block; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  /* telemetry-off prompt */
+  .telemetry-off h2 { color:var(--ink); }
+  .enablebtn { background:var(--accent); border:none; color:#0b0e13; font:inherit; font-size:12px; font-weight:600; cursor:pointer; padding:6px 14px; border-radius:6px; }
+  .enablebtn:hover { filter:brightness(1.1); }
+  .enablebtn:disabled { opacity:.6; cursor:default; }
+  .item-err { color:#f85149; font-size:11px; margin-top:6px; }
+  .item-err:empty { display:none; }
   .tooltip { position:absolute; pointer-events:none; z-index:5; background:#0b0e13; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-size:11px; line-height:1.5; color:var(--ink); box-shadow:0 4px 16px rgba(0,0,0,.5); display:none; max-width:280px; }
   .tooltip .t-head { color:var(--accent); font-weight:600; margin-bottom:4px; }
   .tooltip .t-spike { color:var(--spike); }
@@ -145,6 +157,17 @@ export function dashboardHtml() {
     </div>
   </section>
 
+  <!-- Telemetry-off prompt: shown above the chart when capture is disabled. Enabling it here is the
+       same action as toggling telemetry in onboarding / the config page. -->
+  <section class="panel telemetry-off" id="telemetryoff" style="display:none">
+    <h2>telemetry is off</h2>
+    <div class="legend">Token usage is not being captured. Turn telemetry on to start collecting data across your harnesses.</div>
+    <div class="modalactions">
+      <button class="enablebtn" id="enabletelemetry">turn on telemetry</button>
+    </div>
+    <div class="item-err" id="enableerr"></div>
+  </section>
+
   <!-- TIER 2 — visualize (the chart) -->
   <section class="panel">
     <h2>② token usage over time</h2>
@@ -157,6 +180,7 @@ export function dashboardHtml() {
     <div class="chartwrap">
       <canvas id="timeline"></canvas>
       <div class="tooltip" id="tooltip"></div>
+      <div class="loadoverlay" id="loadoverlay"><span class="spinner"></span> computing…</div>
     </div>
     <div class="legend" id="chartlegend"></div>
   </section>
@@ -267,10 +291,33 @@ function redrawChart() {
 // Fetch the report scoped to the current global filter and repaint EVERY panel. Pass force=true to
 // repaint even when the server's version is unchanged (range/pan/resize). The version embeds the
 // windowed event set, so a normal 5s poll only repaints when that window's data actually changed.
-async function load(force) {
+// Clear every data panel so stale numbers don't linger while a new window computes. Used on explicit
+// filter changes (range / harness), not on the silent background poll.
+function wipeSections() {
+  for (const id of ["insights","spikes","causes","anatomy","groupcost","toolcost","packagecost","regression","loops","sessions","tools","mcp","comparison"]) {
+    const node = document.getElementById(id);
+    if (node) node.innerHTML = "";
+  }
+  allTimeline = [];
+  redrawChart();
+}
+
+function setLoading(on) {
+  const ov = document.getElementById("loadoverlay");
+  if (ov) ov.classList.toggle("on", !!on);
+}
+
+async function load(force, opts) {
+  const wipe = !!(opts && opts.wipe);
+  if (wipe) { wipeSections(); setLoading(true); }
   let qs = view.rangeMs == null ? "" : "?range=" + view.rangeMs + (view.panEnd == null ? "" : "&end=" + view.panEnd);
   if (view.harness) qs += (qs ? "&" : "?") + "harness=" + encodeURIComponent(view.harness);
-  const data = await (await fetch("/api/data" + qs)).json();
+  let data;
+  try {
+    data = await (await fetch("/api/data" + qs)).json();
+  } finally {
+    if (wipe) setLoading(false);
+  }
   if (!force && data.version === lastVersion) return;
   lastVersion = data.version;
   const w = data.usage_windows || {};
@@ -1094,7 +1141,7 @@ document.addEventListener("click", (e) => {
   if (harnessBtn) {
     view.harness = harnessBtn.dataset.harness === "all" ? null : harnessBtn.dataset.harness;
     for (const b of document.querySelectorAll("#harnessfilt button")) b.classList.toggle("active", b === harnessBtn);
-    load(true);
+    load(true, { wipe: true });
     return;
   }
   const chip = e.target.closest(".sesschip");
@@ -1129,7 +1176,7 @@ document.getElementById("ranges").addEventListener("click", (e) => {
   view.rangeMs = btn.dataset.range === "all" ? null : Number(btn.dataset.range);
   view.panEnd = null;
   legendShown = { cumulative: 5, bygroup: 5 };
-  load(true);
+  load(true, { wipe: true });
 });
 
 // Chart view toggle: deltas / cumulative / lifespan. Pan + click-detail apply to deltas only.
@@ -1147,8 +1194,40 @@ document.getElementById("modalclose").addEventListener("click", closeModal);
 document.getElementById("modalback").addEventListener("click", (e) => { if (e.target.id === "modalback") closeModal(); });
 window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
 
+// Telemetry on/off state drives the "turn on telemetry" prompt above the chart. Read from /api/config
+// (same source the config page uses). When off, the page shell + empty sections still render; the
+// prompt offers a one-click enable that hits the SAME endpoint as onboarding / the config toggle.
+async function refreshTelemetryState() {
+  try {
+    const cfg = await (await fetch("/api/config")).json();
+    const on = !!(cfg.telemetry && cfg.telemetry.enabled);
+    document.getElementById("telemetryoff").style.display = on ? "none" : "";
+  } catch { /* leave prompt hidden on error */ }
+}
+
+document.getElementById("enabletelemetry").addEventListener("click", async () => {
+  const btn = document.getElementById("enabletelemetry");
+  const err = document.getElementById("enableerr");
+  btn.disabled = true; err.textContent = "";
+  try {
+    const res = await fetch("/api/config/packages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: "telemetry", enabled: true }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) { err.textContent = data.error || data.message || "failed"; btn.disabled = false; return; }
+    document.getElementById("telemetryoff").style.display = "none";
+    load(true, { wipe: true });
+  } catch (e) {
+    err.textContent = e.message; btn.disabled = false;
+  }
+});
+
 load(true);
+refreshTelemetryState();
 setInterval(() => load(false), 5000);
+setInterval(refreshTelemetryState, 10000);
 window.addEventListener("resize", () => redrawChart());
 </script>
 </body>

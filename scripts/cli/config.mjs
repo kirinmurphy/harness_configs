@@ -4,7 +4,12 @@ import os from "node:os";
 import { repoRoot } from "./paths.mjs";
 import { installStatePath, presetsStatePath, telemetryDir, activeProfilePath } from "./state-paths.mjs";
 import { readProjectProfile } from "./config-mutate.mjs";
-import { readEnabledPackagesRegistry } from "./rules-render.mjs";
+import {
+  readEnabledPackagesRegistry,
+  renderRulesPreview,
+  renderSharedRulesPreview,
+  renderHarnessRulesPreview,
+} from "./rules-render.mjs";
 
 const PACKAGES_PATH = path.join(repoRoot, "manifests", "inventory", "packages.json");
 const PRESETS_PATH = path.join(repoRoot, "manifests", "platform", "presets.json");
@@ -113,6 +118,7 @@ export function readConfigSnapshot() {
     enabled: isPackageEnabled(pkg, settings, { telemetry: !!telemetryState?.enabled }, packagesById),
     components: pkg.components.map((c) => c.type),
     requires: pkg.requires || [],
+    urls: pkg.urls || [],
   }));
 
   const bundles = presetsCatalog.bundles.map((b) => ({
@@ -132,7 +138,7 @@ export function readConfigSnapshot() {
   const skillsDir = path.join(os.homedir(), ".claude", "skills");
   const commandBySkill = {};
   for (const cmd of (slashCommands.commands || [])) {
-    if (cmd.skill) commandBySkill[cmd.skill] = { name: cmd.name, description: cmd.description };
+    if (cmd.skill) commandBySkill[cmd.skill] = { name: cmd.name, description: cmd.description, harnesses: cmd.harnesses || [] };
   }
   const tools = (skillInvocation.skills || []).map((s) => ({
     id: s.skill,
@@ -141,10 +147,13 @@ export function readConfigSnapshot() {
     hasCommand: !!s.explicit_command,
     command: commandBySkill[s.skill]?.name || null,
     description: commandBySkill[s.skill]?.description || null,
+    // Which harness(es) actually have a command file on disk — drives the inspect popup's harness so
+    // a codex-only command isn't requested as claude (404). Defaults to claude when unspecified.
+    commandHarnesses: commandBySkill[s.skill]?.harnesses || [],
     installed: fs.existsSync(path.join(skillsDir, s.skill)),
   }));
 
-  return {
+  const snapshot = {
     packages,
     bundles,
     tools,
@@ -154,6 +163,24 @@ export function readConfigSnapshot() {
     profiles: Object.keys(agentPermissions?.profiles ?? {}),
     plugins: {
       caveman: settings?.enabledPlugins?.["caveman@caveman"] === true,
+    },
+    // Harness-agnostic rules + global settings shown in the /config "Globals" section. `rules.shared`
+    // is the baseline every harness gets; claude/codex are the harness-specific deltas. The COMPLETE
+    // rendered home-rules (what lands in CLAUDE.md / AGENTS.md) is fetched on demand via
+    // /api/config/source?kind=globals-rules so the 10s poll stays lean.
+    globals: {
+      rules: {
+        shared: renderSharedRulesPreview(),
+        claude: renderHarnessRulesPreview("claude"),
+        codex: renderHarnessRulesPreview("codex"),
+      },
+      settings: {
+        activeProfile,
+        projectProfile,
+        profiles: Object.keys(agentPermissions?.profiles ?? {}),
+        plugins: { caveman: settings?.enabledPlugins?.["caveman@caveman"] === true },
+        hooks,
+      },
     },
     install: installState
       ? { mode: installState.mode || null, updatedAt: installState.updatedAt || null }
@@ -170,14 +197,22 @@ export function readConfigSnapshot() {
       },
     },
   };
+  // Computed once here so terminal and web render from the identical view (no client-side fork).
+  snapshot.behaviorView = buildBehaviorView(snapshot);
+  return snapshot;
 }
 
-// Maps the raw technical snapshot onto user-facing behavior categories matching README § Global Behavior.
+// Maps the raw technical snapshot onto user-facing behavior categories matching README § Global
+// Behavior. SINGLE SOURCE OF TRUTH for both the terminal `roborepo config` view and the web /config
+// page: the snapshot ships this under `behaviorView`, the web client renders it directly (no parallel
+// JS reimplementation to drift). Items carry both terminal fields (hint) and web fields (toggle,
+// inspect, urls, badges); each consumer reads what it needs and ignores the rest.
 export function buildBehaviorView(snap) {
   const pkg = (id) => snap.packages.find((p) => p.id === id);
   const bundle = (id) => snap.bundles.find((b) => b.id === id);
   const tel = snap.telemetry;
   const perms = snap.agentPermissions;
+  const pkgUrls = (id) => pkg(id)?.urls || [];
 
   return [
     {
@@ -188,6 +223,8 @@ export function buildBehaviorView(snap) {
           label: "jcodemunch",
           description: "Code indexer — find code via symbol search instead of reading files",
           active: pkg("jcodemunch")?.enabled ?? false,
+          toggle: "package",
+          urls: pkgUrls("jcodemunch"),
           hint: pkg("jcodemunch")?.enabled ? null : "roborepo enable jcodemunch",
         },
         {
@@ -195,6 +232,8 @@ export function buildBehaviorView(snap) {
           label: "jdocmunch",
           description: "Docs indexer — query sections instead of reading whole files",
           active: pkg("jdocmunch")?.enabled ?? false,
+          toggle: "package",
+          urls: pkgUrls("jdocmunch"),
           hint: pkg("jdocmunch")?.enabled ? null : "roborepo enable jdocmunch  (coming soon)",
         },
         {
@@ -203,6 +242,7 @@ export function buildBehaviorView(snap) {
           description: "Keeps agent output terse to reduce token use",
           active: pkg("caveman")?.enabled ?? !!snap.plugins?.caveman,
           toggle: "package",
+          urls: pkgUrls("caveman"),
           hint: (pkg("caveman")?.enabled ?? snap.plugins?.caveman) ? null : "enables on the harness's next launch",
         },
         {
@@ -211,7 +251,8 @@ export function buildBehaviorView(snap) {
           description: "Capture and visualize token usage across harnesses",
           active: pkg("telemetry")?.enabled ?? !!tel?.enabled,
           toggle: "package",
-          hint: (pkg("telemetry")?.enabled ?? tel?.enabled) ? "roborepo telemetry serve" : null,
+          urls: pkgUrls("telemetry"),
+          hint: (pkg("telemetry")?.enabled ?? tel?.enabled) ? "roborepo serve" : null,
         },
       ],
     },
@@ -225,7 +266,10 @@ export function buildBehaviorView(snap) {
           label: `/${t.command}`,
           description: t.description,
           active: t.installed,
+          toggle: "skill",
           badges: [`/${t.command}`, "skill"],
+          // Inspect the command source for a harness it actually exists for (codex-only → codex).
+          inspect: { kind: "command", id: t.command, harness: (t.commandHarnesses || []).includes("claude") ? "claude" : (t.commandHarnesses || [])[0] || "claude", label: `/${t.command}` },
         })),
     },
     {
@@ -238,7 +282,9 @@ export function buildBehaviorView(snap) {
           label: t.label,
           description: t.description,
           active: t.installed,
+          toggle: "skill",
           badges: ["skill"],
+          inspect: { kind: "skill", id: t.id, label: t.label },
         })),
       footnote: "roborepo-support — help skill for this repo, always loaded.",
     },
@@ -252,6 +298,7 @@ export function buildBehaviorView(snap) {
           description: "Surfaces newly confirmed conventions inline (> 📌 Capture candidate:)",
           active: pkg("convention-capture")?.enabled ?? false,
           toggle: "package",
+          inspect: { kind: "rules", id: "convention-capture", label: "Convention capture" },
         },
         {
           id: "impact-awareness",
@@ -259,6 +306,7 @@ export function buildBehaviorView(snap) {
           description: "Flags how a proposed change collides with existing functionality (> 🧭 Impact:)",
           active: pkg("impact-awareness")?.enabled ?? false,
           toggle: "package",
+          inspect: { kind: "rules", id: "impact-awareness", label: "Impact awareness" },
         },
         {
           id: "skill-visibility",
@@ -266,11 +314,13 @@ export function buildBehaviorView(snap) {
           description: "Reports which skills shaped a response (> 🧩 Skills loaded:)",
           active: pkg("skill-visibility")?.enabled ?? false,
           toggle: "package",
+          inspect: { kind: "rules", id: "skill-visibility", label: "Skill visibility" },
         },
       ],
     },
     {
       category: "Permissions",
+      kind: "permissions",
       items: [
         {
           id: "profile",
@@ -292,6 +342,7 @@ export function buildBehaviorView(snap) {
           id: "deny",
           label: `${perms?.commands?.deny?.length || 0} blocked commands`,
           description: (perms?.commands?.deny || []).map((c) => c.join(" ")).join(" · "),
+          value: (perms?.commands?.deny || []).map((c) => c.join(" ")).join(" · "), // web info renderer reads `value`
           active: true,
           kind: "info",
         },
@@ -306,6 +357,66 @@ export function buildBehaviorView(snap) {
       ],
     },
   ];
+}
+
+// Read the full source that DEFINES a tool, for the /config click-to-inspect popup. Strictly
+// whitelisted: kind+id are resolved against the catalogs/known dirs, never used to build a path
+// directly, so an attacker can't request arbitrary files (no traversal — ids are matched against
+// catalog entries and basenames only). Returns { ok, title, path, content } or { ok:false, error }.
+export function loadConfigSource({ kind, id, harness = "claude" }) {
+  const harnessSafe = harness === "codex" ? "codex" : "claude";
+  const fail = (error) => ({ ok: false, error });
+
+  if (kind === "skill") {
+    // Validate id against the skill-invocation catalog so only known skills are readable.
+    const skills = readJson(SKILL_INVOCATION_PATH, { skills: [] }).skills || [];
+    if (!skills.some((s) => s.skill === id)) return fail(`unknown skill: ${id}`);
+    const abs = path.join(repoRoot, "globals", "agents", "skills", id, "SKILL.md");
+    return readSourceFile(abs, `skill: ${id}`);
+  }
+
+  if (kind === "command") {
+    // id is the command NAME (no slash); validate against the slash-commands catalog.
+    const commands = readJson(SLASH_COMMANDS_PATH, { commands: [] }).commands || [];
+    const cmd = commands.find((c) => c.name === id);
+    if (!cmd) return fail(`unknown command: ${id}`);
+    const abs = path.join(repoRoot, "globals", harnessSafe, "commands", `${id}.md`);
+    return readSourceFile(abs, `/${id} (${harnessSafe})`);
+  }
+
+  if (kind === "globals-rules") {
+    // Full rendered home-rules for one harness (what lands in CLAUDE.md / AGENTS.md). Served on
+    // demand so the 10s config poll doesn't carry ~13KB of rules text it rarely needs.
+    const content = renderRulesPreview(harnessSafe);
+    const file = harnessSafe === "codex" ? "~/.codex/AGENTS.md" : "~/.claude/CLAUDE.md";
+    return { ok: true, title: `Rendered rules — ${harnessSafe}`, path: file, content };
+  }
+
+  if (kind === "rules" || kind === "hooks") {
+    // Resolve the package's component source from the catalog — never trust a caller-supplied path.
+    const pkgs = readJson(PACKAGES_PATH, { packages: [] }).packages || [];
+    const pkg = pkgs.find((p) => p.id === id);
+    if (!pkg) return fail(`unknown package: ${id}`);
+    const comp = pkg.components.find((c) => c.type === kind);
+    if (!comp?.source) return fail(`package ${id} has no ${kind} source`);
+    const abs = path.join(repoRoot, comp.source);
+    return readSourceFile(abs, `${pkg.label} — ${kind}`);
+  }
+
+  return fail(`unknown kind: ${kind}`);
+}
+
+function readSourceFile(abs, title) {
+  // Defense in depth: the resolved path must stay inside the repo even though it's catalog-derived.
+  const resolved = path.resolve(abs);
+  if (resolved !== repoRoot && !resolved.startsWith(repoRoot + path.sep)) {
+    return { ok: false, error: "path escapes repo" };
+  }
+  try {
+    return { ok: true, title, path: path.relative(repoRoot, resolved), content: fs.readFileSync(resolved, "utf8") };
+  } catch {
+    return { ok: false, error: `not found: ${path.relative(repoRoot, resolved)}` };
+  }
 }
 
 export function configCommand(args) {

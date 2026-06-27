@@ -13,7 +13,7 @@ import { indexCode, indexDocs, watchCode, runCmd } from "./index.mjs";
 import { mcpAdd, mcpApply } from "./mcp.mjs";
 import { projectContextInventory } from "./project-context.mjs";
 import { maybeRunPresetOnboarding, presetsCommand } from "./presets.mjs";
-import { telemetryCommand } from "./telemetry.mjs";
+import { telemetryCommand, serveCommand } from "./telemetry.mjs";
 import { enablePackage, disablePackage } from "./packages.mjs";
 import { configCommand } from "./config.mjs";
 
@@ -99,6 +99,16 @@ async function dispatch(args) {
     case "onboard":
       return presetsCommand(["onboard", ...rest]);
 
+    // First-install welcome page + 4-option menu. Invoked by scripts/install/main.sh after core
+    // install, never by users directly (deliberately absent from usage/menu). One menu option calls
+    // `onboard`; onboarding is no longer auto-run by install.
+    case "onboard-intro":
+      return presetsCommand(["intro", ...rest]);
+
+    // Alias of `serve --detach`: starts the portal in the background and opens it in the browser.
+    case "web":
+      return serveCommand(["--detach", ...rest]);
+
     // `bundle` / `presets` are internal install-time verbs (run by scripts/install/main.sh), not
     // user-facing — deliberately absent from usage/menu in cli-commands.json. Kept dispatchable so
     // install and back-compat callers still work. Users manage the platform via update/uninstall and
@@ -111,6 +121,9 @@ async function dispatch(args) {
 
     case "telemetry":
       return telemetryCommand(sub === undefined ? [] : [sub, ...rest]);
+
+    case "serve":
+      return serveCommand([sub, ...rest].filter(Boolean));
 
     case "enable":
       return enablePackage(sub === undefined ? rest : [sub, ...rest]);

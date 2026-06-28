@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Materialize globals/agents/skills/* as managed copies into each present harness's native skills dir.
+# Materialize globals/agents/skills/* into the machine-local skill cache and link each present
+# harness's native skills dir to that cache.
 # Called by skill-new.mjs after a new global skill is created.
 # Also safe to run manually: idempotent, skips native-installed skills.
 #

@@ -10,22 +10,27 @@ the project-aware counterpart to a generic cleanup pass: every finding must be *
 naming the exact pattern, path, rule, or risk — not a generic "reduce duplication". It runs only
 when the user explicitly asks.
 
-## Inputs (in priority order)
+## What This Skill Does
 
-1. **`code-style` skill** — general cross-language conventions (naming, file organization,
-   helper placement, comments, exports, repetition, readability). Load it.
-2. **`javascript-typescript` / `react` skills** — load when the touched files are JS/TS or React.
-3. **Project Context inventory** (`docs/project-context/generated/repo-scan.json` and the curated
-   `inventory.md` / `glossary.md`) — the project's own reusable surfaces, patterns, and risk
-   areas. Use it to anchor findings to real code.
-4. **The surrounding code itself** — always verify a finding against the actual code before
-   reporting it.
+Tighten is not a replacement for language or framework skills. It coordinates them with project
+evidence so cleanup work is grounded in the current codebase:
+
+- Use `code-style` for general conventions.
+- Load `javascript-typescript`, `react`, or other language/framework skills when the scope calls
+  for them.
+- Use Project Context inventory, when present, as evidence for reusable surfaces, vocabulary,
+  ownership boundaries, and known risk areas.
+- Verify every finding against the actual code before reporting or changing it.
+
+Skills cannot programmatically call other skills in this harness. A skill can instruct the agent to
+load other relevant skills before work that those skills govern.
 
 ## Inventory Handling
 
 Tighten is better with inventory facts, but does not require them.
 
-- If inventory facts exist, read them and anchor findings to the documented patterns/surfaces.
+- If inventory facts exist, read the relevant files and anchor findings to documented
+  patterns/surfaces.
 - If they are missing and the user invoked tighten explicitly, **ask** whether to run
   `roborepo project-context inventory` first (it is like indexing the code — cheap, deterministic,
   improves specificity). Do not run it silently.
@@ -34,15 +39,17 @@ Tighten is better with inventory facts, but does not require them.
 ## Loop
 
 1. Identify the scope: the user's named files/area, else the current diff/changed files.
-2. Load `code-style` (+ `javascript-typescript` / `react` as the files require) and the inventory.
-3. Review the scope against those inputs. For each issue, produce a **specific** callout:
+2. Load `code-style` plus language/framework skills required by the scoped files.
+3. Read relevant Project Context inventory docs when they exist.
+4. Review the scope against those inputs. For each issue, produce a **specific** callout:
    - what: the exact problem, with `path:line`.
    - rule/pattern: which convention or documented pattern it violates, by name.
    - fix: the concrete change, referencing the existing example to copy when one exists.
    - risk: low / medium / high, and best timing.
-4. Apply high- and medium-risk fixes that do not change UX. Leave low-risk items as notes.
-5. Review again; repeat until only low-priority items remain or three passes are done.
-6. Summarize what changed and what remains.
+5. Apply high- and medium-risk fixes that do not change UX or product behavior. Leave low-risk
+   items as notes.
+6. Review again; repeat until only low-priority items remain or three passes are done.
+7. Summarize what changed and what remains.
 
 ## Specificity Rule
 
@@ -58,6 +65,7 @@ Never emit a generic finding. Each callout must cite something concrete in *this
 - Do not change intended UX or product behavior unless the user explicitly asks.
 - Do not turn every low-risk cleanup into immediate work; report and let the user choose.
 - Do not auto-run inventory or restructure docs.
+- Do not emit generic language/framework advice without project-specific evidence.
 - Do not run unless explicitly invoked.
 
 ## Risk Checkpoints

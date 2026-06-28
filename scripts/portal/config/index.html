@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>roborepo config</title>
+    <link rel="stylesheet" href="/portal/config/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>roborepo</h1>
+      <span id="status">loading…</span>
+      <nav>
+        <a href="/config" class="active">Config</a>
+        <a href="/">Telemetry</a>
+      </nav>
+    </header>
+    <main id="main"></main>
+    <div class="modal-backdrop" id="modal">
+      <div class="modal">
+        <div class="modal-head">
+          <span class="modal-title" id="modal-title"></span>
+          <span class="modal-path" id="modal-path"></span>
+          <button class="modal-close" id="modal-close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="markdown" id="modal-content"></div>
+        </div>
+      </div>
+    </div>
+    <template id="tpl-globals">
+      <section class="panel wide">
+        <div class="panel-head"><h2>Global Rules</h2></div>
+        <div class="globals-shell">
+          <div class="globals-switches">
+            <button class="globals-switch" type="button" data-key="codex">
+              AGENTS.md
+            </button>
+            <button class="globals-switch" type="button" data-key="claude">
+              CLAUDE.md
+            </button>
+
+            <span class="perm-label">
+              <span data-slot="live-missing">No live rules file</span>
+              <span data-slot="live-installed"
+                ><span data-slot="live-path"></span
+              ></span>
+            </span>
+          </div>
+          <div class="globals-live">
+            <div class="markdown" data-slot="live-body"></div>
+          </div>
+        </div>
+        <div class="globals-defaults">
+          <details class="defaults-menu">
+            <summary>RoboRepo defaults</summary>
+            <div class="defaults-popover">
+              <button
+                class="globals-default"
+                type="button"
+                data-rule-key="shared"
+                data-rule-path="globals/rules/shared"
+              >
+                Global baseline
+              </button>
+              <button
+                class="globals-default"
+                type="button"
+                data-rule-key="claude"
+                data-rule-path="globals/rules/claude"
+              >
+                Claude baseline
+              </button>
+              <button
+                class="globals-default"
+                type="button"
+                data-rule-key="codex"
+                data-rule-path="globals/rules/codex"
+              >
+                Codex baseline
+              </button>
+              <button
+                class="globals-default"
+                type="button"
+                data-rule-key="packages"
+                data-rule-path="globals/packages/*/rules.md"
+              >
+                Tool Add-Ons
+              </button>
+            </div>
+          </details>
+        </div>
+      </section>
+    </template>
+    <template id="tpl-hooks">
+      <section class="panel">
+        <div class="panel-head"><h2>Hooks</h2></div>
+        <div class="hook-links">
+          <button class="text-link" type="button" data-hook-harness="claude">
+            Claude Hooks
+          </button>
+          <button class="text-link" type="button" data-hook-harness="codex">
+            Codex hooks
+          </button>
+        </div>
+      </section>
+    </template>
+    <template id="tpl-md-missing"
+      ><p class="md-meta">No live rules file found.</p></template
+    >
+    <template id="tpl-md-empty"><p class="md-meta">(empty)</p></template>
+    <template id="tpl-section-token-optimization">
+      <section class="panel">
+        <div class="panel-head"><h2>Token Optimization</h2></div>
+        <div data-slot="items"></div>
+      </section>
+    </template>
+    <template id="tpl-section-commands">
+      <section class="panel">
+        <div class="panel-head"><h2>Skills - Workflows</h2></div>
+        <p class="panel-desc">
+          Named slash-command workflows you start intentionally.
+        </p>
+        <div data-slot="items"></div>
+      </section>
+    </template>
+    <template id="tpl-section-code-conventions">
+      <section class="panel">
+        <div class="panel-head"><h2>Skills - Code Conventions</h2></div>
+        <p class="panel-desc">
+          Skills auto-loaded when relevant — shape output without an explicit
+          command.
+        </p>
+        <div data-slot="items"></div>
+        <p class="panel-footnote">
+          * roborepo-support — help skill for this repo, always loaded.
+        </p>
+      </section>
+    </template>
+    <template id="tpl-section-chat-time-output">
+      <section class="panel">
+        <div class="panel-head"><h2>Chat-Time Output</h2></div>
+        <p class="panel-desc">
+          Inline chat notes the agent adds while responding — no files written,
+          no workflow started.
+        </p>
+        <div data-slot="items"></div>
+      </section>
+    </template>
+    <template id="tpl-permissions-section">
+      <section class="panel">
+        <div class="panel-head"><h2>Permissions</h2></div>
+        <div data-slot="rows"></div>
+      </section>
+    </template>
+    <template id="tpl-config-item">
+      <div class="item">
+        <span data-slot="dot"></span>
+        <div class="item-body">
+          <div class="item-row">
+            <span data-slot="label"></span>
+            <span data-slot="badges"></span>
+          </div>
+          <div class="item-desc" data-slot="description"></div>
+          <div class="item-hint" data-slot="hint"></div>
+          <div class="url-row" data-slot="urls"></div>
+          <div class="item-status" data-slot="status"></div>
+        </div>
+        <span data-slot="toggle"></span>
+      </div>
+    </template>
+    <template id="tpl-toggle">
+      <label class="switch">
+        <input type="checkbox" />
+        <span class="switch-track"><span class="switch-knob"></span></span>
+      </label>
+    </template>
+    <template id="tpl-profile-selector">
+      <div class="profile-box">
+        <div class="perm-profile">
+          <span class="perm-name"
+            >global: <span data-slot="global-profile"></span
+          ></span>
+          <span class="perm-desc" data-slot="no-project-profile"
+            >no project override</span
+          >
+          <span class="perm-desc" data-slot="project-profile"
+            >this project overrides →
+            <span data-slot="project-profile-value"></span
+          ></span>
+        </div>
+        <div class="scope-row">
+          <button class="scope-btn" type="button" data-scope="global">
+            Global
+          </button>
+          <button class="scope-btn" type="button" data-scope="project">
+            This project
+          </button>
+        </div>
+        <div class="profile-choices" data-slot="choices"></div>
+        <div class="item-err" data-slot="error"></div>
+      </div>
+    </template>
+    <template id="tpl-profile-choice">
+      <button class="profile-btn" type="button"></button>
+    </template>
+    <template id="tpl-permission-row">
+      <div class="perm-row">
+        <div data-slot="content"></div>
+      </div>
+    </template>
+    <template id="tpl-permission-info">
+      <div>
+        <div class="perm-label" data-slot="label"></div>
+        <div class="perm-value" data-slot="value"></div>
+      </div>
+    </template>
+    <template id="tpl-permission-expandable">
+      <div>
+        <div class="perm-label" data-slot="label"></div>
+        <button class="expand-btn" type="button">
+          <span data-expand-label="closed">show all ▸</span>
+          <span data-expand-label="open" hidden>hide ▴</span>
+        </button>
+        <ul class="expand-list" data-slot="detail"></ul>
+      </div>
+    </template>
+    <template id="tpl-list-item">
+      <li></li>
+    </template>
+    <script src="/portal/config/app.js" defer></script>
+  </body>
+</html>

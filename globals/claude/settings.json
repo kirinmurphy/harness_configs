@@ -162,5 +162,6 @@
   "alwaysThinkingEnabled": false,
   "awaySummaryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
-  "model": "opus"
+  "model": "opus",
+  "roborepoProfile": "globals/claude/settings.json"
 }

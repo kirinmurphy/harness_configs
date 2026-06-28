@@ -16,6 +16,7 @@ import { maybeRunPresetOnboarding, presetsCommand } from "./presets.mjs";
 import { telemetryCommand, serveCommand } from "./telemetry.mjs";
 import { enablePackage, disablePackage } from "./packages.mjs";
 import { configCommand } from "./config.mjs";
+import { experimentalCommand } from "./package-catalog.mjs";
 
 const argv = await maybeRunPresetOnboarding(process.argv.slice(2));
 const cliCatalog = JSON.parse(fs.readFileSync(path.join(repoRoot, "manifests", "platform", "cli-commands.json"), "utf8"));
@@ -133,6 +134,9 @@ async function dispatch(args) {
 
     case "config":
       return configCommand(sub === undefined ? [] : [sub, ...rest]);
+
+    case "experimental":
+      return experimentalCommand(sub === undefined ? [] : [sub, ...rest]);
 
     case "watch":
       if (sub === "code") return watchCode(rest);

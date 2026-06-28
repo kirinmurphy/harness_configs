@@ -6,10 +6,10 @@ import net from "node:net";
 import { spawnSync, spawn } from "node:child_process";
 import { markTelemetrySelected, presetsApply } from "./presets.mjs";
 import { repoRoot } from "./paths.mjs";
-import { telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetryPidPath, telemetrySpoolDir } from "./state-paths.mjs";
+import { portalPidPath, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
 import { mcpServerOf, transcriptStats } from "./telemetry-transcript.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
-import { startTelemetryServer } from "./telemetry-serve.mjs";
+import { startPortalServer } from "./portal-server.mjs";
 import { readConfigSnapshot, loadConfigSource } from "./config.mjs";
 import { mutatePackage, setSkillInstalled, setPermissionProfile } from "./config-mutate.mjs";
 import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
@@ -24,8 +24,6 @@ export function telemetryCommand(rest) {
   switch (sub) {
     case "install":
       return telemetryInstall(args);
-    case "start":
-      return telemetryStart(args);
     case "stop":
       return telemetryStop(args);
     case "enable":
@@ -45,7 +43,7 @@ export function telemetryCommand(rest) {
     case "capture":
       return telemetryCapture(args);
     default:
-      console.error("usage: roborepo telemetry install|start|stop|enable|disable|status|report|export|backup|purge");
+      console.error("usage: roborepo telemetry install|stop|enable|disable|status|report|export|backup|purge");
       console.error("portal: roborepo serve [--detach] [--no-open] [--port <n>]");
       process.exit(2);
   }
@@ -72,7 +70,7 @@ function telemetryInstall(args) {
     wireCaptureHooks(path.join(codexDir, "hooks.json"), "codex");
   }
   console.log("telemetry-only install complete.");
-  console.log("start capture:         roborepo telemetry start");
+  console.log("capture is enabled.");
   console.log("open the portal:       roborepo serve");
   console.log("view reports:          roborepo telemetry report");
   console.log("upgrade to full suite: re-run the roborepo install script");
@@ -130,16 +128,6 @@ function wireCaptureHooks(settingsPath, harness) {
   }
 }
 
-async function telemetryStart(args) {
-  rejectArgs(args);
-  ensureTelemetryDirs();
-  writeTelemetryState({ enabled: true });
-  presetsApply(["telemetry"]);
-  const port = 4317;
-  await startDetachedPortal(port);
-  console.log(`telemetry: capturing · portal: http://127.0.0.1:${port}/config`);
-}
-
 function telemetryStop(args) {
   rejectArgs(args);
   const stopped = stopServer();
@@ -164,7 +152,7 @@ function telemetryDisable(args) {
 
 // Programmatic capture toggle, shared by the CLI verbs and the config controls. Flips capture state
 // and wires/unwires the capture hooks (via the telemetry bundle) without starting/stopping the
-// dashboard server — the dashboard toggle is about capture, not the server. Returns { ok, message }.
+// portal server — the dashboard toggle is about capture, not the server. Returns { ok, message }.
 export function setTelemetryEnabled(enabled) {
   try {
     ensureTelemetryDirs();
@@ -373,7 +361,7 @@ export async function serveCommand(args, { allowPortFallback = false } = {}) {
   // A `window` ({ rangeMs, end }) scopes the whole report to a trailing time slice before analysis,
   // so every panel — not just the chart — reflects the dashboard's time filter. loadSession bridges
   // a flagged event to its chat transcript (file I/O lives here, not in the server).
-  startTelemetryServer({
+    startPortalServer({
     port: options.port,
     loadAnalysis: (window, harness) => {
       const allEvents = readSpoolEvents();
@@ -846,11 +834,14 @@ function writeTelemetryState(patch) {
   fs.writeFileSync(telemetryStatePath(), JSON.stringify(state, null, 2) + "\n");
 }
 
-// --- PID management for the detached dashboard server ------------------------------------------
+// --- PID management for the detached portal server ---------------------------------------------
 
 function readPid() {
   try {
-    return parseInt(fs.readFileSync(telemetryPidPath, "utf8").trim(), 10) || null;
+    return parseInt(fs.readFileSync(portalPidPath, "utf8").trim(), 10) || null;
+  } catch {}
+  try {
+    return parseInt(fs.readFileSync(legacyTelemetryPidPath, "utf8").trim(), 10) || null;
   } catch {
     return null;
   }
@@ -861,12 +852,13 @@ function isProcessRunning(pid) {
 }
 
 function writePid(pid) {
-  fs.mkdirSync(path.dirname(telemetryPidPath), { recursive: true });
-  fs.writeFileSync(telemetryPidPath, String(pid));
+  fs.mkdirSync(path.dirname(portalPidPath), { recursive: true });
+  fs.writeFileSync(portalPidPath, String(pid));
 }
 
 function clearPid() {
-  try { fs.rmSync(telemetryPidPath, { force: true }); } catch {}
+  try { fs.rmSync(portalPidPath, { force: true }); } catch {}
+  try { fs.rmSync(legacyTelemetryPidPath, { force: true }); } catch {}
 }
 
 // Kill any existing detached server (stale or live). Clears the PID file unconditionally.

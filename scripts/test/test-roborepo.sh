@@ -62,6 +62,19 @@ mk_skill() {
   printf -- '---\nname: %s\ndescription: test\n---\n' "${name}" > "${dir}/${name}/SKILL.md"
 }
 
+assert_skill_cache_link() {
+  local home_dir="$1" harness="$2" skill="$3" source_dir="$4" label="$5"
+  local view="${home_dir}/.${harness}/skills/${skill}"
+  local cache="${home_dir}/.roborepo/skills/${skill}"
+
+  if [[ -L "${view}" && "$(realpath "${view}")" == "$(realpath "${cache}")" ]] \
+    && [[ -d "${cache}" && -e "${cache}/.roborepo-managed" ]] \
+    && diff -rq -x '.roborepo-managed' "${source_dir}" "${cache}" >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
 # ---------------------------------------------------------------------------
 # roborepo skill symlink-repo
 # ---------------------------------------------------------------------------
@@ -342,10 +355,10 @@ bash -c "${cfg_env} node '${cli}' enable jcodemunch >/dev/null 2>&1" || true
 assert "config: enable wires package permissions" \
   bash -c "[ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" -gt 0 ]"
 assert "config: enable wires CLAUDE.md rules" test -f "${cfg_home}/.claude/CLAUDE.md"
-assert "config: Claude rules use managed import block" \
-  bash -c "grep -q 'BEGIN managed:roborepo-agents-import' '${cfg_home}/.claude/CLAUDE.md' && grep -q '@.*/.roborepo/rules/code-style.md' '${cfg_home}/.claude/CLAUDE.md'"
-assert "config: Claude source rules are rendered under roborepo state" \
-  bash -c "grep -q 'Generated Harness Rules' '${cfg_home}/.roborepo/rules/code-style.md'"
+assert "config: Claude rules use managed inline block" \
+  bash -c "grep -q 'BEGIN managed:roborepo-code-style' '${cfg_home}/.claude/CLAUDE.md' && grep -q 'Generated Harness Rules' '${cfg_home}/.claude/CLAUDE.md'"
+assert "config: Claude rules no longer use managed import block" \
+  bash -c "! grep -q 'BEGIN managed:roborepo-agents-import' '${cfg_home}/.claude/CLAUDE.md' && ! test -e '${cfg_home}/.roborepo/rules/generated-rules.md'"
 bash -c "${cfg_env} node '${cli}' disable jcodemunch >/dev/null 2>&1" || true
 assert "config: disable removes package permissions" \
   bash -c "[ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" = 0 ]"
@@ -367,14 +380,13 @@ assert "config: disable plugin removes bool + marketplace" \
 assert "config: caveman package reports disabled after removal" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='caveman');process.exit(p&&!p.enabled?0:1)})\""
 
-# Chat-Time Output: rules-only packages with harness "both" — enable merges Claude rules into the
-# imported ~/.roborepo source file and Codex rules inline into AGENTS.md; snapshot reports enabled;
-# toggles are independent; disable removes from both paths. The throwaway home has .claude and
-# .codex dirs, so "both" targets both harnesses.
+# Chat-Time Output: rules-only packages with harness "both" — enable merges rules inline into both
+# CLAUDE.md and AGENTS.md; snapshot reports enabled; toggles are independent; disable removes from
+# both paths. The throwaway home has .claude and .codex dirs, so "both" targets both harnesses.
 printf 'override custom\n' > "${cfg_home}/.codex/AGENTS.override.md"
 bash -c "${cfg_env} node '${cli}' enable impact-awareness >/dev/null 2>&1" || true
-assert "config: rules pkg merges into Claude source rules" \
-  bash -c "grep -q 'Impact Awareness' '${cfg_home}/.roborepo/rules/code-style.md'"
+assert "config: rules pkg merges into Claude CLAUDE.md" \
+  bash -c "grep -q 'Impact Awareness' '${cfg_home}/.claude/CLAUDE.md'"
 assert "config: rules pkg merges into Codex AGENTS.md (both-harness parity)" \
   bash -c "grep -q 'Impact Awareness' '${cfg_home}/.codex/AGENTS.md'"
 assert "config: Codex rules use managed inline block" \
@@ -388,9 +400,9 @@ assert "config: rules pkg reports enabled in snapshot" \
 bash -c "${cfg_env} node '${cli}' enable skill-visibility >/dev/null 2>&1" || true
 bash -c "${cfg_env} node '${cli}' disable impact-awareness >/dev/null 2>&1" || true
 assert "config: disable rules pkg removes its block from both harnesses" \
-  bash -c "! grep -q 'Impact Awareness' '${cfg_home}/.roborepo/rules/code-style.md' && ! grep -q 'Impact Awareness' '${cfg_home}/.codex/AGENTS.md'"
+  bash -c "! grep -q 'Impact Awareness' '${cfg_home}/.claude/CLAUDE.md' && ! grep -q 'Impact Awareness' '${cfg_home}/.codex/AGENTS.md'"
 assert "config: disabling one rules pkg leaves the others (Claude)" \
-  bash -c "grep -q 'Skill Visibility' '${cfg_home}/.roborepo/rules/code-style.md'"
+  bash -c "grep -q 'Skill Visibility' '${cfg_home}/.claude/CLAUDE.md'"
 assert "config: disabling one rules pkg leaves the others (Codex)" \
   bash -c "grep -q 'Skill Visibility' '${cfg_home}/.codex/AGENTS.md'"
 assert "config: existing Codex override keeps user text after rerender" \
@@ -406,6 +418,13 @@ printf '<!-- END managed:roborepo-code-style -->\nuser text\n<!-- BEGIN managed:
 assert "config: managed rules fail safely on reversed markers" \
   bash -c "! HOME='${broken_home}' ROBOREPO_STATE_DIR='${broken_home}/.roborepo' node '${cli}' enable impact-awareness >'${broken_home}/out-reversed' 2>&1 && grep -q 'incomplete Roborepo managed block' '${broken_home}/out-reversed'"
 
+legacy_import_home="${work}/legacy-import-home"
+mkdir -p "${legacy_import_home}/.claude" "${legacy_import_home}/.roborepo/rules"
+printf '<!-- BEGIN managed:roborepo-agents-import -->\n@~/.roborepo/rules/generated-rules.md\n<!-- END managed:roborepo-agents-import -->\nuser text\n' > "${legacy_import_home}/.claude/CLAUDE.md"
+printf '# Generated Harness Rules\n\nold render\n' > "${legacy_import_home}/.roborepo/rules/generated-rules.md"
+assert "config: Claude legacy import block migrates to inline rules" \
+  bash -c "HOME='${legacy_import_home}' ROBOREPO_STATE_DIR='${legacy_import_home}/.roborepo' node '${cli}' rules render >/dev/null && grep -q 'BEGIN managed:roborepo-code-style' '${legacy_import_home}/.claude/CLAUDE.md' && ! grep -q 'BEGIN managed:roborepo-agents-import' '${legacy_import_home}/.claude/CLAUDE.md' && grep -q 'user text' '${legacy_import_home}/.claude/CLAUDE.md' && ! test -e '${legacy_import_home}/.roborepo/rules/generated-rules.md'"
+
 # Service component (telemetry as a package): enable via the generic package path flips its state +
 # snapshot, disable reverses. The service handler owns telemetry's bespoke install (hooks + spool).
 bash -c "${cfg_env} node '${cli}' enable telemetry >/dev/null 2>&1" || true
@@ -416,16 +435,40 @@ assert "config: disable service package clears telemetry state" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(!s.telemetry.enabled&&!s.packages.find(p=>p.id==='telemetry')?.enabled?0:1)})\""
 
 # Skill component: a package whose payload is a shared-skill copy. Enable copies it into both harness
-# skill dirs (stamped with .roborepo-managed); disable removes the owned copies. Reuses the same
-# skill materializer as the Code Conventions toggles.
+# skill dirs via the machine-local cache; disable removes the owned cache entry and views. Reuses
+# the same skill materializer as the Code Conventions toggles.
 bash -c "${cfg_env} node '${cli}' enable blog-pack >/dev/null 2>&1" || true
-assert "config: enabling a skill-component package copies the skill" \
-  bash -c "test -d '${cfg_home}/.claude/skills/blog' && test -e '${cfg_home}/.claude/skills/blog/.roborepo-managed' && test -d '${cfg_home}/.codex/skills/blog' && test -e '${cfg_home}/.codex/skills/blog/.roborepo-managed'"
+assert "config: enabling a skill-component package links the Claude view" \
+  assert_skill_cache_link "${cfg_home}" "claude" "blog" "${repo_root}/globals/agents/skills/blog" "config: Claude skill cache link created"
+assert "config: enabling a skill-component package links the Codex view" \
+  assert_skill_cache_link "${cfg_home}" "codex" "blog" "${repo_root}/globals/agents/skills/blog" "config: Codex skill cache link created"
 assert "config: skill-component package reports enabled" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{process.exit(c.readConfigSnapshot().packages.find(p=>p.id==='blog-pack')?.enabled?0:1)})\""
 bash -c "${cfg_env} node '${cli}' disable blog-pack >/dev/null 2>&1" || true
 assert "config: disabling a skill-component package removes the skill links" \
-  bash -c "! test -e '${cfg_home}/.claude/skills/blog' && ! test -e '${cfg_home}/.codex/skills/blog'"
+  bash -c "! test -e '${cfg_home}/.claude/skills/blog' && ! test -e '${cfg_home}/.codex/skills/blog' && ! test -e '${cfg_home}/.roborepo/skills/blog'"
+
+# /inventory is a pending package-owned command: default config hides it, and the CLI refuses
+# mutation until the hidden experimental switch is enabled. Once enabled, toggling it controls both
+# the project-context skill and the Project Context rules slice.
+assert "config: pending /inventory package hidden by default" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const inv=s.behaviorView.find(x=>x.category==='Commands').items.find(x=>x.label==='/inventory');const pkg=s.packages.find(x=>x.id==='project-context');process.exit(!inv&&!pkg?0:1)})\""
+assert "config: pending package enable rejected without experimental flag" \
+  bash -c "! ${cfg_env} node '${cli}' enable project-context >'${cfg_home}/pending.out' 2>&1 && grep -q 'roborepo experimental enable' '${cfg_home}/pending.out'"
+assert "config: experimental enable exposes pending packages" \
+  bash -c "${cfg_env} node '${cli}' experimental enable >/dev/null && [ \"\$(${cfg_env} node '${cli}' experimental status)\" = enabled ]"
+assert "config: pending /inventory package visible with experimental flag" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const inv=s.behaviorView.find(x=>x.category==='Commands').items.find(x=>x.label==='/inventory');const pkg=s.packages.find(x=>x.id==='project-context');process.exit(inv&&inv.id==='project-context'&&inv.toggle==='package'&&inv.badges.includes('pending')&&pkg?.status==='pending'?0:1)})\""
+bash -c "${cfg_env} node '${cli}' enable project-context >/dev/null 2>&1" || true
+assert "config: enabling pending project-context links the command skill when experimental" \
+  assert_skill_cache_link "${cfg_home}" "codex" "project-context" "${repo_root}/globals/agents/skills/project-context" "config: project-context skill cache link created"
+assert "config: enabling pending project-context merges its rules when experimental" \
+  bash -c "grep -q '## Project Context' '${cfg_home}/.claude/CLAUDE.md' && grep -q '## Project Context' '${cfg_home}/.codex/AGENTS.md'"
+assert "config: pending rules are skipped again without experimental flag" \
+  bash -c "${cfg_env} node '${cli}' experimental disable >/dev/null && ${cfg_env} node '${cli}' rules render >/dev/null && ! grep -q '## Project Context' '${cfg_home}/.codex/AGENTS.md'"
+bash -c "${cfg_env} node '${cli}' experimental enable >/dev/null && ${cfg_env} node '${cli}' disable project-context >/dev/null 2>&1" || true
+assert "config: disabling pending project-context removes skill and rules" \
+  bash -c "! test -e '${cfg_home}/.codex/skills/project-context' && ! test -e '${cfg_home}/.roborepo/skills/project-context' && ! grep -q '## Project Context' '${cfg_home}/.codex/AGENTS.md'"
 
 # Composite package: a package that `requires` others. Enabling it enables every dependency (deps
 # first), and the composite reports enabled iff all deps are.
@@ -438,14 +481,16 @@ assert "config: composite reports disabled when a dependency is disabled" \
 assert "config: snapshot exposes a package's requires list" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='code-intel');process.exit(Array.isArray(p.requires)&&p.requires.includes('jcodemunch')&&p.requires.includes('jdocmunch')?0:1)})\""
 
-# Skill toggle links into both ~/.claude/skills and ~/.codex/skills, then removes only owned links.
+# Skill toggle links into the machine-local cache plus both harness views, then removes only owned links.
 cfg_skill="$(ls "${repo_root}/globals/agents/skills" | head -1)"
-assert "config: setSkillInstalled copies to both harnesses" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',true);process.exit(r.ok?0:1)})\" && test -d '${cfg_home}/.claude/skills/${cfg_skill}' && test -e '${cfg_home}/.claude/skills/${cfg_skill}/.roborepo-managed' && test -d '${cfg_home}/.codex/skills/${cfg_skill}' && test -e '${cfg_home}/.codex/skills/${cfg_skill}/.roborepo-managed'"
-assert "config: skill copy matches shared source" \
-  bash -c "diff -rq -x .roborepo-managed '${repo_root}/globals/agents/skills/${cfg_skill}' '${cfg_home}/.claude/skills/${cfg_skill}' >/dev/null 2>&1"
+assert "config: setSkillInstalled links both harness views" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',true);process.exit(r.ok?0:1)})\" && test -d '${cfg_home}/.roborepo/skills/${cfg_skill}' && test -e '${cfg_home}/.roborepo/skills/${cfg_skill}/.roborepo-managed'"
+assert "config: Claude skill view points at the cache" \
+  assert_skill_cache_link "${cfg_home}" "claude" "${cfg_skill}" "${repo_root}/globals/agents/skills/${cfg_skill}" "config: Claude skill cache link created"
+assert "config: Codex skill view points at the cache" \
+  assert_skill_cache_link "${cfg_home}" "codex" "${cfg_skill}" "${repo_root}/globals/agents/skills/${cfg_skill}" "config: Codex skill cache link created"
 assert "config: setSkillInstalled removes owned links" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',false);process.exit(r.ok?0:1)})\" && ! test -e '${cfg_home}/.claude/skills/${cfg_skill}' && ! test -e '${cfg_home}/.codex/skills/${cfg_skill}'"
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',false);process.exit(r.ok?0:1)})\" && ! test -e '${cfg_home}/.claude/skills/${cfg_skill}' && ! test -e '${cfg_home}/.codex/skills/${cfg_skill}' && ! test -e '${cfg_home}/.roborepo/skills/${cfg_skill}'"
 assert "config: setSkillInstalled rejects unknown skill" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('zzz-not-real',true);process.exit(r.ok?1:0)})\""
 assert "config: setSkillInstalled skips native skill dir (real dir collision)" \
@@ -468,11 +513,11 @@ assert "config: POST unknown skill returns ok:false" \
   bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -d '{\"id\":\"zzz\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok===false?0:1)})\""
 assert "config: GET /config still served" \
   bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:${cfg_port}/config')\" = 200 ]"
-# The /config page's inline JS must parse — a syntax error there crashes the whole dashboard at
-# load (no panels render) and is invisible to HTTP-status checks. Extract the served <script> and
-# node --check it. Guards the template-literal trap (a literal newline inside a JS string, etc.).
+# The /config page JS must parse — a syntax error there crashes the whole dashboard at load (no
+# panels render) and is invisible to HTTP-status checks. Guards the template-literal trap (a literal
+# newline inside a JS string, etc.).
 assert "config: served /config dashboard JS parses" \
-  bash -c "dashjs=\"${cfg_home}/dash.js\"; curl -s 'http://127.0.0.1:${cfg_port}/config' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const m=s.match(/<script>([\\\\s\\\\S]*?)<\\\\/script>/);require('fs').writeFileSync(process.argv[1],m?m[1]:'syntax error');})\" \"\${dashjs}\" && node --check \"\${dashjs}\""
+  bash -c "dashjs=\"${cfg_home}/dash.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/config/app.js' > \"\${dashjs}\" && node --check \"\${dashjs}\""
 
 # Phase 2: permission profile switch writes the LIVE home config (not the repo template).
 # Seed a codex config.toml so the renderer has a marker block to merge into.
@@ -554,6 +599,8 @@ assert "telemetry report: legacy metadata-only records still report" \
   bash -c "printf '%s\n' '{\"ts\":\"2026-06-10T01:00:00Z\",\"harness\":\"claude\",\"event\":\"Stop\",\"repo\":{\"label\":\"legacy\"},\"tool\":{\"name\":\"Read\"}}' >> '${tele_home}/.roborepo/telemetry/spool/claude.jsonl' && env ${tele_env[*]} node '${cli}' telemetry report | grep -q 'legacy'"
 assert "serve: top-level alias rejects invalid port" \
   bash -c "! env ${tele_env[*]} node '${cli}' serve --port 0 >/dev/null 2>&1"
+assert "telemetry start: removed" \
+  bash -c "! env ${tele_env[*]} node '${cli}' telemetry start >/dev/null 2>&1"
 assert "telemetry serve: removed" \
   bash -c "! env ${tele_env[*]} node '${cli}' telemetry serve --port 14317 >/dev/null 2>&1"
 # Reset must be able to snapshot first: purge --backup copies the spool to a backup that lives
@@ -860,10 +907,10 @@ HOME="${rp_home}" ROBOREPO_STATE_DIR="${rp_state}" \
   bash "${rp_new}/scripts/install/repair.sh" >/dev/null 2>&1 || true
 assert "repair: bin link healed to new checkout" \
   bash -c "test \"\$(readlink '${rp_home}/.local/bin/roborepo')\" = '${rp_new}/bin/roborepo'"
-assert "repair: base Claude support skill managed copy created after repair" \
-  bash -c "test -d '${rp_home}/.claude/skills/roborepo-support' && test -e '${rp_home}/.claude/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/roborepo-support' '${rp_home}/.claude/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${rp_home}/.claude/skills/blog'"
-assert "repair: base Codex support skill managed copy created after repair" \
-  bash -c "test -d '${rp_home}/.codex/skills/roborepo-support' && test -e '${rp_home}/.codex/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/roborepo-support' '${rp_home}/.codex/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${rp_home}/.codex/skills/blog'"
+assert "repair: base Claude support skill cache link created after repair" \
+  bash -c "test -L '${rp_home}/.claude/skills/roborepo-support' && test \"\$(readlink '${rp_home}/.claude/skills/roborepo-support')\" = '${rp_home}/.roborepo/skills/roborepo-support' && test -d '${rp_home}/.roborepo/skills/roborepo-support' && test -e '${rp_home}/.roborepo/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/roborepo-support' '${rp_home}/.roborepo/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${rp_home}/.claude/skills/blog'"
+assert "repair: base Codex support skill cache link created after repair" \
+  bash -c "test -L '${rp_home}/.codex/skills/roborepo-support' && test \"\$(readlink '${rp_home}/.codex/skills/roborepo-support')\" = '${rp_home}/.roborepo/skills/roborepo-support' && test -d '${rp_home}/.roborepo/skills/roborepo-support' && test -e '${rp_home}/.roborepo/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/roborepo-support' '${rp_home}/.roborepo/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${rp_home}/.codex/skills/blog'"
 assert "repair: install state records the new checkout path" \
   grep -q "\"repo\": \"${rp_new}\"" "${rp_state}/install-state.json"
 # Idempotent: a second repair reclaims nothing (everything already points at the new checkout).
@@ -881,7 +928,7 @@ assert "install: dangling bin link is reclaimed, not a conflict" \
 # ---------------------------------------------------------------------------
 # legacy ~/.agents/skills teardown (native-alignment item 0.5 migration).
 # Pre-native-alignment installs fanned skills via a dir-level ~/.agents/skills managed symlink that
-# Codex also scanned. After migrating to per-skill managed copies, that leftover causes duplicate
+# Codex also scanned. After migrating to cache-backed skill views, that leftover causes duplicate
 # discovery. install must reclaim the managed legacy link (and only the managed one).
 # Copy-free: the checkout never moves here, so install runs against the real repo_root into an
 # isolated HOME (no repo copy needed, unlike the relocation tests above).
@@ -893,7 +940,7 @@ HOME="${la_home}" ROBOREPO_STATE_DIR="${la_home}/.roborepo" ROBOREPO_ASSUME_INTE
   ROBOREPO_ON_CONFLICT=overwrite bash "${repo_root}/scripts/install/main.sh" >/dev/null 2>&1 || true
 assert "legacy: managed ~/.agents/skills link removed after install" \
   bash -c "! test -L '${la_home}/.agents/skills'"
-assert "legacy: base Codex support skill managed copy created in place of the legacy dir link" \
+assert "legacy: base Codex support skill cache link created in place of the legacy dir link" \
   bash -c "test -d '${la_home}/.codex/skills/roborepo-support' && test -e '${la_home}/.codex/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${repo_root}/globals/agents/skills/roborepo-support' '${la_home}/.codex/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${la_home}/.codex/skills/blog'"
 
 # A user's real ~/.agents/skills (not a managed symlink) must be left untouched.

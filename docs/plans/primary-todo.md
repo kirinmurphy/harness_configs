@@ -16,10 +16,10 @@ Current answer: roborepo-owned skills should have one source of truth in
 `globals/agents/skills/<name>/`. The harness folders are runtime materialization:
 `~/.claude/skills/<name>` and `~/.codex/skills/<name>`.
 
-The current implementation uses managed copies, not symlinks. That protects users
-who create their own native skill folder in `~/.claude/skills` or `~/.codex/skills`:
-if the folder does not carry `.roborepo-managed`, roborepo should treat it as
-user-owned and skip it.
+The current implementation uses a machine-local cache plus symlinked harness views.
+That still protects users who create their own native skill folder in
+`~/.claude/skills` or `~/.codex/skills`: if the folder does not point at the
+roborepo cache, roborepo should treat it as user-owned and skip it.
 
 Decision to revisit: whether managed runtime copies are still the best model, or
 whether roborepo should instead create a clearly named managed folder and symlink
@@ -65,10 +65,9 @@ Claude -> CLAUDE.md -> AGENTS.md
 Codex  -> AGENTS.override.md if present, otherwise AGENTS.md
 ```
 
-Global installs follow the same principle. Claude gets an import from
-`~/.claude/CLAUDE.md` to `~/.roborepo/rules/code-style.md`; Codex gets inline
-rules in `~/.codex/AGENTS.md`, plus `~/.codex/AGENTS.override.md` only if that
-override already exists.
+Global installs render harness-specific rules inline. Claude gets inline rules in
+`~/.claude/CLAUDE.md`; Codex gets inline rules in `~/.codex/AGENTS.md`, plus
+`~/.codex/AGENTS.override.md` only if that override already exists.
 
 The managed block is the safety layer. The existing override file rule is the
 compatibility layer. Install, update, and uninstall must be boring,
@@ -146,10 +145,7 @@ Repo install target behavior:
 
 Global install target behavior:
 
-- Ensure `~/.roborepo/rules/code-style.md` exists and contains the generated
-  Roborepo default rules.
-- Create or update `~/.claude/CLAUDE.md` with a managed import block pointing to
-  `@~/.roborepo/rules/code-style.md`.
+- Create or update `~/.claude/CLAUDE.md` with inline Roborepo rules.
 - Create or update `~/.codex/AGENTS.md` with inline Roborepo rules.
 - If `~/.codex/AGENTS.override.md` already exists, inject the same inline
   Roborepo rules there.
@@ -184,9 +180,8 @@ Implementation checklist:
   begin/end markers.
 - Update repo install to touch `AGENTS.md`, `CLAUDE.md`, and only an existing
   `AGENTS.override.md`.
-- Update global install to touch `~/.roborepo/rules/code-style.md`,
-  `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, and only an existing
-  `~/.codex/AGENTS.override.md`.
+- Update global install to touch `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, and
+  only an existing `~/.codex/AGENTS.override.md`.
 - Make update replace existing Roborepo blocks and preserve surrounding user
   content.
 - Make uninstall remove only Roborepo managed blocks and leave files in place by
@@ -251,7 +246,7 @@ Implementation checklist:
 - If support-only remains, add package/bundle entries for every skill that the
   config panel can toggle.
 - If all helpers install by default, update repair tests and install logs to call
-  them "managed copies" and explain user-owned native skill folders are skipped.
+  them cache-backed views and explain user-owned native skill folders are skipped.
 - Add a `roborepo skill status` view that reports source, harness copy, managed
   marker, and native collision.
 - Add tests for native skill collision in both harnesses.
@@ -284,7 +279,7 @@ Problems to resolve:
   pending-restart.
 - Some packages have multi-step effects: rules render immediately, hooks/settings
   mutate immediately, plugin changes may take effect on next harness launch, and
-  telemetry capture state changes separately from the dashboard server.
+  telemetry capture state changes separately from the portal server.
 
 Target behavior:
 
@@ -375,7 +370,7 @@ Not implemented yet; captured here so the welcome-page work has a safety net.
 - `docs/plans/completed/package-gated-install.md`
 - `scripts/cli/rules-render.mjs`
 - `scripts/cli/config-dashboard.mjs`
-- `scripts/cli/telemetry-serve.mjs`
+- `scripts/cli/portal-server.mjs`
 - `scripts/install/install-lib.sh`
 - `scripts/install/uninstall.sh`
 - `manifests/inventory/skill-invocation.json`

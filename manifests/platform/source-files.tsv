@@ -30,8 +30,8 @@ manifests/platform/shell-snippets.tsv
 manifests/platform/verify-content.tsv
 globals/agents/skills
 local/skills
-globals/rules/shared/00-communication.md
 globals/rules/shared/20-verification.md
+globals/packages/project-context/rules.md
 globals/rules/claude/90-claude-specific.md
 globals/rules/codex/90-codex-specific.md
 scripts/build/render-rules.sh
@@ -63,7 +63,13 @@ scripts/cli/mcp-codex.mjs
 scripts/cli/mcp-config.mjs
 scripts/cli/mcp-parse.mjs
 scripts/cli/mcp-presets.mjs
+scripts/cli/config-dashboard.mjs
+scripts/cli/portal-server.mjs
+scripts/cli/telemetry-dashboard.mjs
 scripts/cli/telemetry.mjs
+scripts/portal/config/index.html
+scripts/portal/config/styles.css
+scripts/portal/config/app.js
 scripts/install/state-lib.sh
 scripts/install/uninstall.sh
 scripts/test/test-roborepo.sh

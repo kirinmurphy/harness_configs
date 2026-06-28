@@ -24,18 +24,19 @@ the gotchas that are easy to get wrong; it does not duplicate the repo's own doc
 
 ## The skill model (the #1 thing to get right)
 
-The canonical shared source is **`globals/agents/skills/<name>/`**. Both harnesses read skills
-from their native skill dir:
+The canonical shared source is **`globals/agents/skills/<name>/`**. Roborepo materializes shared
+skills into the machine-local cache at `~/.roborepo/skills/<name>`, then both harnesses read from
+their native skill dir via symlink:
 
-- `~/.claude/skills/<name>` — copied from `<repo>/globals/agents/skills/<name>`
-- `~/.codex/skills/<name>` — copied from `<repo>/globals/agents/skills/<name>`
+- `~/.claude/skills/<name>` -> `~/.roborepo/skills/<name>`
+- `~/.codex/skills/<name>` -> `~/.roborepo/skills/<name>`
 
-These managed skill copies are created by the installer's enumerate-step
+These managed cache entries are created by the installer's enumerate-step
 (`install-lib.sh:link_global_skills`), called from `install-claude.sh`, `install-codex.sh`, and
-`scripts/build/link-global-skills.sh` (run by `skill new`). Each managed copy carries a
+`scripts/build/link-global-skills.sh` (run by `skill new`). Each managed cache entry carries a
 `.roborepo-managed` marker. There is no intermediate `globals/claude/skills/` directory.
 
-`roborepo doctor --installed` verifies all live managed skill copies are current.
+`roborepo doctor --installed` verifies the live cache entry and harness symlinks are current.
 `roborepo doctor` (without `--installed`) checks that source dirs exist in the repo.
 
 ## Adding a shared skill
@@ -52,7 +53,7 @@ roborepo skill adopt <name>
 Manual add (for reference only — prefer the commands above):
 1. Create `globals/agents/skills/<name>/SKILL.md`
 2. Register in `manifests/inventory/skill-invocation.json`
-3. Run `scripts/build/link-global-skills.sh` to refresh copied shared skills
+3. Run `scripts/build/link-global-skills.sh` to refresh the shared skill cache and harness links
 4. Add a one-line entry under **Shared Skills** in `README.md`
 5. Verify: `scripts/doctor.sh --installed --quiet`
 

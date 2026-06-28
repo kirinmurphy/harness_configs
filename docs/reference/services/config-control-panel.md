@@ -21,7 +21,7 @@ the user's live harness config, some in repo manifests, some in roborepo state.
 | --- | --- | --- |
 | **Package** | A named feature made of typed components | `manifests/inventory/packages.json` (catalog); live config (enabled state) |
 | **Component** | One typed unit of a package's install | the package definition |
-| **Skill** | A shared skill, copied into harness skill dirs | `globals/agents/skills/<name>` (source); managed skill copy marker (enabled state) |
+| **Skill** | A shared skill, materialized into a machine-local cache and linked from harness skill dirs | `globals/agents/skills/<name>` (source); `~/.roborepo/skills/<name>` (enabled state) |
 | **Permission profile** | A named safety posture (readonly / interactive / workspace / networked) | `manifests/inventory/agent-permissions.json` (definitions); live config (active) |
 | **Snapshot** | The assembled current state the UI renders | computed by `readConfigSnapshot()` |
 
@@ -63,6 +63,8 @@ are enabled.
 `buildBehaviorView()` (`scripts/cli/config.mjs`) maps the snapshot onto the sections the
 panel renders:
 
+- **Global Rules** — the actual live `CLAUDE.md` / `AGENTS.md` files, plus drill-downs for
+  shared baseline, harness-specific baseline, and enabled package rules.
 - **Token Optimization** — the jcodemunch / jdocmunch packages, the Caveman plugin
   package, and Telemetry (a service package). All toggle.
 - **Commands** — skills that pair with a slash command, labelled by their `/command`.
@@ -89,8 +91,8 @@ Every mutation goes through one of the `{ ok, message }` primitives in
 and terminal flow share one implementation:
 
 - `mutatePackage(id, enabled)` → `enablePackage` / `disablePackage`
-- `setSkillInstalled(id, enabled)` → links/unlinks the skill in `~/.claude/skills` and
-  `~/.codex/skills`
+- `setSkillInstalled(id, enabled)` → materializes/removes the cache entry in `~/.roborepo/skills`
+  and links/unlinks the skill in `~/.claude/skills` and `~/.codex/skills`
 - `setPermissionProfile(profile, { scope, confirmedLooser })`
 
 Writes target the user's **live** config, not the repo template (`globals/`). The repo
@@ -98,7 +100,7 @@ template is changed only by the install/render pipeline.
 
 ### Web endpoints
 
-The loopback-only dashboard server (`scripts/cli/telemetry-serve.mjs`) serves `/config`
+The loopback-only portal server (`scripts/cli/portal-server.mjs`) serves `/config`
 and these write endpoints. Each returns the fresh snapshot so the client re-renders from
 one response.
 
@@ -160,5 +162,6 @@ identify the profile.
   switch (including `requires` resolution).
 - `scripts/cli/permissions-render.mjs` — the profile render core (`renderProfileTo`).
 - `scripts/cli/config-dashboard.mjs` — the `/config` web view.
-- `scripts/cli/telemetry-serve.mjs` — the HTTP routes.
+- `scripts/cli/portal-server.mjs` — the HTTP routes.
+- `scripts/portal/config/` — the config page HTML, CSS, and browser JavaScript.
 - `manifests/inventory/packages.json` — the package catalog.

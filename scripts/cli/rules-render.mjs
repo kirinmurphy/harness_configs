@@ -4,8 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { repoRoot } from "./paths.mjs";
 import { enabledPackagesPath, roborepoStateDir } from "./state-paths.mjs";
-
-const PACKAGES_PATH = path.join(repoRoot, "manifests", "inventory", "packages.json");
+import { loadPackageCatalog } from "./package-catalog.mjs";
 
 // Rule fragment source directories per harness, in render order.
 const RULE_DIRS = {
@@ -21,9 +20,9 @@ const HOME_RULES = {
 // Marker that distinguishes roborepo render output from user-authored content.
 const RENDER_HEADER = "# Generated Harness Rules";
 const CODE_STYLE_BLOCK = "roborepo-code-style";
+// Legacy Claude wrapper marker. Kept so updates/uninstalls can replace old import blocks safely.
 const AGENTS_IMPORT_BLOCK = "roborepo-agents-import";
-const ROBOREPO_RULES_FILE = path.join(roborepoStateDir, "rules", "code-style.md");
-const DEFAULT_ROBOREPO_STATE_DIR = path.join(os.homedir(), ".roborepo");
+const LEGACY_ROBOREPO_RULES_FILE = path.join(roborepoStateDir, "rules", "generated-rules.md");
 
 // --------------------------------------------------------------------------- registry
 
@@ -76,7 +75,7 @@ export function isRenderedRulesOutput(filePath) {
 }
 
 function renderContent(harness, enabledIds) {
-  const catalog = JSON.parse(fs.readFileSync(PACKAGES_PATH, "utf8")).packages;
+  const catalog = loadPackageCatalog();
   const parts = [];
 
   // Header matches render-rules.sh so the format is recognizable.
@@ -142,6 +141,20 @@ export function renderHarnessRulesPreview(harness) {
   return dirs[harness] ? readFragmentDir(dirs[harness]) : "";
 }
 
+export function renderEnabledPackageRulesPreview(enabledIds = readEnabledPackagesRegistry().packages) {
+  const catalog = loadPackageCatalog();
+  const parts = [];
+  for (const pkg of catalog) {
+    if (!enabledIds.includes(pkg.id)) continue;
+    for (const comp of pkg.components) {
+      if (comp.type !== "rules") continue;
+      const content = fs.readFileSync(path.join(repoRoot, comp.source), "utf8").trimEnd();
+      parts.push(`## ${pkg.label} (${pkg.id})\n\n${content}`);
+    }
+  }
+  return squashBlankLines(parts.join("\n\n")).trimEnd();
+}
+
 function beginMarker(name) {
   return `<!-- BEGIN managed:${name} -->`;
 }
@@ -184,12 +197,6 @@ function assertManageableBlock(text, name, filePath) {
 
 function blockText(name, content) {
   return `${beginMarker(name)}\n${content.trimEnd()}\n${endMarker(name)}\n`;
-}
-
-function claudeRulesImport() {
-  return roborepoStateDir === DEFAULT_ROBOREPO_STATE_DIR
-    ? "@~/.roborepo/rules/code-style.md"
-    : `@${ROBOREPO_RULES_FILE}`;
 }
 
 function replaceManagedBlockText(existing, name, content, filePath) {
@@ -241,18 +248,64 @@ function writeManagedBlock(filePath, name, content, dryRun) {
   writeText(filePath, next, dryRun, "render");
 }
 
+function writeRulesBlock(filePath, content, dryRun) {
+  const withoutLegacyImport = removeManagedBlockText(readText(filePath), AGENTS_IMPORT_BLOCK, filePath);
+  const next = replaceManagedBlockText(withoutLegacyImport, CODE_STYLE_BLOCK, content, filePath);
+  writeText(filePath, next, dryRun, "render");
+}
+
+function removeLegacyClaudeRulesFile(dryRun) {
+  if (!fs.existsSync(LEGACY_ROBOREPO_RULES_FILE)) return;
+  if (!readText(LEGACY_ROBOREPO_RULES_FILE).startsWith(RENDER_HEADER)) return;
+  if (dryRun) {
+    console.log(`[dry-run] would remove legacy rules file: ${LEGACY_ROBOREPO_RULES_FILE}`);
+    return;
+  }
+  fs.unlinkSync(LEGACY_ROBOREPO_RULES_FILE);
+  console.log(`remove legacy rules file: ${LEGACY_ROBOREPO_RULES_FILE}`);
+}
+
 function removeManagedBlock(filePath, name, dryRun) {
   if (!fs.existsSync(filePath)) return;
   const current = readText(filePath);
   const next = removeManagedBlockText(current, name, filePath);
   if (next === current) return;
+  if (next.trim().length === 0) {
+    if (dryRun) {
+      console.log(`[dry-run] would remove: ${filePath}`);
+      return;
+    }
+    fs.unlinkSync(filePath);
+    console.log(`remove: ${filePath}`);
+    return;
+  }
+  writeText(filePath, next, dryRun, "remove managed block");
+}
+
+function removeManagedBlocks(filePath, names, dryRun) {
+  if (!fs.existsSync(filePath)) return;
+  const current = readText(filePath);
+  const next = names.reduce(
+    (text, name) => removeManagedBlockText(text, name, filePath),
+    current,
+  );
+  if (next === current) return;
+  if (next.trim().length === 0) {
+    if (dryRun) {
+      console.log(`[dry-run] would remove: ${filePath}`);
+      return;
+    }
+    fs.unlinkSync(filePath);
+    console.log(`remove: ${filePath}`);
+    return;
+  }
   writeText(filePath, next, dryRun, "remove managed block");
 }
 
 // Write rendered home rules for one or all harnesses:
 //   - Unlinks any legacy symlink into the repo first.
-//   - Writes Claude's generated source file and a small import block in CLAUDE.md.
-//   - Writes Codex rules inline inside managed blocks, including AGENTS.override.md when present.
+//   - Writes Claude and Codex rules inline inside managed blocks.
+//   - Writes Codex rules into AGENTS.override.md too when present.
 // Skips harnesses whose home dir does not exist (harness not installed on this machine).
 export function renderHomeRules({ dryRun = false, harness: targetHarness } = {}) {
   const registry = readEnabledPackagesRegistry();
@@ -281,15 +334,10 @@ export function renderHomeRules({ dryRun = false, harness: targetHarness } = {})
     }
 
     const content = renderContent(harness, enabledIds);
-    if (harness === "claude") {
-      writeText(ROBOREPO_RULES_FILE, content, dryRun, "render");
-      writeManagedBlock(homeFile, AGENTS_IMPORT_BLOCK, claudeRulesImport(), dryRun);
-      continue;
-    }
-
-    writeManagedBlock(homeFile, CODE_STYLE_BLOCK, content, dryRun);
+    writeRulesBlock(homeFile, content, dryRun);
+    if (harness === "claude") removeLegacyClaudeRulesFile(dryRun);
     const overrideFile = path.join(homeDir, "AGENTS.override.md");
-    if (fs.existsSync(overrideFile)) {
+    if (harness === "codex" && fs.existsSync(overrideFile)) {
       writeManagedBlock(overrideFile, CODE_STYLE_BLOCK, content, dryRun);
     }
   }
@@ -299,13 +347,10 @@ export function removeHomeRules({ dryRun = false, harness: targetHarness } = {})
   const harnesses = targetHarness ? [targetHarness] : Object.keys(HOME_RULES);
   for (const harness of harnesses) {
     const homeFile = HOME_RULES[harness];
-    if (harness === "claude") {
-      removeManagedBlock(homeFile, AGENTS_IMPORT_BLOCK, dryRun);
-      continue;
-    }
-    removeManagedBlock(homeFile, CODE_STYLE_BLOCK, dryRun);
+    removeManagedBlocks(homeFile, [CODE_STYLE_BLOCK, AGENTS_IMPORT_BLOCK], dryRun);
+    if (harness === "claude") removeLegacyClaudeRulesFile(dryRun);
     const overrideFile = path.join(path.dirname(homeFile), "AGENTS.override.md");
-    removeManagedBlock(overrideFile, CODE_STYLE_BLOCK, dryRun);
+    if (harness === "codex") removeManagedBlock(overrideFile, CODE_STYLE_BLOCK, dryRun);
   }
 }
 
@@ -323,11 +368,7 @@ export function checkHomeRules({ quiet = false } = {}) {
     }
     const expected = renderContent(harness, enabledIds);
     const actual = fs.readFileSync(homeFile, "utf8");
-    const matches = harness === "claude"
-      ? actual.includes(blockText(AGENTS_IMPORT_BLOCK, claudeRulesImport()).trimEnd())
-        && fs.existsSync(ROBOREPO_RULES_FILE)
-        && fs.readFileSync(ROBOREPO_RULES_FILE, "utf8") === expected
-      : actual.includes(blockText(CODE_STYLE_BLOCK, expected).trimEnd());
+    const matches = actual.includes(blockText(CODE_STYLE_BLOCK, expected).trimEnd());
     if (matches) {
       if (!quiet) console.log(`ok: ${homeFile}`);
     } else {
@@ -355,7 +396,6 @@ export function renderedRulesMatches(harness, filePath) {
     const { packages: enabledIds } = readEnabledPackagesRegistry();
     const expected = renderContent(harness, enabledIds);
     const actual = fs.readFileSync(filePath, "utf8");
-    if (harness === "claude") return actual.includes(blockText(AGENTS_IMPORT_BLOCK, claudeRulesImport()).trimEnd());
     return actual.includes(blockText(CODE_STYLE_BLOCK, expected).trimEnd());
   } catch {
     return false;

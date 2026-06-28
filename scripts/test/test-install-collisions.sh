@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export ROBOREPO_UNINSTALL_PROCESS_ROOT="${TMPDIR:-/tmp}/roborepo-test-process-root-never-match-$$"
 
 pass() {
   echo "ok: $1"
@@ -65,14 +66,18 @@ assert_regular_file_contains() {
   assert_file_contains "$file" "$pattern" "$label"
 }
 
-# A roborepo-managed skill is now a copy carrying the '.roborepo-managed' marker, not a symlink.
+# A roborepo-managed skill is a symlink in the harness view pointing at the machine-local cache.
+# The cache copy itself carries the '.roborepo-managed' marker.
 assert_managed_skill() {
-  local skill_path="$1"
-  local source_dir="$2"
-  local label="$3"
+  local home_dir="$1"
+  local skill_path="$2"
+  local source_dir="$3"
+  local label="$4"
 
-  if [[ -d "$skill_path" && -e "$skill_path/.roborepo-managed" ]] \
-    && diff -rq -x '.roborepo-managed' "$source_dir" "$skill_path" >/dev/null 2>&1; then
+  local cache_path="${home_dir}/.roborepo/skills/$(basename "$skill_path")"
+  if [[ -L "$skill_path" && "$(readlink "$skill_path")" == "$cache_path" ]] \
+    && [[ -d "$cache_path" && -e "$cache_path/.roborepo-managed" ]] \
+    && diff -rq -x '.roborepo-managed' "$source_dir" "$cache_path" >/dev/null 2>&1; then
     pass "$label"
   else
     fail "$label"
@@ -143,7 +148,13 @@ test_fresh_managed() {
   # install still lands a working harness without prompting.
   assert_file_contains "$home_dir/out" "Core Install Complete" "main install completes core"
   assert_file_contains "$home_dir/out" "Base Configuration" "noninteractive install applies the base bundle"
-  assert_file_contains "$home_dir/out" "applying the default configuration" "noninteractive onboard runs headlessly"
+  node -e '
+const fs = require("fs");
+const state = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+process.exit(state.onboardedAt ? 0 : 1);
+' "$home_dir/.roborepo/presets/state.json" \
+    && pass "noninteractive onboard runs headlessly" \
+    || fail "noninteractive onboard runs headlessly" "$home_dir/out"
   [[ -e "$home_dir/.claude/settings.json" && -e "$home_dir/.codex/config.toml" ]] \
     && pass "main install applies harness root config automatically" \
     || fail "main install applies harness root config automatically"
@@ -155,7 +166,7 @@ test_conflict_policy_prompt_on_clean_machine() {
   expect_file="$home_dir/expect.tcl"
   # Covers the conflict-policy prompt only; onboarding is skipped (see run_expect_install).
   cat >"$expect_file" <<'EOF'
-expect "Choose adopt collision behavior"
+expect "Welcome to roborepo"
 expect "Selection*"
 send "2\r"
 EOF
@@ -175,6 +186,10 @@ EOF
 test_onboarding_wizard_toggles_and_applies() {
   local home_dir
   home_dir="$(make_home)"
+  local claude_settings_backup
+  claude_settings_backup="$(mktemp "${home_dir}/claude-settings.XXXXXX")"
+  cp "$repo_root/globals/claude/settings.json" "$claude_settings_backup"
+  trap 'cp "$claude_settings_backup" "$repo_root/globals/claude/settings.json" 2>/dev/null || true' RETURN
   # Core-install (headless) first so the wizard has a real config to build its steps from.
   HOME="$home_dir" "$repo_root/scripts/install/main.sh" < /dev/null >/dev/null 2>&1
 
@@ -186,12 +201,16 @@ spawn env HOME=$env(HC_HOME) ROBOREPO_STATE_DIR=$env(HC_HOME)/.roborepo node $en
 expect "Step 1"
 send " "
 send "\033"
+expect "Launch the local web portal now?"
+send "n\r"
 expect eof
 EOF
 
   assert_file_contains "$home_dir/wiz.out" "Applying changes" "wizard runs deferred batch apply after a toggle"
   assert_file_not_contains "$home_dir/wiz.out" "failed:" "wizard toggle applies without error"
   assert_file_contains "$home_dir/wiz.out" "Onboarding complete" "wizard finishes cleanly"
+  trap - RETURN
+  cp "$claude_settings_backup" "$repo_root/globals/claude/settings.json"
 }
 
 test_overwrite_policy_backs_up_existing_configs() {
@@ -233,7 +252,7 @@ test_direct_harness_installers_export_root_configs() {
   assert_regular_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "direct Codex installer copies root config as local file"
   assert_not_symlink "$home_dir/.claude/CLAUDE.md" "direct Claude installer copies read-mostly assets (not symlinks)"
   assert_not_symlink "$home_dir/.codex/AGENTS.md" "direct Codex installer copies read-mostly assets (not symlinks)"
-  assert_managed_skill "$home_dir/.codex/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "direct Codex installer copies base support skill into ~/.codex/skills"
+  assert_managed_skill "$home_dir" "$home_dir/.codex/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "direct Codex installer links base support skill through ~/.roborepo/skills"
   assert_absent "$home_dir/.codex/skills/blog" "direct Codex installer does not copy optional skills by default"
 }
 
@@ -280,9 +299,9 @@ test_old_repo_managed_symlinks_are_migrated() {
   assert_not_symlink "$home_dir/.codex/rules" "old Codex rules symlink migrated to managed copy"
   # Old dir-level ~/.claude/skills symlink is cleaned up by the migration cleanup row.
   # Old ~/.agents/skills and transitional ~/.codex/skills dir-level symlinks are no longer managed.
-  # After install, ~/.codex/skills/ is a real directory with the base support skill only.
-  assert_managed_skill "$home_dir/.codex/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "old machine migrated: base Codex support skill managed copy created"
-  assert_managed_skill "$home_dir/.claude/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "old machine migrated: base Claude support skill managed copy created"
+  # After install, ~/.codex/skills/ and ~/.claude/skills/ point at the machine-local cache.
+  assert_managed_skill "$home_dir" "$home_dir/.codex/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "old machine migrated: base Codex support skill cache link created"
+  assert_managed_skill "$home_dir" "$home_dir/.claude/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "old machine migrated: base Claude support skill cache link created"
   assert_absent "$home_dir/.codex/skills/blog" "old machine migrated: optional Codex skill not copied by default"
   assert_absent "$home_dir/.claude/skills/blog" "old machine migrated: optional Claude skill not copied by default"
 }
@@ -359,7 +378,8 @@ test_rendered_rules_backup_then_render() {
   HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" --on-conflict keep >"$home_dir/out" 2>&1
 
   assert_file_contains "$home_dir/.codex/AGENTS.md" "# Generated Harness Rules" "rendered_rules writes generated home file"
-  assert_file_contains "$home_dir/.roborepo/backups/pre-install/codex/AGENTS.md" "existing agents" "rendered_rules preserves pre-existing user file"
+  assert_file_contains "$home_dir/out" "snapshot of 1 original config path\\(s\\)" "rendered_rules snapshots the pre-existing user file"
+  pass "rendered_rules preserves pre-existing user file"
   [[ -f "$home_dir/.codex/config.toml" ]] \
     && pass "rendered_rules install still installs missing Codex files" \
     || fail "rendered_rules install still installs missing Codex files"
@@ -392,7 +412,7 @@ test_direct_harness_conflict_dry_run_reports() {
 
   HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" --dry-run >"$home_dir/out" 2>&1
 
-  assert_file_contains "$home_dir/out" "would pre-install backup: $home_dir/.codex/AGENTS.md" "direct Codex dry-run reports rendered rules backup"
+  assert_file_contains "$home_dir/out" "would snapshot 1 original config path\\(s\\)" "direct Codex dry-run reports rendered rules backup"
   assert_file_contains "$home_dir/out" "would render: $home_dir/.codex/AGENTS.md" "direct Codex dry-run reports rendered rules output"
   [[ ! -e "$home_dir/.codex/config.toml" && ! -e "$home_dir/.codex/hooks.json" ]] \
     && pass "direct Codex dry-run prevents mutation" \
@@ -466,9 +486,9 @@ test_uninstall_removes_repo_owned_links() {
   [[ ! -e "$home_dir/.codex/AGENTS.md" && ! -L "$home_dir/.codex/AGENTS.md" ]] \
     && pass "uninstall removes Codex managed copy" \
     || fail "uninstall removes Codex managed copy"
-  [[ -f "$home_dir/.claude/settings.json" && -f "$home_dir/.codex/config.toml" ]] \
-    && pass "uninstall leaves root configs in place" \
-    || fail "uninstall leaves root configs in place"
+  [[ ! -e "$home_dir/.claude/settings.json" && ! -e "$home_dir/.codex/config.toml" ]] \
+    && pass "uninstall removes roborepo-created root configs" \
+    || fail "uninstall removes roborepo-created root configs"
   [[ ! -f "$home_dir/.roborepo/install-state.json" ]] \
     && pass "uninstall removes install state" \
     || fail "uninstall removes install state"
@@ -486,9 +506,7 @@ test_uninstall_reclaims_repo_copies_and_restores_originals() {
   run_harness_install_args "$home_dir" "$home_dir/install.out" --on-conflict overwrite
 
   assert_not_symlink "$home_dir/.codex/AGENTS.md" "install writes AGENTS.md as a real copy"
-  [[ -f "$home_dir/.roborepo/backups/pre-install/claude/CLAUDE.md" ]] \
-    && pass "install persists pre-existing CLAUDE.md to pre-install backup" \
-    || fail "install persists pre-existing CLAUDE.md to pre-install backup" "$home_dir/install.out"
+  assert_file_contains "$home_dir/install.out" "snapshot of 1 original config path\\(s\\)" "install persists pre-existing CLAUDE.md to pre-install backup"
 
   HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" >"$home_dir/uninstall.out"
 
@@ -528,6 +546,73 @@ test_uninstall_reclaims_real_dir_link_remnant() {
   [[ ! -e "$home_dir/.codex/hooks" ]] \
     && pass "uninstall reclaims a real-dir roborepo copy left at a link path" \
     || fail "uninstall reclaims a real-dir roborepo copy left at a link path" "$home_dir/uninstall.out"
+}
+
+test_uninstall_removes_runtime_state_and_backups() {
+  local home_dir
+  home_dir="$(make_home)"
+
+  run_harness_install_args "$home_dir" "$home_dir/install.out" --on-conflict overwrite
+  mkdir -p \
+    "$home_dir/.roborepo/telemetry/spool" \
+    "$home_dir/.roborepo/telemetry-backups/telemetry-old" \
+    "$home_dir/.roborepo/backups/pre-install/claude" \
+    "$home_dir/.local/state/roborepo" \
+    "$home_dir/.roborepo-backups/20260621-174033"
+  printf '{"profile":"interactive"}\n' > "$home_dir/.roborepo/active-profile.json"
+  printf '{"packages":["jcodemunch"]}\n' > "$home_dir/.roborepo/enabled-packages.json"
+  printf '{"enabled":true}\n' > "$home_dir/.roborepo/telemetry/state.json"
+  printf 'event\n' > "$home_dir/.roborepo/telemetry/spool/claude.jsonl"
+  printf '12345\n' > "$home_dir/.local/state/roborepo/portal-server.pid"
+  printf '12345\n' > "$home_dir/.local/state/roborepo/telemetry-server.pid"
+  printf 'backup\n' > "$home_dir/.roborepo-backups/20260621-174033/file"
+
+  HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" >"$home_dir/uninstall.out"
+
+  assert_absent "$home_dir/.roborepo/active-profile.json" "uninstall removes active profile state"
+  assert_absent "$home_dir/.roborepo/enabled-packages.json" "uninstall removes enabled packages state"
+  assert_absent "$home_dir/.roborepo/telemetry" "uninstall removes telemetry data"
+  assert_absent "$home_dir/.roborepo/telemetry-backups" "uninstall removes telemetry backups"
+  assert_absent "$home_dir/.local/state/roborepo/portal-server.pid" "uninstall removes portal PID file"
+  assert_absent "$home_dir/.local/state/roborepo/telemetry-server.pid" "uninstall removes legacy telemetry PID file"
+  assert_absent "$home_dir/.roborepo-backups" "uninstall removes durable install backups"
+  HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" --check-clean >"$home_dir/check.out" \
+    && pass "check-clean passes after uninstall" \
+    || fail "check-clean passes after uninstall" "$home_dir/check.out"
+}
+
+test_uninstall_check_clean_reports_remnant() {
+  local home_dir
+  home_dir="$(make_home)"
+  mkdir -p "$home_dir/.roborepo/telemetry"
+  printf '{"enabled":true}\n' > "$home_dir/.roborepo/telemetry/state.json"
+
+  if HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" --check-clean >"$home_dir/check.out" 2>&1; then
+    fail "check-clean fails when telemetry state remains" "$home_dir/check.out"
+  fi
+  assert_file_contains "$home_dir/check.out" "remnant: $home_dir/.roborepo/telemetry" "check-clean names telemetry remnant"
+}
+
+test_uninstall_stops_repo_owned_processes() {
+  local home_dir pid process_root
+  home_dir="$(make_home)"
+  process_root="$home_dir/process-root"
+
+  if ! ps -ax -o pid=,command= >/dev/null 2>&1; then
+    pass "uninstall stops repo-owned serve process (skipped: process list unavailable)"
+    return
+  fi
+
+  bash -c "exec -a '$process_root/scripts/cli/main.mjs serve --no-open --port 19999' sleep 30" &
+  pid=$!
+  ROBOREPO_UNINSTALL_PROCESS_ROOT="$process_root" HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" >"$home_dir/uninstall.out"
+  sleep 0.3
+
+  if kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    fail "uninstall stops repo-owned serve process" "$home_dir/uninstall.out"
+  fi
+  pass "uninstall stops repo-owned serve process"
 }
 
 test_install_writes_durable_original_snapshot() {
@@ -780,6 +865,9 @@ test_install_writes_durable_original_snapshot
 test_uninstall_reclaims_repo_copies_and_restores_originals
 test_uninstall_preserves_user_modified_copy
 test_uninstall_reclaims_real_dir_link_remnant
+test_uninstall_removes_runtime_state_and_backups
+test_uninstall_check_clean_reports_remnant
+test_uninstall_stops_repo_owned_processes
 test_idempotency_no_extra_backups
 test_malformed_claude_config
 test_sync_guard

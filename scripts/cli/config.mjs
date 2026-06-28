@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { repoRoot } from "./paths.mjs";
-import { installStatePath, presetsStatePath, telemetryDir, activeProfilePath } from "./state-paths.mjs";
+import { presetsStatePath, telemetryDir, activeProfilePath, roborepoSkillsDir } from "./state-paths.mjs";
 import { readProjectProfile } from "./config-mutate.mjs";
 import { renderMarkdown } from "./markdown-render.mjs";
 import {
@@ -12,8 +12,11 @@ import {
   renderHarnessRulesPreview,
   renderEnabledPackageRulesPreview,
 } from "./rules-render.mjs";
+import {
+  loadPackageCatalog,
+  isPackageAvailable,
+} from "./package-catalog.mjs";
 
-const PACKAGES_PATH = path.join(repoRoot, "manifests", "inventory", "packages.json");
 const PRESETS_PATH = path.join(repoRoot, "manifests", "platform", "presets.json");
 const SKILL_INVOCATION_PATH = path.join(repoRoot, "manifests", "inventory", "skill-invocation.json");
 const SLASH_COMMANDS_PATH = path.join(repoRoot, "manifests", "inventory", "slash-commands.json");
@@ -36,10 +39,52 @@ function renderEntry(text) {
   return { text, html: renderMarkdown(text) };
 }
 
+function stripGeneratedRulesPreamble(content) {
+  const lines = content.split("\n");
+  const kept = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i].trim() !== "# Generated Harness Rules") {
+      kept.push(lines[i]);
+      continue;
+    }
+    while (
+      i + 1 < lines.length &&
+      (
+        lines[i + 1].trim() === "" ||
+        lines[i + 1].startsWith("Generated from ") ||
+        lines[i + 1].startsWith("Enabled packages ") ||
+        lines[i + 1].startsWith("Do not edit ")
+      )
+    ) {
+      i += 1;
+    }
+  }
+  return collapseDuplicateCavemanCommunication(kept.join("\n")).replace(/\n{3,}/g, "\n\n");
+}
+
+function collapseDuplicateCavemanCommunication(content) {
+  let seen = false;
+  const normalized = [
+    "## Communication",
+    "",
+    "Use caveman full by default. Terse, no filler, fragments OK.",
+    "",
+    "Switch to normal mode only when the user explicitly says `normal mode` or `stop caveman`.",
+  ].join("\n");
+  return content.replace(
+    /## Communication\s*\n+Use caveman full by default\. Terse, no filler, fragments OK\.\s*\n+Switch to normal mode only when the user explicitly says `normal mode` or `stop caveman`\./g,
+    () => {
+      if (seen) return "";
+      seen = true;
+      return normalized;
+    },
+  );
+}
+
 function readLiveRulesFile(harness) {
   const filePath = LIVE_RULE_FILES[harness];
   if (!filePath) return { installed: false, path: null, content: "", html: "" };
-  const content = readText(filePath, "");
+  const content = stripGeneratedRulesPreamble(readText(filePath, ""));
   return {
     installed: fs.existsSync(filePath),
     path: filePath,
@@ -87,11 +132,10 @@ function ownComponentsEnabled(pkg, settings, serviceState) {
   if (serviceComp) {
     return serviceState?.[serviceComp.id] === true;
   }
-  // A skill package is enabled iff every bundled skill is linked into the Claude skills dir.
+  // A skill package is enabled iff every bundled skill exists in the machine-local skill cache.
   const skillComps = pkg.components.filter((c) => c.type === "skill");
   if (skillComps.length) {
-    const skillsDir = path.join(os.homedir(), ".claude", "skills");
-    return skillComps.every((c) => fs.existsSync(path.join(skillsDir, c.id)));
+    return skillComps.every((c) => fs.existsSync(path.join(roborepoSkillsDir, c.id)));
   }
   const permComp = pkg.components.find((c) => c.type === "permissions");
   if (permComp) {
@@ -124,10 +168,10 @@ function ownComponentsEnabled(pkg, settings, serviceState) {
 }
 
 export function readConfigSnapshot() {
-  const packagesCatalog = readJson(PACKAGES_PATH, { packages: [] });
+  const allPackages = loadPackageCatalog({ includeUnavailable: true });
+  const availablePackages = allPackages.filter((pkg) => isPackageAvailable(pkg));
   const presetsCatalog = readJson(PRESETS_PATH, { bundles: [], default: [] });
   const presetState = readJson(presetsStatePath, {});
-  const installState = readJson(installStatePath, null);
   const telemetryState = readJson(path.join(telemetryDir, "state.json"), null);
   const settings = readJson(CLAUDE_SETTINGS, {});
   const skillInvocation = readJson(SKILL_INVOCATION_PATH, { skills: [] });
@@ -140,14 +184,21 @@ export function readConfigSnapshot() {
 
   const selectedBundles = new Set(presetState.selected ?? presetsCatalog.default);
 
-  const packagesById = new Map((packagesCatalog.packages || []).map((p) => [p.id, p]));
-  const packages = packagesCatalog.packages.map((pkg) => ({
+  const packagesById = new Map(availablePackages.map((p) => [p.id, p]));
+  const unavailableSkillIds = new Set(
+    allPackages
+      .filter((pkg) => !isPackageAvailable(pkg))
+      .flatMap((pkg) => (pkg.components || []).filter((c) => c.type === "skill").map((c) => c.id)),
+  );
+  const packages = availablePackages.map((pkg) => ({
     id: pkg.id,
     label: pkg.label,
     description: pkg.description || null,
+    status: pkg.status || "available",
     cliCommands: pkg.cliCommands || [],
     enabled: isPackageEnabled(pkg, settings, { telemetry: !!telemetryState?.enabled }, packagesById),
     components: pkg.components.map((c) => c.type),
+    skillIds: pkg.components.filter((c) => c.type === "skill").map((c) => c.id),
     requires: pkg.requires || [],
     urls: pkg.urls || [],
   }));
@@ -171,18 +222,20 @@ export function readConfigSnapshot() {
   for (const cmd of (slashCommands.commands || [])) {
     if (cmd.skill) commandBySkill[cmd.skill] = { name: cmd.name, description: cmd.description, harnesses: cmd.harnesses || [] };
   }
-  const tools = (skillInvocation.skills || []).map((s) => ({
-    id: s.skill,
-    label: s.skill,
-    invocation: s.invocation,
-    hasCommand: !!s.explicit_command,
-    command: commandBySkill[s.skill]?.name || null,
-    description: commandBySkill[s.skill]?.description || null,
-    // Which harness(es) actually have a command file on disk — drives the inspect popup's harness so
-    // a codex-only command isn't requested as claude (404). Defaults to claude when unspecified.
-    commandHarnesses: commandBySkill[s.skill]?.harnesses || [],
-    installed: fs.existsSync(path.join(skillsDir, s.skill)),
-  }));
+  const tools = (skillInvocation.skills || [])
+    .filter((s) => !unavailableSkillIds.has(s.skill))
+    .map((s) => ({
+      id: s.skill,
+      label: s.skill,
+      invocation: s.invocation,
+      hasCommand: !!s.explicit_command,
+      command: commandBySkill[s.skill]?.name || null,
+      description: commandBySkill[s.skill]?.description || null,
+      // Which harness(es) actually have a command file on disk — drives the inspect popup's harness so
+      // a codex-only command isn't requested as claude (404). Defaults to claude when unspecified.
+      commandHarnesses: commandBySkill[s.skill]?.harnesses || [],
+      installed: fs.existsSync(path.join(skillsDir, s.skill)),
+    }));
 
   const snapshot = {
     packages,
@@ -218,13 +271,9 @@ export function readConfigSnapshot() {
         hooks,
       },
     },
-    install: installState
-      ? { mode: installState.mode || null, updatedAt: installState.updatedAt || null }
-      : null,
-    onboardedAt: presetState.onboardedAt || null,
     telemetry: telemetryState
-      ? { enabled: !!telemetryState.enabled, updatedAt: telemetryState.updatedAt || null }
-      : { enabled: false, updatedAt: null },
+      ? { enabled: !!telemetryState.enabled }
+      : { enabled: false },
     settings: {
       hooks,
       permissions: {
@@ -245,10 +294,14 @@ export function readConfigSnapshot() {
 // inspect, urls, badges); each consumer reads what it needs and ignores the rest.
 export function buildBehaviorView(snap) {
   const pkg = (id) => snap.packages.find((p) => p.id === id);
-  const bundle = (id) => snap.bundles.find((b) => b.id === id);
   const tel = snap.telemetry;
   const perms = snap.agentPermissions;
   const pkgUrls = (id) => pkg(id)?.urls || [];
+  const pkgBadges = (id) => pkg(id)?.status === "pending" ? ["pending"] : [];
+  const packageBySkill = new Map(
+    snap.packages
+      .flatMap((p) => (p.skillIds || []).map((skillId) => [skillId, p]))
+  );
 
   return [
     {
@@ -261,7 +314,8 @@ export function buildBehaviorView(snap) {
           active: pkg("jcodemunch")?.enabled ?? false,
           toggle: "package",
           urls: pkgUrls("jcodemunch"),
-          hint: pkg("jcodemunch")?.enabled ? null : "roborepo enable jcodemunch",
+          badges: pkgBadges("jcodemunch"),
+          hint: null,
         },
         {
           id: "jdocmunch",
@@ -270,7 +324,8 @@ export function buildBehaviorView(snap) {
           active: pkg("jdocmunch")?.enabled ?? false,
           toggle: "package",
           urls: pkgUrls("jdocmunch"),
-          hint: pkg("jdocmunch")?.enabled ? null : "roborepo enable jdocmunch  (coming soon)",
+          badges: pkgBadges("jdocmunch"),
+          hint: null,
         },
         {
           id: "caveman",
@@ -279,6 +334,7 @@ export function buildBehaviorView(snap) {
           active: pkg("caveman")?.enabled ?? !!snap.plugins?.caveman,
           toggle: "package",
           urls: pkgUrls("caveman"),
+          badges: pkgBadges("caveman"),
           hint: (pkg("caveman")?.enabled ?? snap.plugins?.caveman) ? null : "enables on the harness's next launch",
         },
         {
@@ -288,6 +344,7 @@ export function buildBehaviorView(snap) {
           active: pkg("telemetry")?.enabled ?? !!tel?.enabled,
           toggle: "package",
           urls: pkgUrls("telemetry"),
+          badges: pkgBadges("telemetry"),
           hint: (pkg("telemetry")?.enabled ?? tel?.enabled) ? "roborepo serve" : null,
         },
       ],
@@ -297,23 +354,26 @@ export function buildBehaviorView(snap) {
       description: "Named slash-command workflows you start intentionally.",
       items: snap.tools
         .filter((t) => t.command && t.id !== "roborepo-support")
-        .map((t) => ({
-          id: t.id,
-          label: `/${t.command}`,
-          description: t.description,
-          active: t.installed,
-          toggle: "skill",
-          badges: [`/${t.command}`, "skill"],
-          // Inspect the command wrapper plus the backing SKILL.md. Pick a harness the command
-          // actually exists for (codex-only → codex).
-          inspect: {
-            kind: "command-skill",
-            id: t.command,
-            skill: t.id,
-            harness: (t.commandHarnesses || []).includes("claude") ? "claude" : (t.commandHarnesses || [])[0] || "claude",
+        .map((t) => {
+          const ownerPackage = packageBySkill.get(t.id);
+          return {
+            id: ownerPackage?.id || t.id,
             label: `/${t.command}`,
-          },
-        })),
+            description: t.description,
+            active: ownerPackage ? ownerPackage.enabled : t.installed,
+            toggle: ownerPackage ? "package" : "skill",
+            badges: ownerPackage?.status === "pending" ? ["pending"] : [],
+            // Inspect the command wrapper plus the backing SKILL.md. Pick a harness the command
+            // actually exists for (codex-only → codex).
+            inspect: {
+              kind: "command-skill",
+              id: t.command,
+              skill: t.id,
+              harness: (t.commandHarnesses || []).includes("claude") ? "claude" : (t.commandHarnesses || [])[0] || "claude",
+              label: `/${t.command}`,
+            },
+          };
+        }),
     },
     {
       category: "Code Conventions",
@@ -326,7 +386,6 @@ export function buildBehaviorView(snap) {
           description: t.description,
           active: t.installed,
           toggle: "skill",
-          badges: ["skill"],
           inspect: { kind: "skill", id: t.id, label: t.label },
         })),
       footnote: "roborepo-support — help skill for this repo, always loaded.",
@@ -473,6 +532,30 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
     return { ok: true, title: `Rendered rules — ${harnessSafe}`, path: file, content, html: renderMarkdown(content) };
   }
 
+  if (kind === "harness-hooks") {
+    const abs = harnessSafe === "codex"
+      ? path.join(repoRoot, "globals", "codex", "hooks.json")
+      : path.join(repoRoot, "globals", "claude", "settings.json");
+    const source = readSourceFile(abs, `${harnessSafe === "codex" ? "Codex" : "Claude"} hooks`);
+    if (!source.ok) return source;
+    if (harnessSafe === "codex") {
+      return {
+        ...source,
+        html: renderMarkdown("```json\n" + source.content.trimEnd() + "\n```"),
+      };
+    }
+
+    const settings = readJson(abs, {});
+    const content = JSON.stringify(settings.hooks || {}, null, 2) + "\n";
+    return {
+      ok: true,
+      title: "Claude hooks",
+      path: `${source.path}#hooks`,
+      content,
+      html: renderMarkdown("```json\n" + content + "```"),
+    };
+  }
+
   if (kind === "live-rules") {
     const live = readLiveRulesFile(harnessSafe);
     if (!live.installed && !live.content) return fail(`live rules file not found: ${harnessSafe}`);
@@ -482,7 +565,7 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
 
   if (kind === "rules" || kind === "hooks") {
     // Resolve the package's component source from the catalog — never trust a caller-supplied path.
-    const pkgs = readJson(PACKAGES_PATH, { packages: [] }).packages || [];
+    const pkgs = loadPackageCatalog();
     const pkg = pkgs.find((p) => p.id === id);
     if (!pkg) return fail(`unknown package: ${id}`);
     const comp = pkg.components.find((c) => c.type === kind);
@@ -548,13 +631,5 @@ export function configCommand(args) {
     if (section.footnote) console.log(`\n  * ${section.footnote}`);
   }
 
-  console.log("\ninstall");
-  if (snap.install) {
-    console.log(`  mode:      ${snap.install.mode}`);
-    if (snap.install.updatedAt) console.log(`  updated:   ${snap.install.updatedAt}`);
-  } else {
-    console.log("  mode:      not installed  (shim / manual config)");
-  }
-  if (snap.onboardedAt) console.log(`  onboarded: ${snap.onboardedAt}`);
   console.log("");
 }

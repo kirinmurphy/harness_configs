@@ -1,14 +1,21 @@
 import fs from "node:fs";
 import http from "node:http";
+import path from "node:path";
 import { dashboardHtml } from "./telemetry-dashboard.mjs";
 import { configHtml } from "./config-dashboard.mjs";
+import { repoRoot } from "./paths.mjs";
 
-// Tiny local-only dashboard server. Binds to loopback only — telemetry never leaves the machine.
-// Routes: the static HTML shells and JSON analysis/config endpoints the pages poll. Stdlib `http`
-// keeps the install dependency-free, matching the rest of the CLI.
+// Tiny local-only portal server. Binds to loopback only so telemetry/config data never leaves the
+// machine. Stdlib `http` keeps the install dependency-free, matching the rest of the CLI.
 const LOOPBACK = "127.0.0.1";
+const PORTAL_DIR = path.join(repoRoot, "scripts", "portal");
+const STATIC_TYPES = {
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+};
 
-export function startTelemetryServer(handlers) {
+export function startPortalServer(handlers) {
   const { port } = handlers;
   const server = http.createServer((req, res) => {
     try {
@@ -75,6 +82,7 @@ function route(req, res, handlers) {
 
   if (urlPath === "/") return send(res, 200, "text/html; charset=utf-8", dashboardHtml());
   if (urlPath === "/config") return send(res, 200, "text/html; charset=utf-8", configHtml());
+  if (urlPath.startsWith("/portal/")) return servePortalAsset(urlPath, res);
   if (urlPath === "/api/config") {
     return send(res, 200, "application/json", JSON.stringify(loadConfig()));
   }
@@ -117,6 +125,20 @@ function route(req, res, handlers) {
     return send(res, 200, "application/json", JSON.stringify(loadSession({ id, harness, finding, repo })));
   }
   send(res, 404, "text/plain", "not found");
+}
+
+function servePortalAsset(urlPath, res) {
+  const relative = decodeURIComponent(urlPath.slice("/portal/".length));
+  const assetPath = path.resolve(PORTAL_DIR, relative);
+  if (!assetPath.startsWith(PORTAL_DIR + path.sep)) return send(res, 404, "text/plain", "not found");
+  let content;
+  try {
+    content = fs.readFileSync(assetPath);
+  } catch {
+    return send(res, 404, "text/plain", "not found");
+  }
+  const type = STATIC_TYPES[path.extname(assetPath)] || "application/octet-stream";
+  send(res, 200, type, content);
 }
 
 function readJsonBody(req, cb) {

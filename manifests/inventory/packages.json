@@ -70,6 +70,22 @@
     }
     ,
     {
+      "id": "project-context",
+      "label": "/inventory Project Context",
+      "status": "pending",
+      "description": "Backs the /inventory command and gates Project Context orientation rules. Enables the project-context skill plus the rules that consult Project Context docs when present.",
+      "cliCommands": ["project-context inventory"],
+      "components": [
+        { "type": "skill", "id": "project-context" },
+        {
+          "type": "rules",
+          "source": "globals/packages/project-context/rules.md",
+          "harness": "both"
+        }
+      ]
+    }
+    ,
+    {
       "id": "code-intel",
       "label": "Code intelligence",
       "description": "Enables both the jcodemunch code index and the jdocmunch doc index together — a package that requires (composes) other packages.",
@@ -89,11 +105,16 @@
     {
       "id": "caveman",
       "label": "Caveman plugin",
-      "description": "Claude plugin that keeps agent output terse to cut token use (statusline badge, /caveman commands, mode-tracker hook). The caveman behavior rule is separate and lives in the global rules.",
+      "description": "Claude plugin that keeps agent output terse to cut token use (statusline badge, /caveman commands, mode-tracker hook). Also gates the global caveman communication rule.",
       "urls": [
         { "label": "GitHub", "url": "https://github.com/JuliusBrussee/caveman" }
       ],
       "components": [
+        {
+          "type": "rules",
+          "source": "globals/packages/caveman/rules.md",
+          "harness": "both"
+        },
         {
           "type": "plugin",
           "id": "caveman@caveman",

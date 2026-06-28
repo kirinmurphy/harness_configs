@@ -1,7 +1,7 @@
 # Web Portal Security
 
 > Status: planned. This documents the security model for the local `/config` portal
-> and the telemetry dashboard server, including port selection, local-only access,
+> and the web portal server, including port selection, local-only access,
 > markdown rendering, and mutation endpoints.
 
 ## Purpose
@@ -28,7 +28,7 @@ Important code paths:
 
 - `scripts/cli/main.mjs` dispatches `web` to `serve --detach`.
 - `scripts/cli/telemetry.mjs` owns detached server lifecycle, PID tracking, and port use.
-- `scripts/cli/telemetry-serve.mjs` binds the HTTP server to `127.0.0.1`.
+- `scripts/cli/portal-server.mjs` binds the HTTP server to `127.0.0.1`.
 - `scripts/cli/config.mjs` builds the config snapshot and resolves read-only source views.
 - `scripts/cli/config-dashboard.mjs` renders the `/config` page and opens source popups.
 
@@ -308,4 +308,3 @@ Operationally, the portal should continue to:
   ephemeral OS-assigned port.
 - Whether the chosen fallback port should be persisted to a portal state file for later reuse.
 - Whether future auth should be cookie-based, header-based, or origin-gated first.
-

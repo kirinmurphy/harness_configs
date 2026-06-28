@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Smoke test: telemetry PID stale detection and clean stop.
-# Sandboxed via ROBOREPO_STATE_DIR and ROBOREPO_TELEMETRY_PID_PATH so no real state is touched.
+# Smoke test: portal PID stale detection and clean stop.
+# Sandboxed via ROBOREPO_STATE_DIR and ROBOREPO_PORTAL_PID_PATH so no real state is touched.
 # Uses port 14317 to avoid conflicting with a running dashboard on 4317.
 #
 # Usage: scripts/test/test-telemetry-pid.sh [--quiet|-q]
@@ -21,9 +21,9 @@ done
 work="$(mktemp -d "${TMPDIR:-/tmp}/roborepo-pid-test.XXXXXX")"
 trap 'rm -rf "${work}"' EXIT
 
-pidfile="${work}/telemetry-server.pid"
+pidfile="${work}/portal-server.pid"
 export ROBOREPO_STATE_DIR="${work}/state"
-export ROBOREPO_TELEMETRY_PID_PATH="${pidfile}"
+export ROBOREPO_PORTAL_PID_PATH="${pidfile}"
 
 pass=0; fail=0
 

@@ -20,7 +20,7 @@ subcommand implementations live under `scripts/cli/`, one module per category:
 | `scripts/cli/telemetry.mjs` | `telemetry install\|start\|stop\|enable\|disable\|status\|report\|export\|serve\|backup\|purge\|capture` |
 | `scripts/cli/telemetry-transcript.mjs` | parse harness transcript -> token/tool/MCP session stats + tool-result sizes |
 | `scripts/cli/telemetry-analyze.mjs` | sessions, spikes, spike causes, token contributors, usage windows, spike-vs-normal |
-| `scripts/cli/telemetry-serve.mjs` + `telemetry-dashboard.mjs` | loopback-only charting dashboard |
+| `scripts/cli/portal-server.mjs` + `scripts/portal/` | loopback-only web portal routes and static assets |
 | `scripts/cli/paths.mjs` | shared `repoRoot` / `sharedSkillsDir` |
 | `scripts/cli/skill-lib.mjs` | shared Node core (zip, prompts, symlink helpers) |
 
@@ -85,7 +85,7 @@ roborepo — choose an action:
   project-context inventory  scan a repo and write generated project-context facts
   onboard         run the onboarding wizard (choose behaviors per section)
   serve           open the local web portal
-  telemetry start   start telemetry capture
+  telemetry enable  enable telemetry capture
   telemetry stop    stop the portal server + capture
   telemetry status  show telemetry capture state
   run            run a command with trimmed output
@@ -94,7 +94,7 @@ roborepo — choose an action:
   skill new      scaffold a shared skill or slash command
   skill export-to-local copy shared skills into this repo
   skill symlink-repo      symlink this repo's .agents/skills into selected agent folders
-  skill symlink-globals     refresh copied shared skills in global harness folders
+  skill symlink-globals     refresh shared skill cache + harness links in global folders
   skill render-commands render/check slash commands
 
   Maintenance
@@ -152,9 +152,9 @@ relative or absolute — roborepo resolves it to an absolute path before use.
 - **Day to day** — `index code|docs` are one-shot indexers; `watch code` runs a live indexer (and
   writes the pidfile the Claude SessionStart hook reads to report watcher status); `mcp add`
   registers MCP servers with Claude + Codex; `bundle` manages the optional bundle selections;
-  `telemetry start`/`stop` are the everyday commands (capture + detached dashboard on/off), with
-  `enable`/`disable` and `serve` as the lower-level primitives, and `telemetry install` for a
-  telemetry-only install; `run` executes a command and prints only a trimmed tail of its output.
+  `telemetry enable`/`disable` turn capture on and off, `web` or `serve --detach` opens the
+  detached portal, and `telemetry install` handles a telemetry-only install; `run` executes a
+  command and prints only a trimmed tail of its output.
 - **Skills** — `skill new` scaffolds a shared automatic helper, skill-backed command, or standalone
   command and updates the relevant manifests, generated links, generated slash commands, and README
   rows. `skill export-to-local` bundles the shared skills into a `.zip` and copies them into the
@@ -162,11 +162,11 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   (override backs the old one up under `archived/`). `skill symlink-repo` symlinks the current repo's own
   `.agents/skills/<name>` into selected `.claude/skills` and/or `.codex/skills` folders, then prunes
   links whose source is gone. `.agents/skills` is the canonical project skill source because Codex
-  scans it directly; Claude fan-out links point at that
-  source. Existing `.claude`/`.codex` roots are used automatically; interactive runs ask before
-  creating a missing root, and noninteractive runs never create missing roots. `skill symlink-globals`
-  is the maintainer command for this repo: it refreshes global shared skill copies after skills are
-  added or removed, and `--check` verifies without changing files. `skill render-commands` renders generated slash commands from
+  scans it directly; Claude fan-out links point at that source. Existing `.claude`/`.codex` roots
+  are used automatically; interactive runs ask before creating a missing root, and noninteractive
+  runs never create missing roots. `skill symlink-globals` is the maintainer command for this repo:
+  it refreshes the shared skill cache and harness links after skills are added or removed, and
+  `--check` verifies without changing files. `skill render-commands` renders generated slash commands from
   `manifests/inventory/slash-commands.json`, and `--check` verifies without changing files.
   See [architecture.md](architecture.md#two-skill-layers-shared-vs-internal).
 - **Maintenance** — `backfill` pulls live config back into the repo; `doctor` and `verify` are
@@ -205,21 +205,19 @@ turns on and off explicitly. To keep an enabled spool bounded, each `<harness>.j
 (~25 MB): when exceeded, the oldest records are dropped and the newest ~70% kept (records are
 chronological), so the file can't fill the disk.
 
-**Lifecycle — `start` / `stop`.** These are the everyday commands and compose the lower-level
-primitives: `roborepo telemetry start` runs `enable` (capture on), then forks the dashboard server
-detached and prints its URL (`http://127.0.0.1:4317`); `roborepo telemetry stop` kills the detached
-server and runs `disable`. The detached server's PID is tracked in
-`~/.local/state/roborepo/telemetry-server.pid` so `stop` (and a later `start`, which restarts to pick
-up code changes) can find it; a stale PID file (process gone) is detected and cleaned up. `enable`,
-`disable`, and `serve` remain as primitives for edge cases — e.g. `serve` alone to browse historical
-spool data with capture off.
+**Lifecycle — capture and portal.** `roborepo telemetry enable` turns capture on;
+`roborepo telemetry disable` turns capture off; `roborepo web` or `roborepo serve --detach`
+opens the detached portal. `roborepo telemetry stop` remains a cleanup command: it kills the
+detached server if present and disables capture. The detached server's PID is tracked in
+`~/.local/state/roborepo/portal-server.pid`; a stale PID file (process gone) is detected and
+cleaned up. `serve` alone can browse historical spool data with capture off.
 
 **Telemetry-only install.** `roborepo telemetry install` formalizes a standalone telemetry setup
 without the rest of roborepo: it symlinks `~/.local/bin/roborepo` (if not already present), writes
 `state.json {enabled:true}` directly, and wires only the 5 capture hooks into `~/.claude/settings.json`
 and `~/.codex/hooks.json` — none of the full operational hook set. This is the supported path for
 measuring baseline token usage before adopting the full suite; upgrading is just re-running the normal
-install. (Note: `telemetry start`/`enable` apply the full telemetry *preset* including operational
+install. (Note: `telemetry enable` applies the full telemetry *preset* including operational
 hooks, which is correct for a full install — `telemetry install` intentionally bypasses that.)
 
 **Codex hook trust.** Codex only runs hooks the user has trusted. After install, the next Codex
@@ -289,7 +287,7 @@ id, heaviest turns surfaced, plus a copy-paste analysis prompt).
 
 `roborepo serve [--detach] [--no-open] [--port <n>]` (default `4317`) starts a dependency-free local
 web portal on `127.0.0.1` and opens `/config` by default (`--detach` forks it into the background and
-writes the PID file; this is what `telemetry start` uses under the hood). It serves the same analysis as JSON and renders it with a self-contained `<canvas>`
+writes the PID file; this is what `roborepo web` uses under the hood). It serves the same analysis as JSON and renders it with a self-contained `<canvas>`
 UI: a "what's causing spikes" panel leads with the spike-cause breakdown (each row a behavior to
 change), the recent-usage estimate shows in the header, and the token-delta timeline buckets to one
 column per pixel client-side, so dense histories with thousands of captures stay fast and the spike

@@ -3,9 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 import { enablePackage, disablePackage, findPackage } from "./packages.mjs";
+import { unavailablePackageMessage } from "./package-catalog.mjs";
 import { listSourceSkills } from "./skill-files.mjs";
 import { loadPermissionManifest, renderProfileTo } from "./permissions-render.mjs";
-import { activeProfilePath } from "./state-paths.mjs";
+import { activeProfilePath, roborepoSkillsDir } from "./state-paths.mjs";
 
 // Shared mutation core for the interactive config controls (terminal `onboard` + web POST endpoints).
 // Every function here is harness-agnostic and returns a plain { ok, message } result instead of
@@ -13,6 +14,9 @@ import { activeProfilePath } from "./state-paths.mjs";
 // reuses the same primitives and prints the message.
 
 const SHARED_SKILLS_DIR = path.join(repoRoot, "globals", "agents", "skills");
+// Machine-local skill cache. Harness skill dirs point at these copies; the cache is the thing that
+// survives across harness presence/absence and gives us one shared install source per machine.
+const ROBOREPO_SKILLS_DIR = roborepoSkillsDir;
 // Both harnesses, matching link_global_skills in install-lib.sh. Only roots that exist are touched.
 const HARNESS_SKILL_DIRS = [
   path.join(os.homedir(), ".claude", "skills"),
@@ -23,22 +27,157 @@ const HARNESS_SKILL_DIRS = [
 // roborepo copy apart from a user's native skill of the same name.
 const MANAGED_MARKER = ".roborepo-managed";
 
-// A target is a roborepo-managed skill if it carries our marker (a copy) or is a legacy symlink
-// into the shared source (a pre-copy install we should migrate or remove).
+// A target is a roborepo-managed skill if it carries our marker inside the machine-local cache or
+// is a legacy symlink into the shared source (a pre-cache install we should migrate or remove).
 function isManagedSkill(target) {
   try {
     const stat = fs.lstatSync(target);
-    if (stat.isSymbolicLink()) return fs.readlinkSync(target).startsWith(SHARED_SKILLS_DIR);
+    if (stat.isSymbolicLink()) {
+      const linkTarget = fs.readlinkSync(target);
+      return linkTarget.startsWith(ROBOREPO_SKILLS_DIR) || linkTarget.startsWith(SHARED_SKILLS_DIR);
+    }
     return fs.existsSync(path.join(target, MANAGED_MARKER));
   } catch {
     return false;
   }
 }
 
+function skillCachePath(id) {
+  return path.join(ROBOREPO_SKILLS_DIR, id);
+}
+
+function dirMatches(src, dest) {
+  let srcEntries;
+  let destEntries;
+  try {
+    srcEntries = fs.readdirSync(src, { withFileTypes: true });
+    destEntries = fs.readdirSync(dest, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  const srcNames = srcEntries.map((ent) => ent.name).filter((name) => name !== MANAGED_MARKER).sort();
+  const destNames = destEntries.map((ent) => ent.name).filter((name) => name !== MANAGED_MARKER).sort();
+  if (srcNames.length !== destNames.length) return false;
+  for (let i = 0; i < srcNames.length; i += 1) {
+    if (srcNames[i] !== destNames[i]) return false;
+  }
+  for (const name of srcNames) {
+    const srcPath = path.join(src, name);
+    const destPath = path.join(dest, name);
+    let srcStat;
+    let destStat;
+    try {
+      srcStat = fs.lstatSync(srcPath);
+      destStat = fs.lstatSync(destPath);
+    } catch {
+      return false;
+    }
+    if (srcStat.isDirectory() && destStat.isDirectory()) {
+      if (!dirMatches(srcPath, destPath)) return false;
+      continue;
+    }
+    if (srcStat.isSymbolicLink() || destStat.isSymbolicLink()) return false;
+    if (srcStat.isFile() && destStat.isFile()) {
+      if (!fs.readFileSync(srcPath).equals(fs.readFileSync(destPath))) return false;
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+function ensureSkillCache(id, { dryRun = false } = {}) {
+  const srcAbs = path.join(SHARED_SKILLS_DIR, id);
+  const cacheAbs = skillCachePath(id);
+  const marker = path.join(cacheAbs, MANAGED_MARKER);
+  if (!fs.existsSync(srcAbs)) return { ok: false, message: `unknown skill: ${id}` };
+
+  if (fs.existsSync(cacheAbs) && !fs.lstatSync(cacheAbs).isDirectory()) {
+    if (!dryRun) fs.rmSync(cacheAbs, { recursive: true, force: true });
+  }
+  if (fs.existsSync(cacheAbs) && fs.existsSync(marker) && dirMatches(srcAbs, cacheAbs)) {
+    return { ok: true, message: `ok: ${cacheAbs}` };
+  }
+
+  if (!dryRun) {
+    fs.mkdirSync(path.dirname(cacheAbs), { recursive: true });
+    fs.rmSync(cacheAbs, { recursive: true, force: true });
+    fs.cpSync(srcAbs, cacheAbs, { recursive: true });
+    fs.writeFileSync(marker, "");
+  }
+  return { ok: true, message: `copy: ${cacheAbs} <- ${srcAbs}` };
+}
+
+function linkSkillView(cacheAbs, target, { dryRun = false } = {}) {
+  try {
+    const stat = fs.lstatSync(target);
+    if (stat.isSymbolicLink()) {
+      const current = fs.readlinkSync(target);
+      if (current === cacheAbs) return { state: "ok" };
+      if (current.startsWith(ROBOREPO_SKILLS_DIR) || current.startsWith(SHARED_SKILLS_DIR)) {
+        if (!dryRun) {
+          fs.unlinkSync(target);
+          fs.symlinkSync(cacheAbs, target);
+        }
+        return { state: "linked" };
+      }
+      return { state: "conflict" };
+    }
+    if (stat.isDirectory() && fs.existsSync(path.join(target, MANAGED_MARKER))) {
+      if (!dryRun) {
+        fs.rmSync(target, { recursive: true, force: true });
+        fs.symlinkSync(cacheAbs, target);
+      }
+      return { state: "linked" };
+    }
+    return { state: "conflict" };
+  } catch {
+    if (!dryRun) {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.symlinkSync(cacheAbs, target);
+    }
+    return { state: "linked" };
+  }
+}
+
+function pruneSkillViews(dir, allowedNames = [], dryRun = false) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  const live = new Set(allowedNames);
+  for (const ent of entries) {
+    const link = path.join(dir, ent.name);
+    let target = null;
+    try {
+      const stat = fs.lstatSync(link);
+      if (!stat.isSymbolicLink()) continue;
+      target = fs.readlinkSync(link);
+    } catch {
+      continue;
+    }
+    if (!target.startsWith(ROBOREPO_SKILLS_DIR) && !target.startsWith(SHARED_SKILLS_DIR)) continue;
+    if (live.size > 0 && !live.has(ent.name)) {
+      if (!dryRun) fs.unlinkSync(link);
+      console.log(`prune: ${link} (not in base skill set)`);
+      continue;
+    }
+    const cacheName = path.basename(target);
+    if (!live.has(cacheName)) {
+      if (!dryRun) fs.unlinkSync(link);
+      console.log(`prune: ${link} (source removed)`);
+    }
+  }
+}
+
 // --------------------------------------------------------------------------- packages
 
 export async function mutatePackage(id, enabled, { dryRun = false } = {}) {
-  if (!findPackage(id)) return { ok: false, message: `unknown package: ${id}` };
+  if (!findPackage(id)) {
+    return { ok: false, message: unavailablePackageMessage(id) };
+  }
   try {
     const flags = dryRun ? ["--dry-run"] : [];
     if (enabled) await enablePackage([id, ...flags]);
@@ -51,41 +190,39 @@ export async function mutatePackage(id, enabled, { dryRun = false } = {}) {
 
 // --------------------------------------------------------------------------- skills
 
-// Node port of link_global_skills/link_skill_item (install-lib.sh): materialize a shared skill as a
-// roborepo-managed COPY into every existing harness skills dir, stamped with MANAGED_MARKER. Install
-// validates the skill exists in shared source; a real dir without our marker is a native skill and is
-// left untouched, matching the bash behavior. Copy (not symlink) keeps the machine state
-// self-contained so it survives the source (repo/package) going away.
+// Node port of link_global_skills/link_skill_item (install-lib.sh): materialize a shared skill into
+// the machine-local cache, then symlink each installed harness view to that cache entry. Install
+// validates the skill exists in shared source; a real dir without our marker is a native skill and
+// is left untouched, matching the bash behavior. The cache keeps the machine state self-contained
+// so it survives the source (repo/package) going away.
 export function setSkillInstalled(id, enabled, { dryRun = false } = {}) {
   const known = listSourceSkills(SHARED_SKILLS_DIR);
   if (!known.includes(id)) return { ok: false, message: `unknown skill: ${id}` };
 
-  const srcAbs = path.join(SHARED_SKILLS_DIR, id);
+  const cacheAbs = skillCachePath(id);
   const touched = [];
-  for (const dir of HARNESS_SKILL_DIRS) {
-    if (!fs.existsSync(path.dirname(dir))) continue; // harness not installed (no ~/.claude or ~/.codex)
-    const target = path.join(dir, id);
-    const exists = fs.existsSync(target) || isManagedSkill(target);
-
-    if (enabled) {
-      // A real dir without our marker is a native-installed skill. Leave it; surface as a skip.
-      if (exists && !isManagedSkill(target)) {
+  if (enabled) {
+    const cacheResult = ensureSkillCache(id, { dryRun });
+    touched.push(cacheResult.message);
+    for (const dir of HARNESS_SKILL_DIRS) {
+      if (!fs.existsSync(path.dirname(dir))) continue;
+      const target = path.join(dir, id);
+      const view = linkSkillView(cacheAbs, target, { dryRun });
+      if (view.state === "conflict") {
         touched.push(`skip (native skill): ${target}`);
         continue;
       }
-      if (!dryRun) {
-        fs.rmSync(target, { recursive: true, force: true }); // clear a stale copy / legacy symlink
-        fs.mkdirSync(dir, { recursive: true });
-        fs.cpSync(srcAbs, target, { recursive: true });
-        fs.writeFileSync(path.join(target, MANAGED_MARKER), "");
-      }
-      touched.push(`copy: ${target}`);
-    } else {
-      // Remove only our managed copy (or legacy managed symlink); never delete a native skill.
-      if (isManagedSkill(target)) {
-        if (!dryRun) fs.rmSync(target, { recursive: true, force: true });
-        touched.push(`remove: ${target}`);
-      }
+      touched.push(view.state === "linked" ? `link: ${target} -> ${cacheAbs}` : `ok: ${target}`);
+    }
+  } else {
+    if (!dryRun) fs.rmSync(cacheAbs, { recursive: true, force: true });
+    touched.push(`remove: ${cacheAbs}`);
+    for (const dir of HARNESS_SKILL_DIRS) {
+      if (!fs.existsSync(path.dirname(dir))) continue;
+      const target = path.join(dir, id);
+      if (!isManagedSkill(target)) continue;
+      if (!dryRun) fs.rmSync(target, { recursive: true, force: true });
+      touched.push(`remove: ${target}`);
     }
   }
 

@@ -4,14 +4,10 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { repoRoot } from "./paths.mjs";
 import { setPackageEnabled, renderHomeRules } from "./rules-render.mjs";
+import { loadPackageCatalog, unavailablePackageMessage } from "./package-catalog.mjs";
 
-export const PACKAGES_PATH = path.join(repoRoot, "manifests", "inventory", "packages.json");
 export const USER_CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
 
-
-export function loadPackageCatalog() {
-  return JSON.parse(fs.readFileSync(PACKAGES_PATH, "utf8")).packages;
-}
 
 export function findPackage(pkgId) {
   return loadPackageCatalog().find((p) => p.id === pkgId) || null;
@@ -94,7 +90,7 @@ export async function enablePackage(rest, _seen = new Set()) {
   const catalog = loadPackageCatalog();
   const pkg = catalog.find((p) => p.id === pkgId);
   if (!pkg) {
-    console.error(`unknown package: ${pkgId}`);
+    console.error(unavailablePackageMessage(pkgId));
     console.error(`available: ${catalog.map((p) => p.id).join(", ")}`);
     process.exit(2);
   }
@@ -226,7 +222,7 @@ export async function disablePackage(rest) {
   }
   const pkg = findPackage(pkgId);
   if (!pkg) {
-    console.error(`unknown package: ${pkgId}`);
+    console.error(unavailablePackageMessage(pkgId));
     console.error(`available: ${loadPackageCatalog().map((p) => p.id).join(", ")}`);
     process.exit(2);
   }

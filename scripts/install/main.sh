@@ -96,10 +96,19 @@ choose_adopt_conflict_policy() {
 
   while true; do
     echo ""
-    echo "Choose adopt collision behavior:"
-    echo "  1) overwrite      backup existing files as *_original_TIMESTAMP; install repo items"
-    echo "  2) keep originals leave existing files active; stage repo items as *_update_TIMESTAMP"
+    echo "==============================================="
+    echo "Welcome to roborepo, your CLI harness manager"
+    echo "==============================================="
+    echo ""
+    echo "This install will add certain content to your system to optimize your experience."
+    echo "If you already have active files, should we:"
+    echo ""
+    echo "  1) overwrite your files"
+    echo "     backup your files first as *_original_TIMESTAMP; install repo items"
+    echo "  2) keep your originals"
+    echo "     leave your files active; add roborepo items as *_update_TIMESTAMP in the same folder"
     echo "  q) quit"
+    echo ""
     printf "Selection [1/2/q]: "
     if ! read -r choice; then
       on_conflict="keep"

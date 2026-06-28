@@ -131,10 +131,10 @@ extended to handle directories. `savePreInstallBackup` poisoned-backup guard add
 saving a fake pre-install backup when content already matches repo source). Both test suites
 pass (194 passed, 0 failed).
 
-**Known regression from Phase 1 → Phase 3:** `mergeRules` appends package rules to
-`~/.claude/CLAUDE.md`, which is now a managed copy. A `roborepo update` re-copies from repo
-source and wipes those appended rules. Phase 3 (render-from-fragments) is required before
-package rule injection is durable across updates.
+**Known regression from Phase 1 → Phase 3:** `mergeRules` appended package rules to
+the live Claude rules file instead of rendering from fragments. A `roborepo update`
+re-rendered from repo source and wiped those appended rules. Phase 3 (render-from-fragments)
+was required before package rule injection became durable across updates.
 
 **Phase 1 remainder (skills copy):** Done. `link_skill_item` / `link_global_skills` in
 `install-lib.sh` converted to copy + `.roborepo-managed` marker. `config-mutate.mjs`

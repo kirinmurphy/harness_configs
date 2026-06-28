@@ -153,14 +153,14 @@ roborepo index docs path/to/dir
 
 ### Add a shared skill
 
-Use `roborepo skill new` — it scaffolds, registers manifests, and refreshes copied shared skills in
-both `~/.claude/skills/<name>` and `~/.codex/skills/<name>` in one step. The canonical source
+Use `roborepo skill new` — it scaffolds, registers manifests, and refreshes the shared skill cache
+plus both `~/.claude/skills/<name>` and `~/.codex/skills/<name>` in one step. The canonical source
 lives once in `globals/agents/skills/<name>/`. If you created a skill out-of-band:
 
 ```sh
-roborepo skill new              # scaffold + refresh copied shared skills in both harnesses
+roborepo skill new              # scaffold + refresh shared skill cache + both harness views
 roborepo skill adopt <name>     # ingest a skill created natively (init_skill.py / by hand)
-scripts/doctor.sh --installed   # verify live managed skill copies are current
+scripts/doctor.sh --installed   # verify the live skill cache and harness links are current
 ```
 
 ### Edit global rules
@@ -189,7 +189,7 @@ Something feels off — commands missing, config not loading, hooks not firing. 
 
 ```sh
 roborepo doctor        # (dispatches to scripts/doctor.sh)
-scripts/doctor.sh --installed     # also checks global ~/.claude·~/.codex copies and managed skills
+scripts/doctor.sh --installed     # also checks global ~/.claude·~/.codex links and managed skills
 scripts/doctor.sh --installed -q  # --quiet: failures + a one-line summary only
 ```
 

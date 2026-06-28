@@ -104,20 +104,43 @@ check_active_file() {
   fi
 }
 
-# A roborepo-managed skill is a copy carrying the '.roborepo-managed' marker, not a symlink.
+# A roborepo-managed skill is a symlink into the machine-local cache at ~/.roborepo/skills,
+# and that cache entry carries the '.roborepo-managed' marker.
 check_managed_skill() {
   local repo_rel="$1"
   local home_path="$2"
   local expected="${repo_root}/${repo_rel}"
+  local cache_path="${HOME}/.roborepo/skills/$(basename "${home_path}")"
 
-  if [[ ! -d "${home_path}" || ! -e "${home_path}/.roborepo-managed" ]]; then
-    fail "${home_path} is not a roborepo-managed skill copy"
+  if [[ ! -L "${home_path}" ]]; then
+    fail "${home_path} is not a roborepo-managed skill symlink"
     return 0
   fi
-  if diff -rq -x '.roborepo-managed' "${expected}" "${home_path}" >/dev/null 2>&1; then
-    ok "${home_path} (managed copy of ${expected})"
+
+  local actual
+  actual="$(python3 - <<'PY' "${home_path}"
+import os, sys
+print(os.path.realpath(sys.argv[1]))
+PY
+)"
+  local expected_cache
+  expected_cache="$(python3 - <<'PY' "${cache_path}"
+import os, sys
+print(os.path.realpath(sys.argv[1]))
+PY
+)"
+  if [[ "${actual}" != "${expected_cache}" ]]; then
+    fail "${home_path} -> ${actual}; expected ${expected_cache}"
+    return 0
+  fi
+  if [[ ! -d "${cache_path}" || ! -e "${cache_path}/.roborepo-managed" ]]; then
+    fail "${cache_path} is not a roborepo-managed skill cache"
+    return 0
+  fi
+  if diff -rq -x '.roborepo-managed' "${expected}" "${cache_path}" >/dev/null 2>&1; then
+    ok "${home_path} (cache link to ${cache_path})"
   else
-    fail "${home_path} differs from ${expected} — run: roborepo update"
+    fail "${cache_path} differs from ${expected} — run: roborepo update"
   fi
 }
 
@@ -238,8 +261,8 @@ for old_root in agents claude codex skills-local; do
   fi
 done
 # Derive the shared-skill list from globals/agents/skills/*/SKILL.md so this never goes stale.
-# globals/agents/skills/ is the canonical source; the installer fans each skill per-skill into
-# ~/.claude/skills/<n> and ~/.codex/skills/<n> (native dirs, no intermediate repo dir).
+# globals/agents/skills/ is the canonical source; the installer fans each skill into
+# ~/.roborepo/skills/<n> and symlinks each present harness view there.
 for skill_src in "${repo_root}"/globals/agents/skills/*/SKILL.md; do
   [[ -e "${skill_src}" ]] || continue
   skill_name="$(basename "$(dirname "${skill_src}")")"
@@ -307,7 +330,7 @@ if [[ "${check_installed}" -eq 1 ]]; then
   harness_present codex  && installed_has_codex=1
   [[ "${installed_has_claude}" -eq 1 ]] && check_managed_skill "globals/agents/skills/roborepo-support" "${HOME}/.claude/skills/roborepo-support"
   [[ "${installed_has_codex}"  -eq 1 ]] && check_managed_skill "globals/agents/skills/roborepo-support" "${HOME}/.codex/skills/roborepo-support"
-  # Drift report: unmanaged skills in native dirs (real dirs without our managed-copy marker).
+  # Drift report: unmanaged skills in native dirs (real dirs without our managed marker).
   drift_count=0
   for skills_home in "${HOME}/.claude/skills" "${HOME}/.codex/skills"; do
     [[ -d "${skills_home}" ]] || continue
@@ -315,7 +338,8 @@ if [[ "${check_installed}" -eq 1 ]]; then
       [[ -d "${skill_dir}" ]] || continue
       skill_name="$(basename "${skill_dir%/}")"
       case "${skill_name}" in .*) continue ;; esac  # skip dotfolders
-      [[ -e "${skills_home}/${skill_name}/.roborepo-managed" ]] && continue  # managed copy
+      [[ -L "${skills_home}/${skill_name}" ]] && continue  # managed view
+      [[ -e "${skills_home}/${skill_name}/.roborepo-managed" ]] && continue  # legacy managed copy
       echo "drift: ${skill_dir} is unmanaged — run: roborepo skill adopt ${skill_name}"
       drift_count=$((drift_count + 1))
     done

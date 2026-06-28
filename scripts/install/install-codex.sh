@@ -55,8 +55,8 @@ if command -v node >/dev/null 2>&1; then
   fi
 fi
 
-# Base install copies only the support skill. Other shared skills are installed by onboarding/package
-# toggles, so a minimal install stays small.
+# Base install materializes the shared skill cache for roborepo-support and links the Codex view.
+# Other shared skills are installed by onboarding/package toggles, so a minimal install stays small.
 link_global_skills "${HOME}/.codex" roborepo-support
 
 # Guard: this script installs harness config only. The roborepo CLI (and `roborepo index code`)

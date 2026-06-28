@@ -3,12 +3,16 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 dry_run=0
+check_clean=0
 
-case "${1:-}" in
-  --dry-run) dry_run=1 ;;
-  "") ;;
-  *) echo "usage: $0 [--dry-run]" >&2; exit 2 ;;
-esac
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) dry_run=1 ;;
+    --check-clean) check_clean=1 ;;
+    *) echo "usage: $0 [--dry-run] [--check-clean]" >&2; exit 2 ;;
+  esac
+  shift
+done
 
 # shellcheck source=scripts/lib/manifests-data.sh
 source "${repo_root}/scripts/lib/manifests-data.sh"
@@ -21,7 +25,8 @@ source "${repo_root}/scripts/install/state-lib.sh"
 recorded_repo="$(read_install_repo 2>/dev/null || true)"
 
 # True if a symlink at ${path} is one this repo manages: it targets the current repo_root,
-# the recorded prior checkout, or is dangling (target gone — a stale prior-checkout link).
+# the recorded prior checkout, or the machine-local skill cache. Dangling links into a prior
+# checkout or cache are also managed.
 is_managed_link() {
   local path="$1"
   [[ -L "${path}" ]] || return 1
@@ -36,6 +41,9 @@ is_managed_link() {
       "${recorded_repo}"/*) return 0 ;;
     esac
   fi
+  case "${current}" in
+    */.roborepo/skills/*) return 0 ;;
+  esac
   # Dangling: link present but target missing -> stale link from a prior checkout path.
   [[ ! -e "${path}" ]] && return 0
   return 1
@@ -208,6 +216,7 @@ starter_for_root_config() {
 remove_root_config() {
   local home_abs="$1"
   local harness="${2:-}"
+  local src_rel="${3:-}"
   [[ -f "${home_abs}" ]] || return 0
 
   local pre_install_backup=""
@@ -227,25 +236,28 @@ remove_root_config() {
   fi
 
   local starter; starter="$(starter_for_root_config "${home_abs}")"
-  if [[ -n "${starter}" && -f "${starter}" ]]; then
-    # No pre-install backup (clean machine, or backup already consumed) — reset to the bare starter
-    # rather than deleting, so the harness keeps a clean roborepo-free config.
+  local remove_config=0
+  if is_roborepo_authored "${home_abs}"; then
+    remove_config=1
+  elif [[ -n "${src_rel}" ]] && content_matches_repo_source "${repo_root}/${src_rel}" "${home_abs}"; then
+    remove_config=1
+  elif [[ -n "${starter}" && -f "${starter}" ]] && content_matches_repo_source "${starter}" "${home_abs}"; then
+    remove_config=1
+  fi
+
+  if [[ "${remove_config}" -eq 1 ]]; then
+    # No pre-install backup means roborepo created this root config on a clean machine. Remove it
+    # instead of resetting to a starter so uninstall leaves no roborepo-authored file behind.
     if [[ "${dry_run}" -eq 1 ]]; then
-      echo "reset (root_config): ${starter} -> ${home_abs}"
+      echo "remove (root_config): ${home_abs}"
     else
-      cp "${starter}" "${home_abs}"
-      echo "reset (root_config): ${starter} -> ${home_abs}"
+      rm -f "${home_abs}"
+      echo "remove (root_config): ${home_abs}"
     fi
     return 0
   fi
 
-  # No backup and no starter — remove the roborepo-installed file.
-  if [[ "${dry_run}" -eq 1 ]]; then
-    echo "remove (root_config): ${home_abs}"
-  else
-    rm "${home_abs}"
-    echo "remove (root_config): ${home_abs}"
-  fi
+  echo "skip user-owned root_config: ${home_abs}"
 }
 
 remove_mcp_servers() {
@@ -372,6 +384,241 @@ remove_rules_state() {
   fi
 }
 
+remove_path() {
+  local path="$1"
+  local label="${2:-remove}"
+  [[ -e "${path}" || -L "${path}" ]] || return 0
+  if [[ "${dry_run}" -eq 1 ]]; then
+    echo "${label}: ${path}"
+  else
+    rm -rf "${path}"
+    echo "${label}: ${path}"
+  fi
+}
+
+remove_empty_dir() {
+  local path="$1"
+  [[ -d "${path}" ]] || return 0
+  if [[ "${dry_run}" -eq 1 ]]; then
+    find "${path}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | grep -q . || echo "rmdir: ${path}"
+  else
+    rmdir "${path}" 2>/dev/null && echo "rmdir: ${path}" || true
+  fi
+}
+
+remove_runtime_state() {
+  local state_dir
+  state_dir="$(roborepo_state_dir)"
+
+  remove_path "${state_dir}/active-profile.json" "remove"
+  remove_path "${state_dir}/enabled-packages.json" "remove"
+  remove_path "${state_dir}/telemetry" "remove"
+  remove_path "${state_dir}/telemetry-backups" "remove"
+  remove_path "${state_dir}/backups" "remove"
+  remove_path "${state_dir}" "remove"
+
+  local pid_path="${ROBOREPO_PORTAL_PID_PATH:-${ROBOREPO_TELEMETRY_PID_PATH:-${HOME}/.local/state/roborepo/portal-server.pid}}"
+  local legacy_pid_path="${ROBOREPO_TELEMETRY_PID_PATH:-${HOME}/.local/state/roborepo/telemetry-server.pid}"
+  remove_path "${pid_path}" "remove"
+  remove_path "${legacy_pid_path}" "remove"
+  remove_empty_dir "$(dirname "${pid_path}")"
+}
+
+remove_durable_install_backups() {
+  remove_path "${HOME}/.roborepo-backups" "remove (install backups)"
+}
+
+roborepo_process_pids() {
+  local process_root="${ROBOREPO_UNINSTALL_PROCESS_ROOT:-${repo_root}}"
+  ps -ax -o pid=,command= 2>/dev/null | awk -v process_root="${process_root}" '
+    index($0, process_root "/scripts/cli/main.mjs serve") > 0 ||
+    index($0, process_root "/scripts/install/main.sh") > 0 ||
+    index($0, process_root "/scripts/cli/main.mjs mcp apply") > 0 ||
+    index($0, process_root "/scripts/cli/main.mjs bundle apply --default") > 0 {
+      print $1
+    }
+  '
+}
+
+stop_roborepo_processes() {
+  local pids=()
+  local pid
+  local pid_path legacy_pid_path
+  pid_path="${ROBOREPO_PORTAL_PID_PATH:-${ROBOREPO_TELEMETRY_PID_PATH:-${HOME}/.local/state/roborepo/portal-server.pid}}"
+  legacy_pid_path="${ROBOREPO_TELEMETRY_PID_PATH:-${HOME}/.local/state/roborepo/telemetry-server.pid}"
+  for path in "${pid_path}" "${legacy_pid_path}"; do
+    if [[ -f "${path}" ]]; then
+      pid="$(tr -cd '0-9' < "${path}" 2>/dev/null || true)"
+      [[ -n "${pid}" && "${pid}" != "$$" ]] && pids+=("${pid}")
+    fi
+  done
+  while IFS= read -r pid; do
+    [[ -n "${pid}" && "${pid}" != "$$" ]] && pids+=("${pid}")
+  done < <(roborepo_process_pids || true)
+  [[ ${#pids[@]} -gt 0 ]] || return 0
+
+  if [[ "${dry_run}" -eq 1 ]]; then
+    echo "stop processes: ${pids[*]}"
+    return 0
+  fi
+
+  kill "${pids[@]}" 2>/dev/null || true
+  sleep 0.2
+  local live=()
+  for pid in "${pids[@]}"; do
+    kill -0 "${pid}" 2>/dev/null && live+=("${pid}") || true
+  done
+  [[ ${#live[@]} -eq 0 ]] || kill -TERM "${live[@]}" 2>/dev/null || true
+  echo "stop processes: ${pids[*]}"
+}
+
+check_no_active_remnants() {
+  local failed=0 path pid
+  local state_dir
+  state_dir="$(roborepo_state_dir)"
+
+  for path in \
+    "${HOME}/.local/bin/roborepo" \
+    "${state_dir}/install-state.json" \
+    "${state_dir}/presets" \
+    "${state_dir}/rules" \
+    "${state_dir}/active-profile.json" \
+    "${state_dir}/enabled-packages.json" \
+    "${state_dir}/telemetry" \
+    "${state_dir}/telemetry-backups" \
+    "${state_dir}/backups" \
+    "${state_dir}" \
+    "${HOME}/.roborepo-backups" \
+    "${ROBOREPO_PORTAL_PID_PATH:-${ROBOREPO_TELEMETRY_PID_PATH:-${HOME}/.local/state/roborepo/portal-server.pid}}" \
+    "${ROBOREPO_TELEMETRY_PID_PATH:-${HOME}/.local/state/roborepo/telemetry-server.pid}"; do
+    if [[ -e "${path}" || -L "${path}" ]]; then
+      echo "remnant: ${path}" >&2
+      failed=1
+    fi
+  done
+
+  while IFS= read -r pid; do
+    [[ -n "${pid}" && "${pid}" != "$$" ]] || continue
+    echo "remnant process: ${pid}" >&2
+    failed=1
+  done < <(roborepo_process_pids || true)
+
+  if [[ -f "${HOME}/.gitignore_global" ]] && grep -Fqx ".jdm-indexed" "${HOME}/.gitignore_global"; then
+    echo "remnant: ${HOME}/.gitignore_global contains .jdm-indexed" >&2
+    failed=1
+  fi
+
+  local profile line
+  line='export PATH="${HOME}/.local/bin:${PATH}"'
+  for profile in "${HOME}/.zshrc" "${HOME}/.bashrc" "${HOME}/.bash_profile" "${HOME}/.profile"; do
+    [[ -f "${profile}" ]] || continue
+    if grep -Fq "${repo_root}/shell/" "${profile}" || grep -Fqx "${line}" "${profile}"; then
+      echo "remnant: ${profile} contains roborepo shell wiring" >&2
+      failed=1
+    fi
+  done
+
+  while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
+    case "${kind}" in
+      managed_copy|link)
+        if [[ -L "${home_abs}" ]] && is_managed_link "${home_abs}"; then
+          echo "remnant: ${home_abs}" >&2
+          failed=1
+        elif [[ "${src_rel}" != "-" && -e "${home_abs}" && ! -L "${home_abs}" ]] \
+          && content_matches_repo_source "${repo_root}/${src_rel}" "${home_abs}"; then
+          echo "remnant: ${home_abs}" >&2
+          failed=1
+        fi
+        ;;
+      cleanup)
+        if [[ -L "${home_abs}" ]] && is_managed_link "${home_abs}"; then
+          echo "remnant: ${home_abs}" >&2
+          failed=1
+        fi
+        ;;
+      root_config|rendered_rules)
+        if is_roborepo_authored "${home_abs}"; then
+          echo "remnant: ${home_abs} contains roborepo-authored content" >&2
+          failed=1
+        fi
+        ;;
+    esac
+  done < <(manifest_rows)
+
+  local skills_home entry
+  for skills_home in "${HOME}/.claude/skills" "${HOME}/.codex/skills"; do
+    [[ -d "${skills_home}" ]] || continue
+    for entry in "${skills_home}"/*; do
+      [[ -e "${entry}" || -L "${entry}" ]] || continue
+      if [[ -e "${entry}/.roborepo-managed" ]] || is_roborepo_skill_link "${entry}"; then
+        echo "remnant: ${entry}" >&2
+        failed=1
+      fi
+    done
+  done
+
+  if [[ "${failed}" -eq 0 ]]; then
+    echo "ok: no active roborepo remnants"
+  fi
+  return "${failed}"
+}
+
+# Per-skill global skill links: not in manifest, so manifest_rows won't remove them.
+is_roborepo_skill_link() {
+  local link="$1"
+  local target
+  [[ -L "${link}" ]] || return 1
+  target="$(readlink "${link}")"
+  # Current or recorded-prior checkout
+  case "${target}" in
+    "${repo_root}"/globals/agents/skills/*) return 0 ;;
+  esac
+  if [[ -n "${recorded_repo}" ]]; then
+    case "${target}" in
+      "${recorded_repo}"/globals/agents/skills/*) return 0 ;;
+    esac
+  fi
+  case "${target}" in
+    */.roborepo/skills/*) return 0 ;;
+  esac
+  # Dangling link that points into globals/agents/skills/ or ~/.roborepo/skills/ of any
+  # roborepo checkout / install.
+  if [[ ! -e "${link}" ]]; then
+    case "${target}" in
+      */globals/agents/skills/*|*/.roborepo/skills/*) return 0 ;;
+    esac
+  fi
+  return 1
+}
+
+# Remove roborepo-managed skills: cache entries carrying the '.roborepo-managed' marker, plus
+# symlinks that point into the roborepo-managed cache or legacy repo source. Never touches a
+# user's native skill (a real dir without the marker).
+remove_skill_links() {
+  local skills_home="$1"
+  [[ -d "${skills_home}" ]] || return 0
+  local entry
+  for entry in "${skills_home}"/*; do
+    if [[ -L "${entry}" ]]; then
+      if is_roborepo_skill_link "${entry}"; then
+        if [[ "${dry_run}" -eq 1 ]]; then
+          echo "remove: ${entry}"
+        else
+          rm -f "${entry}"
+          echo "remove: ${entry}"
+        fi
+      fi
+    elif [[ -e "${entry}/.roborepo-managed" ]]; then
+      if [[ "${dry_run}" -eq 1 ]]; then
+        echo "remove: ${entry}"
+      else
+        rm -rf "${entry}"
+        echo "remove: ${entry}"
+      fi
+    fi
+  done
+}
+
 remove_shell_wiring() {
   local profile line tmp
   line='export PATH="${HOME}/.local/bin:${PATH}"'
@@ -404,12 +651,19 @@ remove_shell_wiring() {
   done
 }
 
+if [[ "${check_clean}" -eq 1 ]]; then
+  check_no_active_remnants
+  exit $?
+fi
+
+stop_roborepo_processes
+
 while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
   case "${kind}" in
     managed_copy)    reclaim_link_target          "${src_rel}" "${home_abs}" "${_h}" ;;
     link)            reclaim_link_target          "${src_rel}" "${home_abs}" "${_h}" ;;
     cleanup)         remove_repo_symlink          "${home_abs}" ;;
-    root_config)     remove_root_config           "${home_abs}" "${_h}" ;;
+    root_config)     remove_root_config           "${home_abs}" "${_h}" "${src_rel}" ;;
     rendered_rules)  reclaim_rendered_rules_target "${home_abs}" "${_h}" ;;
   esac
 done < <(manifest_rows)
@@ -493,46 +747,6 @@ if (changed) {
 }
 strip_package_hooks
 
-# Per-skill global skill links: not in manifest, so manifest_rows won't remove them.
-is_roborepo_skill_link() {
-  local link="$1"
-  local target
-  [[ -L "${link}" ]] || return 1
-  target="$(readlink "${link}")"
-  # Current or recorded-prior checkout
-  case "${target}" in
-    "${repo_root}"/globals/agents/skills/*) return 0 ;;
-  esac
-  if [[ -n "${recorded_repo}" ]]; then
-    case "${target}" in
-      "${recorded_repo}"/globals/agents/skills/*) return 0 ;;
-    esac
-  fi
-  # Dangling link that points into globals/agents/skills/ of any roborepo checkout
-  if [[ ! -e "${link}" ]]; then
-    case "${target}" in
-      */globals/agents/skills/*) return 0 ;;
-    esac
-  fi
-  return 1
-}
-
-# Remove roborepo-managed skills: copies carrying the '.roborepo-managed' marker, plus legacy
-# managed symlinks from pre-copy installs. Never touches a user's native skill (a dir without the
-# marker).
-remove_skill_links() {
-  local skills_home="$1"
-  [[ -d "${skills_home}" ]] || return 0
-  local entry
-  for entry in "${skills_home}"/*; do
-    if [[ -e "${entry}/.roborepo-managed" ]]; then
-      rm -rf "${entry}"
-      echo "remove: ${entry}"
-    else
-      is_roborepo_skill_link "${entry}" && remove_repo_symlink "${entry}" || true
-    fi
-  done
-}
 remove_skill_links "${HOME}/.claude/skills"
 remove_skill_links "${HOME}/.codex/skills"
 
@@ -554,14 +768,8 @@ remove_gitignore_globals
 remove_preset_state
 remove_rules_state
 remove_install_backups
+remove_runtime_state
+remove_durable_install_backups
 
-# Surface (never delete) the durable pre-roborepo snapshot: the escape hatch the per-file restore
-# above does not consume. Lets the user hand-restore anything the surgical restore did not cover.
-original_archive="${HOME}/.roborepo-backups/pre-roborepo-original.tar.gz"
-if [[ -e "${original_archive}" ]]; then
-  echo "kept pre-roborepo snapshot: ${original_archive}"
-  echo "  inspect: tar tzf ${original_archive}"
-  echo "  restore: tar xzf ${original_archive} -C ${HOME}"
-fi
-
+check_no_active_remnants
 echo "Uninstall complete."

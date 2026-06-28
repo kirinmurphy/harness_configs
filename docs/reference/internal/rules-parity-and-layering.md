@@ -7,7 +7,10 @@ Claude and Codex should share the same global behavior defaults without hand-mai
 ## Current Behavior
 
 - `globals/claude/CLAUDE.md` and `globals/codex/AGENTS.md` are generated tracked files.
-- Both files express the same core behavior through shared fragments: caveman mode, skill loading, code/doc exploration, verification, temp-file hygiene, and project-context orientation.
+- Both files express the same core behavior through shared fragments: skill loading, verification, and temp-file hygiene.
+- Live Claude home rules are inline: `~/.claude/CLAUDE.md` contains the full Claude render inside a managed block.
+- Live Codex home rules are inline: `~/.codex/AGENTS.md` contains the full Codex render inside a managed block.
+- Project Context orientation is package-gated with the `/inventory` workflow under `globals/packages/project-context/rules.md`.
 - The three Chat-Time Output behaviors (skill visibility, session capture, impact awareness) are no longer base fragments. They ship as default-on rules packages under `globals/packages/<id>/rules.md` and merge into both harness rules files when enabled, so they can be toggled per behavior. See [config-control-panel.md](../services/config-control-panel.md).
 - Harness-specific fragments hold Claude-only or Codex-only differences.
 - Root harness config files are conditional defaults:
@@ -23,33 +26,41 @@ Use shared source fragments for common behavior and render the harness-specific 
 Source layout:
 
 ```text
-rules/
+globals/rules/
   shared/
-    00-communication.md
     05-skill-loading.md
-    10-exploration.md
     20-verification.md
     40-temp-files.md
-    50-project-context.md
-  globals/claude/
+  claude/
     90-claude-specific.md
-  globals/codex/
+  codex/
     90-codex-specific.md
+globals/packages/
+  <package>/
+    rules.md
 ```
 
-Generated outputs:
+Tracked generated baseline snapshots:
 
 ```text
 globals/claude/CLAUDE.md
 globals/codex/AGENTS.md
 ```
 
-Generated files remain tracked because the harnesses read them directly and setup should work without running a build step first. The renderer adds a generated-file header that names the source fragments and command.
+Live generated outputs:
+
+```text
+~/.claude/CLAUDE.md                         # full Claude render, inline managed block
+~/.codex/AGENTS.md                          # full Codex render, inline managed block
+~/.codex/AGENTS.override.md                 # updated only when it already exists
+```
+
+Tracked generated snapshots remain in the repo because setup and drift checks should work without running a build step first. Live home files are rendered by `scripts/cli/rules-render.mjs` from the tracked fragments plus the enabled-package registry.
 
 ## Rules Parity Model
 
 - Shared fragments hold behavior that should apply to both harnesses.
-- Harness-specific fragments hold only true harness differences.
+- Harness-specific fragments hold only true harness differences. Claude-specific fragments land directly in the live Claude managed block; Codex-specific fragments land directly in the live Codex managed block.
 - Shared fragments should stay compact. Expanded workflow guidance belongs in skills such as `test-harness`, `code-style`, `javascript-typescript`, `react`, or `roborepo-support`.
 - Global rules may tell the agent when to use a skill, but should not duplicate the full skill body.
 - The renderer should preserve deliberate format differences:

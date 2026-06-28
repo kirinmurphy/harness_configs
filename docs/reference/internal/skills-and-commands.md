@@ -201,8 +201,9 @@ generated command files together.
 ## Skill Storage and Fan-Out
 
 Skills live at `globals/agents/skills/<name>/SKILL.md` in version control.
-At install/update time, enabled shared skills are copied into each harness's native skills dir:
-`~/.claude/skills/<name>` and `~/.codex/skills/<name>`. Roborepo-owned copies carry a
+At install/update time, enabled shared skills are materialized into
+`~/.roborepo/skills/<name>` and each harness's native skills dir symlinks to that cache entry:
+`~/.claude/skills/<name>` and `~/.codex/skills/<name>`. Roborepo-owned cache entries carry a
 `.roborepo-managed` marker. There is no intermediate `globals/claude/skills/` directory.
 
 Roborepo manages only the skill names it owns. Skills created out-of-band (via

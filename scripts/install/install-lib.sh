@@ -641,37 +641,89 @@ remove_repo_link() {
   esac
 }
 
-# Link a single skill into a harness's skills dir. Unlike install_link_item, skill collisions
-# with real directories (native-installed skills with the same name) are skipped gracefully —
-# native skills are out-of-band drift that doctor will surface via "roborepo skill adopt".
-# Materialize a shared skill into a harness skills dir as a roborepo-managed COPY. A
-# '.roborepo-managed' marker file inside the copied dir records ownership, so prune and
-# native-skill detection key off the marker rather than a symlink target — the machine state is
-# self-contained and survives the source (repo/package) going away. A legacy managed symlink from a
-# pre-copy install is migrated to a copy; a real dir without our marker is a native skill, left alone.
+# Copy a shared skill into the machine-local cache at ~/.roborepo/skills/<name>.
+# The cache is the derived machine state; harness skill dirs symlink to it.
 link_skill_item() {
   local repo_rel="$1"
-  local home_path="$2"
+  local cache_path="$2"
   local src="${repo_root}/${repo_rel}"
-  local marker="${home_path}/.roborepo-managed"
+  local marker="${cache_path}/.roborepo-managed"
 
   if [[ ! -e "${src}" ]]; then
     echo "missing source: ${src}" >&2
     return 1
   fi
 
-  # Legacy managed symlink (pre-copy install) -> replace with an owned copy.
+  if [[ -L "${cache_path}" ]]; then
+    local current
+    current="$(readlink "${cache_path}")"
+    case "${current}" in
+      "${repo_root}"/*|${HOME}/.roborepo/skills/*)
+        if [[ "${dry_run}" -eq 0 ]]; then
+          rm -f "${cache_path}"
+          copy_tree "${src}" "${cache_path}"
+          : > "${marker}"
+        fi
+        say copy "${cache_path} <- ${src}"
+        return 0
+        ;;
+      *)
+        echo "skip (unmanaged symlink): ${cache_path}"
+        return 0
+        ;;
+    esac
+  fi
+
+  if [[ -e "${cache_path}" && ! -e "${marker}" ]]; then
+    if [[ "${dry_run}" -eq 0 ]]; then
+      rm -rf "${cache_path}"
+      copy_tree "${src}" "${cache_path}"
+      : > "${marker}"
+    fi
+    say copy "${cache_path} <- ${src}"
+    return 0
+  fi
+
+  if [[ -e "${marker}" ]]; then
+    if diff -rq -x '.roborepo-managed' "${src}" "${cache_path}" >/dev/null 2>&1; then
+      say ok "${cache_path}"
+      return 0
+    fi
+    if [[ "${dry_run}" -eq 0 ]]; then
+      rm -rf "${cache_path}"
+      copy_tree "${src}" "${cache_path}"
+      : > "${marker}"
+    fi
+    say copy "${cache_path} <- ${src}"
+    return 0
+  fi
+
+  if [[ "${dry_run}" -eq 0 ]]; then
+    mkdir -p "$(dirname "${cache_path}")"
+    copy_tree "${src}" "${cache_path}"
+    : > "${marker}"
+  fi
+  say copy "${cache_path} <- ${src}"
+}
+
+link_skill_view() {
+  local cache_path="$1"
+  local home_path="$2"
+
   if [[ -L "${home_path}" ]]; then
     local current
     current="$(readlink "${home_path}")"
     case "${current}" in
-      "${repo_root}"/*)
+      "${cache_path}")
+        say ok "${home_path}"
+        return 0
+        ;;
+      "${HOME}/.roborepo/skills"/*|"${repo_root}"/*)
         if [[ "${dry_run}" -eq 0 ]]; then
           rm -f "${home_path}"
-          copy_tree "${src}" "${home_path}"
-          : > "${marker}"
+          ln -s "${cache_path}" "${home_path}"
         fi
-        say copy "${home_path} <- ${src}"
+        say relink "${home_path} -> ${cache_path}"
         return 0
         ;;
       *)
@@ -681,34 +733,24 @@ link_skill_item() {
     esac
   fi
 
-  # A real dir/file without our marker is a native-installed skill — leave it.
-  if [[ -e "${home_path}" && ! -e "${marker}" ]]; then
+  if [[ -e "${home_path}" || -L "${home_path}" ]]; then
+    if [[ -e "${home_path}/.roborepo-managed" ]]; then
+      if [[ "${dry_run}" -eq 0 ]]; then
+        rm -rf "${home_path}"
+        ln -s "${cache_path}" "${home_path}"
+      fi
+      say relink "${home_path} -> ${cache_path}"
+      return 0
+    fi
     echo "skip (native skill): ${home_path}"
     return 0
   fi
 
-  # Our managed copy already present -> refresh only if the source changed (ignore the marker file).
-  if [[ -e "${marker}" ]]; then
-    if diff -rq -x '.roborepo-managed' "${src}" "${home_path}" >/dev/null 2>&1; then
-      say ok "${home_path}"
-      return 0
-    fi
-    if [[ "${dry_run}" -eq 0 ]]; then
-      rm -rf "${home_path}"
-      copy_tree "${src}" "${home_path}"
-      : > "${marker}"
-    fi
-    say copy "${home_path} <- ${src}"
-    return 0
-  fi
-
-  # Absent -> fresh copy.
   if [[ "${dry_run}" -eq 0 ]]; then
     mkdir -p "$(dirname "${home_path}")"
-    copy_tree "${src}" "${home_path}"
-    : > "${marker}"
+    ln -s "${cache_path}" "${home_path}"
   fi
-  say copy "${home_path} <- ${src}"
+  say link "${home_path} -> ${cache_path}"
 }
 
 # One-shot migration: tear down the legacy ~/.agents/skills runtime tree.
@@ -742,14 +784,16 @@ remove_legacy_agents_skills() {
   echo "cleanup (legacy ~/.agents/skills): ${legacy} -> ${backup_path}"
 }
 
-# Enumerate globals/agents/skills/* and link each into <home_dir>/skills/<name>.
-# Also prunes stale managed symlinks (skill removed from repo source).
+# Enumerate globals/agents/skills/*, materialize each into ~/.roborepo/skills/<name>,
+# then symlink each present harness skill dir entry to the cache copy.
+# Also prunes stale managed cache entries and stale harness symlinks.
 # Requires: ${repo_root}, ${dry_run}, list_source_skills (from skill-lib.sh).
 link_global_skills() {
   local home_dir="$1"
   shift || true
   local src_dir="${repo_root}/globals/agents/skills"
   local skills_home="${home_dir}/skills"
+  local cache_home="${HOME}/.roborepo/skills"
   local allowed_names=("$@")
 
   # Migrate off the legacy ~/.agents/skills location before linking. Idempotent and global, so the
@@ -757,8 +801,7 @@ link_global_skills() {
   remove_legacy_agents_skills
 
   [[ -d "${src_dir}" ]] || return 0
-
-  local name
+  local name cache_path
   while IFS= read -r name; do
     [[ -n "${name}" ]] || continue
     if [[ "${#allowed_names[@]}" -gt 0 ]]; then
@@ -768,13 +811,15 @@ link_global_skills() {
       done
       [[ "${wanted}" -eq 1 ]] || continue
     fi
-    link_skill_item "globals/agents/skills/${name}" "${skills_home}/${name}"
+    cache_path="${cache_home}/${name}"
+    link_skill_item "globals/agents/skills/${name}" "${cache_path}"
+    link_skill_view "${cache_path}" "${skills_home}/${name}"
   done < <(list_source_skills "${src_dir}")
 
-  # Prune managed skill copies (those carrying our marker) whose source has been removed.
-  [[ -d "${skills_home}" ]] || return 0
+  # Prune cache entries and harness symlinks whose source has been removed or is not allowed.
+  [[ -d "${cache_home}" ]] || return 0
   local entry skill_name
-  for entry in "${skills_home}"/*; do
+  for entry in "${cache_home}"/*; do
     [[ -d "${entry}" && -e "${entry}/.roborepo-managed" ]] || continue
     skill_name="$(basename "${entry}")"
     if [[ "${#allowed_names[@]}" -gt 0 ]]; then
@@ -782,19 +827,31 @@ link_global_skills() {
       for allowed in "${allowed_names[@]}"; do
         [[ "${skill_name}" == "${allowed}" ]] && still_allowed=1 && break
       done
-      [[ "${still_allowed}" -eq 1 ]] || {
+      if [[ "${still_allowed}" -ne 1 ]]; then
         if [[ "${dry_run}" -eq 0 ]]; then
           rm -rf "${entry}"
         fi
         echo "prune: ${entry} (not in base skill set)"
+        [[ -d "${skills_home}" ]] || continue
+        [[ -L "${skills_home}/${skill_name}" ]] && [[ "$(readlink "${skills_home}/${skill_name}")" == "${entry}" ]] \
+          && { [[ "${dry_run}" -eq 0 ]] && rm -f "${skills_home}/${skill_name}"; echo "prune: ${skills_home}/${skill_name} (not in base skill set)"; }
         continue
-      }
+      fi
     fi
-    [[ -f "${src_dir}/${skill_name}/SKILL.md" ]] && continue
-    if [[ "${dry_run}" -eq 0 ]]; then
-      rm -rf "${entry}"
-    fi
-    echo "prune: ${entry} (source removed)"
+    [[ -f "${src_dir}/${skill_name}/SKILL.md" ]] || {
+      if [[ "${dry_run}" -eq 0 ]]; then
+        rm -rf "${entry}"
+      fi
+      echo "prune: ${entry} (source removed)"
+      [[ -d "${skills_home}" ]] || continue
+      [[ -L "${skills_home}/${skill_name}" ]] && [[ "$(readlink "${skills_home}/${skill_name}")" == "${entry}" ]] \
+        && { [[ "${dry_run}" -eq 0 ]] && rm -f "${skills_home}/${skill_name}"; echo "prune: ${skills_home}/${skill_name} (source removed)"; }
+      continue
+    }
+    [[ -d "${skills_home}" ]] || continue
+    [[ -L "${skills_home}/${skill_name}" ]] || continue
+    [[ "$(readlink "${skills_home}/${skill_name}")" == "${entry}" ]] || continue
+    say ok "${skills_home}/${skill_name}"
   done
 }
 

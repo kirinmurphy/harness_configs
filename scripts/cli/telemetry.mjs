@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import net from "node:net";
 import { spawnSync, spawn } from "node:child_process";
 import { markTelemetrySelected, presetsApply } from "./presets.mjs";
 import { repoRoot } from "./paths.mjs";
@@ -354,11 +355,11 @@ function telemetryExport(args) {
   console.log(JSON.stringify(readSpoolEvents(), null, 2));
 }
 
-export async function serveCommand(args) {
+export async function serveCommand(args, { allowPortFallback = false } = {}) {
   const options = parseServeArgs(args);
-  const portalUrl = `http://127.0.0.1:${options.port}/config`;
   if (options.detach) {
-    await startDetachedPortal(options.port);
+    const port = await startDetachedPortal(options.port, { allowPortFallback });
+    const portalUrl = `http://127.0.0.1:${port}/config`;
     console.log(`roborepo portal: ${portalUrl}  (detached · use: roborepo telemetry stop)`);
     if (options.open) openLocalUrl(portalUrl);
     return;
@@ -410,7 +411,7 @@ export async function serveCommand(args) {
 }
 
 function parseServeArgs(args) {
-  const options = { port: 4317, detach: false, open: true };
+  const options = { port: 4317, detach: false, open: true, allowZeroPort: false };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--port") options.port = Number(args[++i]);
@@ -418,9 +419,10 @@ function parseServeArgs(args) {
     else if (arg === "--detach") options.detach = true;
     else if (arg === "--open") options.open = true;
     else if (arg === "--no-open") options.open = false;
+    else if (arg === "--allow-zero-port") options.allowZeroPort = true;
     else rejectArgs([arg]);
   }
-  if (!Number.isInteger(options.port) || options.port <= 0) {
+  if (!Number.isInteger(options.port) || options.port < 0 || (options.port === 0 && !options.allowZeroPort)) {
     console.error("usage: roborepo serve [--detach] [--no-open] [--port <n>]");
     process.exit(2);
   }
@@ -886,10 +888,11 @@ function stopServer() {
   try { process.kill(pid, "SIGTERM"); return true; } catch { return false; }
 }
 
-async function startDetachedPortal(port) {
+async function startDetachedPortal(port, { allowPortFallback = false } = {}) {
   killExistingServer();
-  const { child, readyFile } = spawnDetachedServer(port);
-  const ready = await waitForPortalReady(port, child, readyFile);
+  const selectedPort = allowPortFallback ? await pickAvailablePort(port) : port;
+  const { child, readyFile } = spawnDetachedServer(selectedPort);
+  const ready = await waitForPortalReady(selectedPort, child, readyFile);
   if (!ready.ok) {
     clearPid();
     try { fs.rmSync(readyFile, { force: true }); } catch {}
@@ -900,13 +903,30 @@ async function startDetachedPortal(port) {
   }
   writePid(child.pid);
   child.unref();
+  return ready.port ?? selectedPort;
+}
+
+async function pickAvailablePort(startPort, attempts = 16) {
+  const candidate = Number.isFinite(startPort) && startPort > 0 ? Math.trunc(startPort) : 4317;
+  return await canBindPort(candidate) ? candidate : 0;
+}
+
+function canBindPort(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.once("error", () => resolve(false));
+    server.listen({ port, host: "127.0.0.1", exclusive: true }, () => {
+      server.close(() => resolve(true));
+    });
+  });
 }
 
 // Spawn a new foreground `serve` process in the background. The caller writes the PID only after the
 // child writes its ready-file from server.listen(), so a failed bind never leaves a stale "running" PID.
 function spawnDetachedServer(port) {
   const readyFile = path.join(os.tmpdir(), `roborepo-portal-${process.pid}-${Date.now()}.ready`);
-  const child = spawn(process.execPath, [process.argv[1], "serve", "--no-open", "--port", String(port)], {
+  const child = spawn(process.execPath, [process.argv[1], "serve", "--no-open", "--port", String(port), "--allow-zero-port"], {
     detached: true,
     stdio: "ignore",
     env: { ...process.env, ROBOREPO_PORTAL_READY_FILE: readyFile },
@@ -937,8 +957,14 @@ function waitForPortalReady(port, child, readyFile) {
         return;
       }
       if (fs.existsSync(readyFile) && isProcessRunning(child.pid)) {
+        let actualPort = port;
+        try {
+          const marker = fs.readFileSync(readyFile, "utf8").trim();
+          const match = /^ready:(\d+)$/.exec(marker);
+          if (match) actualPort = Number(match[1]);
+        } catch {}
         try { fs.rmSync(readyFile, { force: true }); } catch {}
-        finish({ ok: true });
+        finish({ ok: true, port: actualPort });
         return;
       }
       setTimeout(poll, 100);

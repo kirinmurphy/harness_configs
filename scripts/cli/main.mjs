@@ -107,7 +107,7 @@ async function dispatch(args) {
 
     // Alias of `serve --detach`: starts the portal in the background and opens it in the browser.
     case "web":
-      return serveCommand(["--detach", ...rest]);
+      return serveCommand(["--detach", ...[sub, ...rest].filter(Boolean)], { allowPortFallback: true });
 
     // `bundle` / `presets` are internal install-time verbs (run by scripts/install/main.sh), not
     // user-facing — deliberately absent from usage/menu in cli-commands.json. Kept dispatchable so

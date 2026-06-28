@@ -19,7 +19,11 @@ export function startTelemetryServer(handlers) {
   });
   server.listen(port, LOOPBACK, () => {
     if (process.env.ROBOREPO_PORTAL_READY_FILE) {
-      try { fs.writeFileSync(process.env.ROBOREPO_PORTAL_READY_FILE, "ready\n"); } catch {}
+      try {
+        const addr = server.address();
+        const actualPort = typeof addr === "object" && addr ? addr.port : port;
+        fs.writeFileSync(process.env.ROBOREPO_PORTAL_READY_FILE, `ready:${actualPort}\n`);
+      } catch {}
     }
     console.log(`roborepo portal:     http://${LOOPBACK}:${port}/config`);
     console.log(`telemetry dashboard: http://${LOOPBACK}:${port}`);

@@ -36,6 +36,9 @@ export function configHtml() {
   .item-label.dim { color:var(--dim); }
   .item-desc { color:var(--dim); font-size:11px; margin-top:2px; line-height:1.4; }
   .item-hint { color:var(--accent); font-size:11px; margin-top:3px; }
+  .item-status { color:var(--ok); font-size:11px; margin-top:3px; }
+  .item-status.error { color:#f85149; }
+  .item-status:empty { display:none; }
   /* badges */
   .badge { display:inline-block; font-size:10px; padding:1px 5px; border-radius:3px; border:1px solid; line-height:1.4; white-space:nowrap; }
   .badge-skill { color:#79c0ff; border-color:#1f6feb; background:#0d1b2e; }
@@ -91,13 +94,39 @@ export function configHtml() {
   /* clickable (inspectable) item label */
   .item-label.clickable { cursor:pointer; text-decoration:underline dotted var(--off); text-underline-offset:3px; }
   .item-label.clickable:hover { color:var(--accent); }
-  /* globals rules preview */
-  .globals-pre { margin:8px 0 0; padding:10px; background:var(--bg); border:1px solid var(--line); border-radius:6px; font-size:11px; color:var(--dim); white-space:pre-wrap; max-height:220px; overflow:auto; }
-  .globals-tabs { display:flex; gap:0; margin-top:8px; }
-  .globals-tab { font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--bg); border:1px solid var(--line); color:var(--dim); padding:3px 12px; cursor:pointer; }
-  .globals-tab:first-child { border-radius:5px 0 0 5px; }
-  .globals-tab:last-child { border-radius:0 5px 5px 0; border-left:none; }
-  .globals-tab.on { background:var(--panel); color:var(--accent); border-color:var(--accent); }
+  /* globals live file */
+  .globals-shell { display:grid; gap:10px; }
+  .globals-switches { display:flex; flex-wrap:wrap; gap:0; }
+  .globals-switch { font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--bg); border:1px solid var(--line); color:var(--dim); padding:3px 12px; cursor:pointer; }
+  .globals-switch:first-child { border-radius:5px 0 0 5px; }
+  .globals-switch:last-child { border-radius:0 5px 5px 0; border-left:none; }
+  .globals-switch.on { background:var(--panel); color:var(--accent); border-color:var(--accent); }
+  .globals-live { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px; max-height:44vh; overflow:auto; }
+  .globals-live .markdown { font-size:12px; line-height:1.6; color:var(--ink); }
+  .globals-live .markdown > :first-child { margin-top:0; }
+  .globals-live .markdown > :last-child { margin-bottom:0; }
+  .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { margin:0.8em 0 0.35em; line-height:1.2; color:var(--ink); }
+  .markdown h1 { font-size:1.2em; }
+  .markdown h2 { font-size:1.05em; }
+  .markdown h3 { font-size:0.98em; }
+  .markdown p { margin:0.45em 0; }
+  .markdown ul, .markdown ol { margin:0.45em 0; padding-left:1.4em; }
+  .markdown li { margin:0.2em 0; }
+  .markdown blockquote { margin:0.6em 0; padding:0.2em 0 0.2em 0.9em; border-left:3px solid var(--line); color:var(--dim); }
+  .markdown pre { margin:0.65em 0; padding:0.8em; overflow:auto; background:#0b0f14; border:1px solid var(--line); border-radius:6px; }
+  .markdown code { font:inherit; color:#d2a8ff; background:rgba(255,255,255,.04); padding:0.08em 0.3em; border-radius:4px; }
+  .markdown pre code { display:block; padding:0; background:none; color:var(--ink); }
+  .markdown hr { border:none; border-top:1px solid var(--line); margin:0.8em 0; }
+  .markdown a { color:var(--accent); text-decoration:none; }
+  .markdown a:hover { text-decoration:underline; }
+  .markdown .md-meta { margin:0.25em 0; color:var(--dim); font-size:11px; }
+  .markdown .md-meta code { color:var(--warn); background:none; padding:0; }
+  .globals-defaults { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:11px; color:var(--dim); }
+  .globals-defaults strong { color:var(--ink); font-weight:600; }
+  .globals-defaults .btn-row { display:flex; flex-wrap:wrap; gap:6px; }
+  .globals-default { font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--bg); border:1px solid var(--line); color:var(--ink); padding:3px 10px; border-radius:5px; cursor:pointer; }
+  .globals-default:hover { border-color:var(--accent); color:var(--accent); }
+  .globals-default:disabled { color:var(--dim); cursor:default; opacity:.6; }
   /* modal */
   .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; padding:24px; z-index:50; }
   .modal-backdrop.open { display:flex; }
@@ -108,7 +137,6 @@ export function configHtml() {
   .modal-close { margin-left:auto; background:none; border:1px solid var(--line); color:var(--dim); border-radius:5px; padding:3px 9px; cursor:pointer; }
   .modal-close:hover { color:var(--ink); border-color:var(--dim); }
   .modal-body { padding:14px 16px; overflow:auto; }
-  .modal-body pre { margin:0; white-space:pre-wrap; word-break:break-word; font-size:12px; color:var(--ink); }
 </style>
 </head>
 <body>
@@ -128,7 +156,7 @@ export function configHtml() {
       <span class="modal-path" id="modal-path"></span>
       <button class="modal-close" id="modal-close">close ✕</button>
     </div>
-    <div class="modal-body"><pre id="modal-content"></pre></div>
+    <div class="modal-body"><div class="markdown" id="modal-content"></div></div>
   </div>
 </div>
 <script>
@@ -158,13 +186,22 @@ function badge(text) {
   return el("span", "badge " + (isCmd ? "badge-cmd" : "badge-skill"), text);
 }
 
+function setModalContent(data) {
+  const node = document.getElementById("modal-content");
+  if (data?.html) {
+    node.innerHTML = data.html;
+  } else {
+    node.textContent = data?.content || "(empty)";
+  }
+}
+
 // ---- source-inspect modal: fetch the full file that DEFINES a tool and show it in a popup. ----
 function closeModal() { document.getElementById("modal").classList.remove("open"); }
 async function openSourceModal(inspect) {
   const backdrop = document.getElementById("modal");
   document.getElementById("modal-title").textContent = inspect.label || inspect.id;
   document.getElementById("modal-path").textContent = "loading…";
-  document.getElementById("modal-content").textContent = "";
+  document.getElementById("modal-content").innerHTML = "";
   backdrop.classList.add("open");
   try {
     const qs = new URLSearchParams({ kind: inspect.kind, id: inspect.id });
@@ -177,11 +214,18 @@ async function openSourceModal(inspect) {
     }
     document.getElementById("modal-title").textContent = data.title || inspect.label;
     document.getElementById("modal-path").textContent = data.path || "";
-    document.getElementById("modal-content").textContent = data.content || "(empty)";
+    setModalContent(data);
   } catch (e) {
     document.getElementById("modal-path").textContent = "";
     document.getElementById("modal-content").textContent = "error: " + e.message;
   }
+}
+
+function openSnapshotModal(title, pathText, data) {
+  document.getElementById("modal-title").textContent = title;
+  document.getElementById("modal-path").textContent = pathText || "";
+  setModalContent(data);
+  document.getElementById("modal").classList.add("open");
 }
 document.getElementById("modal-close").addEventListener("click", closeModal);
 document.getElementById("modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
@@ -191,7 +235,7 @@ const TOGGLE_ENDPOINT = { package: "/api/config/packages", skill: "/api/config/s
 
 // One switch per mutable item. Optimistic-disable while the POST is in flight; on success the
 // poll re-render (driven by the returned snapshot, applied immediately) reflects the new state.
-function toggleSwitch(item, errSlot) {
+function toggleSwitch(item, statusSlot) {
   const wrap = el("label", "switch");
   const input = document.createElement("input");
   input.type = "checkbox";
@@ -204,7 +248,9 @@ function toggleSwitch(item, errSlot) {
   input.addEventListener("change", async () => {
     const enabled = input.checked;
     input.disabled = true;
-    errSlot.textContent = "";
+    statusSlot.className = "item-status";
+    statusSlot.textContent = "applying…";
+    document.getElementById("status").textContent = "applying " + item.label + "…";
     try {
       const res = await fetch(TOGGLE_ENDPOINT[item.toggle], {
         method: "POST",
@@ -214,13 +260,22 @@ function toggleSwitch(item, errSlot) {
       const data = await res.json();
       if (!res.ok || !data.ok) {
         input.checked = !enabled; // revert
-        errSlot.textContent = data.error || data.message || "failed";
+        statusSlot.className = "item-status error";
+        statusSlot.textContent = data.error || data.message || "failed";
+        document.getElementById("status").textContent = "error: " + statusSlot.textContent;
       } else if (data.config) {
+        statusSlot.textContent = "saved";
         applySnapshot(data.config); // re-render from the authoritative post-mutation snapshot
+        document.getElementById("status").textContent = "saved " + item.label + " " + new Date().toLocaleTimeString();
+      } else {
+        statusSlot.textContent = "saved";
+        document.getElementById("status").textContent = "saved " + item.label + " " + new Date().toLocaleTimeString();
       }
     } catch (e) {
       input.checked = !enabled;
-      errSlot.textContent = e.message;
+      statusSlot.className = "item-status error";
+      statusSlot.textContent = e.message;
+      document.getElementById("status").textContent = "error: " + e.message;
     } finally {
       input.disabled = false;
     }
@@ -372,7 +427,7 @@ function renderStandardSection(section) {
       }
       body.appendChild(urlRow);
     }
-    const errSlot = el("div", "item-err");
+    const errSlot = el("div", "item-status");
     body.appendChild(errSlot);
     row.appendChild(body);
     if (item.toggle) row.appendChild(toggleSwitch(item, errSlot));
@@ -395,45 +450,86 @@ function renderSection(section) {
 function renderGlobals(snap) {
   const g = snap.globals || {};
   const rules = g.rules || {};
+  const liveRules = g.liveRules || {};
   const settings = g.settings || {};
   const panel = el("div", "panel wide");
   const head = el("div", "panel-head");
   head.appendChild(el("h2", null, "Globals"));
   panel.appendChild(head);
-  panel.appendChild(el("p", "panel-desc", "Harness-agnostic rules and global settings applied to every session."));
+  panel.appendChild(el("p", "panel-desc", "Live rules files plus the baseline slices that feed them."));
 
-  // Rules preview with tabs: shared (agnostic) / claude / codex deltas. Default to shared.
-  const tabsRow = el("div", "globals-tabs");
-  const pre = el("pre", "globals-pre");
-  const sources = {
-    shared: rules.shared || "(none)",
-    claude: rules.claude || "(no claude-specific rules)",
-    codex: rules.codex || "(no codex-specific rules)",
-  };
-  const setTab = (key) => {
-    pre.textContent = sources[key];
-    for (const b of tabsRow.children) b.classList.toggle("on", b.dataset.key === key);
-  };
-  for (const [key, label] of [["shared", "shared (agnostic)"], ["claude", "claude"], ["codex", "codex"]]) {
-    const b = el("button", "globals-tab", label);
-    b.dataset.key = key;
-    b.addEventListener("click", () => setTab(key));
-    tabsRow.appendChild(b);
-  }
-  panel.appendChild(el("p", "perm-label", "Rules"));
-  panel.appendChild(tabsRow);
-  panel.appendChild(pre);
-  setTab("shared");
+  const liveRow = el("div", "globals-shell");
+  const installed = [
+    ["claude", liveRules.claude],
+    ["codex", liveRules.codex],
+  ].filter(([, v]) => v?.installed);
+  const available = installed.map(([key]) => key);
+  const bothInstalled = available.length > 1;
+  let selected = selectedLiveHarness && available.includes(selectedLiveHarness)
+    ? selectedLiveHarness
+    : (available[0] || null);
 
-  // "View full rendered rules" — fetches the complete CLAUDE.md/AGENTS.md output on demand (kept out
-  // of the polled snapshot to keep it lean) and shows it in the source modal.
-  const viewRow = el("div", "url-row");
-  for (const [harness, label] of [["claude", "view full CLAUDE.md"], ["codex", "view full AGENTS.md"]]) {
-    const btn = el("button", "expand-btn", label);
-    btn.addEventListener("click", () => openSourceModal({ kind: "globals-rules", id: harness, harness, label }));
-    viewRow.appendChild(btn);
+  const switchRow = el("div", "globals-switches");
+  const fileLabel = el("div", "perm-label");
+  const fileFrame = el("div", "globals-live");
+  const fileBody = el("div", "markdown");
+
+  function paintLive() {
+    const live = selected ? liveRules[selected] : null;
+    if (!live?.installed) {
+      fileLabel.textContent = "No live rules file";
+      fileBody.innerHTML = '<p class="md-meta">No live rules file found.</p>';
+    } else {
+      fileLabel.textContent = "Live " + live.path;
+      fileBody.innerHTML = live.html || '<p class="md-meta">(empty)</p>';
+    }
+    if (bothInstalled) {
+      for (const btn of switchRow.children) btn.classList.toggle("on", btn.dataset.key === selected);
+    }
   }
-  panel.appendChild(viewRow);
+
+  if (bothInstalled) {
+    for (const [key, label] of [["claude", "Claude"], ["codex", "Codex"]]) {
+      const b = el("button", "globals-switch" + (key === selected ? " on" : ""), label);
+      b.dataset.key = key;
+      b.addEventListener("click", () => {
+        selectedLiveHarness = key;
+        render(lastSnapshot);
+      });
+      switchRow.appendChild(b);
+    }
+    liveRow.appendChild(switchRow);
+  }
+  liveRow.appendChild(fileLabel);
+  fileFrame.appendChild(fileBody);
+  liveRow.appendChild(fileFrame);
+  panel.appendChild(liveRow);
+  paintLive();
+
+  const defaults = el("div", "globals-defaults");
+  defaults.appendChild(el("strong", null, "Roborepo defaults:"));
+  const defaultButtons = el("div", "btn-row");
+  for (const [key, label] of [
+    ["shared", "Global baseline"],
+    ["claude", "Claude baseline"],
+    ["codex", "Codex baseline"],
+    ["packages", "Tool Add-Ons"],
+  ]) {
+    const entry = rules[key];
+    const btn = el("button", "globals-default", label);
+    btn.disabled = !entry?.html;
+    const pathText = key === "shared"
+      ? "globals/rules/shared"
+      : key === "claude"
+        ? "globals/rules/claude"
+        : key === "codex"
+          ? "globals/rules/codex"
+          : "globals/packages/*/rules.md";
+    btn.addEventListener("click", () => openSnapshotModal(label, pathText, entry));
+    defaultButtons.appendChild(btn);
+  }
+  defaults.appendChild(defaultButtons);
+  panel.appendChild(defaults);
 
   // Global settings KV.
   panel.appendChild(el("p", "perm-label", "Global settings"));
@@ -484,7 +580,10 @@ function render(snap) {
 // --------------------------------------------------------------------------- poll
 
 let last = null;
+let lastSnapshot = null;
+let selectedLiveHarness = null;
 function applySnapshot(snap) {
+  lastSnapshot = snap;
   const sig = JSON.stringify(snap);
   if (sig !== last) { last = sig; render(snap); }
   document.getElementById("status").textContent = "updated " + new Date().toLocaleTimeString();

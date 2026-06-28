@@ -4,11 +4,13 @@ import os from "node:os";
 import { repoRoot } from "./paths.mjs";
 import { installStatePath, presetsStatePath, telemetryDir, activeProfilePath } from "./state-paths.mjs";
 import { readProjectProfile } from "./config-mutate.mjs";
+import { renderMarkdown } from "./markdown-render.mjs";
 import {
   readEnabledPackagesRegistry,
   renderRulesPreview,
   renderSharedRulesPreview,
   renderHarnessRulesPreview,
+  renderEnabledPackageRulesPreview,
 } from "./rules-render.mjs";
 
 const PACKAGES_PATH = path.join(repoRoot, "manifests", "inventory", "packages.json");
@@ -17,9 +19,33 @@ const SKILL_INVOCATION_PATH = path.join(repoRoot, "manifests", "inventory", "ski
 const SLASH_COMMANDS_PATH = path.join(repoRoot, "manifests", "inventory", "slash-commands.json");
 const AGENT_PERMISSIONS_PATH = path.join(repoRoot, "manifests", "inventory", "agent-permissions.json");
 const CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
+const LIVE_RULE_FILES = {
+  claude: path.join(os.homedir(), ".claude", "CLAUDE.md"),
+  codex: path.join(os.homedir(), ".codex", "AGENTS.md"),
+};
 
 function readJson(filePath, fallback = null) {
   try { return JSON.parse(fs.readFileSync(filePath, "utf8")); } catch { return fallback; }
+}
+
+function readText(filePath, fallback = "") {
+  try { return fs.readFileSync(filePath, "utf8"); } catch { return fallback; }
+}
+
+function renderEntry(text) {
+  return { text, html: renderMarkdown(text) };
+}
+
+function readLiveRulesFile(harness) {
+  const filePath = LIVE_RULE_FILES[harness];
+  if (!filePath) return { installed: false, path: null, content: "", html: "" };
+  const content = readText(filePath, "");
+  return {
+    installed: fs.existsSync(filePath),
+    path: filePath,
+    content,
+    html: renderMarkdown(content),
+  };
 }
 
 // A composite package (one with `requires`) is enabled iff its own components are enabled AND every
@@ -36,11 +62,25 @@ function isPackageEnabled(pkg, settings, serviceState, byId = new Map(), seen = 
 }
 
 function ownComponentsEnabled(pkg, settings, serviceState) {
-  // A plugin package is enabled iff its enabledPlugins bool is true. Checked first so plugin-only
-  // packages (e.g. caveman) are identified by their own marker, not by other component types.
+  const rulesEnabled = () => {
+    const rulesComp = pkg.components.find((c) => c.type === "rules");
+    if (!rulesComp) return true;
+    const { exists, packages: enabledPkgs } = readEnabledPackagesRegistry();
+    if (exists) return enabledPkgs.includes(pkg.id);
+    const rulesFile = rulesComp.harness === "codex"
+      ? path.join(os.homedir(), ".codex", "AGENTS.md")
+      : path.join(os.homedir(), ".claude", "CLAUDE.md");
+    let live = "";
+    try { live = fs.readFileSync(rulesFile, "utf8"); } catch { return false; }
+    const firstLine = fs.readFileSync(path.join(repoRoot, rulesComp.source), "utf8").split("\n").find((l) => l.trim());
+    return !!firstLine && live.includes(firstLine);
+  };
+
+  // A plugin package is enabled iff its enabledPlugins bool is true. If it also carries rules, the
+  // rules registry must include the package too so the UI doesn't show a half-applied package as on.
   const pluginComp = pkg.components.find((c) => c.type === "plugin");
   if (pluginComp) {
-    return settings?.enabledPlugins?.[pluginComp.id] === true;
+    return settings?.enabledPlugins?.[pluginComp.id] === true && rulesEnabled();
   }
   // A service package is enabled iff its handler's state says so (telemetry: the spool state file).
   const serviceComp = pkg.components.find((c) => c.type === "service");
@@ -62,16 +102,7 @@ function ownComponentsEnabled(pkg, settings, serviceState) {
   // pre-Phase-3 machine without the registry, fall back to text scanning the live rules file.
   const rulesComp = pkg.components.find((c) => c.type === "rules");
   if (rulesComp) {
-    const { exists, packages: enabledPkgs } = readEnabledPackagesRegistry();
-    if (exists) return enabledPkgs.includes(pkg.id);
-    // Pre-Phase-3 fallback: text scan
-    const rulesFile = rulesComp.harness === "codex"
-      ? path.join(os.homedir(), ".codex", "AGENTS.md")
-      : path.join(os.homedir(), ".claude", "CLAUDE.md");
-    let live = "";
-    try { live = fs.readFileSync(rulesFile, "utf8"); } catch { return false; }
-    const firstLine = fs.readFileSync(path.join(repoRoot, rulesComp.source), "utf8").split("\n").find((l) => l.trim());
-    return !!firstLine && live.includes(firstLine);
+    return rulesEnabled();
   }
   const hookComp = pkg.components.find((c) => c.type === "hooks");
   if (hookComp) {
@@ -164,15 +195,20 @@ export function readConfigSnapshot() {
     plugins: {
       caveman: settings?.enabledPlugins?.["caveman@caveman"] === true,
     },
-    // Harness-agnostic rules + global settings shown in the /config "Globals" section. `rules.shared`
-    // is the baseline every harness gets; claude/codex are the harness-specific deltas. The COMPLETE
-    // rendered home-rules (what lands in CLAUDE.md / AGENTS.md) is fetched on demand via
-    // /api/config/source?kind=globals-rules so the 10s poll stays lean.
+    // Harness-agnostic rules + global settings shown in the /config "Globals" section. Each rules
+    // entry carries raw markdown plus rendered HTML: shared = baseline every harness gets,
+    // claude/codex = harness-specific deltas, packages = enabled package rule slices. The live
+    // home files are also included so the portal can render the actual on-disk CLAUDE.md / AGENTS.md.
     globals: {
       rules: {
-        shared: renderSharedRulesPreview(),
-        claude: renderHarnessRulesPreview("claude"),
-        codex: renderHarnessRulesPreview("codex"),
+        shared: renderEntry(renderSharedRulesPreview()),
+        claude: renderEntry(renderHarnessRulesPreview("claude")),
+        codex: renderEntry(renderHarnessRulesPreview("codex")),
+        packages: renderEntry(renderEnabledPackageRulesPreview()),
+      },
+      liveRules: {
+        claude: readLiveRulesFile("claude"),
+        codex: readLiveRulesFile("codex"),
       },
       settings: {
         activeProfile,
@@ -268,8 +304,15 @@ export function buildBehaviorView(snap) {
           active: t.installed,
           toggle: "skill",
           badges: [`/${t.command}`, "skill"],
-          // Inspect the command source for a harness it actually exists for (codex-only → codex).
-          inspect: { kind: "command", id: t.command, harness: (t.commandHarnesses || []).includes("claude") ? "claude" : (t.commandHarnesses || [])[0] || "claude", label: `/${t.command}` },
+          // Inspect the command wrapper plus the backing SKILL.md. Pick a harness the command
+          // actually exists for (codex-only → codex).
+          inspect: {
+            kind: "command-skill",
+            id: t.command,
+            skill: t.id,
+            harness: (t.commandHarnesses || []).includes("claude") ? "claude" : (t.commandHarnesses || [])[0] || "claude",
+            label: `/${t.command}`,
+          },
         })),
     },
     {
@@ -384,12 +427,57 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
     return readSourceFile(abs, `/${id} (${harnessSafe})`);
   }
 
+  if (kind === "command-skill") {
+    // id is the command NAME (no slash). Read both the generated command wrapper and the SKILL.md
+    // it points at, so the popup shows the loading instruction plus the actual skill content.
+    const commands = readJson(SLASH_COMMANDS_PATH, { commands: [] }).commands || [];
+    const cmd = commands.find((c) => c.name === id);
+    if (!cmd) return fail(`unknown command: ${id}`);
+    const skills = readJson(SKILL_INVOCATION_PATH, { skills: [] }).skills || [];
+    if (!cmd.skill || !skills.some((s) => s.skill === cmd.skill)) return fail(`unknown skill for command: ${id}`);
+
+    const commandAbs = path.join(repoRoot, "globals", harnessSafe, "commands", `${id}.md`);
+    const skillAbs = path.join(repoRoot, "globals", "agents", "skills", cmd.skill, "SKILL.md");
+    const command = readSourceFile(commandAbs, `/${id} (${harnessSafe})`);
+    if (!command.ok) return command;
+    const skill = readSourceFile(skillAbs, `skill: ${cmd.skill}`);
+    if (!skill.ok) return skill;
+    return {
+      ok: true,
+      title: `/${id} + ${cmd.skill}`,
+      path: `${command.path} + ${skill.path}`,
+      content: [
+        `# /${id} (${harnessSafe})`,
+        command.content.trimEnd(),
+        "",
+        `# skill: ${cmd.skill}`,
+        skill.content.trimEnd(),
+        "",
+      ].join("\n"),
+      html: renderMarkdown([
+        `# /${id} (${harnessSafe})`,
+        command.content.trimEnd(),
+        "",
+        `# skill: ${cmd.skill}`,
+        skill.content.trimEnd(),
+        "",
+      ].join("\n")),
+    };
+  }
+
   if (kind === "globals-rules") {
     // Full rendered home-rules for one harness (what lands in CLAUDE.md / AGENTS.md). Served on
     // demand so the 10s config poll doesn't carry ~13KB of rules text it rarely needs.
     const content = renderRulesPreview(harnessSafe);
     const file = harnessSafe === "codex" ? "~/.codex/AGENTS.md" : "~/.claude/CLAUDE.md";
-    return { ok: true, title: `Rendered rules — ${harnessSafe}`, path: file, content };
+    return { ok: true, title: `Rendered rules — ${harnessSafe}`, path: file, content, html: renderMarkdown(content) };
+  }
+
+  if (kind === "live-rules") {
+    const live = readLiveRulesFile(harnessSafe);
+    if (!live.installed && !live.content) return fail(`live rules file not found: ${harnessSafe}`);
+    const file = harnessSafe === "codex" ? "~/.codex/AGENTS.md" : "~/.claude/CLAUDE.md";
+    return { ok: true, title: `Live rules — ${harnessSafe}`, path: file, content: live.content, html: live.html };
   }
 
   if (kind === "rules" || kind === "hooks") {
@@ -413,7 +501,8 @@ function readSourceFile(abs, title) {
     return { ok: false, error: "path escapes repo" };
   }
   try {
-    return { ok: true, title, path: path.relative(repoRoot, resolved), content: fs.readFileSync(resolved, "utf8") };
+    const content = fs.readFileSync(resolved, "utf8");
+    return { ok: true, title, path: path.relative(repoRoot, resolved), content, html: renderMarkdown(content) };
   } catch {
     return { ok: false, error: `not found: ${path.relative(repoRoot, resolved)}` };
   }

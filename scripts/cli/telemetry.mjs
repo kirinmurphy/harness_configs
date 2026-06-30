@@ -345,11 +345,12 @@ function telemetryExport(args) {
 
 export async function serveCommand(args, { allowPortFallback = false } = {}) {
   const options = parseServeArgs(args);
+  const portalUrl = `http://127.0.0.1:${options.port}/config`;
   if (options.detach) {
     const port = await startDetachedPortal(options.port, { allowPortFallback });
-    const portalUrl = `http://127.0.0.1:${port}/config`;
-    console.log(`roborepo portal: ${portalUrl}  (detached · use: roborepo telemetry stop)`);
-    if (options.open) openLocalUrl(portalUrl);
+    const detachedPortalUrl = `http://127.0.0.1:${port}/config`;
+    console.log(`roborepo portal: ${detachedPortalUrl}  (detached · use: roborepo telemetry stop)`);
+    if (options.open) openLocalUrl(detachedPortalUrl);
     return;
   }
   // Clean up the PID file when the server exits cleanly (SIGTERM from stop or OS shutdown).

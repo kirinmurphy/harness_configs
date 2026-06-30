@@ -371,7 +371,7 @@ function renderGlobals(snap) {
   let selected =
     selectedLiveHarness && available.includes(selectedLiveHarness)
       ? selectedLiveHarness
-      : available[0] || null;
+      : null;
 
   const switchRow = panel.querySelector(".globals-switches");
   const liveMissing = slot(panel, "live-missing");

@@ -26,87 +26,144 @@
         <div class="modal-body">
           <div class="markdown" id="modal-content"></div>
         </div>
+        <div class="modal-footer" id="modal-footer" hidden></div>
       </div>
     </div>
-    <template id="tpl-globals">
+    <template id="tpl-config-files">
       <section class="panel wide">
-        <div class="panel-head"><h2>Global Rules</h2></div>
-        <div class="globals-shell">
-          <div class="globals-switches">
-            <button class="globals-switch" type="button" data-key="codex">
-              AGENTS.md
-            </button>
-            <button class="globals-switch" type="button" data-key="claude">
-              CLAUDE.md
-            </button>
-
-            <span class="perm-label">
-              <span data-slot="live-missing">No live rules file</span>
-              <span data-slot="live-installed"
-                ><span data-slot="live-path"></span
-              ></span>
-            </span>
+        <div class="panel-head"><h2>Agent Files</h2></div>
+        <div class="config-grid" role="table" aria-label="Agent files">
+          <div class="config-grid-head" role="row">
+            <div role="columnheader">Config Type</div>
+            <div role="columnheader">Claude</div>
+            <div role="columnheader">Codex</div>
           </div>
-          <div class="globals-live">
-            <div class="markdown" data-slot="live-body"></div>
-          </div>
-        </div>
-        <div class="globals-defaults">
-          <details class="defaults-menu">
-            <summary>RoboRepo defaults</summary>
-            <div class="defaults-popover">
+          <div class="config-grid-row" role="row">
+            <div class="config-type" role="cell">
+              <strong>Rules</strong>
+              <span>Global instructions the agent reads before each task.</span>
+            </div>
+            <div role="cell">
               <button
-                class="globals-default"
+                class="text-link"
                 type="button"
-                data-rule-key="shared"
-                data-rule-path="globals/rules/shared"
+                data-config-kind="live-rules"
+                data-config-id="agent-rules"
+                data-config-harness="claude"
               >
-                Global baseline
-              </button>
-              <button
-                class="globals-default"
-                type="button"
-                data-rule-key="claude"
-                data-rule-path="globals/rules/claude"
-              >
-                Claude baseline
-              </button>
-              <button
-                class="globals-default"
-                type="button"
-                data-rule-key="codex"
-                data-rule-path="globals/rules/codex"
-              >
-                Codex baseline
-              </button>
-              <button
-                class="globals-default"
-                type="button"
-                data-rule-key="packages"
-                data-rule-path="globals/packages/*/rules.md"
-              >
-                Tool Add-Ons
+                CLAUDE.md
               </button>
             </div>
-          </details>
+            <div role="cell">
+              <button
+                class="text-link"
+                type="button"
+                data-config-kind="live-rules"
+                data-config-id="agent-rules"
+                data-config-harness="codex"
+              >
+                AGENTS.md
+              </button>
+            </div>
+          </div>
+          <div class="config-grid-row" role="row">
+            <div class="config-type" role="cell">
+              <strong>Config</strong>
+              <span>Harness settings, permissions, and local runtime defaults.</span>
+            </div>
+            <div role="cell">
+              <button
+                class="text-link"
+                type="button"
+                data-config-kind="config-file"
+                data-config-id="claude-settings"
+              >
+                settings.json
+              </button>
+            </div>
+            <div role="cell">
+              <button
+                class="text-link"
+                type="button"
+                data-config-kind="config-file"
+                data-config-id="codex-config"
+              >
+                config.toml
+              </button>
+            </div>
+          </div>
+          <div class="config-grid-row" role="row">
+            <div class="config-type" role="cell">
+              <strong>Hooks</strong>
+              <span>Automation triggered by agent lifecycle or tool events.</span>
+            </div>
+            <div role="cell">
+              <button
+                class="text-link"
+                type="button"
+                data-config-kind="harness-hooks"
+                data-config-id="hooks"
+                data-config-harness="claude"
+              >
+                settings.json
+              </button>
+            </div>
+            <div role="cell">
+              <button
+                class="text-link"
+                type="button"
+                data-config-kind="harness-hooks"
+                data-config-id="hooks"
+                data-config-harness="codex"
+              >
+                hooks.json
+              </button>
+            </div>
+          </div>
         </div>
       </section>
     </template>
-    <template id="tpl-hooks">
-      <section class="panel">
-        <div class="panel-head"><h2>Hooks</h2></div>
-        <div class="hook-links">
-          <button class="text-link" type="button" data-hook-harness="claude">
-            Claude Hooks
-          </button>
-          <button class="text-link" type="button" data-hook-harness="codex">
-            Codex hooks
-          </button>
-        </div>
-      </section>
+    <template id="tpl-modal-defaults">
+      <div class="globals-defaults">
+        <details class="defaults-menu">
+          <summary>Roborepo defaults</summary>
+          <div class="defaults-popover">
+            <button
+              class="globals-default"
+              type="button"
+              data-rule-key="shared"
+              data-rule-path="globals/rules/shared"
+            >
+              Global baseline
+            </button>
+            <button
+              class="globals-default"
+              type="button"
+              data-rule-key="claude"
+              data-rule-path="globals/rules/claude"
+            >
+              Claude specifics
+            </button>
+            <button
+              class="globals-default"
+              type="button"
+              data-rule-key="codex"
+              data-rule-path="globals/rules/codex"
+            >
+              Codex specifics
+            </button>
+            <button
+              class="globals-default"
+              type="button"
+              data-rule-key="packages"
+              data-rule-path="globals/packages/*/rules.md"
+            >
+              Tool Add-Ons
+            </button>
+          </div>
+        </details>
+      </div>
     </template>
-    <template id="tpl-md-missing"><span></span></template>
-    <template id="tpl-md-empty"><p class="md-meta">(empty)</p></template>
     <template id="tpl-section-token-optimization">
       <section class="panel">
         <div class="panel-head"><h2>Token Optimization</h2></div>

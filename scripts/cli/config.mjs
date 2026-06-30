@@ -22,6 +22,8 @@ const SKILL_INVOCATION_PATH = path.join(repoRoot, "manifests", "inventory", "ski
 const SLASH_COMMANDS_PATH = path.join(repoRoot, "manifests", "inventory", "slash-commands.json");
 const AGENT_PERMISSIONS_PATH = path.join(repoRoot, "manifests", "inventory", "agent-permissions.json");
 const CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
+const CODEX_CONFIG = path.join(os.homedir(), ".codex", "config.toml");
+const CODEX_HOOKS = path.join(os.homedir(), ".codex", "hooks.json");
 const LIVE_RULE_FILES = {
   claude: path.join(os.homedir(), ".claude", "CLAUDE.md"),
   codex: path.join(os.homedir(), ".codex", "AGENTS.md"),
@@ -33,6 +35,30 @@ function readJson(filePath, fallback = null) {
 
 function readText(filePath, fallback = "") {
   try { return fs.readFileSync(filePath, "utf8"); } catch { return fallback; }
+}
+
+function readExternalSourceFile(abs, title, pathText, language = "json") {
+  try {
+    const content = fs.readFileSync(abs, "utf8");
+    return {
+      ok: true,
+      title,
+      path: pathText,
+      content,
+      html: renderMarkdown(`\`\`\`${language}\n${content.trimEnd()}\n\`\`\``),
+    };
+  } catch {
+    return { ok: false, error: `not found: ${pathText}` };
+  }
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function renderEntry(text) {
@@ -474,7 +500,7 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
     const skills = readJson(SKILL_INVOCATION_PATH, { skills: [] }).skills || [];
     if (!skills.some((s) => s.skill === id)) return fail(`unknown skill: ${id}`);
     const abs = path.join(repoRoot, "globals", "agents", "skills", id, "SKILL.md");
-    return readSourceFile(abs, `skill: ${id}`);
+    return readSkillSource(abs, `skill: ${id}`);
   }
 
   if (kind === "command") {
@@ -499,8 +525,12 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
     const skillAbs = path.join(repoRoot, "globals", "agents", "skills", cmd.skill, "SKILL.md");
     const command = readSourceFile(commandAbs, `/${id} (${harnessSafe})`);
     if (!command.ok) return command;
-    const skill = readSourceFile(skillAbs, `skill: ${cmd.skill}`);
+    const skill = readSkillSource(skillAbs, `skill: ${cmd.skill}`);
     if (!skill.ok) return skill;
+    const skillParts = [
+      renderCommandSourceHtml(`/${id} (${harnessSafe})`, command.content),
+      skill.html,
+    ].join("\n");
     return {
       ok: true,
       title: `/${id} + ${cmd.skill}`,
@@ -513,14 +543,7 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
         skill.content.trimEnd(),
         "",
       ].join("\n"),
-      html: renderMarkdown([
-        `# /${id} (${harnessSafe})`,
-        command.content.trimEnd(),
-        "",
-        `# skill: ${cmd.skill}`,
-        skill.content.trimEnd(),
-        "",
-      ].join("\n")),
+      html: skillParts,
     };
   }
 
@@ -556,6 +579,19 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
     };
   }
 
+  if (kind === "config-file") {
+    if (id === "claude-settings") {
+      return readExternalSourceFile(CLAUDE_SETTINGS, "Claude settings", "~/.claude/settings.json", "json");
+    }
+    if (id === "codex-config") {
+      return readExternalSourceFile(CODEX_CONFIG, "Codex config", "~/.codex/config.toml", "toml");
+    }
+    if (id === "codex-hooks") {
+      return readExternalSourceFile(CODEX_HOOKS, "Codex hooks", "~/.codex/hooks.json", "json");
+    }
+    return fail(`unknown config file: ${id}`);
+  }
+
   if (kind === "live-rules") {
     const live = readLiveRulesFile(harnessSafe);
     if (!live.installed && !live.content) return fail(`live rules file not found: ${harnessSafe}`);
@@ -589,6 +625,112 @@ function readSourceFile(abs, title) {
   } catch {
     return { ok: false, error: `not found: ${path.relative(repoRoot, resolved)}` };
   }
+}
+
+function readSkillSource(abs, title) {
+  const source = readSourceFile(abs, title);
+  if (!source.ok) return source;
+  const parsed = parseSkillMarkdown(source.content);
+  return {
+    ...source,
+    html: renderSkillSourceHtml({
+      title,
+      meta: parsed.meta,
+      body: parsed.body,
+      contextFiles: listSkillContextFiles(path.dirname(path.resolve(abs))),
+    }),
+  };
+}
+
+function parseSkillMarkdown(content) {
+  const normalized = String(content ?? "").replace(/\r\n/g, "\n");
+  const match = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(normalized);
+  if (!match) return { meta: {}, body: normalized };
+  return {
+    meta: parseSkillFrontmatter(match[1]),
+    body: match[2],
+  };
+}
+
+function parseSkillFrontmatter(frontmatter) {
+  const lines = frontmatter.split("\n");
+  const meta = {};
+  for (let i = 0; i < lines.length; i += 1) {
+    const keyValue = /^([A-Za-z0-9_-]+):(?:\s*(.*))?$/.exec(lines[i]);
+    if (!keyValue) continue;
+    const [, key, rawValue = ""] = keyValue;
+    if (rawValue === ">" || rawValue === "|") {
+      const block = [];
+      while (i + 1 < lines.length && /^(?:\s{2,}|\t)/.test(lines[i + 1])) {
+        i += 1;
+        block.push(lines[i].replace(/^(?:\s{2}|\t)/, ""));
+      }
+      meta[key] = block.join(rawValue === ">" ? " " : "\n").trim();
+      continue;
+    }
+    meta[key] = rawValue.replace(/^["']|["']$/g, "").trim();
+  }
+  return meta;
+}
+
+function listSkillContextFiles(skillDir) {
+  const files = [];
+  collectSkillContextFiles(skillDir, "", files);
+  return files.slice(0, 40);
+}
+
+function collectSkillContextFiles(baseDir, relDir, files) {
+  let entries;
+  try {
+    entries = fs.readdirSync(path.join(baseDir, relDir), { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.name === "SKILL.md" || entry.name === ".roborepo-managed" || entry.name === ".DS_Store") continue;
+    const rel = path.join(relDir, entry.name);
+    if (entry.isDirectory()) {
+      collectSkillContextFiles(baseDir, rel, files);
+    } else if (entry.isFile()) {
+      files.push(rel);
+    }
+  }
+}
+
+function renderCommandSourceHtml(title, content) {
+  return [
+    '<section class="source-section command-source">',
+    `<div class="source-section-label">${escapeHtml(title)}</div>`,
+    renderMarkdown(content),
+    "</section>",
+  ].join("\n");
+}
+
+function renderSkillSourceHtml({ title, meta, body, contextFiles }) {
+  const triggerDescription = meta.description || "(no trigger description)";
+  const bodyHtml = body.trim()
+    ? renderMarkdown(body)
+    : '<p class="source-empty">(no skill body)</p>';
+  const contextHtml = contextFiles.length
+    ? `<ul>${contextFiles.map((file) => `<li><code>${escapeHtml(file)}</code></li>`).join("")}</ul>`
+    : '<p class="source-empty">No additional context files.</p>';
+  return [
+    '<div class="skill-source-view">',
+    '<section class="source-section skill-trigger">',
+    '<div class="source-section-label">When the LLM should load this skill</div>',
+    meta.name ? `<div class="skill-name"><code>${escapeHtml(meta.name)}</code></div>` : "",
+    `<p>${escapeHtml(triggerDescription)}</p>`,
+    "</section>",
+    '<section class="source-section skill-body">',
+    `<div class="source-section-label">${escapeHtml(title)} content</div>`,
+    bodyHtml,
+    "</section>",
+    '<section class="source-section skill-context">',
+    '<div class="source-section-label">Additional context bundled with this skill</div>',
+    contextHtml,
+    "</section>",
+    "</div>",
+  ].join("\n");
 }
 
 export function configCommand(args) {

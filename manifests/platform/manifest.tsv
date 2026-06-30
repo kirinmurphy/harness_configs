@@ -1,6 +1,6 @@
 # roborepo install manifest — single source of truth for managed home<->repo paths.
 # Hand-duplicated across 7+ scripts before this file existed (install/main.sh,
-# install-claude.sh, install-codex.sh, verify-install.sh, doctor.sh, sync-from-home.sh,
+# install-claude.sh, install-codex.sh, verify-install.sh, doctor.sh,
 # install-windows.ps1). Readers: scripts/lib/manifests-data.sh (bash) and
 # install-windows.ps1 (PowerShell); TBD Node.
 #
@@ -13,7 +13,7 @@
 #   home_root home dir token: claude=~/.claude  codex=~/.codex
 #   flags     comma list, or "-". Flags:
 #               nodoctor  = not checked by doctor --installed (verify still checks)
-#               nosync    = not pulled from live home config by sync-from-home.sh
+#               nosync    = not pulled from live home config by the installer / update path
 #
 # kind semantics:
 #   managed_copy   roborepo-owned copy: repo src copied to home_sub on install/update,

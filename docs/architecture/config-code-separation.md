@@ -19,7 +19,7 @@ behavior: parsing, validation, prompting, linking, copying, pruning, and reporti
 
 | Area | Config or source of truth | Code that interprets it |
 | --- | --- | --- |
-| Managed home paths | `manifests/platform/manifest.tsv` | `install/main.sh`, `install-claude.sh`, `install-codex.sh`, `install-windows.ps1`, `verify-install.sh`, `doctor.sh`, `sync-from-home.sh` |
+| Managed home paths | `manifests/platform/manifest.tsv` | `install/main.sh`, `install-claude.sh`, `install-codex.sh`, `install-windows.ps1`, `verify-install.sh`, `doctor.sh` |
 | Required repo files | `manifests/platform/source-files.tsv` | `doctor.sh` |
 | Agent permission profiles | `manifests/inventory/agent-permissions.json` | `scripts/build/render-agent-permissions.mjs`, `install/main.sh`, `doctor.sh` |
 | Agent rules | `globals/rules/{shared,claude,codex}/` | `scripts/build/render-rules.sh` |
@@ -29,7 +29,7 @@ behavior: parsing, validation, prompting, linking, copying, pruning, and reporti
 | Harness presence metadata | `manifests/platform/harnesses.tsv` | `install/main.sh`, `install-codex.sh` |
 | Verify content assertions | `manifests/platform/verify-content.tsv` | `verify-install.sh` |
 | Shell snippet installs | `manifests/platform/shell-snippets.tsv` | `install-shell-snippets.sh` |
-| Merge prompts | `manifests/platform/prompts/*.md` | `install-lib.sh`, `sync-from-home.sh` |
+| Merge prompts | `manifests/platform/prompts/*.md` | `install-lib.sh` |
 | Global harness config | `globals/claude/`, `globals/codex/`, `globals/agents/` | Installers, verify, doctor, write guard |
 | Shared skills | `globals/agents/skills/` | `scripts/build/link-skills.sh`, `roborepo skill export-to-local` |
 | Repo-local skills | `local/skills/` | `scripts/build/link-skills.sh`, doctor checks |
@@ -61,7 +61,6 @@ flowchart TD
     install["install / update"]
     verify["verify-install.sh"]
     doctor["doctor.sh"]
-    sync["sync-from-home.sh"]
     cli["roborepo CLI"]
   end
 
@@ -79,12 +78,10 @@ flowchart TD
   bashReader --> install
   bashReader --> verify
   bashReader --> doctor
-  bashReader --> sync
   psReader --> install
   rulesRenderer --> baselines
   skillLinker --> baselines
   cli --> install
-  cli --> sync
   cli --> doctor
 ```
 

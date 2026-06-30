@@ -679,118 +679,6 @@ test_malformed_claude_config() {
   assert_file_contains "$home_dir/out" "collision: $home_dir/.claude/settings.json" "malformed Claude config still prompts"
 }
 
-test_sync_guard() {
-  local home_dir sync_repo before_hash after_hash
-  home_dir="$(make_home)"
-  sync_repo="$(mktemp -d)"
-  seed_user_configs "$home_dir"
-  mkdir -p "$sync_repo/globals/codex" "$sync_repo/globals/claude" "$sync_repo/manifests/platform" "$sync_repo/scripts/lib"
-  cp "$repo_root/globals/codex/config.toml" "$sync_repo/globals/codex/config.toml"
-  cp "$repo_root/globals/claude/settings.json" "$sync_repo/globals/claude/settings.json"
-  # sync-from-home reads the manifest via scripts/lib/manifests-data.sh; the fake repo root
-  # needs both so manifest_rows resolves against this fixture.
-  cp "$repo_root/manifests/platform/manifest.tsv" "$sync_repo/manifests/platform/manifest.tsv"
-  cp "$repo_root/scripts/lib/manifests-data.sh" "$sync_repo/scripts/lib/manifests-data.sh"
-
-  before_hash="$(shasum "$sync_repo/globals/codex/config.toml" "$sync_repo/globals/claude/settings.json")"
-  ROBOREPO_REPO_ROOT="$sync_repo" HOME="$home_dir" "$repo_root/scripts/sync-from-home.sh" >"$home_dir/out"
-  after_hash="$(shasum "$sync_repo/globals/codex/config.toml" "$sync_repo/globals/claude/settings.json")"
-
-  [[ "$before_hash" == "$after_hash" ]] && pass "sync guard leaves repo config baseline unchanged" || fail "sync guard leaves repo config baseline unchanged"
-  assert_file_contains "$home_dir/out" "skip user-owned config: $home_dir/.codex/config.toml" "sync guard skips Codex user config"
-  assert_file_contains "$home_dir/out" "skip user-owned config: $home_dir/.claude/settings.json" "sync guard skips Claude user config"
-
-  if ROBOREPO_REPO_ROOT="$sync_repo" HOME="$home_dir" "$repo_root/scripts/sync-from-home.sh" --include-root-config >"$home_dir/include-root.out" 2>&1; then
-    fail "sync include-root-config requires interactive review" "$home_dir/include-root.out"
-  fi
-  assert_file_contains "$home_dir/include-root.out" "stdin is not interactive" "sync include-root-config reviews user config before promoting"
-}
-
-test_sync_interactive_choices() {
-  local home_dir sync_repo expect_file
-  home_dir="$(make_home)"
-  sync_repo="$(mktemp -d)"
-  mkdir -p "$sync_repo/globals/codex" "$sync_repo/manifests/platform/prompts" "$sync_repo/scripts/lib" "$home_dir/.codex"
-  cp "$repo_root/manifests/platform/manifest.tsv" "$sync_repo/manifests/platform/manifest.tsv"
-  cp "$repo_root/manifests/platform/prompts/sync-merge.md" "$sync_repo/manifests/platform/prompts/sync-merge.md"
-  cp "$repo_root/scripts/lib/manifests-data.sh" "$sync_repo/scripts/lib/manifests-data.sh"
-  printf 'home agents\n' > "$home_dir/.codex/AGENTS.md"
-  printf 'repo hooks\n' > "$sync_repo/globals/codex/hooks.json"
-  printf 'home hooks\n' > "$home_dir/.codex/hooks.json"
-  printf 'repo marker\n' > "$sync_repo/globals/codex/MANAGED_BY_ROBOREPO.md"
-  printf 'home marker\n' > "$home_dir/.codex/MANAGED_BY_ROBOREPO.md"
-  # sync skips rendered_rules (AGENTS.md) and processes the present managed_copy items in manifest
-  # order: MANAGED_BY_ROBOREPO.md, then hooks.json. Answer so MANAGED_BY gets the merge prompt and
-  # hooks.json is overwritten from home.
-  expect_file="$home_dir/expect.tcl"
-  cat >"$expect_file" <<'EOF'
-expect "Selection*"
-send "3\r"
-expect "Selection*"
-send "2\r"
-expect eof
-EOF
-
-  command -v expect >/dev/null 2>&1 || fail "expect is required for interactive sync tests"
-  HC_REPO="$repo_root" HC_HOME="$home_dir" HC_SYNC_REPO="$sync_repo" HC_EXPECT_SCRIPT="$expect_file" expect <<'EOF' >"$home_dir/out" 2>&1
-set timeout 20
-spawn env ROBOREPO_REPO_ROOT=$env(HC_SYNC_REPO) HOME=$env(HC_HOME) $env(HC_REPO)/scripts/sync-from-home.sh
-source $env(HC_EXPECT_SCRIPT)
-set wait_result [wait]
-set exit_code [lindex $wait_result 3]
-exit $exit_code
-EOF
-
-  assert_file_contains "$sync_repo/globals/codex/hooks.json" "home hooks" "sync overwrite copies home item"
-  assert_file_contains "$sync_repo/globals/codex/MANAGED_BY_ROBOREPO.md" "repo marker" "sync merge prompt skips item"
-  assert_file_contains "$home_dir/out" "Merge review prompt:" "sync merge prompt printed"
-  assert_file_contains "$home_dir/out" "Required first step: compute your own complete comparison" "sync prompt requires full comparison"
-  assert_file_contains "$home_dir/out" "Default stance: keep the repo baseline" "sync prompt defaults to repo baseline"
-}
-
-test_sync_overwrite_rollback_on_replace_failure() {
-  local home_dir sync_repo expect_file fake_bin
-  home_dir="$(make_home)"
-  sync_repo="$(mktemp -d)"
-  fake_bin="$(mktemp -d)"
-  mkdir -p "$sync_repo/globals/codex" "$sync_repo/manifests/platform/prompts" "$sync_repo/scripts/lib" "$home_dir/.codex"
-  cp "$repo_root/manifests/platform/manifest.tsv" "$sync_repo/manifests/platform/manifest.tsv"
-  cp "$repo_root/manifests/platform/prompts/sync-merge.md" "$sync_repo/manifests/platform/prompts/sync-merge.md"
-  cp "$repo_root/scripts/lib/manifests-data.sh" "$sync_repo/scripts/lib/manifests-data.sh"
-  printf 'repo hooks\n' > "$sync_repo/globals/codex/hooks.json"
-  printf 'home hooks\n' > "$home_dir/.codex/hooks.json"
-  expect_file="$home_dir/expect.tcl"
-  cat >"$expect_file" <<'EOF'
-expect "Selection*"
-send "2\r"
-expect eof
-EOF
-  cat >"$fake_bin/mv" <<'EOF'
-#!/usr/bin/env bash
-if [[ "$1" == *".sync-from-home.tmp."*"/item" ]]; then
-  exit 1
-fi
-exec /bin/mv "$@"
-EOF
-  chmod +x "$fake_bin/mv"
-
-  command -v expect >/dev/null 2>&1 || fail "expect is required for interactive sync tests"
-  if HC_REPO="$repo_root" HC_HOME="$home_dir" HC_SYNC_REPO="$sync_repo" HC_EXPECT_SCRIPT="$expect_file" HC_FAKE_BIN="$fake_bin" expect <<'EOF' >"$home_dir/out" 2>&1
-set timeout 20
-spawn env ROBOREPO_REPO_ROOT=$env(HC_SYNC_REPO) HOME=$env(HC_HOME) PATH=$env(HC_FAKE_BIN):$env(PATH) $env(HC_REPO)/scripts/sync-from-home.sh
-source $env(HC_EXPECT_SCRIPT)
-set wait_result [wait]
-set exit_code [lindex $wait_result 3]
-exit $exit_code
-EOF
-  then
-    fail "sync overwrite failure exits nonzero" "$home_dir/out"
-  fi
-
-  assert_file_contains "$home_dir/out" "failed to replace" "sync overwrite reports replace failure"
-  assert_file_contains "$sync_repo/globals/codex/hooks.json" "repo hooks" "sync overwrite restores original repo file"
-}
-
 test_windows_installer_root_preflight_order() {
   local windows_script root_line claude_line
   windows_script="$repo_root/scripts/install/install-windows.ps1"
@@ -870,9 +758,6 @@ test_uninstall_check_clean_reports_remnant
 test_uninstall_stops_repo_owned_processes
 test_idempotency_no_extra_backups
 test_malformed_claude_config
-test_sync_guard
-test_sync_interactive_choices
-test_sync_overwrite_rollback_on_replace_failure
 test_windows_installer_root_preflight_order
 test_repo_local_codex_skill_layer_present
 test_write_guard_root_config_message

@@ -157,8 +157,6 @@ async function dispatch(args) {
       return runRepoCommand(cliCatalog.repoScripts.repair, [sub, ...rest].filter(Boolean));
     case "uninstall":
       return runRepoCommand(cliCatalog.repoScripts.uninstall, [sub, ...rest].filter(Boolean));
-    case "backfill":
-      return runRepoCommand(cliCatalog.repoScripts.backfill, [sub, ...rest].filter(Boolean));
     case "doctor":
       return runRepoCommand(cliCatalog.repoScripts.doctor, [sub, ...rest].filter(Boolean));
     case "verify":

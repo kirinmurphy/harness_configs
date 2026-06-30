@@ -30,7 +30,6 @@
     "roborepo update  [--dry-run] [--on-conflict overwrite|keep|abort]",
     "roborepo repair  [--dry-run]  refresh copied install after the repo was moved/renamed",
     "roborepo uninstall [--dry-run]",
-    "roborepo backfill              pull live config back into the repo",
     "roborepo doctor  [--installed] health check",
     "roborepo verify                post-install verification",
     "roborepo rules   [--check]     render/check tracked generated agent rules",
@@ -42,50 +41,152 @@
     "[path] is optional (defaults to the current directory) and may be relative or absolute."
   ],
   "menu": [
-    { "header": "Setup" },
-    { "label": "update", "value": ["update"], "desc": "re-apply harness config on this machine (pick up new config)" },
-    { "label": "repair", "value": ["repair"], "desc": "refresh copied install after the repo was moved/renamed" },
-    { "label": "uninstall", "value": ["uninstall"], "desc": "remove repo-owned files and install state" },
-    { "header": "Day to day" },
-    { "label": "index code", "value": ["index", "code"], "desc": "index this repo's code for jcodemunch" },
-    { "label": "index docs", "value": ["index", "docs"], "desc": "index this repo's docs for jdocmunch" },
-    { "label": "mcp add", "value": ["mcp", "add"], "desc": "register an MCP server with Claude + Codex" },
-    { "label": "watch code", "value": ["watch", "code"], "desc": "live-index code as files change" },
-    { "label": "project-context inventory", "value": ["project-context", "inventory"], "desc": "scan a repo and write generated project-context facts" },
-    { "label": "onboard", "value": ["onboard"], "desc": "turn global harness behaviors on or off" },
-    { "label": "web", "value": ["web"], "desc": "open the local web portal in the browser" },
-    { "label": "serve", "value": ["serve", "--detach"], "desc": "open the local web portal" },
-    { "label": "telemetry stop", "value": ["telemetry", "stop"], "desc": "stop dashboard + disable capture" },
-    { "label": "telemetry status", "value": ["telemetry", "status"], "desc": "show local telemetry capture state" },
-    { "label": "telemetry backup", "value": ["telemetry", "backup"], "desc": "snapshot telemetry data to a timestamped backup" },
-    { "label": "telemetry purge", "value": ["telemetry", "purge", "--all", "--backup"], "desc": "reset telemetry (backs up first)" },
-    { "label": "run", "value": ["run"], "desc": "run a command with trimmed output" },
+    { "header": "web" },
+    {
+      "label": "web",
+      "value": ["web"],
+      "desc": "open the local web portal in the browser"
+    },
+    {
+      "label": "serve",
+      "value": ["serve", "--detach"],
+      "desc": "start the local web server"
+    },
+
+    { "header": "File Indexing" },
+    {
+      "label": "index code",
+      "value": ["index", "code"],
+      "desc": "index this repo's code for jcodemunch"
+    },
+    {
+      "label": "watch code",
+      "value": ["watch", "code"],
+      "desc": "live-index code as files change"
+    },
+    {
+      "label": "index docs",
+      "value": ["index", "docs"],
+      "desc": "index this repo's docs for jdocmunch"
+    },
+    { "header": "Add packages" },
+    {
+      "label": "onboard",
+      "value": ["onboard"],
+      "desc": "turn global harness behaviors on or off"
+    },
+    {
+      "label": "rules",
+      "value": ["rules"],
+      "desc": "render/check generated agent rules"
+    },
+    {
+      "label": "mcp add",
+      "value": ["mcp", "add"],
+      "desc": "register an MCP server with Claude + Codex"
+    },
+    {
+      "label": "permissions",
+      "value": ["permissions"],
+      "desc": "render/check agent permission outputs"
+    },
+
     { "header": "Skills" },
-    { "label": "skill new", "value": ["skill", "new"], "desc": "scaffold a shared skill or slash command" },
-    { "label": "skill export-to-local", "value": ["skill", "export-to-local"], "desc": "copy shared skills into this repo" },
-    { "label": "skill symlink-repo", "value": ["skill", "symlink-repo"], "desc": "symlink this repo's .codex/skills into its .claude/.codex" },
-    { "label": "skill symlink-globals", "value": ["skill", "symlink-globals"], "desc": "copy shared global skills into global harness folders" },
-    { "label": "skill render-commands", "value": ["skill", "render-commands"], "desc": "render slash commands" },
+    {
+      "label": "skill new",
+      "value": ["skill", "new"],
+      "desc": "scaffold a shared skill or slash command"
+    },
+    {
+      "label": "skill export-to-local",
+      "value": ["skill", "export-to-local"],
+      "desc": "copy shared skills into this repo"
+    },
+    {
+      "label": "skill symlink-repo",
+      "value": ["skill", "symlink-repo"],
+      "desc": "symlink this repo's .codex/skills into its .claude/.codex"
+    },
+    {
+      "label": "skill symlink-globals",
+      "value": ["skill", "symlink-globals"],
+      "desc": "copy shared global skills into global harness folders"
+    },
+    {
+      "label": "skill render-commands",
+      "value": ["skill", "render-commands"],
+      "desc": "render slash commands"
+    },
+    { "header": "Telemetry" },
+    {
+      "label": "telemetry stop",
+      "value": ["telemetry", "stop"],
+      "desc": "stop dashboard + disable capture"
+    },
+    {
+      "label": "telemetry status",
+      "value": ["telemetry", "status"],
+      "desc": "show local telemetry capture state"
+    },
+    {
+      "label": "telemetry backup",
+      "value": ["telemetry", "backup"],
+      "desc": "snapshot telemetry data to a timestamped backup"
+    },
+    {
+      "label": "telemetry purge",
+      "value": ["telemetry", "purge", "--all", "--backup"],
+      "desc": "reset telemetry (backs up first)"
+    },
     { "header": "Maintenance" },
-    { "label": "backfill", "value": ["backfill"], "desc": "pull live config back into the repo" },
     { "label": "doctor", "value": ["doctor"], "desc": "health check" },
-    { "label": "verify", "value": ["verify"], "desc": "post-install verification" },
-    { "label": "rules", "value": ["rules"], "desc": "render/check generated agent rules" },
-    { "label": "permissions", "value": ["permissions"], "desc": "render/check agent permission outputs" },
+    {
+      "label": "verify",
+      "value": ["verify"],
+      "desc": "post-install verification"
+    },
     { "header": "Other" },
     { "label": "help", "value": ["--help"], "desc": "show full usage" },
+    {
+      "label": "run",
+      "value": ["run"],
+      "desc": "run a command with trimmed output"
+    },
+    {
+      "label": "update",
+      "value": ["update"],
+      "desc": "re-apply harness config on this machine (pick up new config)"
+    },
+    {
+      "label": "repair",
+      "value": ["repair"],
+      "desc": "refresh copied install after the repo was moved/renamed"
+    },
+    {
+      "label": "uninstall",
+      "value": ["uninstall"],
+      "desc": "remove repo-owned files and install state"
+    },
     { "label": "exit", "value": null, "desc": "quit" }
   ],
   "repoScripts": {
-    "skill symlink-globals": { "runtime": "bash", "path": "scripts/build/link-skills.sh" },
-    "skill render-commands": { "runtime": "node", "path": "scripts/build/render-slash-commands.mjs" },
+    "skill symlink-globals": {
+      "runtime": "bash",
+      "path": "scripts/build/link-skills.sh"
+    },
+    "skill render-commands": {
+      "runtime": "node",
+      "path": "scripts/build/render-slash-commands.mjs"
+    },
     "update": { "runtime": "bash", "path": "scripts/install/main.sh" },
     "repair": { "runtime": "bash", "path": "scripts/install/repair.sh" },
     "uninstall": { "runtime": "bash", "path": "scripts/install/uninstall.sh" },
-    "backfill": { "runtime": "bash", "path": "scripts/sync-from-home.sh" },
     "doctor": { "runtime": "bash", "path": "scripts/doctor.sh" },
     "verify": { "runtime": "bash", "path": "scripts/verify-install.sh" },
     "rules": { "runtime": "bash", "path": "scripts/build/render-rules.sh" },
-    "permissions": { "runtime": "node", "path": "scripts/build/render-agent-permissions.mjs" }
+    "permissions": {
+      "runtime": "node",
+      "path": "scripts/build/render-agent-permissions.mjs"
+    }
   }
 }

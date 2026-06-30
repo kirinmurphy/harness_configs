@@ -11,7 +11,6 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 |                            |                                                                                                                                                                  |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `roborepo update`          | Applies this repo's harness config to this machine: copied files, rendered rules, root config export, global command install, and shell wiring. Use after pulling repo changes. |
-| `roborepo backfill`        | Reviews live config under `~/.claude` and `~/.codex` and pulls intentional changes back into this repo.                                                          |
 | `roborepo doctor`          | Runs harness health checks for config files, links, helper commands, dependencies, and generated outputs.                                                        |
 | `roborepo verify`          | Runs post-install verification that the installed harness paths resolve correctly.                                                                               |
 | `roborepo rules [--check]` | Renders generated Claude/Codex global instruction files, or verifies them with `--check`.                                                                        |

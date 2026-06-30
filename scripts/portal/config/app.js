@@ -55,6 +55,27 @@ function setModalContent(data) {
   }
 }
 
+function clearModalDefaults() {
+  const footer = document.getElementById("modal-footer");
+  footer.hidden = true;
+  footer.replaceChildren();
+}
+
+function attachModalDefaults() {
+  const footer = document.getElementById("modal-footer");
+  const rules = lastSnapshot?.globals?.rules || {};
+  const defaults = tpl("tpl-modal-defaults");
+  for (const btn of defaults.querySelectorAll("[data-rule-key]")) {
+    const entry = rules[btn.dataset.ruleKey];
+    btn.disabled = !entry?.html;
+    btn.addEventListener("click", () =>
+      openSnapshotModal(btn.textContent, btn.dataset.rulePath, entry),
+    );
+  }
+  footer.replaceChildren(defaults);
+  footer.hidden = false;
+}
+
 // ---- source-inspect modal: fetch the full file that DEFINES a tool and show it in a popup. ----
 function closeModal() {
   document.getElementById("modal").classList.remove("open");
@@ -65,6 +86,7 @@ async function openSourceModal(inspect) {
     inspect.label || inspect.id;
   document.getElementById("modal-path").textContent = "loading…";
   document.getElementById("modal-content").innerHTML = "";
+  clearModalDefaults();
   backdrop.classList.add("open");
   try {
     const qs = new URLSearchParams({ kind: inspect.kind, id: inspect.id });
@@ -82,6 +104,7 @@ async function openSourceModal(inspect) {
       data.title || inspect.label;
     document.getElementById("modal-path").textContent = data.path || "";
     setModalContent(data);
+    if (inspect.kind === "live-rules") attachModalDefaults();
   } catch (e) {
     document.getElementById("modal-path").textContent = "";
     document.getElementById("modal-content").textContent =
@@ -93,6 +116,7 @@ function openSnapshotModal(title, pathText, data) {
   document.getElementById("modal-title").textContent = title;
   document.getElementById("modal-path").textContent = pathText || "";
   setModalContent(data);
+  clearModalDefaults();
   document.getElementById("modal").classList.add("open");
 }
 document.getElementById("modal-close").addEventListener("click", closeModal);
@@ -355,81 +379,14 @@ function renderSection(section) {
   return renderStandardSection(section);
 }
 
-// Globals: harness-agnostic rules plus live Claude/Codex rules. Shown first so the baseline every
-// harness gets is visible before the per-feature toggles.
-function renderGlobals(snap) {
-  const g = snap.globals || {};
-  const rules = g.rules || {};
-  const liveRules = g.liveRules || {};
-  const panel = tpl("tpl-globals");
-  const installed = [
-    ["codex", liveRules.codex],
-    ["claude", liveRules.claude],
-  ].filter(([, v]) => v?.installed);
-  const available = installed.map(([key]) => key);
-  const bothInstalled = available.length > 1;
-  let selected =
-    selectedLiveHarness && available.includes(selectedLiveHarness)
-      ? selectedLiveHarness
-      : null;
-
-  const switchRow = panel.querySelector(".globals-switches");
-  const liveMissing = slot(panel, "live-missing");
-  const liveInstalled = slot(panel, "live-installed");
-  const livePath = slot(panel, "live-path");
-  const fileBody = slot(panel, "live-body");
-
-  function paintLive() {
-    const live = selected ? liveRules[selected] : null;
-    liveMissing.hidden = !!live?.installed;
-    liveInstalled.hidden = !live?.installed;
-    if (!live?.installed) {
-      fileBody.replaceChildren(tpl("tpl-md-missing"));
-    } else {
-      livePath.textContent = live.path;
-      if (live.html) fileBody.innerHTML = live.html;
-      else fileBody.replaceChildren(tpl("tpl-md-empty"));
-    }
-    if (bothInstalled) {
-      for (const btn of switchRow.children)
-        btn.classList.toggle("on", btn.dataset.key === selected);
-    }
-  }
-
-  if (bothInstalled) {
-    for (const btn of switchRow.querySelectorAll("[data-key]")) {
-      btn.addEventListener("click", () => {
-        selectedLiveHarness = btn.dataset.key;
-        render(lastSnapshot);
-      });
-    }
-  } else {
-    switchRow.remove();
-  }
-  paintLive();
-
-  for (const btn of panel.querySelectorAll("[data-rule-key]")) {
-    const entry = rules[btn.dataset.ruleKey];
-    btn.disabled = !entry?.html;
+function renderConfigFiles() {
+  const panel = tpl("tpl-config-files");
+  for (const btn of panel.querySelectorAll("[data-config-kind]")) {
+    const kind = btn.dataset.configKind;
+    const id = btn.dataset.configId;
+    const harness = btn.dataset.configHarness;
     btn.addEventListener("click", () =>
-      openSnapshotModal(btn.textContent, btn.dataset.rulePath, entry),
-    );
-  }
-
-  return panel;
-}
-
-function renderHooks() {
-  const panel = tpl("tpl-hooks");
-  for (const btn of panel.querySelectorAll("[data-hook-harness]")) {
-    const harness = btn.dataset.hookHarness;
-    btn.addEventListener("click", () =>
-      openSourceModal({
-        kind: "harness-hooks",
-        id: "hooks",
-        harness,
-        label: btn.textContent,
-      }),
+      openSourceModal({ kind, id, harness, label: btn.textContent }),
     );
   }
   return panel;
@@ -440,8 +397,7 @@ function render(snap) {
   // Section model comes straight from the server snapshot (buildBehaviorView), no client fork.
   const view = snap.behaviorView || [];
   main.replaceChildren(
-    renderGlobals(snap),
-    renderHooks(),
+    renderConfigFiles(),
     ...view.map((section) => renderSection(section)).filter(Boolean),
   );
 }
@@ -450,7 +406,6 @@ function render(snap) {
 
 let last = null;
 let lastSnapshot = null;
-let selectedLiveHarness = null;
 function applySnapshot(snap) {
   lastSnapshot = snap;
   const sig = JSON.stringify(snap);

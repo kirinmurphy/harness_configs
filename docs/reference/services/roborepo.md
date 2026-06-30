@@ -98,7 +98,6 @@ roborepo — choose an action:
   skill render-commands render/check slash commands
 
   Maintenance
-  backfill       pull live config back into the repo
   doctor         health check
   verify         post-install verification
   rules          render/check generated agent rules
@@ -129,7 +128,6 @@ roborepo telemetry install|start|stop|enable|disable|status|report|export|backup
 roborepo run <cmd> [args...]
 
 roborepo update  [--dry-run]
-roborepo backfill
 roborepo doctor  [--installed]
 roborepo verify
 roborepo rules   [--check]
@@ -169,13 +167,12 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   `--check` verifies without changing files. `skill render-commands` renders generated slash commands from
   `manifests/inventory/slash-commands.json`, and `--check` verifies without changing files.
   See [architecture.md](architecture.md#two-skill-layers-shared-vs-internal).
-- **Maintenance** — `backfill` pulls live config back into the repo; `doctor` and `verify` are
-  health and post-install checks; `rules` renders generated Claude/Codex global instruction files, or
-  verifies them with `--check`; `permissions` renders Claude/Codex permission outputs from
-  `manifests/inventory/agent-permissions.json`.
+- **Maintenance** — `doctor` and `verify` are health and post-install checks; `rules` renders
+  generated Claude/Codex global instruction files, or verifies them with `--check`; `permissions`
+  renders Claude/Codex permission outputs from `manifests/inventory/agent-permissions.json`.
 
-The lifecycle verbs dispatch to `scripts/install/main.sh`, `scripts/sync-from-home.sh`,
-`scripts/doctor.sh`, and `scripts/verify-install.sh`; those filenames are an internal detail.
+The lifecycle verbs dispatch to `scripts/install/main.sh`, `scripts/doctor.sh`, and
+`scripts/verify-install.sh`; those filenames are an internal detail.
 Most maintainer-only scripts (`test-*.sh`) are intentionally not exposed through `roborepo`.
 `skill symlink-globals` and `rules` are exposed because shared-skill and generated-rule editing are
 documented maintainer workflows.

@@ -227,7 +227,6 @@ sequenceDiagram
   participant Repo as roborepo
   participant Backup as ~/.roborepo-backups
 
-  Home->>Repo: ./scripts/sync-from-home.sh reviews diffs before copying selected live config
   Repo->>Home: ./scripts/install/main.sh installs repo-owned config
   Home-->>Home: user-owned config collisions are preserved for adopt/agent merge
   Repo-->>Home: copied owned assets, rendered rules, local root config

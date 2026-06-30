@@ -189,14 +189,8 @@ apply/remove commands. It is the source of truth for what `roborepo onboard` can
 roborepo update   # exports baseline when missing/identical, asks before merging local edits
 ```
 
-To pull intentional local edits back into the repo:
-
-```sh
-roborepo backfill
-```
-
-Merge options (replace / keep, with merge prompts after backup-producing actions) and the future layered-config model are covered in
-[How It Works → Root Config](../services/architecture.md#root-config-export).
+Merge options (replace / keep, with merge prompts after backup-producing actions) and the future
+layered-config model are covered in [How It Works → Root Config](../services/architecture.md#root-config-export).
 
 ## Keeping a machine in sync
 

@@ -395,53 +395,51 @@ main {
 .item-label.clickable:hover {
   color: var(--accent);
 }
-/* globals live file */
-.globals-shell {
+/* agent file grid */
+.config-grid {
   display: grid;
-  gap: 10px;
-}
-.globals-switches {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-.globals-switch {
-  font:
-    11px/1.4 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  color: var(--dim);
-  padding: 3px 12px;
-  cursor: pointer;
-}
-
-.globals-switch.on {
-  background: var(--panel);
-  color: var(--accent);
-  border-color: var(--accent);
-}
-.globals-live {
-  background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 10px;
-  max-height: 44vh;
-  overflow: auto;
+  overflow: hidden;
 }
-.globals-live .markdown {
-  font-size: 12px;
-  line-height: 1.6;
+.config-grid-head,
+.config-grid-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(120px, 0.8fr) minmax(
+      120px,
+      0.8fr
+    );
+}
+.config-grid-head {
+  background: var(--bg);
+  color: var(--dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.config-grid-head > div,
+.config-grid-row > div {
+  padding: 10px 12px;
+  border-left: 1px solid var(--line);
+}
+.config-grid-head > div:first-child,
+.config-grid-row > div:first-child {
+  border-left: none;
+}
+.config-grid-row {
+  border-top: 1px solid var(--line);
+}
+.config-type {
+  display: grid;
+  gap: 2px;
+}
+.config-type strong {
+  font-size: 13px;
   color: var(--ink);
 }
-.globals-live .markdown > :first-child {
-  margin-top: 0;
-}
-.globals-live .markdown > :last-child {
-  margin-bottom: 0;
+.config-type span {
+  font-size: 11px;
+  color: var(--dim);
 }
 .markdown h1,
 .markdown h2,
@@ -512,6 +510,55 @@ main {
 .markdown a:hover {
   text-decoration: underline;
 }
+.skill-source-view {
+  display: grid;
+  gap: 14px;
+}
+.source-section {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+}
+.source-section > :first-child:not(.source-section-label) {
+  margin-top: 0;
+}
+.source-section > :last-child {
+  margin-bottom: 0;
+}
+.source-section-label {
+  margin: 0 0 8px;
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.skill-trigger {
+  border-color: #5a4a1a;
+  background: #17150d;
+}
+.skill-trigger p {
+  margin: 0;
+  color: var(--warn);
+  line-height: 1.6;
+}
+.skill-name {
+  margin-bottom: 8px;
+}
+.skill-body {
+  background: #0b0f14;
+}
+.skill-context {
+  background: var(--bg);
+}
+.skill-context ul {
+  margin: 0;
+  padding-left: 1.3em;
+}
+.source-empty {
+  margin: 0;
+  color: var(--off);
+}
 .markdown .md-meta {
   margin: 0.25em 0;
   color: var(--dim);
@@ -528,7 +575,6 @@ main {
   justify-content: flex-end;
   font-size: 11px;
   color: var(--dim);
-  margin-top: 10px;
 }
 .defaults-menu {
   position: relative;
@@ -561,12 +607,12 @@ main {
 .defaults-popover {
   position: absolute;
   right: 0;
-  top: calc(100% + 6px);
+  bottom: calc(100% + 6px);
   z-index: 10;
   display: grid;
-  gap: 6px;
+  gap: 0;
   min-width: 180px;
-  padding: 8px;
+  padding: 0;
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -594,11 +640,6 @@ main {
   cursor: default;
   opacity: 0.6;
 }
-.hook-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-}
 .text-link {
   font:
     12px/1.4 ui-monospace,
@@ -612,6 +653,7 @@ main {
   padding: 0;
   text-decoration: underline;
   text-underline-offset: 3px;
+  display: block;
 }
 .text-link:hover {
   color: var(--ink);
@@ -672,4 +714,23 @@ main {
 .modal-body {
   padding: 14px 16px;
   overflow: auto;
+}
+.modal-footer {
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 640px) {
+  .config-grid-head {
+    display: none;
+  }
+  .config-grid-row {
+    grid-template-columns: 1fr;
+  }
+  .config-grid-row > div {
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+  .config-grid-row > div:first-child {
+    border-top: none;
+  }
 }

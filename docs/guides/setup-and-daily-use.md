@@ -68,24 +68,6 @@ This runs against temporary `HOME` directories only. See [Config Collision Handl
 
 ## Maintenance
 
-### Sync live config changes back to the repo
-
-Claude Code and Codex sometimes write directly to active files under `~/.claude` or `~/.codex` during a session. Use this to review those live changes and selectively copy intentional changes back into the repo.
-
-```sh
-./scripts/sync-from-home.sh
-```
-
-For each changed item, the script shows a diff before writing to the repo. Choose `keep repo` or `overwrite repo`; merge prompts print after actions that create backups or staged defaults.
-
-By default, sync skips root config files: `~/.claude/settings.json` and `~/.codex/config.toml`. Those files are active local files because Claude and Codex can write personal state there. Use `--include-root-config` only when you intentionally want to review and promote selected local root config changes into the repo baseline:
-
-```sh
-./scripts/sync-from-home.sh --include-root-config
-```
-
-For the decision model, see [Config Collision Handling](../reference/internal/config-collision-handling.md#sync-workflow).
-
 ### Choose Agent Permissions
 
 Agent permission defaults start in one manifest:

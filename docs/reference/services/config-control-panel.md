@@ -63,8 +63,10 @@ are enabled.
 `buildBehaviorView()` (`scripts/cli/config.mjs`) maps the snapshot onto the sections the
 panel renders:
 
-- **Global Rules** — the actual live `CLAUDE.md` / `AGENTS.md` files, plus drill-downs for
-  shared baseline, harness-specific baseline, and enabled package rules.
+- **Global Rules** — start with the selector only; after a file is chosen, show the live
+  `CLAUDE.md` / `AGENTS.md` content, the file path, and the default-rule drill-downs.
+- **Hooks** — quick links to the live `~/.claude/settings.json`, `~/.codex/config.toml`,
+  and `~/.codex/hooks.json` files.
 - **Token Optimization** — the jcodemunch / jdocmunch packages, the Caveman plugin
   package, and Telemetry (a service package). All toggle.
 - **Commands** — skills that pair with a slash command, labelled by their `/command`.

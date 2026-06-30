@@ -35,7 +35,7 @@ The installer writes:
 - `~/.local/bin/roborepo`
 - install state at `~/.roborepo/install-state.json`
 
-Then it applies the default `base` bundle and starts `roborepo onboard` unless onboarding was already completed or explicitly skipped.
+Then it applies the default `base` bundle and starts `roborepo onboard` unless onboarding was already completed or explicitly skipped. On update, that base bundle still re-applies so rendered rules stay fresh even on an already-onboarded machine.
 
 ## Collision Policy
 

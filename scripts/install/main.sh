@@ -238,15 +238,15 @@ run_post_install_onboarding() {
     return 0
   fi
 
+  # Always land the minimal baseline first, so update can refresh rendered rules even when the
+  # machine has already been onboarded. The onboarding wizard itself does not re-apply defaults.
+  install_section "Base Configuration"
+  node "${repo_root}/scripts/cli/main.mjs" bundle apply --default
+
   if presets_onboarded; then
     echo "Already onboarded. Run 'roborepo onboard' to change which behaviors are enabled."
     return 0
   fi
-
-  # Always land the minimal baseline first, so the harness works even if the user exits the wizard
-  # immediately (the interactive wizard does not re-apply the default set itself).
-  install_section "Base Configuration"
-  node "${repo_root}/scripts/cli/main.mjs" bundle apply --default
 
   if [[ "${skip_presets_onboard}" -eq 1 || "${ROBOREPO_PRESETS_ONBOARD:-}" == "skip" ]]; then
     # Mark onboarded without the intro: feeding /dev/null makes `onboard-intro` take its headless

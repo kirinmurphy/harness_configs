@@ -771,8 +771,15 @@ assert "lifecycle: roborepo doctor dispatches and passes" \
 update_out="${work}/update-report.out"
 assert "lifecycle: roborepo update --dry-run dispatches and reports changes" \
   bash -c "HOME='${update_home}' node '${cli}' update --dry-run >'${update_out}' 2>&1 && grep -q 'Update change report:' '${update_out}' && grep -q 'unchanged: package registry' '${update_out}'"
-assert "lifecycle: roborepo backfill dispatches sync script" \
-  bash -c "! HOME='${update_home}' node '${cli}' backfill --bad-flag >/dev/null 2>&1"
+
+update_legacy_home="${work}/update-legacy-home"
+mkdir -p "${update_legacy_home}/.claude" "${update_legacy_home}/.codex" "${update_legacy_home}/.roborepo/rules"
+cp "${repo_root}/globals/claude/settings.json" "${update_legacy_home}/.claude/settings.json"
+cp "${repo_root}/globals/codex/config.toml" "${update_legacy_home}/.codex/config.toml"
+printf '<!-- BEGIN managed:roborepo-agents-import -->\n@~/.roborepo/rules/generated-rules.md\n<!-- END managed:roborepo-agents-import -->\n' > "${update_legacy_home}/.claude/CLAUDE.md"
+printf '# Generated Harness Rules\n\nlegacy render\n' > "${update_legacy_home}/.roborepo/rules/generated-rules.md"
+assert "lifecycle: roborepo update rewrites legacy Claude import wrapper" \
+  bash -c "HOME='${update_legacy_home}' ROBOREPO_STATE_DIR='${update_legacy_home}/.roborepo' node '${cli}' update >/dev/null 2>&1 && grep -q 'BEGIN managed:roborepo-code-style' '${update_legacy_home}/.claude/CLAUDE.md' && ! grep -q 'BEGIN managed:roborepo-agents-import' '${update_legacy_home}/.claude/CLAUDE.md' && ! test -e '${update_legacy_home}/.roborepo/rules/generated-rules.md'"
 assert "lifecycle: roborepo sync alias removed" \
   bash -c "! HOME='${update_home}' node '${cli}' sync --bad-flag >/dev/null 2>&1"
 assert "lifecycle: roborepo install verb removed (first install is the shell bootstrap)" \
@@ -789,9 +796,14 @@ assert "lifecycle: roborepo rules --check dispatches render verifier" \
 # quoting if interpolated into `bash -c`.
 menu_out="${work}/menu.txt"
 printf '\n' | node "${cli}" > "${menu_out}" 2>&1 || true
-assert "menu: shows Setup section header" grep -q "Setup" "${menu_out}"
-assert "menu: shows Day to day section header" grep -q "Day to day" "${menu_out}"
-assert "menu: numbers actions but not headers (update is 1)" grep -qE "1\) update" "${menu_out}"
+assert "menu: shows web section header" grep -q "^  web$" "${menu_out}"
+assert "menu: shows File Indexing section header" grep -q "File Indexing" "${menu_out}"
+assert "menu: shows Add packages section header" grep -q "Add packages" "${menu_out}"
+assert "menu: shows Skills section header" grep -q "Skills" "${menu_out}"
+assert "menu: shows Telemetry section header" grep -q "Telemetry" "${menu_out}"
+assert "menu: shows Maintenance section header" grep -q "Maintenance" "${menu_out}"
+assert "menu: shows Other section header" grep -q "Other" "${menu_out}"
+assert "menu: numbers actions but not headers (web is 1)" grep -qE "1\) web" "${menu_out}"
 assert "menu: items have descriptions" grep -q "health check" "${menu_out}"
 assert "menu: numbered fallback cancels on out-of-range/blank" \
   bash -c "printf '99\n' | node '${cli}' 2>&1 | grep -q 'cancelled'"

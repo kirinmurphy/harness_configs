@@ -65,20 +65,6 @@ Before roborepo first replaces a genuine user file, it writes a durable backup:
 
 Backups are written only once. Roborepo-authored files and byte-identical repo copies are not captured as "originals", which prevents reinstall cycles from poisoning the backup.
 
-## Sync Workflow
-
-`scripts/sync-from-home.sh` reviews selected home paths and lets you copy intentional live changes back into the repo. Root config files are skipped unless `--include-root-config` is supplied:
-
-```sh
-./scripts/sync-from-home.sh --include-root-config
-```
-
-Rendered rules are not synced back into fragments. Edit `globals/rules/**` or package rule fragments, then run:
-
-```sh
-./scripts/build/render-rules.sh
-```
-
 ## Validation
 
 Run:

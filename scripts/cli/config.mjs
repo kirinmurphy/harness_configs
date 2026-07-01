@@ -133,6 +133,12 @@ function isPackageEnabled(pkg, settings, serviceState, byId = new Map(), seen = 
 }
 
 function ownComponentsEnabled(pkg, settings, serviceState) {
+  const registryRequired = pkg.components.some((c) => c.type === "rules" || c.type === "command");
+  if (registryRequired) {
+    const { packages: enabledPkgs } = readEnabledPackagesRegistry();
+    if (!enabledPkgs.includes(pkg.id)) return false;
+  }
+
   const rulesEnabled = () => {
     const rulesComp = pkg.components.find((c) => c.type === "rules");
     if (!rulesComp) return true;
@@ -190,6 +196,7 @@ function ownComponentsEnabled(pkg, settings, serviceState) {
   }
   // No recognized own components → a pure-composite package; its enabled state is decided entirely
   // by its `requires` (handled by the caller).
+  if (registryRequired) return true;
   return pkg.components.length === 0;
 }
 
@@ -221,7 +228,7 @@ export function readConfigSnapshot() {
     label: pkg.label,
     description: pkg.description || null,
     status: pkg.status || "available",
-    cliCommands: pkg.cliCommands || [],
+    cliCommands: [...new Set([...(pkg.cliCommands || []), ...pkg.components.filter((c) => c.type === "command").map((c) => c.name)])],
     enabled: isPackageEnabled(pkg, settings, { telemetry: !!telemetryState?.enabled }, packagesById),
     components: pkg.components.map((c) => c.type),
     skillIds: pkg.components.filter((c) => c.type === "skill").map((c) => c.id),

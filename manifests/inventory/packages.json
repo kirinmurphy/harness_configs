@@ -4,12 +4,29 @@
       "id": "jcodemunch",
       "label": "JCodeMunch code intelligence",
       "description": "Local code index with symbol search, outline, references, and context bundling. Blocks Grep/Glob and routes code exploration through jcodemunch tools.",
-      "cliCommands": ["index code", "watch code"],
       "urls": [
         { "label": "PyPI", "url": "https://pypi.org/project/jcodemunch-mcp/" }
       ],
       "components": [
         { "type": "mcp", "preset": "jcodemunch" },
+        {
+          "type": "command",
+          "name": "index code",
+          "commandOrUrl": "uvx",
+          "args": ["jcodemunch-mcp"],
+          "mode": "index",
+          "fileSubcommand": "index-file",
+          "dirSubcommand": "index",
+          "extraArgs": ["--no-ai-summaries"]
+        },
+        {
+          "type": "command",
+          "name": "watch code",
+          "commandOrUrl": "uvx",
+          "args": ["--with", "watchfiles", "jcodemunch-mcp"],
+          "mode": "watch",
+          "watchSubcommand": "watch"
+        },
         {
           "type": "rules",
           "source": "globals/packages/jcodemunch/rules.md",
@@ -41,12 +58,18 @@
       "id": "jdocmunch",
       "label": "JDocMunch doc intelligence",
       "description": "Local docs index with section search, TOC, and context retrieval. Routes doc exploration through jdocmunch tools instead of reading full files.",
-      "cliCommands": ["index docs"],
       "urls": [
         { "label": "PyPI", "url": "https://pypi.org/project/jdocmunch-mcp/" }
       ],
       "components": [
         { "type": "mcp", "preset": "jdocmunch" },
+        {
+          "type": "command",
+          "name": "index docs",
+          "commandOrUrl": "uvx",
+          "args": ["jdocmunch-mcp", "index-local", "--path"],
+          "mode": "target"
+        },
         {
           "type": "rules",
           "source": "globals/packages/jdocmunch/rules.md",

@@ -1,12 +1,13 @@
-// roborepo `index` / `watch` / `run` subcommands. These shell out to uvx (jcodemunch-mcp,
-// jdocmunch-mcp) to (live-)index the current repo, plus a generic command runner that trims
-// noisy output. [path] args default to cwd and are resolved to absolute paths.
+// roborepo `index` / `watch` / `run` subcommands. The index/watch commands are package-owned
+// recipes resolved at runtime, while `run` is the generic trimmed-output runner. [path] args
+// default to cwd and are resolved to absolute paths.
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { runPackageCommand } from "./package-commands.mjs";
 
 /** Resolve an optional [path] arg to an absolute path; default = cwd. */
 function resolveTarget(arg) {
@@ -21,49 +22,26 @@ function requireUvx() {
   }
 }
 
-/**
- * The `watch` subcommand needs the `watchfiles` package, which isn't pulled in by a plain
- * `uv tool install jcodemunch-mcp`. jcodemunch-mcp isn't on PyPI, so `uvx --with
- * jcodemunch-mcp[watch]` can't re-resolve it — instead we add the extra dep onto the
- * already-installed tool. This is idempotent: a no-op (cache-resolve only) once satisfied.
- */
-function ensureWatchDeps() {
-  const r = spawnSync("uv", ["tool", "install", "jcodemunch-mcp", "--with", "watchfiles"], {
-    stdio: "ignore",
-  });
-  if (r.error || r.status !== 0) {
-    console.error(
-      `warn: could not ensure "watchfiles" via "uv tool install jcodemunch-mcp --with watchfiles".\n` +
-        `      watch may crash with "watchfiles is required". Install it manually, then retry.`,
-    );
-  }
-}
-
 export function indexCode(rest) {
   requireUvx();
-  const target = resolveTarget(rest[0]);
-  const sub = fs.statSync(target).isFile() ? "index-file" : "index";
-  const r = spawnSync("uvx", ["jcodemunch-mcp", sub, "--no-ai-summaries", target], { stdio: "inherit" });
-  process.exit(r.status ?? 1);
+  return runPackageCommand("index code", rest);
 }
 
 export function indexDocs(rest) {
   requireUvx();
-  const target = resolveTarget(rest[0]);
-  const r = spawnSync("uvx", ["jdocmunch-mcp", "index-local", "--path", target], { stdio: "inherit" });
-  if (r.status === 0) {
-    try {
-      fs.writeFileSync(path.join(target, ".jdm-indexed"), "");
-    } catch {
-      /* best-effort marker */
-    }
-  }
-  process.exit(r.status ?? 1);
+  return runPackageCommand("index docs", rest, {
+    afterSuccess({ target }) {
+      try {
+        fs.writeFileSync(path.join(target, ".jdm-indexed"), "");
+      } catch {
+        /* best-effort marker */
+      }
+    },
+  });
 }
 
 export function watchCode(rest) {
   requireUvx();
-  ensureWatchDeps();
   const target = resolveTarget(rest[0]);
 
   // Write the pidfile the Claude SessionStart hook reads to detect a live watcher:
@@ -88,10 +66,7 @@ export function watchCode(rest) {
     /* pidfile is best-effort; watch still runs without hook detection */
   }
 
-  const r = spawnSync("uvx", ["jcodemunch-mcp", "watch", target], {
-    stdio: "inherit",
-  });
-  process.exit(r.status ?? 1);
+  return runPackageCommand("watch code", rest);
 }
 
 /** Process start time string, matching the `ps lstart`/`start` format the hook compares. */

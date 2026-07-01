@@ -3,8 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { repoRoot } from "./paths.mjs";
-import { setPackageEnabled, renderHomeRules } from "./rules-render.mjs";
+import { setPackageEnabled, renderHomeRules, readEnabledPackagesRegistry } from "./rules-render.mjs";
 import { loadPackageCatalog, unavailablePackageMessage } from "./package-catalog.mjs";
+import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 
 export const USER_CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
 
@@ -99,6 +100,12 @@ export async function enablePackage(rest, _seen = new Set()) {
   _seen.add(pkg.id);
 
   const dryRun = flags.includes("--dry-run");
+  const enabledIds = readEnabledPackagesRegistry().packages || [];
+  const ownership = validatePackageCommandOwnership(pkg, { catalog, enabledIds });
+  if (!ownership.ok) {
+    console.error(ownership.message);
+    process.exit(2);
+  }
 
   // A package can compose others via `requires`: enable its dependencies first (deduped, cycle-safe).
   // A composite package (one with `requires`) bundles the component-packages it depends on. NOTE:
@@ -115,6 +122,13 @@ export async function enablePackage(rest, _seen = new Set()) {
   if (dryRun) { console.log(`[dry-run] would enable: ${pkg.label}`); }
   else { console.log(`enabling: ${pkg.label}`); }
 
+  const usesRegistry = pkg.components.some((component) => component.type === "rules" || component.type === "command");
+  if (usesRegistry && dryRun) {
+    console.log(`  [dry-run] mark package enabled in registry`);
+  } else if (usesRegistry) {
+    setPackageEnabled(pkg.id, true);
+  }
+
   const servicePromises = [];
   for (const component of pkg.components) {
     switch (component.type) {
@@ -128,10 +142,12 @@ export async function enablePackage(rest, _seen = new Set()) {
         break;
       case "rules": {
         if (dryRun) { console.log(`  [dry-run] register rules from ${component.source} (${component.harness})`); break; }
-        setPackageEnabled(pkg.id, true);
         renderHomeRules({ harness: component.harness === "both" ? undefined : component.harness });
         break;
       }
+      case "command":
+        if (dryRun) { console.log(`  [dry-run] register command ${component.name}`); }
+        break;
       case "hooks": {
         const hooksPath = path.join(repoRoot, component.source);
         if (dryRun) { console.log(`  [dry-run] merge hooks from ${component.source}`); break; }
@@ -160,8 +176,11 @@ export async function enablePackage(rest, _seen = new Set()) {
   // the function doesn't resolve before the side effects land.
   if (servicePromises.length) await Promise.all(servicePromises);
 
-  if (!dryRun && pkg.cliCommands?.length) {
-    console.log(`\ncli commands available: ${pkg.cliCommands.map((c) => `roborepo ${c}`).join(", ")}`);
+  if (!dryRun) {
+    const commandNames = packageCommandNames(pkg);
+    if (commandNames.length) {
+      console.log(`\ncli commands available: ${commandNames.map((c) => `roborepo ${c}`).join(", ")}`);
+    }
   }
 }
 
@@ -229,6 +248,12 @@ export async function disablePackage(rest) {
 
   const dryRun = flags.includes("--dry-run");
   console.log(dryRun ? `[dry-run] would disable: ${pkg.label}` : `disabling: ${pkg.label}`);
+  const usesRegistry = pkg.components.some((component) => component.type === "rules" || component.type === "command");
+  if (usesRegistry && dryRun) {
+    console.log(`  [dry-run] mark package disabled in registry`);
+  } else if (usesRegistry) {
+    setPackageEnabled(pkg.id, false);
+  }
 
   const servicePromises = [];
   for (const component of pkg.components) {
@@ -242,10 +267,12 @@ export async function disablePackage(rest) {
         break;
       case "rules": {
         if (dryRun) { console.log(`  [dry-run] deregister rules from ${component.source} (${component.harness})`); break; }
-        setPackageEnabled(pkg.id, false);
         renderHomeRules({ harness: component.harness === "both" ? undefined : component.harness });
         break;
       }
+      case "command":
+        if (dryRun) { console.log(`  [dry-run] deregister command ${component.name}`); }
+        break;
       case "hooks": {
         if (dryRun) { console.log(`  [dry-run] remove hooks from ${component.source}`); break; }
         const hooksFragment = JSON.parse(fs.readFileSync(path.join(repoRoot, component.source), "utf8"));

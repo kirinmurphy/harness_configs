@@ -33,6 +33,7 @@ applies each component; the enable/disable switch dispatches on `component.type`
 | type | Wires | Notes |
 | --- | --- | --- |
 | `mcp` | An MCP server registration | via `roborepo mcp add` |
+| `command` | A package-owned `roborepo` subcommand | resolved by command name at runtime |
 | `rules` | A rules block in the harness rules file(s) | `harness: claude` → `CLAUDE.md`, `codex` → `AGENTS.md`, `both` → each present harness; merged/removed by unique first line |
 | `hooks` | Hook entries in `~/.claude/settings.json` | merged by command |
 | `permissions` | `permissions.allow` entries | exact-match add/remove |

@@ -9,6 +9,7 @@ bin_dir="${HOME}/.local/bin"
 path_line='export PATH="${HOME}/.local/bin:${PATH}"'
 backup_root="${ROBOREPO_BACKUP_ROOT:-${HOME}/.roborepo-backups/$(date +%Y%m%d-%H%M%S)}"
 dry_run=0
+recorded_repo="${ROBOREPO_RECORDED_REPO:-}"
 
 case "${1:-}" in
   --dry-run) dry_run=1 ;;
@@ -89,6 +90,8 @@ check_command_target() {
   local name="$1"
   local target="${bin_dir}/${name}"
   local source_path="${repo_root}/bin/${name}"
+  local recorded_source_path=""
+  [[ -n "${recorded_repo}" ]] && recorded_source_path="${recorded_repo}/bin/${name}"
   local current
 
   if [[ ! -e "${target}" && ! -L "${target}" ]]; then
@@ -96,7 +99,7 @@ check_command_target() {
   fi
 
   current="$(readlink "${target}" 2>/dev/null || true)"
-  if [[ "${current}" == "${source_path}" ]]; then
+  if [[ "${current}" == "${source_path}" || ( -n "${recorded_source_path}" && "${current}" == "${recorded_source_path}" ) ]]; then
     return 0
   fi
 
@@ -135,6 +138,8 @@ link_command() {
   local name="$1"
   local target="${bin_dir}/${name}"
   local source_path="${repo_root}/bin/${name}"
+  local recorded_source_path=""
+  [[ -n "${recorded_repo}" ]] && recorded_source_path="${recorded_repo}/bin/${name}"
 
   if [[ -e "${target}" || -L "${target}" ]]; then
     local current
@@ -145,7 +150,7 @@ link_command() {
     fi
     # Reclaim a dangling link (stale prior-checkout path) by replacing it. Any other
     # mismatch is a real conflict (live file or link to something that still exists).
-    if [[ -L "${target}" && ! -e "${target}" ]]; then
+    if [[ -L "${target}" && ! -e "${target}" ]] || [[ -n "${recorded_source_path}" && "${current}" == "${recorded_source_path}" ]]; then
       if [[ "${dry_run}" -eq 1 ]]; then
         say relink "${target} -> ${source_path} (was dangling)"
         return

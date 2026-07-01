@@ -128,6 +128,7 @@ roborepo telemetry install|start|stop|enable|disable|status|report|export|backup
 roborepo run <cmd> [args...]
 
 roborepo update  [--dry-run]
+roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]
 roborepo doctor  [--installed]
 roborepo verify
 roborepo rules   [--check]
@@ -147,6 +148,9 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   `roborepo` on `PATH` — so the CLI has no separate `install` verb; once `roborepo` exists you only
   ever `update`. After that, `onboard` runs the wizard to choose the optional behaviors for this
   machine.
+- `repair` relinks stale symlinks after the checkout was moved or renamed. It does not re-copy
+  managed content files/dirs; those stay put. Use `--on-conflict` only for noninteractive command
+  recovery.
 - **Day to day** — `index code|docs` are one-shot indexers; `watch code` runs a live indexer (and
   writes the pidfile the Claude SessionStart hook reads to report watcher status); `mcp add`
   registers MCP servers with Claude + Codex; `bundle` manages the optional bundle selections;

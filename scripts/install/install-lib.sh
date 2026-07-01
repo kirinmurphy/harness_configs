@@ -159,6 +159,8 @@ choose_path_conflict_action() {
   local home_path="$2"
   local src="${repo_root}/${repo_rel}"
   local choice
+  local prompt_in="/dev/stdin"
+  local prompt_out="/dev/stderr"
 
   if [[ -n "${ROBOREPO_ON_CONFLICT:-}" ]]; then
     CONFIG_COLLISION_ACTION="${ROBOREPO_ON_CONFLICT}"
@@ -172,23 +174,28 @@ choose_path_conflict_action() {
   fi
 
   if ! stdin_is_interactive; then
-    echo "error: ${home_path} exists and stdin is not interactive." >&2
-    echo "Run interactively, pass --on-conflict overwrite|keep, or use --dry-run to inspect collisions." >&2
-    return 1
+    if [[ -r /dev/tty && -w /dev/tty ]]; then
+      prompt_in="/dev/tty"
+      prompt_out="/dev/tty"
+    else
+      echo "error: ${home_path} exists and stdin is not interactive." >&2
+      echo "Run interactively, pass --on-conflict overwrite|keep, or use --dry-run to inspect collisions." >&2
+      return 1
+    fi
   fi
 
   while true; do
-    echo ""
-    echo "Existing harness target:"
-    echo "  local:   ${home_path}"
-    echo "  harness: ${src}"
-    echo ""
-    echo "Choose:"
-    echo "  1) overwrite     backup local as *_original_TIMESTAMP; install repo item"
-    echo "  2) keep originals leave local active; stage repo item as *_update_TIMESTAMP"
-    echo "  q) quit"
-    printf "Selection [1/2/q]: "
-    if ! read -r choice; then
+    printf '\n' > "${prompt_out}"
+    printf 'Existing harness target:\n' > "${prompt_out}"
+    printf '  local:   %s\n' "${home_path}" > "${prompt_out}"
+    printf '  harness: %s\n' "${src}" > "${prompt_out}"
+    printf '\n' > "${prompt_out}"
+    printf 'Choose:\n' > "${prompt_out}"
+    printf '  1) overwrite     backup local as *_original_TIMESTAMP; install repo item\n' > "${prompt_out}"
+    printf '  2) keep originals leave local active; stage repo item as *_update_TIMESTAMP\n' > "${prompt_out}"
+    printf '  q) quit\n' > "${prompt_out}"
+    printf 'Selection [1/2/q]: ' > "${prompt_out}"
+    if ! read -r choice < "${prompt_in}"; then
       CONFIG_COLLISION_ACTION="abort"
       return 0
     fi
@@ -196,10 +203,12 @@ choose_path_conflict_action() {
     case "${choice}" in
       1|overwrite)
         CONFIG_COLLISION_ACTION="overwrite"
+        export ROBOREPO_ON_CONFLICT="${CONFIG_COLLISION_ACTION}"
         return 0
         ;;
       2|keep|original|originals)
         CONFIG_COLLISION_ACTION="keep"
+        export ROBOREPO_ON_CONFLICT="${CONFIG_COLLISION_ACTION}"
         return 0
         ;;
       q|Q|quit|exit)

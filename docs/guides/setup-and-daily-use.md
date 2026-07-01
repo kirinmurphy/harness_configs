@@ -145,6 +145,10 @@ roborepo skill adopt <name>     # ingest a skill created natively (init_skill.py
 scripts/doctor.sh --installed   # verify the live skill cache and harness links are current
 ```
 
+If the checkout was moved or renamed, `roborepo repair` relinks stale symlinks to the new path.
+It leaves copied config files and directories alone; use `--on-conflict` only for automation or
+noninteractive recovery.
+
 ### Edit global rules
 
 Global instruction files are generated tracked outputs:

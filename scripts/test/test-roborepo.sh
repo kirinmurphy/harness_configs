@@ -929,6 +929,27 @@ assert "repair: install state records the new checkout path" \
 reclaim2="$(HOME="${rp_home}" ROBOREPO_STATE_DIR="${rp_state}" bash "${rp_new}/scripts/install/repair.sh" 2>&1 | grep -cE '^reclaim' || true)"
 assert "repair: idempotent re-run reclaims nothing" test "${reclaim2}" = "0"
 
+# -- repair ignores copied content dirs and still heals the moved checkout --
+rp_keep_home="${reloc_root}/reloc-repair-keep/home"
+rp_keep_old="${reloc_root}/reloc-repair-keep/harness_configs"
+rp_keep_new="${reloc_root}/reloc-repair-keep/roborepo"
+rp_keep_state="${rp_keep_home}/.roborepo"
+mkdir -p "${rp_keep_home}/.claude" "${rp_keep_home}/.codex" "${rp_keep_home}/.local/bin"
+cp -R "${repo_root}" "${rp_keep_old}"
+HOME="${rp_keep_home}" ROBOREPO_STATE_DIR="${rp_keep_state}" ROBOREPO_ASSUME_INTERACTIVE=0 \
+  ROBOREPO_ON_CONFLICT=overwrite bash "${rp_keep_old}/scripts/install/main.sh" >/dev/null 2>&1 || true
+mv "${rp_keep_old}" "${rp_keep_new}"
+mkdir -p "${rp_keep_home}/.claude/commands"
+echo "local command" > "${rp_keep_home}/.claude/commands/local.txt"
+repair_keep_out="$(HOME="${rp_keep_home}" ROBOREPO_STATE_DIR="${rp_keep_state}" \
+  bash "${rp_keep_new}/scripts/install/repair.sh" 2>&1 || true)"
+assert "repair: copied commands dir survives a repair run" \
+  bash -c "test -d '${rp_keep_home}/.claude/commands' && test -f '${rp_keep_home}/.claude/commands/local.txt'"
+assert "repair: copied commands dir does not trigger a prompt" \
+  bash -c "! echo '${repair_keep_out}' | grep -q 'Choose:' && ! echo '${repair_keep_out}' | grep -q 'Merge review prompt:'"
+assert "repair: keep-run still heals bin link" \
+  bash -c "test \"\$(readlink '${rp_keep_home}/.local/bin/roborepo')\" = '${rp_keep_new}/bin/roborepo'"
+
 # -- install heals a dangling bin link instead of erroring --
 heal_home="${reloc_root}/heal-bin/home"
 mkdir -p "${heal_home}/.local/bin"

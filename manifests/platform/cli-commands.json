@@ -28,7 +28,7 @@
     "roborepo run <cmd> [args...]",
     "",
     "roborepo update  [--dry-run] [--on-conflict overwrite|keep|abort]",
-    "roborepo repair  [--dry-run]  refresh copied install after the repo was moved/renamed",
+    "roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]  refresh copied install after the repo was moved/renamed",
     "roborepo uninstall [--dry-run]",
     "roborepo doctor  [--installed] health check",
     "roborepo verify                post-install verification",

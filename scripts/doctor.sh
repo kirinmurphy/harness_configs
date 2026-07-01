@@ -350,7 +350,7 @@ fi
 if [[ "${failed}" -ne 0 ]]; then
   if [[ "${drift_detected}" -eq 1 ]]; then
     echo "hint: managed links resolve to a different path than this checkout — the repo was likely" >&2
-    echo "      moved or renamed. Run 'roborepo repair' to relink against the current location." >&2
+    echo "      moved or renamed. Run 'roborepo repair' or './scripts/install/repair.sh' to relink against the current location." >&2
   fi
   echo "doctor failed (${passed} checks passed, see fail: lines above)" >&2
   exit 1

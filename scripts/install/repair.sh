@@ -7,11 +7,10 @@ set -euo pipefail
 # under skills/) and the ~/.local/bin/roborepo command point at the checkout's old absolute path,
 # so they dangle and `roborepo` drops off PATH. (See docs/plans/portable-install-relocation.md.)
 #
-# What it does: for each managed link in manifests/platform/manifest.tsv, reclaim a stale link (one that
-# is dangling, or targets the recorded prior checkout) and recreate it against the CURRENT
-# checkout; then re-link per-skill global skills, re-link the bin command, and rewrite the
-# recorded root. Relink only — mutable root config (settings.json / config.toml) is
-# user-owned and left untouched.
+# What it does: reclaim stale symlinks that still point at the prior checkout (or dangle),
+# re-link the bin command against the current checkout, refresh the base shared skill view,
+# and rewrite the recorded root. It does NOT re-copy managed content files/dirs; those are
+# path-independent and are left untouched.
 #
 # Idempotent: a no-op when every link already points at the current checkout.
 
@@ -20,12 +19,49 @@ backup_root="${ROBOREPO_BACKUP_ROOT:-${HOME}/.roborepo-backups/$(date +%Y%m%d-%H
 export ROBOREPO_BACKUP_ROOT="${backup_root}"
 export ROBOREPO_INSTALL_TIMESTAMP="${ROBOREPO_INSTALL_TIMESTAMP:-$(date +%Y%m%d-%H%M%S)}"
 dry_run=0
+on_conflict="${ROBOREPO_ON_CONFLICT:-}"
 
-case "${1:-}" in
-  --dry-run) dry_run=1 ;;
-  "") ;;
-  *) echo "usage: $0 [--dry-run]" >&2; exit 2 ;;
+usage() {
+  echo "usage: $0 [--dry-run] [--on-conflict overwrite|keep|abort]" >&2
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run)
+      dry_run=1
+      shift
+      ;;
+    --on-conflict)
+      [[ $# -ge 2 ]] || { usage; exit 2; }
+      on_conflict="$2"
+      shift 2
+      ;;
+    --on-conflict=*)
+      on_conflict="${1#*=}"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+case "${on_conflict}" in
+  ""|overwrite|keep|abort) ;;
+  *)
+    usage
+    exit 2
+    ;;
 esac
+
+if [[ -n "${on_conflict}" ]]; then
+  export ROBOREPO_ON_CONFLICT="${on_conflict}"
+fi
 
 # shellcheck source=scripts/install/install-lib.sh
 source "${repo_root}/scripts/install/install-lib.sh"   # provides install_copy_item, link_global_skills
@@ -36,14 +72,54 @@ source "${repo_root}/scripts/lib/manifests-data.sh"    # provides manifest_rows
 # shellcheck source=scripts/install/state-lib.sh
 source "${repo_root}/scripts/install/state-lib.sh"     # provides read_install_repo / write_install_state
 
-on_conflict="$(read_install_on_conflict 2>/dev/null || true)"
+if [[ -z "${on_conflict}" ]]; then
+  on_conflict="$(read_install_on_conflict 2>/dev/null || true)"
+fi
 recorded_repo="$(read_install_repo 2>/dev/null || true)"
+export ROBOREPO_RECORDED_REPO="${recorded_repo}"
 
-# Re-materialize managed_copy rows from the manifest for the given harness.
-repair_harness() {
+# Reclaim cleanup rows that are now stale because the checkout moved or the symlink dangles.
+repair_cleanup_target() {
+  local home_abs="$1"
+  if [[ ! -L "${home_abs}" ]]; then
+    return 0
+  fi
+
+  local current
+  current="$(readlink "${home_abs}" 2>/dev/null || true)"
+
+  if [[ -n "${recorded_repo}" ]]; then
+    case "${current}" in
+      "${recorded_repo}"/*) ;;
+      "${repo_root}"/*) ;;
+      *)
+        if [[ -e "${home_abs}" ]]; then
+          return 0
+        fi
+        ;;
+    esac
+  elif [[ -e "${home_abs}" ]]; then
+    case "${current}" in
+      "${repo_root}"/*) ;;
+      *)
+        return 0
+        ;;
+    esac
+  fi
+
+  if [[ "${dry_run}" -eq 1 ]]; then
+    echo "remove: ${home_abs}"
+  else
+    rm "${home_abs}"
+    echo "remove: ${home_abs}"
+  fi
+}
+
+repair_cleanup_rows() {
+  local harness="$1"
   while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
-    [[ "${kind}" == "managed_copy" ]] || continue
-    install_copy_item "${src_rel}" "${home_abs}"
+    [[ "${kind}" == "cleanup" ]] || continue
+    repair_cleanup_target "${home_abs}"
   done < <(manifest_rows "$1")
 }
 
@@ -53,8 +129,8 @@ repair_skill_links() {
   link_global_skills "${1%/skills}" roborepo-support
 }
 
-[[ -d "${HOME}/.claude" ]] && repair_harness claude
-[[ -d "${HOME}/.codex" ]]  && repair_harness codex
+[[ -d "${HOME}/.claude" ]] && repair_cleanup_rows claude
+[[ -d "${HOME}/.codex" ]] && repair_cleanup_rows codex
 
 repair_skill_links "${HOME}/.claude/skills"
 repair_skill_links "${HOME}/.codex/skills"

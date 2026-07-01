@@ -25,9 +25,9 @@ Roborepo currently provides these skill-management flows:
   command wrappers, and fans out managed links.
 - `roborepo skill adopt <name>` imports an unmanaged home skill into
   `globals/agents/skills/<name>`.
-- `roborepo skill export-to-local` copies shared skills into a target repo and creates a
+- `roborepo skill export-to-project` copies shared skills into a target repo and creates a
   shareable zip.
-- `roborepo skill symlink-repo` links repo-local skills into harness locations.
+- `roborepo skill link-project` links repo-local skills into harness locations.
 - `roborepo doctor --installed` verifies managed cache entries and harness links.
 - The `/config` portal shows enabled skills and can inspect full skill source.
 

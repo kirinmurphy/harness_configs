@@ -194,7 +194,7 @@ There are two distinct, firewalled skill layers:
   install/update time; global on both harnesses and exportable to other repos. Advisory coding
   skills any repo may receive.
 - **Internal** — `local/skills/<name>/`, linked **only** into this repo's own project-scope
-  dotdirs (`.claude/skills`, `.agents/skills`) by `link-skills.sh`. These describe how to
+  dotdirs (`.claude/skills`, `.codex/skills`) by `link-skills.sh`. These describe how to
   develop/maintain this repo and are **never** global and **never** exported. The separation is
   structural: the export/installer tools read only `globals/agents/skills/`, with no code path
   to `local/skills/`.
@@ -204,13 +204,14 @@ There are two distinct, firewalled skill layers:
 One Node command, `roborepo`, is the consumer front door (see the README for the full subcommand
 list). For the dual-harness skill model it offers:
 
-- `skill export-to-local`: bundles shared skills into a `.zip` and copies them into a target repo's
-  `.agents/skills` plus harness-specific skill folders.
-- `skill symlink-repo`: treats the target repo's own `.agents/skills/<name>` as the canonical project
-  skill source, then symlinks those skills into selected `.claude/skills` and/or `.codex/skills`
-  folders. Existing `.claude` and `.codex` roots are used automatically; when run interactively and
-  a root is missing, it asks whether to create/link that target. Noninteractive runs do not create
-  new agent roots.
+- `skill export-to-project`: bundles shared skills into a `.zip` and copies them into a target
+  project's `.claude/skills` and `.codex/skills` folders.
+- `skill link-project`: treats the target project's `.codex/skills/<name>` as the canonical project
+  skill source, then links those skills into `.claude/skills` when a Claude project root exists.
+  Interactive runs ask before creating a missing Claude root; noninteractive runs do not create
+  missing agent roots.
+- `skill native`: points users to native Claude/Codex plugin commands for harness-specific actions
+  instead of wrapping those commands.
 
 This is purely in-repo and never touches global `~/.claude` or `~/.codex`.
 

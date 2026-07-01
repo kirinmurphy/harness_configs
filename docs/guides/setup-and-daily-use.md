@@ -116,7 +116,7 @@ as shown below. Full reference: [roborepo CLI](../reference/services/roborepo.md
 
 ### Index and watch a repo
 
-Keep the jcodemunch index current so Claude can navigate your codebase. Start this when opening a project you'll be actively coding in. The watcher runs continuously — edits are picked up automatically within the session.
+Keep the package-owned code index current so Claude can navigate your codebase. Start this when opening a project you'll be actively coding in. The watcher runs continuously — edits are picked up automatically within the session.
 
 ```sh
 roborepo watch code               # watch the current dir (runs continuously)
@@ -142,6 +142,8 @@ lives once in `globals/agents/skills/<name>/`. If you created a skill out-of-ban
 ```sh
 roborepo skill new              # scaffold + refresh shared skill cache + both harness views
 roborepo skill adopt <name>     # ingest a skill created natively (init_skill.py / by hand)
+roborepo skill native           # summarize native Claude/Codex plugin entrypoints
+roborepo skill native --full    # print native help output inline
 scripts/doctor.sh --installed   # verify the live skill cache and harness links are current
 ```
 

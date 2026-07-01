@@ -53,7 +53,7 @@ roborepo skill adopt <name>
 Manual add (for reference only — prefer the commands above):
 1. Create `globals/agents/skills/<name>/SKILL.md`
 2. Register in `manifests/inventory/skill-invocation.json`
-3. Run `scripts/build/link-global-skills.sh` to refresh the shared skill cache and harness links
+3. Run `roborepo skill sync-global` to refresh the shared skill cache and harness links
 4. Add a one-line entry under **Shared Skills** in `README.md`
 5. Verify: `scripts/doctor.sh --installed --quiet`
 

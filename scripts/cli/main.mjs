@@ -7,7 +7,7 @@ import path from "node:path";
 import { selectMenu } from "./skill-lib.mjs";
 import { repoRoot } from "./paths.mjs";
 import { runRepoCommand } from "./repo-script-runner.mjs";
-import { skillLink, skillExport, skillAdopt } from "./skills.mjs";
+import { skillLink, skillExport, skillAdopt, skillNative } from "./skills.mjs";
 import { skillNew } from "./skill-new.mjs";
 import { indexCode, indexDocs, watchCode, runCmd } from "./index.mjs";
 import { mcpAdd, mcpApply } from "./mcp.mjs";
@@ -49,6 +49,10 @@ async function interactiveMenu() {
     console.log("usage: roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>]");
     return;
   }
+  if (Array.isArray(choice) && choice.length === 2 && choice[0] === "skill" && choice[1] === "adopt") {
+    console.log("usage: roborepo skill adopt <name>");
+    return;
+  }
   await dispatch(choice);
 }
 
@@ -67,16 +71,21 @@ async function dispatch(args) {
       return usage();
 
     case "skill":
-      if (sub === "export-to-local") return skillExport(new Set(rest), `skill ${sub}`);
+      if (sub === "export-to-project") return skillExport(new Set(rest), `skill ${sub}`);
       if (sub === "new") return skillNew(rest);
       if (sub === "adopt") return skillAdopt(rest);
-      if (sub === "symlink-repo") {
+      if (sub === "link-project") {
         return skillLink(flags, `skill ${sub}`);
       }
-      if (sub === "symlink-globals") {
-        return runRepoCommand(cliCatalog.repoScripts["skill symlink-globals"], rest);
+      if (sub === "sync-global") {
+        if (rest.length > 0) {
+          console.error(`unknown flag for "skill ${sub}": ${rest.join(" ")}`);
+          return usageError();
+        }
+        return runRepoCommand(cliCatalog.repoScripts["skill sync-global"], rest);
       }
       if (sub === "render-commands") return runRepoCommand(cliCatalog.repoScripts["skill render-commands"], rest);
+      if (sub === "native") return skillNative(rest);
       console.error(`unknown: roborepo skill ${sub ?? ""}`.trim());
       return usageError();
 

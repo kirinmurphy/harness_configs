@@ -18,7 +18,7 @@ the matching step in [the teaching doc](harnesses-explained.md).
 | Element | What it is | Source | Maintain with |
 | --- | --- | --- | --- |
 | Global rules | The always-on instruction file each harness reads at startup. | Claude: `globals/claude/CLAUDE.md` (generated)<br>Codex: `globals/codex/AGENTS.md` (generated) | `roborepo rules [--check]` |
-| Skills | On-demand capability/instruction bundles the agent loads when relevant. | `globals/agents/skills/<name>/SKILL.md` — linked per-skill into `~/.claude/skills/` and `~/.codex/skills/` at install time | `roborepo skill new`, `roborepo skill adopt <name>` |
+| Skills | On-demand capability/instruction bundles the agent loads when relevant. | `globals/agents/skills/<name>/SKILL.md` — materialized into `~/.roborepo/skills/<name>` and linked from harness skill dirs | `roborepo skill new`, `roborepo skill adopt <name>`, `roborepo skill sync-global` |
 | Slash commands | Named workflows the user starts explicitly (`/blog`, etc.). | Claude: `globals/claude/commands/` (generated)<br>Codex: `globals/codex/commands/` (generated) | `roborepo skill render-commands [--check]` |
 | Install bundles | Named groups of install-time file operations applied at install/update. Internal to the install pipeline — not a user-facing verb. | `manifests/platform/presets.json` | `roborepo update` (applies them); `roborepo bundle …` is an internal verb called by `scripts/install/main.sh` |
 | Hooks | Scripts the harness runs on lifecycle/tool events. | Claude: `globals/claude/hooks/*.mjs` + `settings.json` wiring<br>Codex: `globals/codex/hooks.json` | edit source, then `roborepo update` |
@@ -58,13 +58,12 @@ override-layering rules: [Rules Parity and Layering](rules-parity-and-layering.m
 `roborepo-support`, …). Shared skills are also exportable to other repos.
 
 **Parity model:** one canonical source, `globals/agents/skills/<name>/SKILL.md`. The installer
-fans each skill per-skill into each harness's native dir: `~/.claude/skills/<name>` →
-`globals/agents/skills/<name>` and `~/.codex/skills/<name>` → `globals/agents/skills/<name>`.
-Roborepo owns only the skill names it manages; native-installed skills (via `init_skill.py` /
-`skill-installer`) at unrecognized names are left untouched and shown as adoptable drift by
-`roborepo doctor --installed`. There is no intermediate `globals/claude/skills/` directory;
-skills link straight from each harness's native dir to the repo source. (Why a symlink, not a
-generator: [explained.md Step 4](harnesses-explained.md#step-4--when-the-files-are-identical-but-live-apart-skills).)
+materializes each enabled shared skill into `~/.roborepo/skills/<name>` and links each harness's
+native dir to that machine-local cache entry. Roborepo owns only the skill names it manages;
+native-installed skills (via native harness tools or `skill-installer`) at unrecognized names are
+left untouched and shown as adoptable drift by `roborepo doctor --installed`. There is no
+intermediate `globals/claude/skills/` directory, and harness homes do not point directly at the
+checkout. (Why a symlink, not a generator: [explained.md Step 4](harnesses-explained.md#step-4--when-the-files-are-identical-but-live-apart-skills).)
 
 **To add or change a skill:**
 
@@ -72,6 +71,8 @@ generator: [explained.md Step 4](harnesses-explained.md#step-4--when-the-files-a
 roborepo skill new            # scaffold skill/command + update manifests, links, README
                               # (wraps native init_skill.py when present; roborepo template otherwise)
 roborepo skill adopt <name>   # move an out-of-band skill into version control
+roborepo skill sync-global    # refresh ~/.roborepo/skills and harness skill views
+roborepo skill native         # show native harness plugin/skill entrypoints
 roborepo doctor --installed   # check that live harness links are current
 ```
 
@@ -201,6 +202,6 @@ roborepo update   # re-apply core repo config to this machine (links + root-conf
 roborepo doctor   # health-check links, helper commands, deps, and generated-output drift
 ```
 
-`roborepo doctor` runs the `rules --check` / `permissions --check` / `skill symlink-globals --check`
-drift checks for you, so it is the fastest way to confirm every generated element is current.
+`roborepo doctor` runs the rules, permissions, internal skill-link, and installed skill-cache drift
+checks for you, so it is the fastest way to confirm every generated element is current.
 `roborepo telemetry status` shows whether local capture is enabled.

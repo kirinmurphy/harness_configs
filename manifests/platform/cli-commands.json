@@ -3,9 +3,11 @@
     "roborepo                       interactive menu",
     "",
     "roborepo skill new [--kind=auto|skill-command|standalone] [--name=<name>] [--description=<text>]",
-    "roborepo skill export-to-local [--yes] [--on-conflict=skip|override]",
-    "roborepo skill symlink-repo    [--dry-run] [--uninstall]   link this repo's .codex/skills into its .claude/.codex",
-    "roborepo skill symlink-globals [--check]                   link shared global skills into the global harness folders",
+    "roborepo skill adopt <name>",
+    "roborepo skill export-to-project [--yes] [--on-conflict=skip|override]",
+    "roborepo skill link-project      [--dry-run] [--uninstall]   link this project's .codex/skills into .claude/skills",
+    "roborepo skill sync-global                              refresh shared skill cache + harness links",
+    "roborepo skill native [--full]                          show native Claude/Codex skill and plugin entrypoints",
     "roborepo skill render-commands [--check]                   render/check slash commands",
     "",
     "roborepo index code  [path]",
@@ -57,7 +59,7 @@
     {
       "label": "index code",
       "value": ["index", "code"],
-      "desc": "index this repo's code for jcodemunch"
+      "desc": "index this repo's code with the enabled package-owned indexer"
     },
     {
       "label": "watch code",
@@ -67,7 +69,7 @@
     {
       "label": "index docs",
       "value": ["index", "docs"],
-      "desc": "index this repo's docs for jdocmunch"
+      "desc": "index this repo's docs with the enabled package-owned docs indexer"
     },
     { "header": "Add packages" },
     {
@@ -98,19 +100,29 @@
       "desc": "scaffold a shared skill or slash command"
     },
     {
-      "label": "skill export-to-local",
-      "value": ["skill", "export-to-local"],
-      "desc": "copy shared skills into this repo"
+      "label": "skill adopt",
+      "value": ["skill", "adopt"],
+      "desc": "move a native skill into shared roborepo source"
     },
     {
-      "label": "skill symlink-repo",
-      "value": ["skill", "symlink-repo"],
-      "desc": "symlink this repo's .codex/skills into its .claude/.codex"
+      "label": "skill export-to-project",
+      "value": ["skill", "export-to-project"],
+      "desc": "copy shared skills into this project"
     },
     {
-      "label": "skill symlink-globals",
-      "value": ["skill", "symlink-globals"],
-      "desc": "copy shared global skills into global harness folders"
+      "label": "skill link-project",
+      "value": ["skill", "link-project"],
+      "desc": "link this project's .codex/skills into .claude"
+    },
+    {
+      "label": "skill sync-global",
+      "value": ["skill", "sync-global"],
+      "desc": "refresh shared skill cache and harness links"
+    },
+    {
+      "label": "skill native",
+      "value": ["skill", "native"],
+      "desc": "show native Claude/Codex skill and plugin entrypoints"
     },
     {
       "label": "skill render-commands",
@@ -170,9 +182,9 @@
     { "label": "exit", "value": null, "desc": "quit" }
   ],
   "repoScripts": {
-    "skill symlink-globals": {
+    "skill sync-global": {
       "runtime": "bash",
-      "path": "scripts/build/link-skills.sh"
+      "path": "scripts/build/link-global-skills.sh"
     },
     "skill render-commands": {
       "runtime": "node",

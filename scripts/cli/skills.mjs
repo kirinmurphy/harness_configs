@@ -1,4 +1,4 @@
-// roborepo `skill` subcommands: link this repo's .codex/skills into existing .claude/.codex, and
+// roborepo `skill` subcommands: link this repo's .codex/skills into existing .claude, and
 // export the shared harness skills into a consumer repo (+ a shareable zip).
 
 import fs from "node:fs";
@@ -23,6 +23,81 @@ function runChecked(label, command, args) {
   const result = spawnSync(command, args, { cwd: repoRoot, stdio: "inherit" });
   if (result.error) throw new Error(`${label} failed to start: ${result.error.message}`);
   if (result.status !== 0) throw new Error(`${label} failed with exit ${result.status}`);
+}
+
+const NATIVE_HELP_TIMEOUT_MS = 10000;
+const USE_COLOR =
+  (Boolean(process.stdout.isTTY) || Boolean(process.env.FORCE_COLOR)) &&
+  !process.env.NO_COLOR &&
+  !process.env.ROBOREPO_NO_COLOR;
+const COLOR = USE_COLOR
+  ? {
+      reset: "\x1b[0m",
+      bold: "\x1b[1m",
+      dim: "\x1b[2m",
+      cyan: "\x1b[36m",
+      green: "\x1b[32m",
+      yellow: "\x1b[33m",
+    }
+  : { reset: "", bold: "", dim: "", cyan: "", green: "", yellow: "" };
+
+function nativeHelp(command, args) {
+  const result = spawnSync(command, args, {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    timeout: NATIVE_HELP_TIMEOUT_MS,
+    maxBuffer: 1024 * 256,
+  });
+
+  if (result.error || result.status !== 0) {
+    const detail = nativeHelpFailure(command, args, result);
+    const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
+    return { ok: false, detail, output };
+  }
+
+  return { ok: true, text: (result.stdout || result.stderr || "").trim() };
+}
+
+function nativeHelpFailure(command, args, result) {
+  if (result.error?.code === "ENOENT") return `${command} not found on PATH`;
+  if (result.error?.code === "ETIMEDOUT" || result.signal === "SIGTERM") {
+    return `${command} ${args.join(" ")} timed out after ${NATIVE_HELP_TIMEOUT_MS / 1000}s`;
+  }
+  const status = result.status === null ? "unknown status" : `exit ${result.status}`;
+  return `${command} ${args.join(" ")} failed (${status})`;
+}
+
+function printNativeFullHelp(title, command, args, fallbackCommands) {
+  console.log("");
+  console.log(section(title));
+  const result = nativeHelp(command, args);
+  if (result.ok) {
+    console.log(result.text);
+    return;
+  }
+  console.log(`${result.detail}.`);
+  if (result.output) console.log(indentBlock(result.output));
+  console.log(`Fallback examples: ${fallbackCommands.join(", ")}`);
+}
+
+function indentBlock(text) {
+  return text.split("\n").map((line) => `  ${line}`).join("\n");
+}
+
+function section(title) {
+  return `${COLOR.bold}${COLOR.cyan}${title}${COLOR.reset}`;
+}
+
+function command(text) {
+  return `${COLOR.green}${text}${COLOR.reset}`;
+}
+
+function note(text) {
+  return `${COLOR.dim}${text}${COLOR.reset}`;
+}
+
+function label(text) {
+  return `${COLOR.bold}${text}${COLOR.reset}`;
 }
 
 export function skillAdopt(args) {
@@ -79,6 +154,75 @@ export function skillAdopt(args) {
   console.log("  scripts/doctor.sh --quiet");
 }
 
+export function skillNative(args) {
+  const full = args.includes("--full");
+  const invalid = args.filter((arg) => arg !== "--full");
+  if (invalid.length > 0) {
+    console.error("usage: roborepo skill native [--full]");
+    process.exit(2);
+  }
+
+  console.log(section("roborepo skill native"));
+  console.log(note("Native skill/plugin escape hatch. Roborepo stays parity-focused; native CLIs own harness-specific plugin lifecycle."));
+  console.log("");
+  console.log(section("Roborepo Parity Actions"));
+  console.log(`  ${command("roborepo skill new")}                scaffold shared skills or commands`);
+  console.log(`  ${command("roborepo skill adopt <name>")}       bring a native skill under roborepo management`);
+  console.log(`  ${command("roborepo skill sync-global")}        refresh shared skill cache + harness links`);
+  console.log(`  ${command("roborepo skill export-to-project")}  copy shared skills into this project`);
+  console.log(`  ${command("roborepo skill link-project")}       link project .codex/skills into .claude/skills`);
+  console.log(`  ${command("roborepo skill render-commands")}    render generated slash commands`);
+  console.log("");
+  console.log(section("Decision Rule"));
+  console.log(`  ${label("Use roborepo")} when behavior should become shared, version-controlled, and available in both harnesses.`);
+  console.log(`  ${label("Use native CLIs")} for harness-specific marketplaces, installs, updates, enable/disable state, validation, and troubleshooting.`);
+  console.log(`  ${label("Promote native -> roborepo")} with ${command("roborepo skill adopt <name>")}.`);
+
+  const claudeFallback = ["claude plugin list", "claude plugin install <plugin>", "claude plugin marketplace ..."];
+  const codexFallback = ["codex plugin list", "codex plugin add <plugin[@marketplace]>", "codex plugin remove <plugin>"];
+  const codexMarketplaceFallback = [
+    "codex plugin marketplace add <source>",
+    "codex plugin marketplace list",
+    "codex plugin marketplace upgrade",
+    "codex plugin marketplace remove <name>",
+  ];
+
+  console.log("");
+  console.log(section("Native CLI Summary"));
+  console.log(`  ${label("Claude plugins")}              list, install, enable/disable, update, uninstall, marketplace, validate, details, init`);
+  console.log(`  ${label("Codex plugins")}               list, add, remove, marketplace`);
+  console.log(`  ${label("Codex plugin marketplaces")}   add, list, upgrade, remove`);
+  console.log("");
+  console.log(section("Full Native Help"));
+  console.log(`  ${command("claude plugin --help")}`);
+  console.log(`  ${command("codex plugin --help")}`);
+  console.log(`  ${command("codex plugin marketplace --help")}`);
+  console.log(`  ${command("roborepo skill native --full")}`);
+
+  if (!full) return;
+
+  printNativeFullHelp(
+    "Claude native plugin help (from installed claude CLI)",
+    "claude",
+    ["plugin", "--help"],
+    claudeFallback
+  );
+
+  printNativeFullHelp(
+    "Codex native plugin help (from installed codex CLI)",
+    "codex",
+    ["plugin", "--help"],
+    codexFallback
+  );
+
+  printNativeFullHelp(
+    "Codex native plugin marketplace help (from installed codex CLI)",
+    "codex",
+    ["plugin", "marketplace", "--help"],
+    codexMarketplaceFallback
+  );
+}
+
 async function resolveSkillInstallTargets(repo, { dryRun = false, uninstall = false } = {}) {
   // Skills live in .codex/skills/<name>/ (Codex reads there directly).
   // Only .claude/skills/<name> needs a symlink; .codex is the source, not a link target.
@@ -106,7 +250,7 @@ async function resolveSkillInstallTargets(repo, { dryRun = false, uninstall = fa
   return selected.map((target) => target.root);
 }
 
-export async function skillLink(flags, commandName = "skill symlink-repo") {
+export async function skillLink(flags, commandName = "skill link-project") {
   for (const f of flags) {
     if (f === "--dry-run" || f === "--uninstall") continue;
     console.error(`unknown flag for "${commandName}": ${f}`);
@@ -154,11 +298,11 @@ export async function skillLink(flags, commandName = "skill symlink-repo") {
     console.log("");
     console.log("Reminder: added a skill to .codex/skills/<name>/SKILL.md? Re-run");
     console.log(`  roborepo ${commandName}`);
-    console.log("so existing Claude and transitional .codex/skills links pick it up.");
+    console.log("so existing Claude skill links pick it up.");
   }
 }
 
-export async function skillExport(flags, commandName = "skill export-to-local") {
+export async function skillExport(flags, commandName = "skill export-to-project") {
   const assumeYes = flags.has("--yes");
   let onConflict = "skip";
   for (const f of flags) {

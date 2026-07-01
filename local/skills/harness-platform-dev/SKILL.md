@@ -38,11 +38,11 @@ to them plus the judgment that isn't written down. Read the doc, then apply the 
   GLOBAL `~/.claude`/`~/.codex` at install time.
 - `.claude/` + `.agents/` (dotdirs) = THIS repo's own PROJECT-SCOPE skill config, NOT global.
 - `globals/agents/skills/<name>/` = canonical shared/advisory layer (global + exportable). At install
-  time, per-skill symlinks are created in each harness's native dir: `~/.claude/skills/<name>` and
-  `~/.codex/skills/<name>` → `globals/agents/skills/<name>`. No intermediate `globals/claude/skills/`
-  directory exists. `local/skills/` = internal layer (this repo only, via `.claude/skills` + `.codex/skills`
+  time, skills are materialized into `~/.roborepo/skills/<name>` and each harness's native dir links
+  to that cache entry. No intermediate `globals/claude/skills/` directory exists. `local/skills/` =
+  internal layer (this repo only, via `.claude/skills` + `.codex/skills`
   project-scope dotdirs). The firewall between them is structural — see below.
-- Codex scans `.agents/skills` for project-scope skills (the repo's `.agents/skills/` dotdir).
+- Codex scans `.codex/skills` for project-scope skills.
 - Shared skills use `globals/agents/skills/` as canonical source; repo-local skills use `local/skills/`
   as canonical source and symlink into project-scope harness folders.
 - Mutable global config files should not be direct symlinks to repo source; use a generated or
@@ -54,11 +54,10 @@ Everything else (the two symlink levels, the layer table) lives in
 
 ## Operational judgment (not in the docs)
 
-- **Adding any skill:** create the source folder, then ALWAYS run `scripts/build/link-skills.sh` —
-  never hand-write `ln`. It derives links from source and is idempotent, so it can't drift.
-  Shared skill → `globals/agents/skills/`. Internal/repo-only skill → `local/skills/`. The script's two
-  passes handle each. Source folder alone is never enough; the active skill list refreshes only on
-  harness reload.
+- **Adding any skill:** prefer `roborepo skill new`. Shared skill → `globals/agents/skills/`, then
+  run `roborepo skill sync-global` to refresh the machine-local cache and harness views. Internal/
+  repo-only skill → `local/skills/`, then run `scripts/build/link-skills.sh` for this repo's
+  project-scope links. Never hand-write `ln`.
 - **The firewall is code, not convention.** `link-skills.sh` runs one pass per layer;
   `roborepo` reads only `globals/agents/skills/`. There is no code path from `local/skills/` to global
   config or to a client export. Don't add one.
@@ -98,9 +97,10 @@ Everything else (the two symlink levels, the layer table) lives in
 interactive menu (arrow keys + numbered fallback via `selectMenu` in `cli/skill-lib.mjs`).
 Subcommands, grouped by category:
 
-- `skill export-to-local` / `skill symlink-repo` (`cli/skills.mjs`) — the dual-harness skill tools
-  (export bundles + copies into `.claude/skills` + `.agents/skills`; local linking is purely
-  in-repo `.agents/skills` → `.claude/skills` + `.codex/skills`, with prune). Read only the shared /
+- `skill export-to-project` / `skill link-project` / `skill native` (`cli/skills.mjs`) — the
+  dual-harness skill tools (export bundles + copies into `.claude/skills` + `.codex/skills`;
+  project linking is `.codex/skills` → `.claude/skills`, with prune; native prints the harness
+  plugin/skill escape hatch). Read only the shared /
   client-local layer — never `local/skills/`.
 - `index code|docs [path]`, `watch code [path]`, `run <cmd>` (`cli/index.mjs`) — jcodemunch/jdocmunch
   wrappers + the trimmed-output runner. `[path]` optional, defaults to cwd, resolved to absolute.
@@ -121,8 +121,8 @@ ONE global command exists (`roborepo`), so the old per-command 3-place wiring is
 `install-global-commands.sh`, `doctor.sh`, `verify-install.sh` each reference only `roborepo`.
 MAINTAINER scripts (`render-rules.sh`, `link-skills.sh`, `test-*.sh`) stay OUT of `roborepo`.
 
-**Tests:** `scripts/test/test-roborepo.sh` smoke-tests the subcommands (skill symlink-repo/prune/
-uninstall/conflict, export-to-local/override/firewall/self-pollution guard, run, `mcp add` dry-runs + real
+**Tests:** `scripts/test/test-roborepo.sh` smoke-tests the subcommands (skill link-project/prune/
+uninstall/conflict, export-to-project/override/firewall/self-pollution guard, sync-global, native, run, `mcp add` dry-runs + real
 Codex/Claude writes against a throwaway harness root, lifecycle dispatch, menu fallback) against
 throwaway temp repos. Run it after touching `cli/main.mjs` or anything under `scripts/cli/`.
 `doctor.sh` also asserts `skill-lib.sh` and `cli/skill-lib.mjs` agree on the skill list (parity

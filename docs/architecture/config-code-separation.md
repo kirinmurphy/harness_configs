@@ -31,7 +31,7 @@ behavior: parsing, validation, prompting, linking, copying, pruning, and reporti
 | Shell snippet installs | `manifests/platform/shell-snippets.tsv` | `install-shell-snippets.sh` |
 | Merge prompts | `manifests/platform/prompts/*.md` | `install-lib.sh` |
 | Global harness config | `globals/claude/`, `globals/codex/`, `globals/agents/` | Installers, verify, doctor, write guard |
-| Shared skills | `globals/agents/skills/` | `scripts/build/link-skills.sh`, `roborepo skill export-to-local` |
+| Shared skills | `globals/agents/skills/` | `scripts/build/link-global-skills.sh`, `roborepo skill sync-global`, `roborepo skill export-to-project` |
 | Repo-local skills | `local/skills/` | `scripts/build/link-skills.sh`, doctor checks |
 | CLI implementation | command modules under `scripts/cli/` | `scripts/cli/main.mjs` dispatch |
 

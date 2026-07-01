@@ -11,7 +11,7 @@ efforts did **not** cover.
 These were open items here and are now shipped — kept as a short ledger so the
 backlog reads honestly.
 
-- **Per-repo skill installer — DONE.** Exposed as `roborepo skill symlink-repo`
+- **Per-repo skill installer — DONE.** Exposed as `roborepo skill link-project`
   (`scripts/cli/skills.mjs::skillLink` → `linkLocalSkills` in `skill-lib.mjs`).
   Symlinks a target repo's `.agents/skills` into its `.claude/skills` and/or
   `.codex/skills` without losing global skill parity. (Originally listed under the
@@ -80,7 +80,7 @@ and `~/.codex/config.toml` themselves are layered.
 How much should repo-local config override global behavior automatically versus by
 explicit user opt-in? This is the policy half of item 1 — answer it as part of the
 layering design rather than separately. It also overlaps the per-repo skill story
-(`skill symlink-repo`), which already lets a repo add skills without overriding
+(`skill link-project`), which already lets a repo add skills without overriding
 global ones.
 
 ### 3. Stack-specific context shape (largely decided — confirm and close)

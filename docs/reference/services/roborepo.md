@@ -12,7 +12,7 @@ subcommand implementations live under `scripts/cli/`, one module per category:
 
 | Module | Owns |
 | --- | --- |
-| `scripts/cli/skills.mjs` | `skill export-to-local`, `skill symlink-repo` |
+| `scripts/cli/skills.mjs` | `skill adopt`, `skill native`, `skill export-to-project`, `skill link-project` |
 | `scripts/cli/index.mjs` | `index code\|docs`, `watch code`, `run` |
 | `scripts/cli/project-context.mjs` | `project-context inventory` (deterministic repo scan) |
 | `scripts/cli/mcp.mjs` | `mcp add` (Claude + Codex registration) |
@@ -78,10 +78,10 @@ roborepo — choose an action:
 > update         re-apply harness config on this machine (pick up new config)
 
   Day to day
-  index code     index this repo's code for jcodemunch
-  index docs     index this repo's docs for jdocmunch
+  index code     index this repo's code with the enabled package-owned indexer
+  index docs     index this repo's docs with the enabled package-owned docs indexer
   mcp add        register an MCP server with Claude + Codex
-  watch code     live-index code as files change
+  watch code     live-index code as files change via the enabled package-owned watcher
   project-context inventory  scan a repo and write generated project-context facts
   onboard         run the onboarding wizard (choose behaviors per section)
   serve           open the local web portal
@@ -92,9 +92,11 @@ roborepo — choose an action:
 
   Skills
   skill new      scaffold a shared skill or slash command
-  skill export-to-local copy shared skills into this repo
-  skill symlink-repo      symlink this repo's .agents/skills into selected agent folders
-  skill symlink-globals     refresh shared skill cache + harness links in global folders
+  skill adopt    move a native skill into shared roborepo source
+  skill export-to-project copy shared skills into this project
+  skill link-project      link this project's .codex/skills into .claude/skills
+  skill sync-global       refresh shared skill cache + harness links
+  skill native            show native Claude/Codex plugin entrypoints
   skill render-commands render/check slash commands
 
   Maintenance
@@ -111,9 +113,11 @@ roborepo — choose an action:
 
 ```
 roborepo skill new [--kind=auto|skill-command|standalone] [--name=<name>] [--description=<text>]
-roborepo skill export-to-local [--yes] [--on-conflict=skip|override]
-roborepo skill symlink-repo      [--dry-run] [--uninstall]
-roborepo skill symlink-globals     [--check]
+roborepo skill adopt <name>
+roborepo skill export-to-project [--yes] [--on-conflict=skip|override]
+roborepo skill link-project      [--dry-run] [--uninstall]
+roborepo skill sync-global
+roborepo skill native [--full]
 roborepo skill render-commands [--check]
 
 roborepo index code  [path]
@@ -151,7 +155,7 @@ relative or absolute — roborepo resolves it to an absolute path before use.
 - `repair` relinks stale symlinks after the checkout was moved or renamed. It does not re-copy
   managed content files/dirs; those stay put. Use `--on-conflict` only for noninteractive command
   recovery.
-- **Day to day** — `index code|docs` are one-shot indexers; `watch code` runs a live indexer (and
+- **Day to day** — `index code|docs` are one-shot indexers owned by packages; `watch code` runs a live indexer (and
   writes the pidfile the Claude SessionStart hook reads to report watcher status); `mcp add`
   registers MCP servers with Claude + Codex; `bundle` manages the optional bundle selections;
   `telemetry enable`/`disable` turn capture on and off, `web` or `serve --detach` opens the
@@ -159,26 +163,59 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   command and prints only a trimmed tail of its output.
 - **Skills** — `skill new` scaffolds a shared automatic helper, skill-backed command, or standalone
   command and updates the relevant manifests, generated links, generated slash commands, and README
-  rows. `skill export-to-local` bundles the shared skills into a `.zip` and copies them into the
-  current repo's `.agents/skills` plus harness-specific skill folders with per-skill override/skip
-  (override backs the old one up under `archived/`). `skill symlink-repo` symlinks the current repo's own
-  `.agents/skills/<name>` into selected `.claude/skills` and/or `.codex/skills` folders, then prunes
-  links whose source is gone. `.agents/skills` is the canonical project skill source because Codex
-  scans it directly; Claude fan-out links point at that source. Existing `.claude`/`.codex` roots
-  are used automatically; interactive runs ask before creating a missing root, and noninteractive
-  runs never create missing roots. `skill symlink-globals` is the maintainer command for this repo:
-  it refreshes the shared skill cache and harness links after skills are added or removed, and
-  `--check` verifies without changing files. `skill render-commands` renders generated slash commands from
-  `manifests/inventory/slash-commands.json`, and `--check` verifies without changing files.
-  See [architecture.md](architecture.md#two-skill-layers-shared-vs-internal).
+  rows. `skill adopt` moves an unmanaged native skill into shared roborepo source. `skill
+  export-to-project` bundles the shared skills into a `.zip` and copies them into the current
+  project's `.claude/skills` and `.codex/skills` folders with per-skill override/skip (override
+  backs the old one up under `archived/`). `skill link-project` treats `.codex/skills/<name>` as
+  the project skill source, links Claude project skills to it when `.claude` exists, and prunes
+  owned stale links. `skill sync-global` refreshes the machine-local shared skill cache and harness
+  links after shared skills are added or removed. `skill native` prints a concise native
+  Claude/Codex plugin summary for harness-specific actions; add `--full` to print the native help
+  output inline. `skill render-commands` renders generated slash
+  commands from `manifests/inventory/slash-commands.json`, and `--check` verifies without changing
+  files. See [roborepo Skills Interface](roborepo-skills.md).
 - **Maintenance** — `doctor` and `verify` are health and post-install checks; `rules` renders
   generated Claude/Codex global instruction files, or verifies them with `--check`; `permissions`
   renders Claude/Codex permission outputs from `manifests/inventory/agent-permissions.json`.
 
+## Package-Owned CLI Commands
+
+Some exposed `roborepo` commands are package-owned. The command name is still part of the stable
+`roborepo` CLI surface and must be wired in `scripts/cli/main.mjs` plus
+`manifests/platform/cli-commands.json`, but the executable recipe lives on a package component in
+`manifests/inventory/packages.json`:
+
+```json
+{
+  "type": "command",
+  "name": "index code",
+  "commandOrUrl": "uvx",
+  "args": ["jcodemunch-mcp"],
+  "mode": "index"
+}
+```
+
+Use this pattern when the front-door command should stay stable but the implementation belongs to
+an enabled package. `roborepo index code`, `roborepo watch code`, and `roborepo index docs` follow
+this pattern. Running one of these commands resolves the enabled package owner first; if no owning
+package is enabled, the CLI tells the user which package to enable.
+
+Lifecycle behavior:
+
+- `roborepo enable <package-id>` records command ownership in `~/.roborepo/enabled-packages.json`
+  for packages with `command` or `rules` components.
+- `roborepo disable <package-id>` removes that ownership.
+- `roborepo doctor` validates command component shape and duplicate ownership inside package
+  dependency closures; `roborepo verify` runs doctor, so it inherits the same guard.
+- `roborepo repair` relinks moved install paths and preserves package command state because the
+  command registry is path-independent runtime state.
+- `roborepo uninstall` removes `~/.roborepo/enabled-packages.json`, so no package command ownership
+  survives uninstall.
+
 The lifecycle verbs dispatch to `scripts/install/main.sh`, `scripts/doctor.sh`, and
 `scripts/verify-install.sh`; those filenames are an internal detail.
 Most maintainer-only scripts (`test-*.sh`) are intentionally not exposed through `roborepo`.
-`skill symlink-globals` and `rules` are exposed because shared-skill and generated-rule editing are
+`skill sync-global` and `rules` are exposed because shared-skill and generated-rule editing are
 documented maintainer workflows.
 
 ## Preset Onboarding
@@ -342,8 +379,8 @@ touching anything.
 
 ## Tests
 
-`scripts/test/test-roborepo.sh` smoke-tests the subcommands (skill symlink-repo/symlink-globals/prune/uninstall/
-conflict, `skill new` scaffolds, export/override/firewall/self-pollution guard, slash-command render checks,
+`scripts/test/test-roborepo.sh` smoke-tests the subcommands (skill link-project/sync-global/prune/uninstall/
+conflict, `skill new` scaffolds, native escape-hatch guide, export/override/firewall/self-pollution guard, slash-command render checks,
 `onboard`/`bundle` onboarding/apply/remove/status, `telemetry` enable/status/report, run, `mcp add` dry-runs + real
 Codex/Claude writes against a throwaway harness root, lifecycle/rules dispatch, menu fallback) against throwaway
 temp repos.

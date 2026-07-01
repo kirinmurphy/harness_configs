@@ -33,12 +33,14 @@ Use the CLI to update items and configuation to your global setup that will work
 | `roborepo onboard`               | Run the onboarding wizard to choose which behaviors (skills, commands, packages) are active.         |
 | `roborepo update`                | Re-apply harness config on this machine to pick up new or changed global config.                     |
 | `roborepo mcp add <name-or-url>` | Register an MCP server with both Claude and Codex in one step.                                       |
-| `roborepo index code [path]`     | Index a repo's source for jcodemunch so agents find code via symbol search instead of reading files. |
+| `roborepo index code [path]`     | Index a repo's source with the enabled package-owned indexer (`roborepo enable jcodemunch`). |
+| `roborepo skill native [--full]` | Show native Claude/Codex plugin entrypoints; `--full` prints native help output inline.              |
 | `roborepo serve`                 | Open the local web portal at `http://127.0.0.1:4317/config`; use `--detach` to keep it running in the background. |
 | `roborepo telemetry enable` / `disable` | Turn token-usage capture on or off. `telemetry status` shows capture state; `telemetry purge --all --backup` resets capture, backing up first. |
 | `roborepo doctor`                | Health-check the install and report what is linked, missing, or drifted.                             |
 
 [View all roborepo commands](docs/reference/services/roborepo-cli.md)
+[View the skills interface](docs/reference/services/roborepo-skills.md)
 
 ## Global Behavior
 

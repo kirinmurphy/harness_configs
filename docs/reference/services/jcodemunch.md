@@ -10,7 +10,7 @@ Without it, the model reads whole files or runs grep, burning tokens on irreleva
 
 ### MCP Server
 
-Configured in each harness's MCP settings. Claude uses `uvx jcodemunch-mcp` (no install needed). Codex uses the same via its own MCP config.
+Configured in each harness's MCP settings. Claude and Codex both use `uvx jcodemunch-mcp` for the MCP server. The `jcodemunch` package also owns the `roborepo index code` and `roborepo watch code` command components.
 
 **Key tools the model uses:**
 - `resolve_repo` — registers the repo and returns its ID; called at session start
@@ -21,19 +21,21 @@ Configured in each harness's MCP settings. Claude uses `uvx jcodemunch-mcp` (no 
 
 ### `roborepo index code`
 
-One-shot indexer. Accepts an optional file or directory (defaults to the current dir, relative or
-absolute); runs `jcodemunch-mcp index` (or `index-file`) with `--no-ai-summaries` for speed. Use
-after cloning a new repo or after a large branch change.
+Package-owned one-shot indexer. Enable the `jcodemunch` package first. Accepts an optional file or
+directory (defaults to the current dir, relative or absolute); runs `jcodemunch-mcp index` (or
+`index-file`) with `--no-ai-summaries` for speed. Use after cloning a new repo or after a large
+branch change.
 
 ```
+roborepo enable jcodemunch
 roborepo index code path/to/dir
 roborepo index code path/to/file.ts
 ```
 
 ### `roborepo watch code`
 
-Continuous watch mode. Wraps `jcodemunch-mcp watch` via `uvx --with "jcodemunch-mcp[watch]"`. Run
-once per project in a terminal; keeps the index current as files change.
+Continuous watch mode. This is package-owned by `jcodemunch` and dispatches through the package's
+command component. Run once per project in a terminal; keeps the index current as files change.
 
 ```
 roborepo watch code               # watch the current dir

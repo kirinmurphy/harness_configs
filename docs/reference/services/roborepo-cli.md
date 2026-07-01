@@ -20,9 +20,9 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 
 |                              |                                                                                      |
 | ---------------------------- | ------------------------------------------------------------------------------------ |
-| `roborepo index code [path]` | Runs a one-shot jcodemunch code index for the current directory or `[path]`.         |
-| `roborepo index docs [path]` | Runs a one-shot jdocmunch documentation index for the current directory or `[path]`. |
-| `roborepo watch code [path]` | Keeps the jcodemunch code index live while files change.                             |
+| `roborepo index code [path]` | Runs the enabled package-owned code indexer for the current directory or `[path]`.         |
+| `roborepo index docs [path]` | Runs the enabled package-owned documentation indexer for the current directory or `[path]`. |
+| `roborepo watch code [path]` | Keeps the enabled package-owned code index live while files change.                             |
 
 ## Project Context
 
@@ -35,10 +35,14 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 |                                            |                                                                                                                               |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
 | `roborepo skill new`                       | Scaffolds a shared skill or slash command and updates manifests, generated outputs, commands, and README.                     |
-| `roborepo skill export-to-local`           | Copies this repo's shared skills into the current target repo and leaves a shareable zip bundle.                              |
-| `roborepo skill symlink-repo`              | Symlinks a target repo's `.agents/skills` into existing `.claude/skills` and/or `.codex/skills` folders.                      |
-| `roborepo skill symlink-globals [--check]` | Refreshes the shared skill cache and global harness links after adding or removing `globals/agents/skills/<name>`.            |
+| `roborepo skill adopt <name>`              | Moves an unmanaged native skill into shared roborepo source and refreshes the managed harness views.                          |
+| `roborepo skill export-to-project`         | Copies this repo's shared skills into the current project and leaves a shareable zip bundle.                                  |
+| `roborepo skill link-project`              | Links a project's `.codex/skills` into existing `.claude/skills` folders.                                                     |
+| `roborepo skill sync-global`               | Refreshes the shared skill cache and global harness links after adding or removing `globals/agents/skills/<name>`.            |
 | `roborepo skill render-commands [--check]` | Renders generated slash commands from `manifests/inventory/slash-commands.json`, or verifies them with `--check`.             |
+| `roborepo skill native [--full]`           | Shows native Claude/Codex plugin entrypoints; `--full` prints native help output inline.                                      |
+
+See [roborepo Skills Interface](roborepo-skills.md) for the managed/native boundary and examples.
 
 ## MCP Setup
 
@@ -62,16 +66,22 @@ Full flags and examples live in [roborepo CLI Reference](roborepo.md).
 
 ## Index Code and Docs
 
-Code indexing powers `jcodemunch-mcp`, so agents can search symbols and targeted source context
-instead of reading broad file dumps:
+Code indexing is package-owned, so the indexer package can be swapped later without changing the
+`roborepo` front door. Enable the owning package first; the current `jcodemunch` package provides
+the code index and watch commands:
 
 ```sh
+roborepo enable jcodemunch
 roborepo index code
 roborepo watch code
 ```
 
-Documentation indexing powers `jdocmunch-mcp`, so agents can search sections and headings:
+Documentation indexing is owned by the current `jdocmunch` package:
 
 ```sh
+roborepo enable jdocmunch
 roborepo index docs
 ```
+
+If a package-owned command is not enabled, roborepo prints the package to enable instead of falling
+back to a built-in recipe.

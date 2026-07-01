@@ -31,12 +31,14 @@ Configured in each harness's MCP settings. Claude and Codex both use `uvx jdocmu
 
 ### `roborepo index docs`
 
-One-shot indexer. Takes an optional directory path (default: current dir, relative or absolute).
-Runs `jdocmunch-mcp index-local --path`. After a successful index, writes a `.jdm-indexed` marker
-file to the target directory so hooks can detect per-repo index state without calling the MCP
-server.
+Package-owned one-shot indexer. Enable the `jdocmunch` package first. Takes an optional directory
+path (default: current dir, relative or absolute). The enabled package owns the command recipe; the
+current `jdocmunch` package runs `jdocmunch-mcp index-local --path`. After a successful index,
+writes a `.jdm-indexed` marker file to the target directory so hooks can detect per-repo index state
+without calling the MCP server.
 
 ```
+roborepo enable jdocmunch
 roborepo index docs docs/   # index a specific docs folder
 roborepo index docs         # indexes the current dir
 ```

@@ -206,6 +206,32 @@ check_skill_lib_parity() {
   fi
 }
 
+check_package_command_catalog() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped package command catalog check"
+    return 0
+  fi
+  local output
+  if output="$(node -e '
+    import(process.argv[1]).then((m) => {
+      const result = m.validatePackageCommandCatalog();
+      if (result.ok) return;
+      for (const line of result.errors) console.error(line);
+      process.exit(1);
+    }).catch((err) => {
+      console.error(err?.stack || String(err));
+      process.exit(1);
+    });
+  ' "${repo_root}/scripts/cli/package-commands.mjs" 2>&1)"; then
+    ok "package-owned CLI command catalog valid"
+  else
+    fail "package-owned CLI command catalog invalid"
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && echo "  ${line}" >&2
+    done <<< "${output}"
+  fi
+}
+
 # Manifest guard: every link/root_config row in manifests/platform/manifest.tsv must name a real repo
 # source (cleanup rows have src_rel "-" and are skipped). This is what keeps the manifest —
 # now the single source of truth for the installer/verify/sync — from silently referencing a
@@ -279,6 +305,7 @@ for skill_src in "${repo_root}"/local/skills/*/SKILL.md; do
   check_repo_symlink ".codex/skills/${skill_name}" "../../local/skills/${skill_name}"
 done
 check_skill_lib_parity
+check_package_command_catalog
 check_manifest_sources
 check_json "globals/codex/hooks.json"
 check_json "globals/claude/settings.json"

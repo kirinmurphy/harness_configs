@@ -17,12 +17,15 @@ const STATIC_TYPES = {
 // scripts/portal/<dir>/{index.html,styles.css,app.js} linking /portal/shared/base.css + theme.js,
 // (3) add the page to PORTAL_PAGES in scripts/portal/shared/theme.js so the nav includes it.
 // Each page's HTML is just its index.html read from disk (mirrors static assets). `default: true`
-// marks the page served at "/" (what `roborepo serve` opens).
+// marks the page served at "/" (what `roborepo serve` opens). Keep "/config" as a stable alias for
+// existing docs, tests, and saved browser links.
 export const PAGES = [
   { path: "/", id: "config", title: "Config", dir: "config", default: true },
   { path: "/telemetry", id: "telemetry", title: "Telemetry", dir: "telemetry" },
 ];
-const PAGE_BY_PATH = new Map(PAGES.map((p) => [p.path, p]));
+const PAGE_BY_PATH = new Map(PAGES.flatMap((p) => (
+  p.id === "config" ? [[p.path, p], ["/config", p]] : [[p.path, p]]
+)));
 const pageHtml = (dir) => fs.readFileSync(path.join(PORTAL_DIR, dir, "index.html"), "utf8");
 
 export function startPortalServer(handlers) {

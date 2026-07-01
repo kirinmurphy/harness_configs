@@ -426,3 +426,5 @@ async function load() {
 
 load();
 setInterval(load, 10000);
+// Theme toggle + nav live in the shared /portal/shared/theme.js. The config page has no
+// canvas to redraw, so it needs no "roborepo:themechange" listener.

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>roborepo telemetry</title>
+<script>
+  // Set theme before first paint to avoid a flash. Default dark.
+  (function () {
+    try {
+      var t = localStorage.getItem("roborepo-theme");
+      document.documentElement.dataset.theme = t === "light" ? "light" : "dark";
+    } catch (e) {
+      document.documentElement.dataset.theme = "dark";
+    }
+  })();
+</script>
+<link rel="stylesheet" href="/portal/shared/base.css" />
+<link rel="stylesheet" href="/portal/telemetry/styles.css" />
+</head>
+<body>
+<header>
+  <h1>roborepo</h1>
+  <span class="meta" id="meta">loading…</span>
+  <nav id="nav"></nav>
+</header>
+<div class="filterbar">
+  <div class="ranges" id="ranges">
+    <span class="flabel">time range</span>
+    <button data-range="3600000">1h</button>
+    <button data-range="21600000">6h</button>
+    <button data-range="86400000">1d</button>
+    <button data-range="604800000">1w</button>
+    <button data-range="all" class="active">all</button>
+    <span class="pan" id="panhint"></span>
+    <div id="harnessfilt">
+      <span class="flabel">source</span>
+    </div>
+  </div>
+</div>
+<main>
+  <!-- TIER 1 — conclusions & action items (the headline; always first) -->
+  <section class="panel" id="insightspanel">
+    <h2>① what this means · action items</h2>
+    <div id="insights"></div>
+    <div class="modalactions">
+      <button class="linkbtn" id="deepread">deeper read ›</button>
+    </div>
+    <div class="modalextra" id="deepreadout"></div>
+    <div id="deepreadcopy" style="display:none;margin-top:6px">
+      <button class="copybtn" id="copydeepread">copy response</button>
+    </div>
+  </section>
+
+  <!-- Telemetry-off prompt: shown above the chart when capture is disabled. Enabling it here is the
+       same action as toggling telemetry in onboarding / the config page. -->
+  <section class="panel telemetry-off" id="telemetryoff" style="display:none">
+    <h2>telemetry is off</h2>
+    <div class="legend">Token usage is not being captured. Turn telemetry on to start collecting data across your harnesses.</div>
+    <div class="modalactions">
+      <button class="enablebtn" id="enabletelemetry">turn on telemetry</button>
+    </div>
+    <div class="item-err" id="enableerr"></div>
+  </section>
+
+  <!-- TIER 2 — visualize (the chart) -->
+  <section class="panel">
+    <h2>② token usage over time</h2>
+    <div class="ranges" id="chartmodes">
+      <span class="flabel">view</span>
+      <button data-mode="cumulative" class="active">cumulative per session</button>
+      <button data-mode="bygroup">cumulative by tool group</button>
+      <button data-mode="deltas">per-turn deltas</button>
+    </div>
+    <div class="chartwrap">
+      <canvas id="timeline"></canvas>
+      <div class="tooltip" id="tooltip"></div>
+      <div class="loadoverlay" id="loadoverlay"><span class="spinner"></span> computing…</div>
+    </div>
+    <div class="legend" id="chartlegend"></div>
+  </section>
+
+  <!-- TIER 3 — warnings & abnormalities (spikes, loops, causes) -->
+  <h2 class="sectionhead">③ warnings &amp; abnormalities <span class="sub">spikes, loops, and the patterns behind them — click any row to open the chat</span></h2>
+  <section class="panel" id="loopspanel" style="display:none">
+    <h2>⚠ loops detected</h2>
+    <div id="loops"></div>
+    <div class="legend">a tool fired many times consecutively in one session — likely a runaway agent/skill loop · click to investigate</div>
+  </section>
+  <section class="panel">
+    <h2>token spikes</h2>
+    <div id="spikes"></div>
+  </section>
+  <section class="panel">
+    <h2>what's causing spikes</h2>
+    <div id="causes"></div>
+    <div class="legend">grouped by the pattern that drove each token spike · each row is a behavior you can change</div>
+  </section>
+  <section class="panel">
+    <h2>what's different in spikes</h2>
+    <div id="anatomy"></div>
+    <div class="legend">lift = how much more a group drives spikes than its everyday share · &gt;1 means spike-heavy</div>
+  </section>
+
+  <!-- TIER 4 — details (collapsed by default; summaries lead, raw is on-demand) -->
+  <details class="detailsblock">
+    <summary>④ cost analysis <span class="sub">what each tool/package puts into context, and what changed</span></summary>
+    <section class="panel">
+      <h2>native vs MCP exploration</h2>
+      <div id="groupcost"></div>
+      <div class="legend">avg context tokens dropped per call, by tool group · the head-to-head for "is the MCP cheaper than the Read/Grep it replaces" · approx (result size ÷ 4)</div>
+    </section>
+    <section class="panel">
+      <h2>cost per tool call</h2>
+      <div id="toolcost"></div>
+      <div class="legend">what an average call of each tool puts into your context · click a row for detail</div>
+    </section>
+    <section class="panel">
+      <h2>package cost &amp; regression</h2>
+      <div id="packagecost"></div>
+      <div id="regression"></div>
+      <div class="legend">per package: avg tokens/call · regression compares the earlier vs later half (↑ = got more expensive)</div>
+    </section>
+  </details>
+
+  <details class="detailsblock">
+    <summary>⑤ sessions <span class="sub">every session by tokens — click a row to open its chat</span></summary>
+    <section class="panel"><h2>top sessions</h2><div id="sessions"></div></section>
+  </details>
+
+  <details class="detailsblock">
+    <summary>⑥ raw breakdowns <span class="sub">supporting totals</span></summary>
+    <section class="panel"><h2>token by tool</h2><div id="tools"></div></section>
+    <section class="panel"><h2>token by MCP server</h2><div id="mcp"></div></section>
+    <section class="panel"><h2>spike vs normal</h2><div id="comparison"></div></section>
+  </details>
+</main>
+<div class="modal-back" id="modalback">
+  <div class="modal" id="modal">
+    <button class="closebtn" id="modalclose">×</button>
+    <h3 id="modaltitle"></h3>
+    <div class="sub" id="modalsub"></div>
+    <dl id="modalbody"></dl>
+    <div class="modalactions" id="modalactions"></div>
+    <div class="modalextra" id="modalextra"></div>
+  </div>
+</div>
+<script src="/portal/shared/theme.js"></script>
+<script src="/portal/telemetry/app.js"></script>
+</body>
+</html>

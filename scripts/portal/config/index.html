@@ -4,16 +4,26 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>roborepo config</title>
+    <script>
+      // Set theme before first paint to avoid a flash. Default dark.
+      (function () {
+        try {
+          var t = localStorage.getItem("roborepo-theme");
+          document.documentElement.dataset.theme =
+            t === "light" ? "light" : "dark";
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/portal/shared/base.css" />
     <link rel="stylesheet" href="/portal/config/styles.css" />
   </head>
   <body>
     <header>
       <h1>roborepo</h1>
       <span id="status">loading…</span>
-      <nav>
-        <a href="/config" class="active">Config</a>
-        <a href="/">Telemetry</a>
-      </nav>
+      <nav id="nav"></nav>
     </header>
     <main id="main"></main>
     <div class="modal-backdrop" id="modal">
@@ -34,14 +44,14 @@
         <div class="panel-head"><h2>Agent Files</h2></div>
         <div class="config-grid" role="table" aria-label="Agent files">
           <div class="config-grid-head" role="row">
-            <div role="columnheader">Config Type</div>
+            <div role="columnheader"></div>
             <div role="columnheader">Claude</div>
             <div role="columnheader">Codex</div>
           </div>
           <div class="config-grid-row" role="row">
             <div class="config-type" role="cell">
               <strong>Rules</strong>
-              <span>Global instructions the agent reads before each task.</span>
+              <span>Global context for every session.</span>
             </div>
             <div role="cell">
               <button
@@ -69,7 +79,7 @@
           <div class="config-grid-row" role="row">
             <div class="config-type" role="cell">
               <strong>Config</strong>
-              <span>Harness settings, permissions, and local runtime defaults.</span>
+              <span>Settings, permissions, and runtime defaults.</span>
             </div>
             <div role="cell">
               <button
@@ -95,7 +105,7 @@
           <div class="config-grid-row" role="row">
             <div class="config-type" role="cell">
               <strong>Hooks</strong>
-              <span>Automation triggered by agent lifecycle or tool events.</span>
+              <span>Automation triggered by lifecycle or tool events.</span>
             </div>
             <div role="cell">
               <button
@@ -283,6 +293,7 @@
     <template id="tpl-list-item">
       <li></li>
     </template>
+    <script src="/portal/shared/theme.js" defer></script>
     <script src="/portal/config/app.js" defer></script>
   </body>
 </html>

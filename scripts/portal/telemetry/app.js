@@ -1,256 +1,3 @@
-// Self-contained dashboard page: zero dependencies, no network, no CDN. Charts render on a single
-// <canvas>, and dense series are bucketed to one column per pixel client-side so 10k+ captures draw
-// without DOM bloat. The page polls /api/data so a long-running session keeps the view live.
-// Kept as one template literal because it is shipped verbatim to the browser, not maintained as JS.
-
-export function dashboardHtml() {
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>roborepo telemetry</title>
-<style>
-  :root { color-scheme: dark; --bg:#0e1116; --panel:#161b22; --line:#2d333b; --ink:#c9d1d9; --dim:#8b949e; --accent:#58a6ff; --spike:#f85149; }
-  * { box-sizing: border-box; }
-  body { margin:0; font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--bg); color:var(--ink); }
-  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:baseline; }
-  header h1 { font-size:15px; margin:0; font-weight:600; }
-  header .meta { color:var(--dim); font-size:12px; }
-  nav { display:flex; gap:2px; margin-left:auto; }
-  nav a { color:var(--dim); font-size:12px; text-decoration:none; padding:3px 10px; border-radius:5px; border:1px solid transparent; }
-  nav a:hover { color:var(--ink); border-color:var(--line); }
-  nav a.active { color:var(--ink); background:var(--panel); border-color:var(--line); }
-  main { padding:20px; display:grid; gap:20px; max-width:1200px; }
-  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; }
-  .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 12px; }
-  .sectionhead { font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--accent); margin:18px 0 0; font-weight:700; padding-top:14px; border-top:1px solid var(--line); }
-  .sectionhead:first-of-type { border-top:none; padding-top:0; margin-top:0; }
-  .sectionhead .sub { color:var(--dim); text-transform:none; letter-spacing:0; font-weight:400; margin-left:8px; }
-  .go { color:var(--accent); font-size:10px; opacity:0; transition:opacity .1s; }
-  tr.clickable:hover .go { opacity:1; }
-  .linkbtn { background:none; border:none; color:var(--accent); font:inherit; font-size:11px; cursor:pointer; padding:0; text-decoration:underline dotted; }
-  .linkbtn:hover { color:var(--ink); }
-  .sesschip { display:inline-flex; align-items:center; margin:2px 6px 2px 0; text-decoration:none; border:1px solid var(--line); border-radius:5px; padding:2px 8px; }
-  .sesschip:hover { border-color:var(--accent); }
-  #insightspanel { border-color:var(--accent); }
-  .insight { display:flex; gap:10px; padding:7px 0; border-top:1px solid var(--line); }
-  .insight:first-child { border-top:none; }
-  .insight .dot { flex:none; width:8px; height:8px; border-radius:50%; margin-top:5px; }
-  .insight.high .dot { background:var(--spike); }
-  .insight.warn .dot { background:var(--accent); }
-  .insight.info .dot { background:var(--dim); }
-  .insight .body .hl { color:var(--ink); }
-  .insight .body .dt { color:var(--dim); font-size:11px; margin-top:2px; }
-  #deepreadout { white-space:pre-wrap; font-size:12px; color:var(--ink); }
-  .detailsblock { border-top:1px solid var(--line); padding-top:8px; }
-  .detailsblock > summary { font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--dim); font-weight:700; cursor:pointer; padding:6px 0; list-style:none; }
-  .detailsblock > summary::-webkit-details-marker { display:none; }
-  .detailsblock > summary::before { content:"▸ "; color:var(--accent); }
-  .detailsblock[open] > summary::before { content:"▾ "; }
-  .detailsblock > summary:hover { color:var(--ink); }
-  .detailsblock > summary .sub { text-transform:none; letter-spacing:0; font-weight:400; margin-left:8px; }
-  .detailsblock[open] > summary { margin-bottom:12px; }
-  #insightspanel h2 { color:var(--accent); }
-  .chartwrap { position:relative; }
-  canvas { width:100%; height:280px; display:block; cursor:crosshair; }
-  /* loading overlay shown over the chart while a filter change recomputes */
-  .loadoverlay { position:absolute; inset:0; display:none; align-items:center; justify-content:center; gap:8px; background:rgba(14,17,22,.7); color:var(--dim); font-size:12px; z-index:6; }
-  .loadoverlay.on { display:flex; }
-  .spinner { width:14px; height:14px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; display:inline-block; }
-  @keyframes spin { to { transform:rotate(360deg); } }
-  /* telemetry-off prompt */
-  .telemetry-off h2 { color:var(--ink); }
-  .enablebtn { background:var(--accent); border:none; color:#0b0e13; font:inherit; font-size:12px; font-weight:600; cursor:pointer; padding:6px 14px; border-radius:6px; }
-  .enablebtn:hover { filter:brightness(1.1); }
-  .enablebtn:disabled { opacity:.6; cursor:default; }
-  .item-err { color:#f85149; font-size:11px; margin-top:6px; }
-  .item-err:empty { display:none; }
-  .tooltip { position:absolute; pointer-events:none; z-index:5; background:#0b0e13; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-size:11px; line-height:1.5; color:var(--ink); box-shadow:0 4px 16px rgba(0,0,0,.5); display:none; max-width:280px; }
-  .tooltip .t-head { color:var(--accent); font-weight:600; margin-bottom:4px; }
-  .tooltip .t-spike { color:var(--spike); }
-  .tooltip .t-row span { color:var(--dim); }
-  table { width:100%; border-collapse:collapse; font-size:12px; }
-  th,td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--line); }
-  th { color:var(--dim); font-weight:600; }
-  td.num, th.num { text-align:right; }
-  td.num { font-variant-numeric:tabular-nums; }
-  .spike { color:var(--spike); }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
-  @media (max-width:760px){ .grid2{ grid-template-columns:1fr; } }
-  .legend { font-size:11px; color:var(--dim); margin-top:8px; }
-  .legend-list { list-style:none; margin:6px 0 0; padding:0; display:flex; flex-direction:column; gap:2px; }
-  .legend-list li { display:flex; align-items:center; gap:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .legend-list li .lbl { overflow:hidden; text-overflow:ellipsis; min-width:0; }
-  .viewmore { background:none; border:none; color:var(--accent); font:inherit; font-size:11px; cursor:pointer; padding:3px 0; text-decoration:underline dotted; margin-top:4px; display:block; }
-  .viewmore:hover { color:var(--ink); }
-  .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:4px; flex:none; }
-  .filterbar { position:sticky; top:0; z-index:10; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 20px; }
-  .flabel { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; margin-right:4px; }
-  .ranges { display:flex; gap:6px; flex-wrap:wrap; align-items:center; max-width:1200px; }
-  .ranges button { background:var(--bg); color:var(--dim); border:1px solid var(--line); border-radius:5px; padding:3px 10px; font:inherit; font-size:11px; cursor:pointer; }
-  .ranges button:hover { color:var(--ink); border-color:var(--accent); }
-  .ranges button.active { color:var(--bg); background:var(--accent); border-color:var(--accent); font-weight:600; }
-  .ranges .pan { color:var(--dim); font-size:11px; margin-left:auto; }
-  #harnessfilt { display:none; margin-left:auto; gap:6px; align-items:center; }
-  #harnessfilt.visible { display:flex; }
-  .copybtn { background:var(--bg); color:var(--dim); border:1px solid var(--line); border-radius:5px; padding:3px 10px; font:inherit; font-size:11px; cursor:pointer; }
-  .copybtn:hover { color:var(--ink); border-color:var(--accent); }
-  canvas.panning { cursor:grabbing; }
-  tr.clickable { cursor:pointer; }
-  tr.clickable:hover td { background:#1c2230; }
-  .modal-back { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:50; }
-  .modal-back.open { display:flex; }
-  .modal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px 22px; max-width:560px; width:90%; max-height:80vh; overflow:auto; box-shadow:0 12px 48px rgba(0,0,0,.6); }
-  .modal h3 { margin:0 0 4px; font-size:14px; }
-  .modal .sub { color:var(--dim); font-size:12px; margin-bottom:14px; }
-  .modal dl { display:grid; grid-template-columns:auto 1fr; gap:6px 16px; margin:0; font-size:12px; }
-  .modal dt { color:var(--dim); }
-  .modal dd { margin:0; font-variant-numeric:tabular-nums; word-break:break-word; }
-  .modal .closebtn { float:right; background:none; border:none; color:var(--dim); font-size:18px; cursor:pointer; line-height:1; }
-  .modal .closebtn:hover { color:var(--ink); }
-  .modalactions { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; }
-  .modalactions button { background:var(--bg); color:var(--accent); border:1px solid var(--accent); border-radius:6px; padding:6px 12px; font:inherit; font-size:12px; cursor:pointer; }
-  .modalactions button:hover { background:var(--accent); color:var(--bg); }
-  .modalextra { margin-top:14px; }
-  .modalextra .turn { border-top:1px solid var(--line); padding:8px 0; font-size:11px; }
-  .modalextra .turn .th { display:flex; justify-content:space-between; color:var(--dim); }
-  .modalextra .turn .tool { color:var(--accent); }
-  .modalextra .turn .prev { color:var(--ink); margin-top:3px; white-space:pre-wrap; word-break:break-word; opacity:.85; }
-  .modalextra .note { color:var(--dim); font-size:12px; }
-</style>
-</head>
-<body>
-<header>
-  <h1>roborepo</h1>
-  <span class="meta" id="meta">loading…</span>
-  <nav>
-    <a href="/" class="active">Telemetry</a>
-    <a href="/config">Config</a>
-  </nav>
-</header>
-<div class="filterbar">
-  <div class="ranges" id="ranges">
-    <span class="flabel">time range</span>
-    <button data-range="3600000">1h</button>
-    <button data-range="21600000">6h</button>
-    <button data-range="86400000">1d</button>
-    <button data-range="604800000">1w</button>
-    <button data-range="all" class="active">all</button>
-    <span class="pan" id="panhint"></span>
-    <div id="harnessfilt">
-      <span class="flabel">source</span>
-    </div>
-  </div>
-</div>
-<main>
-  <!-- TIER 1 — conclusions & action items (the headline; always first) -->
-  <section class="panel" id="insightspanel">
-    <h2>① what this means · action items</h2>
-    <div id="insights"></div>
-    <div class="modalactions">
-      <button class="linkbtn" id="deepread">deeper read ›</button>
-    </div>
-    <div class="modalextra" id="deepreadout"></div>
-    <div id="deepreadcopy" style="display:none;margin-top:6px">
-      <button class="copybtn" id="copydeepread">copy response</button>
-    </div>
-  </section>
-
-  <!-- Telemetry-off prompt: shown above the chart when capture is disabled. Enabling it here is the
-       same action as toggling telemetry in onboarding / the config page. -->
-  <section class="panel telemetry-off" id="telemetryoff" style="display:none">
-    <h2>telemetry is off</h2>
-    <div class="legend">Token usage is not being captured. Turn telemetry on to start collecting data across your harnesses.</div>
-    <div class="modalactions">
-      <button class="enablebtn" id="enabletelemetry">turn on telemetry</button>
-    </div>
-    <div class="item-err" id="enableerr"></div>
-  </section>
-
-  <!-- TIER 2 — visualize (the chart) -->
-  <section class="panel">
-    <h2>② token usage over time</h2>
-    <div class="ranges" id="chartmodes">
-      <span class="flabel">view</span>
-      <button data-mode="cumulative" class="active">cumulative per session</button>
-      <button data-mode="bygroup">cumulative by tool group</button>
-      <button data-mode="deltas">per-turn deltas</button>
-    </div>
-    <div class="chartwrap">
-      <canvas id="timeline"></canvas>
-      <div class="tooltip" id="tooltip"></div>
-      <div class="loadoverlay" id="loadoverlay"><span class="spinner"></span> computing…</div>
-    </div>
-    <div class="legend" id="chartlegend"></div>
-  </section>
-
-  <!-- TIER 3 — warnings & abnormalities (spikes, loops, causes) -->
-  <h2 class="sectionhead">③ warnings &amp; abnormalities <span class="sub">spikes, loops, and the patterns behind them — click any row to open the chat</span></h2>
-  <section class="panel" id="loopspanel" style="display:none">
-    <h2>⚠ loops detected</h2>
-    <div id="loops"></div>
-    <div class="legend">a tool fired many times consecutively in one session — likely a runaway agent/skill loop · click to investigate</div>
-  </section>
-  <section class="panel">
-    <h2>token spikes</h2>
-    <div id="spikes"></div>
-  </section>
-  <section class="panel">
-    <h2>what's causing spikes</h2>
-    <div id="causes"></div>
-    <div class="legend">grouped by the pattern that drove each token spike · each row is a behavior you can change</div>
-  </section>
-  <section class="panel">
-    <h2>what's different in spikes</h2>
-    <div id="anatomy"></div>
-    <div class="legend">lift = how much more a group drives spikes than its everyday share · &gt;1 means spike-heavy</div>
-  </section>
-
-  <!-- TIER 4 — details (collapsed by default; summaries lead, raw is on-demand) -->
-  <details class="detailsblock">
-    <summary>④ cost analysis <span class="sub">what each tool/package puts into context, and what changed</span></summary>
-    <section class="panel">
-      <h2>native vs MCP exploration</h2>
-      <div id="groupcost"></div>
-      <div class="legend">avg context tokens dropped per call, by tool group · the head-to-head for "is the MCP cheaper than the Read/Grep it replaces" · approx (result size ÷ 4)</div>
-    </section>
-    <section class="panel">
-      <h2>cost per tool call</h2>
-      <div id="toolcost"></div>
-      <div class="legend">what an average call of each tool puts into your context · click a row for detail</div>
-    </section>
-    <section class="panel">
-      <h2>package cost &amp; regression</h2>
-      <div id="packagecost"></div>
-      <div id="regression"></div>
-      <div class="legend">per package: avg tokens/call · regression compares the earlier vs later half (↑ = got more expensive)</div>
-    </section>
-  </details>
-
-  <details class="detailsblock">
-    <summary>⑤ sessions <span class="sub">every session by tokens — click a row to open its chat</span></summary>
-    <section class="panel"><h2>top sessions</h2><div id="sessions"></div></section>
-  </details>
-
-  <details class="detailsblock">
-    <summary>⑥ raw breakdowns <span class="sub">supporting totals</span></summary>
-    <section class="panel"><h2>token by tool</h2><div id="tools"></div></section>
-    <section class="panel"><h2>token by MCP server</h2><div id="mcp"></div></section>
-    <section class="panel"><h2>spike vs normal</h2><div id="comparison"></div></section>
-  </details>
-</main>
-<div class="modal-back" id="modalback">
-  <div class="modal" id="modal">
-    <button class="closebtn" id="modalclose">×</button>
-    <h3 id="modaltitle"></h3>
-    <div class="sub" id="modalsub"></div>
-    <dl id="modalbody"></dl>
-    <div class="modalactions" id="modalactions"></div>
-    <div class="modalextra" id="modalextra"></div>
-  </div>
-</div>
-<script>
 const fmt = (n) => Number(n||0).toLocaleString("en-US");
 const short = (id) => id && id !== "unknown" ? String(id).slice(0,8) : "unknown";
 // Escape user-derived text (prompt previews, paths) before it goes into innerHTML. The spool is
@@ -377,6 +124,21 @@ function updateHarnessFilter(harnesses) {
 
 // Plot margins leave room for the y-axis token labels (left) and x-axis time labels (bottom).
 const M = { left: 56, right: 12, top: 10, bottom: 22 };
+// Canvas can't read CSS variables directly, so we resolve the theme's chrome colors from the
+// :root vars once per draw (refreshed in chartSetup) and read them into the ctx below. This keeps
+// the chart following the light/dark toggle. Data-series colors (SESSION_COLORS/GROUP_COLORS)
+// stay fixed — those are series identity, not theme.
+const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let theme = { line: "#2d333b", dim: "#8b949e", ink: "#e6edf3", accent: "#58a6ff", spike: "#f85149" };
+function refreshTheme() {
+  theme = {
+    line: cssVar("--line"),
+    dim: cssVar("--dim"),
+    ink: cssVar("--ink"),
+    accent: cssVar("--accent"),
+    spike: cssVar("--spike"),
+  };
+}
 // Drawn bar geometry, kept so the mousemove handler can map a cursor x back to the capture it
 // represents. Rebuilt on every draw.
 let chartBars = [];
@@ -436,6 +198,7 @@ function perSessionSeries(points) {
 
 // Set up the canvas + return drawing context and plot geometry shared by all three views.
 function chartSetup() {
+  refreshTheme();
   const canvas = document.getElementById("timeline");
   const dpr = window.devicePixelRatio || 1;
   const W = canvas.clientWidth, H = canvas.clientHeight;
@@ -451,7 +214,7 @@ function chartSetup() {
 function drawAxes(ctx, geo, maxV, t0, span) {
   const { W, H, plotW, plotH } = geo;
   const yOf = (v) => M.top + plotH - (v / maxV) * plotH;
-  ctx.strokeStyle = "#2d333b"; ctx.fillStyle = "#8b949e"; ctx.textAlign = "right";
+  ctx.strokeStyle = theme.line; ctx.fillStyle = theme.dim; ctx.textAlign = "right";
   for (const frac of [0, 0.5, 1]) {
     const y = yOf(maxV * frac);
     ctx.beginPath(); ctx.moveTo(M.left, y); ctx.lineTo(W - M.right, y); ctx.stroke();
@@ -467,7 +230,7 @@ function drawTimeline(points, threshold) {
   chartBars = [];
   const legend = document.getElementById("chartlegend");
   const geo = chartSetup();
-  if (!points.length) { geo.ctx.fillStyle = "#8b949e"; geo.ctx.fillText("no token data yet", M.left, geo.H / 2); legend.innerHTML = ""; return; }
+  if (!points.length) { geo.ctx.fillStyle = theme.dim; geo.ctx.fillText("no token data yet", M.left, geo.H / 2); legend.innerHTML = ""; return; }
   if (chartMode === "cumulative") return drawCumulative(points, geo, legend);
   if (chartMode === "bygroup") return drawCumulativeByGroup(points, geo, legend);
   return drawDeltas(points, threshold, geo, legend);
@@ -503,17 +266,18 @@ function drawDeltas(points, threshold, geo, legend) {
     const x = M.left + d.c, y = yOf(d.p.delta), h = M.top + plotH - y;
     const w = barW - barGap;
     const hovered = i === hoverIdx;
-    ctx.fillStyle = hovered ? "#a9d1ff" : "#58a6ff";
+    ctx.fillStyle = theme.accent; ctx.globalAlpha = hovered ? 1 : 0.82;
     if (h > 0) ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = 1;
     if (hovered) {
-      ctx.strokeStyle = "#c9d1d9"; ctx.lineWidth = 1; ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
-      ctx.strokeStyle = "rgba(201,209,217,.25)"; ctx.beginPath(); ctx.moveTo(x + w / 2, M.top); ctx.lineTo(x + w / 2, M.top + plotH); ctx.stroke();
+      ctx.strokeStyle = theme.ink; ctx.lineWidth = 1; ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
+      ctx.save(); ctx.globalAlpha = 0.25; ctx.strokeStyle = theme.ink; ctx.beginPath(); ctx.moveTo(x + w / 2, M.top); ctx.lineTo(x + w / 2, M.top + plotH); ctx.stroke(); ctx.restore();
     }
     chartBars.push({ x: x + w / 2, y, h, w, idx: i, point: d.p });
   });
   if (threshold > 0) {
     const y = yOf(threshold);
-    ctx.strokeStyle = "#f85149"; ctx.setLineDash([4, 3]); ctx.beginPath();
+    ctx.strokeStyle = theme.spike; ctx.setLineDash([4, 3]); ctx.beginPath();
     ctx.moveTo(M.left, y); ctx.lineTo(W - M.right, y); ctx.stroke(); ctx.setLineDash([]);
   }
   const hidden = points.length - shown.length;
@@ -550,16 +314,16 @@ function drawCumulative(points, geo, legend) {
   });
   // Concern line.
   const cy = yOf(curCumulativeConcern);
-  ctx.strokeStyle = "#f85149"; ctx.setLineDash([4, 3]); ctx.beginPath();
+  ctx.strokeStyle = theme.spike; ctx.setLineDash([4, 3]); ctx.beginPath();
   ctx.moveTo(M.left, cy); ctx.lineTo(W - M.right, cy); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle = "#f85149"; ctx.textAlign = "left"; ctx.fillText("concern " + tokShort(curCumulativeConcern), M.left + 4, cy - 4);
+  ctx.fillStyle = theme.spike; ctx.textAlign = "left"; ctx.fillText("concern " + tokShort(curCumulativeConcern), M.left + 4, cy - 4);
   // Hover highlight: larger ring around the hovered point.
   if (hoverIdx >= 0 && chartBars[hoverIdx]) {
     const b = chartBars[hoverIdx];
     ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, Math.PI * 2);
-    ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = theme.ink; ctx.lineWidth = 1.5; ctx.stroke();
     ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, Math.PI * 2);
-    ctx.strokeStyle = b.color || "#fff"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = b.color || theme.ink; ctx.lineWidth = 1; ctx.stroke();
   }
   // Paginated legend: top N sessions with "view more" if there are more.
   const shown = legendShown.cumulative;
@@ -581,7 +345,7 @@ function drawCumulative(points, geo, legend) {
 function drawCumulativeByGroup(points, geo, legend) {
   const { ctx, plotW } = geo;
   const withResult = points.filter((p) => p.result_chars != null && p.tool).sort((a, b) => a.ts.localeCompare(b.ts));
-  if (!withResult.length) { ctx.fillStyle = "#8b949e"; ctx.fillText("no tool-result data in this window", M.left, geo.H / 2); legend.innerHTML = ""; return; }
+  if (!withResult.length) { ctx.fillStyle = theme.dim; ctx.fillText("no tool-result data in this window", M.left, geo.H / 2); legend.innerHTML = ""; return; }
   const t0 = Date.parse(withResult[0].ts), tN = Date.parse(withResult[withResult.length - 1].ts);
   const span = Math.max(1, tN - t0);
   // Build a cumulative running total per group over time.
@@ -598,7 +362,7 @@ function drawCumulativeByGroup(points, geo, legend) {
   const xOf = (ts) => M.left + ((Date.parse(ts) - t0) / span) * plotW;
   const order = Object.keys(groups).sort((a, b) => (running[b] || 0) - (running[a] || 0));
   for (const g of order) {
-    const color = GROUP_COLORS[g] || "#8b949e";
+    const color = GROUP_COLORS[g] || theme.dim;
     ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
     groups[g].forEach((pt, j) => {
       const x = xOf(pt.ts), y = yOf(pt.total);
@@ -616,13 +380,13 @@ function drawCumulativeByGroup(points, geo, legend) {
   if (hoverIdx >= 0 && chartBars[hoverIdx]) {
     const b = chartBars[hoverIdx];
     ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
-    ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = theme.ink; ctx.lineWidth = 1.5; ctx.stroke();
     ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
-    ctx.strokeStyle = b.color || "#fff"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = b.color || theme.ink; ctx.lineWidth = 1; ctx.stroke();
   }
   const shown = legendShown.bygroup;
   const legendItems = order.slice(0, shown).map((g) => {
-    const color = GROUP_COLORS[g] || "#8b949e";
+    const color = GROUP_COLORS[g] || theme.dim;
     return "<li><span class='swatch' style='background:" + color + ";flex:none'></span><span class='lbl'>" + esc(g) + " <span style='color:var(--dim)'>(" + tokShort(running[g]) + ")</span></span></li>";
   });
   const moreCount = order.length - shown;
@@ -863,7 +627,7 @@ function onTimelineUp(e) {
 
 // The headline panel: each spike cause as a row, biggest token cost first. Click a row for what to do.
 function renderCauses(rows) {
-  if (!rows || !rows.length) { document.getElementById("causes").innerHTML = "<p style='color:#8b949e'>no spikes yet — nothing blowing up your tokens</p>"; return; }
+  if (!rows || !rows.length) { document.getElementById("causes").innerHTML = "<p style='color:var(--dim)'>no spikes yet — nothing blowing up your tokens</p>"; return; }
   const data = rows.slice(0, 8);
   table("causes", ["cause", "spikes", "avg Δ", "worst Δ", "repo"], data.map((c) => [
     c.cause,
@@ -940,7 +704,7 @@ function renderSessions(rows) {
   }), data.map((s) => () => openSessionModal(s)));
 }
 function renderSpikes(rows) {
-  if (!rows || !rows.length) { document.getElementById("spikes").innerHTML = "<p style='color:#8b949e'>no spikes</p>"; return; }
+  if (!rows || !rows.length) { document.getElementById("spikes").innerHTML = "<p style='color:var(--dim)'>no spikes</p>"; return; }
   const data = rows.slice(0, 12);
   table("spikes", ["time", "where", "worst Δ", "event", "hits"], data.map((s) => [
     s.ts.slice(0, 19),
@@ -975,13 +739,13 @@ function renderContrib(id, rows) {
 }
 
 // --- conclusion panels --------------------------------------------------------------------------
-const emptyPanel = (id, msg) => { document.getElementById(id).innerHTML = "<p style='color:#8b949e'>" + msg + "</p>"; };
+const emptyPanel = (id, msg) => { document.getElementById(id).innerHTML = "<p style='color:var(--dim)'>" + msg + "</p>"; };
 
 // The headline panel: deterministic conclusions, severity-marked. This is the "what this means"
 // read so the user does not scan tables.
 function renderInsights(rows) {
   const el = document.getElementById("insights");
-  if (!rows || !rows.length) { el.innerHTML = "<p style='color:#8b949e'>not enough data yet for conclusions</p>"; return; }
+  if (!rows || !rows.length) { el.innerHTML = "<p style='color:var(--dim)'>not enough data yet for conclusions</p>"; return; }
   el.innerHTML = rows.map((f) =>
     "<div class='insight " + esc(f.severity) + "'><span class='dot'></span><div class='body'>"
     + "<div class='hl'>" + esc(f.headline) + "</div><div class='dt'>" + esc(f.detail) + "</div></div></div>"
@@ -1229,7 +993,10 @@ refreshTelemetryState();
 setInterval(() => load(false), 5000);
 setInterval(refreshTelemetryState, 10000);
 window.addEventListener("resize", () => redrawChart());
-</script>
-</body>
-</html>`;
-}
+
+// The theme toggle + nav are wired by the shared /portal/shared/theme.js. Canvas colors are
+// resolved from CSS vars at draw time, so redraw when the shared toggle flips the theme (mirrors
+// the resize handler).
+document.documentElement.addEventListener("roborepo:themechange", () => {
+  try { redrawChart(); } catch (e) {}
+});

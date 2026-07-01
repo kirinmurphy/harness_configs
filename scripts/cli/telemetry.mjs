@@ -345,10 +345,10 @@ function telemetryExport(args) {
 
 export async function serveCommand(args, { allowPortFallback = false } = {}) {
   const options = parseServeArgs(args);
-  const portalUrl = `http://127.0.0.1:${options.port}/config`;
+  const portalUrl = `http://127.0.0.1:${options.port}`;
   if (options.detach) {
     const port = await startDetachedPortal(options.port, { allowPortFallback });
-    const detachedPortalUrl = `http://127.0.0.1:${port}/config`;
+    const detachedPortalUrl = `http://127.0.0.1:${port}`;
     console.log(`roborepo portal: ${detachedPortalUrl}  (detached · use: roborepo telemetry stop)`);
     if (options.open) openLocalUrl(detachedPortalUrl);
     return;
@@ -946,7 +946,7 @@ function waitForPortalReady(port, child, readyFile) {
         return;
       }
       if (Date.now() > deadline) {
-        finish({ ok: false, message: `portal server did not become ready on http://127.0.0.1:${port}/config` });
+        finish({ ok: false, message: `portal server did not become ready on http://127.0.0.1:${port}` });
         return;
       }
       if (fs.existsSync(readyFile) && isProcessRunning(child.pid)) {

@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { dashboardHtml } from "./telemetry-dashboard.mjs";
-import { configHtml } from "./config-dashboard.mjs";
 import { repoRoot } from "./paths.mjs";
 
 // Tiny local-only portal server. Binds to loopback only so telemetry/config data never leaves the
@@ -14,6 +12,18 @@ const STATIC_TYPES = {
   ".js": "text/javascript; charset=utf-8",
   ".html": "text/html; charset=utf-8",
 };
+
+// Single source of truth for portal HTML pages. To add a page: (1) add an entry here, (2) create
+// scripts/portal/<dir>/{index.html,styles.css,app.js} linking /portal/shared/base.css + theme.js,
+// (3) add the page to PORTAL_PAGES in scripts/portal/shared/theme.js so the nav includes it.
+// Each page's HTML is just its index.html read from disk (mirrors static assets). `default: true`
+// marks the page served at "/" (what `roborepo serve` opens).
+export const PAGES = [
+  { path: "/", id: "config", title: "Config", dir: "config", default: true },
+  { path: "/telemetry", id: "telemetry", title: "Telemetry", dir: "telemetry" },
+];
+const PAGE_BY_PATH = new Map(PAGES.map((p) => [p.path, p]));
+const pageHtml = (dir) => fs.readFileSync(path.join(PORTAL_DIR, dir, "index.html"), "utf8");
 
 export function startPortalServer(handlers) {
   const { port } = handlers;
@@ -32,8 +42,8 @@ export function startPortalServer(handlers) {
         fs.writeFileSync(process.env.ROBOREPO_PORTAL_READY_FILE, `ready:${actualPort}\n`);
       } catch {}
     }
-    console.log(`roborepo portal:     http://${LOOPBACK}:${port}/config`);
-    console.log(`telemetry dashboard: http://${LOOPBACK}:${port}`);
+    console.log(`roborepo portal:     http://${LOOPBACK}:${port}`);
+    console.log(`telemetry dashboard: http://${LOOPBACK}:${port}/telemetry`);
     console.log("(Ctrl-C to stop)");
     handlers.onListening?.();
   });
@@ -80,8 +90,8 @@ function route(req, res, handlers) {
     });
   }
 
-  if (urlPath === "/") return send(res, 200, "text/html; charset=utf-8", dashboardHtml());
-  if (urlPath === "/config") return send(res, 200, "text/html; charset=utf-8", configHtml());
+  const page = PAGE_BY_PATH.get(urlPath);
+  if (page) return send(res, 200, "text/html; charset=utf-8", pageHtml(page.dir));
   if (urlPath.startsWith("/portal/")) return servePortalAsset(urlPath, res);
   if (urlPath === "/api/config") {
     return send(res, 200, "application/json", JSON.stringify(loadConfig()));

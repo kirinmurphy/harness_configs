@@ -1,0 +1,139 @@
+/* Shared portal base: the single source of truth for the theme palette, the CSS reset, and the
+ * common header / nav / theme-toggle chrome. Both the config page and the telemetry dashboard
+ * link this file, then add their own page-specific stylesheet on top. A new page only needs to
+ * link this + its own styles.css to inherit the palette and header.
+ *
+ * The palette is a SUPERSET of what any one page needs — unused vars cost nothing, and keeping
+ * one copy means light/dark can never drift between pages. Data-viz colors that must stay fixed
+ * across themes (chart series palettes) live in the telemetry app.js as JS constants, not here.
+ */
+:root {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --panel: #12171e;
+  --line: #2d333b;
+  --ink: #e6edf3;
+  --dim: #a3adb8;
+  --accent: #58a6ff;
+  --ok: #3fb950;
+  --off: #484f58;
+  --warn: #e3b341;
+  --danger: #f85149;
+  --spike: #f85149;
+  --on-accent: #0b0e13;
+  --badge-skill-ink: #79c0ff;
+  --badge-skill-line: #1f6feb;
+  --badge-skill-bg: #0d1b2e;
+  --badge-cmd-ink: #7ee787;
+  --badge-cmd-line: #238636;
+  --badge-cmd-bg: #0d2214;
+  --knob: #fff;
+  --warn-line: #5a4a1a;
+  --warn-bg: #17150d;
+  --code-bg: #010409;
+  --code-ink: #d2a8ff;
+  --code-inline-bg: rgba(255, 255, 255, 0.04);
+  --overlay: rgba(13, 17, 23, 0.7);
+  --tooltip-bg: #010409;
+  --tooltip-shadow: rgba(0, 0, 0, 0.5);
+  --row-hover: #1c2230;
+  --modal-shadow: rgba(0, 0, 0, 0.6);
+  --backdrop: rgba(0, 0, 0, 0.6);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --panel: #f6f8fa;
+  --line: #d0d7de;
+  --ink: #1f2328;
+  --dim: #656d76;
+  --accent: #0969da;
+  --ok: #1a7f37;
+  --off: #afb8c1;
+  --warn: #9a6700;
+  --danger: #cf222e;
+  --spike: #cf222e;
+  --on-accent: #ffffff;
+  --badge-skill-ink: #0550ae;
+  --badge-skill-line: #b6e3ff;
+  --badge-skill-bg: #ddf4ff;
+  --badge-cmd-ink: #1a7f37;
+  --badge-cmd-line: #aceebb;
+  --badge-cmd-bg: #dafbe1;
+  --knob: #ffffff;
+  --warn-line: #d4a72c;
+  --warn-bg: #fff8c5;
+  --code-bg: #f6f8fa;
+  --code-ink: #8250df;
+  --code-inline-bg: rgba(27, 31, 36, 0.05);
+  --overlay: rgba(255, 255, 255, 0.7);
+  --tooltip-bg: #ffffff;
+  --tooltip-shadow: rgba(31, 35, 40, 0.12);
+  --row-hover: #eaeef2;
+  --modal-shadow: rgba(31, 35, 40, 0.15);
+  --backdrop: rgba(31, 35, 40, 0.4);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font:
+    14px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  background: var(--bg);
+  color: var(--ink);
+}
+/* Common header + nav across every portal page. */
+header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+header h1 {
+  font-size: 15px;
+  margin: 0;
+  font-weight: 600;
+}
+nav {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+nav a {
+  color: var(--dim);
+  font-size: 12px;
+  text-decoration: none;
+  padding: 3px 10px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+}
+nav a:hover {
+  color: var(--ink);
+  border-color: var(--line);
+}
+nav a.active {
+  color: var(--ink);
+  background: var(--panel);
+  border-color: var(--line);
+}
+.theme-toggle {
+  margin-left: 8px;
+  color: var(--dim);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.theme-toggle:hover {
+  color: var(--ink);
+  border-color: var(--line);
+}

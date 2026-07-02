@@ -1,8 +1,9 @@
 # Package Registry vs Live State Reconciliation
 
-> Status: planned. This captures a known design gap in the config control panel:
-> roborepo can record package intent in its registry while the user's live harness
-> files may already contain, miss, or partially contain the corresponding state.
+> Status: active. First read-only reconciliation pass shipped: `/api/config` now reports
+> package `status`, `desired`, and per-component `componentStatus` while preserving the
+> legacy boolean `enabled` for existing UI behavior. Remaining work: durable desired-state
+> registry, mutation transactions, repair/adopt/forget actions, and richer UI detail.
 
 ## Problem
 
@@ -380,4 +381,3 @@ Likely files:
 - Migration test from old `enabled-packages.json` to new package state.
 - Portal snapshot test for `enabled`, `disabled`, `partial`, `external`, and `blocked`.
 - Existing `scripts/test/test-roborepo.sh` coverage for install/update/doctor stays green.
-

@@ -36,7 +36,7 @@ to them plus the judgment that isn't written down. Read the doc, then apply the 
 
 - `globals/claude/` + `globals/codex/` + `globals/agents/` = SOURCE symlinked/linked into the user's
   GLOBAL `~/.claude`/`~/.codex` at install time.
-- `.claude/` + `.agents/` (dotdirs) = THIS repo's own PROJECT-SCOPE skill config, NOT global.
+- `.claude/` + `.codex/` (dotdirs) = THIS repo's own PROJECT-SCOPE skill config, NOT global.
 - `globals/agents/skills/<name>/` = canonical shared/advisory layer (global + exportable). At install
   time, skills are materialized into `~/.roborepo/skills/<name>` and each harness's native dir links
   to that cache entry. No intermediate `globals/claude/skills/` directory exists. `local/skills/` =

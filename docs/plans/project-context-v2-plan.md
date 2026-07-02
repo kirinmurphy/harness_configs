@@ -1,8 +1,9 @@
 # Project Context Plan
 
 > **Status: ACTIVE.** `roborepo project-context inventory [path] [--summary]` shipped and writes
-> deterministic generated facts. Remaining work: `init`, `check`, command/skill trigger polish, and
-> better integration between generated facts and curated docs.
+> deterministic generated facts. `roborepo project-context check [path]` shipped for generated
+> fact/schema and curated-doc presence validation. Remaining work: `init`, command/skill trigger
+> polish, and better integration between generated facts and curated docs.
 
 ## Purpose
 
@@ -54,7 +55,7 @@ Project Context has a few explicit integration points. Each one should have a na
 | `/tighten` | Post-build workflow | Preserve UX while improving implementation quality and checking risky areas. |
 | `roborepo project-context inventory [path]` | CLI | Deterministically scan the repo and write generated facts. Shipped. |
 | `roborepo project-context init [path]` | CLI | Planned: create starter config and lean docs when missing. |
-| `roborepo project-context check [path]` | CLI | Planned: validate generated facts, schema version, configured docs, and staleness. |
+| `roborepo project-context check [path]` | CLI | Shipped: validate generated facts, schema version, and curated-doc presence. |
 | `project-context.config.json` or `package.json` `projectContext` | Config | Define docs location, generated output location, and curated doc names. |
 | `README.md` | User doc | User API: what commands exist and what the agent guards. |
 | `glossary.md` | User doc | Human-readable product/code vocabulary. |
@@ -667,14 +668,17 @@ Example config:
 
 ## Staleness And Check Mode
 
-`roborepo project-context check` should be a small deterministic validation command.
+`roborepo project-context check` is a small deterministic validation command.
 
-It should check:
+It currently checks:
 
 - Generated scan files exist.
 - Generated scan files have the current schema version.
-- The repo facts hash still matches the current repo shape.
 - Configured curated docs exist.
+
+Planned expansions:
+
+- The repo facts hash still matches the current repo shape.
 - Generated files are not manually edited if ownership markers are present.
 
 It should not attempt to prove every prose claim is true. That remains skill work.
@@ -740,17 +744,17 @@ Full doc rewrites should be explicit, not the default behavior.
 
 ## Implementation Checklist
 
-1. Add `roborepo project-context inventory`.
-2. Emit generated JSON and markdown summary.
-3. Add `project-context` shared skill under `globals/agents/skills/project-context`.
-4. Link the skill for Claude with the harness skill-link script.
+1. [x] Add `roborepo project-context inventory`.
+2. [x] Emit generated JSON and markdown summary.
+3. [x] Add `project-context` shared skill under `globals/agents/skills/project-context`.
+4. [x] Link the skill for Claude with the harness skill-link script.
 5. Add Project Context docs and references to the skill.
 6. Add lean user docs: `README.md`, `glossary.md`, `inventory.md`, and optional `extension-paths.md`.
 7. Add `/plan` architecture-fit guidance to the relevant planning workflow.
 8. Add `/document` guidance for focused glossary and inventory updates.
 9. Add the lean Project Context pointer to generated global rules.
 10. Add `roborepo project-context init`.
-11. Add `roborepo project-context check`.
+11. [x] Add `roborepo project-context check`.
 12. Test the workflow in a real project with existing docs.
 13. Refine generated schema and merge rules based on the first project pass.
 
@@ -759,7 +763,7 @@ Full doc rewrites should be explicit, not the default behavior.
 - Should `/document` support only focused glossary/inventory updates, or also broader handoff refreshes when the user does not specify a target doc?
 - Should generated inventory include jcodemunch/jdocmunch identifiers, or stay independent of MCP indexing?
 - Should `roborepo project-context inventory` write markdown summaries by default, or only JSON unless `--summary` is passed?
-- Should `roborepo project-context check` be added immediately or after the first inventory command works?
+- How strict should `roborepo project-context check` become about stale facts and generated-file edits?
 - Should existing projects be left in their current docs directory indefinitely, or should there be an optional migration command?
 - Should quality recommendations live only in skill output, or should the CLI also emit machine-readable quality signal candidates?
 - Should `/plan` always require an architecture-fit section when Project Context docs exist, or only when the change touches known risk areas?

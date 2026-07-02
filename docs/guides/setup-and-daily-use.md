@@ -119,6 +119,7 @@ as shown below. Full reference: [roborepo CLI](../reference/services/roborepo.md
 Keep the package-owned code index current so Claude can navigate your codebase. Start this when opening a project you'll be actively coding in. The watcher runs continuously — edits are picked up automatically within the session.
 
 ```sh
+roborepo enable jcodemunch       # once per machine, if not already enabled
 roborepo watch code               # watch the current dir (runs continuously)
 roborepo watch code path/to/dir
 roborepo index code path/to/dir   # one-shot index instead of watching
@@ -129,6 +130,7 @@ roborepo index code path/to/dir   # one-shot index instead of watching
 Index a project's documentation so Claude can search sections and headings rather than reading full files. Run once per project to initialize. After that, edits to existing files are picked up automatically via mtime detection — no manual reindex needed. Re-run only when doc files are added or deleted.
 
 ```sh
+roborepo enable jdocmunch        # once per machine, if not already enabled
 roborepo index docs               # index docs in the current dir
 roborepo index docs path/to/dir
 ```
@@ -142,6 +144,7 @@ lives once in `globals/agents/skills/<name>/`. If you created a skill out-of-ban
 ```sh
 roborepo skill new              # scaffold + refresh shared skill cache + both harness views
 roborepo skill adopt <name>     # ingest a skill created natively (init_skill.py / by hand)
+roborepo skill inspect <name>   # inspect ownership, native metadata, collisions, and install state
 roborepo skill native           # summarize native Claude/Codex plugin entrypoints
 roborepo skill native --full    # print native help output inline
 scripts/doctor.sh --installed   # verify the live skill cache and harness links are current

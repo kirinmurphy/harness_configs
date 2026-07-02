@@ -12,9 +12,10 @@ subcommand implementations live under `scripts/cli/`, one module per category:
 
 | Module | Owns |
 | --- | --- |
-| `scripts/cli/skills.mjs` | `skill adopt`, `skill native`, `skill export-to-project`, `skill link-project` |
+| `scripts/cli/skills.mjs` | `skill adopt`, `skill inspect`, `skill native`, `skill export-to-project`, `skill link-project` |
+| `scripts/cli/skill-inventory.mjs` | read-only skill inventory used by `skill inspect` and `/config` source popups |
 | `scripts/cli/index.mjs` | `index code\|docs`, `watch code`, `run` |
-| `scripts/cli/project-context.mjs` | `project-context inventory` (deterministic repo scan) |
+| `scripts/cli/project-context.mjs` | `project-context inventory` (deterministic repo scan), `project-context check` |
 | `scripts/cli/mcp.mjs` | `mcp add` (Claude + Codex registration) |
 | `scripts/cli/presets.mjs` | `onboard`, `bundle status\|apply\|check\|remove` |
 | `scripts/cli/telemetry.mjs` | `telemetry install\|start\|stop\|enable\|disable\|status\|report\|export\|serve\|backup\|purge\|capture` |
@@ -96,7 +97,9 @@ roborepo — choose an action:
   skill export-to-project copy shared skills into this project
   skill link-project      link this project's .codex/skills into .claude/skills
   skill sync-global       refresh shared skill cache + harness links
+  skill inspect           show skill source, ownership, and harness install state
   skill native            show native Claude/Codex plugin entrypoints
+  skill audit             render shared skill invocation audit
   skill render-commands render/check slash commands
 
   Maintenance
@@ -117,7 +120,9 @@ roborepo skill adopt <name>
 roborepo skill export-to-project [--yes] [--on-conflict=skip|override]
 roborepo skill link-project      [--dry-run] [--uninstall]
 roborepo skill sync-global
+roborepo skill inspect <name>
 roborepo skill native [--full]
+roborepo skill audit [--check]
 roborepo skill render-commands [--check]
 
 roborepo index code  [path]
@@ -125,6 +130,7 @@ roborepo index docs  [path]
 roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--dry-run] [--only-claude|--only-codex] [--skip-claude-permission]
 roborepo watch code  [path]
 roborepo project-context inventory [path] [--summary]
+roborepo project-context check [path]
 roborepo onboard
 roborepo serve [--detach] [--no-open] [--port <n>]
 roborepo telemetry install|start|stop|enable|disable|status|report|export|backup|purge
@@ -169,9 +175,11 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   backs the old one up under `archived/`). `skill link-project` treats `.codex/skills/<name>` as
   the project skill source, links Claude project skills to it when `.claude` exists, and prunes
   owned stale links. `skill sync-global` refreshes the machine-local shared skill cache and harness
-  links after shared skills are added or removed. `skill native` prints a concise native
+  links after shared skills are added or removed. `skill inspect <name>` is a read-only native-aware
+  inventory report for source ownership, cache state, managed markers, native collisions, native-only
+  metadata, and per-harness install state. `skill native` prints a concise native
   Claude/Codex plugin summary for harness-specific actions; add `--full` to print the native help
-  output inline. `skill render-commands` renders generated slash
+  output inline. `skill audit` renders/checks the shared skill invocation audit. `skill render-commands` renders generated slash
   commands from `manifests/inventory/slash-commands.json`, and `--check` verifies without changing
   files. See [roborepo Skills Interface](roborepo-skills.md).
 - **Maintenance** — `doctor` and `verify` are health and post-install checks; `rules` renders
@@ -379,8 +387,8 @@ touching anything.
 
 ## Tests
 
-`scripts/test/test-roborepo.sh` smoke-tests the subcommands (skill link-project/sync-global/prune/uninstall/
-conflict, `skill new` scaffolds, native escape-hatch guide, export/override/firewall/self-pollution guard, slash-command render checks,
+`scripts/test/test-roborepo.sh` smoke-tests the subcommands (skill link-project/sync-global/inspect/prune/uninstall/
+conflict, `skill new` scaffolds, native escape-hatch guide, audit check, export/override/firewall/self-pollution guard, slash-command render checks,
 `onboard`/`bundle` onboarding/apply/remove/status, `telemetry` enable/status/report, run, `mcp add` dry-runs + real
 Codex/Claude writes against a throwaway harness root, lifecycle/rules dispatch, menu fallback) against throwaway
 temp repos.

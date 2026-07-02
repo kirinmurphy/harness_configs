@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { repoRoot } from "./paths.mjs";
-import { presetsStatePath, telemetryDir, activeProfilePath, roborepoSkillsDir } from "./state-paths.mjs";
+import { presetsStatePath, telemetryDir, activeProfilePath } from "./state-paths.mjs";
 import { readProjectProfile } from "./config-mutate.mjs";
 import { renderMarkdown } from "./markdown-render.mjs";
 import {
@@ -16,6 +16,8 @@ import {
   loadPackageCatalog,
   isPackageAvailable,
 } from "./package-catalog.mjs";
+import { buildPackageLiveState } from "./package-probes.mjs";
+import { inspectSkill, skillInventorySource } from "./skill-inventory.mjs";
 
 const PRESETS_PATH = path.join(repoRoot, "manifests", "platform", "presets.json");
 const SKILL_INVOCATION_PATH = path.join(repoRoot, "manifests", "inventory", "skill-invocation.json");
@@ -217,7 +219,7 @@ export function readConfigSnapshot() {
 
   const selectedBundles = new Set(presetState.selected ?? presetsCatalog.default);
 
-  const packagesById = new Map(availablePackages.map((p) => [p.id, p]));
+  const packageLiveState = buildPackageLiveState(availablePackages);
   const unavailableSkillIds = new Set(
     allPackages
       .filter((pkg) => !isPackageAvailable(pkg))
@@ -227,9 +229,12 @@ export function readConfigSnapshot() {
     id: pkg.id,
     label: pkg.label,
     description: pkg.description || null,
-    status: pkg.status || "available",
+    status: packageLiveState.get(pkg.id)?.status || "disabled",
+    catalogStatus: pkg.status || "available",
+    desired: packageLiveState.get(pkg.id)?.desired || false,
     cliCommands: [...new Set([...(pkg.cliCommands || []), ...pkg.components.filter((c) => c.type === "command").map((c) => c.name)])],
-    enabled: isPackageEnabled(pkg, settings, { telemetry: !!telemetryState?.enabled }, packagesById),
+    enabled: packageLiveState.get(pkg.id)?.desired || false,
+    componentStatus: packageLiveState.get(pkg.id)?.components || [],
     components: pkg.components.map((c) => c.type),
     skillIds: pkg.components.filter((c) => c.type === "skill").map((c) => c.id),
     requires: pkg.requires || [],
@@ -268,6 +273,7 @@ export function readConfigSnapshot() {
       // a codex-only command isn't requested as claude (404). Defaults to claude when unspecified.
       commandHarnesses: commandBySkill[s.skill]?.harnesses || [],
       installed: fs.existsSync(path.join(skillsDir, s.skill)),
+      inventory: inspectSkill(s.skill),
     }));
 
   const snapshot = {
@@ -330,7 +336,13 @@ export function buildBehaviorView(snap) {
   const tel = snap.telemetry;
   const perms = snap.agentPermissions;
   const pkgUrls = (id) => pkg(id)?.urls || [];
-  const pkgBadges = (id) => pkg(id)?.status === "pending" ? ["pending"] : [];
+  const pkgBadges = (id) => {
+    const item = pkg(id);
+    return [
+      ...(item?.catalogStatus === "pending" ? ["pending"] : []),
+      ...(item?.status && item.status !== "enabled" && item.status !== "disabled" ? [item.status] : []),
+    ];
+  };
   const packageBySkill = new Map(
     snap.packages
       .flatMap((p) => (p.skillIds || []).map((skillId) => [skillId, p]))
@@ -395,7 +407,10 @@ export function buildBehaviorView(snap) {
             description: t.description,
             active: ownerPackage ? ownerPackage.enabled : t.installed,
             toggle: ownerPackage ? "package" : "skill",
-            badges: ownerPackage?.status === "pending" ? ["pending"] : [],
+            badges: [
+              ...(ownerPackage?.catalogStatus === "pending" ? ["pending"] : []),
+              ...(ownerPackage?.status && ownerPackage.status !== "enabled" && ownerPackage.status !== "disabled" ? [ownerPackage.status] : []),
+            ],
             // Inspect the command wrapper plus the backing SKILL.md. Pick a harness the command
             // actually exists for (codex-only → codex).
             inspect: {
@@ -506,8 +521,9 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
     // Validate id against the skill-invocation catalog so only known skills are readable.
     const skills = readJson(SKILL_INVOCATION_PATH, { skills: [] }).skills || [];
     if (!skills.some((s) => s.skill === id)) return fail(`unknown skill: ${id}`);
-    const abs = path.join(repoRoot, "globals", "agents", "skills", id, "SKILL.md");
-    return readSkillSource(abs, `skill: ${id}`);
+    const source = skillInventorySource(id);
+    if (!source.ok) return fail(source.error);
+    return readSkillSource(source.item.inspectPath, `skill: ${id}`, source.item);
   }
 
   if (kind === "command") {
@@ -529,10 +545,11 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
     if (!cmd.skill || !skills.some((s) => s.skill === cmd.skill)) return fail(`unknown skill for command: ${id}`);
 
     const commandAbs = path.join(repoRoot, "globals", harnessSafe, "commands", `${id}.md`);
-    const skillAbs = path.join(repoRoot, "globals", "agents", "skills", cmd.skill, "SKILL.md");
     const command = readSourceFile(commandAbs, `/${id} (${harnessSafe})`);
     if (!command.ok) return command;
-    const skill = readSkillSource(skillAbs, `skill: ${cmd.skill}`);
+    const inventorySource = skillInventorySource(cmd.skill);
+    if (!inventorySource.ok) return fail(inventorySource.error);
+    const skill = readSkillSource(inventorySource.item.inspectPath, `skill: ${cmd.skill}`, inventorySource.item);
     if (!skill.ok) return skill;
     const skillParts = [
       renderCommandSourceHtml(`/${id} (${harnessSafe})`, command.content),
@@ -634,8 +651,11 @@ function readSourceFile(abs, title) {
   }
 }
 
-function readSkillSource(abs, title) {
-  const source = readSourceFile(abs, title);
+function readSkillSource(abs, title, inventory = null) {
+  const resolved = path.resolve(abs);
+  const source = (resolved === repoRoot || resolved.startsWith(repoRoot + path.sep))
+    ? readSourceFile(resolved, title)
+    : readExternalSkillSource(resolved, title);
   if (!source.ok) return source;
   const parsed = parseSkillMarkdown(source.content);
   return {
@@ -645,8 +665,18 @@ function readSkillSource(abs, title) {
       meta: parsed.meta,
       body: parsed.body,
       contextFiles: listSkillContextFiles(path.dirname(path.resolve(abs))),
+      inventory,
     }),
   };
+}
+
+function readExternalSkillSource(abs, title) {
+  try {
+    const content = fs.readFileSync(abs, "utf8");
+    return { ok: true, title, path: abs, content, html: renderMarkdown(content) };
+  } catch {
+    return { ok: false, error: `not found: ${abs}` };
+  }
 }
 
 function parseSkillMarkdown(content) {
@@ -713,7 +743,7 @@ function renderCommandSourceHtml(title, content) {
   ].join("\n");
 }
 
-function renderSkillSourceHtml({ title, meta, body, contextFiles }) {
+function renderSkillSourceHtml({ title, meta, body, contextFiles, inventory }) {
   const triggerDescription = meta.description || "(no trigger description)";
   const bodyHtml = body.trim()
     ? renderMarkdown(body)
@@ -721,8 +751,10 @@ function renderSkillSourceHtml({ title, meta, body, contextFiles }) {
   const contextHtml = contextFiles.length
     ? `<ul>${contextFiles.map((file) => `<li><code>${escapeHtml(file)}</code></li>`).join("")}</ul>`
     : '<p class="source-empty">No additional context files.</p>';
+  const inventoryHtml = inventory ? renderSkillInventoryHtml(inventory) : "";
   return [
     '<div class="skill-source-view">',
+    inventoryHtml,
     '<section class="source-section skill-trigger">',
     '<div class="source-section-label">When the LLM should load this skill</div>',
     meta.name ? `<div class="skill-name"><code>${escapeHtml(meta.name)}</code></div>` : "",
@@ -737,6 +769,28 @@ function renderSkillSourceHtml({ title, meta, body, contextFiles }) {
     contextHtml,
     "</section>",
     "</div>",
+  ].join("\n");
+}
+
+function renderSkillInventoryHtml(inventory) {
+  const harnessRows = Object.entries(inventory.harnesses).map(([harness, state]) => {
+    const details = [
+      state.linkTarget ? `link ${state.linkTarget}` : null,
+      state.nativeMetadata.length ? `native metadata: ${state.nativeMetadata.map((m) => m.file).join(", ")}` : null,
+    ].filter(Boolean).join(" · ");
+    return `<li><strong>${escapeHtml(harness)}</strong>: ${escapeHtml(state.state)}${details ? ` <span>${escapeHtml(details)}</span>` : ""}</li>`;
+  }).join("");
+  const nativeMeta = inventory.nativeMetadata.length
+    ? `<p>Native metadata: ${escapeHtml(inventory.nativeMetadata.map((m) => m.file).join(", "))}</p>`
+    : "";
+  return [
+    '<section class="source-section skill-inventory">',
+    '<div class="source-section-label">Install and ownership</div>',
+    `<p>Ownership: ${escapeHtml(inventory.ownership)} · Managed: ${inventory.managed ? "yes" : "no"} · Native collision: ${inventory.nativeCollision ? escapeHtml(inventory.nativeCollisions.join(", ")) : "no"}</p>`,
+    `<p>Source: ${escapeHtml(inventory.source.path ? path.relative(repoRoot, inventory.source.path) : "native only")}</p>`,
+    `<ul>${harnessRows}</ul>`,
+    nativeMeta,
+    "</section>",
   ].join("\n");
 }
 

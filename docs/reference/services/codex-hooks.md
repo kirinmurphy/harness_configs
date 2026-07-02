@@ -37,7 +37,8 @@ Checks for the `docs/.jdm-indexed` marker in the current repo. If `docs/` exists
 but the marker is absent, prints a reminder to run `roborepo index docs docs/`.
 If the marker is present, confirms docs are indexed. This is duplicated
 near-identically on Claude — only the output protocol differs (plain text here,
-JSON `systemMessage` on Claude).
+JSON `systemMessage` on Claude). The command is package-owned; enable `jdocmunch`
+first if the CLI reports that no owning package is enabled.
 
 ### Telemetry capture — SessionStart / PreToolUse / PostToolUse / UserPromptSubmit / Stop
 

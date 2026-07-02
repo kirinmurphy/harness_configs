@@ -209,7 +209,13 @@ At install/update time, enabled shared skills are materialized into
 Roborepo manages only the skill names it owns. Skills created out-of-band (via
 native `init_skill.py` or `skill-installer`) at unrecognized names are left
 untouched. They appear as adoptable drift in `roborepo doctor --installed` and
-the SessionStart nudge. To bring them under version control:
+the SessionStart nudge. Inspect a skill before changing ownership:
+
+```sh
+roborepo skill inspect <name> # read-only source/ownership/native metadata/harness-state report
+```
+
+To bring an unmanaged native skill under version control:
 
 ```sh
 roborepo skill adopt <name>   # move into globals/agents/skills/<name>, re-link, register manifest

@@ -18,6 +18,7 @@ import {
 } from "./skill-lib.mjs";
 import { repoRoot, sharedSkillsDir } from "./paths.mjs";
 import { addSkillPolicy } from "./skill-new-manifests.mjs";
+import { formatSkillInspection, inspectSkill } from "./skill-inventory.mjs";
 
 function runChecked(label, command, args) {
   const result = spawnSync(command, args, { cwd: repoRoot, stdio: "inherit" });
@@ -221,6 +222,22 @@ export function skillNative(args) {
     ["plugin", "marketplace", "--help"],
     codexMarketplaceFallback
   );
+}
+
+export function skillInspect(args) {
+  const name = args[0];
+  const invalid = args.slice(1);
+  if (!name || invalid.length > 0) {
+    console.error("usage: roborepo skill inspect <name>");
+    process.exit(2);
+  }
+  const item = inspectSkill(name);
+  const installed = item.source.exists || Object.values(item.harnesses).some((state) => state.installed);
+  if (!installed) {
+    console.error(`skill not found: ${name}`);
+    process.exit(1);
+  }
+  console.log(formatSkillInspection(item));
 }
 
 async function resolveSkillInstallTargets(repo, { dryRun = false, uninstall = false } = {}) {

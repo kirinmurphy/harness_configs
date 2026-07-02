@@ -7,7 +7,9 @@
     "roborepo skill export-to-project [--yes] [--on-conflict=skip|override]",
     "roborepo skill link-project      [--dry-run] [--uninstall]   link this project's .codex/skills into .claude/skills",
     "roborepo skill sync-global                              refresh shared skill cache + harness links",
+    "roborepo skill inspect <name>                           show source, ownership, native metadata, and harness install state",
     "roborepo skill native [--full]                          show native Claude/Codex skill and plugin entrypoints",
+    "roborepo skill audit [--check]                           render/check shared skill invocation audit",
     "roborepo skill render-commands [--check]                   render/check slash commands",
     "",
     "roborepo index code  [path]",
@@ -15,6 +17,7 @@
     "roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--dry-run] [--only-claude|--only-codex] [--skip-claude-permission]",
     "roborepo watch code  [path]",
     "roborepo project-context inventory [path] [--summary]   scan a repo and write generated facts",
+    "roborepo project-context check [path]                   validate generated Project Context facts/docs",
     "roborepo onboard",
     "roborepo web                              open the local web portal in the browser (serve --detach)",
     "roborepo serve [--detach] [--no-open] [--port <n>]   local web portal (/config + telemetry)",
@@ -120,9 +123,19 @@
       "desc": "refresh shared skill cache and harness links"
     },
     {
+      "label": "skill inspect",
+      "value": ["skill", "inspect"],
+      "desc": "show source, ownership, and harness install state"
+    },
+    {
       "label": "skill native",
       "value": ["skill", "native"],
       "desc": "show native Claude/Codex skill and plugin entrypoints"
+    },
+    {
+      "label": "skill audit",
+      "value": ["skill", "audit"],
+      "desc": "render shared skill invocation audit"
     },
     {
       "label": "skill render-commands",

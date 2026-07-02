@@ -18,7 +18,7 @@ the matching step in [the teaching doc](harnesses-explained.md).
 | Element | What it is | Source | Maintain with |
 | --- | --- | --- | --- |
 | Global rules | The always-on instruction file each harness reads at startup. | Claude: `globals/claude/CLAUDE.md` (generated)<br>Codex: `globals/codex/AGENTS.md` (generated) | `roborepo rules [--check]` |
-| Skills | On-demand capability/instruction bundles the agent loads when relevant. | `globals/agents/skills/<name>/SKILL.md` — materialized into `~/.roborepo/skills/<name>` and linked from harness skill dirs | `roborepo skill new`, `roborepo skill adopt <name>`, `roborepo skill sync-global` |
+| Skills | On-demand capability/instruction bundles the agent loads when relevant. | `globals/agents/skills/<name>/SKILL.md` — materialized into `~/.roborepo/skills/<name>` and linked from harness skill dirs | `roborepo skill new`, `roborepo skill adopt <name>`, `roborepo skill inspect <name>`, `roborepo skill sync-global` |
 | Slash commands | Named workflows the user starts explicitly (`/blog`, etc.). | Claude: `globals/claude/commands/` (generated)<br>Codex: `globals/codex/commands/` (generated) | `roborepo skill render-commands [--check]` |
 | Install bundles | Named groups of install-time file operations applied at install/update. Internal to the install pipeline — not a user-facing verb. | `manifests/platform/presets.json` | `roborepo update` (applies them); `roborepo bundle …` is an internal verb called by `scripts/install/main.sh` |
 | Hooks | Scripts the harness runs on lifecycle/tool events. | Claude: `globals/claude/hooks/*.mjs` + `settings.json` wiring<br>Codex: `globals/codex/hooks.json` | edit source, then `roborepo update` |
@@ -72,6 +72,7 @@ roborepo skill new            # scaffold skill/command + update manifests, links
                               # (wraps native init_skill.py when present; roborepo template otherwise)
 roborepo skill adopt <name>   # move an out-of-band skill into version control
 roborepo skill sync-global    # refresh ~/.roborepo/skills and harness skill views
+roborepo skill inspect <name> # report ownership, native metadata, collisions, and harness state
 roborepo skill native         # show native harness plugin/skill entrypoints
 roborepo doctor --installed   # check that live harness links are current
 ```
@@ -173,6 +174,10 @@ baseline and the installer copies or merges it.
 allowed. The repo baselines (`globals/claude/settings.json`, `globals/codex/config.toml`) receive
 the generated permission blocks; everything else is local. (Why parity isn't the goal here:
 [explained.md Step 7](harnesses-explained.md#step-7--when-parity-isnt-the-goal-root-config).)
+
+Layered inheritance is designed but not implemented. The planned model keeps repo baselines,
+machine overlays, generated active root config, and project-local overrides as separate ownership
+layers; see [Root Config Layered Inheritance](../../plans/root-config-layered-inheritance.md).
 
 ## Preset bundles (`presets.json`)
 

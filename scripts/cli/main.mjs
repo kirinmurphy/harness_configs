@@ -7,11 +7,12 @@ import path from "node:path";
 import { selectMenu } from "./skill-lib.mjs";
 import { repoRoot } from "./paths.mjs";
 import { runRepoCommand } from "./repo-script-runner.mjs";
-import { skillLink, skillExport, skillAdopt, skillNative } from "./skills.mjs";
+import { skillLink, skillExport, skillAdopt, skillNative, skillInspect } from "./skills.mjs";
 import { skillNew } from "./skill-new.mjs";
+import { skillAudit } from "./skill-audit.mjs";
 import { indexCode, indexDocs, watchCode, runCmd } from "./index.mjs";
 import { mcpAdd, mcpApply } from "./mcp.mjs";
-import { projectContextInventory } from "./project-context.mjs";
+import { projectContextCheck, projectContextInventory } from "./project-context.mjs";
 import { maybeRunPresetOnboarding, presetsCommand } from "./presets.mjs";
 import { telemetryCommand, serveCommand } from "./telemetry.mjs";
 import { enablePackage, disablePackage } from "./packages.mjs";
@@ -53,6 +54,10 @@ async function interactiveMenu() {
     console.log("usage: roborepo skill adopt <name>");
     return;
   }
+  if (Array.isArray(choice) && choice.length === 2 && choice[0] === "skill" && choice[1] === "inspect") {
+    console.log("usage: roborepo skill inspect <name>");
+    return;
+  }
   await dispatch(choice);
 }
 
@@ -85,6 +90,8 @@ async function dispatch(args) {
         return runRepoCommand(cliCatalog.repoScripts["skill sync-global"], rest);
       }
       if (sub === "render-commands") return runRepoCommand(cliCatalog.repoScripts["skill render-commands"], rest);
+      if (sub === "audit") return skillAudit(rest);
+      if (sub === "inspect") return skillInspect(rest);
       if (sub === "native") return skillNative(rest);
       console.error(`unknown: roborepo skill ${sub ?? ""}`.trim());
       return usageError();
@@ -103,6 +110,7 @@ async function dispatch(args) {
 
     case "project-context":
       if (sub === "inventory") return projectContextInventory(rest);
+      if (sub === "check") return projectContextCheck(rest);
       console.error(`unknown: roborepo project-context ${sub ?? ""}`.trim());
       return usageError();
 

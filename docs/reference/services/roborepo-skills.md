@@ -14,6 +14,7 @@ management, plugin enable/disable state, updates, validation, or one-session plu
 | `roborepo skill new` | Scaffolds a shared automatic helper, skill-backed slash command, or standalone slash command. |
 | `roborepo skill adopt <name>` | Moves an unmanaged native skill from `~/.codex/skills` or `~/.claude/skills` into shared roborepo source. |
 | `roborepo skill sync-global` | Refreshes `~/.roborepo/skills` and the installed harness skill views from shared skill source. |
+| `roborepo skill inspect <name>` | Reports source, ownership, managed marker/cache state, native collision state, harness install state, frontmatter, context files, and native-only metadata. |
 | `roborepo skill export-to-project` | Copies shared skills into the current project and leaves a shareable zip bundle. |
 | `roborepo skill link-project` | Links project-owned `.codex/skills/<name>` into `.claude/skills/<name>` when Claude project config exists. |
 | `roborepo skill render-commands` | Renders generated slash command files from the command inventory. |
@@ -33,6 +34,26 @@ installed harness views to that cache entry:
 Project skills use the project as the boundary. Codex reads `.codex/skills/<name>` directly, and
 `roborepo skill link-project` links Claude's project skills to that source when `.claude` exists.
 This never touches global `~/.claude` or `~/.codex`.
+
+## Skill Inspection
+
+`roborepo skill inspect <name>` is read-only. It uses the same native-aware inventory model as the
+`/config` skill inspect popup, so CLI and portal reports agree.
+
+The report distinguishes:
+
+- roborepo-managed source at `globals/agents/skills/<name>`
+- managed cache entries under `~/.roborepo/skills/<name>` carrying `.roborepo-managed`
+- native or unmanaged real directories under `~/.claude/skills/<name>` or
+  `~/.codex/skills/<name>`
+- native collisions, where a roborepo-managed skill name is occupied by an unmanaged native skill
+  in one harness
+- native-only metadata files such as `agents/openai.yaml`, `agents/claude.yaml`, `plugin.json`,
+  `.codex-plugin/plugin.json`, and `skill.json`
+
+Inspection never adopts, deletes, rewrites, or flattens native metadata. Use it before deciding
+whether to edit native config, run `roborepo skill adopt <name>`, or refresh managed links with
+`roborepo skill sync-global`.
 
 ## Native Escape Hatch
 

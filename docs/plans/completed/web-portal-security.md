@@ -1,8 +1,8 @@
 # Web Portal Security
 
-> Status: planned. This documents the security model for the local `/config` portal
-> and the web portal server, including port selection, local-only access,
-> markdown rendering, and mutation endpoints.
+> Status: completed. The local portal security baseline shipped: loopback binding,
+> strict/fallback port behavior, whitelisted source reads, escaped markdown rendering,
+> and narrow JSON mutation endpoints.
 
 ## Purpose
 

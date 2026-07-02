@@ -155,7 +155,7 @@ Implication: no automatic merge. The agent/user compares both sides and applies 
 
 ### Future layered model
 
-Desired but not implemented:
+Designed but not implemented:
 
 ```text
 repo baseline
@@ -165,7 +165,9 @@ user global config overlay
 local repo context
 ```
 
-This needs either native harness include support or a generated/merged config pipeline. Track this in [../../plans/harness-parity-todo.md](../../plans/harness-parity-todo.md).
+The current design uses a generated active root config plus a user-owned machine overlay when native
+include/import support is unavailable. Track the implementation plan in
+[../../plans/root-config-layered-inheritance.md](../../plans/root-config-layered-inheritance.md).
 
 ### Shared skills: canonical source + machine-local cache
 
@@ -210,6 +212,8 @@ list). For the dual-harness skill model it offers:
   skill source, then links those skills into `.claude/skills` when a Claude project root exists.
   Interactive runs ask before creating a missing Claude root; noninteractive runs do not create
   missing agent roots.
+- `skill inspect <name>`: reports source ownership, managed cache state, native collisions,
+  native-only metadata, and per-harness install state without changing files.
 - `skill native`: points users to native Claude/Codex plugin commands for harness-specific actions
   instead of wrapping those commands.
 

@@ -1,6 +1,10 @@
 # Native Skill Tools Boundary
 
-> Status: planned. This records the product boundary for roborepo's skill tooling:
+> Status: active. The first read-only inventory pass has shipped: `roborepo skill inspect <name>`
+> and the `/config` skill popup now share a native-aware inventory model. Remaining work covers
+> doctor metadata reporting, adoption reporting, and optional managed-skill pinning.
+>
+> This records the product boundary for roborepo's skill tooling:
 > preserve native Claude/Codex capability, and only abstract the parts where roborepo adds
 > cross-harness parity, install safety, or version-controlled portability.
 
@@ -28,8 +32,12 @@ Roborepo currently provides these skill-management flows:
 - `roborepo skill export-to-project` copies shared skills into a target repo and creates a
   shareable zip.
 - `roborepo skill link-project` links repo-local skills into harness locations.
+- `roborepo skill inspect <name>` reports source, ownership, managed cache state, native collisions,
+  native-only metadata, frontmatter, context files, and per-harness install state without changing
+  files.
 - `roborepo doctor --installed` verifies managed cache entries and harness links.
-- The `/config` portal shows enabled skills and can inspect full skill source.
+- The `/config` portal shows enabled skills and uses the same inventory model for skill source
+  inspection.
 
 The shared source of truth is `globals/agents/skills/<name>/`. Install/update materializes
 enabled skills into `~/.roborepo/skills/<name>` and links harness views to that managed cache.
@@ -164,17 +172,17 @@ user explicitly brings that skill under roborepo ownership.
 
 ## Implementation Checklist
 
-1. Audit current Claude and Codex native skill discovery paths, because native documentation and
+1. [x] Audit current Claude and Codex native skill discovery paths, because native documentation and
    current roborepo docs may not agree.
-2. Define a read-only skill inventory model that can represent managed, unmanaged, native,
+2. [x] Define a read-only skill inventory model that can represent managed, unmanaged, native,
    plugin-provided, and bundled skills.
-3. Add `roborepo skill inspect <name>` on top of that inventory model.
-4. Update the `/config` skill popup to use the same inventory model.
+3. [x] Add `roborepo skill inspect <name>` on top of that inventory model.
+4. [x] Update the `/config` skill popup to use the same inventory model.
 5. Extend `doctor --installed` to report unmanaged/native skill metadata without treating it as
    failure.
 6. Make `skill adopt` print a native-feature report after copying files.
 7. Add optional managed-skill pin metadata for roborepo-owned cache entries.
-8. Update reference docs after the read model and portal behavior settle.
+8. [x] Update reference docs for the read model and portal behavior.
 
 ## Open Decisions
 

@@ -33,7 +33,8 @@ Checks for the `docs/.jdm-indexed` marker in the current repo. If `docs/` exists
 but the marker is absent, injects a reminder to run `roborepo index docs docs/`.
 If the marker is present, confirms docs are indexed. The marker is written by
 `roborepo index docs` after a successful run and is excluded from git via the
-global gitignore.
+global gitignore. That command is package-owned; enable `jdocmunch` first if the
+CLI reports that no owning package is enabled.
 
 This is the one hook duplicated near-identically on both harnesses — only the
 output protocol differs (JSON `systemMessage` here, plain text on Codex).
@@ -67,7 +68,9 @@ the pid is alive. Injects a system message telling the model either:
 
 Also reminds the model to use jcodemunch tools (`resolve_repo`, `search_symbols`,
 etc.) for code exploration instead of `Grep`/`Read`. (Codex has no equivalent
-session hook; it relies on its rules file.)
+session hook; it relies on its rules file.) The `index code` and `watch code`
+commands are package-owned; enable `jcodemunch` first if the CLI reports that no
+owning package is enabled.
 
 ### Block Grep/Glob — PreToolUse: Grep|Glob
 

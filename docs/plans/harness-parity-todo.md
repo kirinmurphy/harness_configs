@@ -13,9 +13,8 @@ backlog reads honestly.
 
 - **Per-repo skill installer — DONE.** Exposed as `roborepo skill link-project`
   (`scripts/cli/skills.mjs::skillLink` → `linkLocalSkills` in `skill-lib.mjs`).
-  Symlinks a target repo's `.agents/skills` into its `.claude/skills` and/or
-  `.codex/skills` without losing global skill parity. (Originally listed under the
-  stale name `skill symlink-local`.)
+  Links a target repo's `.codex/skills` into `.claude/skills` without losing global
+  skill parity. (Originally listed under the stale name `skill symlink-local`.)
 - **Skill / plugin / MCP / memory native alignment — DONE** (see
   [`native-alignment.md`](completed/native-alignment.md)).
   Skills now use each harness's native dir (`~/.claude/skills`, `~/.codex/skills`)
@@ -48,12 +47,19 @@ backlog reads honestly.
 
 ### Recommended Next Pick
 
-Start with **layered root-config inheritance** if the next work should reduce install/update
-collisions and make machine-local config safer. Start with
-[`skills-vs-commands-invocation-policy.md`](skills-vs-commands-invocation-policy.md) if the next work
-should improve agent behavior predictability with smaller, testable pieces.
+For immediate product value, start with
+[`package-registry-live-state-reconciliation.md`](package-registry-live-state-reconciliation.md):
+it resolves the portal's ambiguous enabled/installed/partial states across rules,
+plugins, services, skills, MCP, and permissions.
 
-### 1. Layered root-config inheritance (high priority — not yet started)
+Within parity-specific work, start with **layered root-config inheritance** if the
+next work should reduce install/update collisions and make machine-local config
+safer. Start with
+[`skills-vs-commands-invocation-policy.md`](skills-vs-commands-invocation-policy.md)
+if the next work should improve agent behavior predictability with smaller,
+testable pieces.
+
+### 1. Layered root-config inheritance (high priority — design drafted, implementation not started)
 
 The largest remaining parity gap. Native-alignment aligned the *runtime stores*
 (skills, MCP, plugins, memory); it did **not** touch how `~/.claude/settings.json`
@@ -74,6 +80,9 @@ and `~/.codex/config.toml` themselves are layered.
 - **Relationship to other plans:** this is the inheritance layer *underneath*
   [`completed/package-gated-install.md`](completed/package-gated-install.md); that plan owns the copy/render
   materialization mechanics, this item owns whether config can layer at all.
+- **Current design:** [`root-config-layered-inheritance.md`](root-config-layered-inheritance.md)
+  defines the baseline / machine overlay / generated active root config / project-local override
+  model, plus `update`, `repair`, `uninstall`, and `onConflict` behavior. Implementation remains open.
 
 ### 2. Local-vs-global override policy (open decision)
 

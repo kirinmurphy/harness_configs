@@ -1,5 +1,9 @@
 # Primary Todo
 
+> Status: completed / retired. The root managed-block work, live `/config` behavior,
+> and shared-skill cache/symlink model shipped. Remaining work moved to the dedicated
+> active plans.
+
 ## Purpose
 
 This is the short, current queue for the next roborepo work. It pulls together

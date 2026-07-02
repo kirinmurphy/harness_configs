@@ -26,7 +26,7 @@ This policy answers three user-facing questions:
 | Shared skills   | `globals/agents/skills/<name>/`, copied into installed harness skill dirs when enabled (`~/.claude/skills/<name>`, `~/.codex/skills/<name>`) | Auto-invokable and command-invokable when the harness supports it |
 | Slash commands  | `globals/claude/commands/<name>.md`                                                                                                                 | Manual `/name` only                                               |
 | Hooks           | `globals/claude/hooks/` + `settings.json`; `globals/codex/hooks.json`                                                                               | Deterministic harness-executed behavior                           |
-| Per-repo skills | client repo `.agents/skills/<name>/` via `roborepo skill link-project`                                                                              | Same risk model as global skills, scoped to that repo             |
+| Per-repo skills | client repo `.codex/skills/<name>/` linked into `.claude/skills/<name>` via `roborepo skill link-project`                                          | Same risk model as global skills, scoped to that repo             |
 
 Current shared skills include `blog`, `code-style`, `frontend-design`,
 `javascript-typescript`, `react`, `roborepo-support`,
@@ -333,7 +333,7 @@ Policy:
 
 - Avoid dynamic shell context in skills unless the skill is fully trusted and the
   shell call is genuinely needed.
-- Treat per-repo `.agents/skills/` installed from cloned repos as less trusted.
+- Treat per-repo `.codex/skills/` linked from cloned repos as less trusted.
 - Prefer hooks over skills when behavior should be deterministic.
 - Put commit, deploy, handoff, and other side-effecting workflows behind manual
   commands or deterministic hooks.
@@ -365,17 +365,16 @@ read-only skills lightweight.
   Claude and Codex slash-command files.
 - **`docs/reference/internal/skill-invocation-audit.md`** — shipped as a hand-authored baseline
   audit for current shared skills.
+- **`roborepo skill audit [--check]`** — shipped as the automated renderer/checker for the shared
+  skill invocation audit.
 
 ### Remaining
 
 Do these before making more behavior changes:
 
-1. Add an automated skill audit command that regenerates
-   `docs/reference/internal/skill-invocation-audit.md` from actual skill files and flags dynamic
-   shell, broad tool grants, missing harness metadata, and unknown skills.
-2. Add trigger tests for expected matches and near misses, starting with medium-risk skills:
+1. Add trigger tests for expected matches and near misses, starting with medium-risk skills:
    `blog`, `frontend-design`, and `technical-planning-docs`.
-3. Add a checker that validates generated command outputs and any manual-only policy against
+2. Add a checker that validates generated command outputs and any manual-only policy against
    `skill-invocation.json`.
 
 This gives the repo a control plane before converting more skills to commands or
@@ -427,7 +426,7 @@ itself.
 - `docs/reference/internal/skill-invocation-audit.md` records the current shared
   skill inventory, risk tiers, and recommended next actions.
 - `roborepo skill link-project` (`scripts/cli/skills.mjs`) installs client-repo
-  `.agents/skills/`, which need the same audit policy.
+  `.codex/skills/` into Claude project skill views, which need the same audit policy.
 - `scripts/build/skill-lib.sh` and `scripts/cli/skill-lib.mjs` already define
   reusable skill discovery and linking rules that a command-wrapper renderer
   should share.

@@ -21,7 +21,7 @@ the user's live harness config, some in repo manifests, some in roborepo state.
 | --- | --- | --- |
 | **Package** | A named feature made of typed components | `manifests/inventory/packages.json` (catalog); live config (enabled state) |
 | **Component** | One typed unit of a package's install | the package definition |
-| **Skill** | A shared skill, materialized into a machine-local cache and linked from harness skill dirs | `globals/agents/skills/<name>` (source); `~/.roborepo/skills/<name>` (enabled state) |
+| **Skill** | A shared or native skill, inspected without flattening harness-specific metadata | `globals/agents/skills/<name>` (managed source); `~/.roborepo/skills/<name>` (managed cache); `~/.claude/skills/<name>` and `~/.codex/skills/<name>` (harness install state) |
 | **Permission profile** | A named safety posture (readonly / interactive / workspace / networked) | `manifests/inventory/agent-permissions.json` (definitions); live config (active) |
 | **Snapshot** | The assembled current state the UI renders | computed by `readConfigSnapshot()` |
 
@@ -86,6 +86,15 @@ panel renders:
 `readConfigSnapshot()` assembles a JSON snapshot from the live harness config, the
 package catalog, skill manifests, the permission manifest, and roborepo state files.
 `GET /api/config` returns it; both the web view and the terminal flow render from it.
+
+Package rows include `status`, `desired`, and `componentStatus` so the panel can distinguish
+enabled, disabled, partial, external, and blocked package state without treating every observed
+component as an enabled package.
+
+Skill rows include a native-aware `inventory` object from `scripts/cli/skill-inventory.mjs`.
+The skill source popup uses that same inventory, so it can show ownership, managed cache state,
+native collision state, native-only metadata files, and per-harness install state before the skill
+body and bundled context files.
 
 ### Writing state
 
@@ -152,14 +161,17 @@ identify the profile.
   entry and the `enabledPlugins` bool, but the harness performs the actual download on
   its next launch. A freshly enabled plugin shows as enabled before it is installed.
 - **Native skill collision.** If a real (native-installed) skill directory already
-  occupies a skill name, the skill toggle skips it rather than overwriting.
+  occupies a skill name, the skill toggle skips it rather than overwriting. The inspect popup
+  reports the collision and preserves native-only metadata such as `agents/openai.yaml`.
 - **Missing harness home.** Global-scope profile writes only target harness homes that
   already exist; project scope creates `<cwd>/.claude` on demand.
 
 ## Key Files
 
 - `scripts/cli/config.mjs` — `readConfigSnapshot()`, `buildBehaviorView()`,
-  `isPackageEnabled()`.
+  source-popup rendering.
+- `scripts/cli/skill-inventory.mjs` — shared read-only skill inventory for the CLI and portal.
+- `scripts/cli/package-probes.mjs` — read-only package live-state reconciliation.
 - `scripts/cli/config-mutate.mjs` — the shared mutate primitives.
 - `scripts/cli/packages.mjs` — `enablePackage` / `disablePackage` and the component
   switch (including `requires` resolution).

@@ -1,7 +1,6 @@
 # Rules Content Audit And Config Display Simplification
 
-> Status: planned. This records the current rules-content audit and the next portal
-> simplification step for `/config`.
+> Status: completed. The rules audit cleanup and `/config` live-rules display shipped.
 
 ## Purpose
 

@@ -169,6 +169,21 @@ assert "skill sync-global: Claude skill cache link created" \
   assert_skill_cache_link "${sync_home}" "claude" "blog" "${repo_root}/globals/agents/skills/blog" "skill sync-global: Claude skill cache link created"
 assert "skill sync-global: Codex skill cache link created" \
   assert_skill_cache_link "${sync_home}" "codex" "blog" "${repo_root}/globals/agents/skills/blog" "skill sync-global: Codex skill cache link created"
+assert "skill inspect: reports managed source and harness state" \
+  bash -c "HOME='${sync_home}' ROBOREPO_STATE_DIR='${sync_home}/.roborepo' node '${cli}' skill inspect blog >'${work}/inspect-managed.out' && grep -q 'ownership: managed' '${work}/inspect-managed.out' && grep -q 'claude: managed' '${work}/inspect-managed.out' && grep -q 'codex: managed' '${work}/inspect-managed.out'"
+mkdir -p "${sync_home}/.claude/skills/native-only/agents"
+printf -- '---\nname: native-only\ndescription: native-only skill\n---\n' > "${sync_home}/.claude/skills/native-only/SKILL.md"
+printf 'model: test\n' > "${sync_home}/.claude/skills/native-only/agents/openai.yaml"
+assert "skill inspect: reports native-only unmanaged metadata" \
+  bash -c "HOME='${sync_home}' ROBOREPO_STATE_DIR='${sync_home}/.roborepo' node '${cli}' skill inspect native-only >'${work}/inspect-native.out' && grep -q 'ownership: unmanaged' '${work}/inspect-native.out' && grep -q 'claude: unmanaged' '${work}/inspect-native.out' && grep -q 'native metadata: agents/openai.yaml' '${work}/inspect-native.out'"
+rm "${sync_home}/.claude/skills/blog"
+mkdir -p "${sync_home}/.claude/skills/blog/agents"
+printf -- '---\nname: blog\ndescription: local collision\n---\n' > "${sync_home}/.claude/skills/blog/SKILL.md"
+printf 'model: collision\n' > "${sync_home}/.claude/skills/blog/agents/openai.yaml"
+assert "skill inspect: reports native collision without flattening metadata" \
+  bash -c "HOME='${sync_home}' ROBOREPO_STATE_DIR='${sync_home}/.roborepo' node '${cli}' skill inspect blog >'${work}/inspect-collision.out' && grep -q 'native collision: claude' '${work}/inspect-collision.out' && grep -q 'claude: unmanaged' '${work}/inspect-collision.out' && grep -q 'native metadata: agents/openai.yaml' '${work}/inspect-collision.out'"
+assert "skill inspect: unknown skill exits non-zero" \
+  bash -c "! env HOME='${sync_home}' ROBOREPO_STATE_DIR='${sync_home}/.roborepo' node '${cli}' skill inspect does-not-exist >/dev/null 2>&1"
 assert "skill sync: removed alias rejected" \
   bash -c "cd '${repo_root}' && ! node '${cli}' skill sync --check >/dev/null 2>&1"
 assert "skill link-global: removed alias rejected" \
@@ -212,6 +227,8 @@ assert "skill render-commands: capture observer absent from Codex commands" \
   bash -c "! test -e '${repo_root}/globals/codex/commands/capture-convention.md'"
 assert "skill render-commands: implicit helper did not get command wrapper" \
   bash -c "! test -e '${repo_root}/globals/claude/commands/javascript-typescript.md'"
+assert "skill audit: generated audit is current" \
+  bash -c "cd '${repo_root}' && node '${cli}' skill audit --check >/dev/null"
 
 # skill new: scaffold shared skills/commands against a throwaway harness root, never this repo.
 new_harness="${work}/new-harness"
@@ -349,6 +366,24 @@ assert "run: no command exits non-zero" \
   bash -c "! node '${cli}' run >/dev/null 2>&1"
 
 # ---------------------------------------------------------------------------
+# roborepo project-context
+# ---------------------------------------------------------------------------
+pc_repo="${work}/project-context"
+mkdir -p "${pc_repo}/src" "${pc_repo}/docs/project-context"
+printf '{"name":"pc-demo","scripts":{"test":"node --test"}}\n' > "${pc_repo}/package.json"
+printf 'export function demo() { return true; }\n' > "${pc_repo}/src/demo.js"
+printf '# Project Context\n' > "${pc_repo}/docs/project-context/README.md"
+printf '# Glossary\n' > "${pc_repo}/docs/project-context/glossary.md"
+printf '# Inventory\n' > "${pc_repo}/docs/project-context/inventory.md"
+assert "project-context inventory: writes generated facts and summary" \
+  bash -c "cd '${pc_repo}' && node '${cli}' project-context inventory . --summary >/dev/null && test -f docs/project-context/generated/repo-scan.json && test -f docs/project-context/generated/repo-summary.md"
+assert "project-context check: validates generated facts and curated docs" \
+  bash -c "cd '${pc_repo}' && node '${cli}' project-context check . >/dev/null"
+printf '{"schemaVersion":999}\n' > "${pc_repo}/docs/project-context/generated/repo-scan.json"
+assert "project-context check: fails stale generated schema" \
+  bash -c "cd '${pc_repo}' && ! node '${cli}' project-context check . >/dev/null 2>&1"
+
+# ---------------------------------------------------------------------------
 # roborepo bundles / telemetry
 # ---------------------------------------------------------------------------
 presets_home="${work}/presets-home"
@@ -394,6 +429,8 @@ assert "config: Claude rules use managed inline block" \
   bash -c "grep -q 'BEGIN managed:roborepo-code-style' '${cfg_home}/.claude/CLAUDE.md' && grep -q 'Generated Harness Rules' '${cfg_home}/.claude/CLAUDE.md'"
 assert "config: Claude rules no longer use managed import block" \
   bash -c "! grep -q 'BEGIN managed:roborepo-agents-import' '${cfg_home}/.claude/CLAUDE.md' && ! test -e '${cfg_home}/.roborepo/rules/generated-rules.md'"
+assert "config: package snapshot includes runtime status and component status" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='jcodemunch');process.exit(p?.enabled===true&&p?.status==='partial'&&Array.isArray(p.componentStatus)&&p.componentStatus.some(x=>x.type==='mcp'&&x.state==='missing')?0:1)})\""
 bash -c "${cfg_env} node '${cli}' disable jcodemunch >/dev/null 2>&1" || true
 assert "config: disable removes package permissions" \
   bash -c "[ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" = 0 ]"
@@ -493,7 +530,7 @@ assert "config: pending package enable rejected without experimental flag" \
 assert "config: experimental enable exposes pending packages" \
   bash -c "${cfg_env} node '${cli}' experimental enable >/dev/null && [ \"\$(${cfg_env} node '${cli}' experimental status)\" = enabled ]"
 assert "config: pending /inventory package visible with experimental flag" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const inv=s.behaviorView.find(x=>x.category==='Commands').items.find(x=>x.label==='/inventory');const pkg=s.packages.find(x=>x.id==='project-context');process.exit(inv&&inv.id==='project-context'&&inv.toggle==='package'&&inv.badges.includes('pending')&&pkg?.status==='pending'?0:1)})\""
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const inv=s.behaviorView.find(x=>x.category==='Commands').items.find(x=>x.label==='/inventory');const pkg=s.packages.find(x=>x.id==='project-context');process.exit(inv&&inv.id==='project-context'&&inv.toggle==='package'&&inv.badges.includes('pending')&&pkg?.catalogStatus==='pending'?0:1)})\""
 bash -c "${cfg_env} node '${cli}' enable project-context >/dev/null 2>&1" || true
 assert "config: enabling pending project-context links the command skill when experimental" \
   assert_skill_cache_link "${cfg_home}" "codex" "project-context" "${repo_root}/globals/agents/skills/project-context" "config: project-context skill cache link created"

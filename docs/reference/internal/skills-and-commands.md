@@ -86,7 +86,7 @@ Use a skill-backed command when:
 
 Current generated examples:
 
-- `/blog` -> `blog`
+- `/case-study` -> `case-study`
 - `/frontend-design` -> `frontend-design`
 - `/technical-planning` -> `technical-planning-docs`
 - `/inventory` -> `project-context`

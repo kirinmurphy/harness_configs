@@ -19,7 +19,7 @@ the matching step in [the teaching doc](harnesses-explained.md).
 | --- | --- | --- | --- |
 | Global rules | The always-on instruction file each harness reads at startup. | Claude: `globals/claude/CLAUDE.md` (generated)<br>Codex: `globals/codex/AGENTS.md` (generated) | `roborepo rules [--check]` |
 | Skills | On-demand capability/instruction bundles the agent loads when relevant. | `globals/agents/skills/<name>/SKILL.md` — materialized into `~/.roborepo/skills/<name>` and linked from harness skill dirs | `roborepo skill new`, `roborepo skill adopt <name>`, `roborepo skill inspect <name>`, `roborepo skill sync-global` |
-| Slash commands | Named workflows the user starts explicitly (`/blog`, etc.). | Claude: `globals/claude/commands/` (generated)<br>Codex: `globals/codex/commands/` (generated) | `roborepo skill render-commands [--check]` |
+| Slash commands | Named workflows the user starts explicitly (`/case-study`, etc.). | Claude: `globals/claude/commands/` (generated)<br>Codex: `globals/codex/commands/` (generated) | `roborepo skill render-commands [--check]` |
 | Install bundles | Named groups of install-time file operations applied at install/update. Internal to the install pipeline — not a user-facing verb. | `manifests/platform/presets.json` | `roborepo update` (applies them); `roborepo bundle …` is an internal verb called by `scripts/install/main.sh` |
 | Hooks | Scripts the harness runs on lifecycle/tool events. | Claude: `globals/claude/hooks/*.mjs` + `settings.json` wiring<br>Codex: `globals/codex/hooks.json` | edit source, then `roborepo update` |
 | MCP servers | External tool servers (jcodemunch, jdocmunch, …) registered with both harnesses. | Claude: `~/.claude` registration<br>Codex: `~/.codex` registration | `roborepo mcp add <name-or-url>` |
@@ -89,7 +89,7 @@ written continuously at runtime. roborepo does not manage, sync, or carry memory
 
 ## Slash commands
 
-**What they do:** named workflows the user starts on purpose (`/blog`, `/frontend-design`,
+**What they do:** named workflows the user starts on purpose (`/case-study`, `/frontend-design`,
 `/technical-planning`, `/inventory`, `/tighten`).
 
 **Parity model:** authored once in `manifests/inventory/slash-commands.json`, stamped into both

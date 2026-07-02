@@ -166,22 +166,22 @@ mkdir -p "${sync_home}/.claude" "${sync_home}/.codex"
 assert "skill sync-global: refreshes cache and harness links" \
   bash -c "cd '${repo_root}' && HOME='${sync_home}' ROBOREPO_STATE_DIR='${sync_home}/.roborepo' node '${cli}' skill sync-global >/dev/null"
 assert "skill sync-global: Claude skill cache link created" \
-  assert_skill_cache_link "${sync_home}" "claude" "blog" "${repo_root}/globals/agents/skills/blog" "skill sync-global: Claude skill cache link created"
+  assert_skill_cache_link "${sync_home}" "claude" "case-study" "${repo_root}/globals/agents/skills/case-study" "skill sync-global: Claude skill cache link created"
 assert "skill sync-global: Codex skill cache link created" \
-  assert_skill_cache_link "${sync_home}" "codex" "blog" "${repo_root}/globals/agents/skills/blog" "skill sync-global: Codex skill cache link created"
+  assert_skill_cache_link "${sync_home}" "codex" "case-study" "${repo_root}/globals/agents/skills/case-study" "skill sync-global: Codex skill cache link created"
 assert "skill inspect: reports managed source and harness state" \
-  bash -c "HOME='${sync_home}' ROBOREPO_STATE_DIR='${sync_home}/.roborepo' node '${cli}' skill inspect blog >'${work}/inspect-managed.out' && grep -q 'ownership: managed' '${work}/inspect-managed.out' && grep -q 'claude: managed' '${work}/inspect-managed.out' && grep -q 'codex: managed' '${work}/inspect-managed.out'"
+  bash -c "HOME='${sync_home}' ROBOREPO_STATE_DIR='${sync_home}/.roborepo' node '${cli}' skill inspect case-study >'${work}/inspect-managed.out' && grep -q 'ownership: managed' '${work}/inspect-managed.out' && grep -q 'claude: managed' '${work}/inspect-managed.out' && grep -q 'codex: managed' '${work}/inspect-managed.out'"
 mkdir -p "${sync_home}/.claude/skills/native-only/agents"
 printf -- '---\nname: native-only\ndescription: native-only skill\n---\n' > "${sync_home}/.claude/skills/native-only/SKILL.md"
 printf 'model: test\n' > "${sync_home}/.claude/skills/native-only/agents/openai.yaml"
 assert "skill inspect: reports native-only unmanaged metadata" \
   bash -c "HOME='${sync_home}' ROBOREPO_STATE_DIR='${sync_home}/.roborepo' node '${cli}' skill inspect native-only >'${work}/inspect-native.out' && grep -q 'ownership: unmanaged' '${work}/inspect-native.out' && grep -q 'claude: unmanaged' '${work}/inspect-native.out' && grep -q 'native metadata: agents/openai.yaml' '${work}/inspect-native.out'"
-rm "${sync_home}/.claude/skills/blog"
-mkdir -p "${sync_home}/.claude/skills/blog/agents"
-printf -- '---\nname: blog\ndescription: local collision\n---\n' > "${sync_home}/.claude/skills/blog/SKILL.md"
-printf 'model: collision\n' > "${sync_home}/.claude/skills/blog/agents/openai.yaml"
+rm "${sync_home}/.claude/skills/case-study"
+mkdir -p "${sync_home}/.claude/skills/case-study/agents"
+printf -- '---\nname: case-study\ndescription: local collision\n---\n' > "${sync_home}/.claude/skills/case-study/SKILL.md"
+printf 'model: collision\n' > "${sync_home}/.claude/skills/case-study/agents/openai.yaml"
 assert "skill inspect: reports native collision without flattening metadata" \
-  bash -c "HOME='${sync_home}' ROBOREPO_STATE_DIR='${sync_home}/.roborepo' node '${cli}' skill inspect blog >'${work}/inspect-collision.out' && grep -q 'native collision: claude' '${work}/inspect-collision.out' && grep -q 'claude: unmanaged' '${work}/inspect-collision.out' && grep -q 'native metadata: agents/openai.yaml' '${work}/inspect-collision.out'"
+  bash -c "HOME='${sync_home}' ROBOREPO_STATE_DIR='${sync_home}/.roborepo' node '${cli}' skill inspect case-study >'${work}/inspect-collision.out' && grep -q 'native collision: claude' '${work}/inspect-collision.out' && grep -q 'claude: unmanaged' '${work}/inspect-collision.out' && grep -q 'native metadata: agents/openai.yaml' '${work}/inspect-collision.out'"
 assert "skill inspect: unknown skill exits non-zero" \
   bash -c "! env HOME='${sync_home}' ROBOREPO_STATE_DIR='${sync_home}/.roborepo' node '${cli}' skill inspect does-not-exist >/dev/null 2>&1"
 assert "skill sync: removed alias rejected" \
@@ -509,16 +509,16 @@ assert "config: disable service package clears telemetry state" \
 # Skill component: a package whose payload is a shared-skill copy. Enable copies it into both harness
 # skill dirs via the machine-local cache; disable removes the owned cache entry and views. Reuses
 # the same skill materializer as the Code Conventions toggles.
-bash -c "${cfg_env} node '${cli}' enable blog-pack >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' enable case-study-pack >/dev/null 2>&1" || true
 assert "config: enabling a skill-component package links the Claude view" \
-  assert_skill_cache_link "${cfg_home}" "claude" "blog" "${repo_root}/globals/agents/skills/blog" "config: Claude skill cache link created"
+  assert_skill_cache_link "${cfg_home}" "claude" "case-study" "${repo_root}/globals/agents/skills/case-study" "config: Claude skill cache link created"
 assert "config: enabling a skill-component package links the Codex view" \
-  assert_skill_cache_link "${cfg_home}" "codex" "blog" "${repo_root}/globals/agents/skills/blog" "config: Codex skill cache link created"
+  assert_skill_cache_link "${cfg_home}" "codex" "case-study" "${repo_root}/globals/agents/skills/case-study" "config: Codex skill cache link created"
 assert "config: skill-component package reports enabled" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{process.exit(c.readConfigSnapshot().packages.find(p=>p.id==='blog-pack')?.enabled?0:1)})\""
-bash -c "${cfg_env} node '${cli}' disable blog-pack >/dev/null 2>&1" || true
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{process.exit(c.readConfigSnapshot().packages.find(p=>p.id==='case-study-pack')?.enabled?0:1)})\""
+bash -c "${cfg_env} node '${cli}' disable case-study-pack >/dev/null 2>&1" || true
 assert "config: disabling a skill-component package removes the skill links" \
-  bash -c "! test -e '${cfg_home}/.claude/skills/blog' && ! test -e '${cfg_home}/.codex/skills/blog' && ! test -e '${cfg_home}/.roborepo/skills/blog'"
+  bash -c "! test -e '${cfg_home}/.claude/skills/case-study' && ! test -e '${cfg_home}/.codex/skills/case-study' && ! test -e '${cfg_home}/.roborepo/skills/case-study'"
 
 # /inventory is a pending package-owned command: default config hides it, and the CLI refuses
 # mutation until the hidden experimental switch is enabled. Once enabled, toggling it controls both
@@ -1031,9 +1031,9 @@ HOME="${rp_home}" ROBOREPO_STATE_DIR="${rp_state}" \
 assert "repair: bin link healed to new checkout" \
   bash -c "test \"\$(readlink '${rp_home}/.local/bin/roborepo')\" = '${rp_new}/bin/roborepo'"
 assert "repair: base Claude support skill cache link created after repair" \
-  bash -c "test -L '${rp_home}/.claude/skills/roborepo-support' && test \"\$(readlink '${rp_home}/.claude/skills/roborepo-support')\" = '${rp_home}/.roborepo/skills/roborepo-support' && test -d '${rp_home}/.roborepo/skills/roborepo-support' && test -e '${rp_home}/.roborepo/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/roborepo-support' '${rp_home}/.roborepo/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${rp_home}/.claude/skills/blog'"
+  bash -c "test -L '${rp_home}/.claude/skills/roborepo-support' && test \"\$(readlink '${rp_home}/.claude/skills/roborepo-support')\" = '${rp_home}/.roborepo/skills/roborepo-support' && test -d '${rp_home}/.roborepo/skills/roborepo-support' && test -e '${rp_home}/.roborepo/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/roborepo-support' '${rp_home}/.roborepo/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${rp_home}/.claude/skills/case-study'"
 assert "repair: base Codex support skill cache link created after repair" \
-  bash -c "test -L '${rp_home}/.codex/skills/roborepo-support' && test \"\$(readlink '${rp_home}/.codex/skills/roborepo-support')\" = '${rp_home}/.roborepo/skills/roborepo-support' && test -d '${rp_home}/.roborepo/skills/roborepo-support' && test -e '${rp_home}/.roborepo/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/roborepo-support' '${rp_home}/.roborepo/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${rp_home}/.codex/skills/blog'"
+  bash -c "test -L '${rp_home}/.codex/skills/roborepo-support' && test \"\$(readlink '${rp_home}/.codex/skills/roborepo-support')\" = '${rp_home}/.roborepo/skills/roborepo-support' && test -d '${rp_home}/.roborepo/skills/roborepo-support' && test -e '${rp_home}/.roborepo/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${rp_new}/globals/agents/skills/roborepo-support' '${rp_home}/.roborepo/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${rp_home}/.codex/skills/case-study'"
 assert "repair: install state records the new checkout path" \
   grep -q "\"repo\": \"${rp_new}\"" "${rp_state}/install-state.json"
 # Idempotent: a second repair reclaims nothing (everything already points at the new checkout).
@@ -1085,7 +1085,7 @@ HOME="${la_home}" ROBOREPO_STATE_DIR="${la_home}/.roborepo" ROBOREPO_ASSUME_INTE
 assert "legacy: managed ~/.agents/skills link removed after install" \
   bash -c "! test -L '${la_home}/.agents/skills'"
 assert "legacy: base Codex support skill cache link created in place of the legacy dir link" \
-  bash -c "test -d '${la_home}/.codex/skills/roborepo-support' && test -e '${la_home}/.codex/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${repo_root}/globals/agents/skills/roborepo-support' '${la_home}/.codex/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${la_home}/.codex/skills/blog'"
+  bash -c "test -d '${la_home}/.codex/skills/roborepo-support' && test -e '${la_home}/.codex/skills/roborepo-support/.roborepo-managed' && diff -rq -x .roborepo-managed '${repo_root}/globals/agents/skills/roborepo-support' '${la_home}/.codex/skills/roborepo-support' >/dev/null 2>&1 && ! test -e '${la_home}/.codex/skills/case-study'"
 
 # A user's real ~/.agents/skills (not a managed symlink) must be left untouched.
 lu_home="${reloc_root}/legacy-agents-userdir/home"

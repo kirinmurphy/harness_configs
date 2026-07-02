@@ -66,7 +66,7 @@ toggleable means moving them from the always-on fragment path onto a reversible 
 - **Workflows** — skills that have a paired slash command, filtered as
   `snap.tools.filter((t) => t.command ...)`. Each item shows `badges: ["skill", "/<cmd>"]`
   and toggles via the skill link. This is where the five commands
-  (`blog`, `frontend-design`, `technical-planning`, `inventory`, `tighten`) surface today —
+  (`case-study`, `frontend-design`, `technical-planning`, `inventory`, `tighten`) surface today —
   framed as skills that happen to carry a command.
 - **Code Conventions** — auto-loaded skills with no command
   (`snap.tools.filter((t) => !t.command ...)`).

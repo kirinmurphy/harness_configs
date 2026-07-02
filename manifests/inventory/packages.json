@@ -84,11 +84,11 @@
     }
     ,
     {
-      "id": "blog-pack",
-      "label": "Blog skill",
-      "description": "Bundles the blog skill via a skill component — demonstrates a package whose payload is a shared skill link.",
+      "id": "case-study-pack",
+      "label": "Case study skill",
+      "description": "Bundles the case-study skill via a skill component — demonstrates a package whose payload is a shared skill link.",
       "components": [
-        { "type": "skill", "id": "blog" }
+        { "type": "skill", "id": "case-study" }
       ]
     }
     ,

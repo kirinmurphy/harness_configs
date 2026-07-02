@@ -1,7 +1,7 @@
 {
   "skills": [
     {
-      "skill": "blog",
+      "skill": "case-study",
       "risk": "medium",
       "invocation": "auto",
       "explicit_command": true,

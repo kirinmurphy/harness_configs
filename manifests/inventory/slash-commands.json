@@ -1,10 +1,10 @@
 {
   "commands": [
     {
-      "name": "blog",
+      "name": "case-study",
       "kind": "skill-backed",
-      "description": "Write a long-form architecture blog post about a real design decision.",
-      "skill": "blog",
+      "description": "Write a long-form architecture case study about a real design decision.",
+      "skill": "case-study",
       "harnesses": ["claude", "codex"]
     },
     {

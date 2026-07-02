@@ -253,7 +253,7 @@ test_direct_harness_installers_export_root_configs() {
   assert_not_symlink "$home_dir/.claude/CLAUDE.md" "direct Claude installer copies read-mostly assets (not symlinks)"
   assert_not_symlink "$home_dir/.codex/AGENTS.md" "direct Codex installer copies read-mostly assets (not symlinks)"
   assert_managed_skill "$home_dir" "$home_dir/.codex/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "direct Codex installer links base support skill through ~/.roborepo/skills"
-  assert_absent "$home_dir/.codex/skills/blog" "direct Codex installer does not copy optional skills by default"
+  assert_absent "$home_dir/.codex/skills/case-study" "direct Codex installer does not copy optional skills by default"
 }
 
 test_direct_harness_installers_convert_root_symlinks() {
@@ -302,8 +302,8 @@ test_old_repo_managed_symlinks_are_migrated() {
   # After install, ~/.codex/skills/ and ~/.claude/skills/ point at the machine-local cache.
   assert_managed_skill "$home_dir" "$home_dir/.codex/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "old machine migrated: base Codex support skill cache link created"
   assert_managed_skill "$home_dir" "$home_dir/.claude/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "old machine migrated: base Claude support skill cache link created"
-  assert_absent "$home_dir/.codex/skills/blog" "old machine migrated: optional Codex skill not copied by default"
-  assert_absent "$home_dir/.claude/skills/blog" "old machine migrated: optional Claude skill not copied by default"
+  assert_absent "$home_dir/.codex/skills/case-study" "old machine migrated: optional Codex skill not copied by default"
+  assert_absent "$home_dir/.claude/skills/case-study" "old machine migrated: optional Claude skill not copied by default"
 }
 
 test_direct_claude_installer_removes_stale_retired_symlink() {

@@ -28,7 +28,7 @@ This policy answers three user-facing questions:
 | Hooks           | `globals/claude/hooks/` + `settings.json`; `globals/codex/hooks.json`                                                                               | Deterministic harness-executed behavior                           |
 | Per-repo skills | client repo `.codex/skills/<name>/` linked into `.claude/skills/<name>` via `roborepo skill link-project`                                          | Same risk model as global skills, scoped to that repo             |
 
-Current shared skills include `blog`, `code-style`, `frontend-design`,
+Current shared skills include `case-study`, `code-style`, `frontend-design`,
 `javascript-typescript`, `react`, `roborepo-support`,
 `supabase-integration-testing`, `technical-planning-docs`, and `test-harness`.
 They are all currently treated as auto-invokable by description. The current
@@ -241,7 +241,7 @@ Classify each skill by the user impact of accidental loading.
 | Risk   | Meaning                                                                                                | Examples                                                       | Default policy                                                    |
 | ------ | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Low    | Adds narrow read-only context or style guidance                                                        | `react`, `javascript-typescript`, `code-style`, `test-harness` | Keep auto-invokable, tighten triggers                             |
-| Medium | Shapes output, structure, design taste, or writing mode                                                | `frontend-design`, `technical-planning-docs`, `blog`           | Keep for now, tighten triggers, consider split into helper + mode |
+| Medium | Shapes output, structure, design taste, or writing mode                                                | `frontend-design`, `technical-planning-docs`, `case-study`           | Keep for now, tighten triggers, consider split into helper + mode |
 | High   | Changes permissions, grants tools, runs shell, commits, deploys, hands off, or creates persistent mode | future `commit`, `deploy`, `handoff`, shell-backed skills      | Manual command or hook only                                       |
 
 ### What improves
@@ -373,7 +373,7 @@ read-only skills lightweight.
 Do these before making more behavior changes:
 
 1. Add trigger tests for expected matches and near misses, starting with medium-risk skills:
-   `blog`, `frontend-design`, and `technical-planning-docs`.
+   `case-study`, `frontend-design`, and `technical-planning-docs`.
 2. Add a checker that validates generated command outputs and any manual-only policy against
    `skill-invocation.json`.
 

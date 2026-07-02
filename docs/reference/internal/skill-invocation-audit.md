@@ -23,7 +23,7 @@ Keep shared `SKILL.md` frontmatter portable; use manifest-backed checks before a
 
 | Skill | Invocation | Risk | Explicit command | Static findings | Recommendation |
 | --- | --- | --- | --- | --- | --- |
-| `blog` | auto | medium | true | side-effect keyword | Keep trigger narrow; add near-miss tests. |
+| `case-study` | auto | medium | true | side-effect keyword | Keep trigger narrow; add near-miss tests. |
 | `code-style` | auto | low | false | none | Keep auto if trigger remains narrow. |
 | `frontend-design` | auto | medium | true | none | Keep trigger narrow; add near-miss tests. |
 | `javascript-typescript` | auto | low | false | none | Keep auto if trigger remains narrow. |

@@ -1,13 +1,13 @@
-# Blog prompt — "Same agent, two dialects: a parity story"
+# Case study prompt — "Same agent, two dialects: a parity story"
 
-A ready-to-run prompt for the `/blog` skill. Paste the **Prompt** section into `/blog`. The rest is
+A ready-to-run prompt for the `/case-study` skill. Paste the **Prompt** section into `/case-study`. The rest is
 context for whoever runs it.
 
 ---
 
 ## Prompt
 
-> Write a long-form architecture blog post about how RoboRepo keeps two AI coding harnesses — Claude
+> Write a long-form architecture case study about how RoboRepo keeps two AI coding harnesses — Claude
 > Code and Codex — in configuration parity. The source material is
 > `docs/reference/internal/harnesses-explained.md`; read it first and treat its seven-step
 > "amount of machinery" progression as the backbone of the post.

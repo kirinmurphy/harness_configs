@@ -35,7 +35,7 @@ first-class and this bypass is unnecessary.
 | `~/.codex/config.toml` | Got a `[features] hooks=true` block prepended | **edit** — drop the block (keep project/nux entries) |
 | `~/.local/bin/roborepo` | Symlink → repo bin | leave (installer overwrites) or remove for clean slate |
 | `~/.roborepo/telemetry/` | Hand-written `state.json` + captured baseline data | **decide**: keep (backup first) or purge |
-| `~/.agents/skills/blog/` | Stale repo skill (real dir, not symlink) — leftover, not a manual add | **remove** — installer re-links it |
+| `~/.agents/skills/case-study/` | Stale repo skill (real dir, not symlink) — leftover, not a manual add | **remove** — installer re-links it |
 | `~/.claude/settings.local.json` | Your 3 permissions (`find`, `docker system`, `open -a Docker`), untouched by shim | **leave** |
 | `~/.claude/telemetry/*.json` | Anthropic's own `1p_failed_events` — not roborepo | leave (vendor) |
 | `~/.codex/skills/.system/*` | Codex built-in skills — not roborepo | leave (vendor) |

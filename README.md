@@ -93,13 +93,13 @@ Use these when you want to intentionally start a named workflow.
 
 |                       |                                                                                     |     |
 | --------------------- | ----------------------------------------------------------------------------------- | --- |
-| `/blog`               | Write a long-form architecture blog post about a real design decision.              |
+| `/case-study`         | Write a long-form architecture case study about a real design decision.             |
 | `/frontend-design`    | Apply Claude's frontend design workflow to build or review a substantial UI change. |
 | `/technical-planning` | Create or revise a durable technical planning document.                             |
 | `/inventory`          | Scan this repo and refresh its Project Context handoff docs (glossary, inventory).  |
 | `/tighten`            | Clean up code against this project's own patterns with specific, anchored callouts. |
 
-**Plain-Language Triggers**: Some named workflows can also be started in ordinary chat: "capture this", "write a blog post about this", "make this a durable technical plan", "run inventory", or "tighten this."
+**Plain-Language Triggers**: Some named workflows can also be started in ordinary chat: "capture this", "write a case study about this", "make this a durable technical plan", "run inventory", or "tighten this."
 
 ### Chat-Time Output
 

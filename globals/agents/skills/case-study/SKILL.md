@@ -1,20 +1,20 @@
 ---
-name: blog
+name: case-study
 description: >
-  Write a long-form architecture blog post about a real design decision in a
+  Write a long-form architecture case study about a real design decision in a
   codebase. Follows a 6-beat storyline arc (plus an optional 7th recommendation
   beat). Written so the architectural
   ideas are comprehensible across the whole audience spectrum — non-technical to
-  highly technical — without becoming a coding tutorial. Trigger: /blog, "write a
-  blog post", "draft the architecture article", "blog about <topic>". Do not use
-  for ordinary implementation notes, README updates, planning docs, PR
-  descriptions, changelogs, or short technical explanations unless the user asks
-  for a blog/article.
+  highly technical — without becoming a coding tutorial. Trigger: /case-study,
+  "write a case study", "draft the architecture case study", "case study about
+  <topic>". Do not use for ordinary implementation notes, README updates,
+  planning docs, PR descriptions, changelogs, or short technical explanations
+  unless the user asks for a case study/article.
 ---
 
-# Architecture Blog Writer
+# Architecture Case Study Writer
 
-Write a long-form architecture blog post grounded in real code. The subject is an
+Write a long-form architecture case study grounded in real code. The subject is an
 architectural **decision** and its story, not a feature list and not a code walkthrough.
 
 ## Audience model (read this first — it governs everything)
@@ -82,11 +82,11 @@ picture of *how pieces relate* faster than a paragraph describing it.
 ## Before writing
 
 1. Identify the topic. If the user named one, use it. Otherwise read the project's
-   blog-candidates list (e.g. `docs/possible-blog-posts.md`) and ask which to write.
+   case-study-candidates list (e.g. `docs/possible-case-studies.md`) and ask which to write.
 2. Read the actual code for that topic (the listed key files). Ground the article in
    what the code really does — real names, real flow. Never invent behavior.
 3. Read any linked source/design docs for the original reasoning and tradeoffs.
-4. Save the draft to the project's blog directory. **Name the file from the title**,
+4. Save the draft to the project's case study directory. **Name the file from the title**,
    not the slug: kebab-case the title (lowercase, drop punctuation, spaces→dashes). If
    the result runs long, truncate at a word boundary — prefer a natural semantic break
    such as the part before a `:` colon — keeping it roughly ≤50 characters. The filename
@@ -115,7 +115,7 @@ Some articles name the real project — its brand, links, and details are part o
 point. Others quote a codebase that must stay unidentified. This is not a fixed rule;
 it is a decision to make before drafting.
 
-**Ask at the start of each blog session whether to anonymize**, unless the user has
+**Ask at the start of each case study session whether to anonymize**, unless the user has
 already said which they want. Phrase it plainly: "Name the real project, or anonymize
 the source?" Then follow the answer for the whole piece.
 

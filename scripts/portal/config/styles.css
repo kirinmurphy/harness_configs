@@ -348,9 +348,9 @@ main {
 .config-grid-head,
 .config-grid-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.2fr) minmax(120px, 0.8fr) minmax(
-      120px,
-      0.8fr
+  grid-template-columns: minmax(180px, 1fr) repeat(
+      var(--provider-count, 2),
+      140px
     );
 }
 .config-grid-head {
@@ -372,13 +372,13 @@ main {
 .config-grid-row {
   border-top: 1px solid var(--line);
 }
-.config-type {
-  display: grid;
-  gap: 2px;
+.config-type > * {
+  display: inline-block;
 }
 .config-type strong {
   font-size: 13px;
   color: var(--ink);
+  margin-right: 0.5rem;
 }
 .config-type span {
   font-size: 11px;

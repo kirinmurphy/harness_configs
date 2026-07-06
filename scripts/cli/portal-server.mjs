@@ -58,12 +58,29 @@ export function startPortalServer(handlers) {
   return server;
 }
 
+// Loopback bind means no auth, but a page open in the user's browser can still POST here
+// cross-origin (or via DNS rebinding) unless the request's Origin is checked — Origin reflects the
+// page's true origin and can't be forged by page JS, unlike Host (which DNS rebinding can spoof).
+// Non-browser tooling (curl, scripts) sends no Origin at all; allow that through unchanged since it
+// already had to know the loopback port to reach the server in the first place.
+const LOOPBACK_ORIGIN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;
+function originAllowed(req) {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  return LOOPBACK_ORIGIN.test(origin);
+}
+
 function route(req, res, handlers) {
-  const { loadAnalysis, loadSession, loadInsightsLlm, loadConfig, loadConfigSource, mutatePackage, mutateSkill, mutateProfile } = handlers;
+  const { loadAnalysis, loadSession, loadInsightsLlm, loadConfig, loadConfigSource, mutatePackage, mutateSkill, mutateBehavior, mutateCommand } = handlers;
   const [urlPath, qs = ""] = (req.url || "/").split("?");
 
-  // Mutations: local-only loopback server, so no auth — but still POST-only and JSON-bodied.
-  // Each writes config then returns the fresh snapshot so the client re-renders from one response.
+  if (req.method === "POST" && !originAllowed(req)) {
+    return send(res, 403, "application/json", JSON.stringify({ error: "cross-origin request rejected" }));
+  }
+
+  // Mutations: local-only loopback server, so no auth — but still POST-only, origin-checked, and
+  // JSON-bodied. Each writes config then returns the fresh snapshot so the client re-renders from one
+  // response.
   if (req.method === "POST" && (urlPath === "/api/config/packages" || urlPath === "/api/config/skills")) {
     return readJsonBody(req, async (body, err) => {
       if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));

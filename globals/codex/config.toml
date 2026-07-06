@@ -1,7 +1,7 @@
 model = "gpt-5.5"
 model_reasoning_effort = "medium"
 # BEGIN GENERATED AGENT PERMISSIONS
-# Source: manifests/inventory/agent-permissions.json profile interactive
+# Source: manifests/inventory/agent-permissions.json
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
 

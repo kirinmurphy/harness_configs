@@ -1,64 +1,118 @@
 import fs from "node:fs";
+import path from "node:path";
+import { createHash } from "node:crypto";
 
 // Reads a harness transcript (JSONL) and derives the session-level context that explains token
 // spikes: cumulative token usage, turn/tool counts, and which tools/MCP servers were exercised.
 // Pure local file read — never throws to callers (telemetry hooks must not fail a session).
+//
+// Incremental by session: a long session's transcript grows every turn, and this used to be called
+// on every PreToolUse/PostToolUse with a full read+reparse from byte 0 — O(n) per call, O(n^2) over
+// a session. A per-session cursor (byte offset + carried-forward counters) lets each call parse only
+// the bytes appended since the last capture. `collectorDir` is required for the cursor to persist;
+// omit it (or pass no sessionId) to fall back to a full one-shot parse with no cursor.
 
 const MCP_TOOL_PREFIX = "mcp__";
 
-export function transcriptStats(transcriptPath) {
-  if (typeof transcriptPath !== "string" || !transcriptPath) return null;
-  let raw;
+function cursorPath(collectorDir, sessionId) {
+  const key = createHash("sha256").update(String(sessionId)).digest("hex").slice(0, 24);
+  return path.join(collectorDir, `transcript-${key}.json`);
+}
+
+function emptyCounters() {
+  return {
+    byteOffset: 0,
+    tokens: { input: 0, output: 0, cache_creation: 0, cache_read: 0 },
+    toolCounts: {},
+    mcpServers: {},
+    assistantTurns: 0,
+    toolCalls: 0,
+    mcpCalls: 0,
+    maxOutputTokens: 0,
+    model: null,
+    biggestResult: null,
+    // tool_use ids seen but not yet matched to a tool_result — carried forward so a result landing
+    // in the NEXT chunk can still resolve back to the tool that produced it.
+    pendingToolNameById: {},
+  };
+}
+
+function loadCursor(collectorDir, sessionId) {
+  if (!collectorDir || !sessionId) return null;
   try {
-    raw = fs.readFileSync(transcriptPath, "utf8");
+    return JSON.parse(fs.readFileSync(cursorPath(collectorDir, sessionId), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function saveCursor(collectorDir, sessionId, cursor) {
+  if (!collectorDir || !sessionId) return;
+  try {
+    fs.mkdirSync(collectorDir, { recursive: true });
+    fs.writeFileSync(cursorPath(collectorDir, sessionId), JSON.stringify(cursor));
+  } catch {
+    // Best-effort; a failed write just means the next call re-parses from this call's offset (or 0).
+  }
+}
+
+export function transcriptStats(transcriptPath, { sessionId, collectorDir } = {}) {
+  if (typeof transcriptPath !== "string" || !transcriptPath) return null;
+  let fd;
+  let size;
+  try {
+    const stat = fs.statSync(transcriptPath);
+    size = stat.size;
+    fd = fs.openSync(transcriptPath, "r");
   } catch {
     return null; // No transcript yet (e.g. SessionStart) or unreadable; capture metadata only.
   }
-  const tokens = { input: 0, output: 0, cache_creation: 0, cache_read: 0, total: 0 };
-  const toolCounts = new Map();
-  const mcpServers = new Map();
-  let assistantTurns = 0;
-  let toolCalls = 0;
-  let mcpCalls = 0;
-  let maxOutputTokens = 0;
-  let model = null;
 
-  // Spike attribution: a capture's token delta is driven by what most recently landed in the
-  // context window — almost always the previous tool's *result* (a big file Read, an MCP bundle,
-  // an unbounded Bash log). We can't see that from tool_use args alone, so we size each tool_result
-  // and remember which tool produced it. `toolNameById` links a result back to the call that made
-  // it; `lastResult` is the freshest result (the likely cause of *this* capture's delta) and
-  // `biggestResult` is the heaviest result in the session (the likely cause of the session's worst
-  // spike). Sizes only — never content — so the hash-only privacy model holds.
-  const toolNameById = new Map();
+  const cursor = loadCursor(collectorDir, sessionId);
+  // A shrunk/rotated file (offset now past EOF) can't be resumed — restart from scratch.
+  const startOffset = cursor && cursor.byteOffset <= size ? cursor.byteOffset : 0;
+  const counters = cursor && startOffset > 0 ? hydrateCounters(cursor) : emptyCounters();
+
+  let chunk = "";
+  if (size > startOffset) {
+    const buf = Buffer.alloc(size - startOffset);
+    fs.readSync(fd, buf, 0, buf.length, startOffset);
+    chunk = buf.toString("utf8");
+  }
+  fs.closeSync(fd);
+
+  // Only advance the offset up to the last complete line — a half-written trailing line (the
+  // harness is still streaming it) must be re-read on the next call, not skipped.
+  const lastNewline = chunk.lastIndexOf("\n");
+  const parseable = lastNewline === -1 ? "" : chunk.slice(0, lastNewline);
+  const newOffset = lastNewline === -1 ? startOffset : startOffset + Buffer.byteLength(parseable, "utf8") + 1;
+
   let lastResult = null;
-  let biggestResult = null;
-
-  for (const line of raw.split("\n")) {
+  for (const line of parseable.split("\n")) {
     if (!line.trim()) continue;
     let entry;
     try {
       entry = JSON.parse(line);
     } catch {
-      continue; // Skip partial/streaming lines; a half-written tail must not break capture.
+      continue; // Skip partial/corrupt lines; a half-written tail must not break capture.
     }
     const message = entry.message;
     if (!message) continue;
 
     if (entry.type === "assistant") {
-      assistantTurns += 1;
-      if (message.model) model = message.model;
-      addUsage(tokens, message.usage);
-      if (message.usage) maxOutputTokens = Math.max(maxOutputTokens, message.usage.output_tokens || 0);
+      counters.assistantTurns += 1;
+      if (message.model) counters.model = message.model;
+      addUsage(counters.tokens, message.usage);
+      if (message.usage) counters.maxOutputTokens = Math.max(counters.maxOutputTokens, message.usage.output_tokens || 0);
       for (const block of Array.isArray(message.content) ? message.content : []) {
         if (block.type !== "tool_use" || typeof block.name !== "string") continue;
-        toolCalls += 1;
-        bump(toolCounts, block.name);
-        if (typeof block.id === "string") toolNameById.set(block.id, block.name);
+        counters.toolCalls += 1;
+        bump(counters.toolCounts, block.name);
+        if (typeof block.id === "string") counters.pendingToolNameById[block.id] = block.name;
         const server = mcpServerOf(block.name);
         if (server) {
-          mcpCalls += 1;
-          bump(mcpServers, server);
+          counters.mcpCalls += 1;
+          bump(counters.mcpServers, server);
         }
       }
       continue;
@@ -68,26 +122,48 @@ export function transcriptStats(transcriptPath) {
     if (entry.type === "user") {
       for (const block of Array.isArray(message.content) ? message.content : []) {
         if (block.type !== "tool_result") continue;
-        const tool = toolNameById.get(block.tool_use_id) ?? null;
+        const tool = counters.pendingToolNameById[block.tool_use_id] ?? null;
+        delete counters.pendingToolNameById[block.tool_use_id];
         const result = { tool, chars: resultChars(block.content), is_error: block.is_error === true };
         lastResult = result;
-        if (!biggestResult || result.chars > biggestResult.chars) biggestResult = result;
+        if (!counters.biggestResult || result.chars > counters.biggestResult.chars) counters.biggestResult = result;
       }
     }
   }
-  tokens.total = tokens.input + tokens.output + tokens.cache_creation + tokens.cache_read;
 
+  counters.byteOffset = newOffset;
+  saveCursor(collectorDir, sessionId, counters);
+
+  const tokens = { ...counters.tokens, total: counters.tokens.input + counters.tokens.output + counters.tokens.cache_creation + counters.tokens.cache_read };
   return {
-    model,
+    model: counters.model,
     tokens,
-    max_output_tokens: maxOutputTokens,
-    assistant_turns: assistantTurns,
-    tool_calls: toolCalls,
-    mcp_calls: mcpCalls,
-    tools: Object.fromEntries(toolCounts),
-    mcp_servers: Object.fromEntries(mcpServers),
+    max_output_tokens: counters.maxOutputTokens,
+    assistant_turns: counters.assistantTurns,
+    tool_calls: counters.toolCalls,
+    mcp_calls: counters.mcpCalls,
+    tools: { ...counters.toolCounts },
+    mcp_servers: { ...counters.mcpServers },
+    // Freshest result this call saw (likely driver of this capture's delta); null when this call's
+    // chunk had no new tool_result (e.g. two hook fires between one tool's use and its result).
     last_result: lastResult,
-    biggest_result: biggestResult,
+    biggest_result: counters.biggestResult,
+  };
+}
+
+function hydrateCounters(cursor) {
+  return {
+    byteOffset: cursor.byteOffset || 0,
+    tokens: { input: 0, output: 0, cache_creation: 0, cache_read: 0, ...cursor.tokens },
+    toolCounts: { ...cursor.toolCounts },
+    mcpServers: { ...cursor.mcpServers },
+    assistantTurns: cursor.assistantTurns || 0,
+    toolCalls: cursor.toolCalls || 0,
+    mcpCalls: cursor.mcpCalls || 0,
+    maxOutputTokens: cursor.maxOutputTokens || 0,
+    model: cursor.model || null,
+    biggestResult: cursor.biggestResult || null,
+    pendingToolNameById: { ...cursor.pendingToolNameById },
   };
 }
 
@@ -150,6 +226,6 @@ function addUsage(tokens, usage) {
   tokens.cache_read += usage.cache_read_input_tokens || 0;
 }
 
-function bump(map, key) {
-  map.set(key, (map.get(key) ?? 0) + 1);
+function bump(obj, key) {
+  obj[key] = (obj[key] ?? 0) + 1;
 }

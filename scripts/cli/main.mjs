@@ -14,7 +14,6 @@ import { indexCode, indexDocs, watchCode, runCmd } from "./index.mjs";
 import { mcpAdd, mcpApply } from "./mcp.mjs";
 import { projectContextCheck, projectContextInventory } from "./project-context.mjs";
 import { maybeRunPresetOnboarding, presetsCommand } from "./presets.mjs";
-import { telemetryCommand, serveCommand } from "./telemetry.mjs";
 import { enablePackage, disablePackage } from "./packages.mjs";
 import { configCommand } from "./config.mjs";
 import { experimentalCommand } from "./package-catalog.mjs";
@@ -124,8 +123,10 @@ async function dispatch(args) {
       return presetsCommand(["intro", ...rest]);
 
     // Alias of `serve --detach`: starts the portal in the background and opens it in the browser.
-    case "web":
+    case "web": {
+      const { serveCommand } = await import("./telemetry.mjs");
       return serveCommand(["--detach", ...[sub, ...rest].filter(Boolean)], { allowPortFallback: true });
+    }
 
     // `bundle` / `presets` are internal install-time verbs (run by scripts/install/main.sh), not
     // user-facing — deliberately absent from usage/menu in cli-commands.json. Kept dispatchable so
@@ -137,11 +138,24 @@ async function dispatch(args) {
     case "presets":
       return presetsCommand(sub === undefined ? [] : [sub, ...rest]);
 
+    // `telemetry capture` is the hot hook path — fires on every PreToolUse/PostToolUse. It gets its
+    // own minimal-import module (telemetry-capture.mjs) so this cold `node` invocation doesn't pay to
+    // load telemetry.mjs's full graph (portal-server, config, config-mutate, telemetry-analyze,
+    // telemetry-insights) just to append one JSONL line.
     case "telemetry":
-      return telemetryCommand(sub === undefined ? [] : [sub, ...rest]);
+      if (sub === "capture") {
+        const { telemetryCaptureCommand } = await import("./telemetry-capture.mjs");
+        return telemetryCaptureCommand(rest);
+      }
+      {
+        const { telemetryCommand } = await import("./telemetry.mjs");
+        return telemetryCommand(sub === undefined ? [] : [sub, ...rest]);
+      }
 
-    case "serve":
+    case "serve": {
+      const { serveCommand } = await import("./telemetry.mjs");
       return serveCommand([sub, ...rest].filter(Boolean));
+    }
 
     case "enable":
       return enablePackage(sub === undefined ? rest : [sub, ...rest]);

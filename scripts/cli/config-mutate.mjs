@@ -5,8 +5,8 @@ import { repoRoot } from "./paths.mjs";
 import { enablePackage, disablePackage, findPackage } from "./packages.mjs";
 import { unavailablePackageMessage } from "./package-catalog.mjs";
 import { listSourceSkills } from "./skill-files.mjs";
-import { loadPermissionManifest, renderProfileTo } from "./permissions-render.mjs";
-import { activeProfilePath, roborepoSkillsDir } from "./state-paths.mjs";
+import { loadPermissionManifest, renderPermissionsTo, resolveBehaviors, resolveArbitraryCommands } from "./permissions-render.mjs";
+import { commandOverridesPath, roborepoSkillsDir } from "./state-paths.mjs";
 
 // Shared mutation core for the interactive config controls (terminal `onboard` + web POST endpoints).
 // Every function here is harness-agnostic and returns a plain { ok, message } result instead of
@@ -231,75 +231,129 @@ export function setSkillInstalled(id, enabled, { dryRun = false } = {}) {
 }
 
 // --------------------------------------------------------------------------- permissions
+//
+// Flat model: every behavior (named — write-files, delete-files, go-online, commit-code,
+// push-pull-prs — or arbitrary, user-added) is independently deny/ask/allow. Personal choices
+// live in commandOverridesPath (state-paths.mjs), layered on top of the repo-tracked manifest's
+// defaults at render time, so `roborepo update` re-rendering the manifest never wipes them.
+// Global scope only — no per-project override (a detached web server has no reliable "current
+// project" the way a terminal's cwd does).
 
-// Looser profiles drop guardrails: workspace stops prompting before blocked actions, networked
-// grants the sandbox internet access. The dashboard requires an explicit confirm before these.
-export const LOOSER_PROFILES = new Set(["workspace", "networked"]);
+// Deny/ask/allow are the only valid buckets a behavior/command can be set to. No "looser" concept
+// remains — each behavior is independently reversible with the same three states, so there is no
+// single "this drops all guardrails" action left to gate behind a confirm.
+export const PERMISSION_BUCKETS = new Set(["deny", "ask", "allow"]);
 
-export function listPermissionProfiles() {
-  const manifest = loadPermissionManifest();
-  return Object.keys(manifest.profiles ?? {});
+// Arbitrary (non-named) commands are keyed by their joined tokens, e.g. ["docker", "run"] ->
+// "docker run" — stable, human-readable, and matches how commandToClaude/renderCodexRule already
+// join patterns for display.
+function overrideKeyForCommand(tokens) {
+  return tokens.map(String).join(" ");
 }
 
-export const PERMISSION_SCOPES = new Set(["global", "project"]);
+export function readCommandOverrides() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(commandOverridesPath, "utf8"));
+    return {
+      behaviors: raw.behaviors && typeof raw.behaviors === "object" ? raw.behaviors : {},
+      commands: raw.commands && typeof raw.commands === "object" ? raw.commands : {},
+    };
+  } catch {
+    return { behaviors: {}, commands: {} };
+  }
+}
 
-// Switch a permission profile by rendering it into native harness config.
-//   scope "global"  → ~/.claude/settings.json + ~/.codex/config.toml (machine-wide default).
-//   scope "project" → <cwd>/.claude/settings.json + <cwd>/.codex/config.toml, which the harness
-//                     reads as a per-project OVERRIDE of the global config (last-wins, not merged).
-// The repo-source template (globals/) is never touched — this is an active runtime choice.
-export function setPermissionProfile(profileName, { confirmedLooser = false, scope = "global", cwd = process.cwd() } = {}) {
+function writeCommandOverrides(overrides) {
+  fs.mkdirSync(path.dirname(commandOverridesPath), { recursive: true });
+  fs.writeFileSync(commandOverridesPath, JSON.stringify(overrides, null, 2) + "\n");
+}
+
+// Set a NAMED behavior (by manifest id, e.g. "delete-files") to a bucket, or "default" to remove
+// the override and revert to the manifest's own default for that behavior. Re-renders live global
+// config immediately.
+export function setBehaviorBucket(behaviorId, bucket) {
+  if (bucket !== "default" && !PERMISSION_BUCKETS.has(bucket)) {
+    return { ok: false, message: `unknown bucket: ${bucket} (expected deny | ask | allow | default)` };
+  }
   let manifest;
   try {
     manifest = loadPermissionManifest();
   } catch (err) {
     return { ok: false, message: `cannot read permission manifest: ${String(err?.message || err)}` };
   }
-  if (!Object.keys(manifest.profiles ?? {}).includes(profileName)) {
-    return { ok: false, message: `unknown profile: ${profileName}` };
+  const known = (manifest.behaviors ?? []).some((b) => b.id === behaviorId);
+  if (!known) return { ok: false, message: `unknown behavior: ${behaviorId}` };
+
+  const overrides = readCommandOverrides();
+  if (bucket === "default") delete overrides.behaviors[behaviorId];
+  else overrides.behaviors[behaviorId] = bucket;
+  return applyOverrides(manifest, overrides);
+}
+
+// Set an ARBITRARY command (not one of the named behaviors) to a bucket. `tokens` is the command
+// split into argv-style parts, e.g. ["docker", "run"]. "default"/omitting removes it from the
+// override file entirely (stops treating it as a tracked command).
+export function setCommandBucket(tokens, bucket) {
+  if (!Array.isArray(tokens) || tokens.length === 0 || !tokens.every((t) => typeof t === "string" && t)) {
+    return { ok: false, message: "expected a non-empty array of command tokens" };
   }
-  if (!PERMISSION_SCOPES.has(scope)) {
-    return { ok: false, message: `unknown scope: ${scope} (expected global | project)` };
+  if (bucket !== "default" && !PERMISSION_BUCKETS.has(bucket)) {
+    return { ok: false, message: `unknown bucket: ${bucket} (expected deny | ask | allow | default)` };
   }
-  if (LOOSER_PROFILES.has(profileName) && !confirmedLooser) {
-    return { ok: false, needsConfirm: true, message: `'${profileName}' loosens safety — confirm to apply` };
-  }
+  let manifest;
   try {
-    // Project scope creates .claude on demand so a fresh repo can be given a profile; global scope
-    // only writes harness homes that already exist.
-    const baseDir = scope === "project" ? cwd : os.homedir();
-    const { touched } = renderProfileTo(profileName, { baseDir, manifest, createClaude: scope === "project" });
+    manifest = loadPermissionManifest();
+  } catch (err) {
+    return { ok: false, message: `cannot read permission manifest: ${String(err?.message || err)}` };
+  }
+  const key = overrideKeyForCommand(tokens);
+  const overrides = readCommandOverrides();
+  if (bucket === "default") delete overrides.commands[key];
+  else overrides.commands[key] = { tokens, bucket };
+  return applyOverrides(manifest, overrides);
+}
+
+function applyOverrides(manifest, overrides) {
+  try {
+    writeCommandOverrides(overrides);
+    const home = os.homedir();
+    const { touched } = renderPermissionsTo(home, { manifest, overrides });
     if (touched.length === 0) {
-      return { ok: false, message: `no harness config found to write (${scope})` };
+      return { ok: false, message: "no harness config found to write" };
     }
-    for (const t of touched) console.log(`profile ${profileName} (${scope}): ${t}`);
-    if (scope === "global") {
-      fs.mkdirSync(path.dirname(activeProfilePath), { recursive: true });
-      fs.writeFileSync(activeProfilePath, JSON.stringify({ profile: profileName, updatedAt: new Date().toISOString() }, null, 2) + "\n");
-    }
-    return { ok: true, message: `permission profile set (${scope}): ${profileName}` };
+    for (const t of touched) console.log(`permissions: ${t}`);
+    return { ok: true, message: "permissions updated" };
   } catch (err) {
     return { ok: false, message: String(err?.message || err) };
   }
 }
 
-export function readActiveProfile() {
-  try {
-    return JSON.parse(fs.readFileSync(activeProfilePath, "utf8")).profile || null;
-  } catch {
-    return null;
-  }
-}
-
-// The project-scope active profile is read from the `roborepoProfile` stamp that setPermissionProfile
-// writes into <cwd>/.claude/settings.json. Returns null when there's no project override (the repo
-// uses the global default). The stamp is authoritative because some profiles share a Claude
-// allow-list, so the permissions alone can't identify the profile.
-export function readProjectProfile(cwd = process.cwd()) {
-  try {
-    const settings = JSON.parse(fs.readFileSync(path.join(cwd, ".claude", "settings.json"), "utf8"));
-    return settings?.roborepoProfile || null;
-  } catch {
-    return null;
-  }
+// Effective behaviors (manifest defaults + personal overrides layered on top) plus the arbitrary
+// commands (manifest.commands.allow defaults + personal additions/bucket changes), each carrying
+// override status for display. This is the single source both config.mjs's buildBehaviorView
+// (portal + onboard + `config status`) and any future consumer should read from — it's the merge
+// point, not the manifest alone.
+export function effectivePermissions() {
+  const manifest = loadPermissionManifest();
+  const overrides = readCommandOverrides();
+  const behaviors = resolveBehaviors(manifest, overrides.behaviors).map((b) => ({
+    ...b,
+    overridden: overrides.behaviors[b.id] != null,
+    defaultBucket: manifest.behaviors.find((mb) => mb.id === b.id)?.bucket,
+  }));
+  const defaultAllowKeys = new Set((manifest.commands?.allow ?? []).map(overrideKeyForCommand));
+  const arbitrary = resolveArbitraryCommands(manifest, overrides.commands).map((c) => {
+    const key = overrideKeyForCommand(c.tokens);
+    return {
+      id: key,
+      label: key,
+      kind: "commands",
+      commands: [c.tokens],
+      bucket: c.bucket,
+      overridden: overrides.commands[key] != null,
+      defaultBucket: defaultAllowKeys.has(key) ? "allow" : null,
+      arbitrary: true,
+    };
+  });
+  return { behaviors, arbitrary };
 }

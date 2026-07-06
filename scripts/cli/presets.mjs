@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { repoRoot } from "./paths.mjs";
 import { installStatePath, presetsStatePath } from "./state-paths.mjs";
 import { readConfigSnapshot, buildBehaviorView } from "./config.mjs";
-import { mutatePackage, setSkillInstalled } from "./config-mutate.mjs";
+import { mutatePackage, setSkillInstalled, setBehaviorBucket } from "./config-mutate.mjs";
 import { renderHomeRules, removeHomeRules, isRenderedRulesOutput } from "./rules-render.mjs";
 import { confirmYesNo, makePrompter, selectMenu, wizard } from "./skill-lib.mjs";
 
@@ -118,12 +118,24 @@ async function applyItemToggle(section, item, enabled) {
   return { ok: false, message: `${section.category} is read-only in onboarding` };
 }
 
+// Named behaviors (write files, delete files, go online, commit code, push/pull/PRs) are the one
+// bounded, small (5-item) interactive piece onboarding gets for Permissions — a single deny/ask/
+// allow cycle per item, same shape the wizard already renders for any N-state item. Arbitrary
+// (non-named) commands stay portal-only: add/remove/move across an unbounded list is a poor fit
+// for a terminal wizard. `bucket` here is the item's new `state` (one of deny/ask/allow).
+async function applyBehaviorBucket(behaviorId, bucket) {
+  return setBehaviorBucket(behaviorId, bucket);
+}
+
 // Is this view item user-toggleable in the wizard? Mirrors applyItemToggle's coverage: the four
-// Token-Optimization packages, all Chat-Time Output rules, and every Commands / Code Conventions
-// skill. Permissions is read-only here (see buildOnboardSteps).
+// Token-Optimization packages, all Chat-Time Output rules, every Commands / Code Conventions
+// skill, and the named Permissions behaviors (3-state, not boolean — see buildOnboardSteps).
 function isToggleableItem(section, item) {
   if (section.category === "Token Optimization") {
     return ["jcodemunch", "jdocmunch", "telemetry", "caveman"].includes(item.id);
+  }
+  if (section.category === "Permissions") {
+    return item.kind === "behavior";
   }
   return section.category === "Chat-Time Output"
     || section.category === "Commands"
@@ -161,40 +173,54 @@ function buildOnboardSteps() {
     steps[0].notice = "Prefer a web UI? Run: roborepo serve";
   }
 
-  // Read-only Permissions panel (Phase 2: not editable in onboarding; change via `roborepo config`).
+  // Permissions: the 5 named behaviors are directly toggleable here (deny/ask/allow cycle via
+  // Space). Arbitrary commands are NOT editable in onboarding — a growable add/remove/move list
+  // is a poor fit for a terminal wizard; the description below points to the portal for those.
   const perms = byCategory("Permissions");
   if (perms) {
-    const profile = perms.items.find((it) => it.kind === "profile");
-    const deny = perms.items.find((it) => it.id === "deny");
-    const items = [];
-    if (profile) items.push({ label: `profile: ${profile.label}`, description: profile.description || "", active: true, toggleable: false });
-    if (deny) items.push({ label: deny.label, description: deny.description || "", active: true, toggleable: false });
-    if (!profile) items.push({ label: "(no profile configured)", active: true, toggleable: false });
-    steps.push({
-      title: "Permissions",
-      description: "Read-only here. Change the permission profile later with: roborepo config",
-      readonly: true,
-      items,
-    });
+    const behaviorItems = perms.items
+      .filter((it) => it.kind === "behavior")
+      .map((it) => {
+        const codexNote = it.codexOnly ? " (Codex only)" : it.bucket === "ask" ? " (no per-command ask on Codex)" : "";
+        return {
+          label: it.label,
+          description: `${it.description || ""}${codexNote}`.trim(),
+          states: ["deny", "ask", "allow"],
+          state: it.bucket,
+          wasState: it.bucket, // original state; diffed against `state` on finish to batch the work
+          toggleable: true,
+          section: perms,
+          item: it,
+        };
+      });
+    if (behaviorItems.length > 0) {
+      steps.push({
+        title: "Permissions",
+        description: "Other commands (git status, npm test, etc.) — manage those at: roborepo web",
+        items: behaviorItems,
+      });
+    }
   }
 
   return steps;
 }
 
 // Deferred applier: run once when the wizard exits. Walk every step's items, diff each item's final
-// `active` against `wasActive`, and persist only the ones that changed. All blocking work (mcp add/
-// remove, symlinks) happens here, after raw mode is off — so it can log freely without corrupting the
-// in-place repaint that ran during the wizard.
-// Pure diff: the wizard flips each item's `active` in memory; this picks the rows that actually
-// changed (toggleable, not in a readonly step, and `active` differs from the original `wasActive`),
-// preserving step/item order. Exported so the deferred-apply selection can be unit-tested without
-// driving the interactive keypress loop.
+// `active` (or `state`, for N-state items) against its original, and persist only the ones that
+// changed. All blocking work (mcp add/remove, symlinks, permission renders) happens here, after
+// raw mode is off — so it can log freely without corrupting the in-place repaint that ran during
+// the wizard.
+// Pure diff: the wizard flips each item's `active`/`state` in memory; this picks the rows that
+// actually changed (toggleable, not in a readonly step, and the current value differs from the
+// original), preserving step/item order. Exported so the deferred-apply selection can be
+// unit-tested without driving the interactive keypress loop.
 export function pendingWizardChanges(steps) {
   const pending = [];
   for (const step of steps) {
     if (step.readonly) continue;
     for (const row of step.items) {
-      if (!row.toggleable || row.active === row.wasActive) continue;
+      if (!row.toggleable) continue;
+      if (row.states ? row.state === row.wasState : row.active === row.wasActive) continue;
       pending.push(row);
     }
   }
@@ -209,6 +235,12 @@ async function applyWizardChanges(steps) {
   }
   console.log("\nApplying changes…");
   for (const row of pending) {
+    if (row.states) {
+      const result = await applyBehaviorBucket(row.item.id, row.state);
+      const status = result.ok ? "ok" : `failed: ${result.message}`;
+      console.log(`  ${row.state} ${row.item.id ?? row.label} — ${status}`);
+      continue;
+    }
     const verb = row.active ? "enable" : "disable";
     const result = await applyItemToggle(row.section, row.item, row.active);
     const status = result.ok ? "ok" : `failed: ${result.message}`;

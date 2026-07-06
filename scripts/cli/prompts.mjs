@@ -100,6 +100,11 @@ export async function selectMenu(title, items) {
 // steps: [{ title, hint?, readonly?, items: [{ label, description?, active, toggleable }] }]
 // Read-only steps (or non-toggleable items) render but cannot flip. Non-TTY: returns immediately (the
 // caller handles the headless path); the wizard is interactive-only.
+//
+// An item may instead be N-state (e.g. deny/ask/allow) by carrying `states: string[]` and
+// `state` (current value, one of `states`) instead of `active`. Space cycles through `states` in
+// order and wraps; boolean items (`active`, no `states`) are unaffected — this is a superset, not
+// a replacement.
 export async function wizard(steps, onFinish) {
   const tty = process.stdin.isTTY && process.stdout.isTTY;
   if (!tty || steps.length === 0) return;
@@ -135,7 +140,11 @@ export async function wizard(steps, onFinish) {
     if (step.notice) { lines.push(`\x1b[1m${clip(`  ${step.notice}`, width)}\x1b[0m`); lines.push(""); }
     step.items.forEach((it, i) => {
       const sel = i === cursor;
-      const mark = it.toggleable && !step.readonly ? (it.active ? "[x]" : "[ ]") : "   ";
+      const mark = !it.toggleable || step.readonly
+        ? "   "
+        : it.states
+          ? `[${it.state}]`.padEnd(Math.max(...it.states.map((s) => s.length)) + 2)
+          : (it.active ? "[x]" : "[ ]");
       // Compose the plain line first, truncate to width, then re-apply color — measuring plain text
       // keeps the visible length correct (ANSI escapes are zero-width).
       const head = `${sel ? "> " : "  "}${mark} ${it.label}`;
@@ -204,7 +213,12 @@ export async function wizard(steps, onFinish) {
         if (sel.length) { const at = sel.indexOf(cursor); cursor = sel[(at + 1) % sel.length]; render(); }
       } else if (key.name === "space") {
         const it = step.items[cursor];
-        if (it && it.toggleable && !step.readonly) { it.active = !it.active; render(); } // instant in-memory flip
+        if (it && it.toggleable && !step.readonly) {
+          // instant in-memory flip/cycle — real work deferred to onFinish, see wizard's header comment
+          if (it.states) it.state = it.states[(it.states.indexOf(it.state) + 1) % it.states.length];
+          else it.active = !it.active;
+          render();
+        }
       } else if (key.name === "return" || key.name === "enter") {
         if (stepIdx === steps.length - 1) { void finish(); }
         else { stepIdx += 1; clampCursor(steps[stepIdx]); render(); }

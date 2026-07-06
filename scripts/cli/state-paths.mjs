@@ -5,9 +5,12 @@ export const roborepoStateDir = process.env.ROBOREPO_STATE_DIR || path.join(os.h
 export const installStatePath = path.join(roborepoStateDir, "install-state.json");
 export const presetsStatePath = path.join(roborepoStateDir, "presets", "state.json");
 export const roborepoSkillsDir = path.join(roborepoStateDir, "skills");
-// Records the permission profile last applied to the LIVE machine config by the config controls.
-// Lets the dashboard show the active per-machine profile (which can differ from the repo default).
-export const activeProfilePath = path.join(roborepoStateDir, "active-profile.json");
+// Personal deny/ask/allow overrides layered on top of manifests/inventory/agent-permissions.json's
+// default buckets. Keyed by behavior id (named behaviors) or a joined-token key (arbitrary
+// commands) — see config-mutate.mjs overrideKeyForCommand. Lives outside the repo-tracked
+// manifest so `roborepo update` (which re-renders the manifest's own defaults) never wipes a
+// personal choice; the portal/onboard read paths merge this on top before displaying anything.
+export const commandOverridesPath = path.join(roborepoStateDir, "command-overrides.json");
 export const experimentalStatePath = path.join(roborepoStateDir, "experimental.json");
 export const telemetryDir = path.join(roborepoStateDir, "telemetry");
 export const telemetryDbPath = path.join(telemetryDir, "telemetry.sqlite");

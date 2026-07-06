@@ -4,7 +4,8 @@
       "Read",
       "Write",
       "Edit",
-      "Bash(npx playwright test:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
       "Bash(npm test:*)",
       "Bash(npm run test:*)",
       "Bash(pnpm test:*)",
@@ -26,34 +27,21 @@
       "Bash(npm run build:preview:*)",
       "Bash(npm run build:*)",
       "Bash(npm run dev:*)",
-      "Bash(npm run demo:start:*)",
-      "Bash(npm run audit:run:blocking:*)",
-      "Bash(npm run audit:run:*)",
       "Bash(npm run check:*)",
       "Bash(npx tsc:*)",
       "Bash(npx next lint:*)",
       "Bash(npx eslint:*)",
       "Bash(npx jest:*)",
-      "Bash(/bin/zsh -lc npm run check > /tmp/sembrando-astro-check.log 2>&1:*)",
-      "Bash(npx convex codegen:*)",
       "Bash(git status:*)",
-      "Bash(git log:*)",
-      "Bash(docker volume ls:*)",
-      "Bash(docker system df:*)",
-      "Bash(docker volume inspect:*)",
-      "Bash(docker stats --no-stream:*)",
-      "Bash(docker builder prune -f:*)",
-      "Bash(supabase start:*)",
-      "Bash(docker events:*)",
-      "Bash(pgrep:*)",
-      "Bash(kill:*)",
-      "Bash(scripts/test/test-install-collisions.sh:*)"
+      "Bash(git log:*)"
     ],
     "deny": [
       "Bash(git push:*)",
-      "Bash(git pull:*)",
-      "Bash(git rm:*)",
-      "Bash(rm:*)"
+      "Bash(git pull:*)"
+    ],
+    "ask": [
+      "Bash(rm:*)",
+      "Bash(git rm:*)"
     ]
   },
   "hooks": {
@@ -97,10 +85,6 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/minimize-bash-output.mjs\""
-          },
-          {
-            "type": "command",
-            "command": "node \"$HOME/.claude/hooks/capture-dense-bash.mjs\""
           }
         ]
       },
@@ -148,20 +132,6 @@
       }
     ]
   },
-  "enabledPlugins": {
-    "caveman@caveman": true
-  },
-  "extraKnownMarketplaces": {
-    "caveman": {
-      "source": {
-        "source": "github",
-        "repo": "JuliusBrussee/caveman"
-      }
-    }
-  },
   "alwaysThinkingEnabled": false,
-  "awaySummaryEnabled": false,
-  "skipDangerousModePermissionPrompt": true,
-  "model": "opus",
-  "roborepoProfile": "globals/claude/settings.json"
+  "awaySummaryEnabled": false
 }

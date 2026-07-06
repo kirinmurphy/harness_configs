@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { repoRoot } from "./paths.mjs";
-import { presetsStatePath, telemetryDir, activeProfilePath } from "./state-paths.mjs";
-import { readProjectProfile } from "./config-mutate.mjs";
+import { presetsStatePath, telemetryDir } from "./state-paths.mjs";
+import { effectivePermissions } from "./config-mutate.mjs";
 import { renderMarkdown } from "./markdown-render.mjs";
 import {
   readEnabledPackagesRegistry,
@@ -22,7 +22,6 @@ import { inspectSkill, skillInventorySource } from "./skill-inventory.mjs";
 const PRESETS_PATH = path.join(repoRoot, "manifests", "platform", "presets.json");
 const SKILL_INVOCATION_PATH = path.join(repoRoot, "manifests", "inventory", "skill-invocation.json");
 const SLASH_COMMANDS_PATH = path.join(repoRoot, "manifests", "inventory", "slash-commands.json");
-const AGENT_PERMISSIONS_PATH = path.join(repoRoot, "manifests", "inventory", "agent-permissions.json");
 const CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
 const CODEX_CONFIG = path.join(os.homedir(), ".codex", "config.toml");
 const CODEX_HOOKS = path.join(os.homedir(), ".codex", "hooks.json");
@@ -211,11 +210,9 @@ export function readConfigSnapshot() {
   const settings = readJson(CLAUDE_SETTINGS, {});
   const skillInvocation = readJson(SKILL_INVOCATION_PATH, { skills: [] });
   const slashCommands = readJson(SLASH_COMMANDS_PATH, { commands: [] });
-  const agentPermissions = readJson(AGENT_PERMISSIONS_PATH, null);
-  // Active per-machine (global) profile recorded by the config controls; falls back to repo default.
-  const activeProfile = readJson(activeProfilePath, {})?.profile || agentPermissions?.default_profile || null;
-  // Per-project override profile detected from <cwd>/.claude/settings.json, if any.
-  const projectProfile = readProjectProfile();
+  // Named behaviors + arbitrary commands, manifest defaults merged with personal overrides.
+  // Global only — no per-project scope (see permissions-render.mjs / config-mutate.mjs).
+  const permissions = effectivePermissions();
 
   const selectedBundles = new Set(presetState.selected ?? presetsCatalog.default);
 
@@ -280,10 +277,7 @@ export function readConfigSnapshot() {
     packages,
     bundles,
     tools,
-    agentPermissions,
-    activeProfile,
-    projectProfile,
-    profiles: Object.keys(agentPermissions?.profiles ?? {}),
+    permissions,
     plugins: {
       caveman: settings?.enabledPlugins?.["caveman@caveman"] === true,
     },
@@ -303,9 +297,6 @@ export function readConfigSnapshot() {
         codex: readLiveRulesFile("codex"),
       },
       settings: {
-        activeProfile,
-        projectProfile,
-        profiles: Object.keys(agentPermissions?.profiles ?? {}),
         plugins: { caveman: settings?.enabledPlugins?.["caveman@caveman"] === true },
         hooks,
       },
@@ -334,7 +325,7 @@ export function readConfigSnapshot() {
 export function buildBehaviorView(snap) {
   const pkg = (id) => snap.packages.find((p) => p.id === id);
   const tel = snap.telemetry;
-  const perms = snap.agentPermissions;
+  const perms = snap.permissions;
   const pkgUrls = (id) => pkg(id)?.urls || [];
   const pkgBadges = (id) => {
     const item = pkg(id);
@@ -471,38 +462,42 @@ export function buildBehaviorView(snap) {
     {
       category: "Permissions",
       kind: "permissions",
+      // Flat model: every behavior (named — pinned, shown first — or arbitrary, user-added) is
+      // independently deny/ask/allow. No separate profile bundle or project scope; global only.
+      // `perms` (snap.permissions, from config-mutate.mjs effectivePermissions()) already merges
+      // manifest defaults with personal overrides — this just reshapes it for display.
       items: [
-        {
-          id: "profile",
-          label: snap.activeProfile || perms?.default_profile || "interactive",
-          description: perms?.profiles?.[snap.activeProfile || perms?.default_profile]?.description || null,
+        ...(perms?.behaviors || []).map((b) => ({
+          id: b.id,
+          label: b.label,
+          description: b.description,
           active: true,
-          kind: "profile",
-          globalProfile: snap.activeProfile || perms?.default_profile || null,
-          projectProfile: snap.projectProfile || null, // null = no project override (uses global)
-          // Selectable profiles for the interactive controls (terminal onboarding + web toggle).
-          options: (snap.profiles || []).map((id) => ({
-            id,
-            description: perms?.profiles?.[id]?.description || null,
-            current: id === (snap.activeProfile || perms?.default_profile),
-            looser: id === "workspace" || id === "networked",
+          kind: "behavior",
+          bucket: b.bucket,
+          overridden: b.overridden,
+          defaultBucket: b.defaultBucket,
+          // "go-online" has no Claude equivalent (Claude doesn't sandbox network); surfaced so the
+          // UI can note it rather than silently implying parity across harnesses.
+          codexOnly: !!b.codexOnly,
+          // Codex has no per-command ask tier — an ask-bucket behavior/command falls through to
+          // Codex's approval_policy fallback instead of a real per-item prompt. Flagged here so
+          // the UI can show the caveat next to any behavior currently set to ask.
+          noCodexAsk: b.bucket === "ask",
+        })),
+        {
+          id: "arbitrary-commands",
+          label: "Other commands",
+          description: "Commands not covered by the behaviors above — added and edited here.",
+          active: true,
+          kind: "arbitrary-list",
+          items: (perms?.arbitrary || []).map((c) => ({
+            id: c.id,
+            label: c.label,
+            bucket: c.bucket,
+            overridden: c.overridden,
+            defaultBucket: c.defaultBucket,
+            noCodexAsk: c.bucket === "ask",
           })),
-        },
-        {
-          id: "deny",
-          label: `${perms?.commands?.deny?.length || 0} blocked commands`,
-          description: (perms?.commands?.deny || []).map((c) => c.join(" ")).join(" · "),
-          value: (perms?.commands?.deny || []).map((c) => c.join(" ")).join(" · "), // web info renderer reads `value`
-          active: true,
-          kind: "info",
-        },
-        {
-          id: "allow",
-          label: `${perms?.commands?.allow?.length || 0} pre-approved commands`,
-          description: null,
-          active: true,
-          kind: "expandable",
-          detail: (perms?.commands?.allow || []).map((c) => c.join(" ")),
         },
       ],
     },
@@ -811,9 +806,20 @@ export function configCommand(args) {
       : `\n${section.category}`;
     console.log(header);
     for (const item of section.items) {
-      if (item.kind === "profile") {
-        console.log(`  profile:   ${item.label}`);
-        if (item.description) console.log(`             ${item.description}`);
+      if (item.kind === "behavior") {
+        const override = item.overridden ? `  (custom, default: ${item.defaultBucket})` : "";
+        const codexNote = item.codexOnly ? "  [Codex only]" : item.noCodexAsk ? "  [no per-command ask on Codex]" : "";
+        console.log(`  ${item.bucket.padEnd(6)} ${item.label}${override}${codexNote}`);
+        if (item.description) console.log(`         ${item.description}`);
+      } else if (item.kind === "arbitrary-list") {
+        console.log(`  ${item.label}`);
+        if (item.description) console.log(`    ${item.description}`);
+        const show = (item.items || []).slice(0, 5);
+        for (const c of show) {
+          const override = c.overridden ? "  (custom)" : "";
+          console.log(`    ${c.bucket.padEnd(6)} ${c.label}${override}`);
+        }
+        if ((item.items || []).length > 5) console.log(`    … (${item.items.length - 5} more — see: roborepo web)`);
       } else if (item.kind === "info") {
         console.log(`  ${item.label}`);
         if (item.description) console.log(`    ${item.description}`);

@@ -4,16 +4,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   loadPermissionManifest,
-  resolveProfile,
+  resolveBehaviors,
+  resolveArbitraryCommands,
   renderCodexConfig,
   renderCodexRules,
   renderClaudeSettings,
 } from "../cli/permissions-render.mjs";
 
-// Build entrypoint: renders the active agent permission profile into the repo SOURCE config
+// Build entrypoint: renders the manifest's default behaviors into the repo SOURCE config
 // (globals/). The reusable render core lives in scripts/cli/permissions-render.mjs so the CLI stays
 // self-contained; the config controls render the same logic into a consumer's LIVE home config.
-// `roborepo permissions` and doctor --check run this script.
+// `roborepo permissions` and doctor --check run this script. Repo source never carries personal
+// overrides — it always renders the manifest's own default buckets, unmodified.
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
@@ -22,27 +24,18 @@ const codexRulesPath = path.join(repoRoot, "globals", "codex", "rules", "default
 const claudeSettingsPath = path.join(repoRoot, "globals", "claude", "settings.json");
 
 let check = false;
-let profileName;
 for (let i = 2; i < process.argv.length; i += 1) {
   const arg = process.argv[i];
   if (arg === "--check") check = true;
-  else if (arg === "--profile") profileName = process.argv[++i];
-  else if (arg.startsWith("--profile=")) profileName = arg.slice("--profile=".length);
   else {
-    console.error("usage: render-agent-permissions.mjs [--check] [--profile <name>]");
+    console.error("usage: render-agent-permissions.mjs [--check]");
     process.exit(2);
   }
 }
 
 const manifest = loadPermissionManifest();
-let resolved;
-try {
-  resolved = resolveProfile(manifest, profileName);
-} catch (err) {
-  console.error(err.message);
-  process.exit(2);
-}
-const { name, profile } = resolved;
+const behaviors = resolveBehaviors(manifest);
+const arbitraryCommands = resolveArbitraryCommands(manifest);
 
 function checkOrWrite(target, rendered, label) {
   const current = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
@@ -61,9 +54,9 @@ function checkOrWrite(target, rendered, label) {
 
 let ok = true;
 try {
-  ok = checkOrWrite(codexConfigPath, renderCodexConfig(fs.readFileSync(codexConfigPath, "utf8"), profile, name, codexConfigPath), "globals/codex/config.toml") && ok;
+  ok = checkOrWrite(codexConfigPath, renderCodexConfig(fs.readFileSync(codexConfigPath, "utf8"), behaviors, arbitraryCommands, codexConfigPath), "globals/codex/config.toml") && ok;
   ok = checkOrWrite(codexRulesPath, renderCodexRules(manifest), "globals/codex/rules/default.rules") && ok;
-  ok = checkOrWrite(claudeSettingsPath, renderClaudeSettings(fs.readFileSync(claudeSettingsPath, "utf8"), manifest, profile), "globals/claude/settings.json") && ok;
+  ok = checkOrWrite(claudeSettingsPath, renderClaudeSettings(fs.readFileSync(claudeSettingsPath, "utf8"), manifest), "globals/claude/settings.json") && ok;
 } catch (error) {
   console.error(error?.message || String(error));
   process.exit(1);

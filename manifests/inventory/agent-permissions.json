@@ -1,45 +1,52 @@
 {
-  "default_profile": "interactive",
-  "profiles": {
-    "readonly": {
-      "filesystem": "read",
-      "approval": "ask",
-      "network": false,
-      "description": "Inspect only; ask before escapes."
+  "behaviors": [
+    {
+      "id": "write-files",
+      "label": "Write files",
+      "description": "Create and edit files (Write, Edit tools).",
+      "kind": "tools",
+      "tools": ["Write", "Edit"],
+      "bucket": "allow"
     },
-    "interactive": {
-      "filesystem": "workspace-write",
-      "approval": "ask",
-      "network": false,
-      "description": "Write inside the workspace; ask before sandbox escapes."
+    {
+      "id": "delete-files",
+      "label": "Delete files",
+      "description": "Remove files from disk (rm, git rm).",
+      "kind": "commands",
+      "commands": [["rm"], ["git", "rm"]],
+      "bucket": "ask"
     },
-    "workspace": {
-      "filesystem": "workspace-write",
-      "approval": "never",
-      "network": false,
-      "description": "Work locally inside the workspace without approval prompts; blocked actions fail."
+    {
+      "id": "go-online",
+      "label": "Go online",
+      "description": "Sandbox network access. Codex-only — Claude does not sandbox network egress.",
+      "kind": "network",
+      "codexOnly": true,
+      "bucket": "deny"
     },
-    "networked": {
-      "filesystem": "workspace-write",
-      "approval": "ask",
-      "network": true,
-      "description": "Workspace writes plus sandbox network access."
+    {
+      "id": "commit-code",
+      "label": "Commit code",
+      "description": "Stage and commit changes locally (git add, git commit).",
+      "kind": "commands",
+      "commands": [["git", "add"], ["git", "commit"]],
+      "bucket": "allow"
+    },
+    {
+      "id": "push-pull-prs",
+      "label": "Push / pull / PRs",
+      "description": "Move code to or from a remote (git push, git pull).",
+      "kind": "commands",
+      "commands": [["git", "push"], ["git", "pull"]],
+      "bucket": "deny"
     }
-  },
+  ],
   "tools": {
-    "read": ["Read"],
-    "write": ["Write", "Edit"]
+    "read": ["Read"]
   },
   "mcp": {},
   "commands": {
-    "deny": [
-      ["git", "push"],
-      ["git", "pull"],
-      ["git", "rm"],
-      ["rm"]
-    ],
     "allow": [
-      ["npx", "playwright", "test"],
       ["npm", "test"],
       ["npm", "run", "test"],
       ["pnpm", "test"],
@@ -61,28 +68,13 @@
       ["npm", "run", "build:preview"],
       ["npm", "run", "build"],
       ["npm", "run", "dev"],
-      ["npm", "run", "demo:start"],
-      ["npm", "run", "audit:run:blocking"],
-      ["npm", "run", "audit:run"],
       ["npm", "run", "check"],
       ["npx", "tsc"],
       ["npx", "next", "lint"],
       ["npx", "eslint"],
       ["npx", "jest"],
-      ["/bin/zsh", "-lc", "npm run check > /tmp/sembrando-astro-check.log 2>&1"],
-      ["npx", "convex", "codegen"],
       ["git", "status"],
-      ["git", "log"],
-      ["docker", "volume", "ls"],
-      ["docker", "system", "df"],
-      ["docker", "volume", "inspect"],
-      ["docker", "stats", "--no-stream"],
-      ["docker", "builder", "prune", "-f"],
-      ["supabase", "start"],
-      ["docker", "events"],
-      ["pgrep"],
-      ["kill"],
-      ["scripts/test/test-install-collisions.sh"]
+      ["git", "log"]
     ]
   }
 }

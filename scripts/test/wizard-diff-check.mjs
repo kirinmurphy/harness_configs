@@ -17,6 +17,16 @@ const row = (id, { active, wasActive, toggleable = true, category = "Token Optim
   item: { id },
 });
 
+// N-state (deny/ask/allow) row — same shape the Permissions step's named-behavior toggles use.
+const stateRow = (id, { state, wasState, toggleable = true }) => ({
+  label: id,
+  states: ["deny", "ask", "allow"],
+  state,
+  wasState,
+  toggleable,
+  item: { id },
+});
+
 const steps = [
   {
     title: "Token Optimization",
@@ -34,8 +44,10 @@ const steps = [
   },
   {
     title: "Permissions",
-    readonly: true,
-    items: [row("profile", { active: false, wasActive: true })], // readonly step -> skip even though changed
+    items: [
+      stateRow("delete-files", { state: "allow", wasState: "ask" }), // changed -> pending
+      stateRow("go-online", { state: "deny", wasState: "deny" }),    // unchanged -> skip
+    ],
   },
 ];
 
@@ -43,16 +55,23 @@ const pending = pendingWizardChanges(steps);
 
 assert.deepEqual(
   pending.map((r) => r.item.id),
-  ["jcodemunch", "verify"],
-  "selects only changed, toggleable rows from non-readonly steps, in order",
+  ["jcodemunch", "verify", "delete-files"],
+  "selects only changed, toggleable rows (boolean active or N-state), in order",
 );
 assert.equal(pending[0].active, false, "carries the desired final state for a disable");
 assert.equal(pending[1].active, true, "carries the desired final state for an enable");
+assert.equal(pending[2].state, "allow", "carries the desired final state for an N-state change");
 
 // No changes -> empty selection (the 'No changes.' path).
 const unchanged = pendingWizardChanges([
   { title: "x", items: [row("jcodemunch", { active: true, wasActive: true })] },
 ]);
 assert.equal(unchanged.length, 0, "an all-unchanged wizard yields no pending work");
+
+// A readonly step is skipped entirely, even if an item's value differs from its original.
+const readonlySkipped = pendingWizardChanges([
+  { title: "x", readonly: true, items: [row("frozen", { active: false, wasActive: true })] },
+]);
+assert.equal(readonlySkipped.length, 0, "a readonly step's items are never pending, even if changed");
 
 console.log("wizard-diff ok");

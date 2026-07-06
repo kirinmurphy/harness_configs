@@ -591,44 +591,37 @@ assert "config: GET /config still served" \
 assert "config: served /config dashboard JS parses" \
   bash -c "dashjs=\"${cfg_home}/dash.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/config/app.js' > \"\${dashjs}\" && node --check \"\${dashjs}\""
 
-# Phase 2: permission profile switch writes the LIVE home config (not the repo template).
+# Phase 2: flat permission model — named behaviors (write-files, delete-files, go-online,
+# commit-code, push-pull-prs) and arbitrary commands are each independently deny/ask/allow, with
+# personal overrides layered on top of the manifest at render time. No profile bundles, no
+# project scope (global only — see manifests/inventory/agent-permissions.json).
 # Seed a codex config.toml so the renderer has a marker block to merge into.
 cp "${repo_root}/globals/codex/config.toml" "${cfg_home}/.codex/config.toml"
-assert "config: setPermissionProfile rewrites live home config + preserves other keys" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const fs=require('fs');const before=JSON.parse(fs.readFileSync('${cfg_home}/.claude/settings.json'));const r=m.setPermissionProfile('readonly');const after=JSON.parse(fs.readFileSync('${cfg_home}/.claude/settings.json'));const codex=fs.readFileSync('${cfg_home}/.codex/config.toml','utf8');process.exit(r.ok&&/sandbox_mode = .read-only./.test(codex)&&m.readActiveProfile()==='readonly'?0:1)})\""
-assert "config: setPermissionProfile blocks looser profile without confirm" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setPermissionProfile('workspace');process.exit(r.ok===false&&r.needsConfirm?0:1)})\""
-assert "config: setPermissionProfile applies looser profile when confirmed" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setPermissionProfile('workspace',{confirmedLooser:true});process.exit(r.ok&&m.readActiveProfile()==='workspace'?0:1)})\""
-assert "config: setPermissionProfile rejects unknown profile" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setPermissionProfile('bogus');process.exit(r.ok?1:0)})\""
-assert "config: snapshot reports active profile + profile list" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(s.activeProfile==='workspace'&&Array.isArray(s.profiles)&&s.profiles.includes('readonly')?0:1)})\""
+assert "config: setBehaviorBucket rewrites live home config + preserves other keys" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const fs=require('fs');const before=JSON.parse(fs.readFileSync('${cfg_home}/.claude/settings.json'));const r=m.setBehaviorBucket('write-files','deny');const after=JSON.parse(fs.readFileSync('${cfg_home}/.claude/settings.json'));const codex=fs.readFileSync('${cfg_home}/.codex/config.toml','utf8');process.exit(r.ok&&/sandbox_mode = .read-only./.test(codex)&&!after.permissions.allow.includes('Write')?0:1)})\""
+assert "config: setBehaviorBucket rejects unknown behavior" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setBehaviorBucket('bogus-behavior','deny');process.exit(r.ok?1:0)})\""
+assert "config: setBehaviorBucket rejects unknown bucket" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setBehaviorBucket('write-files','bogus');process.exit(r.ok?1:0)})\""
+assert "config: setBehaviorBucket default reverts to manifest default" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{m.setBehaviorBucket('write-files','default');const eff=m.effectivePermissions();const wf=eff.behaviors.find(b=>b.id==='write-files');process.exit(wf.bucket==='allow'&&!wf.overridden?0:1)})\""
+assert "config: setCommandBucket tracks a new arbitrary command" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{m.setCommandBucket(['docker','run'],'ask');const eff=m.effectivePermissions();const c=eff.arbitrary.find(a=>a.id==='docker run');process.exit(c&&c.bucket==='ask'&&c.overridden?0:1)})\""
+assert "config: setCommandBucket rejects empty tokens" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setCommandBucket([],'ask');process.exit(r.ok?1:0)})\""
+assert "config: snapshot reports behaviors + arbitrary commands" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const p=s.permissions;process.exit(Array.isArray(p.behaviors)&&p.behaviors.length===5&&Array.isArray(p.arbitrary)?0:1)})\""
 
-# Project scope: writes <proj>/.claude/settings.json as an override, leaves global home untouched,
-# and is detected back via the roborepoProfile stamp (allow-list alone can't distinguish profiles).
-cfg_proj="${cfg_home}/sample-project"
-mkdir -p "${cfg_proj}"
-assert "config: project-scope profile writes project .claude, not global" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const fs=require('fs');const r=m.setPermissionProfile('readonly',{scope:'project',cwd:'${cfg_proj}'});const wrote=fs.existsSync('${cfg_proj}/.claude/settings.json');process.exit(r.ok&&wrote?0:1)})\""
-assert "config: project-scope profile detected via stamp" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{process.exit(m.readProjectProfile('${cfg_proj}')==='readonly'?0:1)})\""
-assert "config: project-scope switch does not change global active profile" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{process.exit(m.readActiveProfile()==='workspace'?0:1)})\""
-assert "config: snapshot reports projectProfile when cwd has an override" \
-  bash -c "cd '${cfg_proj}' && ${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(s.projectProfile==='readonly'?0:1)})\""
-assert "config: setPermissionProfile rejects unknown scope" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setPermissionProfile('readonly',{scope:'bogus'});process.exit(r.ok?1:0)})\""
-
-# Permission POST endpoint: 200 normal, 409 needsConfirm for looser, 200 with confirm, 400 bad body.
-assert "config: POST /api/config/permissions switches profile (200)" \
-  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"profile\":\"interactive\"}')\" = 200 ]"
-assert "config: POST permissions looser without confirm returns 409" \
-  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"profile\":\"networked\"}')\" = 409 ]"
-assert "config: POST permissions looser with confirm returns 200" \
-  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"profile\":\"networked\",\"confirmedLooser\":true}')\" = 200 ]"
-assert "config: POST permissions bad body returns 400" \
-  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"profile\":123}')\" = 400 ]"
+# Permission POST endpoint: named behavior (200), arbitrary command (200), invalid bucket (400),
+# missing identifier (400).
+assert "config: POST /api/config/permissions sets a named behavior (200)" \
+  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"behaviorId\":\"go-online\",\"bucket\":\"allow\"}')\" = 200 ]"
+assert "config: POST /api/config/permissions sets an arbitrary command (200)" \
+  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"tokens\":[\"curl\"],\"bucket\":\"ask\"}')\" = 200 ]"
+assert "config: POST permissions invalid bucket returns 400" \
+  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"behaviorId\":\"go-online\",\"bucket\":\"bogus\"}')\" = 400 ]"
+assert "config: POST permissions missing identifier returns 400" \
+  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"bucket\":\"allow\"}')\" = 400 ]"
 
 # Telemetry is a package via a service component: it toggles through the generic package endpoint.
 assert "config: POST package telemetry (service component) enables + flips snapshot" \

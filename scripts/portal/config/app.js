@@ -30,13 +30,6 @@ function setOptionalText(node, value) {
   node.hidden = !value;
 }
 
-function textFromTemplate(id, text, cls) {
-  const node = tpl(id);
-  if (cls) node.className = cls;
-  node.textContent = text;
-  return node;
-}
-
 function dot(on) {
   return el("span", "dot " + (on ? "on" : "off"));
 }
@@ -188,90 +181,155 @@ function toggleSwitch(item, statusSlot) {
   return wrap;
 }
 
-// Permission profile selector with a Global / This-project scope switch. Project scope writes the
-// current repo's .claude/.codex (a per-project override of the global default — last-wins, not
-// merged). Looser profiles (workspace / networked) require an explicit confirm; the server enforces
-// the same rule (409 needsConfirm) so it holds even if the client is bypassed.
-function profileSelector(item) {
-  const box = tpl("tpl-profile-selector");
-  let scope = "global"; // which scope the buttons currently target
+const BUCKETS = ["deny", "ask", "allow"];
 
-  slot(box, "global-profile").textContent = item.globalProfile || "—";
-  slot(box, "no-project-profile").hidden = !!item.projectProfile;
-  slot(box, "project-profile").hidden = !item.projectProfile;
-  slot(box, "project-profile-value").textContent = item.projectProfile || "";
-
-  const scopeButtons = [...box.querySelectorAll("[data-scope]")];
-  const choices = slot(box, "choices");
-  const err = slot(box, "error");
-  for (const btn of scopeButtons) {
-    btn.addEventListener("click", () => {
-      scope = btn.dataset.scope;
-      rerender();
+// POST a bucket change for either a named behavior (behaviorId) or an arbitrary command
+// (tokens), re-rendering from the returned snapshot on success. Shared by behaviorRow and the
+// arbitrary-command list so both paths hit the exact same endpoint contract.
+async function applyBucket(payload, errSlot) {
+  errSlot.textContent = "";
+  try {
+    const res = await fetch("/api/config/permissions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
-  }
-
-  function currentFor(sc) {
-    return sc === "project" ? item.projectProfile : item.globalProfile;
-  }
-
-  async function apply(profile, looser) {
-    if (looser) {
-      const ok = window.confirm(
-        "Switching " +
-          scope +
-          " to '" +
-          profile +
-          "' loosens safety:\\n\\n" +
-          (profile === "workspace"
-            ? "the agent stops asking before blocked actions."
-            : profile === "networked"
-              ? "the agent's sandbox gets internet access."
-              : "") +
-          "\\nApply anyway?",
-      );
-      if (!ok) return;
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      errSlot.textContent = data.error || data.message || "failed";
+      return false;
     }
-    err.textContent = "";
-    try {
-      const res = await fetch("/api/config/permissions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile, confirmedLooser: looser, scope }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        err.textContent = data.error || data.message || "failed";
-        return;
+    if (data.config) applySnapshot(data.config);
+    return true;
+  } catch (e) {
+    errSlot.textContent = e.message;
+    return false;
+  }
+}
+
+// One named behavior: label, a deny/ask/allow segmented control, and — only when the live value
+// differs from the manifest default — a "custom" badge with a one-click revert. Confirms before
+// moving OUT of deny (the "loosening" action), same reasoning the old profile selector used for
+// switching to a looser profile.
+function behaviorRow(item) {
+  const row = tpl("tpl-permission-row");
+  const wrap = el("div", "behavior-row");
+  const head = el("div", "behavior-head");
+  const label = el("span", "behavior-label", item.label);
+  head.appendChild(label);
+  if (item.codexOnly) head.appendChild(el("span", "codex-note", "Codex only"));
+  const err = el("div", "item-err");
+
+  const buckets = el("div", "bucket-group");
+  for (const b of BUCKETS) {
+    const btn = el("button", "bucket-btn bucket-" + b, b);
+    btn.type = "button";
+    btn.classList.toggle("current", b === item.bucket);
+    btn.disabled = b === item.bucket;
+    btn.addEventListener("click", async () => {
+      if (item.bucket === "deny" && b !== "deny") {
+        const ok = window.confirm(
+          "Moving \"" + item.label + "\" out of deny loosens safety. Apply anyway?",
+        );
+        if (!ok) return;
       }
-      if (data.config) applySnapshot(data.config);
-    } catch (e) {
-      err.textContent = e.message;
-    }
+      await applyBucket({ behaviorId: item.id, bucket: b }, err);
+    });
+    buckets.appendChild(btn);
   }
+  head.appendChild(buckets);
 
-  function rerender() {
-    for (const btn of scopeButtons) {
-      btn.classList.toggle("on", btn.dataset.scope === scope);
-    }
-    const cur = currentFor(scope);
-    choices.replaceChildren(
-      ...(item.options || []).map((opt) => {
-        const isCur = opt.id === cur;
-        const btn = tpl("tpl-profile-choice");
-        btn.classList.toggle("current", isCur);
-        btn.classList.toggle("looser", !!opt.looser);
-        btn.textContent = opt.id + (opt.looser ? " ⚠" : "");
-        btn.title = opt.description || "";
-        btn.disabled = isCur;
-        btn.addEventListener("click", () => apply(opt.id, opt.looser));
-        return btn;
+  if (item.overridden) {
+    const badge = el("span", "override-badge", "⚡ custom");
+    const reset = el("button", "reset-link", "reset");
+    reset.type = "button";
+    reset.addEventListener("click", () => applyBucket({ behaviorId: item.id, bucket: "default" }, err));
+    head.appendChild(badge);
+    head.appendChild(reset);
+  }
+  wrap.appendChild(head);
+  if (item.description) wrap.appendChild(el("div", "behavior-desc", item.description));
+  if (item.overridden) wrap.appendChild(el("div", "behavior-default", "default: " + item.defaultBucket));
+  if (item.noCodexAsk && !item.codexOnly) {
+    wrap.appendChild(el("div", "codex-note", "Codex has no per-command ask — runs without a prompt there unless another setting forces approval."));
+  }
+  wrap.appendChild(err);
+
+  const content = slot(row, "content");
+  content.replaceWith(wrap);
+  return row;
+}
+
+// Arbitrary (non-named) commands: an editable list plus an "add command" input. Each row is the
+// same bucket control as behaviorRow; "remove" reverts to default, which for a manifest-default
+// command means falling back to its allow-by-default state, and for a purely personal addition
+// means it stops being tracked at all.
+function arbitraryListRow(item) {
+  const row = tpl("tpl-permission-row");
+  const wrap = el("div", "arbitrary-list");
+  wrap.appendChild(el("div", "arbitrary-head", item.label));
+  if (item.description) wrap.appendChild(el("div", "arbitrary-desc", item.description));
+
+  const list = el("div", "arbitrary-items");
+  const renderItems = () => {
+    list.replaceChildren(
+      ...(item.items || []).map((c) => {
+        const line = el("div", "arbitrary-item");
+        line.appendChild(el("span", "arbitrary-label", c.label));
+        const err = el("span", "item-err");
+        const buckets = el("div", "bucket-group bucket-group-compact");
+        for (const b of BUCKETS) {
+          const btn = el("button", "bucket-btn bucket-" + b, b);
+          btn.type = "button";
+          btn.classList.toggle("current", b === c.bucket);
+          btn.disabled = b === c.bucket;
+          btn.addEventListener("click", async () => {
+            if (c.bucket === "deny" && b !== "deny") {
+              const ok = window.confirm("Moving \"" + c.label + "\" out of deny loosens safety. Apply anyway?");
+              if (!ok) return;
+            }
+            await applyBucket({ tokens: c.label.split(" "), bucket: b }, err);
+          });
+          buckets.appendChild(btn);
+        }
+        line.appendChild(buckets);
+        if (c.overridden) {
+          const remove = el("button", "reset-link", c.defaultBucket ? "reset" : "remove");
+          remove.type = "button";
+          remove.addEventListener("click", () => applyBucket({ tokens: c.label.split(" "), bucket: "default" }, err));
+          line.appendChild(remove);
+        }
+        if (c.noCodexAsk) line.appendChild(el("span", "codex-note", "no per-command ask on Codex"));
+        line.appendChild(err);
+        return line;
       }),
     );
-  }
+  };
+  renderItems();
+  wrap.appendChild(list);
 
-  rerender();
-  return box;
+  const addRow = el("div", "arbitrary-add");
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "add a command, e.g. docker run";
+  input.className = "arbitrary-input";
+  const addBtn = el("button", "arbitrary-add-btn", "add as ask");
+  addBtn.type = "button";
+  const addErr = el("span", "item-err");
+  addBtn.addEventListener("click", async () => {
+    const tokens = input.value.trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return;
+    const ok = await applyBucket({ tokens, bucket: "ask" }, addErr);
+    if (ok) input.value = "";
+  });
+  addRow.appendChild(input);
+  addRow.appendChild(addBtn);
+  addRow.appendChild(addErr);
+  wrap.appendChild(addRow);
+
+  const content = slot(row, "content");
+  content.replaceWith(wrap);
+  return row;
 }
 
 // --------------------------------------------------------------------------- section renderers
@@ -285,39 +343,10 @@ function renderPermissionsSection(section) {
 }
 
 function permissionRow(item) {
+  if (item.kind === "behavior") return behaviorRow(item);
+  if (item.kind === "arbitrary-list") return arbitraryListRow(item);
   const row = tpl("tpl-permission-row");
-  const content = slot(row, "content");
-
-  if (item.kind === "profile") {
-    content.replaceWith(profileSelector(item));
-    return row;
-  }
-  if (item.kind === "info") {
-    const info = tpl("tpl-permission-info");
-    slot(info, "label").textContent = item.label;
-    setOptionalText(slot(info, "value"), item.value);
-    content.replaceWith(info);
-    return row;
-  }
-  if (item.kind === "expandable") {
-    const expandable = tpl("tpl-permission-expandable");
-    const list = slot(expandable, "detail");
-    const btn = expandable.querySelector(".expand-btn");
-    slot(expandable, "label").textContent = item.label;
-    list.replaceChildren(
-      ...(item.detail || []).map((d) => textFromTemplate("tpl-list-item", d)),
-    );
-    const closedLabel = btn.querySelector('[data-expand-label="closed"]');
-    const openLabel = btn.querySelector('[data-expand-label="open"]');
-    btn.addEventListener("click", () => {
-      const open = list.classList.toggle("open");
-      closedLabel.hidden = open;
-      openLabel.hidden = !open;
-    });
-    content.replaceWith(expandable);
-    return row;
-  }
-  content.remove();
+  slot(row, "content").remove();
   return row;
 }
 

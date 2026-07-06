@@ -240,58 +240,10 @@
         <span class="switch-track"><span class="switch-knob"></span></span>
       </label>
     </template>
-    <template id="tpl-profile-selector">
-      <div class="profile-box">
-        <div class="perm-profile">
-          <span class="perm-name"
-            >global: <span data-slot="global-profile"></span
-          ></span>
-          <span class="perm-desc" data-slot="no-project-profile"
-            >no project override</span
-          >
-          <span class="perm-desc" data-slot="project-profile"
-            >this project overrides →
-            <span data-slot="project-profile-value"></span
-          ></span>
-        </div>
-        <div class="scope-row">
-          <button class="scope-btn" type="button" data-scope="global">
-            Global
-          </button>
-          <button class="scope-btn" type="button" data-scope="project">
-            This project
-          </button>
-        </div>
-        <div class="profile-choices" data-slot="choices"></div>
-        <div class="item-err" data-slot="error"></div>
-      </div>
-    </template>
-    <template id="tpl-profile-choice">
-      <button class="profile-btn" type="button"></button>
-    </template>
     <template id="tpl-permission-row">
       <div class="perm-row">
         <div data-slot="content"></div>
       </div>
-    </template>
-    <template id="tpl-permission-info">
-      <div>
-        <div class="perm-label" data-slot="label"></div>
-        <div class="perm-value" data-slot="value"></div>
-      </div>
-    </template>
-    <template id="tpl-permission-expandable">
-      <div>
-        <div class="perm-label" data-slot="label"></div>
-        <button class="expand-btn" type="button">
-          <span data-expand-label="closed">show all ▸</span>
-          <span data-expand-label="open" hidden>hide ▴</span>
-        </button>
-        <ul class="expand-list" data-slot="detail"></ul>
-      </div>
-    </template>
-    <template id="tpl-list-item">
-      <li></li>
     </template>
     <script src="/portal/shared/theme.js" defer></script>
     <script src="/portal/config/app.js" defer></script>

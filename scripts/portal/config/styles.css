@@ -173,78 +173,7 @@ main {
 .item-err:empty {
   display: none;
 }
-/* permission profile selector */
-.profile-box {
-  width: 100%;
-}
-.profile-choices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-.profile-btn {
-  font:
-    11px/1.4 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  color: var(--ink);
-  padding: 4px 10px;
-  border-radius: 5px;
-  cursor: pointer;
-}
-.profile-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.profile-btn.current {
-  border-color: var(--ok);
-  color: var(--ok);
-  cursor: default;
-}
-.profile-btn.looser {
-  color: var(--warn);
-  border-color: var(--warn-line);
-}
-.profile-btn.looser:hover:not(:disabled) {
-  border-color: var(--warn);
-}
-.profile-btn:disabled {
-  opacity: 0.7;
-}
-.scope-row {
-  display: flex;
-  gap: 0;
-  margin-top: 8px;
-}
-.scope-btn {
-  font:
-    11px/1.4 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  color: var(--dim);
-  padding: 3px 12px;
-  cursor: pointer;
-}
-.scope-btn:first-child {
-  border-radius: 5px 0 0 5px;
-}
-.scope-btn:last-child {
-  border-radius: 0 5px 5px 0;
-  border-left: none;
-}
-.scope-btn.on {
-  background: var(--panel);
-  color: var(--accent);
-  border-color: var(--accent);
-}
-/* permissions section */
+/* permissions section: flat behavior list, each row deny/ask/allow */
 .perm-row {
   padding: 8px 0;
   border-top: 1px solid var(--line);
@@ -253,57 +182,175 @@ main {
 .perm-row:first-of-type {
   border-top: none;
 }
-.perm-profile {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
+.behavior-row {
+  width: 100%;
 }
-.perm-name {
+.behavior-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.behavior-label {
   color: var(--ink);
   font-weight: 600;
 }
-.perm-desc {
+.behavior-desc {
   color: var(--dim);
+  margin-top: 3px;
 }
-.perm-label {
-  color: var(--dim);
+.behavior-default {
+  color: var(--off);
+  font-size: 11px;
+  margin-top: 2px;
+}
+.codex-note {
+  color: var(--warn);
   font-size: 11px;
 }
-.perm-value {
-  color: var(--ink);
+.bucket-group {
+  display: inline-flex;
+  gap: 0;
+  margin-left: auto;
 }
-.expand-btn {
+.bucket-group-compact {
+  margin-left: 12px;
+}
+.bucket-btn {
   font:
-    11px/1 ui-monospace,
+    11px/1.4 ui-monospace,
     SFMono-Regular,
     Menlo,
     monospace;
-  background: none;
+  background: var(--bg);
   border: 1px solid var(--line);
   color: var(--dim);
-  padding: 2px 7px;
-  border-radius: 4px;
+  padding: 3px 10px;
   cursor: pointer;
-  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
-.expand-btn:hover {
+.bucket-btn:first-child {
+  border-radius: 5px 0 0 5px;
+}
+.bucket-btn:last-child {
+  border-radius: 0 5px 5px 0;
+  border-left: none;
+}
+.bucket-btn:hover:not(:disabled) {
   color: var(--ink);
-  border-color: var(--dim);
 }
-.expand-list {
-  display: none;
-  margin-top: 6px;
-  column-count: 2;
-  column-gap: 16px;
+.bucket-btn.bucket-deny.current {
+  background: var(--panel);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.bucket-btn.bucket-ask.current {
+  background: var(--panel);
+  color: var(--warn);
+  border-color: var(--warn-line);
+}
+.bucket-btn.bucket-allow.current {
+  background: var(--panel);
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.bucket-btn:disabled {
+  cursor: default;
+}
+.override-badge {
+  font-size: 11px;
+  color: var(--accent);
+}
+.reset-link {
   font-size: 11px;
   color: var(--dim);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
 }
-.expand-list.open {
-  display: block;
+.reset-link:hover {
+  color: var(--accent);
 }
-.expand-list li {
-  list-style: none;
-  padding: 1px 0;
+/* arbitrary (non-named) command list */
+.arbitrary-list {
+  width: 100%;
+}
+.arbitrary-head {
+  color: var(--ink);
+  font-weight: 600;
+}
+.arbitrary-desc {
+  color: var(--dim);
+  margin-top: 3px;
+  margin-bottom: 8px;
+}
+.arbitrary-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.arbitrary-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.arbitrary-label {
+  font:
+    11px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: var(--ink);
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.arbitrary-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.arbitrary-input {
+  flex: 1;
+  font:
+    12px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 4px 8px;
+  border-radius: 5px;
+}
+.arbitrary-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.arbitrary-add-btn {
+  font:
+    11px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--dim);
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.arbitrary-add-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .panel-footnote {
   font-size: 11px;

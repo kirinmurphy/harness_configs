@@ -95,17 +95,23 @@ function route(req, res, handlers) {
     });
   }
 
+  // Flat model: either a named behavior (by manifest id) or an arbitrary command (by token
+  // array) moves to a bucket. "default" reverts to the manifest's own default for that item.
+  // Global only — no profile, no scope; see permissions-render.mjs / config-mutate.mjs.
   if (req.method === "POST" && urlPath === "/api/config/permissions") {
     return readJsonBody(req, (body, err) => {
       if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
-      const { profile, confirmedLooser, scope } = body || {};
-      if (typeof profile !== "string") {
-        return send(res, 400, "application/json", JSON.stringify({ error: "expected { profile: string, scope?: 'global'|'project', confirmedLooser?: boolean }" }));
+      const { behaviorId, tokens, bucket } = body || {};
+      const validBucket = bucket === "default" || ["deny", "ask", "allow"].includes(bucket);
+      if (!validBucket || (typeof behaviorId !== "string" && !Array.isArray(tokens))) {
+        return send(res, 400, "application/json", JSON.stringify({
+          error: "expected { behaviorId: string, bucket } or { tokens: string[], bucket } — bucket one of deny|ask|allow|default",
+        }));
       }
-      const result = mutateProfile(profile, !!confirmedLooser, scope || "global");
-      // needsConfirm is a soft rejection (looser profile, no confirm yet) — 409 so the client can
-      // prompt then retry with confirmedLooser, distinct from a 400 validation error.
-      const status = result.ok ? 200 : result.needsConfirm ? 409 : 400;
+      const result = typeof behaviorId === "string"
+        ? mutateBehavior(behaviorId, bucket)
+        : mutateCommand(tokens, bucket);
+      const status = result.ok ? 200 : 400;
       return send(res, status, "application/json", JSON.stringify({ ...result, config: loadConfig() }));
     });
   }

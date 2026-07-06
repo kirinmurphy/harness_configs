@@ -33,6 +33,18 @@ The audience spans non-technical to highly technical and everywhere between.
 - **One spine for everyone.** Aim for prose where every reader, at their own level,
   finds it coherent. Avoid forking the article into "simple version" and "real
   version." Explain the concept once, at the right altitude, when it's needed.
+- **Calibrate facts to the stated floor, not just to zero.** "Comprehensible to a
+  non-technical reader" is the default floor. When the user sets a higher floor for a
+  given article (e.g. "assume intermediate Claude/Codex harness knowledge"), every
+  sentence has to clear THAT floor, not the default one. A sentence that states
+  something the stated floor's reader already knows is padding, not an on-ramp — cut
+  it. Examples that fail an intermediate-harness-knowledge floor: naming which of two
+  named tools is more widely used ("the two most common coding-agent harnesses in use
+  today"), restating what a term already named means ("a `PreToolUse` hook — the hook
+  that fires before a tool call executes"), or explaining a general software concept
+  the piece isn't about ("has to work like configuration, not a one-time setup
+  script"). Test: would the stated-floor reader already know this without the
+  sentence? If yes, cut it — it is scene-setting, not information.
 
 ## Code rules
 
@@ -217,6 +229,16 @@ supplies the facts and the reasoning.
   itself. State the technical assumption being challenged directly ("Faceted search is
   often assumed to need a dedicated search engine") and let the analysis carry the
   point. The piece argues against an idea, not against a strawman population.
+- **Don't invent a wrong explanation just to rule it out.** A clause like "not because
+  of a missing setting, but because X" manufactures a hypothesis nobody raised, purely
+  to knock it down before stating X. It adds a phantom scenario and makes the sentence
+  longer without adding fact — the reader was never considering the ruled-out
+  explanation, so ruling it out teaches nothing. State the real cause directly: "the
+  two tools disagree on how many answers a permission question can have," not "not
+  because of a missing setting, but because the two tools disagree on how many answers
+  a permission question can have." If a real, plausible misconception exists and is
+  worth heading off, name it as a misconception ("often assumed to..."), don't dress
+  it up as a hypothesis introduced only to be dismissed.
 - **No staged scenes or second-person narration to set up a point.** Don't write
   "Picture the end of a workday" or "You've just made a few commits." State the
   situation directly: "At the end of a set of commits, a developer wants a review."

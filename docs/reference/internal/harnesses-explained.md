@@ -129,17 +129,21 @@ which shell commands, which tools, which external calls — plus session default
 
 Here the harnesses diverge harder. It's no longer just a name:
 
-- Claude expresses permissions as a JSON array of tool matchers inside `settings.json`.
-- Codex expresses them as a TOML session profile _plus_ a separate command-policy rules file.
+- Claude expresses permissions as a JSON array of tool matchers inside `settings.json`, with a
+  real third `ask` state alongside allow/deny.
+- Codex expresses them as TOML session defaults (`approval_policy`, `sandbox_mode`,
+  `network_access`) _plus_ a separate binary (`forbidden`/`allow`-only) command-policy rules
+  file — no native `ask` tier at the rules layer.
 
-Different **format** and different **structure** — an array of strings versus a profile-and-rules
-pair. Yet the principle from Step 2 carries straight over: author the intent once, in a neutral data
-file, then _render_ it into each harness's native shape. The renderer owns a clearly marked block in
-each output and leaves the rest of the file alone:
+Different **format**, different **structure**, and — this is the interesting part — different
+**expressiveness**. Yet the principle from Step 2 carries straight over: author the intent once, as
+a flat list of named/arbitrary behaviors in a neutral data file, then _render_ it into each
+harness's native shape. The renderer owns a clearly marked block in each output and leaves the
+rest of the file alone:
 
 ```toml
 # BEGIN GENERATED AGENT PERMISSIONS
-# Source: manifests/inventory/agent-permissions.json profile interactive
+# Source: manifests/inventory/agent-permissions.json
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
 
@@ -151,6 +155,18 @@ network_access = false
 The mechanism is the same as global rules — one source, a renderer per target — even though the two
 outputs look nothing alike. That's the point: a bigger structural gap doesn't need a _different kind_
 of solution, just a renderer that knows two output shapes instead of one.
+
+Where the gap doesn't fully close: an `ask`-bucket entry has nowhere to go in Codex's rules file
+(binary forbidden/allow only), so the renderer must omit it there and fall back to a session-wide
+`approval_policy` — a real asymmetry the render step can't paper over on its own. Closing THAT gap
+took a different tool entirely: a runtime hook (`globals/codex/hooks/permission-check.mjs`) that
+re-checks each shell command against the same source data and emits a genuine per-command `ask`
+decision — confirmed possible only after reverse-engineering the shipped Codex binary's wire schema,
+since Codex's hook protocol turned out to support a 3-state `permissionDecision` (`allow`/`deny`/`ask`)
+that its config-file rules format does not expose. Lesson: a structural gap between two harnesses
+isn't always closable by rendering alone — sometimes the target's *capability* is narrower in one
+layer (config files) than another (hooks), and finding that requires checking past the documented
+surface.
 
 > Takeaway: format and structure can differ wildly and a single source-plus-renderer still wins,
 > as long as the _meaning_ is the same on both sides.

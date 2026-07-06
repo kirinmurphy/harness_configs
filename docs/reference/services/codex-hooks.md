@@ -79,6 +79,38 @@ See [jcodemunch.md](jcodemunch.md) for full details. (Porting the
 source-exploration nudge to a Codex hook is a possible future parity step; the
 shell-output minimization above is the first PreToolUse enforcement hook on Codex.)
 
+### Real per-command ask — PreToolUse (shell tools)
+
+`globals/codex/hooks/permission-check.mjs` re-implements the manifest's command
+matching at runtime and emits a genuine `permissionDecision: "ask"` for any shell
+command that resolves to the `ask` bucket — closing the gap `renderCodexRules`
+otherwise leaves (a `prefix_rule` can only be `forbidden`/`allow`; an ask-bucket
+command gets no rule at all there). This was previously assumed impossible on
+Codex; it is not. Confirmed directly against the shipped Codex 0.140 binary
+(`strings` on the compiled CLI): the wire enum `PreToolUsePermissionDecisionWire`
+— the one `hookSpecificOutput.permissionDecision` actually serializes to — has
+three values, `allow`, `deny`, `ask`, not two. (A separate, older
+`PreToolUseDecisionWire` enum with only `approve`/`block` also exists in the
+binary; it is not the one hooks use.) There is also a distinct `PermissionRequest`
+hook event in the wire schema, suggesting Codex may route an `ask` decision
+through its own approval-prompt UI rather than a bare stdin block — worth
+watching for behavior changes across Codex versions, since this was reverse-
+engineered from the binary, not from published documentation.
+
+The hook loads `manifests/inventory/agent-permissions.json` plus the personal
+override file (`~/.roborepo/command-overrides.json`) directly — the same two
+sources `permissions-render.mjs` renders from — so a command's classification is
+identical on both harnesses without a second config to maintain. Matching is
+literal-prefix on whitespace-tokenized command text, mirroring Claude's
+`Bash(a b:*)` semantics. An unmatched command emits nothing and falls through to
+`approval_policy` and any other `PreToolUse` hook unchanged — this hook only
+adds a decision for the subset it can confidently classify, never removes one.
+
+`globals/codex/rules/default.rules`' deny/allow entries stay in place alongside
+this hook, deliberately: the rules are a sandbox-level guarantee that survives
+even if a hook fails to load or errors, while the hook adds the ask tier
+`prefix_rule` cannot express. Neither replaces the other.
+
 ### Available events
 
 Codex documents support for `SessionStart`, `PreToolUse`, `PermissionRequest`,
@@ -101,34 +133,48 @@ for "which skills auto-loaded" until Codex exposes explicit skill-load metadata.
 
 ### Session permissions
 
-Agent permission policy is authored in `manifests/inventory/agent-permissions.json` and
-rendered with:
+Agent permission policy is authored in `manifests/inventory/agent-permissions.json` as a
+flat list of **behaviors** — named (`write-files`, `delete-files`, `go-online`,
+`commit-code`, `push-pull-prs`) or arbitrary (any other command) — each independently
+`deny`/`ask`/`allow`. There is no profile-bundle concept anymore (a prior design with
+`readonly`/`interactive`/`workspace`/`networked` presets was replaced with this flat
+model). Personal overrides live in `~/.roborepo/command-overrides.json`, layered on top
+of the manifest at render time so `roborepo update` never wipes a personal choice.
+Rendered/checked with:
 
 ```sh
 roborepo permissions
 roborepo permissions --check
-roborepo permissions --profile readonly
-roborepo permissions --profile interactive
-roborepo permissions --profile workspace
 ```
 
-The manifest defines named profiles used by both Claude and Codex:
+Edit behaviors and arbitrary commands via the web portal (`roborepo web`) — the only
+place per-command overrides are editable; `roborepo onboard`'s Permissions step offers
+the 5 named behaviors as a direct toggle, `roborepo config status` is read-only.
 
-| Profile | Behavior |
-| --- | --- |
-| `readonly` | Read-only sandbox; Codex asks before escapes. |
-| `interactive` | Workspace writes, shell network disabled, ask before escapes. |
-| `workspace` | Workspace writes, shell network disabled, no approval prompts; blocked actions fail. |
-| `networked` | Workspace writes with sandbox network access; ask before escapes. |
+The renderer writes the generated permission block in `globals/codex/config.toml`
+(`approval_policy`, `sandbox_mode`, `network_access` — derived from the `write-files`
+and `go-online` behaviors, and from whether anything is `ask`), the generated shell
+prefix rules in `globals/codex/rules/default.rules`, and Claude
+`permissions.allow` / `permissions.deny` / `permissions.ask` in `globals/claude/settings.json`.
 
-The renderer writes the generated permission block in `globals/codex/config.toml`,
-the generated shell prefix rules in `globals/codex/rules/default.rules`, and Claude
-`permissions.allow` / `permissions.deny` in `globals/claude/settings.json`.
+A `deny`/`allow` behavior or arbitrary command maps straight to Codex
+`prefix_rule(... decision="forbidden"|"allow")` and Claude's deny/allow arrays. An
+`ask`-bucket entry gets no `prefix_rule` (that mechanism is binary) — instead
+`globals/codex/hooks/permission-check.mjs` (below) supplies a real per-command
+`ask` decision at runtime, and `approval_policy` is set to `on-request` as a
+fallback for anything the hook doesn't classify. On Claude the same entry lands
+directly in `permissions.ask`.
 
-Shell command prefix policy is active through `~/.codex/rules`, which is a symlink to
-`globals/codex/rules`. Git remote movement is denied there with `git push` and
-`git pull` prefix rules.
+`~/.codex/rules` is installed as a **managed copy** (`manifests/platform/manifest.tsv`,
+`kind = managed_copy`), NOT a symlink — a live file that starts as a copy of
+`globals/codex/rules/` but can diverge from it (e.g. the Codex CLI itself appends
+"always allow this command" rules here when a user approves a prompt in a live session).
+Once diverged, `roborepo update` does not silently overwrite it — reinstall only
+overwrites on an explicit "overwrite" collision choice, so a diverged live file persists
+indefinitely with no automated drift check today. Treat the live file as
+possibly-stale relative to repo intent; `roborepo doctor`/`verify` only check repo-source
+render drift (manifest vs. `globals/codex/rules/default.rules`), not live-machine drift.
 
-`~/.codex/config.toml` is different: it is an active local root config file, not a
-symlink. Existing machines need the root config merge/export workflow before new
-baseline session defaults appear in active Codex sessions.
+`~/.codex/config.toml` is similar: it is an active local root config file, not a
+symlink, and can diverge the same way. Existing machines need the root config merge/export
+workflow before new baseline session defaults appear in active Codex sessions.

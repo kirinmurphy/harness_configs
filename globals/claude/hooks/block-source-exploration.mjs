@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
 // --- Block Bash source-file exploration, redirect to jcodemunch ----------------------------
@@ -6,6 +7,12 @@ import path from 'node:path'
 // PURPOSE: the Grep/Glob TOOLS are hard-blocked elsewhere, but the agent route-arounds by
 // shelling out — `Bash(grep src/...)`, `cat file.ts`, `find . -name '*.ts'`. That defeats the
 // jcodemunch-first rule. This hook closes that door for SOURCE files only.
+//
+// GATED ON jcodemunch BEING INSTALLED: this hook ships baseline (unconditional install), but its
+// redirect only makes sense if the jcodemunch package (opt-in) is actually enabled — otherwise the
+// agent gets blocked from cat/grep/head AND pointed at MCP tools that don't exist on the machine,
+// worse off than vanilla Claude. Self-detect via the same signal the CLI uses
+// (scripts/cli/package-probes.mjs probeMcp): `mcpServers.jcodemunch` in the live settings.json.
 //
 // DESIGN — "allow when unsure" (deliberate): Bash legitimately does things jcodemunch cannot
 // (grep a log, cat a json/lockfile, pipe `git log | grep`, inspect /tmp). We must never block
@@ -21,11 +28,27 @@ import path from 'node:path'
 // Anything ambiguous => allow. A determined agent can still leak (e.g. grep with no path arg);
 // that is the accepted cost of never breaking legitimate Bash work.
 //
+// head/tail EXCEPTION: a bounded peek (`head -50 file.ts`, `tail -n 20 file.ts`) is cheap and
+// normal — allowed regardless of extension/location. Unbounded head/tail and all cat/grep/rg/ag/find
+// still follow the rules above.
+//
 // ORDER: this hook must run FIRST in the PreToolUse:Bash chain, before minimize-bash-output.mjs
 // (which auto-allows bare `grep`). First decisive decision wins in Claude's hook model, so a
 // deny here is final; anything we allow falls through to the rest of the chain unchanged.
 
 const fail = () => process.exit(0) // any error => silent passthrough, never block by accident
+
+// jcodemunch not installed => this hook has no working redirect target. No-op.
+const jcodemunchEnabled = () => {
+  try {
+    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json')
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
+    return !!settings.mcpServers?.jcodemunch
+  } catch {
+    return false
+  }
+}
+if (!jcodemunchEnabled()) process.exit(0)
 
 let input
 try {
@@ -57,12 +80,20 @@ const EXCLUDED_DIR = /(^|\/)(node_modules|dist|build|\.next|coverage|vendor|out)
 const verb = trimmed.split(/\s+/)[0]
 if (!/^(grep|rg|ag|cat|head|tail|find)$/.test(verb)) process.exit(0)
 
-// Tokenize args, drop the verb and any flags (leading '-'). Whatever remains and looks like a
+const rawArgs = trimmed.split(/\s+/).slice(1)
+
+// head/tail with an explicit bound (-n 50, -50, -c 200) is a cheap, normal one-line peek — the
+// audit's complaint. Only bare/unbounded head|tail (which defaults to reading the whole default
+// window, usually fine, but indistinguishable from "read the whole file" intent) stays blocked.
+// cat is never allowed through this path — it has no bound to check.
+if (verb === 'head' || verb === 'tail') {
+  const hasBound = rawArgs.some(t => /^-(n|c)$/.test(t) || /^-\d+$/.test(t) || /^--(lines|bytes)(=.*)?$/.test(t))
+  if (hasBound) process.exit(0)
+}
+
+// Tokenize args, drop any flags (leading '-'). Whatever remains and looks like a
 // path is a candidate target. find's pattern lives in -name, so for find we test the search root.
-const tokens = trimmed
-  .split(/\s+/)
-  .slice(1)
-  .filter(t => t && !t.startsWith('-'))
+const tokens = rawArgs.filter(t => t && !t.startsWith('-'))
 
 // strip simple surrounding quotes
 const unquote = t => t.replace(/^['"]|['"]$/g, '')

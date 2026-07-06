@@ -154,11 +154,48 @@ path_has_meaningful_content() {
   return 0
 }
 
+# Shared overwrite/keep/quit prompt core for BOTH conflict decisions roborepo asks about: the
+# top-level "what's your default policy" prompt (main.sh choose_adopt_conflict_policy) and the
+# per-path "this specific file collides" prompt (choose_path_conflict_action below). Same three
+# choices, same read-loop; only the header text and I/O redirection differ per caller.
+#   header_lines: pre-formatted lines to print above the menu (context-specific — pass "" for none)
+#   prompt_out / prompt_in: file descriptors to write/read through (defaults to real stdio)
+# Prints the resolved choice ("overwrite"|"keep"|"abort") on stdout; caller captures it via $(...).
+prompt_conflict_choice() {
+  local header_lines="$1"
+  local prompt_out="${2:-/dev/stderr}"
+  local prompt_in="${3:-/dev/stdin}"
+  local choice
+
+  while true; do
+    if [[ -n "${header_lines}" ]]; then
+      # header_lines usually arrives via $(...) capture, which trims trailing newlines regardless
+      # of how many the caller printf'd — force exactly one blank line before the menu ourselves.
+      printf '%s\n\n' "${header_lines}" > "${prompt_out}"
+    fi
+    printf 'Choose:\n' > "${prompt_out}"
+    printf '  1) overwrite     backup local as *_original_TIMESTAMP; install repo item\n' > "${prompt_out}"
+    printf '  2) keep originals leave local active; stage repo item as *_update_TIMESTAMP\n' > "${prompt_out}"
+    printf '  q) quit\n' > "${prompt_out}"
+    printf 'Selection [1/2/q]: ' > "${prompt_out}"
+    if ! read -r choice < "${prompt_in}"; then
+      echo "abort"
+      return 0
+    fi
+
+    case "${choice}" in
+      1|overwrite) echo "overwrite"; return 0 ;;
+      2|keep|original|originals) echo "keep"; return 0 ;;
+      q|Q|quit|exit) echo "abort"; return 0 ;;
+      *) echo "Invalid selection." > "${prompt_out}" ;;
+    esac
+  done
+}
+
 choose_path_conflict_action() {
   local repo_rel="$1"
   local home_path="$2"
   local src="${repo_root}/${repo_rel}"
-  local choice
   local prompt_in="/dev/stdin"
   local prompt_out="/dev/stderr"
 
@@ -184,42 +221,10 @@ choose_path_conflict_action() {
     fi
   fi
 
-  while true; do
-    printf '\n' > "${prompt_out}"
-    printf 'Existing harness target:\n' > "${prompt_out}"
-    printf '  local:   %s\n' "${home_path}" > "${prompt_out}"
-    printf '  harness: %s\n' "${src}" > "${prompt_out}"
-    printf '\n' > "${prompt_out}"
-    printf 'Choose:\n' > "${prompt_out}"
-    printf '  1) overwrite     backup local as *_original_TIMESTAMP; install repo item\n' > "${prompt_out}"
-    printf '  2) keep originals leave local active; stage repo item as *_update_TIMESTAMP\n' > "${prompt_out}"
-    printf '  q) quit\n' > "${prompt_out}"
-    printf 'Selection [1/2/q]: ' > "${prompt_out}"
-    if ! read -r choice < "${prompt_in}"; then
-      CONFIG_COLLISION_ACTION="abort"
-      return 0
-    fi
-
-    case "${choice}" in
-      1|overwrite)
-        CONFIG_COLLISION_ACTION="overwrite"
-        export ROBOREPO_ON_CONFLICT="${CONFIG_COLLISION_ACTION}"
-        return 0
-        ;;
-      2|keep|original|originals)
-        CONFIG_COLLISION_ACTION="keep"
-        export ROBOREPO_ON_CONFLICT="${CONFIG_COLLISION_ACTION}"
-        return 0
-        ;;
-      q|Q|quit|exit)
-        CONFIG_COLLISION_ACTION="abort"
-        return 0
-        ;;
-      *)
-        echo "Invalid selection."
-        ;;
-    esac
-  done
+  local header
+  header="$(printf '\nExisting harness target:\n  local:   %s\n  harness: %s\n\n' "${home_path}" "${src}")"
+  CONFIG_COLLISION_ACTION="$(prompt_conflict_choice "${header}" "${prompt_out}" "${prompt_in}")"
+  [[ "${CONFIG_COLLISION_ACTION}" == "abort" ]] || export ROBOREPO_ON_CONFLICT="${CONFIG_COLLISION_ACTION}"
 }
 
 stage_update_item() {
@@ -241,7 +246,7 @@ stage_update_item() {
 # only ever back up a genuine pre-roborepo file. Conservative: any hit means do-not-back-up.
 # Package hook signatures (jcmwatch = jcodemunch, jdm-indexed = jdocmunch) guard against a partial-
 # uninstall state where package hooks survive in settings.json without the main roborepo markers.
-# Mirrors uninstall.sh is_roborepo_authored — keep both in sync.
+# Single source of truth: uninstall.sh sources this file rather than keeping its own copy.
 is_roborepo_authored() {
   local file="$1"
   [[ -f "${file}" ]] || return 1

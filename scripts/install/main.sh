@@ -4,7 +4,6 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 dry_run=0
 skip_presets_onboard=0
-agent_permission_profile="${ROBOREPO_AGENT_PERMISSION_PROFILE:-${ROBOREPO_CODEX_PERMISSION_PROFILE:-}}"
 on_conflict="${ROBOREPO_ON_CONFLICT:-}"
 on_conflict_explicit=0
 on_conflict_persisted=0
@@ -23,24 +22,11 @@ while [[ $# -gt 0 ]]; do
       skip_presets_onboard=1
       shift
       ;;
-    --permissions|--agent-permissions|--codex-permissions)
-      [[ $# -ge 2 ]] || { echo "usage: $0 [--dry-run] [--no-presets-onboard] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2; }
-      agent_permission_profile="$2"
-      shift 2
-      ;;
-    --permissions=*|--agent-permissions=*)
-      agent_permission_profile="${1#*=}"
-      shift
-      ;;
-    --codex-permissions=*)
-      agent_permission_profile="${1#*=}"
-      shift
-      ;;
     --telemetry-only)
       exec node "${repo_root}/scripts/cli/main.mjs" telemetry install
       ;;
     --on-conflict)
-      [[ $# -ge 2 ]] || { echo "usage: $0 [--dry-run] [--no-presets-onboard] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2; }
+      [[ $# -ge 2 ]] || { echo "usage: $0 [--dry-run] [--no-presets-onboard] [--on-conflict overwrite|keep|abort]" >&2; exit 2; }
       on_conflict="$2"
       on_conflict_explicit=1
       shift 2
@@ -51,7 +37,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      echo "usage: $0 [--dry-run] [--no-presets-onboard] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2
+      echo "usage: $0 [--dry-run] [--no-presets-onboard] [--on-conflict overwrite|keep|abort]" >&2
       exit 2
       ;;
   esac
@@ -60,7 +46,7 @@ done
 case "${on_conflict}" in
   "" ) ;;
   overwrite|keep|abort) ;;
-  *) echo "usage: $0 [--dry-run] [--no-presets-onboard] [--on-conflict overwrite|keep|abort] [--permissions <profile>]" >&2; exit 2 ;;
+  *) echo "usage: $0 [--dry-run] [--no-presets-onboard] [--on-conflict overwrite|keep|abort]" >&2; exit 2 ;;
 esac
 export ROBOREPO_ON_CONFLICT="${on_conflict}"
 
@@ -77,8 +63,6 @@ source "${repo_root}/scripts/install/state-lib.sh"
 source "${repo_root}/scripts/lib/manifests-data.sh"  # provides manifest_rows
 
 choose_adopt_conflict_policy() {
-  local choice
-
   if [[ -n "${on_conflict}" ]]; then
     return 0
   fi
@@ -91,48 +75,17 @@ choose_adopt_conflict_policy() {
 
   if ! stdin_is_interactive; then
     on_conflict="keep"
+    echo "non-interactive install: defaulting --on-conflict=keep (pass --on-conflict to override)" >&2
     return 0
   fi
 
-  while true; do
-    echo ""
-    echo "==============================================="
-    echo "Welcome to roborepo, your CLI harness manager"
-    echo "==============================================="
-    echo ""
-    echo "This install will add certain content to your system to optimize your experience."
-    echo "If you already have active files, should we:"
-    echo ""
-    echo "  1) overwrite your files"
-    echo "     backup your files first as *_original_TIMESTAMP; install repo items"
-    echo "  2) keep your originals"
-    echo "     leave your files active; add roborepo items as *_update_TIMESTAMP in the same folder"
-    echo "  q) quit"
-    echo ""
-    printf "Selection [1/2/q]: "
-    if ! read -r choice; then
-      on_conflict="keep"
-      return 0
-    fi
-
-    case "${choice}" in
-      1|overwrite)
-        on_conflict="overwrite"
-        return 0
-        ;;
-      2|keep|original|originals)
-        on_conflict="keep"
-        return 0
-        ;;
-      q|Q|quit|exit)
-        echo "install canceled by user" >&2
-        exit 1
-        ;;
-      *)
-        echo "Invalid selection."
-        ;;
-    esac
-  done
+  local header
+  header="$(printf '\n===============================================\nWelcome to roborepo, your CLI harness manager\n===============================================\n\nThis install will add certain content to your system to optimize your experience.\nIf you already have active files, should we:\n\n')"
+  on_conflict="$(prompt_conflict_choice "${header}" "/dev/stderr" "/dev/stdin")"
+  if [[ "${on_conflict}" == "abort" ]]; then
+    echo "install canceled by user" >&2
+    exit 1
+  fi
 }
 
 choose_adopt_conflict_policy
@@ -173,18 +126,6 @@ has_claude=0
 has_codex=0
 harness_present claude && has_claude=1
 harness_present codex && has_codex=1
-
-if [[ -n "${agent_permission_profile}" ]]; then
-  if [[ $dry_run -eq 1 ]]; then
-    if node "${repo_root}/scripts/build/render-agent-permissions.mjs" --check --profile "${agent_permission_profile}" >/dev/null; then
-      echo "ok: agent permission profile ${agent_permission_profile} already rendered"
-    else
-      echo "dry-run: would render agent permission profile ${agent_permission_profile}"
-    fi
-  else
-    node "${repo_root}/scripts/build/render-agent-permissions.mjs" --profile "${agent_permission_profile}"
-  fi
-fi
 
 preflight_shell_setup() {
   "${repo_root}/scripts/install/install-global-commands.sh" --dry-run
@@ -264,6 +205,40 @@ run_post_install_onboarding() {
   node "${repo_root}/scripts/cli/main.mjs" onboard-intro
 }
 
+# Caveman is a third-party Claude plugin (compressed communication style), not core roborepo
+# behavior — opt-in only, never silently applied. Interactive TTY: ask. Non-interactive: skip
+# (matches choose_adopt_conflict_policy's non-TTY-safe-default style). Merges enabledPlugins +
+# extraKnownMarketplaces into the LIVE ~/.claude/settings.json only — repo source
+# (globals/claude/settings.json) never carries these, so a plain install stays plugin-free.
+offer_caveman_plugin() {
+  [[ $dry_run -eq 0 && $has_claude -eq 1 ]] || return 0
+  local claude_settings="${HOME}/.claude/settings.json"
+  [[ -f "${claude_settings}" ]] || return 0
+
+  local enable=0
+  if stdin_is_interactive; then
+    printf "Enable the caveman plugin (ultra-compressed communication style)? [y/N]: "
+    local choice
+    if read -r choice && [[ "${choice}" =~ ^[Yy]$ ]]; then
+      enable=1
+    fi
+  fi
+  [[ $enable -eq 1 ]] || return 0
+
+  node -e '
+const fs = require("fs");
+const path = process.argv[1];
+const settings = JSON.parse(fs.readFileSync(path, "utf8"));
+settings.enabledPlugins = { ...(settings.enabledPlugins || {}), "caveman@caveman": true };
+settings.extraKnownMarketplaces = {
+  ...(settings.extraKnownMarketplaces || {}),
+  caveman: { source: { source: "github", repo: "JuliusBrussee/caveman" } },
+};
+fs.writeFileSync(path, JSON.stringify(settings, null, 2) + "\n");
+' "${claude_settings}"
+  echo "caveman plugin enabled in ${claude_settings}"
+}
+
 # Post-install summary
 install_section "Core Install Complete"
 echo "  ${RR_BOLD}Claude${RR_RESET}  $([ $has_claude -eq 1 ] && echo "${RR_GREEN}available${RR_RESET}" || echo "${RR_DIM}not installed${RR_RESET}")"
@@ -271,6 +246,7 @@ echo "  ${RR_BOLD}Codex${RR_RESET}   $([ $has_codex  -eq 1 ] && echo "${RR_GREEN
 echo ""
 echo "  ${RR_BOLD}Web portal${RR_RESET}  run ${RR_CYAN}roborepo serve --detach${RR_RESET} to manage behavior in the UI"
 run_post_install_onboarding
+offer_caveman_plugin
 if [[ $has_claude -eq 0 || $has_codex -eq 0 ]]; then
   echo ""
   echo "To add another harness later: install it, then run roborepo onboard again."

@@ -18,6 +18,10 @@ done
 source "${repo_root}/scripts/lib/manifests-data.sh"
 # shellcheck source=scripts/install/state-lib.sh
 source "${repo_root}/scripts/install/state-lib.sh"
+# shellcheck source=scripts/install/install-lib.sh
+# Provides is_roborepo_authored and content_matches_repo_source — single source of truth shared
+# with install.sh's mutation path instead of two hand-kept-in-sync copies.
+source "${repo_root}/scripts/install/install-lib.sh"
 
 # The checkout that performed the last install, recorded in install-state.json. May differ
 # from repo_root if the checkout was moved/renamed since install; used so uninstall can still
@@ -78,38 +82,25 @@ remove_file_if_repo_symlink() {
   fi
 }
 
-# Detect roborepo-authored files: root_config markers (hooks/write-guard/perms), rendered_rules
-# header/managed-block markers, and package hook signatures (jcmwatch = jcodemunch,
-# jdm-indexed = jdocmunch). The package signatures prevent a poisoned pre-install backup: after a
-# partial uninstall the settings.json can hold package hooks without the main roborepo markers, and
-# without these extra patterns it would be captured as the user's "original" on the next install.
-# Mirrors install-lib.sh is_roborepo_authored — keep both in sync.
-is_roborepo_authored() {
-  local file="$1"
-  [[ -f "${file}" ]] || return 1
-  grep -Eq "roborepo telemetry capture|roborepo-write-guard|BEGIN GENERATED AGENT PERMISSIONS|MANAGED_BY_ROBOREPO|# Generated Harness Rules|BEGIN managed:roborepo-code-style|BEGIN managed:roborepo-agents-import|jcmwatch|jdm-indexed" "${file}" 2>/dev/null
-}
+# is_roborepo_authored and content_matches_repo_source now come from install-lib.sh (sourced above)
+# — single source of truth instead of two hand-kept-in-sync copies.
 
-# True when ${dest} is a REAL (non-symlink) file or dir whose content is byte-for-byte identical to
-# repo source ${src}: files via cmp, directories via `diff -r`. Lets uninstall reclaim a roborepo
-# copy (adopt-mode install, or a legacy materialized link like a real ~/.codex/hooks dir) WITHOUT
-# ever deleting native or user-modified content: any divergence — an extra file, one edited line —
-# returns false, so the path is left untouched. Mirrors install-lib.sh's helper of the same name.
-content_matches_repo_source() {
-  local src="$1"
-  local dest="$2"
-
-  [[ -e "${src}" ]] || return 1
-  [[ -e "${dest}" && ! -L "${dest}" ]] || return 1
-  if [[ -f "${src}" && -f "${dest}" ]]; then
-    cmp -s "${src}" "${dest}"
-    return $?
-  fi
-  if [[ -d "${src}" && -d "${dest}" ]]; then
-    diff -r "${src}" "${dest}" >/dev/null 2>&1
-    return $?
-  fi
-  return 1
+# Defense-in-depth for rm -rf call sites: every path uninstall deletes must resolve (after symlink
+# resolution) under a known harness home (~/.claude or ~/.codex). content_matches_repo_source already
+# makes deletion content-safe; this makes it path-safe too, so a future manifest-row bug can never
+# point a delete at an arbitrary path. Aborts uninstall rather than silently skipping — a path outside
+# both homes reaching here means the manifest itself is wrong and needs a human to look at it.
+assert_under_harness_home() {
+  local target="$1"
+  local resolved
+  resolved="$(cd "$(dirname "${target}")" 2>/dev/null && pwd)/$(basename "${target}")" || resolved="${target}"
+  case "${resolved}" in
+    "${HOME}/.claude"/*|"${HOME}/.codex"/*) return 0 ;;
+    *)
+      echo "abort: refusing to delete outside harness home: ${target} (resolved: ${resolved})" >&2
+      exit 1
+      ;;
+  esac
 }
 
 # Restore the user's pre-roborepo original for a link target, if install persisted one to
@@ -150,6 +141,10 @@ reclaim_link_target() {
   remove_repo_symlink "${home_abs}"
 
   if [[ -e "${home_abs}" && ! -L "${home_abs}" ]] && content_matches_repo_source "${src}" "${home_abs}"; then
+    # Defense-in-depth: content_matches_repo_source already guards against deleting user/native
+    # content (any byte divergence returns false), but a manifest-row bug could still point home_abs
+    # somewhere unexpected. Assert it resolves under a harness home before the rm -rf ever runs.
+    assert_under_harness_home "${home_abs}"
     if [[ "${dry_run}" -eq 1 ]]; then
       echo "remove (repo copy): ${home_abs}"
     else
@@ -410,7 +405,7 @@ remove_runtime_state() {
   local state_dir
   state_dir="$(roborepo_state_dir)"
 
-  remove_path "${state_dir}/active-profile.json" "remove"
+  remove_path "${state_dir}/command-overrides.json" "remove"
   remove_path "${state_dir}/enabled-packages.json" "remove"
   remove_path "${state_dir}/telemetry" "remove"
   remove_path "${state_dir}/telemetry-backups" "remove"
@@ -482,7 +477,7 @@ check_no_active_remnants() {
     "${state_dir}/install-state.json" \
     "${state_dir}/presets" \
     "${state_dir}/rules" \
-    "${state_dir}/active-profile.json" \
+    "${state_dir}/command-overrides.json" \
     "${state_dir}/enabled-packages.json" \
     "${state_dir}/telemetry" \
     "${state_dir}/telemetry-backups" \

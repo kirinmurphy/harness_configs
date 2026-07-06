@@ -559,7 +559,7 @@ test_uninstall_removes_runtime_state_and_backups() {
     "$home_dir/.roborepo/backups/pre-install/claude" \
     "$home_dir/.local/state/roborepo" \
     "$home_dir/.roborepo-backups/20260621-174033"
-  printf '{"profile":"interactive"}\n' > "$home_dir/.roborepo/active-profile.json"
+  printf '{"behaviors":{"delete-files":"allow"},"commands":{}}\n' > "$home_dir/.roborepo/command-overrides.json"
   printf '{"packages":["jcodemunch"]}\n' > "$home_dir/.roborepo/enabled-packages.json"
   printf '{"enabled":true}\n' > "$home_dir/.roborepo/telemetry/state.json"
   printf 'event\n' > "$home_dir/.roborepo/telemetry/spool/claude.jsonl"
@@ -569,7 +569,7 @@ test_uninstall_removes_runtime_state_and_backups() {
 
   HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" >"$home_dir/uninstall.out"
 
-  assert_absent "$home_dir/.roborepo/active-profile.json" "uninstall removes active profile state"
+  assert_absent "$home_dir/.roborepo/command-overrides.json" "uninstall removes command override state"
   assert_absent "$home_dir/.roborepo/enabled-packages.json" "uninstall removes enabled packages state"
   assert_absent "$home_dir/.roborepo/telemetry" "uninstall removes telemetry data"
   assert_absent "$home_dir/.roborepo/telemetry-backups" "uninstall removes telemetry backups"

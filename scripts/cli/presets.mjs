@@ -3,19 +3,18 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { repoRoot } from "./paths.mjs";
+import { repoRoot, harnessHome } from "./paths.mjs";
 import { installStatePath, presetsStatePath } from "./state-paths.mjs";
 import { readConfigSnapshot, buildBehaviorView } from "./config.mjs";
 import { mutatePackage, setSkillInstalled, setBehaviorBucket } from "./config-mutate.mjs";
 import { renderHomeRules, removeHomeRules, isRenderedRulesOutput } from "./rules-render.mjs";
 import { confirmYesNo, makePrompter, selectMenu, wizard } from "./skill-lib.mjs";
+import { pathExists, findSiblingArtifact, copyTree, stageCandidate, backupOriginal } from "./staging-lib.mjs";
+import { checkDrift, recordWrite } from "./root-config-state.mjs";
 
 const PRESET_MANIFEST = path.join(repoRoot, "manifests", "platform", "presets.json");
 const INSTALL_MANIFEST = path.join(repoRoot, "manifests", "platform", "manifest.tsv");
-const MANIFEST_HOME = {
-  claude: path.join(os.homedir(), ".claude"),
-  codex: path.join(os.homedir(), ".codex"),
-};
+const MANIFEST_HOME = harnessHome;
 
 // Onboarding wizard disabled: install auto-applies all default bundles, so nothing is gated on an
 // onboarding step. The forced-gate body is recorded in docs/plans/completed/onboarding-reinstatement.md.
@@ -612,12 +611,33 @@ function copyItem(row, policy) {
   if (!pathExists(row.homeAbs)) {
     copyTree(source, row.homeAbs);
     console.log(`copy: ${row.homeAbs} <- ${source}`);
+    if (row.kind === "root_config") recordWrite(row.harness, row.homeAbs);
     return;
   }
 
   if (pathsEquivalentForCopy(source, row.homeAbs)) {
     console.log(`ok: ${row.homeAbs}`);
+    if (row.kind === "root_config") recordWrite(row.harness, row.homeAbs);
     return;
+  }
+
+  // root_config files are mutable and expected to change between installs (new permissions, hooks,
+  // MCP entries). A byte mismatch against the current repo source doesn't by itself mean the user
+  // touched the file — it may just mean the baseline moved on. Only real drift (the file changed
+  // since roborepo's own last write) should be treated as a collision here.
+  if (row.kind === "root_config") {
+    const drift = checkDrift(row.harness, row.homeAbs);
+    if (drift.status === "clean") {
+      copyTree(source, row.homeAbs);
+      console.log(`update: ${row.homeAbs} <- ${source} (baseline changed, no local drift)`);
+      // copyTree just changed the file's content, so recordWrite must rehash post-copy — there's
+      // no precomputed hash to thread through here.
+      recordWrite(row.harness, row.homeAbs);
+      return;
+    }
+    // status is "unwritten" (no prior recorded write — fall through to existing collision
+    // handling below, same as any other managed_copy/link row) or "drifted" (handled by the same
+    // collision path, which already stages/backs up correctly).
   }
 
   if (policy.onConflict === "keep") {
@@ -627,9 +647,7 @@ function copyItem(row, policy) {
   }
 
   if (pathHasMeaningfulContent(row.homeAbs)) {
-    const originalPath = timestampedPath(row.homeAbs, "original");
-    fs.mkdirSync(path.dirname(originalPath), { recursive: true });
-    fs.renameSync(row.homeAbs, originalPath);
+    const originalPath = backupOriginal(row.homeAbs);
     console.log(`backup: ${row.homeAbs} -> ${originalPath}`);
     printMergePrompt(row);
   } else {
@@ -637,6 +655,7 @@ function copyItem(row, policy) {
   }
   copyTree(source, row.homeAbs);
   console.log(`copy: ${row.homeAbs} <- ${source}`);
+  if (row.kind === "root_config") recordWrite(row.harness, row.homeAbs);
 }
 
 function removeOwnedLink(row) {
@@ -747,51 +766,9 @@ function readInstallPolicy() {
   return { onConflict };
 }
 
-function timestampedPath(target, tag) {
-  const timestamp = process.env.ROBOREPO_INSTALL_TIMESTAMP ?? formatTimestamp(new Date());
-  const dir = path.dirname(target);
-  const base = path.basename(target);
-  if (pathExists(target) && fs.lstatSync(target).isDirectory() && !fs.lstatSync(target).isSymbolicLink()) {
-    return uniquePath(path.join(dir, `${base}_${tag}_${timestamp}`));
-  }
-  const ext = path.extname(base);
-  const name = ext ? base.slice(0, -ext.length) : base;
-  return uniquePath(path.join(dir, `${name}_${tag}_${timestamp}${ext}`));
-}
-
-function formatTimestamp(date) {
-  const pad = (value) => String(value).padStart(2, "0");
-  return [
-    date.getFullYear(),
-    pad(date.getMonth() + 1),
-    pad(date.getDate()),
-    "-",
-    pad(date.getHours()),
-    pad(date.getMinutes()),
-    pad(date.getSeconds()),
-  ].join("");
-}
-
-function uniquePath(target) {
-  if (!pathExists(target)) return target;
-  let index = 1;
-  while (pathExists(`${target}.${index}`)) index += 1;
-  return `${target}.${index}`;
-}
-
-function copyTree(source, target) {
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  if (fs.lstatSync(source).isDirectory()) {
-    fs.cpSync(source, target, { recursive: true, preserveTimestamps: true });
-  } else {
-    fs.copyFileSync(source, target);
-  }
-}
-
 function stageUpdate(row) {
   const source = path.join(repoRoot, row.srcRel);
-  const updatePath = timestampedPath(row.homeAbs, "update");
-  copyTree(source, updatePath);
+  const updatePath = stageCandidate(source, row.homeAbs);
   console.log(`stage: ${updatePath} <- ${source}`);
 }
 
@@ -837,31 +814,6 @@ function pathHasMeaningfulContent(target) {
   if (stats.isFile()) return stats.size > 0;
   if (stats.isDirectory()) return fs.readdirSync(target).length > 0;
   return true;
-}
-
-function pathExists(target) {
-  try {
-    fs.lstatSync(target);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function findSiblingArtifact(target, tag) {
-  const dir = path.dirname(target);
-  const base = path.basename(target);
-  const ext = path.extname(base);
-  const name = ext ? base.slice(0, -ext.length) : base;
-  const prefix = `${name}_${tag}_`;
-  const suffix = ext || "";
-
-  if (!pathExists(dir)) return null;
-  const matches = fs.readdirSync(dir)
-    .filter((entry) => entry.startsWith(prefix) && entry.endsWith(suffix))
-    .sort()
-    .map((entry) => path.join(dir, entry));
-  return matches.at(-1) ?? null;
 }
 
 function pathLooksRepoManaged(source, target) {

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { repoRoot } from "./paths.mjs";
+import { repoRoot, harnessHome, rootConfigBaseline, rootConfigActive } from "./paths.mjs";
 import { presetsStatePath, telemetryDir } from "./state-paths.mjs";
 import { effectivePermissions } from "./config-mutate.mjs";
 import { renderMarkdown } from "./markdown-render.mjs";
@@ -18,16 +18,17 @@ import {
 } from "./package-catalog.mjs";
 import { buildPackageLiveState } from "./package-probes.mjs";
 import { inspectSkill, skillInventorySource } from "./skill-inventory.mjs";
+import { checkDrift } from "./root-config-state.mjs";
 
 const PRESETS_PATH = path.join(repoRoot, "manifests", "platform", "presets.json");
 const SKILL_INVOCATION_PATH = path.join(repoRoot, "manifests", "inventory", "skill-invocation.json");
 const SLASH_COMMANDS_PATH = path.join(repoRoot, "manifests", "inventory", "slash-commands.json");
-const CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
-const CODEX_CONFIG = path.join(os.homedir(), ".codex", "config.toml");
-const CODEX_HOOKS = path.join(os.homedir(), ".codex", "hooks.json");
+const CLAUDE_SETTINGS = rootConfigActive.claude;
+const CODEX_CONFIG = rootConfigActive.codex;
+const CODEX_HOOKS = path.join(harnessHome.codex, "hooks.json");
 const LIVE_RULE_FILES = {
-  claude: path.join(os.homedir(), ".claude", "CLAUDE.md"),
-  codex: path.join(os.homedir(), ".codex", "AGENTS.md"),
+  claude: path.join(harnessHome.claude, "CLAUDE.md"),
+  codex: path.join(harnessHome.codex, "AGENTS.md"),
 };
 
 function readJson(filePath, fallback = null) {
@@ -789,8 +790,62 @@ function renderSkillInventoryHtml(inventory) {
   ].join("\n");
 }
 
+const ROOT_CONFIG_HARNESSES = {
+  claude: { active: rootConfigActive.claude, baseline: rootConfigBaseline.claude },
+  codex: { active: rootConfigActive.codex, baseline: rootConfigBaseline.codex },
+};
+
+function describeDrift(harness, { active, baseline }) {
+  const activeExists = fs.existsSync(active);
+  const baselineExists = fs.existsSync(baseline);
+  const drift = activeExists ? checkDrift(harness, active) : { status: "missing" };
+  return { harness, active, baseline, activeExists, baselineExists, drift };
+}
+
+// Read-only report of baseline vs. active root config vs. drift state, per harness. No writes —
+// see docs/plans/root-config-layered-inheritance.md for the update/repair behavior that acts on
+// this same drift signal.
+export function configRootInspect() {
+  const rows = Object.entries(ROOT_CONFIG_HARNESSES).map(([harness, paths]) => describeDrift(harness, paths));
+
+  for (const row of rows) {
+    console.log(`\n${row.harness}`);
+    console.log(`  baseline: ${row.baseline}${row.baselineExists ? "" : "  (missing)"}`);
+    console.log(`  active:   ${row.active}${row.activeExists ? "" : "  (missing)"}`);
+    if (!row.activeExists) {
+      console.log(`  status:   not installed`);
+      continue;
+    }
+    switch (row.drift.status) {
+      case "unwritten":
+        console.log(`  status:   no recorded roborepo write yet (pre-dates drift tracking, or never installed via roborepo)`);
+        break;
+      case "clean":
+        console.log(`  status:   in sync (unchanged since roborepo's last write)`);
+        break;
+      case "drifted":
+        console.log(`  status:   drifted (changed since roborepo's last write)`);
+        console.log(`  last-known hash:  ${row.drift.lastHash}`);
+        console.log(`  current hash:     ${row.drift.currentHash}`);
+        console.log(`  run \`roborepo update\` to resolve — see docs/reference/internal/config-collision-handling.md`);
+        break;
+      default:
+        console.log(`  status:   ${row.drift.status}`);
+    }
+  }
+  console.log("");
+}
+
 export function configCommand(args) {
-  const [sub = "status"] = args;
+  const [sub = "status", ...rest] = args;
+  if (sub === "root") {
+    const [rootSub] = rest;
+    if (rootSub !== "inspect") {
+      console.error("usage: roborepo config root inspect");
+      process.exit(2);
+    }
+    return configRootInspect();
+  }
   if (sub !== "status") {
     console.error("usage: roborepo config status");
     process.exit(2);

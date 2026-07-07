@@ -1110,6 +1110,11 @@ assert "onboard: non-TTY records onboardedAt in preset state" \
 assert "onboard: wizard diff selects only changed toggleable items" \
   node "${repo_root}/scripts/test/wizard-diff-check.mjs"
 
+# Root config drift detection (scripts/cli/root-config-state.mjs): a hash sidecar tells "roborepo's
+# baseline changed" apart from "something else touched the file since roborepo's last write."
+assert "root-config-state: drift detection distinguishes baseline changes from user edits" \
+  node "${repo_root}/scripts/test/root-config-state-check.mjs"
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"

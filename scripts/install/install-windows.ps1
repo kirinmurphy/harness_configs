@@ -179,6 +179,27 @@ function Confirm-Choice {
   return ($answer -eq "" -or $answer -eq "y" -or $answer -eq "Y" -or $answer -eq "yes" -or $answer -eq "YES")
 }
 
+# Record the content hash of a root_config file roborepo just wrote, so a later install/update can
+# tell "roborepo's own baseline changed" apart from "something else touched this file since." See
+# docs/plans/root-config-layered-inheritance.md. Best-effort: never let hash bookkeeping block an
+# install. Mirrors record_root_config_write/root_config_drift_status in scripts/install/install-lib.sh.
+function Write-RootConfigRecord {
+  param($Harness, $HomePath)
+  if ($DryRun) { return }
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) { return }
+  $stateScript = Join-Path $repoRoot "scripts\cli\root-config-state.mjs"
+  & node $stateScript record $Harness $HomePath 2>$null
+}
+
+function Get-RootConfigDriftStatus {
+  param($Harness, $HomePath)
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) { return "unwritten" }
+  $stateScript = Join-Path $repoRoot "scripts\cli\root-config-state.mjs"
+  $result = & node $stateScript check $Harness $HomePath 2>$null
+  if (-not $result) { return "unwritten" }
+  return $result.Trim()
+}
+
 function Export-UserConfig {
   param($Harness, $RepoRel, $HomePath)
   $src = Join-Path $repoRoot $RepoRel
@@ -196,6 +217,7 @@ function Export-UserConfig {
         Copy-Item $src $HomePath
       }
       Write-Host "copy: $HomePath <- $src (converted from repo symlink)"
+      Write-RootConfigRecord $Harness $HomePath
       return
     }
     if ($existing.LinkType -ne "SymbolicLink" -and (Test-Path $HomePath -PathType Leaf)) {
@@ -203,6 +225,22 @@ function Export-UserConfig {
       $homeHash = (Get-FileHash $HomePath).Hash
       if ($srcHash -eq $homeHash) {
         Write-Host "ok: $HomePath"
+        Write-RootConfigRecord $Harness $HomePath
+        return
+      }
+
+      # root_config files are mutable and expected to change between installs (new permissions,
+      # hooks, MCP entries in the repo baseline). A byte mismatch against the current repo source
+      # doesn't by itself mean the user touched the file — it may just mean the baseline moved on
+      # since the last install/update. Only treat it as a real collision when the file drifted from
+      # what roborepo itself last wrote. Mirrors the equivalent branch in install-lib.sh.
+      $driftStatus = Get-RootConfigDriftStatus $Harness $HomePath
+      if ($driftStatus -eq "clean") {
+        if (-not $DryRun) {
+          Copy-Item $src $HomePath -Force
+        }
+        Write-Host "copy: $HomePath <- $src (baseline changed, no local drift)"
+        Write-RootConfigRecord $Harness $HomePath
         return
       }
     }
@@ -212,6 +250,7 @@ function Export-UserConfig {
       Copy-Item $src $HomePath
     }
     Write-Host "copy: $HomePath <- $src"
+    Write-RootConfigRecord $Harness $HomePath
     return
   }
 

@@ -1,127 +1,186 @@
-# Root Config Layered Inheritance
+# Root Config Drift Detection
 
-> Status: designed. Implementation not started. This design keeps `~/.claude/settings.json`
-> and `~/.codex/config.toml` user-owned while giving roborepo a managed baseline that can be
-> updated, repaired, and audited without flattening local edits.
+> Status: core mechanism shipped and code-reviewed 2026-07-07. Earlier version of this doc proposed
+> a baseline/overlay/generated merge system (three files auto-merged into an "active" config). That
+> design is dropped — see "Why The Overlay Design Was Dropped" below. Current design: detect drift
+> honestly, never silently merge, and stage conflicting versions the same way `roborepo install`
+> already does (see
+> [`config-collision-handling.md`](../reference/internal/config-collision-handling.md)) rather than
+> inventing a second staging convention. Implementation steps 1–4 are done across all three install
+> paths this repo has: the JS bundle-apply path (`presets.mjs`), the bash direct-installer path
+> (`install-lib.sh`), and the PowerShell Windows installer (`install-windows.ps1`, added during
+> review after the first pass shipped bash/JS only). `roborepo config root inspect` ships as a
+> read-only report. Steps 5–7 (uninstall awareness, portal visibility, Codex native-profile docs)
+> remain open.
+>
+> A post-implementation code review found and fixed one correctness bug: `install-lib.sh`'s
+> `export_user_config` was recording a "clean" hash even when the user's conflict choice was
+> `keep` (which leaves the active file untouched), silently erasing real drift the first time the
+> check ran under that policy — see `test_root_config_keep_policy_does_not_record_false_clean` in
+> `test-install-collisions.sh` for the regression test. The review also deduplicated the
+> claude/codex home-path mapping (now `harnessHome`/`rootConfigBaseline`/`rootConfigActive` in
+> `paths.mjs`, previously defined independently in three modules), wired the two dead
+> `stageCandidate`/`backupOriginal` staging-lib functions into their intended call sites instead of
+> leaving them unused beside inline duplicates, added a shared `readJsonState`/`writeJsonState` pair
+> in `state-paths.mjs`, and narrowed (but did not fully close — no file locking) a latent
+> read-modify-write race in the state sidecar for the case of manually parallelized installs.
 
 ## Problem
 
-Roborepo currently exports root harness config as active local files. That makes install/update
-simple, but repo defaults and machine-local edits share one file. A repo update that changes
-permissions, hooks, MCP, plugin defaults, or Codex config can collide with user-owned edits.
+Roborepo currently exports root harness config (`~/.claude/settings.json`, `~/.codex/config.toml`)
+as active local files. A repo update that changes permissions, hooks, MCP, or plugin defaults can
+collide with user-owned edits to that same file.
 
-Harnesses do not currently provide a portable, documented root-config include mechanism that
-works for both Claude `settings.json` and Codex `config.toml`. Until they do, roborepo should
-own a generated merge layer rather than pretending the active file is purely managed.
+Users are free to hand-edit these files directly, or use native harness flows (Claude/Codex
+onboarding, IDE extensions, `claude config` commands, etc.) that touch the same file outside
+roborepo entirely. Any design has to assume the user will **not** reliably go through a roborepo
+command to make local changes — that's a guardrail we can't enforce, only a guideline that will
+get bypassed.
 
-## Layers
+## Why The Overlay Design Was Dropped
 
-1. **Repo baseline**
-   - Source: `globals/claude/settings.json`, `globals/codex/config.toml`.
-   - Owner: roborepo.
-   - Purpose: portable defaults, package-managed permissions/hooks/MCP/plugin entries.
-2. **Machine overlay**
-   - Source: `~/.roborepo/config-overrides/claude.settings.json` and
-     `~/.roborepo/config-overrides/codex.config.toml`.
-   - Owner: user.
-   - Purpose: secrets, local paths, native marketplace state, trust approvals, one-machine
-     defaults, and anything roborepo should not copy back to the repo.
-3. **Generated active root config**
-   - Target: `~/.claude/settings.json`, `~/.codex/config.toml`.
-   - Owner: roborepo only inside managed keys/blocks; user-owned keys are preserved through the
-     overlay.
-   - Purpose: what harnesses actually read today.
-4. **Project-local overrides**
-   - Source: repo-local `.claude/settings.json`, `.codex/config.toml`, `CLAUDE.md`, `AGENTS.md`,
-     and project skills.
-   - Owner: the project.
-   - Purpose: project behavior. These never rewrite the global baseline or machine overlay.
+An earlier version of this doc proposed four layers: a repo baseline, a user-owned "machine
+overlay" file, a generated "active" file merging the two, and project-local overrides. The idea
+was that user customizations would live in the overlay file and survive `roborepo update`
+untouched.
 
-## Merge Policy
+That design assumed user edits would flow through a channel roborepo controls (a `set-local`
+command, or at minimum a dedicated overlay file the user edits by hand instead of the real
+settings file). In practice, nothing stops a user from editing `~/.claude/settings.json` directly,
+or letting a native harness flow write to it. Once that happens, roborepo can't tell which keys are
+"safely separated" and which aren't — the overlay's whole promise (your customizations always
+survive updates) becomes unreliable, and an unreliable promise is worse than no promise, because it
+creates false confidence.
 
-- JSON (`settings.json`) merges by object key.
-- TOML (`config.toml`) merges by table/key.
-- Arrays are replace-by-owner unless a path has a declared set-like strategy.
-- Set-like paths:
-  - Claude `permissions.allow`, `permissions.deny`
-  - Claude hook command arrays under `hooks.*`
-  - MCP server maps by server name
-  - Plugin marketplace maps by marketplace id
-- Unknown keys are preserved in the machine overlay and emitted unchanged.
-- Secrets and machine-local absolute paths must live in the overlay, not the repo baseline.
-- Managed output carries a roborepo metadata sidecar:
-  `~/.roborepo/config-state/root-config.json`.
+We also checked whether Claude Code or Codex CLI natively solve this (native `include`/`extends`
+for root config). As of 2026-07, neither does at the user-config level:
 
-## State Sidecar
+- **Claude Code**: fixed scope tiers (managed > CLI args > project local > project > user), no
+  native per-machine split file at the user level, no native profile mechanism.
+- **Codex CLI**: has a real native **profile** system — named files at `~/.codex/<name>.config.toml`,
+  selected via `--profile <name>` or `CODEX_PROFILE`, layered natively between project config and
+  user config by Codex itself.
 
-The sidecar records:
+So Codex users who want a personal, permanently-separate config slice have a real native option
+already (see "Codex Native Profiles" below). Claude has no equivalent, and roborepo should not
+invent a userland substitute that can't keep its promise.
 
-- source repo path and repo revision/hash when available
-- baseline content hash
-- overlay content hash
-- generated active file hash
-- managed key paths
-- conflict decisions from `onConflict`
-- harness versions if detectable
+## Design: Detect Drift, Never Silently Merge
 
-The sidecar is the drift check. If the active file differs from the last generated hash, `update`
-does not clobber it. It reports that the active file has user edits and offers to move them into
-the overlay or keep the active file as-is.
+Instead of merging, roborepo tracks a fingerprint of the file it last wrote and compares it before
+touching the file again.
+
+1. Every time roborepo writes `~/.claude/settings.json` or `~/.codex/config.toml`, it records a
+   content hash in a state sidecar: `~/.roborepo/config-state/root-config.json`.
+2. On the next `update` or `repair`, roborepo re-hashes the current file:
+   - **Hash matches** → file is unchanged since roborepo last wrote it. Safe to regenerate from
+     the current repo baseline and overwrite.
+   - **Hash differs** → something else touched the file (user hand-edit, native harness flow,
+     manual merge). Roborepo does **not** guess which parts are safe. It stops and shows an honest
+     diff: what the repo baseline wants to change vs. what's currently on disk.
+3. The user (or an agent acting for them) decides: keep the current file as-is, overwrite with the
+   new baseline, or manually reconcile specific lines. This is the same `onConflict` shape roborepo
+   already uses at install (`keep` / `abort` / `overwrite`), just without any pretense of automatic
+   merging.
+
+This is deliberately less convenient than silent auto-merge on every update. That's the trade: it
+never lies about what happened, and it never loses an edit without telling you.
+
+Rather than inventing a new archive location, drift handling reuses the timestamped-sibling
+convention `roborepo install` already uses for collisions (`*_original_TIMESTAMP` when the
+baseline wins, `*_update_TIMESTAMP` when the current file is kept) — see
+[`config-collision-handling.md`](../reference/internal/config-collision-handling.md). One staging
+mechanism covers both first install and every later drifted update, instead of two separate ones.
 
 ## Update
 
 `roborepo update` should:
 
-1. Load repo baseline.
-2. Load machine overlay if present.
-3. If active root config matches the sidecar hash, regenerate active config.
-4. If active root config has drift:
-   - `onConflict=keep`: preserve active file, report blocked root-config layer.
-   - `onConflict=abort`: stop before writing root config.
-   - `onConflict=overwrite`: archive active file, regenerate from baseline + overlay.
-5. Never move active-file drift into the repo baseline automatically.
+1. Load the repo baseline for the harness.
+2. Hash the current active file and compare to the sidecar.
+3. If it matches: regenerate the active file from the current baseline, update the sidecar hash.
+4. If it has drifted:
+   - `onConflict=keep`: leave the active file untouched, stage the new baseline beside it as
+     `*_update_TIMESTAMP` (same convention as install), report that root config is out of sync.
+   - `onConflict=abort`: stop before writing anything.
+   - `onConflict=overwrite`: move the current file to `*_original_TIMESTAMP`, then write the new
+     baseline into place, update the sidecar.
+5. Never attempt to auto-merge drifted content into the new baseline.
 
 ## Repair
 
-`roborepo repair` should refresh generated active config when the sidecar proves the active file is
-owned by the previous install. It should preserve the machine overlay and recompute paths that
-depend on the checkout location.
+`roborepo repair` should re-hash and, if the active file still matches the sidecar, refresh it
+against the current baseline (e.g. after a checkout move changes absolute paths). If the file has
+drifted, `repair` follows the same `onConflict` handling as `update` rather than silently
+overwriting.
 
 ## Uninstall
 
-`roborepo uninstall` should remove only generated active files that still match the sidecar hash.
-If a user edited the active file after generation, uninstall leaves it in place and reports the
-path. The machine overlay remains user-owned unless the user explicitly requests removal.
+`roborepo uninstall` should remove only active files that still match the sidecar hash. If the user
+edited the file after roborepo last wrote it, uninstall leaves it in place and reports the path
+instead of deleting user-modified content.
 
-## Project-Local Overrides
+## Project-Local Config
 
-Project-local config remains a separate harness-native layer. Roborepo should report it in
-`roborepo config` and the portal, but global update/repair must not merge project config into
-global root config.
+Project-local config (`.claude/settings.json`, `.codex/config.toml`, `CLAUDE.md`, `AGENTS.md`,
+project skills) is a separate, harness-native layer that already works today — both harnesses
+layer project config over global/user config natively. This doc's drift detection applies only to
+the global/user-level file; project-local config is untouched by it and should stay that way.
+
+## Codex Native Profiles
+
+Codex CLI supports named profile files (`~/.codex/<name>.config.toml`) selected via `--profile
+<name>` or the `CODEX_PROFILE` env var, layered natively by Codex between project config and the
+main user config. This is a real, reliable mechanism Codex already owns — roborepo doesn't need to
+build anything to support it.
+
+For Codex users who want a permanent personal config slice that survives roborepo updates cleanly,
+point them at native profiles rather than a roborepo-built equivalent. Claude has no equivalent
+native mechanism; there is no drop-in substitute proposed here.
 
 ## onConflict
 
-`onConflict` applies only to active root config writes:
+Applies only to writing the active root config file, reusing the same install-time staging
+convention rather than a separate one:
 
-- `keep`: keep active file, do not regenerate, report pending merge.
+- `keep`: leave the active file untouched, stage the new baseline as `*_update_TIMESTAMP`, do not
+  regenerate, report pending drift.
 - `abort`: exit non-zero before writing.
-- `overwrite`: archive active file under `~/.roborepo/backups/root-config/`, then regenerate.
-
-Overlay files are never overwritten by `onConflict`; they are user-owned inputs.
-
-## Native Includes
-
-If Claude or Codex later ship native includes/imports for root config, roborepo can replace the
-generated active file with a thin include file. The same layer ownership still applies:
-repo baseline remains managed, machine overlay remains user-owned, and project-local overrides
-remain project-owned.
+- `overwrite`: move the active file to `*_original_TIMESTAMP`, then write the new baseline into
+  place.
 
 ## Implementation Steps
 
-1. Add parsers/serializers for Claude JSON and Codex TOML that preserve unknown user keys.
-2. Add root-config sidecar read/write and drift checks.
-3. Add `roborepo config root inspect` or equivalent read-only report.
-4. Teach install/update/repair to generate active root config from baseline + overlay.
-5. Teach uninstall to remove only sidecar-matching generated files.
-6. Add portal visibility for baseline, overlay, active file, and drift state.
-7. Document migration from the current flat active-file model.
+1. [x] Parsers/serializers for Claude JSON and Codex TOML — not needed after all: drift detection
+   only requires a raw content hash, not a parsed structure, so both harnesses are handled as bytes
+   (`scripts/cli/root-config-state.mjs::hashFile`). Structured parsing remains open only if semantic
+   diffing (see Open Decisions) is picked up later.
+2. [x] Root-config state sidecar — `scripts/cli/root-config-state.mjs`, hash of last-written content
+   per harness at `~/.roborepo/config-state/root-config.json` (path in `state-paths.mjs`).
+3. [x] `roborepo config root inspect` — read-only report of baseline vs. active file vs. drift
+   state, in `scripts/cli/config.mjs::configRootInspect`.
+4. [x] Hash-check wired into all three write paths: `presets.mjs::copyItem` (the JS bundle-apply
+   path used by `roborepo update`), `install-lib.sh::export_user_config` (the direct
+   `install-claude.sh`/`install-codex.sh` path), and `install-windows.ps1::Export-UserConfig` (the
+   PowerShell path, added during code review — it has its own independent implementation of
+   root_config handling and was initially missed). All three consult drift state before treating a
+   byte mismatch as a collision, and the non-JS paths shell out to
+   `node root-config-state.mjs check|record <harness> <path>` so the hash logic isn't duplicated in
+   bash or PowerShell. Each write path only records a write on the branch where it actually wrote
+   the active file — critically, `keep`/`adopt` branches that leave the file untouched must NOT
+   record, since doing so falsely marks a possibly-drifted file as clean (this was found as a real
+   bug in `install-lib.sh` during review and fixed; see status note above).
+5. Teach `uninstall` to remove only sidecar-matching active files.
+6. Add portal visibility for drift state (in sync / drifted / staged-update-pending).
+7. Document the Codex native profile option as the recommended path for a permanent personal
+   config slice.
+
+## Open Decisions
+
+- Should the drift diff shown to the user be raw file diff, or a semantic key-level diff
+  (permissions added/removed, hooks changed, etc.)? Semantic is more readable but more work to
+  build correctly for both JSON and TOML.
+- Should `roborepo config root inspect` proactively suggest Codex native profiles when it detects
+  a Codex user has drifted the same keys repeatedly?
+- Does Claude's `CLAUDE_CONFIG_DIR` env var (undocumented, full config-dir isolation rather than
+  layering) deserve a mention as a power-user escape hatch, given it's not a supported feature?

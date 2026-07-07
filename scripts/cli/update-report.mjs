@@ -3,13 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { repoRoot } from "./paths.mjs";
+import { repoRoot, harnessHome } from "./paths.mjs";
 import { enabledPackagesPath } from "./state-paths.mjs";
 
-const HARNESS_HOME = {
-  claude: path.join(os.homedir(), ".claude"),
-  codex: path.join(os.homedir(), ".codex"),
-};
+const HARNESS_HOME = harnessHome;
 
 const MANAGED_MARKER = ".roborepo-managed";
 

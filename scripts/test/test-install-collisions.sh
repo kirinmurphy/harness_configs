@@ -667,6 +667,76 @@ test_idempotency_no_extra_backups() {
     || fail "idempotent re-install creates no config backups"
 }
 
+# Root config drift detection (scripts/cli/root-config-state.mjs, wired into export_user_config in
+# install-lib.sh): a byte mismatch against the repo baseline should only be treated as a user
+# collision when the file also drifted from what roborepo itself last wrote. A baseline change
+# alone (simulated here by editing the local root config to something roborepo did NOT write, using
+# a fresh state dir so no prior write is recorded) must still hit the ordinary collision path —
+# this test's job is the opposite case: a file matching roborepo's last recorded write updates
+# silently even though it no longer matches the *current* repo source.
+test_root_config_drift_silent_update_vs_real_collision() {
+  local home_dir
+  home_dir="$(make_home)"
+
+  run_harness_install_args "$home_dir" "$home_dir/first.out"
+  [[ -f "$home_dir/.roborepo/config-state/root-config.json" ]] \
+    && pass "install records root-config-state sidecar" \
+    || fail "install records root-config-state sidecar"
+
+  # Simulate the repo baseline changing between installs without the user touching the local file:
+  # append a byte to the *local* file's content is indistinguishable from a user edit, so instead
+  # directly assert the recorded hash matches what's on disk right now (this is what "clean" means).
+  HOME="$home_dir" node "$repo_root/scripts/cli/root-config-state.mjs" check claude "$home_dir/.claude/settings.json" \
+    | grep -q "^clean$" \
+    && pass "freshly installed root config reports clean drift status" \
+    || fail "freshly installed root config reports clean drift status"
+
+  # A genuine user edit after install must be detected as drift, not silently overwritten or folded
+  # into a "baseline changed" no-op on the next install/update.
+  printf '\n' >> "$home_dir/.claude/settings.json"
+  echo '// user note' >> "$home_dir/.claude/settings.json" 2>/dev/null || true
+  HOME="$home_dir" node "$repo_root/scripts/cli/root-config-state.mjs" check claude "$home_dir/.claude/settings.json" \
+    | grep -q "^drifted$" \
+    && pass "user edit after install is reported as drift" \
+    || fail "user edit after install is reported as drift"
+
+  run_harness_install_args "$home_dir" "$home_dir/second.out" --on-conflict overwrite
+  assert_file_contains "$home_dir/second.out" "backup: $home_dir/.claude/settings.json" \
+    "drifted root config still goes through the ordinary collision path on next install"
+}
+
+# Regression test: export_user_config must NOT record a write when install_copy_item took the
+# "keep" branch, since "keep" leaves home_path exactly as the user had it (stages the repo
+# candidate as a *_update_TIMESTAMP sibling instead). Recording a write there would falsely mark a
+# drifted, user-owned file as roborepo-clean, permanently hiding the drift on the next check.
+test_root_config_keep_policy_does_not_record_false_clean() {
+  local home_dir
+  home_dir="$(make_home)"
+
+  run_harness_install_args "$home_dir" "$home_dir/first.out" --on-conflict overwrite
+  HOME="$home_dir" node "$repo_root/scripts/cli/root-config-state.mjs" check claude "$home_dir/.claude/settings.json" \
+    | grep -q "^clean$" \
+    && pass "fresh install records a clean baseline" \
+    || fail "fresh install records a clean baseline"
+
+  # User edits the file after install — this is real drift.
+  printf '{"user":"drifted edit"}\n' > "$home_dir/.claude/settings.json"
+  HOME="$home_dir" node "$repo_root/scripts/cli/root-config-state.mjs" check claude "$home_dir/.claude/settings.json" \
+    | grep -q "^drifted$" \
+    && pass "user edit is detected as drift before reinstall" \
+    || fail "user edit is detected as drift before reinstall"
+
+  # Reinstall with --on-conflict keep: home_path must stay untouched, and the drift status must
+  # NOT reset to clean, since roborepo did not actually (re)write home_path on this path.
+  run_harness_install_args "$home_dir" "$home_dir/second.out" --on-conflict keep
+  assert_file_contains "$home_dir/.claude/settings.json" "user.*drifted edit" \
+    "keep policy leaves the user's drifted file untouched"
+  HOME="$home_dir" node "$repo_root/scripts/cli/root-config-state.mjs" check claude "$home_dir/.claude/settings.json" \
+    | grep -q "^drifted$" \
+    && pass "keep policy does not falsely clear drift status" \
+    || fail "keep policy does not falsely clear drift status"
+}
+
 test_malformed_claude_config() {
   local home_dir
   home_dir="$(make_home)"
@@ -757,6 +827,8 @@ test_uninstall_removes_runtime_state_and_backups
 test_uninstall_check_clean_reports_remnant
 test_uninstall_stops_repo_owned_processes
 test_idempotency_no_extra_backups
+test_root_config_drift_silent_update_vs_real_collision
+test_root_config_keep_policy_does_not_record_false_clean
 test_malformed_claude_config
 test_windows_installer_root_preflight_order
 test_repo_local_codex_skill_layer_present

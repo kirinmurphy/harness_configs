@@ -358,11 +358,16 @@ install_copy_item() {
       copy_tree "${src}" "${home_path}"
     fi
     say copy "${home_path} <- ${src}"
+    # home_path now holds a real write — callers that track "did roborepo just write this path"
+    # (record_root_config_write) key off this signal, not off CONFIG_COLLISION_ACTION alone, which
+    # is otherwise left stale from any prior call when this early-return path is taken.
+    CONFIG_COLLISION_ACTION="wrote"
     return 0
   fi
 
   if paths_equivalent_for_copy "${src}" "${home_path}"; then
     say ok "${home_path}"
+    CONFIG_COLLISION_ACTION="wrote"
     return 0
   fi
 
@@ -383,10 +388,15 @@ install_copy_item() {
       say backup "${home_path} -> ${original_path}"
       say copy "${home_path} <- ${src}"
       print_install_conflict_prompt "${repo_rel}" "${home_path}"
+      # overwrite replaced home_path with the repo source — a real write, same as the fresh-copy
+      # path above. Re-affirm the signal here since it was cleared to "" above for the prompt.
+      CONFIG_COLLISION_ACTION="wrote"
       ;;
     keep)
       stage_update_item "${repo_rel}" "${home_path}"
       print_install_conflict_prompt "${repo_rel}" "${home_path}"
+      # "keep" stages the candidate as a sibling and leaves home_path exactly as the user had it —
+      # CONFIG_COLLISION_ACTION stays "keep" so callers know home_path was NOT written by roborepo.
       ;;
     abort)
       echo "abort: install canceled by user" >&2
@@ -589,6 +599,25 @@ link_item_clean() {
   say link "${home_path} -> ${src}"
 }
 
+# Record the content hash of a root_config file roborepo just wrote, so a later install/update can
+# tell "roborepo's own baseline changed" apart from "something else touched this file since." See
+# docs/plans/root-config-layered-inheritance.md. Best-effort: node is already required elsewhere in
+# these scripts, but never let hash bookkeeping block an install.
+record_root_config_write() {
+  local harness="$1"
+  local home_path="$2"
+  if [[ "${dry_run}" -eq 1 ]]; then return 0; fi
+  command -v node >/dev/null 2>&1 || return 0
+  node "${repo_root}/scripts/cli/root-config-state.mjs" record "${harness}" "${home_path}" 2>/dev/null || true
+}
+
+root_config_drift_status() {
+  local harness="$1"
+  local home_path="$2"
+  command -v node >/dev/null 2>&1 || { echo "unwritten"; return 0; }
+  node "${repo_root}/scripts/cli/root-config-state.mjs" check "${harness}" "${home_path}" 2>/dev/null || echo "unwritten"
+}
+
 export_user_config() {
   local harness="$1"
   local repo_rel="$2"
@@ -605,12 +634,38 @@ export_user_config() {
         cp "${src}" "${home_path}"
       fi
       say copy "${home_path} <- ${src} ${RR_DIM}(converted from repo symlink)${RR_RESET}"
+      record_root_config_write "${harness}" "${home_path}"
       return 0
       ;;
     esac
   fi
 
+  # root_config files are mutable and expected to change between installs (new permissions, hooks,
+  # MCP entries in the repo baseline). A byte mismatch against the current repo source doesn't by
+  # itself mean the user touched the file — it may just mean the baseline moved on since the last
+  # install/update. Only treat it as a real collision when the file drifted from what roborepo
+  # itself last wrote.
+  if [[ -e "${home_path}" && ! -L "${home_path}" ]] && ! paths_equivalent_for_copy "${src}" "${home_path}"; then
+    local drift_status
+    drift_status="$(root_config_drift_status "${harness}" "${home_path}")"
+    if [[ "${drift_status}" == "clean" ]]; then
+      if [[ "${dry_run}" -eq 0 ]]; then
+        copy_tree "${src}" "${home_path}"
+      fi
+      say copy "${home_path} <- ${src} ${RR_DIM}(baseline changed, no local drift)${RR_RESET}"
+      record_root_config_write "${harness}" "${home_path}"
+      return 0
+    fi
+  fi
+
+  CONFIG_COLLISION_ACTION=""
   install_copy_item "${repo_rel}" "${home_path}" "${harness}"
+  # Only record a write when install_copy_item actually wrote home_path (fresh copy, confirmed
+  # byte-equivalent, or overwrite). On "keep", home_path is the user's untouched file — recording it
+  # here would falsely mark a possibly-drifted file as roborepo-clean going forward.
+  if [[ "${CONFIG_COLLISION_ACTION}" == "wrote" ]]; then
+    record_root_config_write "${harness}" "${home_path}"
+  fi
 }
 
 preflight_clean_item() {

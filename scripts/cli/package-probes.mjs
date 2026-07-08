@@ -29,10 +29,6 @@ function readText(filePath, fallback = "") {
   }
 }
 
-function registryBacked(pkg) {
-  return (pkg.components || []).some((component) => component.type === "rules" || component.type === "command");
-}
-
 function firstNonblankLine(relPath) {
   const content = readText(path.join(repoRoot, relPath), "");
   return content.split("\n").find((line) => line.trim()) || "";
@@ -203,8 +199,7 @@ export function buildPackageLiveState(packages) {
   const out = [];
 
   for (const pkg of packages) {
-    const desiredFromRegistry = registry.packages.includes(pkg.id);
-    const baseDesired = registryBacked(pkg) ? desiredFromRegistry : false;
+    const baseDesired = registry.packages.includes(pkg.id);
     const components = [];
 
     for (const component of pkg.components || []) {
@@ -215,20 +210,14 @@ export function buildPackageLiveState(packages) {
       else if (component.type === "permissions") components.push(probePermissions(component, componentDesired, settings));
       else if (component.type === "plugin") components.push(probePlugin(component, componentDesired, settings));
       else if (component.type === "mcp") components.push(probeMcp(component, componentDesired, settings));
-      else if (component.type === "service") components.push(probeService(component, component.id === "telemetry" && telemetryState?.enabled === true, telemetryState));
+      else if (component.type === "service") components.push(probeService(component, componentDesired, telemetryState));
       else if (component.type === "skill") components.push(probeSkill(component, componentDesired));
       else components.push(componentResult(component, { desired: componentDesired, observed: false, detail: "unknown component type", blocked: componentDesired }));
     }
 
-    const observedWithoutRegistry = components.some((component) => component.observed);
-    const desired = baseDesired || (!registryBacked(pkg) && observedWithoutRegistry);
-    const normalized = components.map((component) => (
-      desired && !component.desired && component.observed
-        ? { ...component, desired: true, state: "present", owner: component.owner || "roborepo" }
-        : component
-    ));
-    const status = packageStatus({ desired, components: normalized });
-    const summary = { desired, status, components: normalized };
+    const desired = baseDesired;
+    const status = packageStatus({ desired, components });
+    const summary = { desired, status, components };
     byId.set(pkg.id, summary);
     out.push([pkg.id, summary]);
   }
@@ -239,7 +228,7 @@ export function buildPackageLiveState(packages) {
     if (deps.length === 0) continue;
     const components = [...summary.components, ...deps];
     const ownComponents = (pkg.components || []).length > 0;
-    const desired = summary.desired || (!ownComponents && deps.every((dep) => dep.observed));
+    const desired = ownComponents ? summary.desired : deps.every((dep) => dep.observed);
     byId.set(id, { desired, status: packageStatus({ desired, components }), components });
   }
 

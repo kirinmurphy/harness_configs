@@ -10,6 +10,7 @@
     "roborepo skill inspect <name>                           show source, ownership, native metadata, and harness install state",
     "roborepo skill native [--full]                          show native Claude/Codex skill and plugin entrypoints",
     "roborepo skill audit [--check]                           render/check shared skill invocation audit",
+    "roborepo skill triggers [--check]                        check skill trigger fixtures",
     "roborepo skill render-commands [--check]                   render/check slash commands",
     "",
     "roborepo index code  [path]",
@@ -138,6 +139,11 @@
       "label": "skill audit",
       "value": ["skill", "audit"],
       "desc": "render shared skill invocation audit"
+    },
+    {
+      "label": "skill triggers",
+      "value": ["skill", "triggers"],
+      "desc": "check skill trigger fixtures"
     },
     {
       "label": "skill render-commands",

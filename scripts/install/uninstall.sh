@@ -214,7 +214,7 @@ remove_root_config() {
   local src_rel="${3:-}"
   [[ -f "${home_abs}" ]] || return 0
 
-  # Drift gate (docs/plans/root-config-layered-inheritance.md, "Uninstall"): a root_config file is
+  # Drift gate (docs/plans/completed/root-config-layered-inheritance.md, "Uninstall"): a root_config file is
   # mutable and may have been hand-edited or written by a native harness flow after roborepo's own
   # last write. If the recorded sidecar hash no longer matches on-disk content, the file has drifted
   # and we do not know which parts are safe to touch — leave it in place and report the path rather

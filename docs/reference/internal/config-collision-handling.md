@@ -48,7 +48,7 @@ collision and falls into the policies above.
 This check only ever *records* a write on the branch that actually wrote the active file. The
 `keep` policy's staged-candidate branch leaves the active file untouched, so it must not (and does
 not) record a write there — doing so would falsely mark a possibly-drifted file as clean. See
-`docs/plans/root-config-layered-inheritance.md` for the full design and `scripts/cli/root-config-state.mjs`
+`docs/plans/completed/root-config-layered-inheritance.md` for the full design and `scripts/cli/root-config-state.mjs`
 for the implementation. All three install paths (`presets.mjs` JS bundle-apply,
 `install-lib.sh` bash direct-installer, `install-windows.ps1` PowerShell) implement this check. On
 Windows both the `Invoke-RootConfigPreflight` collision resolver and the later `Export-UserConfig`
@@ -73,7 +73,7 @@ Drift detection tells a user honestly when their root config diverged from robor
 it does not give them a place to keep personal config that *survives* every `roborepo update`
 untouched. Roborepo deliberately does not build a userland overlay for this (an overlay can't keep
 its promise once the user hand-edits the real file or a native harness flow writes to it — see
-`docs/plans/root-config-layered-inheritance.md`, "Why The Overlay Design Was Dropped").
+`docs/plans/completed/root-config-layered-inheritance.md`, "Why The Overlay Design Was Dropped").
 
 For **Codex** users, the harness already provides exactly this natively — use it instead of fighting
 drift:

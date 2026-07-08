@@ -41,6 +41,7 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 | `roborepo skill link-project`              | Links a project's `.codex/skills` into existing `.claude/skills` folders.                                                     |
 | `roborepo skill sync-global`               | Refreshes the shared skill cache and global harness links after adding or removing `globals/agents/skills/<name>`.            |
 | `roborepo skill inspect <name>`            | Reports skill source, managed/unmanaged ownership, native collision state, and per-harness install state.                     |
+| `roborepo skill triggers [--check]`        | Checks trigger and near-miss fixtures from `manifests/inventory/skill-trigger-tests.json`.                                    |
 | `roborepo skill render-commands [--check]` | Renders generated slash commands from `manifests/inventory/slash-commands.json`, or verifies them with `--check`.             |
 | `roborepo skill native [--full]`           | Shows native Claude/Codex plugin entrypoints; `--full` prints native help output inline.                                      |
 

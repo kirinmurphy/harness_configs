@@ -122,10 +122,9 @@ export async function enablePackage(rest, _seen = new Set()) {
   if (dryRun) { console.log(`[dry-run] would enable: ${pkg.label}`); }
   else { console.log(`enabling: ${pkg.label}`); }
 
-  const usesRegistry = pkg.components.some((component) => component.type === "rules" || component.type === "command");
-  if (usesRegistry && dryRun) {
+  if (dryRun) {
     console.log(`  [dry-run] mark package enabled in registry`);
-  } else if (usesRegistry) {
+  } else {
     setPackageEnabled(pkg.id, true);
   }
 
@@ -248,10 +247,9 @@ export async function disablePackage(rest) {
 
   const dryRun = flags.includes("--dry-run");
   console.log(dryRun ? `[dry-run] would disable: ${pkg.label}` : `disabling: ${pkg.label}`);
-  const usesRegistry = pkg.components.some((component) => component.type === "rules" || component.type === "command");
-  if (usesRegistry && dryRun) {
+  if (dryRun) {
     console.log(`  [dry-run] mark package disabled in registry`);
-  } else if (usesRegistry) {
+  } else {
     setPackageEnabled(pkg.id, false);
   }
 

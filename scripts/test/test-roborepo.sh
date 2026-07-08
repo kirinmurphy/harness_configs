@@ -229,6 +229,10 @@ assert "skill render-commands: implicit helper did not get command wrapper" \
   bash -c "! test -e '${repo_root}/globals/claude/commands/javascript-typescript.md'"
 assert "skill audit: generated audit is current" \
   bash -c "cd '${repo_root}' && node '${cli}' skill audit --check >/dev/null"
+assert "skill triggers: medium-risk trigger fixtures pass" \
+  bash -c "cd '${repo_root}' && node '${cli}' skill triggers --check >/dev/null"
+assert "skill invocation: manual-only policy requires explicit command" \
+  bash -c "node -e \"import('${repo_root}/scripts/cli/slash-command-validation.mjs').then(m=>{try{m.validateSkillManifest({skills:[{skill:'demo',risk:'medium',invocation:'manual',explicit_command:false}]},new Set(['demo']));process.exit(1)}catch(e){process.exit(String(e.message).includes('requires explicit_command=true')?0:1)}})\""
 
 # skill new: scaffold shared skills/commands against a throwaway harness root, never this repo.
 new_harness="${work}/new-harness"
@@ -396,6 +400,8 @@ assert "bundle remove: unlinks owned link bundle" \
   bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' bundle remove hooks >/dev/null && ! test -e '${presets_home}/.claude/hooks'"
 assert "telemetry enable: creates local state dirs" \
   bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' telemetry enable >/dev/null && test -d '${presets_home}/.roborepo/telemetry/spool'"
+assert "package snapshot: direct service state is external until package desired state is set" \
+  bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='telemetry');process.exit(p?.enabled===false&&p?.desired===false&&p?.status==='external'&&p.componentStatus?.[0]?.state==='external'?0:1)})\""
 
 # ---------------------------------------------------------------------------
 # Phase 1: interactive config controls — enable/disable package round-trip,
@@ -501,7 +507,7 @@ assert "config: Claude legacy import block migrates to inline rules" \
 # snapshot, disable reverses. The service handler owns telemetry's bespoke install (hooks + spool).
 bash -c "${cfg_env} node '${cli}' enable telemetry >/dev/null 2>&1" || true
 assert "config: enable service package flips telemetry state" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(s.telemetry.enabled&&s.packages.find(p=>p.id==='telemetry')?.enabled?0:1)})\""
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const p=s.packages.find(x=>x.id==='telemetry');process.exit(s.telemetry.enabled&&p?.enabled&&p?.desired&&p?.status==='enabled'?0:1)})\""
 bash -c "${cfg_env} node '${cli}' disable telemetry >/dev/null 2>&1" || true
 assert "config: disable service package clears telemetry state" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(!s.telemetry.enabled&&!s.packages.find(p=>p.id==='telemetry')?.enabled?0:1)})\""
@@ -557,6 +563,8 @@ assert "config: snapshot exposes a package's requires list" \
 cfg_skill="$(ls "${repo_root}/globals/agents/skills" | head -1)"
 assert "config: setSkillInstalled links both harness views" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',true);process.exit(r.ok?0:1)})\" && test -d '${cfg_home}/.roborepo/skills/${cfg_skill}' && test -e '${cfg_home}/.roborepo/skills/${cfg_skill}/.roborepo-managed'"
+assert "package snapshot: direct skill install is external until package desired state is set" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='case-study-pack');process.exit(p?.enabled===false&&p?.desired===false&&p?.status==='external'&&p.componentStatus?.[0]?.state==='external'?0:1)})\""
 assert "config: Claude skill view points at the cache" \
   assert_skill_cache_link "${cfg_home}" "claude" "${cfg_skill}" "${repo_root}/globals/agents/skills/${cfg_skill}" "config: Claude skill cache link created"
 assert "config: Codex skill view points at the cache" \
@@ -684,6 +692,16 @@ assert "bundle apply: adopt keep policy stages repo item" \
   bash -c "HOME='${adopt_keep_home}' ROBOREPO_STATE_DIR='${adopt_keep_home}/.roborepo' ROBOREPO_INSTALL_TIMESTAMP=20260615-101500 node '${cli}' bundle apply hooks >'${adopt_keep_home}/out' && grep -q 'local hooks' '${adopt_keep_home}/.claude/hooks' && test -d '${adopt_keep_home}/.claude/hooks_update_20260615-101500' && grep -q 'stage: .*hooks_update_20260615-101500' '${adopt_keep_home}/out'"
 assert "bundle remove: adopt keep policy removes staged item only" \
   bash -c "HOME='${adopt_keep_home}' ROBOREPO_STATE_DIR='${adopt_keep_home}/.roborepo' node '${cli}' bundle remove hooks >/dev/null && grep -q 'local hooks' '${adopt_keep_home}/.claude/hooks' && ! test -e '${adopt_keep_home}/.claude/hooks_update_20260615-101500'"
+
+root_keep_home="${work}/root-keep-home"
+mkdir -p "${root_keep_home}/.claude" "${root_keep_home}/.codex" "${root_keep_home}/.roborepo"
+node -e 'const fs = require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({ repo: process.argv[2], onConflict: "keep" }));' \
+  "${root_keep_home}/.roborepo/install-state.json" "${repo_root}"
+assert "bundle apply: records root-config writes" \
+  bash -c "HOME='${root_keep_home}' ROBOREPO_STATE_DIR='${root_keep_home}/.roborepo' node '${cli}' bundle apply base >/dev/null && HOME='${root_keep_home}' ROBOREPO_STATE_DIR='${root_keep_home}/.roborepo' node '${repo_root}/scripts/cli/root-config-state.mjs' check claude '${root_keep_home}/.claude/settings.json' | grep -q '^clean$'"
+printf '{"MANAGED_BY_ROBOREPO":true,"user":"drifted edit"}\n' > "${root_keep_home}/.claude/settings.json"
+assert "bundle apply: root-config keep policy does not clear drift" \
+  bash -c "HOME='${root_keep_home}' ROBOREPO_STATE_DIR='${root_keep_home}/.roborepo' node '${repo_root}/scripts/cli/root-config-state.mjs' check claude '${root_keep_home}/.claude/settings.json' | grep -q '^drifted$' && HOME='${root_keep_home}' ROBOREPO_STATE_DIR='${root_keep_home}/.roborepo' ROBOREPO_INSTALL_TIMESTAMP=20260615-101500 node '${cli}' bundle apply base >'${root_keep_home}/out' && grep -q 'drifted edit' '${root_keep_home}/.claude/settings.json' && test -f '${root_keep_home}/.claude/settings_update_20260615-101500.json' && HOME='${root_keep_home}' ROBOREPO_STATE_DIR='${root_keep_home}/.roborepo' node '${repo_root}/scripts/cli/root-config-state.mjs' check claude '${root_keep_home}/.claude/settings.json' | grep -q '^drifted$'"
 
 adopt_overwrite_home="${work}/adopt-overwrite-home"
 mkdir -p "${adopt_overwrite_home}/.claude" "${adopt_overwrite_home}/.roborepo"

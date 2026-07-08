@@ -167,7 +167,7 @@ local repo context
 
 The current design uses a generated active root config plus a user-owned machine overlay when native
 include/import support is unavailable. Track the implementation plan in
-[../../plans/root-config-layered-inheritance.md](../../plans/root-config-layered-inheritance.md).
+[../../plans/completed/root-config-layered-inheritance.md](../../plans/completed/root-config-layered-inheritance.md).
 
 ### Shared skills: canonical source + machine-local cache
 

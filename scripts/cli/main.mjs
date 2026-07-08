@@ -10,6 +10,7 @@ import { runRepoCommand } from "./repo-script-runner.mjs";
 import { skillLink, skillExport, skillAdopt, skillNative, skillInspect } from "./skills.mjs";
 import { skillNew } from "./skill-new.mjs";
 import { skillAudit } from "./skill-audit.mjs";
+import { skillTriggerCheck } from "./skill-trigger-check.mjs";
 import { indexCode, indexDocs, watchCode, runCmd } from "./index.mjs";
 import { mcpAdd, mcpApply } from "./mcp.mjs";
 import { projectContextCheck, projectContextInventory } from "./project-context.mjs";
@@ -90,6 +91,7 @@ async function dispatch(args) {
       }
       if (sub === "render-commands") return runRepoCommand(cliCatalog.repoScripts["skill render-commands"], rest);
       if (sub === "audit") return skillAudit(rest);
+      if (sub === "triggers") return skillTriggerCheck(rest);
       if (sub === "inspect") return skillInspect(rest);
       if (sub === "native") return skillNative(rest);
       console.error(`unknown: roborepo skill ${sub ?? ""}`.trim());

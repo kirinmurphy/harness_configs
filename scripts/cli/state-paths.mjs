@@ -47,5 +47,5 @@ export const portalPidPath = process.env.ROBOREPO_PORTAL_PID_PATH
 export const enabledPackagesPath = path.join(roborepoStateDir, "enabled-packages.json");
 // Content hash of root config (settings.json / config.toml) as of roborepo's last write, keyed by
 // harness. Lets update/repair tell "unchanged since we last wrote it" apart from "something else
-// touched this file" without attempting to merge. See docs/plans/root-config-layered-inheritance.md.
+// touched this file" without attempting to merge. See docs/plans/completed/root-config-layered-inheritance.md.
 export const rootConfigStatePath = path.join(roborepoStateDir, "config-state", "root-config.json");

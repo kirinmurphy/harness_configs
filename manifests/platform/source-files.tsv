@@ -19,6 +19,7 @@ manifests/platform/cli-commands.json
 manifests/platform/harnesses.tsv
 manifests/platform/presets.json
 manifests/inventory/skill-invocation.json
+manifests/inventory/skill-trigger-tests.json
 manifests/inventory/slash-commands.json
 manifests/inventory/mcp-presets.json
 manifests/inventory/mcp-servers.json
@@ -39,6 +40,7 @@ scripts/build/render-agent-permissions.mjs
 scripts/build/render-slash-commands.mjs
 scripts/build/link-global-skills.sh
 scripts/cli/skill-command-config.mjs
+scripts/cli/skill-trigger-check.mjs
 scripts/build/skill-lib.sh
 scripts/cli/prompts.mjs
 scripts/cli/presets.mjs

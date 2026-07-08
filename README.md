@@ -35,6 +35,7 @@ Use the CLI to update items and configuation to your global setup that will work
 | `roborepo mcp add <name-or-url>` | Register an MCP server with both Claude and Codex in one step.                                       |
 | `roborepo index code [path]`     | Index a repo's source with the enabled package-owned indexer (`roborepo enable jcodemunch`). |
 | `roborepo skill inspect <name>`  | Inspect a skill's source, ownership, native metadata, collision state, and harness install state.    |
+| `roborepo skill triggers --check` | Check skill trigger fixtures so medium-risk skills do not drift into broad auto-load behavior.       |
 | `roborepo skill native [--full]` | Show native Claude/Codex plugin entrypoints; `--full` prints native help output inline.              |
 | `roborepo serve`                 | Open the local web portal at `http://127.0.0.1:4317/config`; use `--detach` to keep it running in the background. |
 | `roborepo telemetry enable` / `disable` | Turn token-usage capture on or off. `telemetry status` shows capture state; `telemetry purge --all --backup` resets capture, backing up first. |

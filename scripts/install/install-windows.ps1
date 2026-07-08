@@ -181,7 +181,7 @@ function Confirm-Choice {
 
 # Record the content hash of a root_config file roborepo just wrote, so a later install/update can
 # tell "roborepo's own baseline changed" apart from "something else touched this file since." See
-# docs/plans/root-config-layered-inheritance.md. Best-effort: never let hash bookkeeping block an
+# docs/plans/completed/root-config-layered-inheritance.md. Best-effort: never let hash bookkeeping block an
 # install. Mirrors record_root_config_write/root_config_drift_status in scripts/install/install-lib.sh.
 function Write-RootConfigRecord {
   param($Harness, $HomePath)

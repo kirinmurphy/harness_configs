@@ -601,7 +601,7 @@ link_item_clean() {
 
 # Record the content hash of a root_config file roborepo just wrote, so a later install/update can
 # tell "roborepo's own baseline changed" apart from "something else touched this file since." See
-# docs/plans/root-config-layered-inheritance.md. Best-effort: node is already required elsewhere in
+# docs/plans/completed/root-config-layered-inheritance.md. Best-effort: node is already required elsewhere in
 # these scripts, but never let hash bookkeeping block an install.
 record_root_config_write() {
   local harness="$1"

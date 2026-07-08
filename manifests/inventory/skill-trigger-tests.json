@@ -1,0 +1,69 @@
+{
+  "tests": [
+    {
+      "skill": "case-study",
+      "match": [
+        "write a case study about the root config drift decision",
+        "/case-study root config architecture"
+      ],
+      "nearMiss": [
+        "write a PR description for the root config change",
+        "summarize this implementation note"
+      ],
+      "triggerPhrases": ["case study", "/case-study"],
+      "skipPhrases": ["PR descriptions", "implementation notes"]
+    },
+    {
+      "skill": "frontend-design",
+      "match": [
+        "building a polished interactive UI",
+        "substantially redesigning this settings page"
+      ],
+      "nearMiss": [
+        "fix this TypeScript helper",
+        "make a small copy tweak in the button label"
+      ],
+      "triggerPhrases": ["frontend interfaces", "web components", "interactive UI", "substantially redesigning"],
+      "skipPhrases": ["backend-only", "small copy/style tweaks", "ordinary React/TypeScript fixes"]
+    },
+    {
+      "skill": "technical-planning-docs",
+      "match": [
+        "create an implementation plan for package reconciliation",
+        "revise these migration docs"
+      ],
+      "nearMiss": [
+        "write a quick PR summary",
+        "give me a brief answer about this function"
+      ],
+      "triggerPhrases": ["technical planning docs", "implementation plan", "migration docs"],
+      "skipPhrases": ["brief answers", "PR descriptions", "quick todos"]
+    },
+    {
+      "skill": "project-context",
+      "match": [
+        "/inventory",
+        "refresh project context docs"
+      ],
+      "nearMiss": [
+        "there are docs in this repo",
+        "write a generic architecture essay"
+      ],
+      "triggerPhrases": ["/inventory", "refresh project context", "update the glossary"],
+      "skipPhrases": ["ordinary code edits", "mere presence of docs", "generic architecture essays"]
+    },
+    {
+      "skill": "tighten",
+      "match": [
+        "/tighten this module",
+        "clean this up against our patterns"
+      ],
+      "nearMiss": [
+        "make this ordinary edit",
+        "review this code for bugs"
+      ],
+      "triggerPhrases": ["/tighten", "tighten", "clean this up against our patterns"],
+      "skipPhrases": ["ordinary edits", "mere presence of code"]
+    }
+  ]
+}

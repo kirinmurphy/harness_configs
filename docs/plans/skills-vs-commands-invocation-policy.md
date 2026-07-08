@@ -367,15 +367,22 @@ read-only skills lightweight.
   audit for current shared skills.
 - **`roborepo skill audit [--check]`** — shipped as the automated renderer/checker for the shared
   skill invocation audit.
+- **`roborepo skill triggers [--check]`** — shipped as a deterministic fixture checker for
+  medium-risk trigger language. It verifies expected prompt examples contain declared trigger
+  phrases, near-miss examples avoid those phrases, and each skill description still carries both
+  trigger and skip phrases.
+- **Manual-only policy validation** — shipped in the slash-command validator: `invocation=manual`
+  now requires `explicit_command=true`, and every `explicit_command=true` skill must have a
+  skill-backed slash command.
 
 ### Remaining
 
 Do these before making more behavior changes:
 
-1. Add trigger tests for expected matches and near misses, starting with medium-risk skills:
-   `case-study`, `frontend-design`, and `technical-planning-docs`.
-2. Add a checker that validates generated command outputs and any manual-only policy against
-   `skill-invocation.json`.
+1. Expand trigger fixtures beyond the initial medium-risk set and tune descriptions when examples
+   reveal over-broad or missing trigger language.
+2. Add rendered harness-specific manual-only metadata only when a skill is intentionally converted
+   away from implicit invocation.
 
 This gives the repo a control plane before converting more skills to commands or
 manual-only behavior.

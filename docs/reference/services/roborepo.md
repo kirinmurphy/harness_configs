@@ -100,6 +100,7 @@ roborepo — choose an action:
   skill inspect           show skill source, ownership, and harness install state
   skill native            show native Claude/Codex plugin entrypoints
   skill audit             render shared skill invocation audit
+  skill triggers          check skill trigger fixtures
   skill render-commands render/check slash commands
 
   Maintenance
@@ -123,6 +124,7 @@ roborepo skill sync-global
 roborepo skill inspect <name>
 roborepo skill native [--full]
 roborepo skill audit [--check]
+roborepo skill triggers [--check]
 roborepo skill render-commands [--check]
 
 roborepo index code  [path]
@@ -179,9 +181,11 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   inventory report for source ownership, cache state, managed markers, native collisions, native-only
   metadata, and per-harness install state. `skill native` prints a concise native
   Claude/Codex plugin summary for harness-specific actions; add `--full` to print the native help
-  output inline. `skill audit` renders/checks the shared skill invocation audit. `skill render-commands` renders generated slash
-  commands from `manifests/inventory/slash-commands.json`, and `--check` verifies without changing
-  files. See [roborepo Skills Interface](roborepo-skills.md).
+  output inline. `skill audit` renders/checks the shared skill invocation audit. `skill triggers`
+  checks expected and near-miss trigger fixtures from `manifests/inventory/skill-trigger-tests.json`.
+  `skill render-commands` renders generated slash commands from
+  `manifests/inventory/slash-commands.json`, and `--check` verifies without changing files. See
+  [roborepo Skills Interface](roborepo-skills.md).
 - **Maintenance** — `doctor` and `verify` are health and post-install checks; `rules` renders
   generated Claude/Codex global instruction files, or verifies them with `--check`; `permissions`
   renders Claude/Codex permission outputs from `manifests/inventory/agent-permissions.json`.

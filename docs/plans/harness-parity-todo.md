@@ -57,7 +57,7 @@ Start with
 if the next work should improve agent behavior predictability with smaller,
 testable pieces.
 
-### 1. Root-config drift detection (SHIPPED 2026-07-07)
+### 1. Root-config drift detection (shipped 2026-07-07)
 
 Was the largest remaining parity gap: native-alignment aligned the *runtime stores*
 (skills, MCP, plugins, memory) but not how `~/.claude/settings.json` and
@@ -71,7 +71,7 @@ it last wrote per harness and, on the next install/update/repair/uninstall, comp
 the on-disk file to that hash. A clean file (baseline moved on, no local edit) updates
 silently; a drifted file (edited since roborepo's last write) is never silently merged
 or deleted — it is surfaced and staged using the same collision convention install
-already uses. See [`root-config-layered-inheritance.md`](root-config-layered-inheritance.md)
+already uses. See [`completed/root-config-layered-inheritance.md`](completed/root-config-layered-inheritance.md)
 (full design + implementation status) and
 [`../reference/internal/config-collision-handling.md`](../reference/internal/config-collision-handling.md).
 
@@ -80,15 +80,14 @@ Delivered across all three install paths (`presets.mjs`, `install-lib.sh`,
 a `/config` portal drift chip, and Codex native-profile docs as the recommended path
 for a permanent personal config slice (Claude has no native equivalent).
 
-### 2. Local-vs-global override policy (open decision)
+### 1. Local-vs-global override policy (open decision)
 
 How much should repo-local config override global behavior automatically versus by
-explicit user opt-in? This is the policy half of item 1 — answer it as part of the
-layering design rather than separately. It also overlaps the per-repo skill story
+explicit user opt-in? This also overlaps the per-repo skill story
 (`skill link-project`), which already lets a repo add skills without overriding
 global ones.
 
-### 3. Stack-specific context shape (largely decided — confirm and close)
+### 2. Stack-specific context shape (largely decided — confirm and close)
 
 Original open question: should stack-specific context be skills, rules, or rules that
 trigger skills? The de-facto answer is now **auto-invokable helper skills, gated by

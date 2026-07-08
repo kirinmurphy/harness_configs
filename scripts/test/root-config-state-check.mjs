@@ -2,7 +2,7 @@
 // Unit test for root config drift detection (scripts/cli/root-config-state.mjs). Verifies the
 // hash-sidecar distinguishes "roborepo's own baseline changed" from "something else touched the
 // file since roborepo's last write" without a real install run. See
-// docs/plans/root-config-layered-inheritance.md.
+// docs/plans/completed/root-config-layered-inheritance.md.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";

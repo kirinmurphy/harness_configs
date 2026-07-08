@@ -18,6 +18,7 @@ management, plugin enable/disable state, updates, validation, or one-session plu
 | `roborepo skill export-to-project` | Copies shared skills into the current project and leaves a shareable zip bundle. |
 | `roborepo skill link-project` | Links project-owned `.codex/skills/<name>` into `.claude/skills/<name>` when Claude project config exists. |
 | `roborepo skill render-commands` | Renders generated slash command files from the command inventory. |
+| `roborepo skill triggers [--check]` | Checks trigger and near-miss fixtures for medium-risk skills against each skill description. |
 | `roborepo skill native [--full]` | Prints a concise native Claude/Codex plugin summary; `--full` prints native help output inline. |
 
 ## Managed Source And Install Shape
@@ -54,6 +55,16 @@ The report distinguishes:
 Inspection never adopts, deletes, rewrites, or flattens native metadata. Use it before deciding
 whether to edit native config, run `roborepo skill adopt <name>`, or refresh managed links with
 `roborepo skill sync-global`.
+
+## Trigger Fixtures
+
+`roborepo skill triggers --check` is a deterministic guard for invocation policy. It reads
+`manifests/inventory/skill-trigger-tests.json` and checks that each fixture's expected prompts use
+declared trigger phrases, near-miss prompts avoid those phrases, and the skill description still
+contains both trigger and skip language.
+
+This is not a model oracle. It catches accidental broadening or removal of trigger language before
+the repo changes skill descriptions or invocation policy.
 
 ## Native Escape Hatch
 

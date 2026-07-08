@@ -39,7 +39,10 @@ export function validateSkillManifest(manifest, sourceSkills) {
     if (typeof entry.explicit_command !== "boolean") {
       throw new Error(`${SKILL_INVOCATION_MANIFEST_REL}: ${skill} explicit_command must be true or false`);
     }
-    policies.set(skill, { explicitCommand: entry.explicit_command });
+    if (entry.invocation === "manual" && !entry.explicit_command) {
+      throw new Error(`${SKILL_INVOCATION_MANIFEST_REL}: ${skill} invocation=manual requires explicit_command=true`);
+    }
+    policies.set(skill, { explicitCommand: entry.explicit_command, invocation: entry.invocation });
   }
 
   for (const skill of sourceSkills) {

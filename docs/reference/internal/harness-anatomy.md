@@ -177,7 +177,7 @@ the generated permission blocks; everything else is local. (Why parity isn't the
 
 Layered inheritance is designed but not implemented. The planned model keeps repo baselines,
 machine overlays, generated active root config, and project-local overrides as separate ownership
-layers; see [Root Config Layered Inheritance](../../plans/root-config-layered-inheritance.md).
+layers; see [Root Config Layered Inheritance](../../plans/completed/root-config-layered-inheritance.md).
 
 ## Preset bundles (`presets.json`)
 

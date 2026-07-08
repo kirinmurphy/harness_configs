@@ -1,12 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import { repoRoot, harnessHome, rootConfigBaseline, rootConfigActive } from "./paths.mjs";
 import { presetsStatePath, telemetryDir } from "./state-paths.mjs";
 import { effectivePermissions } from "./config-mutate.mjs";
 import { renderMarkdown } from "./markdown-render.mjs";
 import {
-  readEnabledPackagesRegistry,
   renderRulesPreview,
   renderSharedRulesPreview,
   renderHarnessRulesPreview,
@@ -122,87 +120,6 @@ function readLiveRulesFile(harness) {
   };
 }
 
-// A composite package (one with `requires`) is enabled iff its own components are enabled AND every
-// required package is enabled. Cycle-safe via `seen`. `byId` is the catalog map for dependency lookup.
-function isPackageEnabled(pkg, settings, serviceState, byId = new Map(), seen = new Set()) {
-  if (seen.has(pkg.id)) return true; // already counted in this traversal (cycle guard)
-  seen.add(pkg.id);
-  if (!ownComponentsEnabled(pkg, settings, serviceState)) return false;
-  for (const depId of pkg.requires ?? []) {
-    const dep = byId.get(depId);
-    if (dep && !isPackageEnabled(dep, settings, serviceState, byId, seen)) return false;
-  }
-  return true;
-}
-
-function ownComponentsEnabled(pkg, settings, serviceState) {
-  const registryRequired = pkg.components.some((c) => c.type === "rules" || c.type === "command");
-  if (registryRequired) {
-    const { packages: enabledPkgs } = readEnabledPackagesRegistry();
-    if (!enabledPkgs.includes(pkg.id)) return false;
-  }
-
-  const rulesEnabled = () => {
-    const rulesComp = pkg.components.find((c) => c.type === "rules");
-    if (!rulesComp) return true;
-    const { exists, packages: enabledPkgs } = readEnabledPackagesRegistry();
-    if (exists) return enabledPkgs.includes(pkg.id);
-    const rulesFile = rulesComp.harness === "codex"
-      ? path.join(os.homedir(), ".codex", "AGENTS.md")
-      : path.join(os.homedir(), ".claude", "CLAUDE.md");
-    let live = "";
-    try { live = fs.readFileSync(rulesFile, "utf8"); } catch { return false; }
-    const firstLine = fs.readFileSync(path.join(repoRoot, rulesComp.source), "utf8").split("\n").find((l) => l.trim());
-    return !!firstLine && live.includes(firstLine);
-  };
-
-  // A plugin package is enabled iff its enabledPlugins bool is true. If it also carries rules, the
-  // rules registry must include the package too so the UI doesn't show a half-applied package as on.
-  const pluginComp = pkg.components.find((c) => c.type === "plugin");
-  if (pluginComp) {
-    return settings?.enabledPlugins?.[pluginComp.id] === true && rulesEnabled();
-  }
-  // A service package is enabled iff its handler's state says so (telemetry: the spool state file).
-  const serviceComp = pkg.components.find((c) => c.type === "service");
-  if (serviceComp) {
-    return serviceState?.[serviceComp.id] === true;
-  }
-  // A skill package is enabled iff every bundled skill exists in the machine-local skill cache.
-  const skillComps = pkg.components.filter((c) => c.type === "skill");
-  if (skillComps.length) {
-    return skillComps.every((c) => fs.existsSync(path.join(roborepoSkillsDir, c.id)));
-  }
-  const permComp = pkg.components.find((c) => c.type === "permissions");
-  if (permComp) {
-    const allow = settings?.permissions?.allow || [];
-    return permComp.allow.every((p) => allow.includes(p));
-  }
-  // A rules package is enabled iff it's in the enabled-packages registry (Phase 3+). On a
-  // pre-Phase-3 machine without the registry, fall back to text scanning the live rules file.
-  const rulesComp = pkg.components.find((c) => c.type === "rules");
-  if (rulesComp) {
-    return rulesEnabled();
-  }
-  const hookComp = pkg.components.find((c) => c.type === "hooks");
-  if (hookComp) {
-    const hooksPath = path.join(repoRoot, hookComp.source);
-    const fragment = readJson(hooksPath, {});
-    const settingsHooks = settings?.hooks || {};
-    for (const [event, entries] of Object.entries(fragment)) {
-      const existing = settingsHooks[event] || [];
-      for (const entry of entries) {
-        const cmd = entry.hooks?.[0]?.command;
-        if (cmd && existing.some((e) => (e.hooks || []).some((h) => h.command === cmd))) return true;
-      }
-    }
-    return false;
-  }
-  // No recognized own components → a pure-composite package; its enabled state is decided entirely
-  // by its `requires` (handled by the caller).
-  if (registryRequired) return true;
-  return pkg.components.length === 0;
-}
-
 export function readConfigSnapshot() {
   const allPackages = loadPackageCatalog({ includeUnavailable: true });
   const availablePackages = allPackages.filter((pkg) => isPackageAvailable(pkg));
@@ -254,7 +171,7 @@ export function readConfigSnapshot() {
 
   // Build tool list: skills cross-referenced with commands to assign badges.
   // installed = symlink at ~/.claude/skills/<name> exists (source of truth for Phase 2 toggles).
-  const skillsDir = path.join(os.homedir(), ".claude", "skills");
+  const skillsDir = path.join(harnessHome.claude, "skills");
   const commandBySkill = {};
   for (const cmd of (slashCommands.commands || [])) {
     if (cmd.skill) commandBySkill[cmd.skill] = { name: cmd.name, description: cmd.description, harnesses: cmd.harnesses || [] };
@@ -857,7 +774,7 @@ const ROOT_CONFIG_STATE_LABEL = {
 };
 
 // Read-only report of baseline vs. active root config vs. drift state, per harness. No writes —
-// see docs/plans/root-config-layered-inheritance.md for the update/repair behavior that acts on
+// see docs/plans/completed/root-config-layered-inheritance.md for the update/repair behavior that acts on
 // this same drift signal.
 export function configRootInspect() {
   for (const row of buildRootConfigView()) {

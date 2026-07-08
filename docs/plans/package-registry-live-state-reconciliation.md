@@ -2,8 +2,11 @@
 
 > Status: active. First read-only reconciliation pass shipped: `/api/config` now reports
 > package `status`, `desired`, and per-component `componentStatus` while preserving the
-> legacy boolean `enabled` for existing UI behavior. Remaining work: durable desired-state
-> registry, mutation transactions, repair/adopt/forget actions, and richer UI detail.
+> legacy boolean `enabled` for existing UI behavior. Follow-up shipped: the existing
+> `enabled-packages.json` registry now records desired state for every package type, not only
+> rules/commands, so live-only service/skill/plugin artifacts report as `external` instead of
+> silently becoming desired/enabled. Remaining work: versioned desired-state registry, mutation
+> transactions, repair/adopt/forget actions, and richer UI detail.
 
 ## Problem
 
@@ -269,7 +272,11 @@ Best fix:
 
 ### 1. One desired-state registry for packages
 
-Create a versioned package state file, replacing the rules-only registry:
+Partially shipped: `roborepo enable <package>` / `roborepo disable <package>` now write the
+existing `enabled-packages.json` registry for every package type, and package probes treat that
+registry as desired state. Observed live artifacts without a registry entry now report `external`.
+
+Still needed: create a versioned package state file, replacing the older flat registry:
 
 ```json
 {

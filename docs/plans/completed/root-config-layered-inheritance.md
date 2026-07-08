@@ -5,7 +5,7 @@
 > design is dropped — see "Why The Overlay Design Was Dropped" below. Current design: detect drift
 > honestly, never silently merge, and stage conflicting versions the same way `roborepo install`
 > already does (see
-> [`config-collision-handling.md`](../reference/internal/config-collision-handling.md)) rather than
+> [`config-collision-handling.md`](../../reference/internal/config-collision-handling.md)) rather than
 > inventing a second staging convention. Implementation steps 1–4 are done across all three install
 > paths this repo has: the JS bundle-apply path (`presets.mjs`), the bash direct-installer path
 > (`install-lib.sh`), and the PowerShell Windows installer (`install-windows.ps1`, added during
@@ -89,7 +89,7 @@ never lies about what happened, and it never loses an edit without telling you.
 Rather than inventing a new archive location, drift handling reuses the timestamped-sibling
 convention `roborepo install` already uses for collisions (`*_original_TIMESTAMP` when the
 baseline wins, `*_update_TIMESTAMP` when the current file is kept) — see
-[`config-collision-handling.md`](../reference/internal/config-collision-handling.md). One staging
+[`config-collision-handling.md`](../../reference/internal/config-collision-handling.md). One staging
 mechanism covers both first install and every later drifted update, instead of two separate ones.
 
 ## Update

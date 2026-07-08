@@ -1,13 +1,12 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { repoRoot } from "./paths.mjs";
+import { repoRoot, rootConfigActive } from "./paths.mjs";
 import { setPackageEnabled, renderHomeRules, readEnabledPackagesRegistry } from "./rules-render.mjs";
 import { loadPackageCatalog, unavailablePackageMessage } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 
-export const USER_CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
+export const USER_CLAUDE_SETTINGS = rootConfigActive.claude;
 
 
 export function findPackage(pkgId) {

@@ -12,6 +12,7 @@ cli="${repo_root}/scripts/cli/main.mjs"
 pass=0
 fail=0
 quiet=0
+cfg_srv=""
 
 # --quiet|-q : suppress per-test "ok:" lines; still print every FAIL + the summary.
 for arg in "$@"; do
@@ -27,6 +28,9 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/roborepo-test.XXXXXX")"
 # preserve the real exit code (the pass/fail tally) so CI reflects the tests, not the cleanup.
 cleanup() {
   local status=$?
+  if [[ -n "${cfg_srv:-}" ]]; then
+    kill "${cfg_srv}" 2>/dev/null || true
+  fi
   chmod -R u+rwx "${work}" 2>/dev/null || true
   rm -rf "${work}" 2>/dev/null || true
   exit "${status}"
@@ -576,28 +580,45 @@ assert "config: setSkillInstalled rejects unknown skill" \
 assert "config: setSkillInstalled skips native skill dir (real dir collision)" \
   bash -c "mkdir -p '${cfg_home}/.claude/skills/${cfg_skill}' && ${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',true);process.exit(r.ok&&!require('fs').lstatSync('${cfg_home}/.claude/skills/${cfg_skill}').isSymbolicLink()?0:1)})\"; rm -rf '${cfg_home}/.claude/skills/${cfg_skill}'"
 
-# Dashboard POST endpoints: start the loopback server, exercise both routes, assert JSON contract.
-cfg_port=4391
-env HOME="${cfg_home}" ROBOREPO_STATE_DIR="${cfg_home}/.roborepo" node "${cli}" serve --no-open --port ${cfg_port} >/dev/null 2>&1 &
-cfg_srv=$!
-for _ in $(seq 1 25); do curl -s "http://127.0.0.1:${cfg_port}/api/config" >/dev/null 2>&1 && break; sleep 0.2; done
-# Capture the JSON to a file so the snapshot body (which contains apostrophes in skill descriptions)
-# never has to round-trip through a shell-quoted string.
-curl -s -X POST "http://127.0.0.1:${cfg_port}/api/config/skills" -H 'Content-Type: application/json' \
-  -d "{\"id\":\"${cfg_skill}\",\"enabled\":true}" > "${cfg_home}/post-skill.json"
-assert "config: POST /api/config/skills installs and returns snapshot" \
-  bash -c "node -e \"const j=require('${cfg_home}/post-skill.json');process.exit(j.ok&&j.config&&Array.isArray(j.config.tools)?0:1)\" && test -d '${cfg_home}/.claude/skills/${cfg_skill}' && test -e '${cfg_home}/.claude/skills/${cfg_skill}/.roborepo-managed'"
-assert "config: POST with bad body returns 400" \
-  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -d '{\"id\":123}')\" = 400 ]"
-assert "config: POST unknown skill returns ok:false" \
-  bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -d '{\"id\":\"zzz\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok===false?0:1)})\""
-assert "config: GET /config still served" \
-  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:${cfg_port}/config')\" = 200 ]"
-# The /config page JS must parse — a syntax error there crashes the whole dashboard at load (no
-# panels render) and is invisible to HTTP-status checks. Guards the template-literal trap (a literal
-# newline inside a JS string, etc.).
-assert "config: served /config dashboard JS parses" \
-  bash -c "dashjs=\"${cfg_home}/dash.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/config/app.js' > \"\${dashjs}\" && node --check \"\${dashjs}\""
+if node -e 'const s=require("node:net").createServer();s.once("error",()=>process.exit(1));s.listen(0,"127.0.0.1",()=>s.close(()=>process.exit(0)))'; then
+  # Dashboard POST endpoints: start the loopback server, exercise both routes, assert JSON contract.
+  cfg_ready="${cfg_home}/portal.ready"
+  env HOME="${cfg_home}" ROBOREPO_STATE_DIR="${cfg_home}/.roborepo" ROBOREPO_PORTAL_READY_FILE="${cfg_ready}" \
+    node "${cli}" serve --no-open --port 0 --allow-zero-port >"${cfg_home}/portal.log" 2>&1 &
+  cfg_srv=$!
+  cfg_port=""
+  for _ in $(seq 1 50); do
+    if [[ -f "${cfg_ready}" ]]; then
+      cfg_port="$(sed -n 's/^ready://p' "${cfg_ready}")"
+      break
+    fi
+    if ! kill -0 "${cfg_srv}" 2>/dev/null; then
+      break
+    fi
+    sleep 0.1
+  done
+  assert "config: portal server starts on an allocated port" \
+    bash -c "test -n '${cfg_port}' && curl -s 'http://127.0.0.1:${cfg_port}/api/config' >/dev/null"
+  # Capture the JSON to a file so the snapshot body (which contains apostrophes in skill descriptions)
+  # never has to round-trip through a shell-quoted string.
+  curl -s -X POST "http://127.0.0.1:${cfg_port}/api/config/skills" -H 'Content-Type: application/json' \
+    -d "{\"id\":\"${cfg_skill}\",\"enabled\":true}" > "${cfg_home}/post-skill.json"
+  assert "config: POST /api/config/skills installs and returns snapshot" \
+    bash -c "node -e \"const j=require('${cfg_home}/post-skill.json');process.exit(j.ok&&j.config&&Array.isArray(j.config.tools)?0:1)\" && test -d '${cfg_home}/.claude/skills/${cfg_skill}' && test -e '${cfg_home}/.claude/skills/${cfg_skill}/.roborepo-managed'"
+  assert "config: POST with bad body returns 400" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -d '{\"id\":123}')\" = 400 ]"
+  assert "config: POST unknown skill returns ok:false" \
+    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -d '{\"id\":\"zzz\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok===false?0:1)})\""
+  assert "config: GET /config still served" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:${cfg_port}/config')\" = 200 ]"
+  # The /config page JS must parse — a syntax error there crashes the whole dashboard at load (no
+  # panels render) and is invisible to HTTP-status checks. Guards the template-literal trap (a literal
+  # newline inside a JS string, etc.).
+  assert "config: served /config dashboard JS parses" \
+    bash -c "dashjs=\"${cfg_home}/dash.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/config/app.js' > \"\${dashjs}\" && node --check \"\${dashjs}\""
+else
+  [[ "${quiet}" -eq 0 ]] && echo "skip: config portal HTTP tests (loopback bind unavailable)"
+fi
 
 # Phase 2: flat permission model — named behaviors (write-files, delete-files, go-online,
 # commit-code, push-pull-prs) and arbitrary commands are each independently deny/ask/allow, with
@@ -620,24 +641,27 @@ assert "config: setCommandBucket rejects empty tokens" \
 assert "config: snapshot reports behaviors + arbitrary commands" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const p=s.permissions;process.exit(Array.isArray(p.behaviors)&&p.behaviors.length===5&&Array.isArray(p.arbitrary)?0:1)})\""
 
-# Permission POST endpoint: named behavior (200), arbitrary command (200), invalid bucket (400),
-# missing identifier (400).
-assert "config: POST /api/config/permissions sets a named behavior (200)" \
-  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"behaviorId\":\"go-online\",\"bucket\":\"allow\"}')\" = 200 ]"
-assert "config: POST /api/config/permissions sets an arbitrary command (200)" \
-  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"tokens\":[\"curl\"],\"bucket\":\"ask\"}')\" = 200 ]"
-assert "config: POST permissions invalid bucket returns 400" \
-  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"behaviorId\":\"go-online\",\"bucket\":\"bogus\"}')\" = 400 ]"
-assert "config: POST permissions missing identifier returns 400" \
-  bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"bucket\":\"allow\"}')\" = 400 ]"
+if [[ -n "${cfg_port:-}" ]]; then
+  # Permission POST endpoint: named behavior (200), arbitrary command (200), invalid bucket (400),
+  # missing identifier (400).
+  assert "config: POST /api/config/permissions sets a named behavior (200)" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"behaviorId\":\"go-online\",\"bucket\":\"allow\"}')\" = 200 ]"
+  assert "config: POST /api/config/permissions sets an arbitrary command (200)" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"tokens\":[\"curl\"],\"bucket\":\"ask\"}')\" = 200 ]"
+  assert "config: POST permissions invalid bucket returns 400" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"behaviorId\":\"go-online\",\"bucket\":\"bogus\"}')\" = 400 ]"
+  assert "config: POST permissions missing identifier returns 400" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"bucket\":\"allow\"}')\" = 400 ]"
 
-# Telemetry is a package via a service component: it toggles through the generic package endpoint.
-assert "config: POST package telemetry (service component) enables + flips snapshot" \
-  bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/packages' -H 'Content-Type: application/json' -d '{\"id\":\"telemetry\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===true&&j.config?.packages?.find(p=>p.id==='telemetry')?.enabled===true?0:1)})\""
-assert "config: POST package telemetry disable flips snapshot" \
-  bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/packages' -H 'Content-Type: application/json' -d '{\"id\":\"telemetry\",\"enabled\":false}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===false?0:1)})\""
+  # Telemetry is a package via a service component: it toggles through the generic package endpoint.
+  assert "config: POST package telemetry (service component) enables + flips snapshot" \
+    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/packages' -H 'Content-Type: application/json' -d '{\"id\":\"telemetry\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===true&&j.config?.packages?.find(p=>p.id==='telemetry')?.enabled===true?0:1)})\""
+  assert "config: POST package telemetry disable flips snapshot" \
+    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/packages' -H 'Content-Type: application/json' -d '{\"id\":\"telemetry\",\"enabled\":false}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===false?0:1)})\""
 
-kill "${cfg_srv}" 2>/dev/null || true
+  kill "${cfg_srv}" 2>/dev/null || true
+  cfg_srv=""
+fi
 
 # Token capture reads the harness transcript (transcript_path on hook stdin) and records cumulative
 # token totals + a per-session delta. These tests use a fixture transcript so they never depend on a

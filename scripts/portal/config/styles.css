@@ -123,6 +123,33 @@ main {
   border-color: var(--badge-cmd-line);
   background: var(--badge-cmd-bg);
 }
+/* root-config drift chip (beside settings.json / config.toml) */
+.drift-chip {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid;
+  line-height: 1.4;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.drift-chip.drift-warn {
+  color: var(--warn);
+  border-color: var(--warn-line, var(--warn));
+  background: var(--warn-bg, transparent);
+}
+.drift-chip.drift-info {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: transparent;
+}
+.drift-chip.drift-muted {
+  color: var(--dim);
+  border-color: var(--line);
+  background: transparent;
+}
 /* toggle switch */
 .switch {
   flex: none;

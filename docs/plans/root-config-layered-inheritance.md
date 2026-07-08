@@ -10,8 +10,8 @@
 > paths this repo has: the JS bundle-apply path (`presets.mjs`), the bash direct-installer path
 > (`install-lib.sh`), and the PowerShell Windows installer (`install-windows.ps1`, added during
 > review after the first pass shipped bash/JS only). `roborepo config root inspect` ships as a
-> read-only report. Steps 5–7 (uninstall awareness, portal visibility, Codex native-profile docs)
-> remain open.
+> read-only report. Steps 5–7 (uninstall drift-awareness, portal drift visibility, Codex
+> native-profile docs) all shipped 2026-07-07 — the full implementation-steps list is now complete.
 >
 > A post-implementation code review found and fixed one correctness bug: `install-lib.sh`'s
 > `export_user_config` was recording a "clean" hash even when the user's conflict choice was
@@ -170,10 +170,40 @@ convention rather than a separate one:
    the active file — critically, `keep`/`adopt` branches that leave the file untouched must NOT
    record, since doing so falsely marks a possibly-drifted file as clean (this was found as a real
    bug in `install-lib.sh` during review and fixed; see status note above).
-5. Teach `uninstall` to remove only sidecar-matching active files.
-6. Add portal visibility for drift state (in sync / drifted / staged-update-pending).
-7. Document the Codex native profile option as the recommended path for a permanent personal
-   config slice.
+   - Follow-up (2026-07-07): the Windows path had drift-awareness only in `Export-UserConfig`, but
+     that function runs *after* `Invoke-RootConfigPreflight` has already resolved (and adopted)
+     collisions — so a routine baseline change (`drift == clean`) was wrongly prompting in the
+     preflight and blocking the update. Added the same `drift == clean → not a collision` check to
+     `Resolve-UserConfigCollision` (the preflight resolver), and extracted the duplicated adopt/
+     merge/quit menu shared by both functions into one `Invoke-RootConfigCollisionPrompt` helper.
+     Static test: `test_windows_installer_root_collision_dedup_and_drift` in `test-install-collisions.sh`
+     (no PowerShell on the CI/dev host, so the Windows path is covered by structural assertions).
+5. [x] Teach `uninstall` to remove only sidecar-matching active files — `uninstall.sh`'s
+   `remove_root_config` now gates on `root_config_drift_status`: a `drifted` root_config (edited
+   after roborepo's last recorded write) is left in place with its path reported, rather than
+   deleted, even though `is_roborepo_authored` still matches the markers underneath the edit. Only
+   `clean`/`unwritten`/`missing` fall through to the existing content-based removal. The
+   `check_no_active_remnants` root_config branch was split from `rendered_rules` so a deliberately
+   kept drifted file is not flagged as a remnant (it requires `clean` drift status to count). Tests:
+   `test_uninstall_preserves_drifted_root_config` and
+   `test_uninstall_check_clean_tolerates_drifted_root_config` in `test-install-collisions.sh`.
+6. [x] Add portal visibility for drift state — `config.mjs` now exposes `buildRootConfigView()`, the
+   single per-harness drift-state producer shared by the terminal `roborepo config root inspect`
+   report (refactored to consume it) and the web portal (snapshot ships it under `rootConfig`).
+   States: `not-installed` / `unwritten` / `in-sync` / `drifted` / `staged-pending` (a
+   `*_update_TIMESTAMP` sibling beside the active file wins over plain drift, since a pending staged
+   update is the actionable signal). The `/config` "Generated Files" panel renders a status chip
+   beside settings.json / config.toml for the drifted / staged / untracked states (in-sync and
+   not-installed stay quiet — no chip). Tests: `scripts/test/root-config-view-check.mjs` (wired into
+   `test-roborepo.sh`) exercises all five states against a throwaway HOME.
+7. [x] Document the Codex native profile option as the recommended path for a permanent personal
+   config slice — added a "Codex Native Profiles (permanent personal config)" section to
+   `docs/reference/internal/config-collision-handling.md` (put personal config in
+   `~/.codex/<name>.config.toml`, select via `--profile <name>` / `CODEX_PROFILE`, layered natively
+   by Codex; roborepo never writes profile files so updates leave them untouched; Claude has no
+   equivalent). The terminal `roborepo config root inspect` report now also prints a Codex-only
+   pointer to profiles when a Codex root config is drifted. No code beyond that CLI hint — Codex
+   already owns the mechanism.
 
 ## Open Decisions
 

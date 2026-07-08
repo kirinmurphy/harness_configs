@@ -19,6 +19,7 @@ import {
 import { buildPackageLiveState } from "./package-probes.mjs";
 import { inspectSkill, skillInventorySource } from "./skill-inventory.mjs";
 import { checkDrift } from "./root-config-state.mjs";
+import { findSiblingArtifact } from "./staging-lib.mjs";
 
 const PRESETS_PATH = path.join(repoRoot, "manifests", "platform", "presets.json");
 const SKILL_INVOCATION_PATH = path.join(repoRoot, "manifests", "inventory", "skill-invocation.json");
@@ -302,6 +303,13 @@ export function readConfigSnapshot() {
         hooks,
       },
     },
+    // Root-config drift state per harness (in-sync / drifted / staged-pending / …), same signal the
+    // terminal `roborepo config root inspect` reports. The portal renders a status chip from this.
+    rootConfig: buildRootConfigView().map((row) => ({
+      harness: row.harness,
+      state: row.state,
+      hasStagedUpdate: !!row.stagedUpdate,
+    })),
     telemetry: telemetryState
       ? { enabled: !!telemetryState.enabled }
       : { enabled: false },
@@ -795,42 +803,81 @@ const ROOT_CONFIG_HARNESSES = {
   codex: { active: rootConfigActive.codex, baseline: rootConfigBaseline.codex },
 };
 
+// One user-facing drift "state" per harness, plus the raw drift details. This is the SINGLE SOURCE
+// OF TRUTH for both the terminal `roborepo config root inspect` report and the web /config panel —
+// the snapshot ships buildRootConfigView() under `rootConfig` so neither surface recomputes the
+// state label. States:
+//   not-installed  — no active file on disk.
+//   in-sync        — active file matches roborepo's last recorded write ("clean").
+//   drifted        — active file changed since roborepo's last write.
+//   staged-pending — a *_update_TIMESTAMP baseline sits beside the active file (a `keep`-policy
+//                    install/update left the new baseline staged for the user to reconcile).
+//   unwritten      — no recorded roborepo write yet (pre-dates drift tracking, or never installed
+//                    via roborepo).
+// staged-pending is reported when a staged sibling exists regardless of drift status, because a
+// pending staged update is the actionable thing to surface even on an otherwise-clean file.
 function describeDrift(harness, { active, baseline }) {
   const activeExists = fs.existsSync(active);
   const baselineExists = fs.existsSync(baseline);
   const drift = activeExists ? checkDrift(harness, active) : { status: "missing" };
-  return { harness, active, baseline, activeExists, baselineExists, drift };
+  const stagedUpdate = activeExists ? findSiblingArtifact(active, "update") : null;
+
+  let state;
+  if (!activeExists) state = "not-installed";
+  else if (stagedUpdate) state = "staged-pending";
+  else if (drift.status === "clean") state = "in-sync";
+  else if (drift.status === "drifted") state = "drifted";
+  else state = "unwritten"; // covers "unwritten" and any other non-clean/non-drifted status
+
+  return {
+    harness,
+    active,
+    baseline,
+    activeExists,
+    baselineExists,
+    state,
+    stagedUpdate,
+    lastHash: drift.lastHash ?? null,
+    currentHash: drift.currentHash ?? null,
+  };
 }
+
+// Per-harness root-config drift view, shared by the terminal report and the web portal.
+export function buildRootConfigView() {
+  return Object.entries(ROOT_CONFIG_HARNESSES).map(([harness, paths]) => describeDrift(harness, paths));
+}
+
+// Human-readable one-liner for a row's state, reused by the CLI report.
+const ROOT_CONFIG_STATE_LABEL = {
+  "not-installed": "not installed",
+  "in-sync": "in sync (unchanged since roborepo's last write)",
+  drifted: "drifted (changed since roborepo's last write)",
+  "staged-pending": "staged update pending (a new baseline is staged beside the active file)",
+  unwritten: "no recorded roborepo write yet (pre-dates drift tracking, or never installed via roborepo)",
+};
 
 // Read-only report of baseline vs. active root config vs. drift state, per harness. No writes —
 // see docs/plans/root-config-layered-inheritance.md for the update/repair behavior that acts on
 // this same drift signal.
 export function configRootInspect() {
-  const rows = Object.entries(ROOT_CONFIG_HARNESSES).map(([harness, paths]) => describeDrift(harness, paths));
-
-  for (const row of rows) {
+  for (const row of buildRootConfigView()) {
     console.log(`\n${row.harness}`);
     console.log(`  baseline: ${row.baseline}${row.baselineExists ? "" : "  (missing)"}`);
     console.log(`  active:   ${row.active}${row.activeExists ? "" : "  (missing)"}`);
-    if (!row.activeExists) {
-      console.log(`  status:   not installed`);
-      continue;
+    console.log(`  status:   ${ROOT_CONFIG_STATE_LABEL[row.state] ?? row.state}`);
+    if (row.state === "drifted") {
+      console.log(`  last-known hash:  ${row.lastHash}`);
+      console.log(`  current hash:     ${row.currentHash}`);
+      console.log(`  run \`roborepo update\` to resolve — see docs/reference/internal/config-collision-handling.md`);
+      // Codex owns a native profile mechanism for permanent personal config; point drifted Codex
+      // users at it instead of re-drifting the managed baseline every update. Claude has no
+      // equivalent, so this hint is Codex-only. See config-collision-handling.md "Codex Native Profiles".
+      if (row.harness === "codex") {
+        console.log(`  for a permanent personal slice, use a Codex profile (~/.codex/<name>.config.toml, --profile <name>)`);
+      }
     }
-    switch (row.drift.status) {
-      case "unwritten":
-        console.log(`  status:   no recorded roborepo write yet (pre-dates drift tracking, or never installed via roborepo)`);
-        break;
-      case "clean":
-        console.log(`  status:   in sync (unchanged since roborepo's last write)`);
-        break;
-      case "drifted":
-        console.log(`  status:   drifted (changed since roborepo's last write)`);
-        console.log(`  last-known hash:  ${row.drift.lastHash}`);
-        console.log(`  current hash:     ${row.drift.currentHash}`);
-        console.log(`  run \`roborepo update\` to resolve — see docs/reference/internal/config-collision-handling.md`);
-        break;
-      default:
-        console.log(`  status:   ${row.drift.status}`);
+    if (row.stagedUpdate) {
+      console.log(`  staged update:    ${row.stagedUpdate}`);
     }
   }
   console.log("");

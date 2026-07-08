@@ -737,6 +737,65 @@ test_root_config_keep_policy_does_not_record_false_clean() {
     || fail "keep policy does not falsely clear drift status"
 }
 
+# Uninstall drift-awareness (docs/plans/root-config-layered-inheritance.md, "Uninstall", step 5):
+# a root_config the user hand-edited after roborepo's last write (sidecar hash no longer matches)
+# must be left in place with its path reported, not deleted — even though is_roborepo_authored still
+# matches the markers underneath the edit. A clean roborepo-written root_config is still removed.
+test_uninstall_preserves_drifted_root_config() {
+  local home_dir
+  home_dir="$(make_home)"
+
+  run_harness_install_args "$home_dir" "$home_dir/install.out" --on-conflict overwrite
+  HOME="$home_dir" node "$repo_root/scripts/cli/root-config-state.mjs" check claude "$home_dir/.claude/settings.json" \
+    | grep -q "^clean$" \
+    && pass "install records a clean root-config baseline" \
+    || fail "install records a clean root-config baseline"
+
+  # User edits the installed Claude config after install — real drift against the sidecar hash. The
+  # edit keeps a roborepo marker so is_roborepo_authored still matches, isolating the drift gate as
+  # the only reason the file survives. Codex config is left untouched (stays clean) as the control.
+  printf '{"MANAGED_BY_ROBOREPO":true,"user":"edited after install"}\n' > "$home_dir/.claude/settings.json"
+  HOME="$home_dir" node "$repo_root/scripts/cli/root-config-state.mjs" check claude "$home_dir/.claude/settings.json" \
+    | grep -q "^drifted$" \
+    && pass "user edit to root config is detected as drift before uninstall" \
+    || fail "user edit to root config is detected as drift before uninstall"
+
+  HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" >"$home_dir/uninstall.out"
+
+  [[ -f "$home_dir/.claude/settings.json" ]] \
+    && grep -q "edited after install" "$home_dir/.claude/settings.json" \
+    && pass "uninstall preserves a drifted root config" \
+    || fail "uninstall preserves a drifted root config" "$home_dir/uninstall.out"
+  assert_file_contains "$home_dir/uninstall.out" "skip drifted root_config.*$home_dir/.claude/settings.json" \
+    "uninstall reports the drifted root config path it left in place"
+  # The clean Codex config (never edited) is still removed — drift-awareness must not block ordinary
+  # cleanup of files roborepo's own last write still owns.
+  assert_absent "$home_dir/.codex/config.toml" "uninstall still removes a clean roborepo root config"
+}
+
+# After a real uninstall that deliberately leaves a drifted root config behind, --check-clean must
+# still pass: the runtime-state cleanup has removed the sidecar, so drift now reports "unwritten"
+# for the kept file, and the root_config remnant branch only flags a "clean" leftover — a drifted
+# (unwritten-after-cleanup) file is correctly not counted as an active remnant.
+test_uninstall_check_clean_tolerates_drifted_root_config() {
+  local home_dir
+  home_dir="$(make_home)"
+
+  run_harness_install_args "$home_dir" "$home_dir/install.out" --on-conflict overwrite
+  # Drift the Claude config; keep a roborepo marker so is_roborepo_authored still matches (that is
+  # what would otherwise make check-clean call it a remnant).
+  printf '{"MANAGED_BY_ROBOREPO":true,"user":"edited after install"}\n' > "$home_dir/.claude/settings.json"
+
+  HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" >"$home_dir/uninstall.out"
+  [[ -f "$home_dir/.claude/settings.json" ]] \
+    && pass "uninstall left the drifted root config in place" \
+    || fail "uninstall left the drifted root config in place" "$home_dir/uninstall.out"
+
+  HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" --check-clean >"$home_dir/check.out" 2>&1 \
+    && pass "check-clean passes with a drifted root config left in place" \
+    || fail "check-clean passes with a drifted root config left in place" "$home_dir/check.out"
+}
+
 test_malformed_claude_config() {
   local home_dir
   home_dir="$(make_home)"
@@ -767,6 +826,40 @@ test_windows_installer_root_preflight_order() {
   assert_file_not_contains "$windows_script" 'Link-Item "globals/agents/skills"[[:space:]]+\(Join-Path \$agentsHome "skills"\)' "Windows installer does not hand-list canonical Codex skills link"
   assert_file_not_contains "$windows_script" 'Link-Item "globals/agents/skills"[[:space:]]+\(Join-Path \$codexHome "skills"\)' "Windows installer does not link ~/.codex/skills (Codex owns it)"
   assert_file_not_contains "$windows_script" 'Link-Item "globals/codex/skills"' "Windows installer does not reference removed globals/codex/skills source"
+}
+
+# The Windows installer's root_config collision menu lives in ONE shared helper
+# (Invoke-RootConfigCollisionPrompt), called by both the preflight (Resolve-UserConfigCollision) and
+# Export-UserConfig's fallback — no second hand-maintained copy of the adopt/merge/quit prompt. And
+# the preflight is drift-aware: a clean baseline change (drift status "clean") must NOT be treated as
+# a collision, matching install-lib.sh so a routine baseline update doesn't wrongly prompt on Windows.
+# Static assertions (no PowerShell runtime on the test host), the same style as the preflight-order test.
+test_windows_installer_root_collision_dedup_and_drift() {
+  local windows_script prompt_defs preflight_body
+  windows_script="$repo_root/scripts/install/install-windows.ps1"
+
+  # Exactly one function defines the interactive collision menu.
+  prompt_defs="$(grep -c '^function Invoke-RootConfigCollisionPrompt' "$windows_script")"
+  [[ "$prompt_defs" -eq 1 ]] \
+    && pass "Windows installer defines one shared root-config collision prompt" \
+    || fail "Windows installer defines one shared root-config collision prompt" "$windows_script"
+
+  # Both entry points call the shared helper rather than inlining the menu. The menu's distinctive
+  # "1) adopt" line must appear only inside the shared helper (one occurrence total).
+  assert_file_contains "$windows_script" 'Invoke-RootConfigCollisionPrompt \$Harness \$RepoRel \$HomePath' \
+    "Windows installer routes collisions through the shared prompt helper"
+  local adopt_lines
+  adopt_lines="$(grep -c '1) adopt' "$windows_script")"
+  [[ "$adopt_lines" -eq 1 ]] \
+    && pass "Windows installer no longer duplicates the collision menu text" \
+    || fail "Windows installer no longer duplicates the collision menu text ($adopt_lines copies)" "$windows_script"
+
+  # Preflight consults drift and skips clean baseline changes.
+  preflight_body="$(awk '/^function Resolve-UserConfigCollision/{f=1} f{print} /^}/{if(f)exit}' "$windows_script")"
+  grep -q 'Get-RootConfigDriftStatus' <<<"$preflight_body" \
+    && grep -q 'driftStatus -eq "clean"' <<<"$preflight_body" \
+    && pass "Windows preflight treats a clean baseline change as no collision" \
+    || fail "Windows preflight treats a clean baseline change as no collision" "$windows_script"
 }
 
 test_repo_local_codex_skill_layer_present() {
@@ -829,8 +922,11 @@ test_uninstall_stops_repo_owned_processes
 test_idempotency_no_extra_backups
 test_root_config_drift_silent_update_vs_real_collision
 test_root_config_keep_policy_does_not_record_false_clean
+test_uninstall_preserves_drifted_root_config
+test_uninstall_check_clean_tolerates_drifted_root_config
 test_malformed_claude_config
 test_windows_installer_root_preflight_order
+test_windows_installer_root_collision_dedup_and_drift
 test_repo_local_codex_skill_layer_present
 test_write_guard_root_config_message
 

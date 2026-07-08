@@ -15,6 +15,7 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 | `roborepo doctor`          | Runs harness health checks for config files, links, helper commands, dependencies, and generated outputs.                                                        |
 | `roborepo verify`          | Runs post-install verification that the installed harness paths resolve correctly.                                                                               |
 | `roborepo rules [--check]` | Renders generated Claude/Codex global instruction files, or verifies them with `--check`.                                                                        |
+| `roborepo config root inspect` | Read-only report of each harness root config (`~/.claude/settings.json`, `~/.codex/config.toml`): baseline vs. active file and its drift state — `in sync`, `drifted` (edited since roborepo's last write), `staged update pending`, or untracked. |
 
 ## Indexing
 

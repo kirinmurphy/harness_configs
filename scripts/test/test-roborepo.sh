@@ -1115,6 +1115,12 @@ assert "onboard: wizard diff selects only changed toggleable items" \
 assert "root-config-state: drift detection distinguishes baseline changes from user edits" \
   node "${repo_root}/scripts/test/root-config-state-check.mjs"
 
+# Root config drift VIEW (buildRootConfigView in config.mjs): the per-harness state the terminal
+# `config root inspect` report and the web /config drift chip both render from — not-installed /
+# unwritten / in-sync / drifted / staged-pending.
+assert "root-config-view: per-harness drift state covers every user-facing case" \
+  node "${repo_root}/scripts/test/root-config-view-check.mjs"
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"

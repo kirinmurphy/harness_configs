@@ -200,6 +200,58 @@ function Get-RootConfigDriftStatus {
   return $result.Trim()
 }
 
+# Interactive collision menu for a drifted user-owned root config. Shared by Invoke-RootConfigPreflight
+# (via Resolve-UserConfigCollision) and Export-UserConfig's fallback so the adopt/merge/quit prompt
+# lives in exactly one place. Loops until the user confirms adopt or merge (both leave the local file
+# in place), or throws "install canceled by user" on quit. No return value — both callers treat a
+# normal return as "resolved, leave the file alone."
+function Invoke-RootConfigCollisionPrompt {
+  param($Harness, $RepoRel, $HomePath)
+  $src = Join-Path $repoRoot $RepoRel
+
+  if (-not [Environment]::UserInteractive) {
+    throw "$HomePath exists and PowerShell is not interactive. Run interactively or use -DryRun to inspect collisions."
+  }
+
+  while ($true) {
+    Write-Host ""
+    Write-Host "User-owned $Harness config exists:"
+    Write-Host "  local:   $HomePath"
+    Write-Host "  harness: $src"
+    Write-Host ""
+    Write-Host "Choose:"
+    Write-Host "  1) adopt         keep local root config; install only clean harness links"
+    Write-Host "  2) merge prompt  print merge prompt; leave root config unchanged"
+    Write-Host "  q) quit"
+    $choice = Read-Host "Selection [1/2/q]"
+
+    switch ($choice) {
+      { $_ -in @("1", "adopt") } {
+        Write-Host ""
+        Write-Host "Keeping local $HomePath. Harness defaults will not be installed for this file."
+        Write-AgentMergePrompt $Harness "adopt existing" $RepoRel $HomePath
+        if (Confirm-Choice "Continue by adopting existing local config?") {
+          Write-Host "skip: $HomePath left in place"
+          return
+        }
+      }
+      { $_ -in @("2", "agent", "prompt") } {
+        Write-AgentMergePrompt $Harness "manual merge before install" $RepoRel $HomePath
+        if (Confirm-Choice "Skip this root config export for now?") {
+          Write-Host "skip: $HomePath left in place"
+          return
+        }
+      }
+      { $_ -in @("q", "Q", "quit", "exit") } {
+        throw "install canceled by user"
+      }
+      default {
+        Write-Host "Invalid selection."
+      }
+    }
+  }
+}
+
 function Export-UserConfig {
   param($Harness, $RepoRel, $HomePath)
   $src = Join-Path $repoRoot $RepoRel
@@ -254,53 +306,16 @@ function Export-UserConfig {
     return
   }
 
+  # Fallback safety net: in normal flow Invoke-RootConfigPreflight has already resolved every
+  # root_config collision (and set adoptRootConfig, so this function is skipped for adopted rows).
+  # This only runs if a drifted collision reaches here anyway — defer to the shared prompt.
   if ($DryRun) {
     Write-Host "collision: $HomePath"
     Write-Host "dry-run: would ask whether to keep existing config or print merge prompt"
     return
   }
 
-  if (-not [Environment]::UserInteractive) {
-    throw "$HomePath exists and PowerShell is not interactive. Run interactively or use -DryRun to inspect collisions."
-  }
-
-  while ($true) {
-    Write-Host ""
-    Write-Host "User-owned $Harness config exists:"
-    Write-Host "  local:   $HomePath"
-    Write-Host "  harness: $src"
-    Write-Host ""
-    Write-Host "Choose:"
-    Write-Host "  1) adopt         keep local root config; install only clean harness links"
-    Write-Host "  2) merge prompt  print merge prompt; leave root config unchanged"
-    Write-Host "  q) quit"
-    $choice = Read-Host "Selection [1/2/q]"
-
-    switch ($choice) {
-      { $_ -in @("1", "adopt") } {
-        Write-Host ""
-        Write-Host "Keeping local $HomePath. Harness defaults will not be installed for this file."
-        Write-AgentMergePrompt $Harness "adopt existing" $RepoRel $HomePath
-        if (Confirm-Choice "Continue by adopting existing local config?") {
-          Write-Host "skip: $HomePath left in place"
-          return
-        }
-      }
-      { $_ -in @("2", "agent", "prompt") } {
-        Write-AgentMergePrompt $Harness "manual merge before install" $RepoRel $HomePath
-        if (Confirm-Choice "Skip this root config export for now?") {
-          Write-Host "skip: $HomePath left in place"
-          return
-        }
-      }
-      { $_ -in @("q", "Q", "quit", "exit") } {
-        throw "install canceled by user"
-      }
-      default {
-        Write-Host "Invalid selection."
-      }
-    }
-  }
+  Invoke-RootConfigCollisionPrompt $Harness $RepoRel $HomePath
 }
 
 function Resolve-UserConfigCollision {
@@ -323,6 +338,18 @@ function Resolve-UserConfigCollision {
       if ($srcHash -eq $homeHash) {
         return $false
       }
+
+      # root_config files are mutable and the repo baseline is expected to change between installs.
+      # A byte mismatch against the current source is only a real collision when the file ALSO
+      # drifted from what roborepo itself last wrote — a clean file whose baseline simply moved on
+      # must not be treated as a collision here, or the preflight would wrongly prompt the user and
+      # set adopt, blocking the routine baseline update. Let Export-UserConfig do the silent update
+      # in that case (it re-checks drift and copies). Mirrors the equivalent branch in
+      # Export-UserConfig above and install-lib.sh's export_user_config.
+      $driftStatus = Get-RootConfigDriftStatus $Harness $HomePath
+      if ($driftStatus -eq "clean") {
+        return $false
+      }
     }
   } else {
     return $false
@@ -334,47 +361,11 @@ function Resolve-UserConfigCollision {
     return $false
   }
 
-  if (-not [Environment]::UserInteractive) {
-    throw "$HomePath exists and PowerShell is not interactive. Run interactively or use -DryRun to inspect collisions."
-  }
-
-  while ($true) {
-    Write-Host ""
-    Write-Host "User-owned $Harness config exists:"
-    Write-Host "  local:   $HomePath"
-    Write-Host "  harness: $src"
-    Write-Host ""
-    Write-Host "Choose:"
-    Write-Host "  1) adopt         keep local root config; install only clean harness links"
-    Write-Host "  2) merge prompt  print merge prompt; leave root config unchanged"
-    Write-Host "  q) quit"
-    $choice = Read-Host "Selection [1/2/q]"
-
-    switch ($choice) {
-      { $_ -in @("1", "adopt") } {
-        Write-Host ""
-        Write-Host "Keeping local $HomePath. Harness defaults will not be installed for this file."
-        Write-AgentMergePrompt $Harness "adopt existing" $RepoRel $HomePath
-        if (Confirm-Choice "Continue by adopting existing local config?") {
-          Write-Host "skip: $HomePath left in place"
-          return $true
-        }
-      }
-      { $_ -in @("2", "agent", "prompt") } {
-        Write-AgentMergePrompt $Harness "manual merge before install" $RepoRel $HomePath
-        if (Confirm-Choice "Skip this root config export for now?") {
-          Write-Host "skip: $HomePath left in place"
-          return $true
-        }
-      }
-      { $_ -in @("q", "Q", "quit", "exit") } {
-        throw "install canceled by user"
-      }
-      default {
-        Write-Host "Invalid selection."
-      }
-    }
-  }
+  # A genuine drift collision: prompt (adopt or merge). Both outcomes leave the local file in place,
+  # so the caller records this row as adopted ($true) and skips Export-UserConfig for it. Quit throws
+  # inside the shared prompt.
+  Invoke-RootConfigCollisionPrompt $Harness $RepoRel $HomePath
+  return $true
 }
 
 function Test-CleanTarget {

@@ -408,7 +408,17 @@ function renderSection(section) {
   return renderStandardSection(section);
 }
 
-function renderConfigFiles() {
+// Root-config drift chip shown beside settings.json / config.toml. Driven by snap.rootConfig, which
+// the server computes once (buildRootConfigView in config.mjs) so terminal and web agree. "in-sync"
+// and "not-installed" are the quiet default — no chip — so the chip only appears when there is
+// something the user might want to act on (drift, a staged update, or an untracked file).
+const DRIFT_CHIP = {
+  drifted: { label: "drifted", cls: "drift-warn", title: "Changed since roborepo's last write. Run `roborepo update` to reconcile." },
+  "staged-pending": { label: "update staged", cls: "drift-info", title: "A new baseline is staged beside this file, waiting for you to reconcile it." },
+  unwritten: { label: "untracked", cls: "drift-muted", title: "No recorded roborepo write yet (pre-dates drift tracking, or not installed via roborepo)." },
+};
+
+function renderConfigFiles(snap) {
   const panel = tpl("tpl-config-files");
   for (const btn of panel.querySelectorAll("[data-config-kind]")) {
     const kind = btn.dataset.configKind;
@@ -418,6 +428,19 @@ function renderConfigFiles() {
       openSourceModal({ kind, id, harness, label: btn.textContent }),
     );
   }
+  const driftByHarness = new Map((snap.rootConfig || []).map((r) => [r.harness, r]));
+  for (const chip of panel.querySelectorAll("[data-drift-harness]")) {
+    const row = driftByHarness.get(chip.dataset.driftHarness);
+    const spec = row && DRIFT_CHIP[row.state];
+    if (!spec) {
+      chip.hidden = true;
+      continue;
+    }
+    chip.hidden = false;
+    chip.className = "drift-chip " + spec.cls;
+    chip.textContent = spec.label;
+    chip.title = spec.title;
+  }
   return panel;
 }
 
@@ -426,7 +449,7 @@ function render(snap) {
   // Section model comes straight from the server snapshot (buildBehaviorView), no client fork.
   const view = snap.behaviorView || [];
   main.replaceChildren(
-    renderConfigFiles(),
+    renderConfigFiles(snap),
     ...view.map((section) => renderSection(section)).filter(Boolean),
   );
 }

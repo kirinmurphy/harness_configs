@@ -214,6 +214,19 @@ remove_root_config() {
   local src_rel="${3:-}"
   [[ -f "${home_abs}" ]] || return 0
 
+  # Drift gate (docs/plans/root-config-layered-inheritance.md, "Uninstall"): a root_config file is
+  # mutable and may have been hand-edited or written by a native harness flow after roborepo's own
+  # last write. If the recorded sidecar hash no longer matches on-disk content, the file has drifted
+  # and we do not know which parts are safe to touch — leave it in place and report the path rather
+  # than deleting user-modified content (even though is_roborepo_authored below would still match the
+  # roborepo markers the user's edit sits on top of). Only "clean"/"unwritten"/"missing" fall
+  # through to the content-based removal logic; "unwritten" preserves backward compatibility with
+  # installs that predate the sidecar (removal then relies on is_roborepo_authored/content match).
+  if [[ -n "${harness}" ]] && [[ "$(root_config_drift_status "${harness}" "${home_abs}")" == "drifted" ]]; then
+    echo "skip drifted root_config (edited since roborepo last wrote it): ${home_abs}"
+    return 0
+  fi
+
   local pre_install_backup=""
   if [[ -n "${harness}" ]]; then
     pre_install_backup="${HOME}/.roborepo/backups/pre-install/${harness}/$(basename "${home_abs}")"
@@ -531,7 +544,21 @@ check_no_active_remnants() {
           failed=1
         fi
         ;;
-      root_config|rendered_rules)
+      root_config)
+        # A drifted root_config is left in place on purpose by remove_root_config (the user edited
+        # it after roborepo's last write), so it is NOT a remnant even though is_roborepo_authored
+        # still matches the markers underneath the edit. Only a "clean" authored file — roborepo's
+        # own untouched write that removal should have deleted — counts. Post-uninstall the sidecar
+        # is already gone, so drift reports "unwritten" for the deliberately-kept file and it is
+        # correctly not flagged; the standalone --check-clean run (sidecar present) still catches a
+        # genuinely-clean leftover.
+        if is_roborepo_authored "${home_abs}" \
+          && [[ "$(root_config_drift_status "${_h}" "${home_abs}")" == "clean" ]]; then
+          echo "remnant: ${home_abs} contains roborepo-authored content" >&2
+          failed=1
+        fi
+        ;;
+      rendered_rules)
         if is_roborepo_authored "${home_abs}"; then
           echo "remnant: ${home_abs} contains roborepo-authored content" >&2
           failed=1

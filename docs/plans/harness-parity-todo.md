@@ -52,37 +52,33 @@ For immediate product value, start with
 it resolves the portal's ambiguous enabled/installed/partial states across rules,
 plugins, services, skills, MCP, and permissions.
 
-Within parity-specific work, start with **layered root-config inheritance** if the
-next work should reduce install/update collisions and make machine-local config
-safer. Start with
+Start with
 [`skills-vs-commands-invocation-policy.md`](skills-vs-commands-invocation-policy.md)
 if the next work should improve agent behavior predictability with smaller,
 testable pieces.
 
-### 1. Layered root-config inheritance (high priority — design drafted, implementation not started)
+### 1. Root-config drift detection (SHIPPED 2026-07-07)
 
-The largest remaining parity gap. Native-alignment aligned the *runtime stores*
-(skills, MCP, plugins, memory); it did **not** touch how `~/.claude/settings.json`
-and `~/.codex/config.toml` themselves are layered.
+Was the largest remaining parity gap: native-alignment aligned the *runtime stores*
+(skills, MCP, plugins, memory) but not how `~/.claude/settings.json` and
+`~/.codex/config.toml` themselves are handled across installs.
 
-- **Current model:** read-mostly assets are copied into harness homes, rules are rendered, and
-  mutable root config is exported as a local file or left user-owned according to `onConflict`.
-  There is no inheritance — the repo baseline and the user's machine-local config are
-  one flat file, so a user edit and a repo update collide instead of layering.
-- **Desired model:** repo provides a baseline; the user's global config can
-  inherit / add / override it; repo-local context can overlay project-specific
-  instructions where the harness supports it.
-- **Research first:** whether Claude/Codex support native include / import / layering
-  for root config. If not, design a generated/merged config with explicit source
-  ownership and drift checks (the same ownership discipline used for managed skill copies).
-- **Define interactions** with `onConflict`, `update`, `repair`,
-  secrets / machine-local config, and repo-local `CLAUDE.md` / `AGENTS.md`.
-- **Relationship to other plans:** this is the inheritance layer *underneath*
-  [`completed/package-gated-install.md`](completed/package-gated-install.md); that plan owns the copy/render
-  materialization mechanics, this item owns whether config can layer at all.
-- **Current design:** [`root-config-layered-inheritance.md`](root-config-layered-inheritance.md)
-  defines the baseline / machine overlay / generated active root config / project-local override
-  model, plus `update`, `repair`, `uninstall`, and `onConflict` behavior. Implementation remains open.
+The proposed *overlay* design (repo baseline + machine overlay + generated active
+file + project-local override) was **dropped** — an overlay can't keep its promise
+once a user hand-edits the real file or a native harness flow writes to it. What
+shipped instead is honest **drift detection**: roborepo records a content hash of what
+it last wrote per harness and, on the next install/update/repair/uninstall, compares
+the on-disk file to that hash. A clean file (baseline moved on, no local edit) updates
+silently; a drifted file (edited since roborepo's last write) is never silently merged
+or deleted — it is surfaced and staged using the same collision convention install
+already uses. See [`root-config-layered-inheritance.md`](root-config-layered-inheritance.md)
+(full design + implementation status) and
+[`../reference/internal/config-collision-handling.md`](../reference/internal/config-collision-handling.md).
+
+Delivered across all three install paths (`presets.mjs`, `install-lib.sh`,
+`install-windows.ps1`), plus `roborepo config root inspect`, uninstall drift-awareness,
+a `/config` portal drift chip, and Codex native-profile docs as the recommended path
+for a permanent personal config slice (Claude has no native equivalent).
 
 ### 2. Local-vs-global override policy (open decision)
 

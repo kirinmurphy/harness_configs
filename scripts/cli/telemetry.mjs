@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import net from "node:net";
 import { spawnSync, spawn } from "node:child_process";
-import { markTelemetrySelected, presetsApply } from "./presets.mjs";
+import { markTelemetrySelected } from "./presets.mjs";
 import { repoRoot } from "./paths.mjs";
 import { portalPidPath, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
@@ -137,17 +137,25 @@ function telemetryStop(args) {
   console.log(stopped ? "telemetry: disabled · server stopped" : "telemetry: disabled · no server was running");
 }
 
-function telemetryEnable(args) {
+async function telemetryEnable(args) {
   rejectArgs(args);
-  setTelemetryEnabled(true);
+  const result = await mutatePackage("telemetry", true);
+  if (!result.ok) {
+    console.error(result.message);
+    process.exit(1);
+  }
   console.log("telemetry: enabled");
   console.log("note: capture adds a small amount of overhead to every tool call (reads the transcript to size the latest turn).");
   telemetryStatus([]);
 }
 
-function telemetryDisable(args) {
+async function telemetryDisable(args) {
   rejectArgs(args);
-  setTelemetryEnabled(false);
+  const result = await mutatePackage("telemetry", false);
+  if (!result.ok) {
+    console.error(result.message);
+    process.exit(1);
+  }
   console.log("telemetry: disabled");
 }
 
@@ -158,8 +166,7 @@ export function setTelemetryEnabled(enabled) {
   try {
     ensureTelemetryDirs();
     writeTelemetryState({ enabled });
-    if (enabled) presetsApply(["telemetry"]);
-    else markTelemetrySelected(false);
+    markTelemetrySelected(enabled);
     return { ok: true, message: `telemetry ${enabled ? "enabled" : "disabled"}` };
   } catch (err) {
     return { ok: false, message: String(err?.message || err) };

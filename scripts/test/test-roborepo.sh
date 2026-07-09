@@ -402,10 +402,17 @@ assert "bundle check: selected bundles verify" \
   bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' bundle check >/dev/null"
 assert "bundle remove: unlinks owned link bundle" \
   bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' bundle remove hooks >/dev/null && ! test -e '${presets_home}/.claude/hooks'"
+mkdir -p "${presets_home}/.claude/hooks"
+printf 'local hook file\n' > "${presets_home}/.claude/hooks/local.txt"
+printf '{"hooks":[]}\n' > "${presets_home}/.codex/hooks.json"
 assert "telemetry enable: creates local state dirs" \
   bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node '${cli}' telemetry enable >/dev/null && test -d '${presets_home}/.roborepo/telemetry/spool'"
-assert "package snapshot: direct service state is external until package desired state is set" \
-  bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='telemetry');process.exit(p?.enabled===false&&p?.desired===false&&p?.status==='external'&&p.componentStatus?.[0]?.state==='external'?0:1)})\""
+assert "telemetry enable: does not replace existing root hook directory" \
+  bash -c "test -f '${presets_home}/.claude/hooks/local.txt' && ! compgen -G '${presets_home}/.claude/hooks_original_*' >/dev/null"
+assert "telemetry enable: does not replace existing Codex hooks config" \
+  bash -c "grep -q '\"hooks\":\\[\\]' '${presets_home}/.codex/hooks.json' && ! compgen -G '${presets_home}/.codex/hooks_original_*.json' >/dev/null"
+assert "telemetry enable: marks package desired state" \
+  bash -c "HOME='${presets_home}' ROBOREPO_STATE_DIR='${presets_home}/.roborepo' node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='telemetry');process.exit(p?.enabled===true&&p?.desired===true&&p?.status==='enabled'&&p.componentStatus?.[0]?.state==='present'?0:1)})\""
 
 # ---------------------------------------------------------------------------
 # Phase 1: interactive config controls — enable/disable package round-trip,

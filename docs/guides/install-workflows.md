@@ -77,7 +77,8 @@ Base install is intentionally minimal. Optional behavior appears only after onbo
 
 - `jcodemunch` and `jdocmunch` register MCP servers, hooks, permissions, and rule fragments.
 - `telemetry` installs capture state through its service component.
-- packages with skill components copy their skill folders into harness skill dirs.
+- packages with skill components materialize skills into `~/.roborepo/skills/<name>` and link the
+  harness skill dirs to that cache.
 
 ## Update
 

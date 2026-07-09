@@ -144,7 +144,7 @@ roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]
 roborepo doctor  [--installed]
 roborepo verify
 roborepo rules   [--check]
-roborepo permissions [--check] [--profile <name>]
+roborepo permissions [--check]
 
 roborepo --help | -h
 ```
@@ -349,29 +349,27 @@ synthetic sessions (varied models, repos, and spike causes) to a dedicated `spoo
 up automatically alongside real spools; rerun with `--clear` to remove it. It never touches the real
 `claude.jsonl` / `codex.jsonl` spools.
 
-## Permission Profiles
+## Permissions
 
-Agent permission profiles are defined once in `manifests/inventory/agent-permissions.json` and rendered into
-Claude and Codex native config:
+Agent permissions are defined once in `manifests/inventory/agent-permissions.json` as flat behavior
+and command buckets. Each bucket resolves to `allow`, `ask`, or `deny`; profile bundles such as
+`readonly`, `interactive`, and `workspace` are no longer part of the data model.
 
 ```sh
-roborepo permissions --profile readonly
-roborepo permissions --profile interactive
-roborepo permissions --profile workspace
+roborepo permissions
 roborepo permissions --check
 ```
 
-| Profile | Use when |
-| --- | --- |
-| `readonly` | You want inspection only and explicit approval before escapes. |
-| `interactive` | You want workspace writes, shell network disabled, and prompts for escapes. |
-| `workspace` | You want local workspace work without repeated prompts; blocked actions fail. |
-| `networked` | You want workspace writes plus sandbox network access. |
+The renderer writes Claude and Codex native output from the same manifest:
 
-`roborepo update --permissions <profile>` renders a profile before the update workflow. That is a
-per-run choice, not a persistent per-project registry. Existing `~/.claude/settings.json` and
-`~/.codex/config.toml` are active local root config files, so rendered baseline changes affect an
-already installed machine only after the root config merge/export workflow.
+| Harness | Rendered output |
+| --- | --- |
+| Claude | `permissions.allow`, `permissions.deny`, and `permissions.ask` in `globals/claude/settings.json` |
+| Codex | `approval_policy`, `sandbox_mode`, `network_access` in `globals/codex/config.toml`, plus shell prefix rules in `globals/codex/rules/default.rules` |
+
+Existing `~/.claude/settings.json` and `~/.codex/config.toml` are active local root config files, so
+rendered baseline changes affect an already installed machine only after `roborepo update` and the
+root config merge/export workflow.
 
 ## MCP registration
 

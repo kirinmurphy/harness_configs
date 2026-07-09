@@ -88,6 +88,7 @@ Shared fragments hold common behavior. Harness-specific fragments hold the real 
 - If the target file is genuinely user-authored, roborepo backs it up once under `~/.roborepo/backups/pre-install/<harness>/` before the first replacement.
 - The managed block is then injected into the existing file, so user text outside the managed block can remain in place.
 - If the live file is already roborepo-managed, install rewrites the managed block in place and does not treat that file as a user original.
+- The installer is not trying to preserve arbitrary user edits inside the managed block; it preserves the non-managed remainder of the file and re-owns the managed span.
 
 ### Persist user data on update
 
@@ -101,7 +102,7 @@ Shared fragments hold common behavior. Harness-specific fragments hold the real 
 
 Mutable root harness config:
 
-- model and profile defaults
+- model and native profile defaults
 - sandbox / approval posture
 - hook wiring
 - MCP and plugin wiring

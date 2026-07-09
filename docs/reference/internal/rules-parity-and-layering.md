@@ -16,7 +16,8 @@ Claude and Codex should share the same global behavior defaults without hand-mai
 - Root harness config files are conditional defaults:
   - `~/.claude/settings.json`
   - `~/.codex/config.toml`
-- The installer can leave root config user-owned through `adopt`.
+- The installer preserves user-owned root config through the `keep`, `overwrite`, and `abort`
+  collision policies documented in [Config Collision Handling](config-collision-handling.md).
 - Repo-local instructions still layer through project files such as `CLAUDE.md`, `AGENTS.md`, and repo instructions.
 
 ## Implemented Behavior
@@ -57,6 +58,11 @@ Live generated outputs:
 
 Tracked generated snapshots remain in the repo because setup and drift checks should work without running a build step first. Live home files are rendered by `scripts/cli/rules-render.mjs` from the tracked fragments plus the enabled-package registry.
 
+When a live `CLAUDE.md` or `AGENTS.md` already contains user text, roborepo injects or replaces only
+its managed block (`<!-- BEGIN managed:roborepo-code-style -->` ... `<!-- END managed:... -->`).
+Text outside that block stays user-owned. On first install, a genuine user-authored file is also
+snapshotted under `~/.roborepo/backups/pre-install/<harness>/` before the managed block is added.
+
 ## Rules Parity Model
 
 - Shared fragments hold behavior that should apply to both harnesses.
@@ -73,11 +79,14 @@ Priority from lowest to highest:
 
 1. Shared global defaults from this repo.
 2. Harness-specific global defaults from this repo.
-3. User-owned root config when installer uses `adopt`.
+3. User-owned root config preserved by collision policy.
 4. Repo-local instructions for the active project.
 5. Direct user instructions in the current conversation.
 
-Root config adoption applies to settings/config files, not to generated global rule files. A user-owned root config can override MCP, model, hook, permission, profile, plugin, or project behavior. It should not silently fork shared global instruction text unless the user intentionally replaces those files too.
+Root config collision policy applies to settings/config files, not to generated global rule files. A
+user-owned root config can override MCP, model, hook, permission, profile, plugin, or project
+behavior. It should not silently fork shared global instruction text unless the user intentionally
+replaces those files too.
 
 Repo-local context should refine or constrain global defaults for the active project. It should not require changing this repo unless the convention is useful across projects.
 

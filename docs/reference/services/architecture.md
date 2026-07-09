@@ -36,9 +36,12 @@ flowchart LR
 
 ## Materialization Map
 
-Install materializes repo source into harness homes by copying owned files, rendering rules, and preserving mutable root config. Home files do not point back to the checkout, except for the `roborepo` command symlink under `~/.local/bin`.
+Install materializes repo source into harness homes by copying owned files, rendering rules, linking
+enabled skills through a machine-local cache, and preserving mutable root config. Home files do not
+point back to the checkout, except for the `roborepo` command symlink under `~/.local/bin` and
+per-skill links from each harness into `~/.roborepo/skills/<name>`.
 
-Codex (`~/.codex/` from `globals/codex/`, plus copied skills into `~/.codex/skills/`):
+Codex (`~/.codex/` from `globals/codex/`, plus enabled skill links into `~/.codex/skills/`):
 
 - `AGENTS.md` rendered from base fragments plus enabled package fragments
 - `config.toml` exported as a local active file
@@ -46,7 +49,7 @@ Codex (`~/.codex/` from `globals/codex/`, plus copied skills into `~/.codex/skil
 - `MANAGED_BY_ROBOREPO.md`
 - `commands/`
 - `rules/`
-- `skills/roborepo-support/` by default; optional skills are copied by onboarding/package toggles
+- `skills/<name>` links to `~/.roborepo/skills/<name>` for each enabled shared skill
 
 Claude (`~/.claude/` from `globals/claude/`):
 
@@ -55,7 +58,7 @@ Claude (`~/.claude/` from `globals/claude/`):
 - `MANAGED_BY_ROBOREPO.md`
 - `commands/`
 - `hooks/`
-- `skills/roborepo-support/` by default; optional skills are copied by onboarding/package toggles
+- `skills/<name>` links to `~/.roborepo/skills/<name>` for each enabled shared skill
 
 ## Install Workflow Filesystem Shapes
 
@@ -70,11 +73,12 @@ Repo files are source input. The global harness path receives concrete files or 
 ~/.codex/commands               # managed_copy
 ~/.codex/hooks.json             # managed_copy
 ~/.codex/rules                  # managed_copy
-~/.codex/skills/<name>          # managed skill copy with .roborepo-managed marker
+~/.codex/skills/<name>          # symlink to ~/.roborepo/skills/<name>
 ~/.claude/CLAUDE.md             # rendered_rules
 ~/.claude/commands              # managed_copy
 ~/.claude/hooks                 # managed_copy
-~/.claude/skills/<name>         # managed skill copy with .roborepo-managed marker
+~/.claude/skills/<name>         # symlink to ~/.roborepo/skills/<name>
+~/.roborepo/skills/<name>       # managed skill cache with .roborepo-managed marker
 ```
 
 Implication: updates become active only after `roborepo update`, package enable/disable, or another explicit render/copy action.
@@ -95,49 +99,49 @@ Implication: runtime trust, hook approvals, local profiles, and machine-specific
 
 Agent permission defaults are authored in `manifests/inventory/agent-permissions.json` and rendered by `scripts/build/render-agent-permissions.mjs`.
 
-- `globals/codex/config.toml` receives the generated session profile block, such as `sandbox_mode`, `approval_policy`, and workspace network access.
+- `globals/codex/config.toml` receives generated session defaults such as `sandbox_mode`, `approval_policy`, and workspace network access.
 - `globals/codex/rules/default.rules` receives generated shell command prefix policy such as allowed local commands and denied Git remote commands.
-- `globals/claude/settings.json` receives generated `permissions.allow` and `permissions.deny` arrays from the same command, tool, MCP, and profile data.
+- `globals/claude/settings.json` receives generated `permissions.allow`, `permissions.deny`, and `permissions.ask` arrays from the same behavior and command buckets.
 
 Because `~/.codex/rules` and root config are copied, repo edits require `roborepo update` or the relevant renderer before they affect an existing machine.
 
 ### Root Config Merge Options
 
-#### Replace existing files
+#### Overwrite existing files
 
-Repo version becomes active in the global config location. Existing local files are preserved in an archive folder.
+Repo version becomes active in the global config location. Existing local files are preserved beside
+the active file with an `_original_TIMESTAMP` suffix.
 
 ```text
 ~/.codex/
-  config.toml                    # copied/adopted repo version, active
-  archived/
-    config_archived_<timestamp>.toml
+  config.toml                    # repo version, active
+  config_original_20260709-120000.toml
 
 ~/.claude/
-  settings.json                  # copied/adopted repo version, active
-  archived/
-    settings_archived_<timestamp>.json
+  settings.json                  # repo version, active
+  settings_original_20260709-120000.json
 ```
 
-Implication: user does not lose old config, but must merge wanted local settings back from `archived/`.
+Implication: user does not lose old config, but must merge wanted local settings back from the
+`*_original_TIMESTAMP` file.
 
 #### Keep existing files
 
-User-owned config remains active. Repo candidates are preserved in a staging folder for later merge.
+User-owned config remains active. Repo candidates are staged beside the active file with an
+`_update_TIMESTAMP` suffix.
 
 ```text
 ~/.codex/
   config.toml                    # existing local version, active
-  not_adopted/
-    config_repo_<timestamp>.toml
+  config_update_20260709-120000.toml
 
 ~/.claude/
   settings.json                  # existing local version, active
-  not_adopted/
-    settings_repo_<timestamp>.json
+  settings_update_20260709-120000.json
 ```
 
-Implication: user keeps current behavior, but must merge wanted repo defaults from `not_adopted/`.
+Implication: user keeps current behavior, but must merge wanted repo defaults from the
+`*_update_TIMESTAMP` file.
 
 #### Merge review prompt
 
@@ -153,21 +157,16 @@ User-owned config remains active until the selected install mode or collision po
 
 Implication: no automatic merge. The agent/user compares both sides and applies intentional edits after the installer finishes the backup-producing action.
 
-### Future layered model
+### Drift-aware root config
 
-Designed but not implemented:
+Root config rows get an additional drift check before collision policy applies. Roborepo records the
+hash of the last root config it wrote under `~/.roborepo/config-state/root-config.json`. If the live
+file still matches that hash, a changed repo baseline is a clean update and can be regenerated
+silently. If the live file changed after roborepo's last write, it is treated as user drift and goes
+through `keep`, `overwrite`, or `abort`.
 
-```text
-repo baseline
-        ↓ inherited by
-user global config overlay
-        ↓ refined by
-local repo context
-```
-
-The current design uses a generated active root config plus a user-owned machine overlay when native
-include/import support is unavailable. Track the implementation plan in
-[../../plans/completed/root-config-layered-inheritance.md](../../plans/completed/root-config-layered-inheritance.md).
+See [Config Collision Handling](../internal/config-collision-handling.md) for the exact collision,
+backup, and uninstall behavior.
 
 ### Shared skills: canonical source + machine-local cache
 

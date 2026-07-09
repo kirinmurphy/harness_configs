@@ -5,7 +5,7 @@ Claude Code & Codex global harness configuration with CLI support.
 The repo
 
 - provides a CLI to update both Claude and Codex configurations simultaneously
-- provides an array of built in global rules, skills, features avaialbe to individually install
+- provides built-in global rules, skills, and features that can be enabled individually
 
 Design goals:
 
@@ -25,7 +25,7 @@ Windows support is there, but not really tested.
 
 After install, you will have a `roborepo` command line tool.
 
-Use the CLI to update items and configuation to your global setup that will work across both harnesses.
+Use the CLI to update items and configuration in your global setup so they work across both harnesses.
 
 | Command                          | What it does                                                                                         |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
@@ -49,14 +49,6 @@ Use the CLI to update items and configuation to your global setup that will work
 Installing the `roborepo` core applies a minimal baseline, then launches an onboarding wizard so you choose which behaviors to enable — skills, commands, code conventions, chat-time output, and token-optimization packages. The wizard mirrors the `/config` sections, one section per step (`←`/`→` between sections, `Space` to toggle, `Enter` to advance). Only the baseline is applied automatically; everything else is opt-in, and telemetry stays off unless you turn it on. Rerun the wizard any time with `roborepo onboard`. Noninteractive installs skip the wizard and apply the baseline headlessly.
 
 > **Just want token telemetry?** You can install only the local telemetry capture + portal — without the rest of the global config — with `roborepo telemetry install` (or `./bin/roborepo telemetry install` from a fresh clone). It turns capture on immediately, so you can measure your token usage before adopting the full suite; upgrade later by re-running the normal install. Use `roborepo serve` or `roborepo web` to open the portal.
-
-<!--
-Per-feature configuration (choose individual skills/commands/packages/behaviors) ships through the
-package model and the config control panel — `roborepo onboard` and the `/config` dashboard. See
-docs/reference/services/config-control-panel.md and the completed plan
-docs/plans/completed/config-panel-behavior-sections.md. The earlier bundle-toggle wizard copy is
-recorded in docs/plans/completed/onboarding-reinstatement.md §4.
--->
 
 - [Token Optimization / Efficiency](#token-optimization--efficiency)
 - [Automatic Skill Helpers](#automatic-skill-helpers)
@@ -136,7 +128,7 @@ session-start nudge and leans on its rules file for the rest. Full breakdown:
 
 - **Plugins:** GitHub
 - **[Hooks](docs/reference/services/codex-hooks.md) (unique):** caveman activation runs as a session hook here; jcodemunch enforcement lives in the rules file, not in tool hooks
-- **Rules:** pre-approved safe commands for tests, builds, Docker, and local doctor checks
+- **Rules:** generated command policy and always-on rules for tests, builds, local checks, and harness behavior
 - **Model/features:** `gpt-5.5`, medium reasoning, hooks, JavaScript REPL, idle-sleep prevention
 
 #### Claude
@@ -153,7 +145,7 @@ Harness source lives under `globals/`, with the data that drives the build/insta
 - `globals/claude/` — Claude global rules, hooks, commands, settings baseline, and skill links
 - `globals/codex/` — Codex global rules, hooks, settings baseline, and managed markers
 - `manifests/inventory/` — the supplied catalog you add items to: MCP presets, slash commands,
-  skill-invocation policy, and agent permission profiles
+  skill-invocation policy, and agent permission behavior buckets
 - `manifests/platform/` — install/verify/render plumbing: the `.tsv` path tables, content checks,
   the CLI usage catalog, and merge prompts
 - `manifests/platform/presets.json` — preset bundle source of truth for onboarding/apply/remove

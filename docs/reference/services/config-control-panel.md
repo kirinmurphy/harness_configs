@@ -3,7 +3,7 @@
 ## Purpose
 
 `roborepo` exposes the harness configuration — what indexers, plugins, skills,
-telemetry, and permission posture are active — as an inspectable, editable surface.
+telemetry, and permission buckets are active — as an inspectable, editable surface.
 A user can see the current state and change it from either the web dashboard
 (`/config`) or the interactive terminal flow (`roborepo onboard`), without
 hand-editing `~/.claude/settings.json`, `~/.codex/config.toml`, or symlinks.
@@ -22,7 +22,7 @@ the user's live harness config, some in repo manifests, some in roborepo state.
 | **Package** | A named feature made of typed components | `manifests/inventory/packages.json` (catalog); live config (enabled state) |
 | **Component** | One typed unit of a package's install | the package definition |
 | **Skill** | A shared or native skill, inspected without flattening harness-specific metadata | `globals/agents/skills/<name>` (managed source); `~/.roborepo/skills/<name>` (managed cache); `~/.claude/skills/<name>` and `~/.codex/skills/<name>` (harness install state) |
-| **Permission profile** | A named safety posture (readonly / interactive / workspace / networked) | `manifests/inventory/agent-permissions.json` (definitions); live config (active) |
+| **Permission behavior** | A named behavior or arbitrary command set to `allow`, `ask`, `deny`, or `default` | `manifests/inventory/agent-permissions.json` (defaults); `~/.roborepo/command-overrides.json` (personal overrides); live config (active render) |
 | **Snapshot** | The assembled current state the UI renders | computed by `readConfigSnapshot()` |
 
 ### Component types
@@ -76,8 +76,8 @@ panel renders:
 - **Chat-Time Output** — the inline chat-note behaviors (convention capture, impact
   awareness, skill visibility), each a `rules` package merged into both harnesses. On by
   default; toggling adds/removes the behavior's rules block.
-- **Permissions** — the active permission profile, with a global / per-project scope
-  switch. Blocked/allowed command summaries are read-only.
+- **Permissions** — flat behavior and command buckets. Named behaviors and arbitrary commands can
+  be set to `allow`, `ask`, `deny`, or reset to the manifest default.
 
 ## Current Behavior
 
@@ -105,7 +105,8 @@ and terminal flow share one implementation:
 - `mutatePackage(id, enabled)` → `enablePackage` / `disablePackage`
 - `setSkillInstalled(id, enabled)` → materializes/removes the cache entry in `~/.roborepo/skills`
   and links/unlinks the skill in `~/.claude/skills` and `~/.codex/skills`
-- `setPermissionProfile(profile, { scope, confirmedLooser })`
+- `setBehaviorBucket(behaviorId, bucket)` → writes a personal behavior override, then re-renders live global permissions
+- `setCommandBucket(tokens, bucket)` → writes a personal arbitrary-command override, then re-renders live global permissions
 
 Writes target the user's **live** config, not the repo template (`globals/`). The repo
 template is changed only by the install/render pipeline.
@@ -120,20 +121,16 @@ one response.
 | --- | --- | --- |
 | `POST /api/config/packages` | `{ id, enabled }` | enable/disable a package |
 | `POST /api/config/skills` | `{ id, enabled }` | link/unlink a skill |
-| `POST /api/config/permissions` | `{ profile, scope?, confirmedLooser? }` | switch profile; `200` ok, `409` when a looser profile needs confirmation, `400` on bad input |
+| `POST /api/config/permissions` | `{ behaviorId, bucket }` or `{ tokens, bucket }` | set a named behavior or arbitrary command to `deny`, `ask`, `allow`, or `default` |
 
 ### Permission scope
 
-A profile applies at one of two scopes:
+Permissions are global machine state. Roborepo no longer has a per-project permission profile layer.
 
-- **global** → `~/.claude/settings.json` + `~/.codex/config.toml` (machine-wide default).
-- **project** → `<cwd>/.claude/settings.json` + `<cwd>/.codex/config.toml`, which the
-  harness reads as a per-project override of the global config (last-wins, not merged).
-
-The applied profile name is stamped into the written Claude settings (`roborepoProfile`)
-so it can be read back unambiguously — `interactive` and `workspace` share a Claude
-allow-list and differ only in Codex approval policy, so the permissions alone cannot
-identify the profile.
+Personal changes are stored in `~/.roborepo/command-overrides.json` and layered on top of
+`manifests/inventory/agent-permissions.json` before rendering live Claude/Codex config. Resetting a
+row to `default` removes the personal override and returns to the repo manifest default for that
+behavior or command.
 
 ## Happy Path
 
@@ -142,14 +139,14 @@ identify the profile.
 2. The panel renders the four sections from `GET /api/config`.
 3. Toggle a package, skill, or telemetry switch — the client POSTs, the server mutates
    live config and returns a fresh snapshot, the panel re-renders.
-4. To change permissions, pick a scope (Global / This project), then a profile.
+4. To change permissions, set a named behavior or arbitrary command to `deny`, `ask`, `allow`, or
+   `default`.
 5. Changes take effect the next time the agent harness starts a session.
 
 ## Required Rules
 
-- Switching to a **looser** profile (`workspace` stops prompting before blocked actions;
-  `networked` grants the sandbox internet access) requires an explicit confirmation. The
-  server enforces this with a `409` response even if the client is bypassed.
+- Permission rows must use only `deny`, `ask`, `allow`, or `default`. There is no looser-profile
+  confirmation because each behavior is independently reversible.
 - Mutations write live config only; the repo template under `globals/` is never touched
   by the panel.
 - Disabling a composite package leaves its shared required packages in place — disabling
@@ -163,8 +160,8 @@ identify the profile.
 - **Native skill collision.** If a real (native-installed) skill directory already
   occupies a skill name, the skill toggle skips it rather than overwriting. The inspect popup
   reports the collision and preserves native-only metadata such as `agents/openai.yaml`.
-- **Missing harness home.** Global-scope profile writes only target harness homes that
-  already exist; project scope creates `<cwd>/.claude` on demand.
+- **Missing harness home.** Permission writes only target harness homes that already exist. If no
+  harness config is present, the mutation reports that nothing was written.
 
 ## Key Files
 
@@ -175,7 +172,7 @@ identify the profile.
 - `scripts/cli/config-mutate.mjs` — the shared mutate primitives.
 - `scripts/cli/packages.mjs` — `enablePackage` / `disablePackage` and the component
   switch (including `requires` resolution).
-- `scripts/cli/permissions-render.mjs` — the profile render core (`renderProfileTo`).
+- `scripts/cli/permissions-render.mjs` — the permission render core.
 - `scripts/cli/config-dashboard.mjs` — the `/config` web view.
 - `scripts/cli/portal-server.mjs` — the HTTP routes.
 - `scripts/portal/config/` — the config page HTML, CSS, and browser JavaScript.

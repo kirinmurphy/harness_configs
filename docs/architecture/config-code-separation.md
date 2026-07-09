@@ -21,7 +21,7 @@ behavior: parsing, validation, prompting, linking, copying, pruning, and reporti
 | --- | --- | --- |
 | Managed home paths | `manifests/platform/manifest.tsv` | `install/main.sh`, `install-claude.sh`, `install-codex.sh`, `install-windows.ps1`, `verify-install.sh`, `doctor.sh` |
 | Required repo files | `manifests/platform/source-files.tsv` | `doctor.sh` |
-| Agent permission profiles | `manifests/inventory/agent-permissions.json` | `scripts/build/render-agent-permissions.mjs`, `install/main.sh`, `doctor.sh` |
+| Agent permission behaviors | `manifests/inventory/agent-permissions.json` | `scripts/build/render-agent-permissions.mjs`, `install/main.sh`, `doctor.sh` |
 | Agent rules | `globals/rules/{shared,claude,codex}/` | `scripts/build/render-rules.sh` |
 | Rule render targets | `manifests/platform/rule-targets.tsv` | `scripts/build/render-rules.sh` |
 | CLI menu/usage catalog | `manifests/platform/cli-commands.json` | `scripts/cli/main.mjs` |
@@ -122,7 +122,7 @@ sequenceDiagram
   Installer->>Reader: request present harness rows
   Reader->>Manifest: parse rows
   Reader-->>Installer: link/root_config/cleanup rows
-  Installer->>Home: create symlink, copy root config, or prune stale link
+  Installer->>Home: link legacy rows, copy/stage root config, or prune stale link
   Doctor->>Reader: request manifest rows
   Reader-->>Doctor: same rows
   Doctor->>Manifest: verify source paths still exist
@@ -133,7 +133,7 @@ sequenceDiagram
 | Manifest kind | Config says | Code does | Reverse sync |
 | --- | --- | --- | --- |
 | `link` | Home path should point at repo source. | Preflight conflicts, create symlink, verify target. | Syncs home back to repo unless `nosync`. |
-| `root_config` | Home path starts from repo baseline but becomes user-owned. | Copy file, adopt on collision, verify active local file. | Skips unless `--include-root-config`. |
+| `root_config` | Home path starts from repo baseline but can become user-owned drift. | Copy clean files, stage `*_update_TIMESTAMP` candidates, back up `*_original_TIMESTAMP` on overwrite, verify active local file. | Skips unless `--include-root-config`. |
 | `cleanup` | Old managed path should no longer be linked to repo. | Remove old repo symlink only. | Never synced. |
 
 ## Remaining Candidates
@@ -158,4 +158,4 @@ sequenceDiagram
 ## Related
 
 - `docs/architecture/manifest-and-symlinks.md`
-- `docs/plans/sync-from-home-manifest.md`
+- `docs/reference/internal/config-collision-handling.md`

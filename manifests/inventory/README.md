@@ -10,7 +10,7 @@ the installer wires `~/.claude` / `~/.codex`.
 | File | What it holds | How to add an item |
 | --- | --- | --- |
 | `mcp-presets.json` | MCP server presets offered by `roborepo mcp add` | **Hand-edit.** No add command. `roborepo mcp add` *reads* a preset and writes it into live config; it never writes back here. |
-| `agent-permissions.json` | Agent permission profiles (readonly / interactive / …) | **Hand-edit.** No add command. The renderer (`roborepo permissions`) *reads* a profile and generates the `globals/*` blocks; it never writes back here. |
+| `agent-permissions.json` | Flat permission behaviors and arbitrary command buckets (`allow` / `ask` / `deny`) | **Hand-edit.** No add command. The renderer (`roborepo permissions`) reads the buckets and generates the `globals/*` blocks; it never writes back here. |
 | `slash-commands.json` | Slash commands rendered into both harnesses | **`roborepo skill new`** appends + sorts + writes this for you. (Plain JSON, so hand-editing also works.) |
 | `skill-invocation.json` | Per-skill risk / invocation policy | **`roborepo skill new`** appends + sorts + writes this for you. (Plain JSON, so hand-editing also works.) |
 | `skill-trigger-tests.json` | Deterministic trigger and near-miss fixtures for medium-risk skills | **Hand-edit** when trigger policy changes, then run `roborepo skill triggers --check`. |

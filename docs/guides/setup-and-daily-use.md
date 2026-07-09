@@ -68,41 +68,31 @@ This runs against temporary `HOME` directories only. See [Config Collision Handl
 
 ## Maintenance
 
-### Choose Agent Permissions
+### Manage Agent Permissions
 
-Agent permission defaults start in one manifest:
+Agent permission defaults start in `manifests/inventory/agent-permissions.json` as flat behavior and
+command buckets. Each entry resolves to `allow`, `ask`, or `deny`; there is no longer a profile
+bundle such as `readonly`, `interactive`, or `workspace`.
 
-```sh
-roborepo permissions --profile interactive
-```
-
-Profiles live in `manifests/inventory/agent-permissions.json`. The renderer updates the generated permission block in `globals/codex/config.toml`, the shell prefix rules in `globals/codex/rules/default.rules`, and Claude `permissions.allow` / `permissions.deny` in `globals/claude/settings.json`. Existing `~/.codex/config.toml` and `~/.claude/settings.json` files are local root config, so merge/export is required before a newly rendered session profile affects an already set up machine. `~/.codex/rules` is a managed copy, so run `roborepo update` after rendering to refresh an installed machine.
-
-During install or update, choose a profile with:
+Use the onboarding flow or config portal for normal machine-level changes:
 
 ```sh
-./scripts/install/main.sh --permissions readonly
-./scripts/install/main.sh --permissions interactive
-./scripts/install/main.sh --permissions workspace
+roborepo onboard
+roborepo web
 ```
 
-Use the same profile flag through `roborepo update` after the first install:
+Render or check the repo baseline after editing the manifest:
 
 ```sh
-roborepo update --permissions readonly
-roborepo update --permissions interactive
-roborepo update --permissions workspace
+roborepo permissions
+roborepo permissions --check
 ```
 
-Profile scope:
-
-| Scope | How to set it | What changes |
-| --- | --- | --- |
-| This repo baseline | `roborepo permissions --profile <name>` | Re-renders tracked `globals/*` files from `manifests/inventory/agent-permissions.json`. |
-| One install/update run | `./scripts/install/main.sh --permissions <name>` or `roborepo update --permissions <name>` | Renders the chosen profile before export/link checks. |
-| Existing active root config | Merge/export root config after rendering | Required because `~/.claude/settings.json` and `~/.codex/config.toml` are local active files, not symlinks. |
-
-Per-project behavior comes from the active Claude/Codex session started in that project. This repo does not currently persist a different permission profile per consumer repo. To use different defaults for a repo, render the desired profile before installing/updating that machine's global harness config, or use the harness's own one-off launch flags for that session.
+The renderer updates the generated permission block in `globals/codex/config.toml`, the shell prefix
+rules in `globals/codex/rules/default.rules`, and Claude `permissions.allow` / `permissions.deny` /
+`permissions.ask` in `globals/claude/settings.json`. Existing `~/.codex/config.toml` and
+`~/.claude/settings.json` files are local root config, so run `roborepo update` and follow the root
+config merge/export flow before a newly rendered baseline affects an already set up machine.
 
 ---
 

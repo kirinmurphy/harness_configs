@@ -101,7 +101,7 @@ Default stance: preserve local behavior unless the user explicitly chooses repla
 
 ## Rendered Rules
 
-Rules files are roborepo-generated home files. They are identified by the `# Generated Harness Rules` header.
+Rules files are roborepo-generated home files. They are identified by the `# Generated Harness Rules` header and are written as a managed block inside the existing `CLAUDE.md` / `AGENTS.md` file, so user text outside the managed block can stay in place.
 
 On first render, if a genuine user-authored `CLAUDE.md` or `AGENTS.md` already exists, roborepo saves it once under:
 
@@ -109,11 +109,11 @@ On first render, if a genuine user-authored `CLAUDE.md` or `AGENTS.md` already e
 ~/.roborepo/backups/pre-install/<harness>/<filename>
 ```
 
-Then it writes the rendered file. Uninstall removes rendered files it owns and restores the pre-install backup when present.
+Then it injects or updates the rendered managed block in the existing file. Uninstall removes rendered files it owns and restores the pre-install backup when present.
 
 ## Pre-Install Backups
 
-Before roborepo first replaces a genuine user file, it writes a durable backup:
+Before roborepo first replaces a genuine user file, it writes a durable backup of the original file:
 
 ```text
 ~/.roborepo/backups/pre-install/claude/settings.json
@@ -122,7 +122,7 @@ Before roborepo first replaces a genuine user file, it writes a durable backup:
 ~/.roborepo/backups/pre-install/codex/AGENTS.md
 ```
 
-Backups are written only once. Roborepo-authored files and byte-identical repo copies are not captured as "originals", which prevents reinstall cycles from poisoning the backup.
+Backups are written only once. Roborepo-authored files and byte-identical repo copies are not captured as "originals", which prevents reinstall cycles from poisoning the backup. The backup is for the user's original file, not for the managed block that roborepo later injects into that file.
 
 ## Validation
 

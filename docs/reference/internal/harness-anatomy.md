@@ -23,7 +23,7 @@ the matching step in [the teaching doc](harnesses-explained.md).
 | Install bundles | Named groups of install-time file operations applied at install/update. Internal to the install pipeline — not a user-facing verb. | `manifests/platform/presets.json` | `roborepo update` (applies them); `roborepo bundle …` is an internal verb called by `scripts/install/main.sh` |
 | Hooks | Scripts the harness runs on lifecycle/tool events. | Claude: `globals/claude/hooks/*.mjs` + `settings.json` wiring<br>Codex: `globals/codex/hooks.json` | edit source, then `roborepo update` |
 | MCP servers | External tool servers (jcodemunch, jdocmunch, …) registered with both harnesses. | Claude: `~/.claude` registration<br>Codex: `~/.codex` registration | `roborepo mcp add <name-or-url>` |
-| Permissions | Allowed/denied commands, tools, and profile defaults. | Claude: `settings.json` `permissions.*`<br>Codex: `config.toml` + `rules/default.rules` | `roborepo permissions [--check]` |
+| Permissions | Allowed, denied, and ask-before-run behavior for commands, tools, and network defaults. | Claude: `settings.json` `permissions.*`<br>Codex: `config.toml` + `rules/default.rules` + runtime ask hook | `roborepo permissions [--check]` |
 | Telemetry | Local capture + analysis of sessions, tools, MCP, and token usage; spike detection + cause attribution + dashboard; backup/reset. | Claude/Codex hooks feed `~/.roborepo/telemetry` | `roborepo telemetry enable\|disable\|status\|report\|serve\|backup\|purge` |
 | Root config | Mutable, machine-local settings (model, trust, hook approvals). | Claude: `globals/claude/settings.json` (baseline)<br>Codex: `globals/codex/config.toml` (baseline) | `roborepo update` (export/merge) |
 
@@ -149,13 +149,15 @@ roborepo mcp apply                        # re-apply mcp-servers.json to current
 
 ## Permissions
 
-**What they do:** the allow/deny lists for commands, tools, and MCP calls, plus session profile
-defaults (sandbox, approval policy).
+**What they do:** the allow/deny/ask policy for commands, tools, and MCP calls, plus session defaults
+such as sandboxing, approval policy, and Codex network access.
 
 **Parity model:** authored once in `manifests/inventory/agent-permissions.json`, rendered into each harness's
-native shape — Claude's `permissions.allow`/`permissions.deny` in `settings.json`, and Codex's
-`config.toml` session profile + `rules/default.rules` command policy. (Why one source, two output
-shapes: [explained.md Step 3](harnesses-explained.md#step-3--bridging-a-structural-gap-permissions).)
+native shape — Claude's `permissions.allow`/`permissions.deny`/`permissions.ask` in
+`settings.json`, and Codex's `config.toml` session defaults + `rules/default.rules` command policy.
+Codex's static rules cannot express per-command `ask`, so `globals/codex/hooks/permission-check.mjs`
+supplies that runtime decision from the same manifest. (Why one source, two output shapes:
+[explained.md Step 3](harnesses-explained.md#step-3--bridging-a-structural-gap-permissions).)
 
 **To change permissions:** edit `manifests/inventory/agent-permissions.json`, then:
 
@@ -167,17 +169,18 @@ roborepo permissions --check
 ## Root config (`settings.json` / `config.toml`)
 
 **What it is:** mutable, machine-local state — model choice, trust, hook approvals, local profiles.
-Unlike everything above, the active home files are **not** symlinks; the repo keeps a portable
-baseline and the installer copies or merges it.
+Unlike most generated/copyable assets above, the active home files are **not** symlinks; the repo
+keeps a portable baseline and the installer exports it only when doing so does not overwrite user
+drift.
 
 **Parity model:** no auto-parity by design — this is the layer where per-machine divergence is
 allowed. The repo baselines (`globals/claude/settings.json`, `globals/codex/config.toml`) receive
-the generated permission blocks; everything else is local. (Why parity isn't the goal here:
+generated permission and hook/package defaults; local edits are protected by root-config drift
+detection and the `keep` / `overwrite` / `abort` collision policy. (Why parity isn't the goal here:
 [explained.md Step 7](harnesses-explained.md#step-7--when-parity-isnt-the-goal-root-config).)
 
-Layered inheritance is designed but not implemented. The planned model keeps repo baselines,
-machine overlays, generated active root config, and project-local overrides as separate ownership
-layers; see [Root Config Layered Inheritance](../../plans/completed/root-config-layered-inheritance.md).
+For exact update, backup, staged-candidate, and uninstall behavior, see
+[Config Collision Handling](config-collision-handling.md).
 
 ## Preset bundles (`presets.json`)
 
@@ -195,8 +198,9 @@ apply/remove commands. It is the source of truth for what `roborepo onboard` can
 roborepo update   # exports baseline when missing/identical, asks before merging local edits
 ```
 
-Merge options (replace / keep, with merge prompts after backup-producing actions) and the future
-layered-config model are covered in [How It Works → Root Config](../services/architecture.md#root-config-export).
+Merge options and drift behavior are covered in
+[How It Works → Root Config](../services/architecture.md#root-config-export) and
+[Config Collision Handling](config-collision-handling.md).
 
 ## Keeping a machine in sync
 

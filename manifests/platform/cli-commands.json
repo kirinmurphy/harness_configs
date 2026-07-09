@@ -40,7 +40,7 @@
     "roborepo verify                post-install verification",
     "roborepo rules   [--check]     render/check tracked generated agent rules",
     "roborepo rules check-home      check rendered home rules against enabled packages",
-    "roborepo permissions [--check] [--profile <name>] render/check agent permission outputs",
+    "roborepo permissions [--check] render/check agent permission outputs",
     "roborepo config status                 show enabled behaviors/packages",
     "roborepo config root inspect            report root config baseline/active/drift state per harness",
     "",

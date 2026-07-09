@@ -56,10 +56,9 @@ export function updateReadmeForHelper({ name, description, category }) {
   fs.writeFileSync(README_PATH, readme);
 }
 
-export function updateReadmeForCommand({ name, harnesses, description }) {
+export function updateReadmeForCommand({ name, description }) {
   let readme = fs.readFileSync(README_PATH, "utf8");
-  const labels = harnesses.map((h) => h[0].toUpperCase() + h.slice(1)).join(", ");
-  const row = `| \`/${markdownCell(name)}\` | ${markdownCell(labels)} | ${markdownCell(description)} |`;
+  const row = `| \`/${markdownCell(name)}\` | ${markdownCell(description)} |`;
   readme = insertReadmeTableRow(readme, "### Commands", row);
   fs.writeFileSync(README_PATH, readme);
 }

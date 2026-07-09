@@ -76,6 +76,13 @@
       "invocation": "auto",
       "explicit_command": true,
       "notes": "Code-quality cleanup against project patterns; explicit-only via the /tighten command. Must not auto-fire on ordinary edits or the mere presence of code."
+    },
+    {
+      "skill": "wrap-up",
+      "risk": "medium",
+      "invocation": "manual",
+      "explicit_command": true,
+      "notes": "Explicit command workflow: End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff prompt for the next chat."
     }
   ]
 }

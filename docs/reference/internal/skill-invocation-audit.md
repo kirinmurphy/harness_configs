@@ -4,8 +4,8 @@
 
 ## Summary
 
-- Shared skills: 11
-- Manifest entries: 11
+- Shared skills: 12
+- Manifest entries: 12
 - Static findings: 2
 - Unknown manifest entries: none
 
@@ -34,6 +34,7 @@ Keep shared `SKILL.md` frontmatter portable; use manifest-backed checks before a
 | `technical-planning-docs` | auto | medium | true | side-effect keyword | Keep trigger narrow; add near-miss tests. |
 | `test-harness` | auto | low | false | none | Keep auto if trigger remains narrow. |
 | `tighten` | auto | medium | true | none | Keep trigger narrow; add near-miss tests. |
+| `wrap-up` | manual | medium | true | none | Keep manual-only or command-gated. |
 
 ## Static Checks
 

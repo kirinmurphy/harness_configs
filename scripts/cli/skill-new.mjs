@@ -141,7 +141,7 @@ export async function skillNew(args) {
       skill: opts.name,
       harnesses: opts.harnesses,
     });
-    updateReadmeForCommand({ name: opts.command, harnesses: opts.harnesses, description: opts.description });
+    updateReadmeForCommand({ name: opts.command, description: opts.description });
   }
 
   if (opts.kind === "standalone") {
@@ -154,7 +154,7 @@ export async function skillNew(args) {
       source: sourceRel,
       harnesses: opts.harnesses,
     });
-    updateReadmeForCommand({ name: opts.command, harnesses: opts.harnesses, description: opts.description });
+    updateReadmeForCommand({ name: opts.command, description: opts.description });
   }
 
   runChecked("skill link-internal", "bash", [path.join(repoRoot, "scripts", "build", "link-skills.sh"), "--quiet"]);

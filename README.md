@@ -91,6 +91,7 @@ Use these when you want to intentionally start a named workflow.
 | `/technical-planning` | Create or revise a durable technical planning document.                             |
 | `/inventory`          | Scan this repo and refresh its Project Context handoff docs (glossary, inventory).  |
 | `/tighten`            | Clean up code against this project's own patterns with specific, anchored callouts. |
+| `/wrap-up`            | End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff prompt for the next chat. |
 
 **Plain-Language Triggers**: Some named workflows can also be started in ordinary chat: "capture this", "write a case study about this", "make this a durable technical plan", "run inventory", or "tighten this."
 

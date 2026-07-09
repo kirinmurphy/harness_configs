@@ -67,6 +67,8 @@ Examples:
   command.
 - `project-context`: explicit-only handoff-doc workflow behind `/inventory`.
 - `tighten`: explicit-only review/fix workflow behind `/tighten`.
+- `wrap-up`: explicit-only session close-out workflow (review, docs, commit, handoff
+  prompt) behind `/wrap-up`.
 
 ## Skill-Backed Slash Commands
 
@@ -91,6 +93,7 @@ Current generated examples:
 - `/technical-planning` -> `technical-planning-docs`
 - `/inventory` -> `project-context`
 - `/tighten` -> `tighten`
+- `/wrap-up` -> `wrap-up`
 
 ## Standalone Slash Commands
 

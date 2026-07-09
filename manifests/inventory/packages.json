@@ -50,6 +50,13 @@
             "mcp__jcodemunch__list_repos",
             "mcp__jcodemunch__get_symbol_context"
           ]
+        },
+        {
+          "type": "codex_tool_approvals",
+          "server": "jcodemunch",
+          "approvals": {
+            "register_edit": "auto"
+          }
         }
       ]
     }

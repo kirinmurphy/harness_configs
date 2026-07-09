@@ -5,8 +5,10 @@ import { repoRoot, rootConfigActive } from "./paths.mjs";
 import { setPackageEnabled, renderHomeRules, readEnabledPackagesRegistry } from "./rules-render.mjs";
 import { loadPackageCatalog, unavailablePackageMessage } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
+import { buildPackageLiveState } from "./package-probes.mjs";
 
 export const USER_CLAUDE_SETTINGS = rootConfigActive.claude;
+export const USER_CODEX_CONFIG = rootConfigActive.codex;
 
 
 export function findPackage(pkgId) {
@@ -54,6 +56,70 @@ function mergeHooks(settingsPath, hooksFragment) {
   }
 }
 
+function tomlTableKey(key) {
+  return /^[A-Za-z0-9_-]+$/.test(key) ? key : JSON.stringify(key);
+}
+
+function codexToolApprovalTable(component, toolName) {
+  return `[mcp_servers.${tomlTableKey(component.server)}.tools.${tomlTableKey(toolName)}]`;
+}
+
+function mergeCodexToolApprovals(configPath, component) {
+  let text = "";
+  try { text = fs.readFileSync(configPath, "utf8"); } catch {}
+  let changed = false;
+  for (const [toolName, approvalMode] of Object.entries(component.approvals || {})) {
+    const table = codexToolApprovalTable(component, toolName);
+    const tablePattern = table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const blockPattern = new RegExp(`(^${tablePattern}\\n)([^[]*)`, "m");
+    const nextLine = `approval_mode = ${JSON.stringify(approvalMode)}\n`;
+    if (blockPattern.test(text)) {
+      text = text.replace(blockPattern, (_match, header, body) => {
+        if (/^approval_mode\s*=/m.test(body)) {
+          const nextBody = body.replace(/^approval_mode\s*=.*$/m, nextLine.trim());
+          if (nextBody !== body) changed = true;
+          return `${header}${nextBody}`;
+        }
+        changed = true;
+        return `${header}${nextLine}${body}`;
+      });
+    } else {
+      text = `${text.endsWith("\n") ? text : `${text}\n`}\n${table}\n${nextLine}`;
+      changed = true;
+    }
+  }
+  if (changed) {
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(configPath, text);
+    console.log(`wired: Codex tool approvals → ${configPath}`);
+  } else {
+    console.log(`ok: Codex tool approvals already present → ${configPath}`);
+  }
+}
+
+function unmergeCodexToolApprovals(configPath, component) {
+  let text = "";
+  try { text = fs.readFileSync(configPath, "utf8"); } catch {}
+  let changed = false;
+  for (const toolName of Object.keys(component.approvals || {})) {
+    const table = codexToolApprovalTable(component, toolName);
+    const tablePattern = table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const blockPattern = new RegExp(`\\n?^${tablePattern}\\n[^[]*(?=^\\[|$)`, "m");
+    if (blockPattern.test(text)) {
+      text = text.replace(blockPattern, (match) => {
+        changed = true;
+        return match.startsWith("\n") ? "\n" : "";
+      });
+    }
+  }
+  if (changed) {
+    fs.writeFileSync(configPath, text.replace(/\n{3,}/g, "\n\n"));
+    console.log(`removed: Codex tool approvals ← ${configPath}`);
+  } else {
+    console.log(`ok: Codex tool approvals already absent ← ${configPath}`);
+  }
+}
+
 
 function mcpAlreadyPresent(serverName) {
   const result = spawnSync("claude", ["mcp", "list"], { encoding: "utf8" });
@@ -87,7 +153,9 @@ export async function enablePackage(rest, _seen = new Set()) {
     process.exit(2);
   }
 
-  const catalog = loadPackageCatalog();
+  const dryRun = flags.includes("--dry-run");
+  const reconcile = flags.includes("--reconcile");
+  const catalog = loadPackageCatalog({ includeUnavailable: reconcile });
   const pkg = catalog.find((p) => p.id === pkgId);
   if (!pkg) {
     console.error(unavailablePackageMessage(pkgId));
@@ -98,7 +166,6 @@ export async function enablePackage(rest, _seen = new Set()) {
   if (_seen.has(pkg.id)) return; // already handled in this enable pass (cycle / shared dependency)
   _seen.add(pkg.id);
 
-  const dryRun = flags.includes("--dry-run");
   const enabledIds = readEnabledPackagesRegistry().packages || [];
   const ownership = validatePackageCommandOwnership(pkg, { catalog, enabledIds });
   if (!ownership.ok) {
@@ -119,11 +186,11 @@ export async function enablePackage(rest, _seen = new Set()) {
   }
 
   if (dryRun) { console.log(`[dry-run] would enable: ${pkg.label}`); }
-  else { console.log(`enabling: ${pkg.label}`); }
+  else { console.log(reconcile ? `reconcile: ${pkg.label}` : `enabling: ${pkg.label}`); }
 
   if (dryRun) {
     console.log(`  [dry-run] mark package enabled in registry`);
-  } else {
+  } else if (!reconcile) {
     setPackageEnabled(pkg.id, true);
   }
 
@@ -137,6 +204,10 @@ export async function enablePackage(rest, _seen = new Set()) {
       case "permissions":
         if (dryRun) { console.log(`  [dry-run] merge ${component.allow.length} permissions`); break; }
         mergePermissions(USER_CLAUDE_SETTINGS, component.allow);
+        break;
+      case "codex_tool_approvals":
+        if (dryRun) { console.log(`  [dry-run] merge Codex tool approvals for ${component.server}`); break; }
+        mergeCodexToolApprovals(USER_CODEX_CONFIG, component);
         break;
       case "rules": {
         if (dryRun) { console.log(`  [dry-run] register rules from ${component.source} (${component.harness})`); break; }
@@ -174,12 +245,62 @@ export async function enablePackage(rest, _seen = new Set()) {
   // the function doesn't resolve before the side effects land.
   if (servicePromises.length) await Promise.all(servicePromises);
 
-  if (!dryRun) {
+  if (!dryRun && !reconcile) {
     const commandNames = packageCommandNames(pkg);
     if (commandNames.length) {
       console.log(`\ncli commands available: ${commandNames.map((c) => `roborepo ${c}`).join(", ")}`);
     }
   }
+}
+
+export async function reconcileEnabledPackages(rest = []) {
+  const dryRun = rest.includes("--dry-run");
+  const enabledIds = readEnabledPackagesRegistry().packages || [];
+  if (enabledIds.length === 0) {
+    console.log("reconcile: no enabled packages");
+    return;
+  }
+  const catalog = loadPackageCatalog({ includeUnavailable: true });
+  const known = new Set(catalog.map((pkg) => pkg.id));
+  for (const id of enabledIds) {
+    if (!known.has(id)) {
+      console.warn(`  warn: enabled package not in catalog: ${id}`);
+      continue;
+    }
+    await enablePackage([id, "--reconcile", ...(dryRun ? ["--dry-run"] : [])]);
+  }
+}
+
+export function adoptLivePackages({ dryRun = false } = {}) {
+  const catalog = loadPackageCatalog({ includeUnavailable: true });
+  const liveState = buildPackageLiveState(catalog);
+  const registry = readEnabledPackagesRegistry();
+  const alreadyEnabled = new Set(registry.packages || []);
+  const adopters = [];
+
+  for (const pkg of catalog) {
+    if (alreadyEnabled.has(pkg.id)) continue;
+    const state = liveState.get(pkg.id);
+    const adoptable = (state?.components || []).some((component) =>
+      component.state === "external" &&
+      !["mcp", "command", "requires"].includes(component.type)
+    );
+    if (adoptable) adopters.push(pkg.id);
+  }
+
+  if (adopters.length === 0) {
+    console.log("adopt-live: no live packages to adopt");
+    return [];
+  }
+
+  if (dryRun) {
+    console.log(`adopt-live: would mark enabled packages: ${adopters.join(", ")}`);
+    return adopters;
+  }
+
+  for (const id of adopters) setPackageEnabled(id, true);
+  console.log(`adopt-live: marked enabled packages: ${adopters.join(", ")}`);
+  return adopters;
 }
 
 // --------------------------------------------------------------------------- disable (reversal)
@@ -261,6 +382,10 @@ export async function disablePackage(rest) {
       case "permissions":
         if (dryRun) { console.log(`  [dry-run] remove ${component.allow.length} permissions`); break; }
         unmergePermissions(USER_CLAUDE_SETTINGS, component.allow);
+        break;
+      case "codex_tool_approvals":
+        if (dryRun) { console.log(`  [dry-run] remove Codex tool approvals for ${component.server}`); break; }
+        unmergeCodexToolApprovals(USER_CODEX_CONFIG, component);
         break;
       case "rules": {
         if (dryRun) { console.log(`  [dry-run] deregister rules from ${component.source} (${component.harness})`); break; }

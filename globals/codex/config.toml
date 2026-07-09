@@ -98,9 +98,6 @@ approval_mode = "auto"
 [mcp_servers.jcodemunch.tools.index_file]
 approval_mode = "approve"
 
-[mcp_servers.jcodemunch.tools.register_edit]
-approval_mode = "auto"
-
 [mcp_servers.jcodemunch.tools.search_symbols]
 approval_mode = "approve"
 

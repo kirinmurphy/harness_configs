@@ -182,7 +182,9 @@ run_post_install_onboarding() {
   # Always land the minimal baseline first, so update can refresh rendered rules even when the
   # machine has already been onboarded. The onboarding wizard itself does not re-apply defaults.
   install_section "Base Configuration"
+  node "${repo_root}/scripts/cli/main.mjs" package adopt-live
   node "${repo_root}/scripts/cli/main.mjs" bundle apply --default
+  node "${repo_root}/scripts/cli/main.mjs" package reconcile
 
   if presets_onboarded; then
     echo "Already onboarded. Run 'roborepo onboard' to change which behaviors are enabled."
@@ -205,40 +207,6 @@ run_post_install_onboarding() {
   node "${repo_root}/scripts/cli/main.mjs" onboard-intro
 }
 
-# Caveman is a third-party Claude plugin (compressed communication style), not core roborepo
-# behavior — opt-in only, never silently applied. Interactive TTY: ask. Non-interactive: skip
-# (matches choose_adopt_conflict_policy's non-TTY-safe-default style). Merges enabledPlugins +
-# extraKnownMarketplaces into the LIVE ~/.claude/settings.json only — repo source
-# (globals/claude/settings.json) never carries these, so a plain install stays plugin-free.
-offer_caveman_plugin() {
-  [[ $dry_run -eq 0 && $has_claude -eq 1 ]] || return 0
-  local claude_settings="${HOME}/.claude/settings.json"
-  [[ -f "${claude_settings}" ]] || return 0
-
-  local enable=0
-  if stdin_is_interactive; then
-    printf "Enable the caveman plugin (ultra-compressed communication style)? [y/N]: "
-    local choice
-    if read -r choice && [[ "${choice}" =~ ^[Yy]$ ]]; then
-      enable=1
-    fi
-  fi
-  [[ $enable -eq 1 ]] || return 0
-
-  node -e '
-const fs = require("fs");
-const path = process.argv[1];
-const settings = JSON.parse(fs.readFileSync(path, "utf8"));
-settings.enabledPlugins = { ...(settings.enabledPlugins || {}), "caveman@caveman": true };
-settings.extraKnownMarketplaces = {
-  ...(settings.extraKnownMarketplaces || {}),
-  caveman: { source: { source: "github", repo: "JuliusBrussee/caveman" } },
-};
-fs.writeFileSync(path, JSON.stringify(settings, null, 2) + "\n");
-' "${claude_settings}"
-  echo "caveman plugin enabled in ${claude_settings}"
-}
-
 # Post-install summary
 install_section "Core Install Complete"
 echo "  ${RR_BOLD}Claude${RR_RESET}  $([ $has_claude -eq 1 ] && echo "${RR_GREEN}available${RR_RESET}" || echo "${RR_DIM}not installed${RR_RESET}")"
@@ -246,7 +214,6 @@ echo "  ${RR_BOLD}Codex${RR_RESET}   $([ $has_codex  -eq 1 ] && echo "${RR_GREEN
 echo ""
 echo "  ${RR_BOLD}Web portal${RR_RESET}  run ${RR_CYAN}roborepo serve --detach${RR_RESET} to manage behavior in the UI"
 run_post_install_onboarding
-offer_caveman_plugin
 if [[ $has_claude -eq 0 || $has_codex -eq 0 ]]; then
   echo ""
   echo "To add another harness later: install it, then run roborepo onboard again."

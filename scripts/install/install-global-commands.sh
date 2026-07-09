@@ -80,7 +80,10 @@ print_command_conflict_prompt() {
   echo "conflict: ${target} already exists and is not managed by this repo." >&2
   echo "  command: ${name}" >&2
   echo "  repo source: ${source_path}" >&2
+  echo "================================================================================" >&2
+  echo "${RR_MAGENTA}${RR_BOLD}MERGE REVIEW REQUIRED: global command conflict${RR_RESET}" >&2
   echo "Merge review prompt:" >&2
+  echo "================================================================================" >&2
   echo "  Default stance: preserve the existing local command as source of truth." >&2
   echo "  Required first step: compute your own complete comparison of both paths. Do not rely on this prompt as an exhaustive conflict summary." >&2
   echo "  Add repo command behavior only if it does not conflict with the local command. Flag conflicts instead of guessing." >&2

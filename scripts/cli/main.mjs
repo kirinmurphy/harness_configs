@@ -15,7 +15,7 @@ import { indexCode, indexDocs, watchCode, runCmd } from "./index.mjs";
 import { mcpAdd, mcpApply } from "./mcp.mjs";
 import { projectContextCheck, projectContextInventory } from "./project-context.mjs";
 import { maybeRunPresetOnboarding, presetsCommand } from "./presets.mjs";
-import { enablePackage, disablePackage } from "./packages.mjs";
+import { enablePackage, disablePackage, reconcileEnabledPackages, adoptLivePackages } from "./packages.mjs";
 import { configCommand } from "./config.mjs";
 import { experimentalCommand } from "./package-catalog.mjs";
 
@@ -164,6 +164,12 @@ async function dispatch(args) {
 
     case "disable":
       return disablePackage(sub === undefined ? rest : [sub, ...rest]);
+
+    case "package":
+      if (sub === "reconcile") return reconcileEnabledPackages(rest);
+      if (sub === "adopt-live") return adoptLivePackages({ dryRun: rest.includes("--dry-run") });
+      console.error(`unknown: roborepo package ${sub ?? ""}`.trim());
+      return usageError();
 
     case "config":
       return configCommand(sub === undefined ? [] : [sub, ...rest]);

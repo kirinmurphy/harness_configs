@@ -415,6 +415,7 @@ assert "package snapshot: direct service state is external until package desired
 cfg_home="${work}/config-home"
 mkdir -p "${cfg_home}/.claude/skills" "${cfg_home}/.codex/skills"
 echo '{}' > "${cfg_home}/.claude/settings.json"
+printf '' > "${cfg_home}/.codex/config.toml"
 # ROBOREPO_SKIP_MCP=1: `enable` would otherwise shell out to `roborepo mcp add`, which writes
 # TRACKED repo source (globals/claude/settings.json + manifests/inventory/mcp-servers.json) and the
 # real `claude` CLI. Skip that step so the test exercises perms/hooks/rules without polluting the
@@ -434,6 +435,8 @@ assert "config: disable unknown package exits non-zero" \
 bash -c "${cfg_env} node '${cli}' enable jcodemunch >/dev/null 2>&1" || true
 assert "config: enable wires package permissions" \
   bash -c "[ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" -gt 0 ]"
+assert "config: enable wires package-owned Codex tool approvals" \
+  bash -c "grep -A1 '^\\[mcp_servers\\.jcodemunch\\.tools\\.register_edit\\]' '${cfg_home}/.codex/config.toml' | grep -q 'approval_mode = \"auto\"'"
 assert "config: enable wires CLAUDE.md rules" test -f "${cfg_home}/.claude/CLAUDE.md"
 assert "config: Claude rules use managed inline block" \
   bash -c "grep -q 'BEGIN managed:roborepo-code-style' '${cfg_home}/.claude/CLAUDE.md' && grep -q 'Generated Harness Rules' '${cfg_home}/.claude/CLAUDE.md'"
@@ -441,11 +444,15 @@ assert "config: Claude rules no longer use managed import block" \
   bash -c "! grep -q 'BEGIN managed:roborepo-agents-import' '${cfg_home}/.claude/CLAUDE.md' && ! test -e '${cfg_home}/.roborepo/rules/generated-rules.md'"
 assert "config: package snapshot includes runtime status and component status" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='jcodemunch');process.exit(p?.enabled===true&&p?.status==='partial'&&Array.isArray(p.componentStatus)&&p.componentStatus.some(x=>x.type==='mcp'&&x.state==='missing')?0:1)})\""
+assert "config: package snapshot tracks package-owned Codex tool approvals" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='jcodemunch');process.exit(p?.componentStatus?.some(x=>x.type==='codex_tool_approvals'&&x.state==='present')?0:1)})\""
 bash -c "${cfg_env} node '${cli}' disable jcodemunch >/dev/null 2>&1" || true
 assert "config: disable removes package permissions" \
   bash -c "[ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" = 0 ]"
 assert "config: disable removes package hooks" \
   bash -c "[ \"\$(node -e \"console.log(Object.keys(require('${cfg_home}/.claude/settings.json').hooks||{}).length)\")\" = 0 ]"
+assert "config: disable removes package-owned Codex tool approvals" \
+  bash -c "! grep -q '^\\[mcp_servers\\.jcodemunch\\.tools\\.register_edit\\]' '${cfg_home}/.codex/config.toml'"
 assert "config: enable/disable did not mutate tracked repo source" \
   bash -c "[ \"\$(git -C '${repo_root}' status --porcelain globals/claude/settings.json manifests/inventory/mcp-servers.json)\" = '${cfg_settings_before}' ]"
 
@@ -461,6 +468,41 @@ assert "config: disable plugin removes bool + marketplace" \
   bash -c "node -e \"const s=require('${cfg_home}/.claude/settings.json');process.exit(!s.enabledPlugins?.['caveman@caveman']&&!s.extraKnownMarketplaces?.caveman?0:1)\""
 assert "config: caveman package reports disabled after removal" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='caveman');process.exit(p&&!p.enabled?0:1)})\""
+
+recon_home="${work}/reconcile-home"
+mkdir -p "${recon_home}/.claude" "${recon_home}/.codex"
+echo '{}' > "${recon_home}/.claude/settings.json"
+printf '' > "${recon_home}/.codex/config.toml"
+recon_env="HOME='${recon_home}' ROBOREPO_STATE_DIR='${recon_home}/.roborepo' ROBOREPO_SKIP_MCP=1"
+bash -c "${recon_env} node '${cli}' enable jcodemunch >/dev/null 2>&1 && ${recon_env} node '${cli}' enable caveman >/dev/null 2>&1" || true
+cp "${repo_root}/globals/claude/settings.json" "${recon_home}/.claude/settings.json"
+cp "${repo_root}/globals/codex/config.toml" "${recon_home}/.codex/config.toml"
+bash -c "${recon_env} node '${cli}' package reconcile >/dev/null 2>&1" || true
+assert "package reconcile restores enabled Claude plugin settings after root overwrite" \
+  bash -c "node -e \"const s=require('${recon_home}/.claude/settings.json');process.exit(s.enabledPlugins?.['caveman@caveman']===true&&!!s.extraKnownMarketplaces?.caveman?0:1)\""
+assert "package reconcile restores enabled package hooks and permissions after root overwrite" \
+  bash -c "node -e \"const s=require('${recon_home}/.claude/settings.json');const allow=s.permissions?.allow||[];const hooks=JSON.stringify(s.hooks||{});process.exit(allow.includes('mcp__jcodemunch__resolve_repo')&&hooks.includes('jcmwatch')&&hooks.includes('Grep and Glob')?0:1)\""
+assert "package reconcile restores package-owned Codex approvals after root overwrite" \
+  bash -c "grep -A1 '^\\[mcp_servers\\.jcodemunch\\.tools\\.register_edit\\]' '${recon_home}/.codex/config.toml' | grep -q 'approval_mode = \"auto\"'"
+
+adopt_home="${work}/adopt-live-home"
+mkdir -p "${adopt_home}/.claude" "${adopt_home}/.codex" "${adopt_home}/.roborepo/telemetry"
+echo '{}' > "${adopt_home}/.claude/settings.json"
+printf '' > "${adopt_home}/.codex/config.toml"
+printf '{"enabled":true}\n' > "${adopt_home}/.roborepo/telemetry/state.json"
+adopt_env="HOME='${adopt_home}' ROBOREPO_STATE_DIR='${adopt_home}/.roborepo' ROBOREPO_SKIP_MCP=1"
+assert "package adopt-live marks external telemetry service as enabled" \
+  bash -c "${adopt_env} node '${cli}' package adopt-live >/dev/null && grep -q '\"telemetry\"' '${adopt_home}/.roborepo/enabled-packages.json'"
+
+adopt_skill_home="${work}/adopt-skill-home"
+mkdir -p "${adopt_skill_home}/.claude" "${adopt_skill_home}/.codex" "${adopt_skill_home}/.roborepo/skills"
+echo '{}' > "${adopt_skill_home}/.claude/settings.json"
+printf '' > "${adopt_skill_home}/.codex/config.toml"
+cp -R "${repo_root}/globals/agents/skills/case-study" "${adopt_skill_home}/.roborepo/skills/case-study"
+touch "${adopt_skill_home}/.roborepo/skills/case-study/.roborepo-managed"
+adopt_skill_env="HOME='${adopt_skill_home}' ROBOREPO_STATE_DIR='${adopt_skill_home}/.roborepo' ROBOREPO_SKIP_MCP=1"
+assert "package adopt-live marks external skill-component package as enabled" \
+  bash -c "${adopt_skill_env} node '${cli}' package adopt-live >/dev/null && grep -q '\"case-study-pack\"' '${adopt_skill_home}/.roborepo/enabled-packages.json'"
 
 # Chat-Time Output: rules-only packages with harness "both" — enable merges rules inline into both
 # CLAUDE.md and AGENTS.md; snapshot reports enabled; toggles are independent; disable removes from

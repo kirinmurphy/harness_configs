@@ -146,8 +146,11 @@ function Write-AgentMergePrompt {
   param($Harness, $Mode, $RepoRel, $HomePath)
   $src = Join-Path $repoRoot $RepoRel
   Write-Host ""
+  Write-Host "================================================================================"
+  Write-Host "MERGE REVIEW REQUIRED: harness install conflict" -ForegroundColor Magenta
   Write-Host "Merge review prompt:"
-  Write-Host "-----"
+  Write-Host "Local path: $HomePath"
+  Write-Host "================================================================================"
   Write-Host @"
 Compare harness config at:
   $src
@@ -169,7 +172,7 @@ Merge instructions:
 - Report the files changed and the conflicts left unresolved.
 Harness: $Harness
 "@
-  Write-Host "-----"
+  Write-Host "================================================================================"
   Write-Host ""
 }
 

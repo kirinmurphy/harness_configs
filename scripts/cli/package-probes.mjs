@@ -119,6 +119,22 @@ function probePermissions(component, desired, settings) {
   });
 }
 
+function probeCodexToolApprovals(component, desired) {
+  const config = readText(CODEX_CONFIG, "");
+  const missing = Object.entries(component.approvals || {}).filter(([toolName, approvalMode]) => {
+    const server = component.server.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const tool = toolName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const mode = String(approvalMode).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return !new RegExp(`^\\[mcp_servers\\.${server}\\.tools\\.${tool}\\]\\s*\\napproval_mode\\s*=\\s*"${mode}"`, "m").test(config);
+  });
+  return componentResult(component, {
+    desired,
+    observed: missing.length === 0,
+    owner: desired ? "roborepo" : "external",
+    detail: missing.length ? `${missing.length} Codex tool approval(s) missing` : `${Object.keys(component.approvals || {}).length} Codex tool approval(s) present`,
+  });
+}
+
 function probePlugin(component, desired, settings) {
   const observed = settings.enabledPlugins?.[component.id] === true;
   return componentResult(component, {
@@ -208,6 +224,7 @@ export function buildPackageLiveState(packages) {
       else if (component.type === "command") components.push(probeCommand(component, componentDesired));
       else if (component.type === "hooks") components.push(probeHooks(component, componentDesired, settings));
       else if (component.type === "permissions") components.push(probePermissions(component, componentDesired, settings));
+      else if (component.type === "codex_tool_approvals") components.push(probeCodexToolApprovals(component, componentDesired));
       else if (component.type === "plugin") components.push(probePlugin(component, componentDesired, settings));
       else if (component.type === "mcp") components.push(probeMcp(component, componentDesired, settings));
       else if (component.type === "service") components.push(probeService(component, componentDesired, telemetryState));

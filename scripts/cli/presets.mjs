@@ -15,6 +15,9 @@ import { checkDrift, recordWrite } from "./root-config-state.mjs";
 const PRESET_MANIFEST = path.join(repoRoot, "manifests", "platform", "presets.json");
 const INSTALL_MANIFEST = path.join(repoRoot, "manifests", "platform", "manifest.tsv");
 const MANIFEST_HOME = harnessHome;
+const ANSI = process.stdout.isTTY && !process.env.ROBOREPO_NO_COLOR
+  ? { reset: "\x1b[0m", bold: "\x1b[1m", magenta: "\x1b[35m" }
+  : { reset: "", bold: "", magenta: "" };
 
 // Onboarding wizard disabled: install auto-applies all default bundles, so nothing is gated on an
 // onboarding step. The forced-gate body is recorded in docs/plans/completed/onboarding-reinstatement.md.
@@ -775,8 +778,11 @@ function stageUpdate(row) {
 function printMergePrompt(row) {
   const source = path.join(repoRoot, row.srcRel);
   console.log("");
+  console.log("================================================================================");
+  console.log(`${ANSI.magenta}${ANSI.bold}MERGE REVIEW REQUIRED: harness install conflict${ANSI.reset}`);
   console.log("Merge review prompt:");
-  console.log("-----");
+  console.log(`Local path: ${row.homeAbs}`);
+  console.log("================================================================================");
   console.log(`Resolve this harness install conflict.
 
 Repo harness path:
@@ -797,7 +803,7 @@ Merge instructions:
 - If both sides edit the same setting, hook, rule, command, skill, or MCP/server entry, explain the conflict and stop for user choice.
 - Do not delete, replace, or move the local path unless the user explicitly approves that exact action.
 - Report the files changed and the conflicts left unresolved.`);
-  console.log("-----");
+  console.log("================================================================================");
   console.log("");
 }
 

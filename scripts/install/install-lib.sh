@@ -6,9 +6,9 @@
 # ROBOREPO_NO_COLOR for an explicit opt-out. Set once; reused by main.sh and every sub-script.
 if [[ -t 1 && -z "${ROBOREPO_NO_COLOR:-}" ]]; then
   RR_BOLD=$'\033[1m'; RR_DIM=$'\033[2m'; RR_RESET=$'\033[0m'
-  RR_CYAN=$'\033[36m'; RR_GREEN=$'\033[32m'; RR_YELLOW=$'\033[33m'
+  RR_CYAN=$'\033[36m'; RR_GREEN=$'\033[32m'; RR_YELLOW=$'\033[33m'; RR_MAGENTA=$'\033[35m'
 else
-  RR_BOLD=""; RR_DIM=""; RR_RESET=""; RR_CYAN=""; RR_GREEN=""; RR_YELLOW=""
+  RR_BOLD=""; RR_DIM=""; RR_RESET=""; RR_CYAN=""; RR_GREEN=""; RR_YELLOW=""; RR_MAGENTA=""
 fi
 
 # Bold cyan section header preceded by a blank line: visually breaks the install log into stages.
@@ -527,8 +527,10 @@ print_install_conflict_prompt() {
   local src="${repo_root}/${repo_rel}"
 
   echo ""
-  echo "${RR_YELLOW}${RR_BOLD}⚠ Merge review prompt:${RR_RESET} ${RR_DIM}${home_path}${RR_RESET}"
-  echo "${RR_DIM}─────────────────────────────────────────────${RR_RESET}"
+  echo "${RR_YELLOW}${RR_BOLD}================================================================================${RR_RESET}"
+  echo "${RR_MAGENTA}${RR_BOLD}MERGE REVIEW REQUIRED: harness install conflict${RR_RESET}"
+  echo "${RR_YELLOW}${RR_BOLD}Merge review prompt:${RR_RESET} ${RR_DIM}${home_path}${RR_RESET}"
+  echo "${RR_YELLOW}${RR_BOLD}================================================================================${RR_RESET}"
   cat <<EOF
 Resolve this harness install conflict.
 
@@ -551,7 +553,7 @@ Merge instructions:
 - Do not delete, replace, or move the local path unless the user explicitly approves that exact action.
 - Report the files changed and the conflicts left unresolved.
 EOF
-  echo "${RR_DIM}─────────────────────────────────────────────${RR_RESET}"
+  echo "${RR_YELLOW}${RR_BOLD}================================================================================${RR_RESET}"
   echo ""
 }
 

@@ -39,7 +39,13 @@ conversation looks finished. The user decides when the session is over.
 
 ### 1. Review the code
 
-Scope: files changed this session (session diff, not full repo history).
+Scope: the files this conversation actually edited or created — the concrete set touched by
+Edit/Write/NotebookEdit tool calls in this conversation. This is an enumerable set from the
+conversation history, not "the working tree diff": a repo can carry pre-existing uncommitted
+changes from before the session started, or from other work in progress, and those are not
+in scope here even though `git diff`/`git status` can't tell them apart from session work.
+If you cannot enumerate this set (e.g. picking up mid-session with no memory of earlier edits),
+say so explicitly rather than guessing from the working tree.
 
 - Load `tighten` and run its review loop against the scoped files: optimizations,
   functionality gaps, intuitiveness/naming, project-pattern conformance.
@@ -65,11 +71,14 @@ Scope: files changed this session (session diff, not full repo history).
 
 ### 3. Check for stray or uncommitted state
 
-Before committing, run `git status` (never `-uall`) and flag anything the user might
-not be tracking:
+Before committing, run `git status` (never `-uall`) and diff its output against the
+enumerable edit set from step 1. Anything in `git status` that is NOT in that set is stray —
+flag it, don't touch it:
 
 - Untracked files that look like real work product, not scratch/build output.
-- Unstaged changes outside the files this session touched.
+- Modified/staged files this conversation did not edit — including pre-existing uncommitted
+  work that predates this session. Report these by path; never assume they're safe to ignore
+  or safe to include.
 - Existing stashes.
 
 Surface these; don't silently include or silently discard them. If something is
@@ -77,8 +86,8 @@ ambiguous, ask before staging it.
 
 ### 4. Commit
 
-- Stage the files this session actually changed (plus any doc updates from step 2).
-  Never blanket `git add -A`/`git add .`.
+- Stage exactly the enumerable set from step 1 (plus any doc updates from step 2), by name.
+  Never blanket `git add -A`/`git add .`, and never stage a file flagged as stray in step 3.
 - Commit message: standard git conventions (see root `CLAUDE.md` commit guidance, not
   caveman mode) — summarize the *why* pulled from the session's own goal, not just a
   diff restatement. If the session covered multiple unrelated changes, say so and

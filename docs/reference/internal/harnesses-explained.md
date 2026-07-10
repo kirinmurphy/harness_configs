@@ -65,6 +65,27 @@ reason: there, difference is the point.
 
 The rest of the doc walks these rows top to bottom, one section each.
 
+### The same story in each harness's own words
+
+The axis table above is abstract. Here is what each harness concretely expects for the same element —
+the Claude-vs-Codex matrix. This is the "what the native side wants" companion to the "why the tool
+is what it is" prose below:
+
+| Element | What Claude expects | What Codex expects |
+| --- | --- | --- |
+| Rules | `~/.claude/CLAUDE.md`, one always-on markdown file | `~/.codex/AGENTS.md`, same intent, different name + house style |
+| Root config | `~/.claude/settings.json` — permissions, hooks, MCP, plugin toggles in one JSON object | `~/.codex/config.toml` — TOML defaults, some behavior in separate files/runtime hooks |
+| Permissions | `permissions.allow` / `deny` / `ask` arrays in `settings.json` (real 3-state `ask`) | `approval_policy` / `sandbox_mode` / `network_access` in `config.toml` + rules-layer allow/deny; per-command `ask` only via a runtime hook |
+| Skills / commands | Skills + `commands/` under `~/.claude/` | Same structure under `~/.codex/` home paths |
+| MCP servers | Registration in native config + tool registry, plus matching permission entries | Entries in TOML config, own native registry shape |
+| Plugins | `enabledPlugins` + `extraKnownMarketplaces` in `settings.json`, installed natively next launch | Own plugin/marketplace commands + native config; choice survives runs, harness installs later |
+| Hooks | Wiring in `settings.json`, `.mjs` bodies; JSON control output the harness _obeys_ | Wiring in `hooks.json`, `.mjs` bodies; output read as plain text to _show_ |
+
+For how each of these survives an install/update — backups, drift detection, per-element persistence —
+see [Config Collision Handling](config-collision-handling.md#per-element-persistence). For the source
+location and exact command per element, see
+[Harness Anatomy](harness-anatomy.md#elements-at-a-glance).
+
 ---
 
 ## Step 1 — When they already agree: slash commands

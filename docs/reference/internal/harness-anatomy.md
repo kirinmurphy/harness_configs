@@ -28,7 +28,8 @@ the matching step in [the teaching doc](harnesses-explained.md).
 | Root config | Mutable, machine-local settings (model, trust, hook approvals). | Claude: `globals/claude/settings.json` (baseline)<br>Codex: `globals/codex/config.toml` (baseline) | `roborepo update` (export/merge) |
 
 The rest of this doc takes each element in turn: what it does, how parity works, and what you do
-to change it.
+to change it. For what survives an install/update per element — backups, drift, staged candidates —
+see [Config Collision Handling → Per-Element Persistence](config-collision-handling.md#per-element-persistence).
 
 ## Global rules (`CLAUDE.md` / `AGENTS.md`)
 

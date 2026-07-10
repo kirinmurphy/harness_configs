@@ -126,6 +126,25 @@ Backups are written only once. Roborepo-authored files and byte-identical repo c
 
 For root config rows, the installer may create a timestamped `*_original_*` file during a collision-resolution pass and then delete that file again if the post-merge live file ends up byte-identical to it. That keeps the safety snapshot available while the merge is in flight, but avoids leaving behind redundant originals after a no-op resolution.
 
+## Per-Element Persistence
+
+The sections above describe the mechanism (policy, drift hash, backups) generically. This table is the
+per-element view: for each harness element, what survives a first install and what survives an
+`roborepo update`. The mechanism is always one of the above — this just names which one applies where.
+For *why* each element gets its parity tool see
+[How the Harnesses Work](harnesses-explained.md); for the source location and command to change it see
+[Harness Anatomy](harness-anatomy.md#elements-at-a-glance).
+
+| Element | On install | On update |
+| --- | --- | --- |
+| **Rules** (`CLAUDE.md` / `AGENTS.md`) | Genuine user file backed up once under `~/.roborepo/backups/pre-install/<harness>/`; managed block injected, user text outside the block preserved. See [Rendered Rules](#rendered-rules). | Managed block re-rendered in place; text outside it untouched. A wholly user-replaced file is handled by [collision policy](#collision-policies), not by rule rendering. |
+| **Root config** (`settings.json` / `config.toml`) | Never-written file captured as original before first write. See [Pre-Install Backups](#pre-install-backups). | Clean baseline change applied silently; a file drifted since roborepo's last write is kept/staged, never merged. See [Root Config Drift Detection](#root-config-drift-detection). Codex users keep permanent personal config in a [native profile](#codex-native-profiles-permanent-personal-config) roborepo never touches; Claude has no equivalent and relies on drift detection. |
+| **Permissions** | Personal overrides preserved in `~/.roborepo/command-overrides.json`; drifted config kept and repo version staged rather than replaced. | Baseline re-rendered from the manifest without erasing overrides; root-config hash distinguishes "baseline changed" from "user changed". Codex runtime `ask` hook fills the gap static rules cannot. |
+| **Skills / commands** | Unrecognized native skills left alone — roborepo owns only the names it manages. Generated commands are authoritative on owned paths; existing files preserved only under collision handling. | Owned skills re-linked from `~/.roborepo/skills/`, owned commands re-rendered. Out-of-band skills stay visible as adoptable drift, never deleted. |
+| **MCP servers** | Desired server recorded in manifest state and applied to both harnesses natively; unrelated user MCP entries in root config preserved. | Manifest state re-applied rather than reconstructed from the live machine; manually added servers stay as machine state, local profile overlays not flattened. |
+| **Plugins** | Plugin state added only to the active user config; no plugin payload written into repo source; unrelated user config untouched. | User's plugin choice re-applied from config state; marketplace registrations kept unless the plugin is being disabled; "enabled but not yet installed" state preserved. |
+| **Hooks** | Genuine user-authored hook/config files backed up before first replacement; managed hook blocks kept separate from user-added settings. | Managed hook definitions updated, user-added config outside the managed block preserved. Some hook behavior is intentionally duplicated by hand — the harness protocols differ too much to round-trip. See [Rendered Rules](#rendered-rules) for the managed-block model that also governs hook wiring. |
+
 ## Validation
 
 Run:

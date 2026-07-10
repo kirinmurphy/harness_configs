@@ -17,7 +17,7 @@ doc of record first; supporting docs should add context, not redefine the behavi
 
 | I need to... | Start here | Then read |
 | --- | --- | --- |
-| Understand why Claude and Codex parity has different mechanisms | [How the Harnesses Work](reference/internal/harnesses-explained.md) | [Cross-Harness Behavior Assessment](architecture/cross-harness-behavior-assessment.md) |
+| Understand why Claude and Codex parity has different mechanisms | [How the Harnesses Work](reference/internal/harnesses-explained.md) | [Harness Anatomy and Parity](reference/internal/harness-anatomy.md) |
 | Change a harness element | [Harness Anatomy and Parity](reference/internal/harness-anatomy.md) | [How It Works](reference/services/architecture.md) |
 | Understand filesystem materialization | [How It Works](reference/services/architecture.md) | [Manifest And Materialization](architecture/manifest-and-symlinks.md) |
 | Understand config vs. code boundaries | [Config-Code Separation](architecture/config-code-separation.md) | [Documentation Map And Audit](architecture/documentation-map-and-audit.md) |

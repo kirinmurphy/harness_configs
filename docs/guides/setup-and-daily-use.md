@@ -38,7 +38,7 @@ The installer has one materialization model: copy owned files, render generated 
 user-authored root config unless the selected collision policy says otherwise. See
 [install-workflows.md](install-workflows.md) for the step-by-step flow and collision behavior.
 
-Root config export is only automatic when the target path is missing, already an identical local copy, or still symlinked to this repo from an older install. The installer does not auto-merge user config or silently replace non-root conflicts. If another harness file or global command target already exists and is not managed by this repo, install stops before changing files and prints a merge prompt after the blocking action. See [Config Collision Handling](../reference/internal/config-collision-handling.md) for exact behavior.
+Root config export merges the repo baseline with the active local file when a root-config row collides, preserving the local content and cleaning up redundant backup originals after a no-op resolution. The installer does not auto-merge user config for other managed paths, or silently replace non-root conflicts. If another harness file or global command target already exists and is not managed by this repo, install stops before changing files and prints a merge prompt after the blocking action. See [Config Collision Handling](../reference/internal/config-collision-handling.md) for exact behavior.
 
 **The script is safe to re-run** — owned copies and rendered rules are refreshed, identical root config copies are accepted, and user-owned root config files are preserved unless you explicitly merge them later. Re-run it for a new machine, added harness, or new commands/snippets added to the repo.
 

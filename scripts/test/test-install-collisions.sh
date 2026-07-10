@@ -213,16 +213,18 @@ EOF
   cp "$claude_settings_backup" "$repo_root/globals/claude/settings.json"
 }
 
-test_overwrite_policy_backs_up_existing_configs() {
+test_overwrite_policy_preserves_existing_root_configs() {
   local home_dir
   home_dir="$(make_home)"
   seed_user_configs "$home_dir"
 
   run_harness_install_args "$home_dir" "$home_dir/out" --on-conflict overwrite
 
-  assert_file_contains "$home_dir/out" "backup: $home_dir/.claude/settings.json" "overwrite backs up existing Claude config"
-  assert_file_contains "$home_dir/out" "backup: $home_dir/.codex/config.toml" "overwrite backs up existing Codex config"
-  assert_file_contains "$home_dir/out" "Merge review prompt:" "overwrite prints merge review prompt"
+  assert_file_contains "$home_dir/out" "merged local root config preserved" "overwrite merges existing root configs"
+  grep -qF 'Bash(foo)' "$home_dir/.claude/settings.json" \
+    && pass "overwrite preserves user Claude settings" \
+    || fail "overwrite preserves user Claude settings" "$home_dir/out"
+  assert_regular_file_contains "$home_dir/.codex/config.toml" "\\[profiles\\.personal\\]" "overwrite preserves user Codex settings"
 }
 
 test_existing_root_symlinks_convert_to_local_copies() {
@@ -351,23 +353,24 @@ test_dry_run_collision_no_mutation() {
 
   run_harness_install_args "$home_dir" "$home_dir/out" --dry-run
 
-  assert_file_contains "$home_dir/out" "backup: $home_dir/.claude/settings.json" "dry-run previews Claude backup"
-  assert_file_contains "$home_dir/out" "dry-run: would ask overwrite or keep originals" "dry-run previews collision choice"
+  assert_file_contains "$home_dir/out" "merge: $home_dir/.claude/settings.json <-" "dry-run previews Claude merge"
   [[ ! -L "$home_dir/.claude/settings.json" && ! -L "$home_dir/.codex/config.toml" ]] && pass "dry-run leaves config files untouched" || fail "dry-run leaves config files untouched"
   [[ ! -e "$home_dir/.claude/settings_update_"* && ! -e "$home_dir/.roborepo-backups" ]] && pass "dry-run creates no backups or staged updates" || fail "dry-run creates no backups or staged updates"
 }
 
-test_noninteractive_block_no_mutation() {
+test_noninteractive_install_merges_root_configs() {
   local home_dir
   home_dir="$(make_home)"
   seed_user_configs "$home_dir"
 
-  if run_harness_install_args "$home_dir" "$home_dir/out"; then
-    fail "noninteractive collision blocks install" "$home_dir/out"
-  fi
+  run_harness_install_args "$home_dir" "$home_dir/out"
 
-  assert_file_contains "$home_dir/out" "stdin is not interactive" "noninteractive collision explains failure"
-  [[ ! -e "$home_dir/.claude/CLAUDE.md" && ! -e "$home_dir/.codex/AGENTS.md" ]] && pass "noninteractive block prevents partial install" || fail "noninteractive block prevents partial install"
+  assert_file_contains "$home_dir/out" "merged local root config preserved" "noninteractive install merges root config instead of blocking"
+  grep -qF 'Bash(foo)' "$home_dir/.claude/settings.json" \
+    && pass "noninteractive install preserves user Claude settings" \
+    || fail "noninteractive install preserves user Claude settings" "$home_dir/out"
+  assert_regular_file_contains "$home_dir/.codex/config.toml" "\\[profiles\\.personal\\]" "noninteractive install preserves user Codex settings"
+  [[ -e "$home_dir/.claude/CLAUDE.md" && -e "$home_dir/.codex/AGENTS.md" ]] && pass "noninteractive install completes and keeps merged files" || fail "noninteractive install completes and keeps merged files"
 }
 
 test_rendered_rules_backup_then_render() {
@@ -419,7 +422,7 @@ test_direct_harness_conflict_dry_run_reports() {
     || fail "direct Codex dry-run prevents mutation"
 }
 
-test_adopt_keep_originals_prints_merge_prompt() {
+test_adopt_keep_preserves_root_configs() {
   local home_dir
   home_dir="$(make_home)"
   seed_user_configs "$home_dir"
@@ -427,34 +430,28 @@ test_adopt_keep_originals_prints_merge_prompt() {
   run_harness_install_args "$home_dir" "$home_dir/out" --on-conflict keep
 
   [[ ! -L "$home_dir/.claude/settings.json" ]] && pass "keep leaves Claude config as regular file" || fail "keep leaves Claude config as regular file"
-  assert_file_contains "$home_dir/.claude/settings.json" '"model":"opus"' "keep preserves Claude config content"
-  find "$home_dir/.claude" -name 'settings_update_*.json' | grep -q . \
-    && pass "keep stages Claude root config update" \
-    || fail "keep stages Claude root config update"
+  grep -qF '"model": "opus"' "$home_dir/.claude/settings.json" \
+    && pass "keep preserves Claude config content" \
+    || fail "keep preserves Claude config content" "$home_dir/out"
   [[ ! -L "$home_dir/.codex/config.toml" ]] && pass "keep leaves Codex config as regular file" || fail "keep leaves Codex config as regular file"
-  assert_file_contains "$home_dir/.codex/config.toml" "\[mcp_servers.personal\]" "keep preserves Codex config content"
-  find "$home_dir/.codex" -name 'config_update_*.toml' | grep -q . \
-    && pass "keep stages Codex root config update" \
-    || fail "keep stages Codex root config update"
-  assert_file_contains "$home_dir/out" "Merge review prompt:" "keep prints merge review prompt"
+  grep -qF '[mcp_servers.personal]' "$home_dir/.codex/config.toml" \
+    && pass "keep preserves Codex config content" \
+    || fail "keep preserves Codex config content" "$home_dir/out"
 }
 
-test_adopt_overwrite_policy_backs_up_originals() {
+test_adopt_overwrite_preserves_root_configs() {
   local home_dir
   home_dir="$(make_home)"
   seed_user_configs "$home_dir"
 
   run_harness_install_args "$home_dir" "$home_dir/out" --on-conflict overwrite
 
-  assert_file_contains "$home_dir/.claude/settings.json" "permissions" "overwrite installs Claude repo config"
-  find "$home_dir/.claude" -name 'settings_original_*.json' | grep -q . \
-    && pass "overwrite backs up original Claude config" \
-    || fail "overwrite backs up original Claude config"
-  assert_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "overwrite installs Codex repo config"
-  find "$home_dir/.codex" -name 'config_original_*.toml' | grep -q . \
-    && pass "overwrite backs up original Codex config" \
-    || fail "overwrite backs up original Codex config"
-  assert_file_contains "$home_dir/out" "Merge review prompt:" "overwrite prints merge review prompt"
+  grep -qF 'Bash(foo)' "$home_dir/.claude/settings.json" \
+    && pass "overwrite keeps user Claude settings" \
+    || fail "overwrite keeps user Claude settings" "$home_dir/out"
+  grep -qF '[profiles.personal]' "$home_dir/.codex/config.toml" \
+    && pass "overwrite keeps user Codex settings" \
+    || fail "overwrite keeps user Codex settings" "$home_dir/out"
 }
 
 test_abort_no_config_replacement() {
@@ -662,6 +659,10 @@ test_idempotency_no_extra_backups() {
 
   assert_file_contains "$home_dir/second.out" "ok: $home_dir/.claude/settings.json" "idempotent Claude config ok"
   assert_file_contains "$home_dir/second.out" "ok: $home_dir/.codex/config.toml" "idempotent Codex config ok"
+  ! compgen -G "$home_dir/.claude/settings_original_*" >/dev/null \
+    && ! compgen -G "$home_dir/.codex/config_original_*" >/dev/null \
+    && pass "idempotent re-install leaves no stale *_original_* root config backups" \
+    || fail "idempotent re-install leaves no stale *_original_* root config backups"
   ! find "$home_dir/.roborepo-backups" -name settings.json -o -name config.toml 2>/dev/null | grep -q . \
     && pass "idempotent re-install creates no config backups" \
     || fail "idempotent re-install creates no config backups"
@@ -901,15 +902,15 @@ test_old_repo_managed_symlinks_are_migrated
 test_direct_claude_installer_removes_stale_retired_symlink
 test_verify_install_requires_active_root_configs
 test_dry_run_collision_no_mutation
-test_noninteractive_block_no_mutation
+test_noninteractive_install_merges_root_configs
 test_rendered_rules_backup_then_render
 test_global_command_conflict_blocks_before_mutation
 test_direct_harness_conflict_dry_run_reports
 test_conflict_policy_prompt_on_clean_machine
 test_onboarding_wizard_toggles_and_applies
-test_overwrite_policy_backs_up_existing_configs
-test_adopt_keep_originals_prints_merge_prompt
-test_adopt_overwrite_policy_backs_up_originals
+test_overwrite_policy_preserves_existing_root_configs
+test_adopt_keep_preserves_root_configs
+test_adopt_overwrite_preserves_root_configs
 test_abort_no_config_replacement
 test_uninstall_removes_repo_owned_links
 test_install_writes_durable_original_snapshot

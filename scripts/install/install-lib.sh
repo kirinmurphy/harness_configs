@@ -620,54 +620,51 @@ root_config_drift_status() {
   node "${repo_root}/scripts/cli/root-config-state.mjs" check "${harness}" "${home_path}" 2>/dev/null || echo "unwritten"
 }
 
+cleanup_original_backup_if_redundant() {
+  local home_path="$1"
+  local original_path
+  original_path="$(timestamped_path "${home_path}" original)"
+
+  [[ -f "${original_path}" ]] || return 0
+  [[ -f "${home_path}" ]] || return 0
+  if cmp -s "${home_path}" "${original_path}"; then
+    rm -f "${original_path}"
+    say cleanup "${original_path}"
+  fi
+}
+
 export_user_config() {
   local harness="$1"
   local repo_rel="$2"
   local home_path="$3"
   local src="${repo_root}/${repo_rel}"
+  local merge_helper="${repo_root}/scripts/cli/root-config-merge.mjs"
+  local converted_from_symlink=0
+
+  if [[ "${dry_run}" -eq 1 ]]; then
+    say merge "${home_path} <- ${src}"
+    return 0
+  fi
+
+  if [[ ! -e "${merge_helper}" ]]; then
+    echo "missing merge helper: ${merge_helper}" >&2
+    return 1
+  fi
 
   if [[ -L "${home_path}" ]]; then
-    local current
-    current="$(readlink "${home_path}")"
-    case "${current}" in
-      "${src}"|"${repo_root}"/*)
-      if [[ "${dry_run}" -eq 0 ]]; then
-        rm "${home_path}"
-        cp "${src}" "${home_path}"
-      fi
-      say copy "${home_path} <- ${src} ${RR_DIM}(converted from repo symlink)${RR_RESET}"
-      record_root_config_write "${harness}" "${home_path}"
-      return 0
-      ;;
-    esac
+    converted_from_symlink=1
+    rm "${home_path}"
   fi
 
-  # root_config files are mutable and expected to change between installs (new permissions, hooks,
-  # MCP entries in the repo baseline). A byte mismatch against the current repo source doesn't by
-  # itself mean the user touched the file — it may just mean the baseline moved on since the last
-  # install/update. Only treat it as a real collision when the file drifted from what roborepo
-  # itself last wrote.
-  if [[ -e "${home_path}" && ! -L "${home_path}" ]] && ! paths_equivalent_for_copy "${src}" "${home_path}"; then
-    local drift_status
-    drift_status="$(root_config_drift_status "${harness}" "${home_path}")"
-    if [[ "${drift_status}" == "clean" ]]; then
-      if [[ "${dry_run}" -eq 0 ]]; then
-        copy_tree "${src}" "${home_path}"
-      fi
-      say copy "${home_path} <- ${src} ${RR_DIM}(baseline changed, no local drift)${RR_RESET}"
-      record_root_config_write "${harness}" "${home_path}"
-      return 0
-    fi
+  mkdir -p "$(dirname "${home_path}")"
+  node "${merge_helper}" "${harness}" "${src}" "${home_path}" "${home_path}"
+  if [[ "${converted_from_symlink}" -eq 1 ]]; then
+    say copy "${home_path} <- ${src} ${RR_DIM}(converted from repo symlink, merged local root config preserved)${RR_RESET}"
+  else
+    say copy "${home_path} <- ${src} ${RR_DIM}(merged local root config preserved)${RR_RESET}"
   fi
-
-  CONFIG_COLLISION_ACTION=""
-  install_copy_item "${repo_rel}" "${home_path}" "${harness}"
-  # Only record a write when install_copy_item actually wrote home_path (fresh copy, confirmed
-  # byte-equivalent, or overwrite). On "keep", home_path is the user's untouched file — recording it
-  # here would falsely mark a possibly-drifted file as roborepo-clean going forward.
-  if [[ "${CONFIG_COLLISION_ACTION}" == "wrote" ]]; then
-    record_root_config_write "${harness}" "${home_path}"
-  fi
+  record_root_config_write "${harness}" "${home_path}"
+  cleanup_original_backup_if_redundant "${home_path}"
 }
 
 preflight_clean_item() {
@@ -862,6 +859,11 @@ remove_legacy_agents_skills() {
 link_global_skills() {
   local home_dir="$1"
   shift || true
+  local preserve_existing=0
+  if [[ "${1:-}" == "--preserve-existing" ]]; then
+    preserve_existing=1
+    shift || true
+  fi
   local src_dir="${repo_root}/globals/agents/skills"
   local skills_home="${home_dir}/skills"
   local cache_home="${HOME}/.roborepo/skills"
@@ -886,6 +888,8 @@ link_global_skills() {
     link_skill_item "globals/agents/skills/${name}" "${cache_path}"
     link_skill_view "${cache_path}" "${skills_home}/${name}"
   done < <(list_source_skills "${src_dir}")
+
+  [[ "${preserve_existing}" -eq 1 ]] && return 0
 
   # Prune cache entries and harness symlinks whose source has been removed or is not allowed.
   [[ -d "${cache_home}" ]] || return 0

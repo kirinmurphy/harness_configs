@@ -124,6 +124,8 @@ Before roborepo first replaces a genuine user file, it writes a durable backup o
 
 Backups are written only once. Roborepo-authored files and byte-identical repo copies are not captured as "originals", which prevents reinstall cycles from poisoning the backup. The backup is for the user's original file, not for the managed block that roborepo later injects into that file.
 
+For root config rows, the installer may create a timestamped `*_original_*` file during a collision-resolution pass and then delete that file again if the post-merge live file ends up byte-identical to it. That keeps the safety snapshot available while the merge is in flight, but avoids leaving behind redundant originals after a no-op resolution.
+
 ## Validation
 
 Run:

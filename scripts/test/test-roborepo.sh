@@ -946,6 +946,8 @@ update_home="${work}/update-home"
 mkdir -p "${update_home}/.claude" "${update_home}/.codex"
 cp "${repo_root}/globals/claude/settings.json" "${update_home}/.claude/settings.json"
 cp "${repo_root}/globals/codex/config.toml" "${update_home}/.codex/config.toml"
+node -e "const fs=require('fs');const p='${update_home}/.claude/settings.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.hooks=j.hooks||{};j.hooks.PreToolUse=[...(j.hooks.PreToolUse||[]),{matcher:'Bash',hooks:[{type:'command',command:'node \"$HOME/.claude/hooks/capture-dense-bash.mjs\"'}]}];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\\n')"
+printf '\n[projects.\"/Users/kirinmurphy/projects/activedev/roborepo\"]\ntrust_level = \"trusted\"\n' >> "${update_home}/.codex/config.toml"
 ln -s "${repo_root}/globals/claude/CLAUDE.md" "${update_home}/.claude/CLAUDE.md"
 ln -s "${repo_root}/globals/claude/MANAGED_BY_ROBOREPO.md" "${update_home}/.claude/MANAGED_BY_ROBOREPO.md"
 ln -s "${repo_root}/globals/claude/commands" "${update_home}/.claude/commands"
@@ -956,6 +958,8 @@ ln -s "${repo_root}/globals/codex/hooks.json" "${update_home}/.codex/hooks.json"
 ln -s "${repo_root}/globals/codex/MANAGED_BY_ROBOREPO.md" "${update_home}/.codex/MANAGED_BY_ROBOREPO.md"
 ln -s "${repo_root}/globals/codex/rules" "${update_home}/.codex/rules"
 # Skills are linked per-skill by the installer's enumerate-step, not as dir-level links.
+assert "lifecycle: setup package skills before update" \
+  bash -c "HOME='${update_home}' ROBOREPO_STATE_DIR='${update_home}/.roborepo' node '${cli}' enable jcodemunch >/dev/null 2>&1 && HOME='${update_home}' ROBOREPO_STATE_DIR='${update_home}/.roborepo' node '${cli}' enable case-study-pack >/dev/null 2>&1 && test -L '${update_home}/.claude/skills/case-study' && test -L '${update_home}/.codex/skills/case-study'"
 
 # The mcp-add tests above intentionally exercise source mutation for Claude permissions. Normalize
 # generated permission output before lifecycle doctor, which checks generated source drift.
@@ -966,6 +970,8 @@ assert "lifecycle: roborepo doctor dispatches and passes" \
 update_out="${work}/update-report.out"
 assert "lifecycle: roborepo update --dry-run dispatches and reports changes" \
   bash -c "HOME='${update_home}' node '${cli}' update --dry-run >'${update_out}' 2>&1 && grep -q 'Update change report:' '${update_out}' && grep -q 'unchanged: package registry' '${update_out}'"
+assert "lifecycle: roborepo update preserves local hooks, trust, and enabled skills" \
+  bash -c "HOME='${update_home}' ROBOREPO_STATE_DIR='${update_home}/.roborepo' node '${cli}' update >/dev/null 2>&1 && node -e \"const fs=require('fs');const s=JSON.parse(fs.readFileSync('${update_home}/.claude/settings.json','utf8'));process.exit((s.hooks?.PreToolUse||[]).some(e=>(e.hooks||[]).some(h=>h.command.includes('capture-dense-bash.mjs')))?0:1)\" && grep -q '\\[projects\\.\"/Users/kirinmurphy/projects/activedev/roborepo\"\\]' '${update_home}/.codex/config.toml' && test -L '${update_home}/.claude/skills/case-study' && test -L '${update_home}/.codex/skills/case-study'"
 
 update_legacy_home="${work}/update-legacy-home"
 mkdir -p "${update_legacy_home}/.claude" "${update_legacy_home}/.codex" "${update_legacy_home}/.roborepo/rules"

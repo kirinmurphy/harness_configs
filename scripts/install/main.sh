@@ -153,8 +153,8 @@ write_install_state "${on_conflict}"
 
 install_section "Base Skill"
 if [[ $dry_run -eq 0 ]]; then
-  [[ $has_claude -eq 1 ]] && link_global_skills "${HOME}/.claude" roborepo-support
-  [[ $has_codex  -eq 1 ]] && link_global_skills "${HOME}/.codex" roborepo-support
+  [[ $has_claude -eq 1 ]] && link_global_skills "${HOME}/.claude" --preserve-existing roborepo-support
+  [[ $has_codex  -eq 1 ]] && link_global_skills "${HOME}/.codex" --preserve-existing roborepo-support
 fi
 
 presets_onboarded() {
@@ -185,6 +185,8 @@ run_post_install_onboarding() {
   node "${repo_root}/scripts/cli/main.mjs" package adopt-live
   node "${repo_root}/scripts/cli/main.mjs" bundle apply --default
   node "${repo_root}/scripts/cli/main.mjs" package reconcile
+  [[ $has_claude -eq 1 ]] && export_user_config claude globals/claude/settings.json "${HOME}/.claude/settings.json"
+  [[ $has_codex  -eq 1 ]] && export_user_config codex globals/codex/config.toml "${HOME}/.codex/config.toml"
 
   if presets_onboarded; then
     echo "Already onboarded. Run 'roborepo onboard' to change which behaviors are enabled."

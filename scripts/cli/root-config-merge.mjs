@@ -70,8 +70,18 @@ function mergeClaudeSettings(repoText, localText) {
   if (local.extraKnownMarketplaces && isPlainObject(local.extraKnownMarketplaces) && isPlainObject(repo.extraKnownMarketplaces)) {
     merged.extraKnownMarketplaces = mergeObjects(repo.extraKnownMarketplaces, local.extraKnownMarketplaces);
   }
+  delete merged.model;
 
   return `${JSON.stringify(merged, null, 2)}\n`;
+}
+
+function tomlHeader(line) {
+  return /^\[[^\]]+\]$/.test(line.trim()) ? line.trim() : null;
+}
+
+function tomlKey(line) {
+  const match = line.match(/^\s*([A-Za-z0-9_.-]+|"[^"]+"|'[^']+')\s*=/);
+  return match?.[1] ?? null;
 }
 
 function extractTomlBlocks(text) {
@@ -99,18 +109,76 @@ function extractTomlBlocks(text) {
   return blocks;
 }
 
-function mergeCodexConfig(repoText, localText) {
-  const repo = String(repoText || "").trimEnd();
-  const repoHeaders = new Set(extractTomlBlocks(repo).map((block) => block.split(/\r?\n/, 1)[0].trim()));
-  const localBlocks = extractTomlBlocks(localText || "").filter((block) => {
-    const header = block.split(/\r?\n/, 1)[0].trim();
-    return header && !repoHeaders.has(header);
-  });
-  if (localBlocks.length === 0) {
-    return `${repo}\n`;
+function splitTomlSections(text) {
+  const sections = [];
+  let current = { header: null, lines: [] };
+
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const header = tomlHeader(line);
+    if (header) {
+      sections.push(current);
+      current = { header, lines: [line] };
+      continue;
+    }
+    current.lines.push(line);
+  }
+  sections.push(current);
+  return sections.map((section) => ({
+    ...section,
+    lines: section.lines.filter((line, index, lines) => index < lines.length - 1 || line !== ""),
+  }));
+}
+
+function mergeTomlSection(repoSection, localSection) {
+  if (!localSection) return repoSection.lines;
+
+  const localByKey = new Map();
+  const localExtras = [];
+  for (const line of localSection.lines.slice(localSection.header ? 1 : 0)) {
+    const key = tomlKey(line);
+    if (key) localByKey.set(key, line);
+    else if (line.trim()) localExtras.push(line);
   }
 
-  const output = [repo, "", ...localBlocks].join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+  const seen = new Set();
+  const merged = [];
+  for (const line of repoSection.lines) {
+    const key = tomlKey(line);
+    if (key && localByKey.has(key)) {
+      merged.push(localByKey.get(key));
+      seen.add(key);
+    } else {
+      merged.push(line);
+      if (key) seen.add(key);
+    }
+  }
+
+  for (const [key, line] of localByKey) {
+    if (!seen.has(key)) merged.push(line);
+  }
+  if (localExtras.length) merged.push(...localExtras);
+  return merged;
+}
+
+function mergeCodexConfig(repoText, localText) {
+  const repoSections = splitTomlSections(repoText);
+  const localSections = splitTomlSections(localText);
+  const localByHeader = new Map(localSections.map((section) => [section.header, section]));
+  const emitted = new Set();
+  const out = [];
+
+  for (const repoSection of repoSections) {
+    const localSection = localByHeader.get(repoSection.header);
+    emitted.add(repoSection.header);
+    out.push(...mergeTomlSection(repoSection, localSection), "");
+  }
+
+  for (const localSection of localSections) {
+    if (emitted.has(localSection.header)) continue;
+    out.push(...localSection.lines, "");
+  }
+
+  const output = out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
   return `${output}\n`;
 }
 

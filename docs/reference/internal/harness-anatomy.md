@@ -22,7 +22,7 @@ the matching step in [the teaching doc](harnesses-explained.md).
 | Slash commands | Named workflows the user starts explicitly (`/case-study`, etc.). | Claude: `globals/claude/commands/` (generated)<br>Codex: `globals/codex/commands/` (generated) | `roborepo skill render-commands [--check]` |
 | Install bundles | Named groups of install-time file operations applied at install/update. Internal to the install pipeline — not a user-facing verb. | `manifests/platform/presets.json` | `roborepo update` (applies them); `roborepo bundle …` is an internal verb called by `scripts/install/main.sh` |
 | Hooks | Scripts the harness runs on lifecycle/tool events. | Claude: `globals/claude/hooks/*.mjs` + `settings.json` wiring<br>Codex: `globals/codex/hooks.json` | edit source, then `roborepo update` |
-| MCP servers | External tool servers (jcodemunch, jdocmunch, …) registered with both harnesses. | Claude: `~/.claude` registration<br>Codex: `~/.codex` registration | `roborepo mcp add <name-or-url>` |
+| MCP servers | External tool servers (jcodemunch, jdocmunch, …) registered with both harnesses. | Claude: native live store<br>Codex: active `~/.codex/config.toml` | `roborepo mcp add <name-or-url>` |
 | Permissions | Allowed, denied, and ask-before-run behavior for commands, tools, and network defaults. | Claude: `settings.json` `permissions.*`<br>Codex: `config.toml` + `rules/default.rules` + runtime ask hook | `roborepo permissions [--check]` |
 | Telemetry | Local capture + analysis of sessions, tools, MCP, and token usage; spike detection + cause attribution + dashboard; backup/reset. | Claude/Codex hooks feed `~/.roborepo/telemetry` | `roborepo telemetry enable\|disable\|status\|report\|serve\|backup\|purge` |
 | Root config | Mutable, machine-local settings (model, trust, hook approvals). | Claude: `globals/claude/settings.json` (baseline)<br>Codex: `globals/codex/config.toml` (baseline) | `roborepo update` (export/merge) |
@@ -134,7 +134,7 @@ Hook details: [Claude Hooks](../services/claude-hooks.md), [Codex Hooks](../serv
 
 **Parity model:** one command registers a server with **both** harnesses: writes the intent to
 `manifests/inventory/mcp-servers.json` (state — "what is installed"), applies live to each harness
-in its native dialect (Claude → `claude mcp add`; Codex → block in `globals/codex/config.toml`),
+in its native dialect (Claude → `claude mcp add`; Codex → block in active `~/.codex/config.toml`),
 and adds matching Claude permissions in `settings.json`. `manifests/inventory/mcp-presets.json`
 stays the *catalog* ("what you can add"). `roborepo update` re-applies `mcp-servers.json` on any
 machine, making the MCP set portable. (Why a command, not a generator:

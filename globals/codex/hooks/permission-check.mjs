@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import { fileURLToPath } from 'node:url'
 
 // --- Real per-command ask on Codex, via a PreToolUse hook ---------------------------------------
 //
@@ -19,9 +20,29 @@ import os from 'node:os'
 // (or clarifies) the classified subset, mirroring the "hooks only tighten" convention already
 // documented in minimize-bash-output.mjs.
 
-const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../..')
+function candidateRepoRoots() {
+  const candidates = []
+  if (process.env.ROBOREPO_REPO_ROOT) candidates.push(process.env.ROBOREPO_REPO_ROOT)
+
+  const statePath = path.join(process.env.ROBOREPO_STATE_DIR || path.join(os.homedir(), '.roborepo'), 'install-state.json')
+  try {
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'))
+    if (typeof state.repo === 'string' && state.repo) candidates.push(state.repo)
+  } catch {}
+
+  candidates.push(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..'))
+  return candidates
+}
+
+function hasPermissionManifest(root) {
+  return fs.existsSync(path.join(root, 'manifests', 'inventory', 'agent-permissions.json'))
+}
+
+const candidates = candidateRepoRoots()
+const repoRoot = candidates.find(hasPermissionManifest) || candidates[candidates.length - 1]
 const manifestPath = path.join(repoRoot, 'manifests', 'inventory', 'agent-permissions.json')
 const overridesPath = path.join(os.homedir(), '.roborepo', 'command-overrides.json')
+const permissionManifestFound = hasPermissionManifest(repoRoot)
 
 function loadJson(p, fallback) {
   try {
@@ -33,6 +54,21 @@ function loadJson(p, fallback) {
 
 const manifest = loadJson(manifestPath, { behaviors: [], commands: { allow: [] } })
 const overrides = loadJson(overridesPath, { behaviors: {}, commands: {} })
+
+function readHookInput() {
+  let text = ''
+  try {
+    text = fs.readFileSync(0, 'utf8')
+  } catch {
+    return null
+  }
+  if (!text.trim()) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
 
 // Same merge semantics as permissions-render.mjs's resolveBehaviors/resolveArbitraryCommands, but
 // this hook can't import that module directly — it must run standalone with only Node builtins
@@ -78,13 +114,25 @@ function matchesPrefix(commandTokens, ruleTokens) {
   return ruleTokens.every((t, i) => commandTokens[i] === t)
 }
 
-const input = JSON.parse(fs.readFileSync(0, 'utf8'))
+const input = readHookInput()
+if (!input) process.exit(0)
 const toolName = input.tool_name || input.toolName || input.tool || ''
 const toolInput = input.tool_input || input.toolInput || {}
 const command = typeof toolInput.command === 'string' ? toolInput.command : ''
 
 const SHELL_TOOLS = new Set(['exec_command', 'shell', 'local_shell', 'bash'])
 if (!SHELL_TOOLS.has(toolName) || !command) process.exit(0)
+
+if (!permissionManifestFound) {
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'ask',
+      permissionDecisionReason: `roborepo permissions: manifest not found at ${manifestPath}`,
+    },
+  }))
+  process.exit(0)
+}
 
 // Simple whitespace tokenization — matches how the manifest's own command patterns are authored
 // (space-separated argv-style arrays). A command with a pipe or `&&` is deliberately NOT split

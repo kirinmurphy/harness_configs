@@ -6,6 +6,8 @@ import { setPackageEnabled, renderHomeRules, readEnabledPackagesRegistry } from 
 import { loadPackageCatalog, unavailablePackageMessage } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 import { buildPackageLiveState } from "./package-probes.mjs";
+import { removeCodexMcp } from "./mcp-codex.mjs";
+import { writeRootConfig } from "./root-config-writes.mjs";
 
 export const USER_CLAUDE_SETTINGS = rootConfigActive.claude;
 export const USER_CODEX_CONFIG = rootConfigActive.codex;
@@ -20,8 +22,7 @@ export function readSettings(settingsPath) {
 }
 
 export function writeSettings(settingsPath, settings) {
-  fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  writeRootConfig("claude", settingsPath, JSON.stringify(settings, null, 2) + "\n");
 }
 
 function mergePermissions(settingsPath, allow) {
@@ -89,8 +90,7 @@ function mergeCodexToolApprovals(configPath, component) {
     }
   }
   if (changed) {
-    fs.mkdirSync(path.dirname(configPath), { recursive: true });
-    fs.writeFileSync(configPath, text);
+    writeRootConfig("codex", configPath, text);
     console.log(`wired: Codex tool approvals → ${configPath}`);
   } else {
     console.log(`ok: Codex tool approvals already present → ${configPath}`);
@@ -113,7 +113,7 @@ function unmergeCodexToolApprovals(configPath, component) {
     }
   }
   if (changed) {
-    fs.writeFileSync(configPath, text.replace(/\n{3,}/g, "\n\n"));
+    writeRootConfig("codex", configPath, text.replace(/\n{3,}/g, "\n\n"));
     console.log(`removed: Codex tool approvals ← ${configPath}`);
   } else {
     console.log(`ok: Codex tool approvals already absent ← ${configPath}`);
@@ -341,14 +341,41 @@ function unmergeHooks(settingsPath, hooksFragment) {
 }
 
 
-function removeMcpPreset(presetId, dryRun) {
-  if (dryRun) { console.log(`  [dry-run] mcp remove ${presetId}`); return; }
-  const result = spawnSync("claude", ["mcp", "remove", presetId], { encoding: "utf8" });
-  if (result.error || (result.status !== 0 && result.status !== null)) {
-    console.log(`  ok: mcp ${presetId} not registered (or claude CLI unavailable)`);
+function pruneClaudeMcpStore(serverName) {
+  const claudeJson = path.join(path.dirname(USER_CLAUDE_SETTINGS), "..", ".claude.json");
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(claudeJson, "utf8"));
+  } catch {
     return;
   }
-  console.log(`  removed: mcp ${presetId}`);
+
+  let changed = false;
+  const prune = (mcpServers) => {
+    if (mcpServers && Object.hasOwn(mcpServers, serverName)) {
+      delete mcpServers[serverName];
+      changed = true;
+    }
+  };
+  prune(data.mcpServers);
+  for (const project of Object.values(data.projects || {})) prune(project.mcpServers);
+  if (!changed) return;
+  fs.writeFileSync(claudeJson, `${JSON.stringify(data, null, 2)}\n`);
+  console.log(`  pruned: Claude MCP store ${serverName}`);
+}
+
+function removeMcpPreset(presetId, dryRun) {
+  if (dryRun) { console.log(`  [dry-run] mcp remove ${presetId}`); return; }
+  if (spawnSync("claude", ["--version"], { encoding: "utf8" }).status === 0) {
+    for (const scope of ["user", "local", "project"]) {
+      spawnSync("claude", ["mcp", "remove", presetId, "--scope", scope], { encoding: "utf8" });
+    }
+    console.log(`  removed: mcp ${presetId} from Claude scopes`);
+  } else {
+    console.log(`  ok: claude CLI unavailable for mcp ${presetId}`);
+  }
+  pruneClaudeMcpStore(presetId);
+  removeCodexMcp(presetId);
 }
 
 export async function disablePackage(rest) {

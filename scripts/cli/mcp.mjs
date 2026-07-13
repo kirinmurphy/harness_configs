@@ -51,8 +51,10 @@ export function mcpApply({ dryRun = false } = {}) {
   for (const server of data.servers) {
     const spec = { name: server.name, commandOrUrl: server.commandOrUrl, args: server.args };
     const applyClaude = server.harnesses.includes("claude");
+    const applyCodex = server.harnesses.includes("codex");
     if (dryRun) {
       if (applyClaude) console.log(`would apply Claude MCP live store: ${server.name}`);
+      if (applyCodex) console.log(`would apply Codex MCP active config: ${server.name}`);
       continue;
     }
     if (applyClaude) {
@@ -62,9 +64,8 @@ export function mcpApply({ dryRun = false } = {}) {
         const args = claudeMcpArgs({ scope: "user", transport: null }, spec);
         runClaudeMcpAdd(args);
       }
-      // Permissions are already in globals/claude/settings.json from when mcp add first ran.
-      // Codex servers are already in globals/codex/config.toml (read from the repo directly).
     }
+    if (applyCodex) ensureCodexMcp(spec);
   }
 }
 

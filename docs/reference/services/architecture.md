@@ -105,6 +105,10 @@ Agent permission defaults are authored in `manifests/inventory/agent-permissions
 
 Because `~/.codex/rules` and root config are copied, repo edits require `roborepo update` or the relevant renderer before they affect an existing machine.
 
+`roborepo mcp add` is the Codex MCP registration exception: it writes active
+`~/.codex/config.toml` immediately so the server is usable on this machine without waiting for a
+later update. The portable MCP intent remains in `manifests/inventory/mcp-servers.json`.
+
 ### Root Config Merge Options
 
 #### Overwrite existing files
@@ -164,6 +168,11 @@ hash of the last root config it wrote under `~/.roborepo/config-state/root-confi
 file still matches that hash, a changed repo baseline is a clean update and can be regenerated
 silently. If the live file changed after roborepo's last write, it is treated as user drift and goes
 through `keep`, `overwrite`, or `abort`.
+
+Package, permission, and MCP mutations share the same state file, but record only when the pre-write
+file was already clean/missing or matched the repo baseline. If a mutation merges into an
+already-drifted user file, the merged file stays drifted so a later update does not mistake
+preserved user content for roborepo-owned baseline.
 
 See [Config Collision Handling](../internal/config-collision-handling.md) for the exact collision,
 backup, and uninstall behavior.

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import crypto from "node:crypto";
 import { repoRoot } from "./paths.mjs";
 
 // Tiny local-only portal server. Binds to loopback only so telemetry/config data never leaves the
@@ -26,13 +27,15 @@ export const PAGES = [
 const PAGE_BY_PATH = new Map(PAGES.flatMap((p) => (
   p.id === "config" ? [[p.path, p], ["/config", p]] : [[p.path, p]]
 )));
-const pageHtml = (dir) => fs.readFileSync(path.join(PORTAL_DIR, dir, "index.html"), "utf8");
+const pageHtml = (dir, token) => fs.readFileSync(path.join(PORTAL_DIR, dir, "index.html"), "utf8")
+  .replace("</head>", `<meta name="roborepo-portal-token" content="${token}" />\n</head>`);
 
 export function startPortalServer(handlers) {
   const { port } = handlers;
+  const mutationToken = crypto.randomBytes(32).toString("base64url");
   const server = http.createServer((req, res) => {
     try {
-      route(req, res, handlers);
+      route(req, res, handlers, mutationToken);
     } catch (err) {
       send(res, 500, "application/json", JSON.stringify({ error: String(err?.message || err) }));
     }
@@ -58,11 +61,9 @@ export function startPortalServer(handlers) {
   return server;
 }
 
-// Loopback bind means no auth, but a page open in the user's browser can still POST here
-// cross-origin (or via DNS rebinding) unless the request's Origin is checked — Origin reflects the
-// page's true origin and can't be forged by page JS, unlike Host (which DNS rebinding can spoof).
-// Non-browser tooling (curl, scripts) sends no Origin at all; allow that through unchanged since it
-// already had to know the loopback port to reach the server in the first place.
+// Loopback bind keeps the portal local, but browser pages can still attempt cross-origin POSTs.
+// Mutating routes require both a loopback Origin (when present) and the per-server token embedded
+// only in served portal HTML. Read-only routes stay tokenless for curl/debugging.
 const LOOPBACK_ORIGIN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;
 function originAllowed(req) {
   const origin = req.headers.origin;
@@ -70,17 +71,23 @@ function originAllowed(req) {
   return LOOPBACK_ORIGIN.test(origin);
 }
 
-function route(req, res, handlers) {
+function mutationTokenAllowed(req, token) {
+  return req.headers["x-roborepo-portal-token"] === token;
+}
+
+function route(req, res, handlers, mutationToken) {
   const { loadAnalysis, loadSession, loadInsightsLlm, loadConfig, loadConfigSource, mutatePackage, mutateSkill, mutateBehavior, mutateCommand } = handlers;
   const [urlPath, qs = ""] = (req.url || "/").split("?");
 
   if (req.method === "POST" && !originAllowed(req)) {
     return send(res, 403, "application/json", JSON.stringify({ error: "cross-origin request rejected" }));
   }
+  if (req.method === "POST" && !mutationTokenAllowed(req, mutationToken)) {
+    return send(res, 403, "application/json", JSON.stringify({ error: "portal token required" }));
+  }
 
-  // Mutations: local-only loopback server, so no auth — but still POST-only, origin-checked, and
-  // JSON-bodied. Each writes config then returns the fresh snapshot so the client re-renders from one
-  // response.
+  // Mutations are POST-only, origin-checked, token-checked, and JSON-bodied. Each writes config then
+  // returns the fresh snapshot so the client re-renders from one response.
   if (req.method === "POST" && (urlPath === "/api/config/packages" || urlPath === "/api/config/skills")) {
     return readJsonBody(req, async (body, err) => {
       if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
@@ -117,7 +124,7 @@ function route(req, res, handlers) {
   }
 
   const page = PAGE_BY_PATH.get(urlPath);
-  if (page) return send(res, 200, "text/html; charset=utf-8", pageHtml(page.dir));
+  if (page) return send(res, 200, "text/html; charset=utf-8", pageHtml(page.dir, mutationToken));
   if (urlPath.startsWith("/portal/")) return servePortalAsset(urlPath, res);
   if (urlPath === "/api/config") {
     return send(res, 200, "application/json", JSON.stringify(loadConfig()));

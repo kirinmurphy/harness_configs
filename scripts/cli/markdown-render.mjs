@@ -11,6 +11,12 @@ function escapeAttr(text) {
   return escapeHtml(text).replaceAll("`", "&#96;");
 }
 
+function safeLinkHref(href) {
+  const value = String(href || "").trim();
+  if (/^(https?:\/\/|\/|\.\/|\.\.\/|#)/i.test(value)) return value;
+  return null;
+}
+
 function renderInline(text) {
   const parts = String(text).split(/(`[^`]*`)/g);
   return parts.map((part) => {
@@ -19,7 +25,9 @@ function renderInline(text) {
     }
     let html = escapeHtml(part);
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) => {
-      const safeHref = escapeAttr(href);
+      const safe = safeLinkHref(href);
+      if (!safe) return label;
+      const safeHref = escapeAttr(safe);
       return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${label}</a>`;
     });
     html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
@@ -142,4 +150,3 @@ export function renderMarkdown(text) {
   const normalized = String(text ?? "").replace(/\r\n/g, "\n");
   return renderBlocks(normalized.split("\n"));
 }
-

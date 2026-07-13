@@ -132,8 +132,8 @@ repair_skill_links() {
 [[ -d "${HOME}/.claude" ]] && repair_cleanup_rows claude
 [[ -d "${HOME}/.codex" ]] && repair_cleanup_rows codex
 
-repair_skill_links "${HOME}/.claude/skills"
-repair_skill_links "${HOME}/.codex/skills"
+[[ -d "${HOME}/.claude" ]] && repair_skill_links "${HOME}/.claude/skills"
+[[ -d "${HOME}/.codex" ]] && repair_skill_links "${HOME}/.codex/skills"
 
 # Bin command: install-global-commands.sh now self-heals a dangling link. Pass --dry-run
 # only when set; avoid expanding an empty array under `set -u` (unbound on bash 3.2 / macOS).

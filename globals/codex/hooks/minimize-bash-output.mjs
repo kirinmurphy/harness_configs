@@ -14,7 +14,23 @@ import fs from 'node:fs'
 // flags. It deliberately does NOT include the Claude SAFE_PREFIXES cd-normalization branch — that
 // targets Claude's settings.json literal-prefix permission matching and is Claude-specific.
 
-const input = JSON.parse(fs.readFileSync(0, 'utf8'))
+function readHookInput() {
+  let text = ''
+  try {
+    text = fs.readFileSync(0, 'utf8')
+  } catch {
+    return null
+  }
+  if (!text.trim()) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+const input = readHookInput()
+if (!input) process.exit(0)
 const toolName = input.tool_name || input.toolName || input.tool || ''
 const toolInput = input.tool_input || input.toolInput || {}
 const command = toolInput.command || ''

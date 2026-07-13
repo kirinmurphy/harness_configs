@@ -45,9 +45,12 @@ hash, the mismatch against the *new* baseline is a clean update, not a collision
 regenerated silently. Only a file that changed since roborepo's own last write is treated as a real
 collision and falls into the policies above.
 
-This check only ever *records* a write on the branch that actually wrote the active file. The
-`keep` policy's staged-candidate branch leaves the active file untouched, so it must not (and does
-not) record a write there — doing so would falsely mark a possibly-drifted file as clean. See
+This check only ever *records* a write when roborepo can honestly treat the resulting active file as
+roborepo-owned: the file was already clean, missing, newly created, or matched the repo baseline
+before the write. Package toggles and portal mutations that merge into an already-drifted user file
+still preserve the user content, but do **not** record the merged result as clean — doing so would
+make a later update free to overwrite that user-owned slice. The `keep` policy's staged-candidate
+branch leaves the active file untouched, so it must not (and does not) record a write there. See
 `docs/plans/completed/root-config-layered-inheritance.md` for the full design and `scripts/cli/root-config-state.mjs`
 for the implementation. All three install paths (`presets.mjs` JS bundle-apply,
 `install-lib.sh` bash direct-installer, `install-windows.ps1` PowerShell) implement this check. On
@@ -92,6 +95,10 @@ personal overrides in a profile that roborepo never touches.
 managed > CLI args > project local > project > user). There is no roborepo-provided substitute;
 Claude users manage personal root-config changes in `~/.claude/settings.json` directly and rely on
 drift detection to be told, honestly, when an update would collide.
+
+Claude global `settings.json` must not pin a `model`. Roborepo removes a top-level `model` key
+during install/update merges and JS-side root-config writes so global harness config does not
+override harness defaults or per-session user choice.
 
 ## Merge Prompt Behavior
 
@@ -141,7 +148,7 @@ For *why* each element gets its parity tool see
 | **Root config** (`settings.json` / `config.toml`) | Never-written file captured as original before first write. See [Pre-Install Backups](#pre-install-backups). | Clean baseline change applied silently; a file drifted since roborepo's last write is kept/staged, never merged. See [Root Config Drift Detection](#root-config-drift-detection). Codex users keep permanent personal config in a [native profile](#codex-native-profiles-permanent-personal-config) roborepo never touches; Claude has no equivalent and relies on drift detection. |
 | **Permissions** | Personal overrides preserved in `~/.roborepo/command-overrides.json`; drifted config kept and repo version staged rather than replaced. | Baseline re-rendered from the manifest without erasing overrides; root-config hash distinguishes "baseline changed" from "user changed". Codex runtime `ask` hook fills the gap static rules cannot. |
 | **Skills / commands** | Unrecognized native skills left alone — roborepo owns only the names it manages. Generated commands are authoritative on owned paths; existing files preserved only under collision handling. | Owned skills re-linked from `~/.roborepo/skills/`, owned commands re-rendered. Out-of-band skills stay visible as adoptable drift, never deleted. |
-| **MCP servers** | Desired server recorded in manifest state and applied to both harnesses natively; unrelated user MCP entries in root config preserved. | Manifest state re-applied rather than reconstructed from the live machine; manually added servers stay as machine state, local profile overlays not flattened. |
+| **MCP servers** | Desired server recorded in manifest state and applied to both harnesses natively; unrelated user MCP entries in root config preserved. Claude uses its native live store; Codex writes active `~/.codex/config.toml`, not the repo baseline. | Manifest state re-applied rather than reconstructed from the live machine; manually added servers stay as machine state, local profile overlays not flattened. |
 | **Plugins** | Plugin state added only to the active user config; no plugin payload written into repo source; unrelated user config untouched. | User's plugin choice re-applied from config state; marketplace registrations kept unless the plugin is being disabled; "enabled but not yet installed" state preserved. |
 | **Hooks** | Genuine user-authored hook/config files backed up before first replacement; managed hook blocks kept separate from user-added settings. | Managed hook definitions updated, user-added config outside the managed block preserved. Some hook behavior is intentionally duplicated by hand — the harness protocols differ too much to round-trip. See [Rendered Rules](#rendered-rules) for the managed-block model that also governs hook wiring. |
 

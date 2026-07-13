@@ -25,6 +25,13 @@ function slot(root, name) {
   return root.querySelector(`[data-slot="${name}"]`);
 }
 
+function portalHeaders() {
+  return {
+    "Content-Type": "application/json",
+    "X-Roborepo-Portal-Token": document.querySelector('meta[name="roborepo-portal-token"]')?.content || "",
+  };
+}
+
 function setOptionalText(node, value) {
   node.textContent = value || "";
   node.hidden = !value;
@@ -149,7 +156,7 @@ function toggleSwitch(item, statusSlot) {
     try {
       const res = await fetch(TOGGLE_ENDPOINT[item.toggle], {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: portalHeaders(),
         body: JSON.stringify({ id: item.id, enabled }),
       });
       const data = await res.json();
@@ -191,7 +198,7 @@ async function applyBucket(payload, errSlot) {
   try {
     const res = await fetch("/api/config/permissions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: portalHeaders(),
       body: JSON.stringify(payload),
     });
     const data = await res.json();

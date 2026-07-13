@@ -378,7 +378,7 @@ common MCP setup is repeatable instead of hand-typed. After Claude registration 
 
 - adds `mcp__<name>` to `globals/claude/settings.json` so the server's tools are allowed without repeated
   approval prompts (skip with `--skip-claude-permission`), and
-- adds an MCP block to `globals/codex/config.toml`.
+- adds an MCP block to active `~/.codex/config.toml` so Codex can use it immediately.
 
 Default target is both harnesses; `--only-claude` / `--only-codex` scope it. Presets exist for the
 two bundled servers (`jcodemunch`, `jdocmunch`, both `uvx`-based); any other non-URL value is

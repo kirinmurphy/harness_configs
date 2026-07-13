@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { repoRoot } from "./paths.mjs";
+import { writeRootConfig } from "./root-config-writes.mjs";
 
 // Pure agent-permission render core. Lives under scripts/cli/ so the CLI stays self-contained
 // (no reach into scripts/build/). The build entrypoint scripts/build/render-agent-permissions.mjs
@@ -201,10 +202,11 @@ export function claudePermissions(manifest, overrides = {}) {
   };
 }
 
-// Merge generated permissions into existing Claude settings, preserving every other key
-// (hooks, plugins, model, …). `current` may be "" for a fresh file.
+// Merge generated permissions into existing Claude settings, preserving every other key except
+// `model`. Global roborepo settings must not pin Claude's model; leave that to the harness/user.
 export function renderClaudeSettings(current, manifest, overrides = {}) {
   const settings = current.trim() ? JSON.parse(current) : {};
+  delete settings.model;
   settings.permissions = claudePermissions(manifest, overrides);
   return `${JSON.stringify(settings, null, 2)}\n`;
 }
@@ -224,14 +226,14 @@ export function renderPermissionsTo(baseDir, { manifest = loadPermissionManifest
   if (createClaude || fs.existsSync(claudeDir)) {
     fs.mkdirSync(claudeDir, { recursive: true });
     const cur = fs.existsSync(claudeSettings) ? fs.readFileSync(claudeSettings, "utf8") : "";
-    fs.writeFileSync(claudeSettings, renderClaudeSettings(cur, manifest, overrides));
+    writeRootConfig("claude", claudeSettings, renderClaudeSettings(cur, manifest, overrides));
     touched.push(claudeSettings);
   }
   if (fs.existsSync(codexConfig)) {
     // Only rewrite Codex config if it already exists — we merge into a generated marker block and
     // don't want to fabricate a config.toml from nothing.
     const cur = fs.readFileSync(codexConfig, "utf8");
-    fs.writeFileSync(codexConfig, renderCodexConfig(cur, behaviors, arbitraryCommands, codexConfig));
+    writeRootConfig("codex", codexConfig, renderCodexConfig(cur, behaviors, arbitraryCommands, codexConfig));
     touched.push(codexConfig);
   }
   return { touched };

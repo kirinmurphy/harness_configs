@@ -59,6 +59,20 @@ assert "source layout: legacy claude root absent" bash -c "! test -e '${repo_roo
 assert "source layout: legacy codex root absent" bash -c "! test -e '${repo_root}/codex'"
 assert "source layout: legacy skills-local root absent" bash -c "! test -e '${repo_root}/skills-local'"
 
+# Codex PreToolUse hooks must never surface a hook failure just because Codex passes an empty or
+# malformed payload, and installed hooks must find the repo manifest from install-state.json rather
+# than deriving it from ~/.codex/hooks.
+codex_hook_home="${work}/codex-hook-home"
+mkdir -p "${codex_hook_home}/.codex/hooks" "${codex_hook_home}/.roborepo"
+cp "${repo_root}/globals/codex/hooks/permission-check.mjs" "${codex_hook_home}/.codex/hooks/permission-check.mjs"
+printf '{ "repo": "%s" }\n' "${repo_root}" > "${codex_hook_home}/.roborepo/install-state.json"
+assert "codex hooks: permission-check tolerates empty stdin" \
+  bash -c "HOME='${codex_hook_home}' node '${repo_root}/globals/codex/hooks/permission-check.mjs' </dev/null >/dev/null"
+assert "codex hooks: minimize-bash-output tolerates malformed stdin" \
+  bash -c "printf 'not-json' | HOME='${codex_hook_home}' node '${repo_root}/globals/codex/hooks/minimize-bash-output.mjs' >/dev/null"
+assert "codex hooks: installed permission-check reads repo manifest from install state" \
+  bash -c "printf '%s\n' '{\"tool_name\":\"exec_command\",\"tool_input\":{\"command\":\"git push origin main\"}}' | HOME='${codex_hook_home}' node '${codex_hook_home}/.codex/hooks/permission-check.mjs' | grep -q '\"permissionDecision\":\"deny\"'"
+
 mk_skill() {
   local dir="$1" name="$2"
   mkdir -p "${dir}/${name}"
@@ -648,16 +662,21 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
   done
   assert "config: portal server starts on an allocated port" \
     bash -c "test -n '${cfg_port}' && curl -s 'http://127.0.0.1:${cfg_port}/api/config' >/dev/null"
+  cfg_token="$(curl -s "http://127.0.0.1:${cfg_port}/config" | sed -n 's/.*name="roborepo-portal-token" content="\([^"]*\)".*/\1/p' | head -1)"
+  assert "config: portal exposes mutation token only in served HTML" \
+    bash -c "test -n '${cfg_token}'"
   # Capture the JSON to a file so the snapshot body (which contains apostrophes in skill descriptions)
   # never has to round-trip through a shell-quoted string.
-  curl -s -X POST "http://127.0.0.1:${cfg_port}/api/config/skills" -H 'Content-Type: application/json' \
+  curl -s -X POST "http://127.0.0.1:${cfg_port}/api/config/skills" -H 'Content-Type: application/json' -H "X-Roborepo-Portal-Token: ${cfg_token}" \
     -d "{\"id\":\"${cfg_skill}\",\"enabled\":true}" > "${cfg_home}/post-skill.json"
   assert "config: POST /api/config/skills installs and returns snapshot" \
     bash -c "node -e \"const j=require('${cfg_home}/post-skill.json');process.exit(j.ok&&j.config&&Array.isArray(j.config.tools)?0:1)\" && test -d '${cfg_home}/.claude/skills/${cfg_skill}' && test -e '${cfg_home}/.claude/skills/${cfg_skill}/.roborepo-managed'"
   assert "config: POST with bad body returns 400" \
-    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -d '{\"id\":123}')\" = 400 ]"
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"id\":123}')\" = 400 ]"
+  assert "config: POST without portal token returns 403" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -d '{\"id\":\"${cfg_skill}\",\"enabled\":false}')\" = 403 ]"
   assert "config: POST unknown skill returns ok:false" \
-    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -d '{\"id\":\"zzz\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok===false?0:1)})\""
+    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"id\":\"zzz\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok===false?0:1)})\""
   assert "config: GET /config still served" \
     bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:${cfg_port}/config')\" = 200 ]"
   # The /config page JS must parse — a syntax error there crashes the whole dashboard at load (no
@@ -694,19 +713,19 @@ if [[ -n "${cfg_port:-}" ]]; then
   # Permission POST endpoint: named behavior (200), arbitrary command (200), invalid bucket (400),
   # missing identifier (400).
   assert "config: POST /api/config/permissions sets a named behavior (200)" \
-    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"behaviorId\":\"go-online\",\"bucket\":\"allow\"}')\" = 200 ]"
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"behaviorId\":\"go-online\",\"bucket\":\"allow\"}')\" = 200 ]"
   assert "config: POST /api/config/permissions sets an arbitrary command (200)" \
-    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"tokens\":[\"curl\"],\"bucket\":\"ask\"}')\" = 200 ]"
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"tokens\":[\"curl\"],\"bucket\":\"ask\"}')\" = 200 ]"
   assert "config: POST permissions invalid bucket returns 400" \
-    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"behaviorId\":\"go-online\",\"bucket\":\"bogus\"}')\" = 400 ]"
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"behaviorId\":\"go-online\",\"bucket\":\"bogus\"}')\" = 400 ]"
   assert "config: POST permissions missing identifier returns 400" \
-    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -d '{\"bucket\":\"allow\"}')\" = 400 ]"
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/permissions' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"bucket\":\"allow\"}')\" = 400 ]"
 
   # Telemetry is a package via a service component: it toggles through the generic package endpoint.
   assert "config: POST package telemetry (service component) enables + flips snapshot" \
-    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/packages' -H 'Content-Type: application/json' -d '{\"id\":\"telemetry\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===true&&j.config?.packages?.find(p=>p.id==='telemetry')?.enabled===true?0:1)})\""
+    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/packages' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"id\":\"telemetry\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===true&&j.config?.packages?.find(p=>p.id==='telemetry')?.enabled===true?0:1)})\""
   assert "config: POST package telemetry disable flips snapshot" \
-    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/packages' -H 'Content-Type: application/json' -d '{\"id\":\"telemetry\",\"enabled\":false}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===false?0:1)})\""
+    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/packages' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"id\":\"telemetry\",\"enabled\":false}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===false?0:1)})\""
 
   kill "${cfg_srv}" 2>/dev/null || true
   cfg_srv=""
@@ -812,13 +831,16 @@ assert "mcp add: jcodemunch preset maps to Claude user-scope uvx command" \
 assert "mcp add: addMCP alias removed" \
   bash -c "! node '${cli}' addMCP jdocmunch --dry-run >/dev/null 2>&1"
 
-mcp_pkg="$( node "${cli}" mcp add example-mcp --name=example --dry-run -- --flag value )"
+mcp_dry_home="${work}/mcp-dry-home"
+mkdir -p "${mcp_dry_home}/.codex"
+printf '' > "${mcp_dry_home}/.codex/config.toml"
+mcp_pkg="$( HOME="${mcp_dry_home}" ROBOREPO_STATE_DIR="${mcp_dry_home}/.roborepo" node "${cli}" mcp add example-mcp --name=example --dry-run -- --flag value )"
 assert "mcp add: generic package supports name override and passthrough args" \
-  test "${mcp_pkg}" = $'claude mcp add --scope user example -- uvx example-mcp --flag value\nwould add permission: mcp__example -> globals/claude/settings.json\nwould add Codex MCP: example -> globals/codex/config.toml\n[mcp_servers.example]\ncommand = "uvx"\nargs = ["example-mcp", "--flag", "value"]'
+  bash -c "echo '${mcp_pkg}' | grep -q 'claude mcp add --scope user example -- uvx example-mcp --flag value' && echo '${mcp_pkg}' | grep -q 'would add Codex MCP: example -> .*/\\.codex/config.toml' && echo '${mcp_pkg}' | grep -q 'args = \\[\"example-mcp\", \"--flag\", \"value\"\\]'"
 
-mcp_url="$( node "${cli}" mcp add https://mcp.example.com/mcp --name=example --dry-run )"
+mcp_url="$( HOME="${mcp_dry_home}" ROBOREPO_STATE_DIR="${mcp_dry_home}/.roborepo" node "${cli}" mcp add https://mcp.example.com/mcp --name=example --dry-run )"
 assert "mcp add: URL defaults to http transport" \
-  test "${mcp_url}" = $'claude mcp add --scope user --transport http example https://mcp.example.com/mcp\nwould add permission: mcp__example -> globals/claude/settings.json\nwould add Codex MCP: example -> globals/codex/config.toml\n[mcp_servers.example]\nurl = "https://mcp.example.com/mcp"'
+  bash -c "echo '${mcp_url}' | grep -q 'claude mcp add --scope user --transport http example https://mcp.example.com/mcp' && echo '${mcp_url}' | grep -q 'would add Codex MCP: example -> .*/\\.codex/config.toml' && echo '${mcp_url}' | grep -q 'url = \"https://mcp.example.com/mcp\"'"
 
 mcp_skip_permission="$( node "${cli}" mcp add jdocmunch --dry-run --skip-claude-permission )"
 assert "mcp add: --skip-claude-permission skips settings update" \
@@ -885,26 +907,30 @@ assert "package command: index docs preserves marker contract" \
 # plus every module) lets us test writes without touching this repo. main.mjs imports every
 # cli/ module at load time.
 mcp_harness="${work}/mcp-harness"
+mcp_home="${work}/mcp-home"
 mkdir -p "${mcp_harness}/scripts/cli" "${mcp_harness}/globals/codex" "${mcp_harness}/globals/claude" "${mcp_harness}/manifests/inventory" "${mcp_harness}/manifests/platform"
+mkdir -p "${mcp_home}/.codex" "${mcp_home}/.claude"
 cp "${repo_root}"/scripts/cli/*.mjs "${mcp_harness}/scripts/cli/"
 cp "${repo_root}/manifests/inventory/mcp-presets.json" "${mcp_harness}/manifests/inventory/mcp-presets.json"
 cp "${repo_root}/manifests/platform/cli-commands.json" "${mcp_harness}/manifests/platform/cli-commands.json"
 printf '[features]\nhooks = true\n' > "${mcp_harness}/globals/codex/config.toml"
 printf '{"permissions":{"allow":["Read"]}}\n' > "${mcp_harness}/globals/claude/settings.json"
+printf '[features]\nhooks = true\n' > "${mcp_home}/.codex/config.toml"
+printf '{"permissions":{"allow":["Read"]}}\n' > "${mcp_home}/.claude/settings.json"
 
-( cd "${work}" && node "${mcp_harness}/scripts/cli/main.mjs" mcp add https://mcp.example.com/mcp --name=example --only-codex >/dev/null )
+( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add https://mcp.example.com/mcp --name=example --only-codex >/dev/null )
 assert "mcp add: writes Codex HTTP url block" \
-  grep -q 'url = "https://mcp.example.com/mcp"' "${mcp_harness}/globals/codex/config.toml"
+  grep -q 'url = "https://mcp.example.com/mcp"' "${mcp_home}/.codex/config.toml"
 
-( cd "${work}" && node "${mcp_harness}/scripts/cli/main.mjs" mcp add example-mcp --name=stdio-example --only-codex -- --flag value >/dev/null )
+( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add example-mcp --name=stdio-example --only-codex -- --flag value >/dev/null )
 assert "mcp add: writes Codex stdio command block" \
-  grep -q 'command = "uvx"' "${mcp_harness}/globals/codex/config.toml"
+  grep -q 'command = "uvx"' "${mcp_home}/.codex/config.toml"
 assert "mcp add: writes Codex stdio args block" \
-  grep -q 'args = \["example-mcp", "--flag", "value"\]' "${mcp_harness}/globals/codex/config.toml"
+  grep -q 'args = \["example-mcp", "--flag", "value"\]' "${mcp_home}/.codex/config.toml"
 
-( cd "${work}" && node "${mcp_harness}/scripts/cli/main.mjs" mcp add https://mcp.example.com/mcp --name=example --only-codex >/dev/null )
+( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add https://mcp.example.com/mcp --name=example --only-codex >/dev/null )
 assert "mcp add: Codex write is idempotent" \
-  bash -c "test \"\$(grep -c '^\\[mcp_servers.example\\]' '${mcp_harness}/globals/codex/config.toml')\" = 1"
+  bash -c "test \"\$(grep -c '^\\[mcp_servers.example\\]' '${mcp_home}/.codex/config.toml')\" = 1"
 
 fake_bin="${work}/fake-bin"
 mkdir -p "${fake_bin}"
@@ -919,13 +945,13 @@ assert "mcp add: Claude registration command invoked" \
 assert "mcp add: Claude permission written after successful registration" \
   grep -q '"mcp__permtest"' "${mcp_harness}/globals/claude/settings.json"
 
-( cd "${work}" && PATH="${fake_bin}:${PATH}" node "${mcp_harness}/scripts/cli/main.mjs" mcp add all-mcp --name=alltest -- --all-flag >/dev/null )
+( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" PATH="${fake_bin}:${PATH}" node "${mcp_harness}/scripts/cli/main.mjs" mcp add all-mcp --name=alltest -- --all-flag >/dev/null )
 assert "mcp add: default target invokes Claude registration" \
   grep -q 'mcp add --scope user alltest -- uvx all-mcp --all-flag' "${work}/fake-claude-args.txt"
 assert "mcp add: default target writes Claude permission" \
   grep -q '"mcp__alltest"' "${mcp_harness}/globals/claude/settings.json"
 assert "mcp add: default target writes Codex config" \
-  grep -q 'args = \["all-mcp", "--all-flag"\]' "${mcp_harness}/globals/codex/config.toml"
+  grep -q 'args = \["all-mcp", "--all-flag"\]' "${mcp_home}/.codex/config.toml"
 
 {
   printf '#!/usr/bin/env bash\n'
@@ -1130,6 +1156,17 @@ assert "repair: install state records the new checkout path" \
 reclaim2="$(HOME="${rp_home}" ROBOREPO_STATE_DIR="${rp_state}" bash "${rp_new}/scripts/install/repair.sh" 2>&1 | grep -cE '^reclaim' || true)"
 assert "repair: idempotent re-run reclaims nothing" test "${reclaim2}" = "0"
 
+# Single-harness repair must not create the missing harness home as a side effect.
+rp_codex_only_home="${reloc_root}/repair-codex-only/home"
+rp_codex_only_state="${rp_codex_only_home}/.roborepo"
+mkdir -p "${rp_codex_only_home}/.codex" "${rp_codex_only_home}/.local/bin"
+HOME="${rp_codex_only_home}" ROBOREPO_STATE_DIR="${rp_codex_only_state}" \
+  bash "${repo_root}/scripts/install/repair.sh" >/dev/null 2>&1 || true
+assert "repair: Codex-only repair does not create Claude home" \
+  bash -c "! test -e '${rp_codex_only_home}/.claude'"
+assert "repair: Codex-only repair still restores Codex skill link" \
+  bash -c "test -L '${rp_codex_only_home}/.codex/skills/roborepo-support'"
+
 # -- repair ignores copied content dirs and still heals the moved checkout --
 rp_keep_home="${reloc_root}/reloc-repair-keep/home"
 rp_keep_old="${reloc_root}/reloc-repair-keep/harness_configs"
@@ -1211,6 +1248,15 @@ assert "onboard: wizard diff selects only changed toggleable items" \
 # baseline changed" apart from "something else touched the file since roborepo's last write."
 assert "root-config-state: drift detection distinguishes baseline changes from user edits" \
   node "${repo_root}/scripts/test/root-config-state-check.mjs"
+
+assert "root-config-merge: Codex merge preserves local keys and tables" \
+  node "${repo_root}/scripts/test/root-config-merge-check.mjs"
+
+assert "root-config-write-policy: Claude global model is stripped from root config writes" \
+  node "${repo_root}/scripts/test/root-config-write-policy-check.mjs"
+
+assert "mcp: Codex active config add/remove records root-config writes" \
+  node "${repo_root}/scripts/test/mcp-codex-active-check.mjs"
 
 # Root config drift VIEW (buildRootConfigView in config.mjs): the per-harness state the terminal
 # `config root inspect` report and the web /config drift chip both render from — not-installed /

@@ -283,6 +283,20 @@ a caveat — all stay. Only the words spent explaining them shrink.
   use-case section said "tracking tokens and call count per phase" and the adjacent
   architecture section said "token counts and a `call_count`" — the same fact twice.
   Keep it in the one whose job it is; delete it from the other.
+- **State the thesis once, then derive from it — don't re-argue it across beats.**
+  Distinct from duplicate *facts*: this is the same load-bearing *claim* re-asserted in a
+  new framing in each successive beat. The 6-beat arc invites it — Problem, Experience,
+  and What That Forced can each end up restating the piece's central constraint in their
+  own words. Establish the claim in the beat that owns it, then have every later beat
+  *use* it as a given, never re-state it. The tell is a beat that opens by re-proving the
+  prior beat's conclusion before doing its own job. Example from practice: a search
+  article asserted "results identical for every viewer" in the Experience beat, then the
+  next beat opened "If the result set must be identical for every viewer, then…" —
+  restating the thesis as its own premise. Fixed by making the later beat consume it:
+  "A viewer-independent result set has a hard consequence: the query cannot reference the
+  user." Same information, but the claim is *used* to derive the next step rather than
+  argued a second time. Check each beat's opening sentence: if it re-establishes a claim
+  an earlier beat already made, cut to the derivation.
 - **Give each labeled section one job.** When the format uses repeated labels (e.g.
   *What it does* / *How it's built* / *When to apply*), police the boundary: the "what"
   section describes observable behavior, the "how" section describes mechanism. A detail

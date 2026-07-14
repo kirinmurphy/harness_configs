@@ -26,10 +26,21 @@ function mcpServersPath() {
   return packageMode ? workspaceMcpServersPath : MCP_SERVERS_PATH;
 }
 
+// The file we write records to, read raw. In package mode this is the workspace-only file — never
+// the built-in+workspace merge that readMcpServers() returns, or built-ins would be copied into the
+// workspace file and then trip the built-in conflict guard on the next validate/apply.
+function readRecordServers() {
+  try {
+    return JSON.parse(fs.readFileSync(mcpServersPath(), "utf8"));
+  } catch {
+    return { servers: [] };
+  }
+}
+
 function recordMcpServer(spec, target) {
   if (packageMode) initializeWorkspace();
   if (packageMode) assertMcpRecordAllowed(spec.name);
-  const data = readMcpServers();
+  const data = readRecordServers();
   const existing = data.servers.find((s) => s.name === spec.name);
   const harnesses =
     target === "only-claude" ? ["claude"] :

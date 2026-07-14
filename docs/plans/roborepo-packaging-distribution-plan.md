@@ -700,6 +700,8 @@ ROBOREPO_MODE
 
 `ROBOREPO_APP_ROOT` and `ROBOREPO_MODE` should primarily be test and development overrides, not normal user configuration.
 
+Mode is auto-detected from `appRoot`: a `.git` directory or a dev-only `local/skills` directory means development mode, otherwise package mode. `ROBOREPO_MODE=development|package` forces it explicitly — needed for the edge case of a checkout stripped of `.git` (e.g. a source copy) that would otherwise be misread as a package install.
+
 ---
 
 # Transition from milestone 1 to milestone 2

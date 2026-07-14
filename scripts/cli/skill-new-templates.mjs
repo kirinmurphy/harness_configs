@@ -33,3 +33,19 @@ ${description}
 3. Report the result and any required follow-up.
 `;
 }
+
+export function skillBackedCommandTemplate(command, skill, description) {
+  return `---
+description: ${description}
+---
+
+# /${command}
+
+Use the \`${skill}\` skill for this request.
+
+Read the installed \`${skill}\` skill, then follow its workflow.
+
+Keep the skill as the source of truth; this command is only the explicit entry
+point.
+`;
+}

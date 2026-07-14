@@ -28,6 +28,7 @@ fs.writeFileSync(repo, [
 
 fs.writeFileSync(local, [
   'model = "local-model"',
+  "# keep this comment with custom_top",
   'custom_top = "keep-me"',
   "",
   "[profiles.personal]",
@@ -36,6 +37,7 @@ fs.writeFileSync(local, [
   "",
   "[mcp_servers.personal]",
   'command = "personal"',
+  'args = ["--flag", "[bracketed]"]',
   "",
 ].join("\n"));
 
@@ -55,6 +57,12 @@ assert.match(merged, /\[profiles\.personal\][\s\S]*model = "local-profile"/, "lo
 assert.match(merged, /extra = "keep-profile-key"/, "local same-table key is preserved");
 assert.match(merged, /\[mcp_servers\.personal\]/, "local-only table is preserved");
 assert.match(merged, /\[mcp_servers\.repo\]/, "repo-only table is preserved");
+assert.match(merged, /args = \["--flag", "\[bracketed\]"\]/, "array values with brackets survive intact");
+assert.match(
+  merged,
+  /# keep this comment with custom_top\ncustom_top = "keep-me"/,
+  "local comment stays attached to the key it documents",
+);
 
 fs.writeFileSync(claudeRepo, JSON.stringify({ permissions: { allow: ["Read"] } }, null, 2));
 fs.writeFileSync(claudeLocal, JSON.stringify({ model: "opus", hooks: { Stop: [] } }, null, 2));

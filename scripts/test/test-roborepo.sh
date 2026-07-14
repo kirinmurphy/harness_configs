@@ -59,6 +59,60 @@ assert "source layout: legacy claude root absent" bash -c "! test -e '${repo_roo
 assert "source layout: legacy codex root absent" bash -c "! test -e '${repo_root}/codex'"
 assert "source layout: legacy skills-local root absent" bash -c "! test -e '${repo_root}/skills-local'"
 
+pkg_app="${work}/pkg-app"
+pkg_state="${work}/pkg-state"
+pkg_workspace="${work}/pkg-workspace"
+mkdir -p "${pkg_app}/manifests/platform" "${pkg_app}/scripts/build"
+cp "${repo_root}/package.json" "${pkg_app}/package.json"
+cp "${repo_root}/manifests/platform/cli-commands.json" "${pkg_app}/manifests/platform/cli-commands.json"
+printf '#!/usr/bin/env bash\nexit 0\n' > "${pkg_app}/scripts/build/render-rules.sh"
+chmod +x "${pkg_app}/scripts/build/render-rules.sh"
+assert "package mode: version reports package roots" \
+  bash -c "ROBOREPO_APP_ROOT='${pkg_app}' ROBOREPO_STATE_ROOT='${pkg_state}' ROBOREPO_WORKSPACE_ROOT='${pkg_workspace}' node '${cli}' version >'${work}/pkg-version.out' && grep -Fq 'mode: package' '${work}/pkg-version.out' && grep -Eq '^workspaceRoot: .*/pkg-workspace$' '${work}/pkg-version.out'"
+assert "package mode: setup initializes workspace format" \
+  bash -c "ROBOREPO_APP_ROOT='${pkg_app}' ROBOREPO_STATE_ROOT='${pkg_state}' ROBOREPO_WORKSPACE_ROOT='${pkg_workspace}' node '${cli}' setup >/dev/null && test -f '${pkg_workspace}/workspace.json' && test -d '${pkg_workspace}/skills' && test -f '${pkg_workspace}/mcp/servers.json'"
+legacy_state="${work}/legacy-state"
+assert "package mode: ROBOREPO_STATE_DIR remains state alias" \
+  bash -c "ROBOREPO_APP_ROOT='${pkg_app}' ROBOREPO_STATE_DIR='${legacy_state}' node '${cli}' version >'${work}/pkg-legacy-state.out' && grep -Eq '^stateRoot: .*/legacy-state$' '${work}/pkg-legacy-state.out'"
+assert "package mode: built-in render command refuses appRoot writes" \
+  bash -c "ROBOREPO_APP_ROOT='${pkg_app}' ROBOREPO_STATE_ROOT='${pkg_state}' node '${cli}' rules >/dev/null 2>'${work}/pkg-rules.err' && exit 1 || grep -q 'requires development checkout' '${work}/pkg-rules.err'"
+
+workspace_resource_home="${work}/workspace-resource-home"
+workspace_resource_root="${work}/workspace-resource"
+mkdir -p "${workspace_resource_home}" "${workspace_resource_root}/skills/custom-skill" "${workspace_resource_root}/commands" "${workspace_resource_root}/packages"
+printf -- '---\nname: custom-skill\ndescription: custom\n---\n' > "${workspace_resource_root}/skills/custom-skill/SKILL.md"
+printf 'custom command\n' > "${workspace_resource_root}/commands/custom-command.md"
+printf '%s\n' '{"id":"workspace-pack","label":"Workspace Pack","components":[{"type":"command","name":"index code","commandOrUrl":"node","args":["--version"],"mode":"index"}]}' > "${workspace_resource_root}/packages/workspace-pack.json"
+assert "workspace resources: validate accepts custom typed resources" \
+  bash -c "HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node '${cli}' workspace validate >/dev/null"
+assert "workspace resources: package catalog includes workspace package" \
+  bash -c "HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node -e \"import('${repo_root}/scripts/cli/package-catalog.mjs').then(m=>{process.exit(m.loadPackageCatalog({includeUnavailable:true}).some(p=>p.id==='workspace-pack')?0:1)})\""
+printf '%s\n' '{"id":"jcodemunch","label":"Bad Replace","components":[]}' > "${workspace_resource_root}/packages/jcodemunch.json"
+assert "workspace resources: package collision requires typed override" \
+  bash -c "! env HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node '${cli}' workspace validate >/dev/null 2>'${work}/workspace-package-collision.err' && grep -q 'conflicts with a built-in package' '${work}/workspace-package-collision.err'"
+mkdir -p "${workspace_resource_root}/overrides"
+printf '%s\n' '{"schemaVersion":1,"overrides":[{"type":"package","id":"jcodemunch","mode":"replace"}]}' > "${workspace_resource_root}/overrides/resources.json"
+assert "workspace resources: typed package replace override validates" \
+  bash -c "HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node '${cli}' workspace validate >/dev/null"
+printf '%s\n' '{"servers":[{"name":"jcodemunch","commandOrUrl":"uvx","args":["custom"],"harnesses":["codex"]}]}' > "${workspace_resource_root}/mcp/servers.json"
+assert "workspace resources: MCP collision requires typed override" \
+  bash -c "! env HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node '${cli}' workspace validate >/dev/null 2>'${work}/workspace-mcp-collision.err' && grep -q 'conflicts with a built-in server' '${work}/workspace-mcp-collision.err'"
+printf '%s\n' '{"schemaVersion":1,"overrides":[{"type":"package","id":"jcodemunch","mode":"replace"},{"type":"mcp-server","id":"jcodemunch","mode":"replace"}]}' > "${workspace_resource_root}/overrides/resources.json"
+assert "workspace resources: typed MCP replace override validates" \
+  bash -c "HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node '${cli}' workspace validate >/dev/null"
+
+legacy_workspace_home="${work}/legacy-workspace-home"
+legacy_workspace_root="${work}/legacy-workspace"
+legacy_source="${work}/legacy-source"
+mkdir -p "${legacy_workspace_home}" "${legacy_source}/globals/agents/skills/custom-import" "${legacy_source}/globals/agents/skills/case-study" "${legacy_source}/globals/commands" "${legacy_source}/manifests/inventory"
+printf -- '---\nname: custom-import\ndescription: custom\n---\n' > "${legacy_source}/globals/agents/skills/custom-import/SKILL.md"
+printf -- '---\nname: case-study\ndescription: changed builtin\n---\n' > "${legacy_source}/globals/agents/skills/case-study/SKILL.md"
+printf 'custom import command\n' > "${legacy_source}/globals/commands/custom-import.md"
+printf '%s\n' '{"packages":[{"id":"workspace-import","label":"Workspace Import","components":[]},{"id":"jcodemunch","label":"Changed Builtin","components":[]}]}' > "${legacy_source}/manifests/inventory/packages.json"
+printf '%s\n' '{"servers":[{"name":"custom-server","commandOrUrl":"node","args":["x"],"harnesses":["codex"]},{"name":"jcodemunch","commandOrUrl":"node","args":["changed"],"harnesses":["codex"]}]}' > "${legacy_source}/manifests/inventory/mcp-servers.json"
+assert "workspace import: copies obvious custom content and reports changed built-ins" \
+  bash -c "HOME='${legacy_workspace_home}' ROBOREPO_STATE_ROOT='${legacy_workspace_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${legacy_workspace_root}' node '${cli}' workspace import '${legacy_source}' >'${work}/workspace-import.out' && test -f '${legacy_workspace_root}/skills/custom-import/SKILL.md' && ! test -e '${legacy_workspace_root}/skills/case-study' && test -f '${legacy_workspace_root}/commands/custom-import.md' && test -f '${legacy_workspace_root}/packages/workspace-import.json' && grep -q 'custom-server' '${legacy_workspace_root}/mcp/servers.json' && grep -q 'changed built-ins left for review: skill:case-study' '${work}/workspace-import.out'"
+
 # Codex PreToolUse hooks must never surface a hook failure just because Codex passes an empty or
 # malformed payload, and installed hooks must find the repo manifest from install-state.json rather
 # than deriving it from ~/.codex/hooks.
@@ -882,8 +936,17 @@ printf '%s\n' "$*" > "$UVX_ARGS_FILE"
 EOF
 chmod +x "${command_bin}/uvx"
 
+cat > "${work}/package-command-duplicate-check.mjs" <<EOF
+import { validatePackageCommandOwnership } from "${repo_root}/scripts/cli/package-commands.mjs";
+
+const pkg = { id: "alpha", components: [{ type: "command", name: "index code" }], requires: ["beta"] };
+const catalog = [pkg, { id: "beta", components: [{ type: "command", name: "index code" }] }];
+const r = validatePackageCommandOwnership(pkg, { catalog, enabledIds: [] });
+process.exit(r.ok ? 1 : 0);
+EOF
+
 assert "package command: duplicate command ownership in same enable set is rejected" \
-  bash -c "cd '${repo_root}' && node -e \"import('./scripts/cli/package-commands.mjs').then(m=>{const pkg={id:'alpha',components:[{type:'command',name:'index code'}],requires:['beta']}; const catalog=[pkg,{id:'beta',components:[{type:'command',name:'index code'}]}]; const r=m.validatePackageCommandOwnership(pkg,{catalog,enabledIds:[]}); process.exit(r.ok?1:0)})\""
+  bash -c "cd '${repo_root}' && node '${work}/package-command-duplicate-check.mjs'"
 
 bash -c "HOME='${command_home}' ROBOREPO_STATE_DIR='${command_home}/.roborepo' ROBOREPO_SKIP_MCP=1 node '${cli}' enable jcodemunch >/dev/null 2>&1" || true
 bash -c "HOME='${command_home}' ROBOREPO_STATE_DIR='${command_home}/.roborepo' ROBOREPO_SKIP_MCP=1 node '${cli}' enable jdocmunch >/dev/null 2>&1" || true
@@ -1257,6 +1320,12 @@ assert "root-config-write-policy: Claude global model is stripped from root conf
 
 assert "mcp: Codex active config add/remove records root-config writes" \
   node "${repo_root}/scripts/test/mcp-codex-active-check.mjs"
+
+assert "mcp: Codex MCP removal survives bracketed array values and is idempotent" \
+  node "${repo_root}/scripts/test/mcp-codex-remove-check.mjs"
+
+assert "workspace: built-in conflicts require a typed replace override" \
+  node "${repo_root}/scripts/test/workspace-resources-check.mjs"
 
 # Root config drift VIEW (buildRootConfigView in config.mjs): the per-harness state the terminal
 # `config root inspect` report and the web /config drift chip both render from — not-installed /

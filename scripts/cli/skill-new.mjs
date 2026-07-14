@@ -2,11 +2,18 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { repoRoot, sharedSkillsDir } from "./paths.mjs";
+import {
+  initializeWorkspace,
+  packageMode,
+  repoRoot,
+  sharedSkillsDir,
+  workspaceCommandsDir,
+  workspaceSkillsDir,
+} from "./paths.mjs";
 import { addSkillPolicy, addSlashCommand, readSkillPolicyManifest, readSlashCommandManifest } from "./skill-new-manifests.mjs";
 import { resolveNewOptions } from "./skill-new-options.mjs";
 import { updateReadmeForCommand, updateReadmeForHelper } from "./skill-new-readme.mjs";
-import { skillTemplate, standaloneCommandTemplate } from "./skill-new-templates.mjs";
+import { skillTemplate, skillBackedCommandTemplate, standaloneCommandTemplate } from "./skill-new-templates.mjs";
 
 const NATIVE_SKILL_CREATOR = path.join(
   os.homedir(), ".codex", "skills", ".system", "skill-creator", "scripts"
@@ -45,6 +52,10 @@ function scaffoldWithNative(name) {
     [NATIVE_INIT_SKILL, name, "--path", sharedSkillsDir],
     { env: { ...process.env, PYTHONPATH: NATIVE_SKILL_CREATOR } }
   );
+}
+
+function skillRoot() {
+  return packageMode ? workspaceSkillsDir : sharedSkillsDir;
 }
 
 function formatDisplayName(name) {
@@ -92,8 +103,22 @@ function ensureOpenAIYaml(skillDir, name) {
 }
 
 function preflightSkillNew(opts) {
+  if (packageMode) {
+    initializeWorkspace();
+    if (opts.kind === "auto" || opts.kind === "skill-command") {
+      assertPathMissing(path.join(sharedSkillsDir, opts.name));
+      assertPathMissing(path.join(skillRoot(), opts.name));
+    }
+    if (opts.kind === "standalone") {
+      assertPathAvailable(path.join(repoRoot, "globals", "claude", "commands", `${opts.command}.md`));
+      assertPathAvailable(path.join(repoRoot, "globals", "codex", "commands", `${opts.command}.md`));
+      assertPathAvailable(path.join(workspaceCommandsDir, `${opts.command}.md`));
+    }
+    return;
+  }
+
   if (opts.kind === "auto" || opts.kind === "skill-command") {
-    assertPathMissing(path.join(sharedSkillsDir, opts.name));
+    assertPathMissing(path.join(skillRoot(), opts.name));
     if (readSkillPolicyManifest().skills.some((skill) => skill.skill === opts.name)) {
       throw new Error(`skill policy already exists: ${opts.name}`);
     }
@@ -115,46 +140,66 @@ export async function skillNew(args) {
   preflightSkillNew(opts);
 
   if (opts.kind === "auto" || opts.kind === "skill-command") {
-    const skillDir = path.join(sharedSkillsDir, opts.name);
-    if (hasNativeInitSkill()) {
+    const skillDir = path.join(skillRoot(), opts.name);
+    if (!packageMode && hasNativeInitSkill()) {
       scaffoldWithNative(opts.name);
     } else {
       writeNewFile(path.join(skillDir, "SKILL.md"), skillTemplate(opts.name, opts.description));
     }
     ensureOpenAIYaml(skillDir, opts.name);
-    addSkillPolicy({
-      name: opts.name,
-      risk: opts.risk,
-      explicitCommand: opts.kind === "skill-command",
-      description: opts.description,
-    });
+    if (packageMode) {
+      console.log(`package mode: custom skill written to ${skillDir}`);
+    } else {
+      addSkillPolicy({
+        name: opts.name,
+        risk: opts.risk,
+        explicitCommand: opts.kind === "skill-command",
+        description: opts.description,
+      });
+    }
     if (opts.kind === "auto") {
-      updateReadmeForHelper({ name: opts.name, description: opts.description, category: opts.category });
+      if (!packageMode) updateReadmeForHelper({ name: opts.name, description: opts.description, category: opts.category });
     }
   }
 
   if (opts.kind === "skill-command") {
-    addSlashCommand({
+    if (packageMode) {
+      writeNewFile(
+        path.join(workspaceCommandsDir, `${opts.command}.md`),
+        skillBackedCommandTemplate(opts.command, opts.name, opts.description),
+      );
+    }
+    if (!packageMode) addSlashCommand({
       name: opts.command,
       kind: "skill-backed",
       description: opts.description,
       skill: opts.name,
       harnesses: opts.harnesses,
     });
-    updateReadmeForCommand({ name: opts.command, description: opts.description });
+    if (!packageMode) updateReadmeForCommand({ name: opts.command, description: opts.description });
   }
 
   if (opts.kind === "standalone") {
-    const sourceRel = path.join("globals", "commands", `${opts.command}.md`);
-    writeNewFile(path.join(repoRoot, sourceRel), standaloneCommandTemplate(opts.command, opts.description));
-    addSlashCommand({
+    const sourceRel = packageMode
+      ? path.join("commands", `${opts.command}.md`)
+      : path.join("globals", "commands", `${opts.command}.md`);
+    const sourceAbs = packageMode ? path.join(workspaceCommandsDir, `${opts.command}.md`) : path.join(repoRoot, sourceRel);
+    writeNewFile(sourceAbs, standaloneCommandTemplate(opts.command, opts.description));
+    if (!packageMode) addSlashCommand({
       name: opts.command,
       kind: "standalone",
       description: opts.description,
       source: sourceRel,
       harnesses: opts.harnesses,
     });
-    updateReadmeForCommand({ name: opts.command, description: opts.description });
+    if (!packageMode) updateReadmeForCommand({ name: opts.command, description: opts.description });
+  }
+
+  if (packageMode) {
+    console.log("");
+    console.log(`created ${opts.kind}: ${opts.kind === "standalone" ? `/${opts.command}` : opts.name}`);
+    console.log("workspace custom content is portable and app built-ins were not modified.");
+    return;
   }
 
   runChecked("skill link-internal", "bash", [path.join(repoRoot, "scripts", "build", "link-skills.sh"), "--quiet"]);

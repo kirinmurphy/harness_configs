@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { repoRoot, harnessHome } from "./paths.mjs";
+import { packageMode, repoRoot, harnessHome } from "./paths.mjs";
 import { enabledPackagesPath } from "./state-paths.mjs";
 
 const HARNESS_HOME = harnessHome;
@@ -31,7 +31,10 @@ function runInstall(commandConfig, args) {
     process.exit(1);
   }
 
-  const result = spawnSync("bash", [script, ...args], { stdio: "inherit" });
+  const result = spawnSync("bash", [script, ...args], {
+    stdio: "inherit",
+    env: { ...process.env, ...(packageMode ? { ROBOREPO_PACKAGE_MODE: "1" } : {}) },
+  });
   if (result.error) {
     console.error(`failed to run ${commandConfig.path}: ${result.error.message}`);
     process.exit(1);

@@ -19,6 +19,13 @@
     "roborepo watch code  [path]",
     "roborepo project-context inventory [path] [--summary]   scan a repo and write generated facts",
     "roborepo project-context check [path]                   validate generated Project Context facts/docs",
+    "roborepo setup [--dry-run]                initialize workspace/state for package mode",
+    "roborepo apply [--dry-run]                apply harness config from app/workspace/state roots",
+    "roborepo version                          show version and resolved roots",
+    "roborepo workspace status                 show app/workspace/state roots",
+    "roborepo workspace use <path>             select a portable workspace",
+    "roborepo workspace validate               validate typed workspace resources",
+    "roborepo workspace import <path> [--dry-run]  import obvious custom content from a checkout",
     "roborepo onboard",
     "roborepo web                              open the local web portal in the browser (serve --detach)",
     "roborepo serve [--detach] [--no-open] [--port <n>]   local web portal (/config + telemetry)",
@@ -33,7 +40,7 @@
     "",
     "roborepo run <cmd> [args...]",
     "",
-    "roborepo update  [--dry-run] [--on-conflict overwrite|keep|abort]",
+    "roborepo update  [--dry-run] [--on-conflict overwrite|keep|abort]   dev: pull new config + re-apply; package mode: alias for apply",
     "roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]  refresh copied install after the repo was moved/renamed",
     "roborepo uninstall [--dry-run]",
     "roborepo doctor  [--installed] health check",
@@ -172,6 +179,11 @@
       "desc": "reset telemetry (backs up first)"
     },
     { "header": "Maintenance" },
+    { "label": "setup", "value": ["setup"], "desc": "initialize workspace and state" },
+    { "label": "apply", "value": ["apply"], "desc": "re-apply config from current app/workspace/state (no download)" },
+    { "label": "workspace status", "value": ["workspace", "status"], "desc": "show resolved roots" },
+    { "label": "workspace validate", "value": ["workspace", "validate"], "desc": "validate workspace resources" },
+    { "label": "version", "value": ["version"], "desc": "show version and roots" },
     { "label": "doctor", "value": ["doctor"], "desc": "health check" },
     {
       "label": "verify",
@@ -209,17 +221,19 @@
     },
     "skill render-commands": {
       "runtime": "node",
-      "path": "scripts/build/render-slash-commands.mjs"
+      "path": "scripts/build/render-slash-commands.mjs",
+      "requiresDevelopmentCheckout": true
     },
     "update": { "runtime": "bash", "path": "scripts/install/main.sh" },
     "repair": { "runtime": "bash", "path": "scripts/install/repair.sh" },
     "uninstall": { "runtime": "bash", "path": "scripts/install/uninstall.sh" },
     "doctor": { "runtime": "bash", "path": "scripts/doctor.sh" },
     "verify": { "runtime": "bash", "path": "scripts/verify-install.sh" },
-    "rules": { "runtime": "bash", "path": "scripts/build/render-rules.sh" },
+    "rules": { "runtime": "bash", "path": "scripts/build/render-rules.sh", "requiresDevelopmentCheckout": true },
     "permissions": {
       "runtime": "node",
-      "path": "scripts/build/render-agent-permissions.mjs"
+      "path": "scripts/build/render-agent-permissions.mjs",
+      "requiresDevelopmentCheckout": true
     }
   }
 }

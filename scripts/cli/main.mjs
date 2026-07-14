@@ -12,12 +12,13 @@ import { skillNew } from "./skill-new.mjs";
 import { skillAudit } from "./skill-audit.mjs";
 import { skillTriggerCheck } from "./skill-trigger-check.mjs";
 import { indexCode, indexDocs, watchCode, runCmd } from "./index.mjs";
-import { mcpAdd, mcpApply } from "./mcp.mjs";
 import { projectContextCheck, projectContextInventory } from "./project-context.mjs";
 import { maybeRunPresetOnboarding, presetsCommand } from "./presets.mjs";
 import { enablePackage, disablePackage, reconcileEnabledPackages, adoptLivePackages } from "./packages.mjs";
 import { configCommand } from "./config.mjs";
 import { experimentalCommand } from "./package-catalog.mjs";
+import { packageMode } from "./paths.mjs";
+import { setupCommand, versionCommand, workspaceCommand } from "./workspace.mjs";
 
 const argv = await maybeRunPresetOnboarding(process.argv.slice(2));
 const cliCatalog = JSON.parse(fs.readFileSync(path.join(repoRoot, "manifests", "platform", "cli-commands.json"), "utf8"));
@@ -104,8 +105,14 @@ async function dispatch(args) {
       return usageError();
 
     case "mcp":
-      if (sub === "add") return mcpAdd(rest);
-      if (sub === "apply") return mcpApply({ dryRun: rest.includes("--dry-run") });
+      if (sub === "add") {
+        const { mcpAdd } = await import("./mcp.mjs");
+        return mcpAdd(rest);
+      }
+      if (sub === "apply") {
+        const { mcpApply } = await import("./mcp.mjs");
+        return mcpApply({ dryRun: rest.includes("--dry-run") });
+      }
       console.error(`unknown: roborepo mcp ${sub ?? ""}`.trim());
       return usageError();
 
@@ -114,6 +121,15 @@ async function dispatch(args) {
       if (sub === "check") return projectContextCheck(rest);
       console.error(`unknown: roborepo project-context ${sub ?? ""}`.trim());
       return usageError();
+
+    case "version":
+      return versionCommand();
+
+    case "workspace":
+      return workspaceCommand(sub === undefined ? [] : [sub, ...rest]);
+
+    case "setup":
+      return setupCommand(sub === undefined ? rest : [sub, ...rest]);
 
     case "onboard":
       return presetsCommand(["onboard", ...rest]);
@@ -189,8 +205,18 @@ async function dispatch(args) {
     // bootstrap (scripts/install/main.sh) — that's how roborepo lands on PATH — so the CLI
     // only ever re-applies: `update` re-runs that same script to pick up new config.
     case "update": {
+      if (packageMode) {
+        console.log("package mode: `roborepo update` is an alias for `roborepo apply`; it does not download packages.");
+        return dispatch(["apply", sub, ...rest].filter(Boolean));
+      }
       const { runUpdateWithReport } = await import("./update-report.mjs");
       return runUpdateWithReport(cliCatalog.repoScripts.update, [sub, ...rest].filter(Boolean));
+    }
+    case "apply": {
+      const applyArgs = [sub, ...rest].filter(Boolean);
+      setupCommand(applyArgs.includes("--dry-run") ? ["--dry-run"] : []);
+      const { runUpdateWithReport } = await import("./update-report.mjs");
+      return runUpdateWithReport(cliCatalog.repoScripts.update, applyArgs);
     }
     case "repair":
       return runRepoCommand(cliCatalog.repoScripts.repair, [sub, ...rest].filter(Boolean));

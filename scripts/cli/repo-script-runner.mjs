@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { repoRoot } from "./paths.mjs";
+import { repoRoot, requireDevelopmentCheckout } from "./paths.mjs";
 
 const RUNTIMES = {
   bash: (script, args) => ["bash", [script, ...args]],
@@ -18,6 +18,9 @@ export function runRepoCommand(commandConfig, args) {
   if (!fs.existsSync(script)) {
     console.error(`missing script: ${script}`);
     process.exit(1);
+  }
+  if (commandConfig.requiresDevelopmentCheckout) {
+    requireDevelopmentCheckout(commandConfig.path);
   }
 
   const [command, commandArgs] = RUNTIMES[commandConfig.runtime](script, args);

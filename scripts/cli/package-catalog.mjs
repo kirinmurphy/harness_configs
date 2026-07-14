@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 import { experimentalStatePath } from "./state-paths.mjs";
+import { loadWorkspacePackages, readWorkspaceOverrides, hasReplaceOverride } from "./workspace-resources.mjs";
 
 export const PACKAGES_PATH = path.join(repoRoot, "manifests", "inventory", "packages.json");
 export const EXPERIMENTAL_PACKAGES_ENV = "LOAD_EXPERIMENTAL_PACKAGES";
@@ -49,12 +50,25 @@ export function readPackageManifest() {
   return JSON.parse(fs.readFileSync(PACKAGES_PATH, "utf8"));
 }
 
+function mergeWorkspacePackages(packages) {
+  const overrides = readWorkspaceOverrides();
+  const byId = new Map(packages.map((pkg) => [pkg.id, pkg]));
+  const workspacePackages = loadWorkspacePackages({ builtInIds: new Set(byId.keys()), overrides });
+  for (const pkg of workspacePackages) {
+    if (byId.has(pkg.id) && !hasReplaceOverride("package", pkg.id, overrides)) {
+      throw new Error(`workspace package '${pkg.id}' conflicts with built-in package without typed replace override`);
+    }
+    byId.set(pkg.id, pkg);
+  }
+  return [...byId.values()];
+}
+
 export function isPackageAvailable(pkg, env = process.env) {
   return pkg.status !== PENDING_STATUS || experimentalPackagesEnabled(env);
 }
 
 export function loadPackageCatalog({ includeUnavailable = false, env = process.env } = {}) {
-  const packages = readPackageManifest().packages || [];
+  const packages = mergeWorkspacePackages(readPackageManifest().packages || []);
   return includeUnavailable ? packages : packages.filter((pkg) => isPackageAvailable(pkg, env));
 }
 

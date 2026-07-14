@@ -133,6 +133,13 @@ roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--d
 roborepo watch code  [path]
 roborepo project-context inventory [path] [--summary]
 roborepo project-context check [path]
+roborepo setup [--dry-run]
+roborepo apply [--dry-run]
+roborepo version
+roborepo workspace status
+roborepo workspace use <path>
+roborepo workspace validate
+roborepo workspace import <path> [--dry-run]
 roborepo onboard
 roborepo serve [--detach] [--no-open] [--port <n>]
 roborepo telemetry install|start|stop|enable|disable|status|report|export|backup|purge
@@ -154,12 +161,20 @@ relative or absolute — roborepo resolves it to an absolute path before use.
 
 ### Categories
 
-- **Setup** — `update` re-applies the core harness config on this machine (refreshes copied files,
+- **Setup** — `setup` initializes the portable workspace and machine-local state roots. `apply`
+  materializes harness config from the immutable app root plus workspace/state roots. In package
+  mode, `update` is a compatibility alias for `apply` and does not download packages. In development
+  checkout mode, `update` re-applies the core harness config on this machine (refreshes copied files,
   rendered rules, root config export, command install, and shell install to pick up new config).
   The *first* install is the shell bootstrap `scripts/install/main.sh` — that is what puts
   `roborepo` on `PATH` — so the CLI has no separate `install` verb; once `roborepo` exists you only
   ever `update`. After that, `onboard` runs the wizard to choose the optional behaviors for this
   machine.
+- `version` prints the package version plus resolved `appRoot`, `workspaceRoot`, and `stateRoot`.
+  `workspace status` prints the same roots plus workspace manifest state. `workspace use <path>`
+  selects a Git-portable workspace. `workspace validate` checks typed workspace resources. `workspace
+  import <path>` copies obvious custom additions from an existing checkout into the workspace and
+  reports changed built-ins separately without modifying the source checkout.
 - `repair` relinks stale symlinks after the checkout was moved or renamed. It does not re-copy
   managed content files/dirs; those stay put. Use `--on-conflict` only for noninteractive command
   recovery.

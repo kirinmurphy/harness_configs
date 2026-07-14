@@ -16,7 +16,7 @@ import {
   writeZip,
   linkLocalSkills,
 } from "./skill-lib.mjs";
-import { repoRoot, sharedSkillsDir } from "./paths.mjs";
+import { initializeWorkspace, packageMode, repoRoot, sharedSkillsDir, workspaceSkillsDir } from "./paths.mjs";
 import { addSkillPolicy } from "./skill-new-manifests.mjs";
 import { formatSkillInspection, inspectSkill } from "./skill-inventory.mjs";
 
@@ -125,9 +125,14 @@ export function skillAdopt(args) {
     process.exit(1);
   }
 
-  const dest = path.join(sharedSkillsDir, name);
+  if (packageMode) initializeWorkspace();
+  if (packageMode && fs.existsSync(path.join(sharedSkillsDir, name))) {
+    console.error(`built-in skill exists: ${name}; workspace skill overrides are not supported`);
+    process.exit(1);
+  }
+  const dest = path.join(packageMode ? workspaceSkillsDir : sharedSkillsDir, name);
   if (fs.existsSync(dest)) {
-    console.error(`globals/agents/skills/${name} already exists — skill already adopted or name collision`);
+    console.error(`${path.relative(packageMode ? path.dirname(workspaceSkillsDir) : repoRoot, dest)} already exists — skill already adopted or name collision`);
     process.exit(1);
   }
 
@@ -137,9 +142,14 @@ export function skillAdopt(args) {
   }
 
   copyDir(src, dest);
-  console.log(`adopted: ${src} -> globals/agents/skills/${name}`);
+  console.log(`adopted: ${src} -> ${dest}`);
 
   fs.rmSync(src, { recursive: true, force: true });
+
+  if (packageMode) {
+    console.log("package mode: recorded custom skill in workspace; built-in manifests were not modified.");
+    return;
+  }
 
   addSkillPolicy({ name, risk: "low", explicitCommand: false, description: `adopted skill` });
 

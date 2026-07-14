@@ -77,10 +77,23 @@ export function removeCodexMcp(serverName, { dryRun = false, configPath = ACTIVE
     return;
   }
 
-  const bare = serverName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const quoted = JSON.stringify(serverName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const blockPattern = new RegExp(`\\n?^\\[mcp_servers\\.(?:${bare}|${quoted})\\]\\n[^[]*(?=^\\[|$)`, "m");
-  if (!blockPattern.test(configText)) {
+  // Header-boundary removal. A char-class scan like `[^[]*` truncates blocks whose values contain
+  // `[` (TOML arrays such as `args = ["--foo"]`), so we split on top-level [section] headers and
+  // drop the block whose header is `[mcp_servers.<name>]`.
+  const targetHeaders = new Set([`[mcp_servers.${serverName}]`, `[mcp_servers.${JSON.stringify(serverName)}]`]);
+  const lines = configText.split(/\r?\n/);
+  const kept = [];
+  let dropping = false;
+  let removed = false;
+  for (const line of lines) {
+    if (/^\[[^\]]+\]\s*$/.test(line.trim())) {
+      dropping = targetHeaders.has(line.trim());
+      if (dropping) removed = true;
+    }
+    if (!dropping) kept.push(line);
+  }
+
+  if (!removed) {
     console.log(`ok: Codex MCP already absent: ${serverName}`);
     return;
   }
@@ -89,7 +102,7 @@ export function removeCodexMcp(serverName, { dryRun = false, configPath = ACTIVE
     return;
   }
 
-  const next = configText.replace(blockPattern, (match) => match.startsWith("\n") ? "\n" : "").replace(/\n{3,}/g, "\n\n");
+  const next = `${kept.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`;
   writeRootConfig("codex", configPath, next);
   console.log(`codex MCP removed: ${serverName} <- ${displayPath(configPath)}`);
 }

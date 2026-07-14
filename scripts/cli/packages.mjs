@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { repoRoot, rootConfigActive } from "./paths.mjs";
+import { claudeJsonPath, repoRoot, rootConfigActive } from "./paths.mjs";
 import { setPackageEnabled, renderHomeRules, readEnabledPackagesRegistry } from "./rules-render.mjs";
 import { loadPackageCatalog, unavailablePackageMessage } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
@@ -342,10 +342,9 @@ function unmergeHooks(settingsPath, hooksFragment) {
 
 
 function pruneClaudeMcpStore(serverName) {
-  const claudeJson = path.join(path.dirname(USER_CLAUDE_SETTINGS), "..", ".claude.json");
   let data;
   try {
-    data = JSON.parse(fs.readFileSync(claudeJson, "utf8"));
+    data = JSON.parse(fs.readFileSync(claudeJsonPath, "utf8"));
   } catch {
     return;
   }
@@ -360,7 +359,7 @@ function pruneClaudeMcpStore(serverName) {
   prune(data.mcpServers);
   for (const project of Object.values(data.projects || {})) prune(project.mcpServers);
   if (!changed) return;
-  fs.writeFileSync(claudeJson, `${JSON.stringify(data, null, 2)}\n`);
+  fs.writeFileSync(claudeJsonPath, `${JSON.stringify(data, null, 2)}\n`);
   console.log(`  pruned: Claude MCP store ${serverName}`);
 }
 

@@ -1,22 +1,34 @@
 import fs from "node:fs";
+import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadMcpPresets } from "./mcp-presets.mjs";
 import { parseMcpAdd } from "./mcp-parse.mjs";
 import { claudeMcpArgs, ensureClaudeMcpPermission, runClaudeMcpAdd, shellQuote } from "./mcp-claude.mjs";
 import { ensureCodexMcp } from "./mcp-codex.mjs";
 import { MCP_SERVERS_PATH } from "./mcp-config.mjs";
+import { initializeWorkspace, packageMode, workspaceMcpServersPath } from "./paths.mjs";
+import { hasReplaceOverride, loadWorkspaceMcpServers, readWorkspaceOverrides } from "./workspace-resources.mjs";
 
 const mcpPresets = loadMcpPresets();
 
 function readMcpServers() {
+  let builtIn;
   try {
-    return JSON.parse(fs.readFileSync(MCP_SERVERS_PATH, "utf8"));
+    builtIn = JSON.parse(fs.readFileSync(MCP_SERVERS_PATH, "utf8"));
   } catch {
     return { servers: [] };
   }
+  if (!packageMode) return builtIn;
+  return { servers: mergeWorkspaceServers(builtIn.servers || []) };
+}
+
+function mcpServersPath() {
+  return packageMode ? workspaceMcpServersPath : MCP_SERVERS_PATH;
 }
 
 function recordMcpServer(spec, target) {
+  if (packageMode) initializeWorkspace();
+  if (packageMode) assertMcpRecordAllowed(spec.name);
   const data = readMcpServers();
   const existing = data.servers.find((s) => s.name === spec.name);
   const harnesses =
@@ -33,7 +45,32 @@ function recordMcpServer(spec, target) {
     data.servers.push({ name: spec.name, commandOrUrl: spec.commandOrUrl, args: spec.args, harnesses });
     console.log(`mcp-servers.json recorded: ${spec.name}`);
   }
-  fs.writeFileSync(MCP_SERVERS_PATH, `${JSON.stringify(data, null, 2)}\n`);
+  fs.mkdirSync(path.dirname(mcpServersPath()), { recursive: true });
+  fs.writeFileSync(mcpServersPath(), `${JSON.stringify(data, null, 2)}\n`);
+}
+
+function mergeWorkspaceServers(builtInServers) {
+  const overrides = readWorkspaceOverrides();
+  const byName = new Map(builtInServers.map((server) => [server.name, server]));
+  for (const server of loadWorkspaceMcpServers({ builtInNames: new Set(byName.keys()), overrides })) {
+    if (byName.has(server.name) && !hasReplaceOverride("mcp-server", server.name, overrides)) {
+      throw new Error(`workspace MCP server '${server.name}' conflicts with built-in server without typed replace override`);
+    }
+    byName.set(server.name, server);
+  }
+  return [...byName.values()];
+}
+
+function assertMcpRecordAllowed(name) {
+  let builtIn = [];
+  try {
+    builtIn = JSON.parse(fs.readFileSync(MCP_SERVERS_PATH, "utf8")).servers || [];
+  } catch {
+    return;
+  }
+  if (!builtIn.some((server) => server.name === name)) return;
+  if (hasReplaceOverride("mcp-server", name)) return;
+  throw new Error(`MCP server '${name}' is built in; add a typed mcp-server replace override before replacing it`);
 }
 
 function claudeHasMcp(serverName) {

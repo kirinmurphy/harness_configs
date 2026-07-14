@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 dry_run=0
 skip_presets_onboard=0
+package_mode="${ROBOREPO_PACKAGE_MODE:-0}"
 on_conflict="${ROBOREPO_ON_CONFLICT:-}"
 on_conflict_explicit=0
 on_conflict_persisted=0
@@ -111,9 +112,10 @@ case "$(uname -s 2>/dev/null || echo unknown)" in
     else
       echo "powershell.exe not found. Run scripts/install/install-windows.ps1 from PowerShell manually."
     fi
-    # Shell snippets and global commands still need bash — continue below
+    # Shell snippets and global commands still need bash in checkout mode. In package mode npm owns
+    # command exposure, so applying harness config must not mutate PATH or ~/.local/bin.
     run_with_dry_args "${repo_root}/scripts/install/install-gitignore-globals.sh"
-    if [[ $dry_run -eq 0 ]]; then
+    if [[ $dry_run -eq 0 && "${package_mode}" != "1" ]]; then
       "${repo_root}/scripts/install/install-global-commands.sh"
       "${repo_root}/scripts/install/install-shell-snippets.sh"
     fi
@@ -138,13 +140,17 @@ preflight_shell_setup() {
 snapshot_pre_roborepo_original
 
 install_section "Shell & PATH"
-preflight_shell_setup
+if [[ "${package_mode}" == "1" ]]; then
+  echo "package mode: npm owns the roborepo command; skipping ~/.local/bin and shell profile setup."
+else
+  preflight_shell_setup
+fi
 
 # Harness-agnostic setup
 run_with_dry_args "${repo_root}/scripts/install/install-gitignore-globals.sh"
 
 # Shell and PATH setup (harness-agnostic, bash only)
-if [[ $dry_run -eq 0 ]]; then
+if [[ $dry_run -eq 0 && "${package_mode}" != "1" ]]; then
   "${repo_root}/scripts/install/install-global-commands.sh"
   "${repo_root}/scripts/install/install-shell-snippets.sh"
 fi
@@ -216,6 +222,14 @@ echo "  ${RR_BOLD}Codex${RR_RESET}   $([ $has_codex  -eq 1 ] && echo "${RR_GREEN
 echo ""
 echo "  ${RR_BOLD}Web portal${RR_RESET}  run ${RR_CYAN}roborepo serve --detach${RR_RESET} to manage behavior in the UI"
 run_post_install_onboarding
+if [[ "${package_mode}" == "1" ]]; then
+  install_section "Workspace"
+  if [[ $dry_run -eq 1 ]]; then
+    node "${repo_root}/scripts/cli/workspace-resources.mjs" --dry-run
+  else
+    node "${repo_root}/scripts/cli/workspace-resources.mjs"
+  fi
+fi
 if [[ $has_claude -eq 0 || $has_codex -eq 0 ]]; then
   echo ""
   echo "To add another harness later: install it, then run roborepo onboard again."

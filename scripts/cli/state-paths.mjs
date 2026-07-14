@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { stateRoot } from "./paths.mjs";
 
-export const roborepoStateDir = process.env.ROBOREPO_STATE_DIR || path.join(os.homedir(), ".roborepo");
+export const roborepoStateDir = stateRoot;
 
 // Shared JSON state read/write, since roborepo has several small state files (install state,
 // presets state, enabled packages, root-config state) that all need the same

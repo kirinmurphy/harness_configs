@@ -64,6 +64,20 @@ Claude (`~/.claude/` from `globals/claude/`):
 
 Root config files are mutable user state. The repo keeps portable baseline templates, but active home files are local copies or user-owned files, not direct symlinks.
 
+Package mode separates three roots:
+
+- `appRoot` — immutable release files: built-ins, manifests, scripts, CLI, templates.
+- `workspaceRoot` — Git-portable user-authored files: `workspace.json`, `skills/`, `commands/`,
+  `mcp/servers.json`, `packages/`, and `overrides/`.
+- `stateRoot` — machine-local state: enabled packages, onboarding state, managed skill cache,
+  telemetry, and drift hashes.
+
+Workspace resources are typed. Custom skills and commands cannot shadow built-ins. Workspace
+packages and MCP server definitions may replace a built-in only when `overrides/resources.json`
+contains an explicit `{ "type": "package"|"mcp-server", "id": "...", "mode": "replace" }` entry.
+Package-mode `apply` materializes workspace skills and commands after built-ins; npm owns the
+`roborepo` executable, so package-mode apply skips `~/.local/bin` and shell profile mutation.
+
 ### Managed Copies And Rendered Rules
 
 Repo files are source input. The global harness path receives concrete files or directories.

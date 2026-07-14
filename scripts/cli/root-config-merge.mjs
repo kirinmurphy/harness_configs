@@ -132,12 +132,23 @@ function splitTomlSections(text) {
 function mergeTomlSection(repoSection, localSection) {
   if (!localSection) return repoSection.lines;
 
+  // Track each local key's line plus the contiguous comment/blank lines that immediately preceded
+  // it, so a user's hand-written comment stays attached to the key it documents when we re-emit
+  // local-only keys. Trailing comments with no following key are kept as loose extras.
   const localByKey = new Map();
+  const pending = [];
   const localExtras = [];
   for (const line of localSection.lines.slice(localSection.header ? 1 : 0)) {
     const key = tomlKey(line);
-    if (key) localByKey.set(key, line);
-    else if (line.trim()) localExtras.push(line);
+    if (key) {
+      localByKey.set(key, { line, comments: pending.slice() });
+      pending.length = 0;
+    } else {
+      pending.push(line);
+    }
+  }
+  for (const line of pending) {
+    if (line.trim()) localExtras.push(line);
   }
 
   const seen = new Set();
@@ -145,7 +156,7 @@ function mergeTomlSection(repoSection, localSection) {
   for (const line of repoSection.lines) {
     const key = tomlKey(line);
     if (key && localByKey.has(key)) {
-      merged.push(localByKey.get(key));
+      merged.push(localByKey.get(key).line);
       seen.add(key);
     } else {
       merged.push(line);
@@ -153,8 +164,9 @@ function mergeTomlSection(repoSection, localSection) {
     }
   }
 
-  for (const [key, line] of localByKey) {
-    if (!seen.has(key)) merged.push(line);
+  for (const [key, entry] of localByKey) {
+    if (seen.has(key)) continue;
+    merged.push(...entry.comments, entry.line);
   }
   if (localExtras.length) merged.push(...localExtras);
   return merged;

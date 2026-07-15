@@ -1002,17 +1002,21 @@ mkdir -p "${fake_bin}"
   printf 'printf "%%s\\n" "$*" > "%s"\n' "${work}/fake-claude-args.txt"
 } > "${fake_bin}/claude"
 chmod +x "${fake_bin}/claude"
-( cd "${work}" && PATH="${fake_bin}:${PATH}" node "${mcp_harness}/scripts/cli/main.mjs" mcp add perm-mcp --name=permtest --only-claude >/dev/null )
+( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" PATH="${fake_bin}:${PATH}" node "${mcp_harness}/scripts/cli/main.mjs" mcp add perm-mcp --name=permtest --only-claude >/dev/null )
 assert "mcp add: Claude registration command invoked" \
   grep -q 'mcp add --scope user permtest -- uvx perm-mcp' "${work}/fake-claude-args.txt"
-assert "mcp add: Claude permission written after successful registration" \
-  grep -q '"mcp__permtest"' "${mcp_harness}/globals/claude/settings.json"
+# The grant targets the ACTIVE settings the harness reads (~/.claude/settings.json), never the repo
+# baseline template — package mode has no writable baseline. See mcp-claude-permission-check.mjs.
+assert "mcp add: Claude permission written to active settings after successful registration" \
+  grep -q '"mcp__permtest"' "${mcp_home}/.claude/settings.json"
+assert "mcp add: Claude permission does not touch the repo baseline" \
+  bash -c "! grep -q '\"mcp__permtest\"' '${mcp_harness}/globals/claude/settings.json'"
 
 ( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" PATH="${fake_bin}:${PATH}" node "${mcp_harness}/scripts/cli/main.mjs" mcp add all-mcp --name=alltest -- --all-flag >/dev/null )
 assert "mcp add: default target invokes Claude registration" \
   grep -q 'mcp add --scope user alltest -- uvx all-mcp --all-flag' "${work}/fake-claude-args.txt"
-assert "mcp add: default target writes Claude permission" \
-  grep -q '"mcp__alltest"' "${mcp_harness}/globals/claude/settings.json"
+assert "mcp add: default target writes Claude permission to active settings" \
+  grep -q '"mcp__alltest"' "${mcp_home}/.claude/settings.json"
 assert "mcp add: default target writes Codex config" \
   grep -q 'args = \["all-mcp", "--all-flag"\]' "${mcp_home}/.codex/config.toml"
 
@@ -1022,9 +1026,9 @@ assert "mcp add: default target writes Codex config" \
 } > "${fake_bin}/claude"
 chmod +x "${fake_bin}/claude"
 assert "mcp add: Claude registration failure exits non-zero" \
-  bash -c "cd '${work}' && ! env PATH='${fake_bin}':\"\${PATH}\" node '${mcp_harness}/scripts/cli/main.mjs' mcp add fail-mcp --name=failtest >/dev/null 2>&1"
-assert "mcp add: Claude failure does not write permission" \
-  bash -c "! grep -q '\"mcp__failtest\"' '${mcp_harness}/globals/claude/settings.json'"
+  bash -c "cd '${work}' && ! env HOME='${mcp_home}' ROBOREPO_STATE_DIR='${mcp_home}/.roborepo' PATH='${fake_bin}':\"\${PATH}\" node '${mcp_harness}/scripts/cli/main.mjs' mcp add fail-mcp --name=failtest >/dev/null 2>&1"
+assert "mcp add: Claude failure does not write permission to active settings" \
+  bash -c "! grep -q '\"mcp__failtest\"' '${mcp_home}/.claude/settings.json'"
 assert "mcp add: Claude failure does not write Codex config" \
   bash -c "! grep -q '^\\[mcp_servers.failtest\\]' '${mcp_harness}/globals/codex/config.toml'"
 
@@ -1323,6 +1327,9 @@ assert "mcp: Codex active config add/remove records root-config writes" \
 
 assert "mcp: Codex MCP removal survives bracketed array values and is idempotent" \
   node "${repo_root}/scripts/test/mcp-codex-remove-check.mjs"
+
+assert "mcp: Claude permission grant writes the active settings, never the repo baseline" \
+  node "${repo_root}/scripts/test/mcp-claude-permission-check.mjs"
 
 assert "workspace: built-in conflicts require a typed replace override" \
   node "${repo_root}/scripts/test/workspace-resources-check.mjs"

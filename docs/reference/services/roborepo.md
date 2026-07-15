@@ -391,8 +391,9 @@ root config merge/export workflow.
 `roborepo mcp add <name-or-url>` wraps the Claude registration step and the Codex config update so
 common MCP setup is repeatable instead of hand-typed. After Claude registration succeeds it also:
 
-- adds `mcp__<name>` to `globals/claude/settings.json` so the server's tools are allowed without repeated
-  approval prompts (skip with `--skip-claude-permission`), and
+- adds `mcp__<name>` to active `~/.claude/settings.json` (the settings the harness reads, not the repo
+  baseline template) so the server's tools are allowed without repeated approval prompts (skip with
+  `--skip-claude-permission`), and
 - adds an MCP block to active `~/.codex/config.toml` so Codex can use it immediately.
 
 Default target is both harnesses; `--only-claude` / `--only-codex` scope it. Presets exist for the

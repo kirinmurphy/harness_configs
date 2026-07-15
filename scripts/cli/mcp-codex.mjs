@@ -1,7 +1,5 @@
 import fs from "node:fs";
-import path from "node:path";
-import { repoRoot } from "./paths.mjs";
-import { ACTIVE_CODEX_CONFIG_PATH } from "./mcp-config.mjs";
+import { ACTIVE_CODEX_CONFIG_PATH, displayPath } from "./mcp-config.mjs";
 import { isHttpUrl } from "./mcp-parse.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
 
@@ -15,11 +13,6 @@ function tomlArray(values) {
 
 function tomlTableKey(key) {
   return /^[A-Za-z0-9_-]+$/.test(key) ? key : tomlString(key);
-}
-
-function displayPath(filePath) {
-  const rel = path.relative(repoRoot, filePath);
-  return rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel : filePath;
 }
 
 function codexMcpBlock(spec) {

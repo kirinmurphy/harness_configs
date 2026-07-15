@@ -1,8 +1,8 @@
 import fs from "node:fs";
-import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { repoRoot } from "./paths.mjs";
-import { CLAUDE_SETTINGS_PATH } from "./mcp-config.mjs";
+import { rootConfigActive, rootConfigBaseline } from "./paths.mjs";
+import { displayPath } from "./mcp-config.mjs";
+import { writeRootConfig } from "./root-config-writes.mjs";
 
 export function shellQuote(arg) {
   if (/^[a-zA-Z0-9_./:=@%+-]+$/.test(arg)) return arg;
@@ -27,15 +27,16 @@ export function runClaudeMcpAdd(args) {
   if ((result.status ?? 1) !== 0) process.exit(result.status ?? 1);
 }
 
+// The MCP permission grant targets the ACTIVE Claude settings (~/.claude/settings.json) — the file
+// the harness actually reads — not the repo baseline template. In package mode there is no writable
+// baseline (appRoot is immutable release files), and even in a dev checkout the active file is a
+// separate copy, not a symlink to the tracked source. writeRootConfig routes the write through the
+// same drift-state recording + normalization Codex already uses, so a later `apply` won't clobber
+// this grant. When the active file does not exist yet, the baseline seeds the initial permission set.
 export function ensureClaudeMcpPermission(serverName) {
   const permission = `mcp__${serverName}`;
-  let settings;
-  try {
-    settings = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_PATH, "utf8"));
-  } catch (err) {
-    console.error(`failed to read ${CLAUDE_SETTINGS_PATH}: ${err.message}`);
-    process.exit(1);
-  }
+  const activePath = rootConfigActive.claude;
+  const settings = readClaudeSettings(activePath) ?? readClaudeSettings(rootConfigBaseline.claude) ?? {};
 
   settings.permissions ||= {};
   settings.permissions.allow ||= [];
@@ -46,8 +47,16 @@ export function ensureClaudeMcpPermission(serverName) {
 
   const insertAt = nextMcpPermissionIndex(settings.permissions.allow);
   settings.permissions.allow.splice(insertAt, 0, permission);
-  fs.writeFileSync(CLAUDE_SETTINGS_PATH, `${JSON.stringify(settings, null, 2)}\n`);
-  console.log(`permission added: ${permission} -> ${path.relative(repoRoot, CLAUDE_SETTINGS_PATH)}`);
+  writeRootConfig("claude", activePath, `${JSON.stringify(settings, null, 2)}\n`);
+  console.log(`permission added: ${permission} -> ${displayPath(activePath)}`);
+}
+
+function readClaudeSettings(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 function nextMcpPermissionIndex(allow) {

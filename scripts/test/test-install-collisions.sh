@@ -869,7 +869,7 @@ test_repo_local_codex_skill_layer_present() {
   # link-skills.sh is the source of truth: --check must pass and both per-harness links must
   # resolve to the local source.
   "$repo_root/scripts/build/link-skills.sh" --check >/dev/null
-  local name="harness-platform-dev"
+  local name="roborepo-development"
   [[ "$(readlink "$repo_root/.claude/skills/$name" 2>/dev/null)" == "../../local/skills/$name" ]] \
     && pass "repo-local .claude skill link resolves to local source" \
     || fail "repo-local .claude skill link resolves to local source"

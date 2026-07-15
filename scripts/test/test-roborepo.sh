@@ -419,7 +419,7 @@ assert "skill export-to-project: creates .codex/skills even when only .claude ex
   test -f "${claude_only_repo}/.codex/skills/test-harness/SKILL.md"
 
 assert "skill export-to-project: internal skill NOT exported (firewall)" \
-  bash -c "! test -e '${export_repo}/.claude/skills/harness-platform-dev'"
+  bash -c "! test -e '${export_repo}/.claude/skills/roborepo-development'"
 
 assert "skill export-to-project: refuses to run in source repo" \
   bash -c "cd '${repo_root}' && ! node '${cli}' skill export-to-project --yes >/dev/null 2>&1"

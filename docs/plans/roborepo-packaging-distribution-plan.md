@@ -1,5 +1,36 @@
 # RoboRepo Packaging and Distribution Plan
 
+## Implementation status (2026-07-14)
+
+Partially implemented. Phases B–D of the path/workspace split are shipped; npm publish and Homebrew
+(Phases E–G) are not started. This plan stays active until all three install channels ship.
+
+**Shipped:**
+
+- Path abstraction (`resolveAppRoot`/`resolveWorkspaceRoot`/`resolveStateRoot`/`resolveInstallMode`)
+  as `appRoot` / `workspaceRoot` / `stateRoot` / `developmentMode`+`packageMode` in
+  `scripts/cli/paths.mjs`, with the `ROBOREPO_APP_ROOT` / `ROBOREPO_WORKSPACE_ROOT` /
+  `ROBOREPO_STATE_ROOT` / `ROBOREPO_MODE` env overrides and `.git`/`local/skills` auto-detection.
+- Package mode refuses writes into `appRoot` (`requireDevelopmentCheckout` guard); user-content
+  writes (skills, commands, MCP) route to `workspaceRoot`.
+- Typed replace-override guard for workspace resources (`workspace-resources.mjs`): workspace
+  content wins only for override-capable types, and a same-named built-in requires an explicit typed
+  replace override — no silent shadowing of security-sensitive built-ins.
+- `roborepo version` / `roborepo workspace` / `roborepo setup` / `roborepo apply` commands
+  (`workspace.mjs`, `main.mjs`); `roborepo update` is an apply alias in package mode.
+- Root `package.json` with `type: module`, `bin`, `files` allowlist, and `engines`.
+
+**Open:** Phase A repo-mode hardening; Phase C `workspace import` / migration from a repo-resident
+checkout (only the `workspace use <path>` pointer exists via `workspace-root.json`); Phase D
+PATH-dedup + shell-helper relocation; Phases E–F (npm beta/stable publish) and G (Homebrew tap),
+all gated on npm package mode surviving real install/upgrade testing.
+
+**Divergence to reconcile:** this doc repeatedly states the default `workspaceRoot` is
+`~/.config/roborepo`, but the shipped code defaults it to `~/.roborepo/workspace`
+(`stateRoot/workspace`, `paths.mjs:53`). The path-behavior blocks below are corrected to the shipped
+default; the illustrative filesystem/version-output samples still show `~/.config/roborepo` and
+should be reconciled if the location decision is revisited.
+
 ## Glossary
 
 ### Custom content
@@ -61,10 +92,10 @@ appRoot
 
 The editable source of custom, portable RoboRepo content.
 
-Default packaged-mode location:
+Default packaged-mode location (as shipped):
 
 ```text
-~/.config/roborepo
+~/.roborepo/workspace
 ```
 
 A user may instead select a Git-controlled workspace:
@@ -489,7 +520,7 @@ flowchart TD
 
 ```text
 appRoot       = npm package root
-workspaceRoot = ~/.config/roborepo
+workspaceRoot = ~/.roborepo/workspace   (shipped default; ~/.config/roborepo was the original proposal)
 stateRoot     = ~/.roborepo
 mode          = package
 distribution  = npm
@@ -834,7 +865,7 @@ RoboRepo should never hardcode either Homebrew prefix.
 
 ```text
 appRoot       = Homebrew formula libexec root
-workspaceRoot = ~/.config/roborepo
+workspaceRoot = ~/.roborepo/workspace   (shipped default; ~/.config/roborepo was the original proposal)
 stateRoot     = ~/.roborepo
 mode          = package
 distribution  = homebrew

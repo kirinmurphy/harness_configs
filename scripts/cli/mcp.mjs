@@ -136,6 +136,9 @@ export function mcpAdd(rest) {
     if (opts.updateClaudePermission) ensureClaudeMcpPermission(spec.name);
   }
   if (opts.target !== "only-claude") ensureCodexMcp(spec);
-  recordMcpServer(spec, opts.target);
+  // Built-in package presets already live in the app's mcp-servers.json; recording them again would
+  // duplicate a built-in into the user workspace and trip assertMcpRecordAllowed. Only user-added
+  // servers get a workspace record.
+  if (!opts.builtIn) recordMcpServer(spec, opts.target);
   process.exit(0);
 }

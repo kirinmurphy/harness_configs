@@ -61,14 +61,14 @@ manifest_has_flag() {
   [[ ",${flags}," == *",${flag},"* ]]
 }
 
-# Emit each repo-relative path from manifests/platform/source-files.tsv, one per line. This is the
-# "packing checklist" of files the repo must contain (asserted by doctor). Comments and
-# blank lines are skipped.
+# Emit each row from manifests/platform/source-files.tsv as `path<TAB>scope`, where scope is the
+# optional second column (`dev` for dev-only files, empty otherwise). This is the "packing checklist"
+# of files the repo must contain (asserted by doctor). Comments and blank lines are skipped.
 source_files() {
-  local line
-  while IFS= read -r line; do
-    [[ -z "${line}" || "${line}" == \#* ]] && continue
-    echo "${line}"
+  local path scope
+  while IFS=$'\t' read -r path scope _rest; do
+    [[ -z "${path}" || "${path}" == \#* ]] && continue
+    printf '%s\t%s\n' "${path}" "${scope}"
   done < "${repo_root}/manifests/platform/source-files.tsv"
 }
 

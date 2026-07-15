@@ -1060,6 +1060,20 @@ node "${repo_root}/scripts/build/render-agent-permissions.mjs" >/dev/null
 
 assert "lifecycle: roborepo doctor dispatches and passes" \
   bash -c "node '${cli}' doctor >/dev/null 2>&1"
+
+# Package mode: dev-only source files (local/skills, scripts/test/test-roborepo.sh) are excluded
+# from the npm artifact, so doctor must not fail on their absence. Build a stripped tracked-file copy
+# that mirrors the packaged layout, then run doctor against it with ROBOREPO_MODE=package.
+pkg_doctor_root="${work}/pkg-doctor-root"
+mkdir -p "${pkg_doctor_root}"
+# Copy tracked working-tree files (reflects uncommitted edits) except the dev-only paths and the
+# project-scope skill symlinks that point into local/skills (excluding those avoids dangling links).
+( cd "${repo_root}" && git ls-files | grep -vE '^(local/skills/|scripts/test/|\.claude/skills/|\.codex/skills/)' \
+    | tar -cf - -T - | tar -xf - -C "${pkg_doctor_root}" )
+pkg_doctor_out="${work}/pkg-doctor.out"
+ROBOREPO_MODE=package bash "${pkg_doctor_root}/scripts/doctor.sh" >"${pkg_doctor_out}" 2>&1 || true
+assert "package mode: doctor does not fail on dev-only source files" \
+  bash -c "! grep -qE 'fail: (local/skills|scripts/test/test-roborepo\.sh) missing' '${pkg_doctor_out}'"
 update_out="${work}/update-report.out"
 assert "lifecycle: roborepo update --dry-run dispatches and reports changes" \
   bash -c "HOME='${update_home}' node '${cli}' update --dry-run >'${update_out}' 2>&1 && grep -q 'Update change report:' '${update_out}' && grep -q 'unchanged: package registry' '${update_out}'"
@@ -1330,6 +1344,9 @@ assert "mcp: Codex MCP removal survives bracketed array values and is idempotent
 
 assert "mcp: Claude permission grant writes the active settings, never the repo baseline" \
   node "${repo_root}/scripts/test/mcp-claude-permission-check.mjs"
+
+assert "mcp: enabling a built-in MCP package does not record it into the workspace" \
+  node "${repo_root}/scripts/test/mcp-builtin-record-skip-check.mjs"
 
 assert "workspace: built-in conflicts require a typed replace override" \
   node "${repo_root}/scripts/test/workspace-resources-check.mjs"

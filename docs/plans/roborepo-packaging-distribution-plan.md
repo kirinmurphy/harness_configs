@@ -19,17 +19,26 @@ Partially implemented. Phases B–D of the path/workspace split are shipped; npm
 - `roborepo version` / `roborepo workspace` / `roborepo setup` / `roborepo apply` commands
   (`workspace.mjs`, `main.mjs`); `roborepo update` is an apply alias in package mode.
 - Root `package.json` with `type: module`, `bin`, `files` allowlist, and `engines`.
+- Package mode passes a real packed-tarball install smoke test: `npm pack` → `npm install -g`
+  into an isolated prefix → `version`/`setup`/`doctor`/`enable <package>` all succeed, and no
+  user content is written into `appRoot`. Two package-mode bugs found and fixed during that test:
+  enabling a built-in package's own MCP preset no longer trips the workspace built-in guard
+  (`installMcpPreset` passes `--builtin` to skip the redundant record), and `doctor` no longer
+  fails on dev-only source files absent from the npm artifact (`dev`-scoped rows in
+  `source-files.tsv`, skipped in package mode).
 
-**Open:** Phase A repo-mode hardening; Phase C `workspace import` / migration from a repo-resident
-checkout (only the `workspace use <path>` pointer exists via `workspace-root.json`); Phase D
-PATH-dedup + shell-helper relocation; Phases E–F (npm beta/stable publish) and G (Homebrew tap),
-all gated on npm package mode surviving real install/upgrade testing.
+**Open:** remaining Phase A hardening (upgrade/downgrade/uninstall/moved-checkout across package
+mode); Phase C `workspace import` / migration from a repo-resident checkout (only the
+`workspace use <path>` pointer exists via `workspace-root.json`); Phase D PATH-dedup +
+shell-helper relocation; Phases E–F (npm beta/stable publish workflow + CI tarball install)
+and G (Homebrew tap). The manual packed-install smoke test above passes; the automated
+publish/upgrade pipeline is not built.
 
-**Divergence to reconcile:** this doc repeatedly states the default `workspaceRoot` is
-`~/.config/roborepo`, but the shipped code defaults it to `~/.roborepo/workspace`
-(`stateRoot/workspace`, `paths.mjs:53`). The path-behavior blocks below are corrected to the shipped
-default; the illustrative filesystem/version-output samples still show `~/.config/roborepo` and
-should be reconciled if the location decision is revisited.
+**Workspace location:** the shipped default `workspaceRoot` is `~/.roborepo/workspace`
+(`stateRoot/workspace`, `paths.mjs:53`). An earlier draft of this plan proposed `~/.config/roborepo`;
+all path-behavior blocks, filesystem models, mermaid diagrams, and sample output below have been
+reconciled to the shipped location. A user may still point `workspaceRoot` elsewhere (env override or
+`workspace use <path>`).
 
 ## Glossary
 
@@ -365,8 +374,8 @@ Expected resolution:
 | Mode | `appRoot` | `workspaceRoot` | `stateRoot` |
 |---|---|---|---|
 | Repo | repository root | repository root | `~/.roborepo` |
-| npm | npm package root | `~/.config/roborepo` or configured path | `~/.roborepo` |
-| Homebrew | formula `libexec` root | `~/.config/roborepo` or configured path | `~/.roborepo` |
+| npm | npm package root | `~/.roborepo/workspace` or configured path | `~/.roborepo` |
+| Homebrew | formula `libexec` root | `~/.roborepo/workspace` or configured path | `~/.roborepo` |
 
 ## Content lookup order
 
@@ -463,7 +472,7 @@ flowchart TD
   Registry["npm registry<br/>@kirinmurphy/roborepo"]
   Package["npm global package directory<br/>immutable appRoot"]
   NpmBin["npm global bin/roborepo"]
-  Workspace["~/.config/roborepo<br/>editable workspaceRoot"]
+  Workspace["~/.roborepo/workspace<br/>editable workspaceRoot"]
   State["~/.roborepo<br/>stateRoot"]
   Claude["~/.claude"]
   Codex["~/.codex"]
@@ -497,7 +506,7 @@ flowchart TD
 <npm-global-bin>/
   roborepo
 
-~/.config/roborepo/
+~/.roborepo/workspace/
   workspace.json
   skills/
   commands/
@@ -520,7 +529,7 @@ flowchart TD
 
 ```text
 appRoot       = npm package root
-workspaceRoot = ~/.roborepo/workspace   (shipped default; ~/.config/roborepo was the original proposal)
+workspaceRoot = ~/.roborepo/workspace
 stateRoot     = ~/.roborepo
 mode          = package
 distribution  = npm
@@ -572,7 +581,7 @@ roborepo 0.1.0-beta.3
 mode: package
 distribution: npm
 app root: /path/to/npm/package
-workspace: /Users/name/.config/roborepo
+workspace: /Users/name/.roborepo/workspace
 state: /Users/name/.roborepo
 ```
 
@@ -797,7 +806,7 @@ flowchart TD
   Tap["kirinmurphy/homebrew-tap<br/>Formula/roborepo.rb"]
   Cellar["Homebrew Cellar<br/>roborepo/<version>/libexec<br/>immutable appRoot"]
   BrewBin["/opt/homebrew/bin/roborepo"]
-  Workspace["~/.config/roborepo<br/>editable workspaceRoot"]
+  Workspace["~/.roborepo/workspace<br/>editable workspaceRoot"]
   State["~/.roborepo<br/>stateRoot"]
   Claude["~/.claude"]
   Codex["~/.codex"]
@@ -834,7 +843,7 @@ Apple Silicon Mac:
 /opt/homebrew/bin/
   roborepo -> ../Cellar/roborepo/<version>/bin/roborepo
 
-~/.config/roborepo/
+~/.roborepo/workspace/
   skills/
   commands/
   mcp/
@@ -865,7 +874,7 @@ RoboRepo should never hardcode either Homebrew prefix.
 
 ```text
 appRoot       = Homebrew formula libexec root
-workspaceRoot = ~/.roborepo/workspace   (shipped default; ~/.config/roborepo was the original proposal)
+workspaceRoot = ~/.roborepo/workspace
 stateRoot     = ~/.roborepo
 mode          = package
 distribution  = homebrew

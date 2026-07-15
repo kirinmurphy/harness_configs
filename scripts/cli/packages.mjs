@@ -127,16 +127,18 @@ function mcpAlreadyPresent(serverName) {
 }
 
 function installMcpPreset(presetId) {
-  // `roborepo mcp add` writes repo source (globals/claude/settings.json + manifests mcp-servers.json)
-  // and shells out to the real `claude` CLI. Tests set ROBOREPO_SKIP_MCP=1 to exercise the rest of
-  // the enable/disable flow without that registration (and without polluting tracked files).
+  // Wires a built-in package's own MCP preset. `mcp add` shells out to the real `claude` CLI and
+  // writes the active Codex config; `--builtin` skips the workspace record because this preset
+  // already lives in the app's manifests/inventory/mcp-servers.json (recording it would duplicate a
+  // built-in into user workspace content and trip assertMcpRecordAllowed in package mode). Tests set
+  // ROBOREPO_SKIP_MCP=1 to exercise the rest of enable/disable without the live registration.
   if (process.env.ROBOREPO_SKIP_MCP === "1") { console.log(`skip: mcp ${presetId} (ROBOREPO_SKIP_MCP)`); return; }
   if (mcpAlreadyPresent(presetId)) { console.log(`ok: mcp ${presetId} already present`); return; }
   // Delegate to `roborepo mcp add` subprocess: handles Claude CLI, Codex config, and preset
   // resolution. mcpAdd calls process.exit(0) directly, so we can't call it inline.
   const result = spawnSync(
     process.execPath,
-    [path.join(repoRoot, "scripts", "cli", "main.mjs"), "mcp", "add", presetId],
+    [path.join(repoRoot, "scripts", "cli", "main.mjs"), "mcp", "add", "--builtin", presetId],
     { encoding: "utf8", stdio: "inherit" }
   );
   if (result.status !== 0 && result.status !== null) {

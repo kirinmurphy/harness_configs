@@ -26,6 +26,7 @@ export function parseMcpAdd(rest, mcpPresets) {
     dryRun: false,
     target: "all",
     updateClaudePermission: true,
+    builtIn: false,
     passthrough: [],
   };
   const positional = [];
@@ -38,6 +39,10 @@ export function parseMcpAdd(rest, mcpPresets) {
     else if (arg === "--only-claude") opts.target = opts.target === "only-codex" ? "conflict" : "only-claude";
     else if (arg === "--only-codex") opts.target = opts.target === "only-claude" ? "conflict" : "only-codex";
     else if (arg === "--skip-claude-permission") opts.updateClaudePermission = false;
+    // Internal flag for the package-enable path: this add wires a built-in package's own preset,
+    // which already lives in manifests/inventory/mcp-servers.json. Skip the workspace record so the
+    // built-in is not duplicated into user workspace content (and does not trip the built-in guard).
+    else if (arg === "--builtin") opts.builtIn = true;
     else if (arg.startsWith("--scope=")) opts.scope = arg.slice("--scope=".length);
     else if (arg.startsWith("--name=")) opts.name = arg.slice("--name=".length);
     else if (arg.startsWith("--transport=")) opts.transport = arg.slice("--transport=".length);

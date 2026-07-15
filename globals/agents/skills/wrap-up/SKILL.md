@@ -106,11 +106,41 @@ deliverable of a "wrap up."
   user deferred, follow-ups mentioned but not started, or the next unstarted step in
   an agreed plan.
 - If nothing is outstanding, say so plainly rather than inventing a next step.
-- Produce a short status summary: what shipped this session, what's still open.
-- Produce a **paste-ready prompt** for a new chat: enough standalone context (repo,
-  what was just finished, what's next, any constraint the user stated) that a fresh
-  chat with no memory of this conversation can pick up immediately. Put it in its own
-  fenced code block so it's a single copy action.
+- Produce a short status summary (for the chat, not the pasted prompt): what shipped
+  this session, what's still open.
+
+**The paste-ready prompt.** Give the next chat enough standalone context to pick up
+cold: repo + branch, what's next, and any constraint the user stated. Then apply these
+filters to what you include:
+
+- **Scope done-work to the next step's needs.** Only describe work completed this
+  session when the next task actually depends on that context (a decision it must not
+  re-litigate, an interface it will build on, a gotcha it will hit). If a piece of
+  finished work is unrelated to what comes next, leave it out — the prompt is a runway
+  for the next task, not a changelog of this one. When in doubt, prefer the shorter
+  prompt.
+- **Never reference commits or push state.** Do not name commit hashes, describe the
+  local-vs-pushed commit situation, or tell the next chat to push. The user manages
+  their own git history; the handoff is about work content, not VCS bookkeeping.
+- **Do describe uncommitted/outstanding work** that the next chat needs to know exists
+  (open plan items, a half-built feature, a deferred decision) — as work, by what it is
+  and where it lives, without framing it in terms of commits.
+
+**Rendering.** The prompt body goes in its own fenced code block so the terminal's copy
+button grabs exactly the prompt and nothing else. Frame it with an ANSI-colored header
+line printed directly ABOVE the fence and a matching colored `=` rule directly BELOW it —
+both outside the fence, so they render in real color and are visually clearly not part
+of what gets pasted. Match the rule's width to the header line. Use the same color for
+both (cyan `\e[36m` is a good default; reset with `\e[0m`). Example shape:
+
+```text
+<cyan>─── HANDOFF: paste into the next chat ───<reset>
+```<fenced prompt body — the only thing meant to be copied>```
+<cyan>=========================================<reset>
+```
+
+The header/footer are delimiters only; the copyable content is the fenced body between
+them.
 
 ## What Wrap Up Must Not Do
 

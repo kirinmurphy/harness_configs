@@ -25,6 +25,7 @@
 **/logs_*.sqlite*
 **/plugins/installed_plugins.json
 **/plugins/known_marketplaces.json
+**/scheduled_tasks.lock
 
 # Local backup output from install script.
 .backups/

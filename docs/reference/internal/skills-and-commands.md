@@ -198,12 +198,14 @@ The scaffold asks whether to create:
 - `skill-command`: a skill plus a slash-command entry point
 - `standalone`: a slash command with no skill
 
-It updates the manifests, source files, README tables, generated outputs, and
+It updates package config, source files, README tables, generated outputs, and
 generated command files together.
 
 ## Skill Storage and Fan-Out
 
-Skills live at `globals/agents/skills/<name>/SKILL.md` in version control.
+Package-owned skills live at `globals/packages/<package>/skills/<name>/SKILL.md` in version control.
+The required base support skill remains a system skill at
+`globals/agents/skills/roborepo-support/SKILL.md`.
 At install/update time, enabled shared skills are materialized into
 `~/.roborepo/skills/<name>` and each harness's native skills dir symlinks to that cache entry:
 `~/.claude/skills/<name>` and `~/.codex/skills/<name>`. Roborepo-owned cache entries carry a
@@ -221,7 +223,7 @@ roborepo skill inspect <name> # read-only source/ownership/native metadata/harne
 To bring an unmanaged native skill under version control:
 
 ```sh
-roborepo skill adopt <name>   # move into globals/agents/skills/<name>, re-link, register manifest
+roborepo skill adopt <name>   # move into a package-owned skill source, re-link, update package config
 ```
 
 ## Memory — Defer

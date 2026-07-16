@@ -18,9 +18,18 @@ fs.writeFileSync(
   path.join(appRoot, "manifests", "inventory", "mcp-servers.json"),
   JSON.stringify({ servers: [{ name: "builtin-srv", commandOrUrl: "npx", args: [], harnesses: ["claude"] }] }, null, 2),
 );
+fs.mkdirSync(path.join(appRoot, "globals", "packages", "builtin-pkg"), { recursive: true });
 fs.writeFileSync(
-  path.join(appRoot, "manifests", "inventory", "packages.json"),
-  JSON.stringify({ packages: [{ id: "builtin-pkg", label: "Built In", components: [] }] }, null, 2),
+  path.join(appRoot, "globals", "packages", "builtin-pkg", "package.config.json"),
+  JSON.stringify({
+    schemaVersion: 1,
+    id: "builtin-pkg",
+    label: "Built In",
+    description: "Built in package.",
+    lifecycle: "optional",
+    presentation: { category: "commands", order: 1 },
+    resources: [],
+  }, null, 2),
 );
 // Copy a package.json so version resolution works if touched.
 fs.writeFileSync(path.join(appRoot, "package.json"), JSON.stringify({ version: "9.9.9" }, null, 2));

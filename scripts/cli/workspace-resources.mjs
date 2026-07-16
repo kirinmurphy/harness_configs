@@ -126,7 +126,7 @@ export function importLegacyWorkspace(sourceRoot, { dryRun = false } = {}) {
 
   importSkillDirs(path.join(source, "globals", "agents", "skills"), report, dryRun);
   importCommandFiles(path.join(source, "globals", "commands"), report, dryRun);
-  importLegacyPackageManifest(path.join(source, "manifests", "inventory", "packages.json"), report, dryRun);
+  importPackageConfigs(path.join(source, "globals", "packages"), report, dryRun);
   importMcpManifest(path.join(source, "manifests", "inventory", "mcp-servers.json"), report, dryRun);
   printImportReport(report, dryRun);
   return report;
@@ -256,18 +256,11 @@ function importCommandFiles(srcDir, report, dryRun) {
   }
 }
 
-// Compatibility only: convert package rows from older roborepo checkouts into the current
-// workspace packages/<id>/package.config.json shape.
-function importLegacyPackageManifest(file, report, dryRun) {
-  let data;
-  try {
-    data = JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch {
-    return;
-  }
+function importPackageConfigs(srcDir, report, dryRun) {
   const builtIn = new Map(readBuiltInPackages().map((pkg) => [pkg.id, pkg]));
-  for (const pkg of data.packages || []) {
-    validatePackage(pkg, file, { allowLegacyComponents: true });
+  for (const file of packageConfigFiles(srcDir)) {
+    const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+    validatePackage(pkg, file);
     if (builtIn.has(pkg.id)) {
       if (JSON.stringify(builtIn.get(pkg.id)) !== JSON.stringify(pkg)) report.changedBuiltIns.push(`package:${pkg.id}`);
       continue;
@@ -276,25 +269,10 @@ function importLegacyPackageManifest(file, report, dryRun) {
     if (fs.existsSync(dest)) continue;
     if (!dryRun) {
       fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.writeFileSync(dest, `${JSON.stringify(normalizeImportedPackage(pkg), null, 2)}\n`);
+      fs.writeFileSync(dest, `${JSON.stringify(pkg, null, 2)}\n`);
     }
     report.importedPackages += 1;
   }
-}
-
-function normalizeImportedPackage(pkg) {
-  return {
-    schemaVersion: 1,
-    id: pkg.id,
-    label: pkg.label,
-    description: pkg.description || `Imported package ${pkg.id}`,
-    lifecycle: pkg.lifecycle || "optional",
-    presentation: pkg.presentation || { category: "commands", order: 100 },
-    resources: pkg.resources || (pkg.components || []).map((component) => (
-      component.type === "command" ? { ...component, type: "cli-command" } : component
-    )),
-    ...(pkg.requires ? { requires: pkg.requires } : {}),
-  };
 }
 
 function importMcpManifest(file, report, dryRun) {
@@ -356,13 +334,12 @@ function readBuiltInMcpServers() {
   }
 }
 
-function validatePackage(pkg, file, { allowLegacyComponents = false } = {}) {
+function validatePackage(pkg, file) {
   if (!pkg || typeof pkg !== "object") throw new Error(`invalid package in ${file}`);
   if (!isSlug(pkg.id)) throw new Error(`package in ${file} has invalid id`);
   if (typeof pkg.label !== "string" || pkg.label.trim() === "") throw new Error(`package '${pkg.id}' needs label`);
-  const resources = pkg.resources || (allowLegacyComponents ? pkg.components : undefined);
-  if (!Array.isArray(resources)) throw new Error(`package '${pkg.id}' needs resources array`);
-  for (const comp of resources) {
+  if (!Array.isArray(pkg.resources)) throw new Error(`package '${pkg.id}' needs resources array`);
+  for (const comp of pkg.resources) {
     if (!comp || typeof comp !== "object" || typeof comp.type !== "string") {
       throw new Error(`package '${pkg.id}' has invalid resource`);
     }

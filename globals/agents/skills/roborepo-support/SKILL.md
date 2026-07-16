@@ -32,8 +32,8 @@ the repo-local `roborepo-development` skill instead.
 ## The skill model (the #1 thing to get right)
 
 The canonical shared source is a package-owned skill resource at
-**`globals/packages/<package>/skills/<name>/`**. System support skills that are not optional
-packages can still live under **`globals/agents/skills/<name>/`**. Roborepo materializes shared
+**`globals/packages/<package>/skills/<name>/`**. The required base support skill is the only current
+system skill under **`globals/agents/skills/roborepo-support/`**. Roborepo materializes shared
 skills into the machine-local cache at `~/.roborepo/skills/<name>`, then both harnesses read from
 their native skill dir via symlink:
 

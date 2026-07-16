@@ -114,17 +114,25 @@ printf '%s\n' '{"schemaVersion":1,"overrides":[{"type":"package","id":"jcodemunc
 assert "workspace resources: typed MCP replace override validates" \
   bash -c "HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node '${cli}' workspace validate >/dev/null"
 
-legacy_workspace_home="${work}/legacy-workspace-home"
-legacy_workspace_root="${work}/legacy-workspace"
-legacy_source="${work}/legacy-source"
-mkdir -p "${legacy_workspace_home}" "${legacy_source}/globals/agents/skills/custom-import" "${legacy_source}/globals/agents/skills/case-study" "${legacy_source}/globals/commands" "${legacy_source}/manifests/inventory"
-printf -- '---\nname: custom-import\ndescription: custom\n---\n' > "${legacy_source}/globals/agents/skills/custom-import/SKILL.md"
-printf -- '---\nname: case-study\ndescription: changed builtin\n---\n' > "${legacy_source}/globals/agents/skills/case-study/SKILL.md"
-printf 'custom import command\n' > "${legacy_source}/globals/commands/custom-import.md"
-printf '%s\n' '{"packages":[{"id":"workspace-import","label":"Workspace Import","components":[]},{"id":"jcodemunch","label":"Changed Builtin","components":[]}]}' > "${legacy_source}/manifests/inventory/packages.json"
-printf '%s\n' '{"servers":[{"name":"custom-server","commandOrUrl":"node","args":["x"],"harnesses":["codex"]},{"name":"jcodemunch","commandOrUrl":"node","args":["changed"],"harnesses":["codex"]}]}' > "${legacy_source}/manifests/inventory/mcp-servers.json"
-assert "workspace import: copies obvious custom content and reports changed built-ins" \
-  bash -c "HOME='${legacy_workspace_home}' ROBOREPO_STATE_ROOT='${legacy_workspace_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${legacy_workspace_root}' node '${cli}' workspace import '${legacy_source}' >'${work}/workspace-import.out' && test -f '${legacy_workspace_root}/skills/custom-import/SKILL.md' && ! test -e '${legacy_workspace_root}/skills/case-study' && test -f '${legacy_workspace_root}/commands/custom-import.md' && test -f '${legacy_workspace_root}/packages/workspace-import/package.config.json' && grep -q 'custom-server' '${legacy_workspace_root}/mcp/servers.json' && grep -q 'changed built-ins left for review: skill:case-study' '${work}/workspace-import.out'"
+workspace_import_home="${work}/workspace-import-home"
+workspace_import_root="${work}/workspace-import"
+workspace_import_source="${work}/workspace-import-source"
+mkdir -p \
+  "${workspace_import_home}" \
+  "${workspace_import_source}/globals/agents/skills/custom-import" \
+  "${workspace_import_source}/globals/agents/skills/case-study" \
+  "${workspace_import_source}/globals/commands" \
+  "${workspace_import_source}/globals/packages/workspace-import" \
+  "${workspace_import_source}/globals/packages/jcodemunch" \
+  "${workspace_import_source}/manifests/inventory"
+printf -- '---\nname: custom-import\ndescription: custom\n---\n' > "${workspace_import_source}/globals/agents/skills/custom-import/SKILL.md"
+printf -- '---\nname: case-study\ndescription: changed builtin\n---\n' > "${workspace_import_source}/globals/agents/skills/case-study/SKILL.md"
+printf 'custom import command\n' > "${workspace_import_source}/globals/commands/custom-import.md"
+printf '%s\n' '{"schemaVersion":1,"id":"workspace-import","label":"Workspace Import","description":"Workspace import.","lifecycle":"optional","presentation":{"category":"commands","order":100},"resources":[]}' > "${workspace_import_source}/globals/packages/workspace-import/package.config.json"
+printf '%s\n' '{"schemaVersion":1,"id":"jcodemunch","label":"Changed Builtin","description":"Changed builtin.","lifecycle":"optional","presentation":{"category":"commands","order":100},"resources":[]}' > "${workspace_import_source}/globals/packages/jcodemunch/package.config.json"
+printf '%s\n' '{"servers":[{"name":"custom-server","commandOrUrl":"node","args":["x"],"harnesses":["codex"]},{"name":"jcodemunch","commandOrUrl":"node","args":["changed"],"harnesses":["codex"]}]}' > "${workspace_import_source}/manifests/inventory/mcp-servers.json"
+assert "workspace import: copies package configs and reports changed built-ins" \
+  bash -c "HOME='${workspace_import_home}' ROBOREPO_STATE_ROOT='${workspace_import_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_import_root}' node '${cli}' workspace import '${workspace_import_source}' >'${work}/workspace-import.out' && test -f '${workspace_import_root}/skills/custom-import/SKILL.md' && ! test -e '${workspace_import_root}/skills/case-study' && test -f '${workspace_import_root}/commands/custom-import.md' && test -f '${workspace_import_root}/packages/workspace-import/package.config.json' && grep -q 'custom-server' '${workspace_import_root}/mcp/servers.json' && grep -q 'changed built-ins left for review: skill:case-study' '${work}/workspace-import.out'"
 
 # Codex PreToolUse hooks must never surface a hook failure just because Codex passes an empty or
 # malformed payload, and installed hooks must find the repo manifest from install-state.json rather

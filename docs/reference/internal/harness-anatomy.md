@@ -18,7 +18,7 @@ the matching step in [the teaching doc](harnesses-explained.md).
 | Element | What it is | Source | Maintain with |
 | --- | --- | --- | --- |
 | Global rules | The always-on instruction file each harness reads at startup. | Claude: `globals/claude/CLAUDE.md` (generated)<br>Codex: `globals/codex/AGENTS.md` (generated) | `roborepo rules [--check]` |
-| Skills | On-demand capability/instruction bundles the agent loads when relevant. | `globals/agents/skills/<name>/SKILL.md` — materialized into `~/.roborepo/skills/<name>` and linked from harness skill dirs | `roborepo skill new`, `roborepo skill adopt <name>`, `roborepo skill inspect <name>`, `roborepo skill sync-global` |
+| Skills | On-demand capability/instruction bundles the agent loads when relevant. | Package-owned `globals/packages/<package>/skills/<name>/SKILL.md`, plus system `globals/agents/skills/roborepo-support/SKILL.md` — materialized into `~/.roborepo/skills/<name>` and linked from harness skill dirs | `roborepo skill new`, `roborepo skill adopt <name>`, `roborepo skill inspect <name>`, `roborepo skill sync-global` |
 | Slash commands | Named workflows the user starts explicitly (`/case-study`, etc.). | Claude: `globals/claude/commands/` (generated)<br>Codex: `globals/codex/commands/` (generated) | `roborepo skill render-commands [--check]` |
 | Install bundles | Named groups of install-time file operations applied at install/update. Internal to the install pipeline — not a user-facing verb. | `manifests/platform/presets.json` | `roborepo update` (applies them); `roborepo bundle …` is an internal verb called by `scripts/install/main.sh` |
 | Hooks | Scripts the harness runs on lifecycle/tool events. | Claude: `globals/claude/hooks/*.mjs` + `settings.json` wiring<br>Codex: `globals/codex/hooks.json` | edit source, then `roborepo update` |
@@ -58,9 +58,11 @@ override-layering rules: [Rules Parity and Layering](rules-parity-and-layering.m
 **What they do:** on-demand bundles the agent loads when a task matches (`code-style`, `react`,
 `roborepo-support`, …). Shared skills are also exportable to other repos.
 
-**Parity model:** one canonical source, `globals/agents/skills/<name>/SKILL.md`. The installer
-materializes each enabled shared skill into `~/.roborepo/skills/<name>` and links each harness's
-native dir to that machine-local cache entry. Roborepo owns only the skill names it manages;
+**Parity model:** package-owned skills are sourced from
+`globals/packages/<package>/skills/<name>/SKILL.md`; the required base support skill is sourced from
+`globals/agents/skills/roborepo-support/SKILL.md`. The installer materializes each enabled shared
+skill into `~/.roborepo/skills/<name>` and links each harness's native dir to that machine-local
+cache entry. Roborepo owns only the skill names it manages;
 native-installed skills (via native harness tools or `skill-installer`) at unrecognized names are
 left untouched and shown as adoptable drift by `roborepo doctor --installed`. There is no
 intermediate `globals/claude/skills/` directory, and harness homes do not point directly at the
@@ -69,7 +71,7 @@ checkout. (Why a symlink, not a generator: [explained.md Step 4](harnesses-expla
 **To add or change a skill:**
 
 ```sh
-roborepo skill new            # scaffold skill/command + update manifests, links, README
+roborepo skill new            # scaffold package-owned skill/command + update package config, links, README
                               # (wraps native init_skill.py when present; roborepo template otherwise)
 roborepo skill adopt <name>   # move an out-of-band skill into version control
 roborepo skill sync-global    # refresh ~/.roborepo/skills and harness skill views

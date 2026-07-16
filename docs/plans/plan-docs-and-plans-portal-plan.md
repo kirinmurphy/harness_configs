@@ -48,7 +48,7 @@ This plan assumes the package architecture defined by **Unified Package Configur
 
 The Plans portal itself is not dependent on the optional package and may be implemented before the package migration is completely finished.
 
-The separate package migration plan should remove:
+Package unification cleanup has removed the legacy Project Context surfaces:
 
 - `project-context`
 - `/inventory`
@@ -1671,7 +1671,7 @@ The page should include an Errors or Warnings filter.
 - Confirm package presentation category is `commands`.
 - Confirm lifecycle folder names.
 - Confirm `technical-planning-docs` will be replaced, not chained.
-- Keep `project-context` removal in the package migration plan.
+- Treat `project-context` removal as already completed by package unification cleanup.
 
 Deliverable:
 

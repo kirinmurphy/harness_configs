@@ -127,9 +127,10 @@ roborepo index docs path/to/dir
 
 ### Add a shared skill
 
-Use `roborepo skill new` — it scaffolds, registers manifests, and refreshes the shared skill cache
-plus both `~/.claude/skills/<name>` and `~/.codex/skills/<name>` in one step. The canonical source
-lives once in `globals/agents/skills/<name>/`. If you created a skill out-of-band:
+Use `roborepo skill new` — it scaffolds a package-owned skill resource and refreshes the shared
+skill cache plus both `~/.claude/skills/<name>` and `~/.codex/skills/<name>` in one step. The
+canonical source lives once in `globals/packages/<package>/skills/<name>/`. If you created a skill
+out-of-band:
 
 ```sh
 roborepo skill new              # scaffold + refresh shared skill cache + both harness views

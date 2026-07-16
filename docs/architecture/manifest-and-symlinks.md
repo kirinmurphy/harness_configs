@@ -20,7 +20,8 @@
 Shared skills live in:
 
 ```text
-globals/agents/skills/<name>/
+globals/packages/<package>/skills/<name>/
+globals/agents/skills/roborepo-support/
 ```
 
 Install copies only `roborepo-support` by default. Optional skills are copied by onboarding or package toggles. Each roborepo-owned skill copy contains:

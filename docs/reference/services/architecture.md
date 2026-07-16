@@ -193,9 +193,11 @@ backup, and uninstall behavior.
 
 ### Shared skills: canonical source + machine-local cache
 
-The canonical shared source is `globals/agents/skills/<name>/` (each a folder with a `SKILL.md`).
-Roborepo materializes those skills into a machine-local cache at `~/.roborepo/skills/<name>` and
-then symlinks each installed harness view to that cache entry:
+Package-owned shared skills are sourced from `globals/packages/<package>/skills/<name>/` (each a
+folder with a `SKILL.md`). The required base support skill remains a system skill at
+`globals/agents/skills/roborepo-support/`. Roborepo materializes those skills into a
+machine-local cache at `~/.roborepo/skills/<name>` and then symlinks each installed harness view to
+that cache entry:
 
 - **Codex** reads `~/.codex/skills`. The installer links enabled shared skills to
   `~/.roborepo/skills/<name>`, and `~/.codex/skills/<name>` points at that cache entry. Codex's
@@ -203,9 +205,8 @@ then symlinks each installed harness view to that cache entry:
 - **Claude** reads `~/.claude/skills`. The installer links enabled shared skills to the same
   cache entry, and `~/.claude/skills/<name>` points at it too.
 
-The cache entries carry the `.roborepo-managed` marker. Skills are materialized by an
-**enumerate-step** (`install-lib.sh:link_global_skills`), not by manifest rows. This keeps the
-manifest focused on static paths while skills grow dynamically.
+The cache entries carry the `.roborepo-managed` marker. Skills are materialized by enumerating the
+package catalog plus the required system support skill, not by legacy skill manifest rows.
 `scripts/doctor.sh --installed` checks the live cache entry and harness symlinks; `scripts/doctor.sh`
 checks that source dirs exist in the repo.
 
@@ -213,15 +214,16 @@ checks that source dirs exist in the repo.
 
 There are two distinct, firewalled skill layers:
 
-- **Shared** — `globals/agents/skills/<name>/`, the canonical source. Materialized into
-  `~/.roborepo/skills/<name>` and symlinked from each installed harness's native skills dir at
-  install/update time; global on both harnesses and exportable to other repos. Advisory coding
-  skills any repo may receive.
+- **Shared** — package-owned `globals/packages/<package>/skills/<name>/` plus the required system
+  `globals/agents/skills/roborepo-support/`. Materialized into `~/.roborepo/skills/<name>` and
+  symlinked from each installed harness's native skills dir at install/update time; global on both
+  harnesses and exportable to other repos when package-owned. Advisory coding skills any repo may
+  receive.
 - **Internal** — `local/skills/<name>/`, linked **only** into this repo's own project-scope
   dotdirs (`.claude/skills`, `.codex/skills`) by `link-skills.sh`. These describe how to
   develop/maintain this repo and are **never** global and **never** exported. The separation is
-  structural: the export/installer tools read only `globals/agents/skills/`, with no code path
-  to `local/skills/`.
+  structural: the export/installer tools read package-owned and system shared skill sources, with
+  no code path to `local/skills/`.
 
 ### Client utilities (same model, for other repos)
 

@@ -4,7 +4,6 @@ import { repoRoot, workspacePackagesDir } from "./paths.mjs";
 import { experimentalStatePath } from "./state-paths.mjs";
 import { readWorkspaceOverrides, hasReplaceOverride } from "./workspace-resources.mjs";
 
-export const PACKAGES_PATH = path.join(repoRoot, "manifests", "inventory", "packages.json");
 export const PACKAGE_CATEGORIES_PATH = path.join(repoRoot, "manifests", "inventory", "package-categories.json");
 export const BUILT_IN_PACKAGES_DIR = path.join(repoRoot, "globals", "packages");
 export const EXPERIMENTAL_PACKAGES_ENV = "LOAD_EXPERIMENTAL_PACKAGES";
@@ -23,7 +22,6 @@ const RESOURCE_TYPES = new Set([
   "plugin",
   "service",
   "cli-command",
-  "command",
 ]);
 const HARNESSES = new Set(["claude", "codex"]);
 const SKILL_INVOCATIONS = new Set(["auto", "manual"]);
@@ -67,9 +65,7 @@ export function experimentalCommand(args) {
 }
 
 export function readPackageManifest() {
-  const packages = readBuiltInPackageConfigs();
-  if (packages.length > 0) return { packages };
-  return JSON.parse(fs.readFileSync(PACKAGES_PATH, "utf8"));
+  return { packages: readBuiltInPackageConfigs() };
 }
 
 export function readPackageCategories() {
@@ -277,7 +273,7 @@ function normalizeResource(resource, { pkgId, root, index }) {
     next.source = validateInsideSource(root, next.source, `${pkgId}:${next.type}`);
     if (!fs.existsSync(path.join(root, next.source))) throw new Error(`${pkgId}:${next.type} source missing: ${next.source}`);
     validateHarness(next.harness, `${pkgId}:${next.type}`, true);
-  } else if (next.type === "cli-command" || next.type === "command") {
+  } else if (next.type === "cli-command") {
     if (!isCommandName(next.name)) throw new Error(`${pkgId}: CLI command resource needs name`);
   }
   return next;

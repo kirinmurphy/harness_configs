@@ -1,10 +1,9 @@
 # Harness Parity Todo
 
-Backlog of cross-harness parity work. Revised 2026-06-20 after native-alignment,
-portable-install/repair, telemetry lifecycle, project-context, and the
-skills-vs-commands control-plane manifests landed — several original items are now
-done or have moved to dedicated plans. What remains here is the parity work those
-efforts did **not** cover.
+Backlog of cross-harness parity work. Revised 2026-07-16 after native-alignment,
+portable-install/repair, telemetry lifecycle, unified package configuration, and the
+skills-vs-commands package resource model landed — several original items are now done or have
+moved to dedicated plans. What remains here is the parity work those efforts did **not** cover.
 
 ## Resolved Since This Doc Was Written
 
@@ -38,7 +37,7 @@ backlog reads honestly.
   `react`), not in always-on global rules. The candidate rule topics from the
   original item (named exports, helpers at file bottom, `function` for pure utilities,
   no procedural comments, constants over loose status strings, no emoji in UI) are
-  covered by `globals/agents/skills/code-style/` and the language skills. The
+  covered by package-owned `code-style` and language skills. The
   auto-vs-manual policy for these is governed by
   [`skills-vs-commands-invocation-policy.md`](skills-vs-commands-invocation-policy.md)
   and recorded on package `skill` resources.

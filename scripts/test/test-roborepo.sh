@@ -91,6 +91,18 @@ mkdir -p "${workspace_resource_root}/packages/jcodemunch"
 printf '%s\n' '{"schemaVersion":1,"id":"jcodemunch","label":"Bad Replace","description":"Bad replace.","lifecycle":"optional","presentation":{"category":"commands","order":100},"resources":[]}' > "${workspace_resource_root}/packages/jcodemunch/package.config.json"
 assert "workspace resources: package collision requires typed override" \
   bash -c "! env HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node '${cli}' workspace validate >/dev/null 2>'${work}/workspace-package-collision.err' && grep -q 'conflicts with a built-in package' '${work}/workspace-package-collision.err'"
+workspace_shape_home="${work}/workspace-shape-home"
+workspace_shape_root="${work}/workspace-shape"
+mkdir -p "${workspace_shape_root}/packages/legacy-shape"
+printf '%s\n' '{"schemaVersion":1,"id":"legacy-shape","label":"Legacy Shape","description":"Legacy shape.","lifecycle":"optional","presentation":{"category":"commands","order":100},"components":[]}' > "${workspace_shape_root}/packages/legacy-shape/package.config.json"
+assert "workspace resources: package configs require resources field" \
+  bash -c "! env HOME='${workspace_shape_home}' ROBOREPO_STATE_ROOT='${workspace_shape_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_shape_root}' node '${cli}' workspace validate >/dev/null 2>'${work}/workspace-package-shape.err' && grep -q 'needs resources array' '${work}/workspace-package-shape.err'"
+workspace_skill_collision_home="${work}/workspace-skill-collision-home"
+workspace_skill_collision_root="${work}/workspace-skill-collision"
+mkdir -p "${workspace_skill_collision_root}/skills/code-style"
+printf -- '---\nname: code-style\ndescription: override\n---\n' > "${workspace_skill_collision_root}/skills/code-style/SKILL.md"
+assert "workspace resources: package-owned skill collision rejected" \
+  bash -c "! env HOME='${workspace_skill_collision_home}' ROBOREPO_STATE_ROOT='${workspace_skill_collision_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_skill_collision_root}' node '${cli}' workspace validate >/dev/null 2>'${work}/workspace-skill-collision.err' && grep -q 'conflicts with a built-in skill' '${work}/workspace-skill-collision.err'"
 mkdir -p "${workspace_resource_root}/overrides"
 printf '%s\n' '{"schemaVersion":1,"overrides":[{"type":"package","id":"jcodemunch","mode":"replace"}]}' > "${workspace_resource_root}/overrides/resources.json"
 assert "workspace resources: typed package replace override validates" \

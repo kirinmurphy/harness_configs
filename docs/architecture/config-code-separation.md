@@ -31,7 +31,7 @@ behavior: parsing, validation, prompting, linking, copying, pruning, and reporti
 | Shell snippet installs | `manifests/platform/shell-snippets.tsv` | `install-shell-snippets.sh` |
 | Merge prompts | `manifests/platform/prompts/*.md` | `install-lib.sh` |
 | Global harness config | `globals/claude/`, `globals/codex/`, `globals/agents/` | Installers, verify, doctor, write guard |
-| Shared skills | `globals/agents/skills/` | `scripts/build/link-global-skills.sh`, `roborepo skill sync-global`, `roborepo skill export-to-project` |
+| Shared skills | package-owned `globals/packages/*/skills/` plus system `globals/agents/skills/` | `scripts/build/link-global-skills.sh`, `roborepo skill sync-global`, `roborepo skill export-to-project` |
 | Repo-local skills | `local/skills/` | `scripts/build/link-skills.sh`, doctor checks |
 | CLI implementation | command modules under `scripts/cli/` | `scripts/cli/main.mjs` dispatch |
 
@@ -43,9 +43,9 @@ flowchart TD
     manifest["manifests/platform/manifest.tsv"]
     sourceFiles["manifests/platform/source-files.tsv"]
     agentPerms["manifests/inventory/agent-permissions.json"]
-    catalogs["manifests/inventory (catalog) + manifests/platform (plumbing)"]
+    catalogs["globals/packages/*/package.config.json + manifests/inventory/package-categories.json + manifests/platform (plumbing)"]
     rules["globals/rules/..."]
-    skills["globals/agents/skills/"]
+    skills["globals/packages/*/skills/ + globals/agents/skills/"]
     baselines["globals/claude + globals/codex"]
   end
 

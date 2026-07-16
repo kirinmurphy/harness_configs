@@ -31,7 +31,9 @@ the repo-local `roborepo-development` skill instead.
 
 ## The skill model (the #1 thing to get right)
 
-The canonical shared source is **`globals/agents/skills/<name>/`**. Roborepo materializes shared
+The canonical shared source is a package-owned skill resource at
+**`globals/packages/<package>/skills/<name>/`**. System support skills that are not optional
+packages can still live under **`globals/agents/skills/<name>/`**. Roborepo materializes shared
 skills into the machine-local cache at `~/.roborepo/skills/<name>`, then both harnesses read from
 their native skill dir via symlink:
 
@@ -48,7 +50,8 @@ These managed cache entries are created by the installer's enumerate-step
 
 ## Adding a shared skill
 
-Use `roborepo skill new` — it scaffolds, registers, and fans out to both harnesses in one step:
+Use `roborepo skill new` — it scaffolds the package config, registers resources, and fans out to
+both harnesses in one step:
 ```bash
 roborepo skill new
 ```
@@ -67,9 +70,9 @@ roborepo skill inspect <name>
 ```
 
 Manual add (for reference only — prefer the commands above):
-1. Create `globals/agents/skills/<name>/SKILL.md`
-2. Register in `manifests/inventory/skill-invocation.json`
-3. For slash commands, update `manifests/inventory/slash-commands.json` and run
+1. Create `globals/packages/<package>/skills/<name>/SKILL.md`
+2. Add a `skill` resource to `globals/packages/<package>/package.config.json`
+3. For slash commands, add a `slash-command` entrypoint or resource and run
    `roborepo skill render-commands --check`
 4. Run `roborepo skill sync-global` to refresh the shared skill cache and harness links
 5. Update README/docs tables when the user-facing surface changes

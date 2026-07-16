@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { loadPackageCatalog, validatePackageCatalog } from "../cli/package-catalog.mjs";
 import { listPackageCommands } from "../cli/package-commands.mjs";
 import { loadSlashCommandPlan } from "../cli/slash-commands.mjs";
@@ -34,5 +38,33 @@ assert(sections.has("Code Conventions"), "missing Code Conventions section");
 assert(sections.has("Chat-Time Output"), "missing Chat-Time Output section");
 assert(sections.get("Token Optimization").items.some((item) => item.id === "jcodemunch"), "jcodemunch not visible in Token Optimization");
 assert(sections.get("Commands").items.some((item) => item.label === "/tighten"), "/tighten not visible in Commands");
+
+const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-package-catalog-"));
+try {
+  fs.mkdirSync(path.join(tempRoot, "manifests", "inventory"), { recursive: true });
+  fs.writeFileSync(
+    path.join(tempRoot, "manifests", "inventory", "package-categories.json"),
+    JSON.stringify({ schemaVersion: 1, categories: [{ id: "commands", label: "Commands", order: 1 }] }),
+  );
+  fs.mkdirSync(path.join(tempRoot, "globals", "packages", "legacy-shape"), { recursive: true });
+  fs.writeFileSync(path.join(tempRoot, "globals", "packages", "legacy-shape", "package.config.json"), JSON.stringify({
+    schemaVersion: 1,
+    id: "legacy-shape",
+    label: "Legacy Shape",
+    description: "Legacy package shape.",
+    presentation: { category: "commands" },
+    components: [],
+  }));
+  const result = spawnSync(process.execPath, [
+    "-e",
+    `import(${JSON.stringify(path.resolve("scripts/cli/package-catalog.mjs"))}).then((m) => { try { m.loadPackageCatalog({ includeUnavailable: true }); process.exit(1); } catch (err) { process.exit(String(err.message).includes("resources must be an array") ? 0 : 1); } })`,
+  ], {
+    env: { ...process.env, ROBOREPO_APP_ROOT: tempRoot, ROBOREPO_STATE_DIR: path.join(tempRoot, "state") },
+    stdio: "ignore",
+  });
+  assert(result.status === 0, "package configs with legacy components should be rejected");
+} finally {
+  fs.rmSync(tempRoot, { recursive: true, force: true });
+}
 
 console.log("ok: package catalog behavior");

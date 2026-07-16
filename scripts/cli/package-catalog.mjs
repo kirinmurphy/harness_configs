@@ -226,7 +226,7 @@ function normalizePackage(pkg, { file, root, origin }) {
   const lifecycle = pkg.lifecycle || "optional";
   if (!PACKAGE_LIFECYCLES.has(lifecycle)) throw new Error(`${pkg.id}: unknown lifecycle: ${lifecycle}`);
   const presentation = normalizePresentation(pkg);
-  const resources = normalizeResources(pkg.resources ?? pkg.components, { pkgId: pkg.id, file, root });
+  const resources = normalizeResources(pkg.resources, { pkgId: pkg.id, file, root });
   return {
     ...pkg,
     lifecycle,

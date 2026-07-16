@@ -1,6 +1,6 @@
 ---
 name: tighten
-description: Use ONLY when the user explicitly asks to tighten, clean up, or harden code against this project's own patterns and conventions — via the `/tighten` command or a clear instruction like "tighten this" or "clean this up against our patterns". Improves implementation quality without changing intended UX, producing specific, project-anchored callouts (cite the exact pattern, path, or rule) rather than generic cleanup advice. Pulls Project Context inventory facts when present and offers to generate them when missing. Do not auto-invoke for ordinary edits, do not trigger on the mere presence of code, and do not change product behavior unless the user asks.
+description: Use ONLY when the user explicitly asks to tighten, clean up, or harden code against this project's own patterns and conventions — via the `/tighten` command or a clear instruction like "tighten this" or "clean this up against our patterns". Improves implementation quality without changing intended UX, producing specific, project-anchored callouts (cite the exact pattern, path, or rule) rather than generic cleanup advice. Uses existing project docs and inventory facts when present. Do not auto-invoke for ordinary edits, do not trigger on the mere presence of code, and do not change product behavior unless the user asks.
 ---
 
 # Tighten
@@ -18,8 +18,8 @@ evidence so cleanup work is grounded in the current codebase:
 - Use `code-style` for general conventions.
 - Load `javascript-typescript`, `react`, or other language/framework skills when the scope calls
   for them.
-- Use Project Context inventory, when present, as evidence for reusable surfaces, vocabulary,
-  ownership boundaries, and known risk areas.
+- Use existing project docs or inventory facts, when present, as evidence for reusable surfaces,
+  vocabulary, ownership boundaries, and known risk areas.
 - Verify every finding against the actual code before reporting or changing it.
 
 Skills cannot programmatically call other skills in this harness. A skill can instruct the agent to
@@ -31,16 +31,14 @@ Tighten is better with inventory facts, but does not require them.
 
 - If inventory facts exist, read the relevant files and anchor findings to documented
   patterns/surfaces.
-- If they are missing and the user invoked tighten explicitly, **ask** whether to run
-  `roborepo project-context inventory` first (it is like indexing the code — cheap, deterministic,
-  improves specificity). Do not run it silently.
-- If the user declines, proceed using `code-style` + direct code inspection.
+- If they are missing, proceed using `code-style` + direct code inspection. Do not invent or
+  regenerate project inventory docs unless the user explicitly asks for that workflow.
 
 ## Loop
 
 1. Identify the scope: the user's named files/area, else the current diff/changed files.
 2. Load `code-style` plus language/framework skills required by the scoped files.
-3. Read relevant Project Context inventory docs when they exist.
+3. Read relevant project inventory or handoff docs when they exist.
 4. Review the scope against those inputs. For each issue, produce a **specific** callout:
    - what: the exact problem, with `path:line`.
    - rule/pattern: which convention or documented pattern it violates, by name.

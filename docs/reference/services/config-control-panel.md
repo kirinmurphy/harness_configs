@@ -25,15 +25,15 @@ the user's live harness config, some in repo manifests, some in roborepo state.
 | **Permission behavior** | A named behavior or arbitrary command set to `allow`, `ask`, `deny`, or `default` | `manifests/inventory/agent-permissions.json` (defaults); `~/.roborepo/command-overrides.json` (personal overrides); live config (active render) |
 | **Snapshot** | The assembled current state the UI renders | computed by `readConfigSnapshot()` |
 
-### Component types
+### Resource Types
 
-A package is `{ id, label, components: [...], requires?: [...] }`. Enabling a package
-applies each component; the enable/disable switch dispatches on `component.type`.
+A package is `{ schemaVersion, id, label, resources: [...], requires?: [...] }`. Enabling a package
+applies each installable resource; the enable/disable switch dispatches on `resource.type`.
 
 | type | Wires | Notes |
 | --- | --- | --- |
 | `mcp` | An MCP server registration | via `roborepo mcp add` |
-| `command` | A package-owned `roborepo` subcommand | resolved by command name at runtime |
+| `cli-command` | A package-owned `roborepo` subcommand | resolved by command name at runtime |
 | `rules` | A rules block in the harness rules file(s) | `harness: claude` → `CLAUDE.md`, `codex` → `AGENTS.md`, `both` → each present harness; merged/removed by unique first line |
 | `hooks` | Hook entries in `~/.claude/settings.json` | merged by command |
 | `permissions` | `permissions.allow` entries | exact-match add/remove |
@@ -41,18 +41,18 @@ applies each component; the enable/disable switch dispatches on `component.type`
 | `service` | A registered async handler's bespoke install | e.g. telemetry's spool + capture hooks |
 | `skill` | A shared-skill link into harness skill dirs | reuses the skill linker |
 
-Adding a new feature of an existing shape is data, not code: declare its components in
-`packages.json`. A new shape needs a new `case` in the enable/disable switch
+Adding a new feature of an existing shape is data, not code: declare its resources in the owning
+`package.config.json`. A new shape needs a new `case` in the enable/disable switch
 (`scripts/cli/packages.mjs`).
 
 ### Package composition
 
 A package may list `requires: [pkgId, ...]`. Enabling it enables every required package
-first (deduped, cycle-safe), then its own components. A composite package — one whose
+first (deduped, cycle-safe), then its own resources. A composite package — one whose
 payload is purely `requires` — bundles other packages under a single toggle. Example:
 `code-intel` requires `jcodemunch` + `jdocmunch`, so enabling it enables both indexers.
 
-A composite is reported enabled only when its own components and every required package
+A composite is reported enabled only when its own resources and every required package
 are enabled.
 
 > Composition (`requires`, runtime feature enablement) is distinct from an install
@@ -84,7 +84,7 @@ panel renders:
 ### Reading state
 
 `readConfigSnapshot()` assembles a JSON snapshot from the live harness config, the
-package catalog, skill manifests, the permission manifest, and roborepo state files.
+package catalog, skill resources, the permission manifest, and roborepo state files.
 `GET /api/config` returns it; both the web view and the terminal flow render from it.
 
 Package rows include `status`, `desired`, and `componentStatus` so the panel can distinguish

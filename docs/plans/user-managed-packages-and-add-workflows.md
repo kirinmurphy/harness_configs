@@ -8,7 +8,7 @@
 ## Purpose
 
 Roborepo can already manage internal packages: a package is a named feature made from typed
-components such as skills, MCP servers, rules, hooks, permissions, plugins, and services. The config
+resources such as skills, MCP servers, rules, hooks, permissions, plugins, and services. The config
 portal and onboarding flow expose those internal packages as top-level behavior toggles.
 
 The missing product surface is user-managed content. A user may want to add one custom skill, one
@@ -26,10 +26,11 @@ they add.
 ### Package
 
 A package is Roborepo's unified management unit. It describes one user-visible feature and the
-components required to install, enable, disable, inspect, repair, and export that feature.
+resources required to install, enable, disable, inspect, repair, and export that feature.
 
-Built-in packages currently live in `manifests/inventory/packages.json`. User packages should use
-the same package-shaped schema, with additional origin and source metadata.
+Built-in packages live as package-local `package.config.json` files under `globals/packages/*/`.
+User packages should use the same package-shaped schema, with additional origin and source
+metadata when needed.
 
 Example package-shaped record:
 
@@ -44,7 +45,7 @@ Example package-shaped record:
     "kind": "path",
     "path": "./my-reviewer"
   },
-  "components": [
+  "resources": [
     {
       "type": "skill",
       "id": "my-reviewer",
@@ -54,11 +55,11 @@ Example package-shaped record:
 }
 ```
 
-### Component
+### Resource
 
-A component is one typed installable piece inside a package.
+A resource is one typed installable or presentational piece inside a package.
 
-Existing component types already include:
+Existing resource types already include:
 
 - `skill`
 - `mcp`
@@ -67,7 +68,7 @@ Existing component types already include:
 - `permissions`
 - `plugin`
 - `service`
-- `command`
+- `cli-command`
 - `codex_tool_approvals`
 
 User-managed content should reuse these types rather than inventing separate per-kind state models.
@@ -107,9 +108,9 @@ source of truth for user-authored content.
 
 Roborepo already has several pieces of this architecture:
 
-- Built-in package definitions live in `manifests/inventory/packages.json`.
-- `scripts/cli/package-catalog.mjs` loads the built-in package catalog.
-- `scripts/cli/packages.mjs` enables and disables packages by dispatching on component type.
+- Built-in package definitions live in `globals/packages/*/package.config.json`.
+- `scripts/cli/package-catalog.mjs` loads built-in and workspace package configs.
+- `scripts/cli/packages.mjs` enables and disables packages by dispatching on resource type.
 - `scripts/cli/package-probes.mjs` computes desired vs observed package live state.
 - `scripts/cli/config.mjs` builds the `/config` snapshot and maps it to behavior sections.
 - `scripts/cli/config-mutate.mjs` provides shared mutation primitives for the portal and onboarding.
@@ -117,7 +118,8 @@ Roborepo already has several pieces of this architecture:
 
 The current gaps:
 
-- Only built-in packages are cataloged as top-level package records.
+- Built-in packages are cataloged as top-level package records; workspace package configs are also
+  discoverable.
 - User-added native skills can be detected, but they are not first-class package records.
 - `buildBehaviorView()` is still hard-coded around known internal package IDs and section buckets.
 - Users have simple flows for some single-type things, especially skills and MCP servers, but not
@@ -142,10 +144,10 @@ This gives one model for:
 - portal rows
 - onboarding rows
 - source inspection
-- component drift reporting
+- resource drift reporting
 
 The user does not need to start with the package concept. Packages become visible when the user asks
-to manage all installed items, group several components, export/share a setup, or inspect how
+to manage all installed items, group several resources, export/share a setup, or inspect how
 Roborepo installed something.
 
 ### Typed Add Flows Are The Default Creation Path
@@ -228,7 +230,7 @@ Example manifest:
   "label": "Team review toolkit",
   "description": "Team review skill plus chat-time review reminders.",
   "category": "Code Conventions",
-  "components": [
+  "resources": [
     {
       "type": "skill",
       "id": "team-reviewer",
@@ -320,10 +322,10 @@ filesystem
 - user source path
 - package manifest path or generated package record
 - enabled/desired state
-- observed live state per component
+- observed live state per resource
 - exact live harness files touched
 - ownership markers
-- component-level warnings such as native collision or partial install
+- resource-level warnings such as native collision or partial install
 - export/remove commands
 
 ### Web And Onboard Use The Same Model
@@ -393,7 +395,7 @@ The main simplification is not removing capability. It is routing new user-creat
 
 1. User runs `roborepo add skill ./my-reviewer`.
 2. Roborepo validates that the folder contains `SKILL.md`.
-3. Roborepo creates a package-shaped user record with one `skill` component.
+3. Roborepo creates a package-shaped user record with one `skill` resource.
 4. Roborepo materializes the skill into the managed local install path.
 5. Roborepo links or copies the skill into installed harness skill dirs, respecting native
    collisions.
@@ -405,7 +407,7 @@ The main simplification is not removing capability. It is routing new user-creat
 
 1. User runs `roborepo add rule ./chat-output.md --category "Chat-Time Output"`.
 2. Roborepo validates the markdown file and asks which harnesses it applies to if omitted.
-3. Roborepo creates a user package with one `rules` component.
+3. Roborepo creates a user package with one `rules` resource.
 4. Roborepo marks the package desired/enabled and re-renders live rules.
 5. Roborepo prints a receipt showing the source file, managed ID, rendered harness files, and
    inspect/export/remove commands.
@@ -415,17 +417,17 @@ The main simplification is not removing capability. It is routing new user-creat
 
 1. User runs `roborepo add` and chooses "Multiple things together".
 2. Roborepo asks for a package name and category.
-3. User adds a skill component, rule component, and permission component through the wizard.
+3. User adds a skill resource, rule resource, and permission resource through the wizard.
 4. Roborepo writes a visible package folder or imports from one supplied by the user.
 5. Roborepo enables the package as one unit.
-6. `/config` shows one grouped row, with component details available in inspect.
+6. `/config` shows one grouped row, with resource details available in inspect.
 
 ### Exporting User Content
 
 1. User runs `roborepo package export-all ./roborepo-user-config`.
 2. Roborepo writes portable package folders for all user-managed items.
 3. Export output includes manifests, skill files, rule snippets, hook fragments, and enough metadata
-   to recreate MCP/plugin/permission components.
+   to recreate MCP/plugin/permission resources.
 4. Roborepo reports any items that cannot be fully exported because their source is external or
    only represented by live harness state.
 
@@ -445,7 +447,7 @@ The main simplification is not removing capability. It is routing new user-creat
 - Disable should remove Roborepo-owned live writes, not unrelated matching user-authored config.
 - Remove should ask before deleting Roborepo's local cache and should not delete the user's original
   source path unless explicitly requested.
-- Export should preserve component structure and relative paths where possible.
+- Export should preserve resource structure and relative paths where possible.
 
 ## Data Integrity And Validation
 
@@ -457,17 +459,17 @@ User package manifests should validate:
 - package ID format
 - origin or namespace
 - label
-- component list
-- component source paths
+- resource list
+- resource source paths
 - path containment inside the package folder for relative sources
 - supported harness values
-- duplicate component IDs
+- duplicate resource IDs
 - conflicts with built-in package IDs
-- unsupported component types
+- unsupported resource types
 
 ### Source Path Safety
 
-Relative component source paths in portable package folders must not escape the package root.
+Relative resource source paths in portable package folders must not escape the package root.
 
 For direct add flows, Roborepo should record:
 
@@ -486,7 +488,7 @@ Roborepo should continue using explicit ownership markers where possible:
 - `.roborepo-managed` for managed skills
 - desired-state package registry for package ownership
 - stable metadata in generated package records
-- exact component IDs for future hook/rule ownership where schemas allow it
+- exact resource IDs for future hook/rule ownership where schemas allow it
 
 When ownership is weak, the portal should show `external` or `unknown` instead of pretending the
 item is safely reversible.
@@ -566,18 +568,18 @@ If the source path still exists but differs from the cached copy, inspect should
 
 ### External MCP Or Plugin
 
-Some components are references, not local files. Export should write the manifest metadata needed to
+Some resources are references, not local files. Export should write the manifest metadata needed to
 recreate the registration, but it may not be able to vendor the underlying package/plugin.
 
 ### Permissions Without Ownership
 
-If a permission was added manually outside Roborepo and matches a user package component, disable
+If a permission was added manually outside Roborepo and matches a user package resource, disable
 should not silently remove it. Roborepo should only remove permissions it owns or ask the user to
 confirm adoption/removal.
 
 ### Rules With Similar Text
 
-Rule snippets should be tracked by package/component identity, not only by matching text, wherever
+Rule snippets should be tracked by package/resource identity, not only by matching text, wherever
 the render model allows that. Text matching is acceptable for read-only external detection but weak
 for destructive removal.
 
@@ -592,7 +594,7 @@ the source is moved or the shell starts from a different directory.
 ### Phase 1 - Catalog And Schema
 
 - [ ] Define a user package manifest schema with `schemaVersion`, `id`, `origin`, `label`,
-      `description`, `category`, `source`, `scope`, `components`, and `requires`.
+      `description`, `category`, `source`, `scope`, `resources`, and `requires`.
 - [ ] Add a user package catalog loader that merges built-in packages with user package records.
 - [ ] Namespace user package IDs and reject collisions with built-ins.
 - [ ] Add manifest validation with clear errors.
@@ -629,7 +631,7 @@ the source is moved or the shell starts from a different directory.
 - [ ] Add `roborepo package export-all <dir>`.
 - [ ] Redact or placeholder secrets and machine-local values during export.
 - [ ] Add `roborepo package remove <id>`.
-- [ ] Make remove disable live components and delete Roborepo-managed local copies without deleting
+- [ ] Make remove disable live resources and delete Roborepo-managed local copies without deleting
       original source paths by default.
 
 ### Phase 5 - Drift, Adopt, Repair
@@ -665,7 +667,7 @@ the source is moved or the shell starts from a different directory.
 6. **Should package category be free-form?** Free-form categories are flexible but can clutter the
    portal; a fixed list plus `User Installs` fallback is simpler.
 7. **How should rule snippets express "chat-time output"?** This might be a category only, or a
-   more specific component subtype/presentation hint.
+   more specific resource subtype/presentation hint.
 8. **How should user package sharing handle secrets?** Hook commands, MCP env vars, and plugin
    configuration may include local paths or credentials that should not be exported by default.
 9. **When should project-scoped user packages ship?** Global scope matches current control-plane

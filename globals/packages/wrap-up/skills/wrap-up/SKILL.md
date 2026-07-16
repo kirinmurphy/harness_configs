@@ -21,9 +21,8 @@ re-deriving context. It reviews what was built, brings docs in line with it, che
 for anything left uncommitted, commits, and hands back both a status summary and a
 paste-ready prompt for a fresh chat.
 
-It is the session-boundary counterpart to `tighten` (code-quality mid-session) and
-`project-context` (doc refresh on demand) — wrap-up orchestrates both plus commit and
-handoff, only when the user is ending the session.
+It is the session-boundary counterpart to `tighten` (code-quality mid-session) and targeted doc
+sync — wrap-up orchestrates both plus commit and handoff, only when the user is ending the session.
 
 ## When To Activate
 
@@ -56,17 +55,17 @@ say so explicitly rather than guessing from the working tree.
 
 ### 2. Sync documentation
 
-- If the project has a Project Context doc set (`docs/project-context/`,
-  `docs/handoff/`, or wherever `project-context.config.json` / `package.json`
-  `"projectContext"` points), load the `project-context` skill and update the docs
-  touched by this session's changes.
+- If the project has a handoff or inventory doc set (`docs/handoff/`, `docs/inventory/`, or a
+  project-specific equivalent), update only the docs touched by this session's changes using direct
+  code inspection. If a dedicated doc-refresh skill exists in the current environment, load it;
+  otherwise proceed without one.
 - Separately, check for any other project-specific tracking doc implied by the
   session's own work — e.g. an abstraction matrix, decision log, architecture doc,
   ADR directory, changelog. These are project-defined, not roborepo-defined: find them
   by name/convention already established in the repo (search for the doc, don't invent
   a new one) and update the ones this session's changes actually affect.
-- Do not restructure or rewrite docs wholesale. Small, targeted edits, preserving
-  existing structure — same discipline as `project-context`.
+- Do not restructure or rewrite docs wholesale. Small, targeted edits, preserving existing
+  structure.
 - Report drift found but not fixed, separately from what was changed.
 
 ### 3. Check for stray or uncommitted state

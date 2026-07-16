@@ -431,12 +431,17 @@ export async function reconcileEnabledPackages(rest = []) {
   }
   const catalog = loadPackageCatalog({ includeUnavailable: true });
   const known = new Set(catalog.map((pkg) => pkg.id));
+  const stale = [];
   for (const id of enabledIds) {
     if (!known.has(id)) {
-      console.warn(`  warn: enabled package not in catalog: ${id}`);
+      stale.push(id);
+      console.warn(`${dryRun ? "  [dry-run] would remove" : "  remove"} stale enabled package not in catalog: ${id}`);
       continue;
     }
     await enablePackage([id, "--reconcile", ...(dryRun ? ["--dry-run"] : [])]);
+  }
+  if (!dryRun) {
+    for (const id of stale) setPackageEnabled(id, false);
   }
 }
 

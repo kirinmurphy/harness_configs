@@ -355,10 +355,10 @@ read-only skills lightweight.
 
 ### Completed
 
-- **`manifests/inventory/skill-invocation.json`** — shipped as the source of
-  truth for skill risk tier and desired invocation behavior.
-- **`manifests/inventory/slash-commands.json`** — shipped with the command
-  catalog (skill-backed and standalone entries, harness targets).
+- **Package `skill` resources** — shipped as the source of truth for skill risk tier and desired
+  invocation behavior.
+- **Package `slash-command` resources** — shipped with the command catalog (skill-backed and
+  standalone entries, harness targets).
 - **`scripts/build/render-slash-commands.mjs`** — shipped as the renderer/checker for generated
   Claude and Codex slash-command files.
 - **`docs/reference/internal/skill-invocation-audit.md`** — shipped as a hand-authored baseline
@@ -369,9 +369,8 @@ read-only skills lightweight.
   medium-risk trigger language. It verifies expected prompt examples contain declared trigger
   phrases, near-miss examples avoid those phrases, and each skill description still carries both
   trigger and skip phrases.
-- **Manual-only policy validation** — shipped in the slash-command validator: `invocation=manual`
-  now requires `explicit_command=true`, and every `explicit_command=true` skill must have a
-  skill-backed slash command.
+- **Manual-only policy validation** — shipped in package catalog validation: `invocation=manual`
+  now requires a slash-command entrypoint.
 
 ### Remaining
 
@@ -408,8 +407,8 @@ itself.
 ## Open Decisions
 
 - Can either harness expose loaded-skill metadata to hooks or status output?
-- Should command docs link directly to `manifests/inventory/slash-commands.json`, or
-  describe only the generated outputs?
+- Should command docs link directly to owning package configs, or describe only the generated
+  outputs?
 - Which medium-risk skills should be split into helper + mode?
 - Which skills should get generated skill-backed commands while remaining
   available as auto-invokable helpers?
@@ -420,8 +419,8 @@ itself.
 - Every shared skill has an explicit risk and invocation classification.
 - Medium-risk skill descriptions include clear skip conditions.
 - High-risk workflows cannot auto-load silently.
-- Generated slash commands match `manifests/inventory/slash-commands.json`. Skill-backed
-  commands do not duplicate skill bodies; standalone commands have explicit
+- Generated slash commands match package `slash-command` resources. Skill-backed commands do not
+  duplicate skill bodies; standalone commands have explicit
   source files. **Shipped for current commands; keep this as a regression criterion.**
 - Trigger tests cover expected invocation and accidental near misses.
 - Claude/Codex differences are explicit and generated or checked.
@@ -435,8 +434,6 @@ itself.
 - `scripts/build/skill-lib.sh` and `scripts/cli/skill-lib.mjs` already define
   reusable skill discovery and linking rules that a command-wrapper renderer
   should share.
-- `docs/plans/project-context-v2-plan.md` is a likely `/project-context` or
-  `/technical-planning-mode` candidate.
 - `docs/reference/internal/rules-parity-and-layering.md` explains how always-on
   rules render.
 - `docs/reference/services/claude-hooks.md` and

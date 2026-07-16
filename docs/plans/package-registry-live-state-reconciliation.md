@@ -1,7 +1,7 @@
 # Package Registry vs Live State Reconciliation
 
 > Status: active. First read-only reconciliation pass shipped: `/api/config` now reports
-> package `status`, `desired`, and per-component `componentStatus` while preserving the
+> package `status`, `desired`, and per-resource `componentStatus` while preserving the
 > legacy boolean `enabled` for existing UI behavior. Follow-up shipped: the existing
 > `enabled-packages.json` registry now records desired state for every package type, not only
 > rules/commands, so live-only service/skill/plugin artifacts report as `external` instead of
@@ -14,7 +14,7 @@ The config portal currently renders package state from a mix of sources:
 
 - `~/.roborepo/enabled-packages.json` for rules packages.
 - Live Claude/Codex config for plugins, hooks, permissions, MCP servers, services, and skills.
-- Package catalog data from `manifests/inventory/packages.json`.
+- Package catalog data from package-local `package.config.json` files.
 
 That means "enabled" can become ambiguous. A package can be marked enabled in the registry
 while its live artifacts are missing, or live artifacts can exist while the registry does not
@@ -22,8 +22,8 @@ know why they are there.
 
 The caveman package exposed this because it now has both:
 
-- a `plugin` component in Claude settings
-- a `rules` component in the roborepo package registry
+- a `plugin` resource in Claude settings
+- a `rules` resource in the roborepo package registry
 
 If only one side exists, the portal should not collapse that into a simple on/off boolean.
 
@@ -35,11 +35,11 @@ Drift is expected, not exceptional.
   registrations directly.
 - The native harness can install or remove plugins outside roborepo.
 - Older roborepo installs may predate the current registry model.
-- Package definitions can change after install, adding or removing components.
+- Package definitions can change after install, adding or removing resources.
 - Enable/disable can fail halfway through because a command is unavailable, a file is malformed,
   a harness home is missing, or a native directory collides with a managed copy.
 - `roborepo update` can rerender rules and copy managed files without reapplying every optional
-  package component.
+  package resource.
 - `--telemetry-only` intentionally writes live telemetry artifacts without full install state.
 - Project-level config can override global config, especially permissions.
 - Composite packages can be logically enabled through `requires` even when they own no artifacts.
@@ -50,7 +50,7 @@ Separate intent from observation.
 
 | Layer | Meaning | Example |
 | --- | --- | --- |
-| Catalog | What roborepo knows how to install | `packages.json` component list |
+| Catalog | What roborepo knows how to install | package `resources` list |
 | Desired state | What roborepo should maintain | enabled package registry |
 | Observed state | What exists on disk / in harness config | hooks, rules, plugin bools, skill markers |
 | Ownership | Whether observed state is roborepo-managed | `.roborepo-managed`, managed block, registry marker |
@@ -60,14 +60,14 @@ The portal should render a richer package status:
 
 | Status | Meaning |
 | --- | --- |
-| `enabled` | Desired and all observed components present |
-| `disabled` | Not desired and no roborepo-owned observed components present |
-| `partial` | Some but not all desired components are present |
-| `external` | Observed components exist, but registry does not claim them |
-| `stale` | Registry claims the package, but catalog no longer has it or components changed |
+| `enabled` | Desired and all observed resources present |
+| `disabled` | Not desired and no roborepo-owned observed resources present |
+| `partial` | Some but not all desired resources are present |
+| `external` | Observed resources exist, but registry does not claim them |
+| `stale` | Registry claims the package, but catalog no longer has it or resources changed |
 | `blocked` | Desired, but a collision or missing dependency prevents materialization |
 
-## Component Drift Matrix
+## Resource Drift Matrix
 
 ### `rules`
 
@@ -109,7 +109,7 @@ Drift cases:
 
 Best fix:
 
-- Match roborepo-owned hooks by stable component ID, not only command text.
+- Match roborepo-owned hooks by stable resource ID, not only command text.
 - If native schemas allow it, stamp hook entries with metadata such as `roborepoPackage`.
 - Until then, compare against source fragments and remove only exact owned entries.
 - Portal should show hook diff: missing, extra-old, present.
@@ -152,7 +152,7 @@ Drift cases:
 - Registry claims package, but `enabledPlugins[id]` is false or missing.
 - Marketplace exists, but plugin download has not happened yet.
 - Plugin cached locally but disabled.
-- Plugin package also has rules; one component exists without the other.
+- Plugin package also has rules; one resource exists without the other.
 
 Best fix:
 
@@ -160,8 +160,8 @@ Best fix:
 - Add a package desired-state registry that covers plugin packages too, not only rules packages.
 - Show plugin effectiveness as "enabled in settings" vs "installed/downloaded" if the native
   cache path can be detected safely.
-- For mixed packages, display per-component status and a one-click repair that applies missing
-  components.
+- For mixed packages, display per-resource status and a one-click repair that applies missing
+  resources.
 
 ### `mcp`
 
@@ -202,7 +202,7 @@ Drift cases:
 
 Best fix:
 
-- Service packages should expose a `probe()` and `repair()` handler, not rely on generic component
+- Service packages should expose a `probe()` and `repair()` handler, not rely on generic resource
   checks.
 - Keep "capture enabled" separate from "portal running".
 - Decide whether telemetry-only should write desired package state or a distinct standalone state.
@@ -218,7 +218,7 @@ Artifacts:
 Drift cases:
 
 - Managed skill exists in one harness but not the other.
-- Managed copy is stale against `globals/agents/skills/<name>`.
+- Managed copy is stale against the package-owned or system skill source.
 - Native skill directory exists with same name and no marker.
 - Registry/selection says installed but copied skill was removed manually.
 
@@ -234,7 +234,7 @@ Best fix:
 Artifacts:
 
 - Desired: package registry for the composite and each required package.
-- Observed: component status of dependencies.
+- Observed: resource status of dependencies.
 
 Drift cases:
 
@@ -293,12 +293,12 @@ Still needed: create a versioned package state file, replacing the older flat re
 
 Rules rendering can still read from this file, but it should no longer be rules-specific.
 
-### 2. Add component probes
+### 2. Add Resource Probes
 
-Each component type gets a pure read probe:
+Each resource type gets a pure read probe:
 
 ```js
-probeComponent(pkg, component) -> {
+probeResource(pkg, resource) -> {
   desired: boolean,
   observed: "present" | "missing" | "partial" | "external" | "blocked",
   owner: "roborepo" | "external" | "unknown",
@@ -306,30 +306,31 @@ probeComponent(pkg, component) -> {
 }
 ```
 
-`readConfigSnapshot()` should report both package-level summary status and per-component status.
+`readConfigSnapshot()` should report both package-level summary status and per-resource status
+through the existing `componentStatus` API field.
 
 ### 3. Make enable/disable transactional enough
 
 Package mutation should:
 
 1. Record desired state.
-2. Apply every component.
-3. Probe every component.
+2. Apply every resource.
+3. Probe every resource.
 4. Return `enabled`, `partial`, or `blocked` with details.
 
-Do not pretend a package is enabled just because the first component succeeded.
+Do not pretend a package is enabled just because the first resource succeeded.
 
 ### 4. Add repair/adopt/forget actions
 
 Portal and CLI should support:
 
-- `repair`: apply missing desired components again.
+- `repair`: apply missing desired resources again.
 - `adopt`: mark compatible external observed state as desired/owned where safe.
 - `forget`: remove desired registry state while leaving external live config untouched.
 - `remove`: remove roborepo-owned observed artifacts.
 
 For destructive or ambiguous cases, ask. Never remove user-owned state just because it matches
-a package component by text.
+a package resource by text.
 
 ### 5. Show drift in the UI
 
@@ -341,7 +342,7 @@ Replace a single on/off dot with:
 - external: observed without desired
 - blocked: collision or malformed config
 
-The row should expand to component details:
+The row should expand to resource details:
 
 ```text
 caveman
@@ -354,7 +355,7 @@ caveman
 
 1. Introduce the new package state file while still reading the old rules registry.
 2. On first read, migrate old enabled rule package IDs into the new state file.
-3. For packages with live observed components but no registry entry, mark as `external`, not enabled.
+3. For packages with live observed resources but no registry entry, mark as `external`, not enabled.
 4. Add repair/adopt/forget controls.
 5. Once migration is stable, remove the rules-only registry path.
 
@@ -374,16 +375,16 @@ caveman
 Likely files:
 
 - `scripts/cli/package-state.mjs` - desired-state registry read/write/migration.
-- `scripts/cli/package-probes.mjs` - component probes and package status folding.
+- `scripts/cli/package-probes.mjs` - resource probes and package status folding.
 - `scripts/cli/packages.mjs` - transaction-style enable/disable using probes.
-- `scripts/cli/config.mjs` - snapshot includes desired/observed/component status.
+- `scripts/cli/config.mjs` - snapshot includes desired/observed/resource status.
 - `scripts/cli/config-dashboard.mjs` - render partial/external/blocked states.
 - `scripts/doctor.sh` - installed drift checks for package desired vs observed.
 - `docs/reference/services/config-control-panel.md` - update once behavior ships.
 
 ## Test Plan
 
-- Unit-style Node smoke tests for each component probe against temp home dirs.
+- Unit-style Node smoke tests for each resource probe against temp home dirs.
 - Package mutation tests that force partial failure and assert `partial` status.
 - Migration test from old `enabled-packages.json` to new package state.
 - Portal snapshot test for `enabled`, `disabled`, `partial`, `external`, and `blocked`.

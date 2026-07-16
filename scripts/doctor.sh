@@ -13,6 +13,7 @@ check_installed=0
 quiet=0
 passed=0
 drift_detected=0
+reported_skill_cache_drift=""
 
 # Flags may appear in any order:
 #   --installed  also check the global ~/.claude and ~/.codex install links
@@ -153,7 +154,18 @@ PY
   if diff -rq -x '.roborepo-managed' "${expected}" "${cache_path}" >/dev/null 2>&1; then
     ok "${home_path} (cache link to ${cache_path})"
   else
-    fail "${cache_path} differs from ${expected} — run: roborepo update"
+    case "
+${reported_skill_cache_drift}
+" in
+      *"
+${cache_path}
+"*) : ;;
+      *)
+        fail "${cache_path} differs from ${expected} — run: roborepo update"
+        reported_skill_cache_drift="${reported_skill_cache_drift}
+${cache_path}"
+        ;;
+    esac
   fi
 }
 

@@ -53,17 +53,14 @@ export function loadWorkspacePackages({ builtInIds = new Set(), overrides = read
   const packages = [];
   const seen = new Set();
   for (const file of packageConfigFiles(workspacePackagesDir)) {
-    const data = JSON.parse(fs.readFileSync(file, "utf8"));
-    const entries = Array.isArray(data.packages) ? data.packages : [data];
-    for (const pkg of entries) {
-      validatePackage(pkg, file);
-      if (seen.has(pkg.id)) throw new Error(`duplicate workspace package id: ${pkg.id}`);
-      if (builtInIds.has(pkg.id) && !hasReplaceOverride("package", pkg.id, overrides)) {
-        throw new Error(`workspace package '${pkg.id}' conflicts with a built-in package; add a typed package replace override to overrides/resources.json`);
-      }
-      seen.add(pkg.id);
-      packages.push(pkg);
+    const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+    validatePackage(pkg, file);
+    if (seen.has(pkg.id)) throw new Error(`duplicate workspace package id: ${pkg.id}`);
+    if (builtInIds.has(pkg.id) && !hasReplaceOverride("package", pkg.id, overrides)) {
+      throw new Error(`workspace package '${pkg.id}' conflicts with a built-in package; add a typed package replace override to overrides/resources.json`);
     }
+    seen.add(pkg.id);
+    packages.push(pkg);
   }
   return packages;
 }
@@ -129,7 +126,7 @@ export function importLegacyWorkspace(sourceRoot, { dryRun = false } = {}) {
 
   importSkillDirs(path.join(source, "globals", "agents", "skills"), report, dryRun);
   importCommandFiles(path.join(source, "globals", "commands"), report, dryRun);
-  importPackageManifest(path.join(source, "manifests", "inventory", "packages.json"), report, dryRun);
+  importLegacyPackageManifest(path.join(source, "manifests", "inventory", "packages.json"), report, dryRun);
   importMcpManifest(path.join(source, "manifests", "inventory", "mcp-servers.json"), report, dryRun);
   printImportReport(report, dryRun);
   return report;
@@ -137,7 +134,7 @@ export function importLegacyWorkspace(sourceRoot, { dryRun = false } = {}) {
 
 function validateWorkspaceSkills() {
   for (const name of sourceSkillNames(workspaceSkillsDir)) {
-    if (fs.existsSync(path.join(appRoot, "globals", "agents", "skills", name))) {
+    if (builtInSkillSource(name)) {
       throw new Error(`workspace skill '${name}' conflicts with a built-in skill; skill overrides are not supported`);
     }
   }
@@ -230,8 +227,8 @@ function writeManagedCommand(target, content, dryRun) {
 function importSkillDirs(srcDir, report, dryRun) {
   for (const name of sourceSkillNames(srcDir)) {
     const src = path.join(srcDir, name);
-    const builtIn = path.join(appRoot, "globals", "agents", "skills", name);
-    if (fs.existsSync(builtIn)) {
+    const builtIn = builtInSkillSource(name);
+    if (builtIn) {
       if (!sameTree(src, builtIn)) report.changedBuiltIns.push(`skill:${name}`);
       continue;
     }
@@ -259,7 +256,9 @@ function importCommandFiles(srcDir, report, dryRun) {
   }
 }
 
-function importPackageManifest(file, report, dryRun) {
+// Compatibility only: convert package rows from older roborepo checkouts into the current
+// workspace packages/<id>/package.config.json shape.
+function importLegacyPackageManifest(file, report, dryRun) {
   let data;
   try {
     data = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -268,7 +267,7 @@ function importPackageManifest(file, report, dryRun) {
   }
   const builtIn = new Map(readBuiltInPackages().map((pkg) => [pkg.id, pkg]));
   for (const pkg of data.packages || []) {
-    validatePackage(pkg, file);
+    validatePackage(pkg, file, { allowLegacyComponents: true });
     if (builtIn.has(pkg.id)) {
       if (JSON.stringify(builtIn.get(pkg.id)) !== JSON.stringify(pkg)) report.changedBuiltIns.push(`package:${pkg.id}`);
       continue;
@@ -357,11 +356,11 @@ function readBuiltInMcpServers() {
   }
 }
 
-function validatePackage(pkg, file) {
+function validatePackage(pkg, file, { allowLegacyComponents = false } = {}) {
   if (!pkg || typeof pkg !== "object") throw new Error(`invalid package in ${file}`);
   if (!isSlug(pkg.id)) throw new Error(`package in ${file} has invalid id`);
   if (typeof pkg.label !== "string" || pkg.label.trim() === "") throw new Error(`package '${pkg.id}' needs label`);
-  const resources = pkg.resources || pkg.components;
+  const resources = pkg.resources || (allowLegacyComponents ? pkg.components : undefined);
   if (!Array.isArray(resources)) throw new Error(`package '${pkg.id}' needs resources array`);
   for (const comp of resources) {
     if (!comp || typeof comp !== "object" || typeof comp.type !== "string") {
@@ -381,6 +380,24 @@ function validateMcpServer(server, file) {
   for (const harness of server.harnesses) {
     if (harness !== "claude" && harness !== "codex") throw new Error(`MCP server '${server.name}' has invalid harness: ${harness}`);
   }
+}
+
+function builtInSkillSource(name) {
+  const systemSkill = path.join(appRoot, "globals", "agents", "skills", name);
+  if (fs.existsSync(systemSkill)) return systemSkill;
+  const packagesRoot = path.join(appRoot, "globals", "packages");
+  let entries;
+  try {
+    entries = fs.readdirSync(packagesRoot, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+    const candidate = path.join(packagesRoot, entry.name, "skills", name);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
 }
 
 function sourceSkillNames(srcDir) {

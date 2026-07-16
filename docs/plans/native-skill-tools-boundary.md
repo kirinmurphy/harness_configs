@@ -125,10 +125,10 @@ it should report native-only features rather than rewriting them:
 Adoption should ask the user to review any harness-specific behavior that cannot be preserved
 identically across Claude and Codex.
 
-### Lossless Manifest Intent
+### Lossless Package Intent
 
-`manifests/inventory/skill-invocation.json` should remain a high-level behavior catalog, not a
-full substitute for native skill metadata.
+Package `skill` resources should remain a high-level behavior catalog, not a full substitute for
+native skill metadata.
 
 It may express shared intent such as:
 

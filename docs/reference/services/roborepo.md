@@ -15,7 +15,6 @@ subcommand implementations live under `scripts/cli/`, one module per category:
 | `scripts/cli/skills.mjs` | `skill adopt`, `skill inspect`, `skill native`, `skill export-to-project`, `skill link-project` |
 | `scripts/cli/skill-inventory.mjs` | read-only skill inventory used by `skill inspect` and `/config` source popups |
 | `scripts/cli/index.mjs` | `index code\|docs`, `watch code`, `run` |
-| `scripts/cli/project-context.mjs` | `project-context inventory` (deterministic repo scan), `project-context check` |
 | `scripts/cli/mcp.mjs` | `mcp add` (Claude + Codex registration) |
 | `scripts/cli/presets.mjs` | `onboard`, `bundle status\|apply\|check\|remove` |
 | `scripts/cli/telemetry.mjs` | `telemetry install\|start\|stop\|enable\|disable\|status\|report\|export\|serve\|backup\|purge\|capture` |
@@ -83,7 +82,6 @@ roborepo — choose an action:
   index docs     index this repo's docs with the enabled package-owned docs indexer
   mcp add        register an MCP server with Claude + Codex
   watch code     live-index code as files change via the enabled package-owned watcher
-  project-context inventory  scan a repo and write generated project-context facts
   onboard         run the onboarding wizard (choose behaviors per section)
   serve           open the local web portal
   telemetry enable  enable telemetry capture
@@ -131,8 +129,6 @@ roborepo index code  [path]
 roborepo index docs  [path]
 roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--dry-run] [--only-claude|--only-codex] [--skip-claude-permission]
 roborepo watch code  [path]
-roborepo project-context inventory [path] [--summary]
-roborepo project-context check [path]
 roborepo setup [--dry-run]
 roborepo apply [--dry-run]
 roborepo version
@@ -184,9 +180,9 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   `telemetry enable`/`disable` turn capture on and off, `web` or `serve --detach` opens the
   detached portal, and `telemetry install` handles a telemetry-only install; `run` executes a
   command and prints only a trimmed tail of its output.
-- **Skills** — `skill new` scaffolds a shared automatic helper, skill-backed command, or standalone
-  command and updates the relevant manifests, generated links, generated slash commands, and README
-  rows. `skill adopt` moves an unmanaged native skill into shared roborepo source. `skill
+- **Skills** — `skill new` scaffolds a package-owned automatic helper, skill-backed command, or
+  standalone command and updates the package config, generated links, generated slash commands, and
+  README rows. `skill adopt` moves an unmanaged native skill into shared roborepo source. `skill
   export-to-project` bundles the shared skills into a `.zip` and copies them into the current
   project's `.claude/skills` and `.codex/skills` folders with per-skill override/skip (override
   backs the old one up under `archived/`). `skill link-project` treats `.codex/skills/<name>` as
@@ -198,8 +194,8 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   Claude/Codex plugin summary for harness-specific actions; add `--full` to print the native help
   output inline. `skill audit` renders/checks the shared skill invocation audit. `skill triggers`
   checks expected and near-miss trigger fixtures from `manifests/inventory/skill-trigger-tests.json`.
-  `skill render-commands` renders generated slash commands from
-  `manifests/inventory/slash-commands.json`, and `--check` verifies without changing files. See
+  `skill render-commands` renders generated slash commands from package `slash-command` resources,
+  and `--check` verifies without changing files. See
   [roborepo Skills Interface](roborepo-skills.md).
 - **Maintenance** — `doctor` and `verify` are health and post-install checks; `rules` renders
   generated Claude/Codex global instruction files, or verifies them with `--check`; `permissions`
@@ -209,12 +205,13 @@ relative or absolute — roborepo resolves it to an absolute path before use.
 
 Some exposed `roborepo` commands are package-owned. The command name is still part of the stable
 `roborepo` CLI surface and must be wired in `scripts/cli/main.mjs` plus
-`manifests/platform/cli-commands.json`, but the executable recipe lives on a package component in
-`manifests/inventory/packages.json`:
+`manifests/platform/cli-commands.json`, but the executable recipe lives on a package
+`cli-command` resource in `globals/packages/<package>/package.config.json` or an equivalent
+workspace package config:
 
 ```json
 {
-  "type": "command",
+  "type": "cli-command",
   "name": "index code",
   "commandOrUrl": "uvx",
   "args": ["jcodemunch-mcp"],
@@ -230,9 +227,9 @@ package is enabled, the CLI tells the user which package to enable.
 Lifecycle behavior:
 
 - `roborepo enable <package-id>` records command ownership in `~/.roborepo/enabled-packages.json`
-  for packages with `command` or `rules` components.
+  for packages with `cli-command` or `rule` resources.
 - `roborepo disable <package-id>` removes that ownership.
-- `roborepo doctor` validates command component shape and duplicate ownership inside package
+- `roborepo doctor` validates command resource shape and duplicate ownership inside package
   dependency closures; `roborepo verify` runs doctor, so it inherits the same guard.
 - `roborepo repair` relinks moved install paths and preserves package command state because the
   command registry is path-independent runtime state.

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 import { enablePackage, disablePackage, findPackage } from "./packages.mjs";
-import { unavailablePackageMessage } from "./package-catalog.mjs";
+import { loadPackageCatalog, unavailablePackageMessage } from "./package-catalog.mjs";
 import { listSourceSkills } from "./skill-files.mjs";
 import { loadPermissionManifest, renderPermissionsTo, resolveBehaviors, resolveArbitraryCommands } from "./permissions-render.mjs";
 import { commandOverridesPath, roborepoSkillsDir } from "./state-paths.mjs";
@@ -87,7 +87,7 @@ function dirMatches(src, dest) {
 }
 
 function ensureSkillCache(id, { dryRun = false } = {}) {
-  const srcAbs = path.join(SHARED_SKILLS_DIR, id);
+  const srcAbs = packageSkillSource(id) || path.join(SHARED_SKILLS_DIR, id);
   const cacheAbs = skillCachePath(id);
   const marker = path.join(cacheAbs, MANAGED_MARKER);
   if (!fs.existsSync(srcAbs)) return { ok: false, message: `unknown skill: ${id}` };
@@ -196,8 +196,8 @@ export async function mutatePackage(id, enabled, { dryRun = false } = {}) {
 // is left untouched, matching the bash behavior. The cache keeps the machine state self-contained
 // so it survives the source (repo/package) going away.
 export function setSkillInstalled(id, enabled, { dryRun = false } = {}) {
-  const known = listSourceSkills(SHARED_SKILLS_DIR);
-  if (!known.includes(id)) return { ok: false, message: `unknown skill: ${id}` };
+  const known = new Set([...packageSkillSources().keys(), ...listSourceSkills(SHARED_SKILLS_DIR)]);
+  if (!known.has(id)) return { ok: false, message: `unknown skill: ${id}` };
 
   const cacheAbs = skillCachePath(id);
   const touched = [];
@@ -228,6 +228,20 @@ export function setSkillInstalled(id, enabled, { dryRun = false } = {}) {
 
   for (const line of touched) console.log(line);
   return { ok: true, message: `${enabled ? "installed" : "removed"} skill: ${id}` };
+}
+
+function packageSkillSource(id) {
+  return packageSkillSources().get(id) || null;
+}
+
+function packageSkillSources() {
+  const sources = new Map();
+  for (const pkg of loadPackageCatalog({ includeUnavailable: true })) {
+    for (const resource of pkg.resources || []) {
+      if (resource.type === "skill") sources.set(resource.id, path.join(pkg.sourceRoot, resource.source));
+    }
+  }
+  return sources;
 }
 
 // --------------------------------------------------------------------------- permissions

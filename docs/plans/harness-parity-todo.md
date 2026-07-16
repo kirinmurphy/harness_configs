@@ -41,7 +41,7 @@ backlog reads honestly.
   covered by `globals/agents/skills/code-style/` and the language skills. The
   auto-vs-manual policy for these is governed by
   [`skills-vs-commands-invocation-policy.md`](skills-vs-commands-invocation-policy.md)
-  and recorded in `manifests/inventory/skill-invocation.json`.
+  and recorded on package `skill` resources.
 
 ## Open Parity Work
 

@@ -1,9 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { repoRoot } from "./paths.mjs";
-import { listSourceSkills } from "./skill-files.mjs";
+import { loadPackageCatalog } from "./package-catalog.mjs";
 
-const SKILLS_DIR = path.join(repoRoot, "globals", "agents", "skills");
 const TRIGGER_TESTS_REL = "manifests/inventory/skill-trigger-tests.json";
 
 function readJson(relPath) {
@@ -31,7 +30,7 @@ function parseDescription(content) {
 }
 
 function readDescription(skill) {
-  return parseDescription(fs.readFileSync(path.join(SKILLS_DIR, skill, "SKILL.md"), "utf8"));
+  return parseDescription(fs.readFileSync(path.join(packageSkillSources().get(skill), "SKILL.md"), "utf8"));
 }
 
 function normalized(value) {
@@ -45,7 +44,7 @@ function includesAny(text, phrases) {
 
 function checkTriggerCase(test) {
   const failures = [];
-  const sourceSkills = new Set(listSourceSkills(SKILLS_DIR));
+  const sourceSkills = packageSkillSources();
   if (!sourceSkills.has(test.skill)) {
     return [`${test.skill}: no shared skill source found`];
   }
@@ -67,6 +66,16 @@ function checkTriggerCase(test) {
     }
   }
   return failures;
+}
+
+function packageSkillSources() {
+  const sources = new Map();
+  for (const pkg of loadPackageCatalog({ includeUnavailable: true })) {
+    for (const resource of pkg.resources || []) {
+      if (resource.type === "skill") sources.set(resource.id, path.join(pkg.sourceRoot, resource.source));
+    }
+  }
+  return sources;
 }
 
 export function skillTriggerCheck(args = []) {

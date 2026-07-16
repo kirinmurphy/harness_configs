@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "wrap-up",
+  "label": "Wrap Up",
+  "description": "End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff prompt.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "commands",
+    "order": 50
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "wrap-up",
+      "source": "skills/wrap-up",
+      "invocation": "manual",
+      "risk": "medium",
+      "entrypoints": [
+        {
+          "type": "slash-command",
+          "name": "wrap-up",
+          "description": "End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff prompt.",
+          "harnesses": ["claude", "codex"]
+        }
+      ]
+    }
+  ]
+}

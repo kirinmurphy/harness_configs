@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": "jcodemunch",
+  "label": "JCodeMunch code intelligence",
+  "description": "Local code index with symbol search, outline, references, and context bundling. Blocks Grep/Glob and routes code exploration through jcodemunch tools.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "token-optimization",
+    "order": 10
+  },
+  "urls": [
+    {
+      "label": "PyPI",
+      "url": "https://pypi.org/project/jcodemunch-mcp/"
+    }
+  ],
+  "resources": [
+    {
+      "type": "mcp",
+      "preset": "jcodemunch"
+    },
+    {
+      "type": "cli-command",
+      "name": "index code",
+      "commandOrUrl": "uvx",
+      "args": ["jcodemunch-mcp"],
+      "mode": "index",
+      "fileSubcommand": "index-file",
+      "dirSubcommand": "index",
+      "extraArgs": ["--no-ai-summaries"]
+    },
+    {
+      "type": "cli-command",
+      "name": "watch code",
+      "commandOrUrl": "uvx",
+      "args": ["--with", "watchfiles", "jcodemunch-mcp"],
+      "mode": "watch",
+      "watchSubcommand": "watch"
+    },
+    {
+      "type": "rules",
+      "source": "rules.md",
+      "harness": "both"
+    },
+    {
+      "type": "hooks",
+      "source": "hooks-claude.json",
+      "harness": "claude"
+    },
+    {
+      "type": "permissions",
+      "allow": [
+        "mcp__jcodemunch__resolve_repo",
+        "mcp__jcodemunch__search_symbols",
+        "mcp__jcodemunch__get_file_outline",
+        "mcp__jcodemunch__find_references",
+        "mcp__jcodemunch__get_context_bundle",
+        "mcp__jcodemunch__search_text",
+        "mcp__jcodemunch__index_repo",
+        "mcp__jcodemunch__list_repos",
+        "mcp__jcodemunch__get_symbol_context"
+      ]
+    },
+    {
+      "type": "codex_tool_approvals",
+      "server": "jcodemunch",
+      "approvals": {
+        "register_edit": "auto"
+      }
+    }
+  ]
+}

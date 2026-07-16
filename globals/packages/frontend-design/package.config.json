@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "frontend-design",
+  "label": "Frontend Design",
+  "description": "Apply frontend design workflow to build or review a substantial UI change.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "commands",
+    "order": 20
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "frontend-design",
+      "source": "skills/frontend-design",
+      "invocation": "auto",
+      "risk": "medium",
+      "entrypoints": [
+        {
+          "type": "slash-command",
+          "name": "frontend-design",
+          "description": "Apply frontend design workflow to build or review a substantial UI change.",
+          "harnesses": ["claude", "codex"]
+        }
+      ]
+    }
+  ]
+}

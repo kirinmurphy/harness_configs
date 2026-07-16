@@ -263,7 +263,7 @@ check_manifest_sources() {
 
 # Helper-only shared skills must be documented in the README's Automatic Helpers table(s).
 # Skills with explicit slash commands are documented through the Commands table and
-# manifests/inventory/slash-commands.json, which render-slash-commands.mjs validates.
+# package-backed slash command rendering validates them.
 check_readme_skill_coverage() {
   local readme="${repo_root}/README.md" skill_name missing=0
   if ! command -v node >/dev/null 2>&1; then
@@ -277,12 +277,16 @@ check_readme_skill_coverage() {
       missing=1
     fi
   done < <(node -e '
-    const fs = require("fs");
-    const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-    for (const skill of manifest.skills) {
-      if (skill.explicit_command === false) console.log(skill.skill);
-    }
-  ' "${repo_root}/manifests/inventory/skill-invocation.json")
+    import(process.argv[1]).then((m) => {
+      for (const pkg of m.loadPackageCatalog({ includeUnavailable: true })) {
+        for (const resource of pkg.resources || []) {
+          if (resource.type !== "skill") continue;
+          const explicit = (resource.entrypoints || []).some((entrypoint) => entrypoint.type === "slash-command");
+          if (!explicit) console.log(resource.id);
+        }
+      }
+    });
+  ' "${repo_root}/scripts/cli/package-catalog.mjs")
   [[ "${missing}" -eq 0 ]] && ok "README documents helper-only shared skills"
 }
 
@@ -302,13 +306,13 @@ for old_root in agents claude codex skills-local; do
     ok "${old_root}/ legacy source root absent"
   fi
 done
-# Derive the shared-skill list from globals/agents/skills/*/SKILL.md so this never goes stale.
-# globals/agents/skills/ is the canonical source; the installer fans each skill into
-# ~/.roborepo/skills/<n> and symlinks each present harness view there.
-for skill_src in "${repo_root}"/globals/agents/skills/*/SKILL.md; do
+# Derive the shared-skill list from package skill resources plus system support skills so this
+# never goes stale. The installer fans each skill into ~/.roborepo/skills/<n> and symlinks each
+# present harness view there.
+for skill_src in "${repo_root}"/globals/packages/*/skills/*/SKILL.md "${repo_root}"/globals/agents/skills/roborepo-support/SKILL.md; do
   [[ -e "${skill_src}" ]] || continue
   skill_name="$(basename "$(dirname "${skill_src}")")"
-  check_file "globals/agents/skills/${skill_name}/SKILL.md"
+  check_file "${skill_src#${repo_root}/}"
 done
 check_readme_skill_coverage
 # Internal (repo-only) skills: source in local/skills/, linked into THIS repo's project-scope

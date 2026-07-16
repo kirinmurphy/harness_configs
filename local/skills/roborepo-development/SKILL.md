@@ -40,14 +40,17 @@ to them plus the judgment that isn't written down. Read the doc, then apply the 
 - `globals/claude/` + `globals/codex/` + `globals/agents/` = SOURCE symlinked/linked into the user's
   GLOBAL `~/.claude`/`~/.codex` at install time.
 - `.claude/` + `.codex/` (dotdirs) = THIS repo's own PROJECT-SCOPE skill config, NOT global.
-- `globals/agents/skills/<name>/` = canonical shared/advisory layer (global + exportable). At install
-  time, skills are materialized into `~/.roborepo/skills/<name>` and each harness's native dir links
-  to that cache entry. No intermediate `globals/claude/skills/` directory exists. `local/skills/` =
-  internal layer (this repo only, via `.claude/skills` + `.codex/skills`
-  project-scope dotdirs). The firewall between them is structural — see below.
+- `globals/packages/<package>/skills/<name>/` = canonical package-owned shared/advisory layer
+  (global + exportable). At install time, skills are materialized into
+  `~/.roborepo/skills/<name>` and each harness's native dir links to that cache entry. System skills
+  that are not package-owned can still live under `globals/agents/skills/<name>/`. No intermediate
+  `globals/claude/skills/` directory exists. `local/skills/` = internal layer (this repo only, via
+  `.claude/skills` + `.codex/skills` project-scope dotdirs). The firewall between them is structural
+  — see below.
 - Codex scans `.codex/skills` for project-scope skills.
-- Shared skills use `globals/agents/skills/` as canonical source; repo-local skills use `local/skills/`
-  as canonical source and symlink into project-scope harness folders.
+- Shared skills use package-owned skill resources or system `globals/agents/skills/` as canonical
+  source; repo-local skills use `local/skills/` as canonical source and symlink into project-scope
+  harness folders.
 - Mutable global config files should not be direct symlinks to repo source; use a generated or
   exported active file so runtime trust, hook approval, and machine-local state stay outside the
   shared baseline.
@@ -57,15 +60,16 @@ Everything else (the two symlink levels, the layer table) lives in
 
 ## Operational judgment (not in the docs)
 
-- **Adding any skill:** prefer `roborepo skill new`. Shared skill → `globals/agents/skills/`, then
-  run `roborepo skill sync-global` to refresh the machine-local cache and harness views. Shared
-  command surfaces are rendered from manifests; run `roborepo skill render-commands --check` and
-  `roborepo skill triggers --check` when descriptions or command exposure change. Internal/
+- **Adding any skill:** prefer `roborepo skill new`. Shared skill → a package under
+  `globals/packages/`, then run `roborepo skill sync-global` to refresh the machine-local cache and
+  harness views. Shared command surfaces are rendered from package `slash-command` resources; run
+  `roborepo skill render-commands --check` and `roborepo skill triggers --check` when descriptions
+  or command exposure change. Internal/
   repo-only skill → `local/skills/`, then run `scripts/build/link-skills.sh` for this repo's
   project-scope links. Never hand-write `ln`.
 - **The firewall is code, not convention.** `link-skills.sh` runs one pass per layer;
-  `roborepo` reads only `globals/agents/skills/`. There is no code path from `local/skills/` to global
-  config or to a client export. Don't add one.
+  `roborepo` reads package/system shared skill sources. There is no code path from `local/skills/`
+  to global config or to a client export. Don't add one.
 - **Reuse the link/conflict primitives.** Bash: `scripts/install/install-lib.sh` (`link_item`,
   `link_item_clean`, collision prompts) and `scripts/build/skill-lib.sh` (`list_source_skills`). Node:
   `scripts/cli/skill-lib.mjs` (`listSourceSkills`, `ensureSymlink`, `linkLocalSkills`, `writeZip`).
@@ -123,8 +127,6 @@ Subcommands, grouped by category:
 - `setup` / `apply` / `workspace` / `version` — package-mode setup and root inspection tools.
 - `serve` / `web` / `telemetry ...` — local portal and telemetry capture/reporting. `web` is
   `serve --detach` with browser-open behavior.
-- `project-context inventory|check` — deterministic repo fact scans used by the Project Context
-  skill.
 - `update`/`repair`/`uninstall`/`doctor`/`verify`/`rules`/`permissions` — lifecycle verbs that
   dispatch to the existing scripts. `update` re-runs `scripts/install/main.sh`; in package mode it
   aliases to `apply`.

@@ -12,9 +12,8 @@ import { skillNew } from "./skill-new.mjs";
 import { skillAudit } from "./skill-audit.mjs";
 import { skillTriggerCheck } from "./skill-trigger-check.mjs";
 import { indexCode, indexDocs, watchCode, runCmd } from "./index.mjs";
-import { projectContextCheck, projectContextInventory } from "./project-context.mjs";
 import { maybeRunPresetOnboarding, presetsCommand } from "./presets.mjs";
-import { enablePackage, disablePackage, reconcileEnabledPackages, adoptLivePackages } from "./packages.mjs";
+import { enablePackage, disablePackage, packageCommand } from "./packages.mjs";
 import { configCommand } from "./config.mjs";
 import { experimentalCommand } from "./package-catalog.mjs";
 import { packageMode } from "./paths.mjs";
@@ -116,12 +115,6 @@ async function dispatch(args) {
       console.error(`unknown: roborepo mcp ${sub ?? ""}`.trim());
       return usageError();
 
-    case "project-context":
-      if (sub === "inventory") return projectContextInventory(rest);
-      if (sub === "check") return projectContextCheck(rest);
-      console.error(`unknown: roborepo project-context ${sub ?? ""}`.trim());
-      return usageError();
-
     case "version":
       return versionCommand();
 
@@ -182,10 +175,7 @@ async function dispatch(args) {
       return disablePackage(sub === undefined ? rest : [sub, ...rest]);
 
     case "package":
-      if (sub === "reconcile") return reconcileEnabledPackages(rest);
-      if (sub === "adopt-live") return adoptLivePackages({ dryRun: rest.includes("--dry-run") });
-      console.error(`unknown: roborepo package ${sub ?? ""}`.trim());
-      return usageError();
+      return packageCommand(sub === undefined ? [] : [sub, ...rest]);
 
     case "config":
       return configCommand(sub === undefined ? [] : [sub, ...rest]);

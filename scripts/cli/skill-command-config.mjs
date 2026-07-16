@@ -1,11 +1,6 @@
 import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 
-export const SKILL_INVOCATION_MANIFEST_REL = "manifests/inventory/skill-invocation.json";
-export const SLASH_COMMANDS_MANIFEST_REL = "manifests/inventory/slash-commands.json";
-
-export const SKILL_INVOCATION_MANIFEST = path.join(repoRoot, SKILL_INVOCATION_MANIFEST_REL);
-export const SLASH_COMMANDS_MANIFEST = path.join(repoRoot, SLASH_COMMANDS_MANIFEST_REL);
 export const README_PATH = path.join(repoRoot, "README.md");
 
 export const GENERATED_COMMAND_MARKER =
@@ -26,7 +21,6 @@ export const SLASH_COMMAND_HARNESSES = {
 export const SLASH_COMMAND_HARNESS_NAMES = Object.keys(SLASH_COMMAND_HARNESSES);
 
 export const SKILL_RISKS = ["low", "medium", "high"];
-export const SKILL_INVOCATIONS = ["auto", "manual"];
 export const SLASH_COMMAND_KINDS = ["skill-backed", "standalone"];
 export const SKILL_NEW_KINDS = ["auto", "skill-command", "standalone"];
 

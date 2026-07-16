@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "technical-planning-docs",
+  "label": "Technical Planning Docs",
+  "description": "Create or revise a durable technical planning document.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "commands",
+    "order": 30
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "technical-planning-docs",
+      "source": "skills/technical-planning-docs",
+      "invocation": "auto",
+      "risk": "medium",
+      "entrypoints": [
+        {
+          "type": "slash-command",
+          "name": "technical-planning",
+          "description": "Create or revise a durable technical planning document.",
+          "harnesses": ["claude", "codex"]
+        }
+      ]
+    }
+  ]
+}

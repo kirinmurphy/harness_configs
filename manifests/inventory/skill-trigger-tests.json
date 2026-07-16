@@ -40,19 +40,6 @@
       "skipPhrases": ["brief answers", "PR descriptions", "quick todos"]
     },
     {
-      "skill": "project-context",
-      "match": [
-        "/inventory",
-        "refresh project context docs"
-      ],
-      "nearMiss": [
-        "there are docs in this repo",
-        "write a generic architecture essay"
-      ],
-      "triggerPhrases": ["/inventory", "refresh project context", "update the glossary"],
-      "skipPhrases": ["ordinary code edits", "mere presence of docs", "generic architecture essays"]
-    },
-    {
       "skill": "tighten",
       "match": [
         "/tighten this module",

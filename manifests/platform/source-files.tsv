@@ -18,12 +18,11 @@ globals/codex/config.toml
 globals/codex/hooks.json
 globals/codex/rules/default.rules
 manifests/inventory/agent-permissions.json
+manifests/inventory/package-categories.json
 manifests/platform/cli-commands.json
 manifests/platform/harnesses.tsv
 manifests/platform/presets.json
-manifests/inventory/skill-invocation.json
 manifests/inventory/skill-trigger-tests.json
-manifests/inventory/slash-commands.json
 manifests/inventory/mcp-presets.json
 manifests/inventory/mcp-servers.json
 manifests/inventory/reserved-commands.json
@@ -35,7 +34,6 @@ manifests/platform/verify-content.tsv
 globals/agents/skills
 local/skills	dev
 globals/rules/shared/20-verification.md
-globals/packages/project-context/rules.md
 globals/rules/claude/90-claude-specific.md
 globals/rules/codex/90-codex-specific.md
 scripts/build/render-rules.sh
@@ -52,12 +50,10 @@ scripts/cli/skill-lib.mjs
 scripts/cli/skill-links.mjs
 scripts/cli/repo-script-runner.mjs
 scripts/cli/state-paths.mjs
-scripts/cli/skill-new-manifests.mjs
 scripts/cli/skill-new-options.mjs
 scripts/cli/skill-new-readme.mjs
 scripts/cli/skill-new-templates.mjs
 scripts/cli/skill-new.mjs
-scripts/cli/slash-command-validation.mjs
 scripts/cli/slash-commands.mjs
 scripts/cli/zip-writer.mjs
 scripts/cli/main.mjs

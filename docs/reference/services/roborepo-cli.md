@@ -25,24 +25,18 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 | `roborepo index docs [path]` | Runs the enabled package-owned documentation indexer for the current directory or `[path]`. |
 | `roborepo watch code [path]` | Keeps the enabled package-owned code index live while files change.                             |
 
-## Project Context
-
-|                                                         |                                                                                                                                                                                                                                       |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `roborepo project-context inventory [path] [--summary]` | Scans a repo and writes deterministic generated facts to `docs/project-context/generated/repo-scan.json` (and, with `--summary`, a short `repo-summary.md`). The `project-context` skill turns those facts into curated handoff docs. |
-
 ## Skills
 
 |                                            |                                                                                                                               |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `roborepo skill new`                       | Scaffolds a shared skill or slash command and updates manifests, generated outputs, commands, and README.                     |
+| `roborepo skill new`                       | Scaffolds a package-owned skill or slash command and updates package config, generated outputs, commands, and README.         |
 | `roborepo skill adopt <name>`              | Moves an unmanaged native skill into shared roborepo source and refreshes the managed harness views.                          |
 | `roborepo skill export-to-project`         | Copies this repo's shared skills into the current project and leaves a shareable zip bundle.                                  |
 | `roborepo skill link-project`              | Links a project's `.codex/skills` into existing `.claude/skills` folders.                                                     |
-| `roborepo skill sync-global`               | Refreshes the shared skill cache and global harness links after adding or removing `globals/agents/skills/<name>`.            |
+| `roborepo skill sync-global`               | Refreshes the shared skill cache and global harness links after adding or removing package-owned shared skills.               |
 | `roborepo skill inspect <name>`            | Reports skill source, managed/unmanaged ownership, native collision state, and per-harness install state.                     |
 | `roborepo skill triggers [--check]`        | Checks trigger and near-miss fixtures from `manifests/inventory/skill-trigger-tests.json`.                                    |
-| `roborepo skill render-commands [--check]` | Renders generated slash commands from `manifests/inventory/slash-commands.json`, or verifies them with `--check`.             |
+| `roborepo skill render-commands [--check]` | Renders generated slash commands from package `slash-command` resources, or verifies them with `--check`.                     |
 | `roborepo skill native [--full]`           | Shows native Claude/Codex plugin entrypoints; `--full` prints native help output inline.                                      |
 
 See [roborepo Skills Interface](roborepo-skills.md) for the managed/native boundary and examples.

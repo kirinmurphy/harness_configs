@@ -19,9 +19,9 @@ the user's live harness config, some in repo manifests, some in roborepo state.
 
 | Noun | What it is | Source of truth |
 | --- | --- | --- |
-| **Package** | A named feature made of typed components | `manifests/inventory/packages.json` (catalog); live config (enabled state) |
-| **Component** | One typed unit of a package's install | the package definition |
-| **Skill** | A shared or native skill, inspected without flattening harness-specific metadata | `globals/agents/skills/<name>` (managed source); `~/.roborepo/skills/<name>` (managed cache); `~/.claude/skills/<name>` and `~/.codex/skills/<name>` (harness install state) |
+| **Package** | A named feature made of typed resources | `globals/packages/<package>/package.config.json` and workspace package configs; live config (enabled state) |
+| **Resource** | One typed unit of a package's install or presentation | the package config |
+| **Skill** | A shared or native skill, inspected without flattening harness-specific metadata | package-owned `skills/<name>` source or system skill source; `~/.roborepo/skills/<name>` (managed cache); `~/.claude/skills/<name>` and `~/.codex/skills/<name>` (harness install state) |
 | **Permission behavior** | A named behavior or arbitrary command set to `allow`, `ask`, `deny`, or `default` | `manifests/inventory/agent-permissions.json` (defaults); `~/.roborepo/command-overrides.json` (personal overrides); live config (active render) |
 | **Snapshot** | The assembled current state the UI renders | computed by `readConfigSnapshot()` |
 
@@ -170,10 +170,11 @@ behavior or command.
 - `scripts/cli/skill-inventory.mjs` — shared read-only skill inventory for the CLI and portal.
 - `scripts/cli/package-probes.mjs` — read-only package live-state reconciliation.
 - `scripts/cli/config-mutate.mjs` — the shared mutate primitives.
-- `scripts/cli/packages.mjs` — `enablePackage` / `disablePackage` and the component
-  switch (including `requires` resolution).
+- `scripts/cli/packages.mjs` — `enablePackage` / `disablePackage` and package dependency
+  resolution.
 - `scripts/cli/permissions-render.mjs` — the permission render core.
 - `scripts/cli/config-dashboard.mjs` — the `/config` web view.
 - `scripts/cli/portal-server.mjs` — the HTTP routes.
 - `scripts/portal/config/` — the config page HTML, CSS, and browser JavaScript.
-- `manifests/inventory/packages.json` — the package catalog.
+- `globals/packages/*/package.config.json` — built-in package configs.
+- workspace `packages/*/package.config.json` — imported or locally authored package configs.

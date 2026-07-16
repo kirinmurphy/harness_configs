@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "javascript-typescript",
+  "label": "JavaScript TypeScript",
+  "description": "JavaScript and TypeScript conventions for modules, functions, and type safety.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "code-conventions",
+    "order": 20
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "javascript-typescript",
+      "source": "skills/javascript-typescript",
+      "invocation": "auto",
+      "risk": "low"
+    }
+  ]
+}

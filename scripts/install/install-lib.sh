@@ -852,7 +852,7 @@ remove_legacy_agents_skills() {
   echo "cleanup (legacy ~/.agents/skills): ${legacy} -> ${backup_path}"
 }
 
-# Enumerate globals/agents/skills/*, materialize each into ~/.roborepo/skills/<name>,
+# Enumerate package-owned skills plus system support skills, materialize each into ~/.roborepo/skills/<name>,
 # then symlink each present harness skill dir entry to the cache copy.
 # Also prunes stale managed cache entries and stale harness symlinks.
 # Requires: ${repo_root}, ${dry_run}, list_source_skills (from skill-lib.sh).
@@ -864,7 +864,6 @@ link_global_skills() {
     preserve_existing=1
     shift || true
   fi
-  local src_dir="${repo_root}/globals/agents/skills"
   local skills_home="${home_dir}/skills"
   local cache_home="${HOME}/.roborepo/skills"
   local allowed_names=("$@")
@@ -873,9 +872,8 @@ link_global_skills() {
   # redundant second call (this runs once per harness) is a cheap no-op.
   remove_legacy_agents_skills
 
-  [[ -d "${src_dir}" ]] || return 0
-  local name cache_path
-  while IFS= read -r name; do
+  local name repo_rel cache_path
+  while IFS=$'\t' read -r name repo_rel; do
     [[ -n "${name}" ]] || continue
     if [[ "${#allowed_names[@]}" -gt 0 ]]; then
       local wanted=0 allowed
@@ -885,9 +883,9 @@ link_global_skills() {
       [[ "${wanted}" -eq 1 ]] || continue
     fi
     cache_path="${cache_home}/${name}"
-    link_skill_item "globals/agents/skills/${name}" "${cache_path}"
+    link_skill_item "${repo_rel}" "${cache_path}"
     link_skill_view "${cache_path}" "${skills_home}/${name}"
-  done < <(list_source_skills "${src_dir}")
+  done < <(list_global_skill_sources)
 
   [[ "${preserve_existing}" -eq 1 ]] && return 0
 
@@ -913,7 +911,7 @@ link_global_skills() {
         continue
       fi
     fi
-    [[ -f "${src_dir}/${skill_name}/SKILL.md" ]] || {
+    global_skill_source_exists "${skill_name}" || {
       if [[ "${dry_run}" -eq 0 ]]; then
         rm -rf "${entry}"
       fi
@@ -928,6 +926,27 @@ link_global_skills() {
     [[ "$(readlink "${skills_home}/${skill_name}")" == "${entry}" ]] || continue
     say ok "${skills_home}/${skill_name}"
   done
+}
+
+list_global_skill_sources() {
+  local skill_dir name rel
+  if [[ -f "${repo_root}/globals/agents/skills/roborepo-support/SKILL.md" ]]; then
+    printf 'roborepo-support\tglobals/agents/skills/roborepo-support\n'
+  fi
+  for skill_dir in "${repo_root}"/globals/packages/*/skills/*; do
+    [[ -d "${skill_dir}" && -f "${skill_dir}/SKILL.md" ]] || continue
+    name="$(basename "${skill_dir}")"
+    rel="${skill_dir#${repo_root}/}"
+    printf '%s\t%s\n' "${name}" "${rel}"
+  done | sort
+}
+
+global_skill_source_exists() {
+  local name="$1" found source_name _rel
+  while IFS=$'\t' read -r source_name _rel; do
+    [[ "${source_name}" == "${name}" ]] && found=1 && break
+  done < <(list_global_skill_sources)
+  [[ "${found:-0}" -eq 1 ]]
 }
 
 describe_user_config() {

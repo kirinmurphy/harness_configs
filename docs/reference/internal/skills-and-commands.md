@@ -65,7 +65,6 @@ Examples:
 - `react`: implicit helper skill; no slash command needed.
 - `technical-planning-docs`: reusable writing workflow; can also have a slash
   command.
-- `project-context`: explicit-only handoff-doc workflow behind `/inventory`.
 - `tighten`: explicit-only review/fix workflow behind `/tighten`.
 - `wrap-up`: explicit-only session close-out workflow (review, docs, commit, handoff
   prompt) behind `/wrap-up`.
@@ -91,7 +90,6 @@ Current generated examples:
 - `/case-study` -> `case-study`
 - `/frontend-design` -> `frontend-design`
 - `/technical-planning` -> `technical-planning-docs`
-- `/inventory` -> `project-context`
 - `/tighten` -> `tighten`
 - `/wrap-up` -> `wrap-up`
 
@@ -165,21 +163,23 @@ Use this order:
 
 ## Source Of Truth
 
-Skill invocation policy lives in:
+Skill invocation policy lives on package `skill` resources:
 
-- `manifests/inventory/skill-invocation.json`
+- `globals/packages/<package>/package.config.json`
+- workspace `packages/<package>/package.config.json`
 
-Slash command exposure lives in:
+Slash command exposure lives on package `slash-command` resources:
 
-- `manifests/inventory/slash-commands.json`
+- `globals/packages/<package>/package.config.json`
+- workspace `packages/<package>/package.config.json`
 
 The renderer writes harness-specific command files:
 
 - `globals/claude/commands/*.md`
 - `globals/codex/commands/*.md`
 
-Generated files should not be edited directly. Edit the manifest or the shared
-source file, then run:
+Generated files should not be edited directly. Edit the package config or the shared source file,
+then run:
 
 ```sh
 roborepo skill render-commands

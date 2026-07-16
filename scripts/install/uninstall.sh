@@ -701,30 +701,37 @@ strip_package_hooks() {
   command -v node >/dev/null 2>&1 || return 0
 
   local pkg_dir="${repo_root}/globals/packages"
-  local pkgs_manifest="${repo_root}/manifests/inventory/packages.json"
-  [[ -d "${pkg_dir}" || -f "${pkgs_manifest}" ]] || return 0
+  [[ -d "${pkg_dir}" ]] || return 0
 
   if [[ "${dry_run}" -eq 1 ]]; then
     echo "strip: would remove package hooks/permissions from ${settings}"
     return 0
   fi
 
-  SETTINGS_PATH="${settings}" PKG_DIR="${pkg_dir}" PKGS_MANIFEST="${pkgs_manifest}" node -e '
+  SETTINGS_PATH="${settings}" PKG_DIR="${pkg_dir}" node -e '
 const fs = require("fs");
 const path = require("path");
 const settingsPath = process.env.SETTINGS_PATH;
 const pkgDir = process.env.PKG_DIR;
-const pkgsManifest = process.env.PKGS_MANIFEST;
 
 let settings;
 try { settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")); } catch { process.exit(0); }
 
 let changed = false;
+const packages = fs.readdirSync(pkgDir, { withFileTypes: true })
+  .filter(entry => entry.isDirectory())
+  .map(entry => path.join(pkgDir, entry.name, "package.config.json"))
+  .filter(file => fs.existsSync(file))
+  .flatMap(file => {
+    try { return [JSON.parse(fs.readFileSync(file, "utf8"))]; } catch { return []; }
+  });
 
 // Strip hooks injected by each package
-if (fs.existsSync(pkgDir)) {
-  for (const pkg of fs.readdirSync(pkgDir)) {
-    const hooksFile = path.join(pkgDir, pkg, "hooks-claude.json");
+for (const pkg of packages) {
+  const root = path.join(pkgDir, pkg.id);
+  for (const resource of pkg.resources || []) {
+    if (resource.type !== "hooks" || resource.harness !== "claude") continue;
+    const hooksFile = path.join(root, resource.source);
     if (!fs.existsSync(hooksFile)) continue;
     let fragment;
     try { fragment = JSON.parse(fs.readFileSync(hooksFile, "utf8")); } catch { continue; }
@@ -746,19 +753,15 @@ if (fs.existsSync(pkgDir)) {
 }
 
 // Strip permissions injected by packages
-if (fs.existsSync(pkgsManifest)) {
-  let catalog;
-  try { catalog = JSON.parse(fs.readFileSync(pkgsManifest, "utf8")).packages; } catch { catalog = []; }
-  const toRemove = new Set(
-    catalog.flatMap(p => p.components.filter(c => c.type === "permissions").flatMap(c => c.allow || []))
-  );
-  const existing = settings.permissions?.allow || [];
-  const next = existing.filter(p => !toRemove.has(p));
-  if (next.length !== existing.length) {
-    if (next.length === 0) delete settings.permissions;
-    else settings.permissions = { ...settings.permissions, allow: next };
-    changed = true;
-  }
+const toRemove = new Set(
+  packages.flatMap(p => (p.resources || []).filter(c => c.type === "permissions").flatMap(c => c.allow || []))
+);
+const existing = settings.permissions?.allow || [];
+const next = existing.filter(p => !toRemove.has(p));
+if (next.length !== existing.length) {
+  if (next.length === 0) delete settings.permissions;
+  else settings.permissions = { ...settings.permissions, allow: next };
+  changed = true;
 }
 
 if (changed) {

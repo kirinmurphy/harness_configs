@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "caveman",
+  "label": "Caveman plugin",
+  "description": "Claude plugin that keeps agent output terse to cut token use. Also gates the global caveman communication rule.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "token-optimization",
+    "order": 50
+  },
+  "urls": [
+    {
+      "label": "GitHub",
+      "url": "https://github.com/JuliusBrussee/caveman"
+    }
+  ],
+  "resources": [
+    {
+      "type": "rules",
+      "source": "rules.md",
+      "harness": "both"
+    },
+    {
+      "type": "plugin",
+      "id": "caveman@caveman",
+      "marketplace": {
+        "name": "caveman",
+        "source": {
+          "source": "github",
+          "repo": "JuliusBrussee/caveman"
+        }
+      }
+    }
+  ]
+}

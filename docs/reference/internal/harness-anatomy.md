@@ -91,13 +91,13 @@ written continuously at runtime. roborepo does not manage, sync, or carry memory
 ## Slash commands
 
 **What they do:** named workflows the user starts on purpose (`/case-study`, `/frontend-design`,
-`/technical-planning`, `/inventory`, `/tighten`).
+`/technical-planning`, `/tighten`).
 
-**Parity model:** authored once in `manifests/inventory/slash-commands.json`, stamped into both
+**Parity model:** authored once as package `slash-command` resources, stamped into both
 `globals/claude/commands/` and `globals/codex/commands/`. Files in those dirs are generated. (Why
 just a stamped copy: [explained.md Step 1](harnesses-explained.md#step-1--when-they-already-agree-slash-commands).)
 
-**To add or change a command:** edit `manifests/inventory/slash-commands.json`, then:
+**To add or change a command:** edit the owning package's `package.config.json`, then:
 
 ```sh
 roborepo skill render-commands         # render into both harness command dirs

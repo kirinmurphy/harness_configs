@@ -89,11 +89,10 @@ Use these when you want to intentionally start a named workflow.
 | `/case-study`         | Write a long-form architecture case study about a real design decision.             |
 | `/frontend-design`    | Apply Claude's frontend design workflow to build or review a substantial UI change. |
 | `/technical-planning` | Create or revise a durable technical planning document.                             |
-| `/inventory`          | Scan this repo and refresh its Project Context handoff docs (glossary, inventory).  |
 | `/tighten`            | Clean up code against this project's own patterns with specific, anchored callouts. |
 | `/wrap-up`            | End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff prompt for the next chat. |
 
-**Plain-Language Triggers**: Some named workflows can also be started in ordinary chat: "capture this", "write a case study about this", "make this a durable technical plan", "run inventory", or "tighten this."
+**Plain-Language Triggers**: Some named workflows can also be started in ordinary chat: "capture this", "write a case study about this", "make this a durable technical plan", or "tighten this."
 
 ### Chat-Time Output
 
@@ -142,11 +141,12 @@ session-start nudge and leans on its rules file for the rest. Full breakdown:
 Harness source lives under `globals/`, with the data that drives the build/install scripts under
 `manifests/`:
 
-- `globals/agents/skills/` — shared skill source, global and exportable
+- `globals/packages/*/skills/` — package-owned shared skill source, global and exportable
+- `globals/agents/skills/` — system skill source that is global/exportable but not package-owned
 - `globals/claude/` — Claude global rules, hooks, commands, settings baseline, and skill links
 - `globals/codex/` — Codex global rules, hooks, settings baseline, and managed markers
-- `manifests/inventory/` — the supplied catalog you add items to: MCP presets, slash commands,
-  skill-invocation policy, and agent permission behavior buckets
+- `manifests/inventory/` — shared inventory that remains central: MCP presets, package categories,
+  trigger fixtures, and agent permission behavior buckets
 - `manifests/platform/` — install/verify/render plumbing: the `.tsv` path tables, content checks,
   the CLI usage catalog, and merge prompts
 - `manifests/platform/presets.json` — preset bundle source of truth for onboarding/apply/remove

@@ -1,9 +1,7 @@
 # Skills vs. Commands: Invocation & Risk Policy
 
-> **Status: ACTIVE.** Control-plane manifests (`skill-invocation.json`,
-> `slash-commands.json`), the baseline audit doc, and slash-command rendering shipped. Remaining
-> work: automated audit/check commands, trigger tests, settings/manual-only validation, and any
-> trigger or risk reclassifications.
+> **Status: ACTIVE.** Package-owned skill and slash-command resources, the baseline audit doc, and
+> slash-command rendering shipped. Remaining work: trigger or risk reclassifications.
 
 ## Purpose
 

@@ -25,6 +25,7 @@
   ],
   "scripts": {
     "test": "scripts/test/test-roborepo.sh --quiet",
+    "test:packages": "node scripts/test/package-catalog-check.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "pack:smoke": "npm pack"
   },

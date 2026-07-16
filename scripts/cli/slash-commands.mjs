@@ -1,19 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { repoRoot } from "./paths.mjs";
-import { listSourceSkills } from "./skill-lib.mjs";
+import { loadPackageCatalog } from "./package-catalog.mjs";
 import {
   GENERATED_COMMAND_MARKER,
   LEGACY_GENERATED_COMMAND_MARKER,
-  SKILL_INVOCATION_MANIFEST_REL,
   SLASH_COMMAND_HARNESSES,
-  SLASH_COMMANDS_MANIFEST_REL,
 } from "./skill-command-config.mjs";
-import { validateCommands, validateSkillManifest } from "./slash-command-validation.mjs";
-
-function readJson(relPath) {
-  return JSON.parse(fs.readFileSync(path.join(repoRoot, relPath), "utf8"));
-}
 
 function readText(relPath) {
   return fs.readFileSync(path.join(repoRoot, relPath), "utf8").replace(/\r\n/g, "\n");
@@ -64,7 +57,7 @@ point.
 }
 
 function standaloneCommand(command) {
-  return withGeneratedMarker(readText(command.source));
+  return withGeneratedMarker(fs.readFileSync(command.sourceAbs, "utf8").replace(/\r\n/g, "\n"));
 }
 
 function expectedCommands(commands) {
@@ -132,10 +125,49 @@ function renderHarness(harnessName, expected, { checkOnly = false, quiet = false
 }
 
 export function loadSlashCommandPlan() {
-  const sourceSkills = new Set(listSourceSkills(path.join(repoRoot, "globals", "agents", "skills")));
-  const skillPolicies = validateSkillManifest(readJson(SKILL_INVOCATION_MANIFEST_REL), sourceSkills);
-  const commands = validateCommands(readJson(SLASH_COMMANDS_MANIFEST_REL), sourceSkills, skillPolicies);
+  const commands = slashCommandsFromPackages(loadPackageCatalog({ includeUnavailable: true }));
   return { commands, expected: expectedCommands(commands) };
+}
+
+function slashCommandsFromPackages(packages) {
+  const commands = [];
+  const seen = new Set();
+  for (const pkg of packages) {
+    for (const resource of pkg.resources || []) {
+      if (resource.type === "skill") {
+        for (const entrypoint of resource.entrypoints || []) {
+          const command = {
+            name: entrypoint.name,
+            kind: "skill-backed",
+            description: entrypoint.description,
+            skill: resource.id,
+            harnesses: entrypoint.harnesses,
+          };
+          addCommand(commands, seen, command, pkg.id);
+        }
+        continue;
+      }
+      if (resource.type === "slash-command") {
+        addCommand(commands, seen, {
+          name: resource.name,
+          kind: "standalone",
+          description: resource.description || pkg.description,
+          sourceAbs: path.join(pkg.sourceRoot, resource.source),
+          harnesses: resource.harnesses,
+        }, pkg.id);
+      }
+    }
+  }
+  return commands.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function addCommand(commands, seen, command, packageId) {
+  if (seen.has(command.name)) throw new Error(`duplicate slash command from packages: ${command.name}`);
+  seen.add(command.name);
+  if (!command.description || command.description.includes("\n")) {
+    throw new Error(`${packageId}: /${command.name} needs a one-line description`);
+  }
+  commands.push(command);
 }
 
 function checkCommandCollisions(commands) {

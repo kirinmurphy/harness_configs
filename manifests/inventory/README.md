@@ -11,17 +11,17 @@ the installer wires `~/.claude` / `~/.codex`.
 | --- | --- | --- |
 | `mcp-presets.json` | MCP server presets offered by `roborepo mcp add` | **Hand-edit.** No add command. `roborepo mcp add` *reads* a preset and writes it into live config; it never writes back here. |
 | `agent-permissions.json` | Flat permission behaviors and arbitrary command buckets (`allow` / `ask` / `deny`) | **Hand-edit.** No add command. The renderer (`roborepo permissions`) reads the buckets and generates the `globals/*` blocks; it never writes back here. |
-| `slash-commands.json` | Slash commands rendered into both harnesses | **`roborepo skill new`** appends + sorts + writes this for you. (Plain JSON, so hand-editing also works.) |
-| `skill-invocation.json` | Per-skill risk / invocation policy | **`roborepo skill new`** appends + sorts + writes this for you. (Plain JSON, so hand-editing also works.) |
+| `package-categories.json` | Valid package presentation categories for onboarding and Config UI | **Hand-edit.** Package configs reference these stable IDs. |
 | `skill-trigger-tests.json` | Deterministic trigger and near-miss fixtures for medium-risk skills | **Hand-edit** when trigger policy changes, then run `roborepo skill triggers --check`. |
 
-## Two ways an item lands here
+## Package-owned resources
 
-- **CLI-written:** `slash-commands.json`, `skill-invocation.json` — added by
-  `roborepo skill new` (see `scripts/cli/skill-new-manifests.mjs`).
-- **Hand-edited:** `mcp-presets.json`, `agent-permissions.json`, `skill-trigger-tests.json` — no add command exists;
-  open the file and add the entry, then run the consumer (`roborepo mcp add` /
-  `roborepo permissions`, `roborepo skill triggers --check`) to use it.
+Optional packages now live under `globals/packages/<package-id>/package.config.json`.
+Skill invocation policy and slash-command entrypoints are declared inside the owning package,
+not in separate inventory manifests.
+
+`roborepo skill new` and `roborepo package create` write package directories. The remaining
+inventory files are hand-edited shared registries.
 
 After editing any file here, run `roborepo doctor` (and `roborepo permissions --check` /
 `roborepo skill render-commands --check` for the rendered ones, plus

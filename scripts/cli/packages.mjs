@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { claudeJsonPath, repoRoot, rootConfigActive } from "./paths.mjs";
+import { claudeJsonPath, repoRoot, rootConfigActive, workspacePackagesDir, initializeWorkspace } from "./paths.mjs";
 import { setPackageEnabled, renderHomeRules, readEnabledPackagesRegistry } from "./rules-render.mjs";
-import { loadPackageCatalog, unavailablePackageMessage } from "./package-catalog.mjs";
+import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 import { buildPackageLiveState } from "./package-probes.mjs";
 import { removeCodexMcp } from "./mcp-codex.mjs";
@@ -15,6 +15,173 @@ export const USER_CODEX_CONFIG = rootConfigActive.codex;
 
 export function findPackage(pkgId) {
   return loadPackageCatalog().find((p) => p.id === pkgId) || null;
+}
+
+export function packageCommand(args = []) {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "list":
+      return listPackages(rest);
+    case "inspect":
+      return inspectPackage(rest);
+    case "create":
+      return createPackage(rest);
+    case "enable":
+      return enablePackage(rest);
+    case "disable":
+      return disablePackage(rest);
+    case "validate":
+      return validatePackages(rest);
+    case "reconcile":
+      return reconcileEnabledPackages(rest);
+    case "adopt-live":
+      return adoptLivePackages({ dryRun: rest.includes("--dry-run") });
+    default:
+      console.error("usage: roborepo package list|inspect|create|enable|disable|validate|reconcile|adopt-live");
+      process.exit(2);
+  }
+}
+
+function createPackage(rest) {
+  const opts = parseCreateArgs(rest);
+  initializeWorkspace();
+  const packageDir = path.join(workspacePackagesDir, opts.id);
+  const configPath = path.join(packageDir, "package.config.json");
+  if (fs.existsSync(configPath)) throw new Error(`package already exists: ${opts.id}`);
+  const config = packageTemplate(opts);
+  fs.mkdirSync(packageDir, { recursive: true });
+  for (const resource of config.resources) {
+    if (resource.type === "skill") {
+      const skillDir = path.join(packageDir, resource.source);
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(path.join(skillDir, "SKILL.md"), skillBody(resource.id, config.description));
+    } else if (resource.type === "slash-command") {
+      const commandPath = path.join(packageDir, resource.source);
+      fs.mkdirSync(path.dirname(commandPath), { recursive: true });
+      fs.writeFileSync(commandPath, commandBody(resource.name, config.description));
+    }
+  }
+  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  console.log(`created package: ${configPath}`);
+}
+
+function parseCreateArgs(rest) {
+  const flags = new Map();
+  const positional = [];
+  for (const arg of rest) {
+    if (arg.startsWith("--") && arg.includes("=")) {
+      const [key, value] = arg.slice(2).split(/=(.*)/s);
+      flags.set(key, value);
+    } else if (arg.startsWith("--")) {
+      flags.set(arg.slice(2), "true");
+    } else {
+      positional.push(arg);
+    }
+  }
+  const id = positional[0] || flags.get("id") || flags.get("name");
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(String(id || ""))) {
+    console.error("usage: roborepo package create <id> [--kind=empty|auto-skill|skill-command|standalone-command] [--description=<text>]");
+    process.exit(2);
+  }
+  return {
+    id,
+    kind: flags.get("kind") || "empty",
+    description: flags.get("description") || `Custom package ${id}`,
+    command: flags.get("command") || id,
+  };
+}
+
+function packageTemplate(opts) {
+  const base = {
+    schemaVersion: 1,
+    id: opts.id,
+    label: titleize(opts.id),
+    description: opts.description,
+    lifecycle: "optional",
+    presentation: { category: opts.kind.includes("command") ? "commands" : "code-conventions", order: 100 },
+    resources: [],
+  };
+  if (opts.kind === "auto-skill") {
+    base.resources.push({ type: "skill", id: opts.id, source: `skills/${opts.id}`, invocation: "auto", risk: "low" });
+  } else if (opts.kind === "skill-command") {
+    base.resources.push({
+      type: "skill",
+      id: opts.id,
+      source: `skills/${opts.id}`,
+      invocation: "manual",
+      risk: "medium",
+      entrypoints: [
+        { type: "slash-command", name: opts.command, description: opts.description, harnesses: ["claude", "codex"] },
+      ],
+    });
+  } else if (opts.kind === "standalone-command") {
+    base.resources.push({
+      type: "slash-command",
+      id: opts.command,
+      name: opts.command,
+      source: `commands/${opts.command}.md`,
+      description: opts.description,
+      harnesses: ["claude", "codex"],
+    });
+  } else if (opts.kind !== "empty") {
+    throw new Error(`unknown package template: ${opts.kind}`);
+  }
+  return base;
+}
+
+function titleize(id) {
+  return id.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+function skillBody(id, description) {
+  return `---\nname: ${id}\ndescription: ${description}\n---\n\n# ${titleize(id)}\n\n${description}\n`;
+}
+
+function commandBody(name, description) {
+  return `---\ndescription: ${description}\n---\n\n# /${name}\n\n${description}\n`;
+}
+
+function listPackages() {
+  const catalog = loadPackageCatalog({ includeUnavailable: true });
+  for (const pkg of catalog) {
+    const state = buildPackageLiveState(catalog).get(pkg.id);
+    console.log(`${pkg.id}\t${state?.status || "disabled"}\t${pkg.presentation.category}\t${pkg.label}`);
+  }
+}
+
+function inspectPackage(rest) {
+  const [pkgId] = rest;
+  if (!pkgId) {
+    console.error("usage: roborepo package inspect <package-id>");
+    process.exit(2);
+  }
+  const pkg = loadPackageCatalog({ includeUnavailable: true }).find((entry) => entry.id === pkgId);
+  if (!pkg) {
+    console.error(unavailablePackageMessage(pkgId));
+    process.exit(2);
+  }
+  console.log(JSON.stringify({
+    id: pkg.id,
+    label: pkg.label,
+    description: pkg.description,
+    lifecycle: pkg.lifecycle,
+    status: pkg.status || "available",
+    presentation: pkg.presentation,
+    requires: pkg.requires || [],
+    resources: pkg.resources || [],
+    sourceRoot: pkg.sourceRoot,
+  }, null, 2));
+}
+
+function validatePackages(rest) {
+  const catalog = loadPackageCatalog({ includeUnavailable: true });
+  const [pkgId] = rest.filter((arg) => !arg.startsWith("--"));
+  if (pkgId && !catalog.some((pkg) => pkg.id === pkgId)) {
+    console.error(`unknown package: ${pkgId}`);
+    process.exit(2);
+  }
+  validatePackageCatalog(catalog);
+  console.log(pkgId ? `ok: package ${pkgId} valid` : `ok: ${catalog.length} package(s) valid`);
 }
 
 export function readSettings(settingsPath) {
@@ -394,6 +561,19 @@ export async function disablePackage(rest) {
   }
 
   const dryRun = flags.includes("--dry-run");
+  const cascade = flags.includes("--cascade");
+  const catalog = loadPackageCatalog({ includeUnavailable: true });
+  const dependents = enabledDependents(pkg.id, catalog);
+  if (dependents.length > 0 && !cascade) {
+    console.error(`cannot disable ${pkg.id}; enabled packages depend on it: ${dependents.join(", ")}`);
+    console.error(`rerun with --cascade to disable dependents first`);
+    process.exit(2);
+  }
+  if (cascade) {
+    for (const dependent of [...dependents].reverse()) {
+      await disablePackage([dependent, ...flags.filter((flag) => flag !== "--cascade"), "--cascade"]);
+    }
+  }
   console.log(dryRun ? `[dry-run] would disable: ${pkg.label}` : `disabling: ${pkg.label}`);
   if (dryRun) {
     console.log(`  [dry-run] mark package disabled in registry`);
@@ -446,6 +626,18 @@ export async function disablePackage(rest) {
     }
   }
   if (servicePromises.length) await Promise.all(servicePromises);
+}
+
+function enabledDependents(pkgId, catalog) {
+  const enabled = new Set(readEnabledPackagesRegistry().packages || []);
+  const direct = catalog
+    .filter((pkg) => enabled.has(pkg.id) && (pkg.requires || []).includes(pkgId))
+    .map((pkg) => pkg.id);
+  const out = new Set(direct);
+  for (const id of direct) {
+    for (const nested of enabledDependents(id, catalog)) out.add(nested);
+  }
+  return [...out];
 }
 
 // --------------------------------------------------------------------------- service component

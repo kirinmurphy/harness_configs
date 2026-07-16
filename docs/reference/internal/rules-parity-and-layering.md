@@ -10,7 +10,6 @@ Claude and Codex should share the same global behavior defaults without hand-mai
 - Both files express the same core behavior through shared fragments: skill loading, verification, and temp-file hygiene.
 - Live Claude home rules are inline: `~/.claude/CLAUDE.md` contains the full Claude render inside a managed block.
 - Live Codex home rules are inline: `~/.codex/AGENTS.md` contains the full Codex render inside a managed block.
-- Project Context orientation is package-gated with the `/inventory` workflow under `globals/packages/project-context/rules.md`.
 - The three Chat-Time Output behaviors (skill visibility, session capture, impact awareness) are no longer base fragments. They ship as default-on rules packages under `globals/packages/<id>/rules.md` and merge into both harness rules files when enabled, so they can be toggled per behavior. See [config-control-panel.md](../services/config-control-panel.md).
 - Harness-specific fragments hold Claude-only or Codex-only differences.
 - Root harness config files are conditional defaults:

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "tighten",
+  "label": "Tighten",
+  "description": "Clean up code against this project's own patterns with specific, anchored callouts.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "commands",
+    "order": 40
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "tighten",
+      "source": "skills/tighten",
+      "invocation": "auto",
+      "risk": "medium",
+      "entrypoints": [
+        {
+          "type": "slash-command",
+          "name": "tighten",
+          "description": "Clean up code against this project's own patterns with specific, anchored callouts.",
+          "harnesses": ["claude", "codex"]
+        }
+      ]
+    }
+  ]
+}

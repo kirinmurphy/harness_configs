@@ -52,7 +52,7 @@ export function hasReplaceOverride(type, id, overrides = readWorkspaceOverrides(
 export function loadWorkspacePackages({ builtInIds = new Set(), overrides = readWorkspaceOverrides() } = {}) {
   const packages = [];
   const seen = new Set();
-  for (const file of jsonFiles(workspacePackagesDir)) {
+  for (const file of packageConfigFiles(workspacePackagesDir)) {
     const data = JSON.parse(fs.readFileSync(file, "utf8"));
     const entries = Array.isArray(data.packages) ? data.packages : [data];
     for (const pkg of entries) {
@@ -273,11 +273,29 @@ function importPackageManifest(file, report, dryRun) {
       if (JSON.stringify(builtIn.get(pkg.id)) !== JSON.stringify(pkg)) report.changedBuiltIns.push(`package:${pkg.id}`);
       continue;
     }
-    const dest = path.join(workspacePackagesDir, `${pkg.id}.json`);
+    const dest = path.join(workspacePackagesDir, pkg.id, "package.config.json");
     if (fs.existsSync(dest)) continue;
-    if (!dryRun) fs.writeFileSync(dest, `${JSON.stringify(pkg, null, 2)}\n`);
+    if (!dryRun) {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.writeFileSync(dest, `${JSON.stringify(normalizeImportedPackage(pkg), null, 2)}\n`);
+    }
     report.importedPackages += 1;
   }
+}
+
+function normalizeImportedPackage(pkg) {
+  return {
+    schemaVersion: 1,
+    id: pkg.id,
+    label: pkg.label,
+    description: pkg.description || `Imported package ${pkg.id}`,
+    lifecycle: pkg.lifecycle || "optional",
+    presentation: pkg.presentation || { category: "commands", order: 100 },
+    resources: pkg.resources || (pkg.components || []).map((component) => (
+      component.type === "command" ? { ...component, type: "cli-command" } : component
+    )),
+    ...(pkg.requires ? { requires: pkg.requires } : {}),
+  };
 }
 
 function importMcpManifest(file, report, dryRun) {
@@ -319,8 +337,13 @@ function readWorkspaceMcpFile() {
 }
 
 function readBuiltInPackages() {
+  const packagesRoot = path.join(appRoot, "globals", "packages");
   try {
-    return JSON.parse(fs.readFileSync(path.join(appRoot, "manifests", "inventory", "packages.json"), "utf8")).packages || [];
+    return fs.readdirSync(packagesRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .map((entry) => path.join(packagesRoot, entry.name, "package.config.json"))
+      .filter((file) => fs.existsSync(file))
+      .map((file) => JSON.parse(fs.readFileSync(file, "utf8")));
   } catch {
     return [];
   }
@@ -338,10 +361,11 @@ function validatePackage(pkg, file) {
   if (!pkg || typeof pkg !== "object") throw new Error(`invalid package in ${file}`);
   if (!isSlug(pkg.id)) throw new Error(`package in ${file} has invalid id`);
   if (typeof pkg.label !== "string" || pkg.label.trim() === "") throw new Error(`package '${pkg.id}' needs label`);
-  if (!Array.isArray(pkg.components)) throw new Error(`package '${pkg.id}' needs components array`);
-  for (const comp of pkg.components) {
+  const resources = pkg.resources || pkg.components;
+  if (!Array.isArray(resources)) throw new Error(`package '${pkg.id}' needs resources array`);
+  for (const comp of resources) {
     if (!comp || typeof comp !== "object" || typeof comp.type !== "string") {
-      throw new Error(`package '${pkg.id}' has invalid component`);
+      throw new Error(`package '${pkg.id}' has invalid resource`);
     }
   }
 }
@@ -380,6 +404,20 @@ function sourceSkillNames(srcDir) {
 
 function jsonFiles(dir) {
   return filesByExt(dir, ".json");
+}
+
+function packageConfigFiles(dir) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .map((entry) => path.join(dir, entry.name, "package.config.json"))
+    .filter((file) => fs.existsSync(file))
+    .sort();
 }
 
 function markdownFiles(dir) {

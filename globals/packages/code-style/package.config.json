@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "code-style",
+  "label": "Code Style",
+  "description": "General coding conventions loaded automatically when relevant.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "code-conventions",
+    "order": 10
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "code-style",
+      "source": "skills/code-style",
+      "invocation": "auto",
+      "risk": "low"
+    }
+  ]
+}

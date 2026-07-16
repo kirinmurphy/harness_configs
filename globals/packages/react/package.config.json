@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "react",
+  "label": "React",
+  "description": "React, Next.js, Remix, Vite React, hooks, components, and React tests.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "code-conventions",
+    "order": 30
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "react",
+      "source": "skills/react",
+      "invocation": "auto",
+      "risk": "low"
+    }
+  ]
+}

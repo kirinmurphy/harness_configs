@@ -10,10 +10,10 @@ import {
   workspaceCommandsDir,
   workspaceSkillsDir,
 } from "./paths.mjs";
-import { addSkillPolicy, addSlashCommand, readSkillPolicyManifest, readSlashCommandManifest } from "./skill-new-manifests.mjs";
 import { resolveNewOptions } from "./skill-new-options.mjs";
 import { updateReadmeForCommand, updateReadmeForHelper } from "./skill-new-readme.mjs";
 import { skillTemplate, skillBackedCommandTemplate, standaloneCommandTemplate } from "./skill-new-templates.mjs";
+import { loadPackageCatalog } from "./package-catalog.mjs";
 
 const NATIVE_SKILL_CREATOR = path.join(
   os.homedir(), ".codex", "skills", ".system", "skill-creator", "scripts"
@@ -56,6 +56,10 @@ function scaffoldWithNative(name) {
 
 function skillRoot() {
   return packageMode ? workspaceSkillsDir : sharedSkillsDir;
+}
+
+function builtInPackageRoot(id) {
+  return path.join(repoRoot, "globals", "packages", id);
 }
 
 function formatDisplayName(name) {
@@ -119,19 +123,30 @@ function preflightSkillNew(opts) {
 
   if (opts.kind === "auto" || opts.kind === "skill-command") {
     assertPathMissing(path.join(skillRoot(), opts.name));
-    if (readSkillPolicyManifest().skills.some((skill) => skill.skill === opts.name)) {
-      throw new Error(`skill policy already exists: ${opts.name}`);
-    }
+    assertPathMissing(builtInPackageRoot(opts.name));
   }
 
   if (opts.kind === "skill-command" || opts.kind === "standalone") {
-    if (readSlashCommandManifest().commands.some((command) => command.name === opts.command)) {
-      throw new Error(`slash command already exists: ${opts.command}`);
-    }
+    assertPathMissing(builtInPackageRoot(opts.kind === "standalone" ? opts.command : opts.name));
+    if (packageCommandExists(opts.command)) throw new Error(`slash command already exists: ${opts.command}`);
   }
 
   if (opts.kind === "standalone") {
-    assertPathAvailable(path.join(repoRoot, "globals", "commands", `${opts.command}.md`));
+    assertPathAvailable(path.join(builtInPackageRoot(opts.command), "commands", `${opts.command}.md`));
+  }
+}
+
+function packageCommandExists(commandName) {
+  try {
+    return loadPackageCatalog({ includeUnavailable: true }).some((pkg) =>
+      (pkg.resources || []).some((resource) => {
+        if (resource.type === "slash-command") return resource.name === commandName;
+        if (resource.type === "skill") return (resource.entrypoints || []).some((entrypoint) => entrypoint.type === "slash-command" && entrypoint.name === commandName);
+        return false;
+      })
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -140,9 +155,10 @@ export async function skillNew(args) {
   preflightSkillNew(opts);
 
   if (opts.kind === "auto" || opts.kind === "skill-command") {
-    const skillDir = path.join(skillRoot(), opts.name);
+    const packageDir = packageMode ? null : builtInPackageRoot(opts.name);
+    const skillDir = packageMode ? path.join(skillRoot(), opts.name) : path.join(packageDir, "skills", opts.name);
     if (!packageMode && hasNativeInitSkill()) {
-      scaffoldWithNative(opts.name);
+      writeNewFile(path.join(skillDir, "SKILL.md"), skillTemplate(opts.name, opts.description));
     } else {
       writeNewFile(path.join(skillDir, "SKILL.md"), skillTemplate(opts.name, opts.description));
     }
@@ -150,12 +166,7 @@ export async function skillNew(args) {
     if (packageMode) {
       console.log(`package mode: custom skill written to ${skillDir}`);
     } else {
-      addSkillPolicy({
-        name: opts.name,
-        risk: opts.risk,
-        explicitCommand: opts.kind === "skill-command",
-        description: opts.description,
-      });
+      writePackageConfig(packageDir, packageConfigForSkill(opts));
     }
     if (opts.kind === "auto") {
       if (!packageMode) updateReadmeForHelper({ name: opts.name, description: opts.description, category: opts.category });
@@ -169,29 +180,17 @@ export async function skillNew(args) {
         skillBackedCommandTemplate(opts.command, opts.name, opts.description),
       );
     }
-    if (!packageMode) addSlashCommand({
-      name: opts.command,
-      kind: "skill-backed",
-      description: opts.description,
-      skill: opts.name,
-      harnesses: opts.harnesses,
-    });
     if (!packageMode) updateReadmeForCommand({ name: opts.command, description: opts.description });
   }
 
   if (opts.kind === "standalone") {
     const sourceRel = packageMode
       ? path.join("commands", `${opts.command}.md`)
-      : path.join("globals", "commands", `${opts.command}.md`);
-    const sourceAbs = packageMode ? path.join(workspaceCommandsDir, `${opts.command}.md`) : path.join(repoRoot, sourceRel);
+      : path.join("commands", `${opts.command}.md`);
+    const packageDir = packageMode ? null : builtInPackageRoot(opts.command);
+    const sourceAbs = packageMode ? path.join(workspaceCommandsDir, `${opts.command}.md`) : path.join(packageDir, sourceRel);
     writeNewFile(sourceAbs, standaloneCommandTemplate(opts.command, opts.description));
-    if (!packageMode) addSlashCommand({
-      name: opts.command,
-      kind: "standalone",
-      description: opts.description,
-      source: sourceRel,
-      harnesses: opts.harnesses,
-    });
+    if (!packageMode) writePackageConfig(packageDir, packageConfigForStandalone(opts));
     if (!packageMode) updateReadmeForCommand({ name: opts.command, description: opts.description });
   }
 
@@ -213,4 +212,56 @@ export async function skillNew(args) {
   console.log(`created ${opts.kind}: ${opts.kind === "standalone" ? `/${opts.command}` : opts.name}`);
   console.log("next: edit the generated body, then run:");
   console.log("  scripts/doctor.sh --quiet");
+}
+
+function writePackageConfig(packageDir, config) {
+  writeNewFile(path.join(packageDir, "package.config.json"), `${JSON.stringify(config, null, 2)}\n`);
+}
+
+function packageConfigBase(id, description, category) {
+  return {
+    schemaVersion: 1,
+    id,
+    label: formatDisplayName(id),
+    description,
+    lifecycle: "optional",
+    presentation: { category, order: 100 },
+    resources: [],
+  };
+}
+
+function packageConfigForSkill(opts) {
+  const config = packageConfigBase(opts.name, opts.description, opts.kind === "skill-command" ? "commands" : "code-conventions");
+  const resource = {
+    type: "skill",
+    id: opts.name,
+    source: `skills/${opts.name}`,
+    invocation: opts.kind === "skill-command" ? "manual" : "auto",
+    risk: opts.risk,
+  };
+  if (opts.kind === "skill-command") {
+    resource.entrypoints = [
+      {
+        type: "slash-command",
+        name: opts.command,
+        description: opts.description,
+        harnesses: opts.harnesses,
+      },
+    ];
+  }
+  config.resources.push(resource);
+  return config;
+}
+
+function packageConfigForStandalone(opts) {
+  const config = packageConfigBase(opts.command, opts.description, "commands");
+  config.resources.push({
+    type: "slash-command",
+    id: opts.command,
+    name: opts.command,
+    source: `commands/${opts.command}.md`,
+    description: opts.description,
+    harnesses: opts.harnesses,
+  });
+  return config;
 }

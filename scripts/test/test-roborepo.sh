@@ -79,15 +79,16 @@ assert "package mode: built-in render command refuses appRoot writes" \
 
 workspace_resource_home="${work}/workspace-resource-home"
 workspace_resource_root="${work}/workspace-resource"
-mkdir -p "${workspace_resource_home}" "${workspace_resource_root}/skills/custom-skill" "${workspace_resource_root}/commands" "${workspace_resource_root}/packages"
+mkdir -p "${workspace_resource_home}" "${workspace_resource_root}/skills/custom-skill" "${workspace_resource_root}/commands" "${workspace_resource_root}/packages/workspace-pack"
 printf -- '---\nname: custom-skill\ndescription: custom\n---\n' > "${workspace_resource_root}/skills/custom-skill/SKILL.md"
 printf 'custom command\n' > "${workspace_resource_root}/commands/custom-command.md"
-printf '%s\n' '{"id":"workspace-pack","label":"Workspace Pack","components":[{"type":"command","name":"index code","commandOrUrl":"node","args":["--version"],"mode":"index"}]}' > "${workspace_resource_root}/packages/workspace-pack.json"
+printf '%s\n' '{"schemaVersion":1,"id":"workspace-pack","label":"Workspace Pack","description":"Workspace pack.","lifecycle":"optional","presentation":{"category":"commands","order":100},"resources":[{"type":"cli-command","name":"workspace index","commandOrUrl":"node","args":["--version"],"mode":"index"}]}' > "${workspace_resource_root}/packages/workspace-pack/package.config.json"
 assert "workspace resources: validate accepts custom typed resources" \
   bash -c "HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node '${cli}' workspace validate >/dev/null"
 assert "workspace resources: package catalog includes workspace package" \
   bash -c "HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node -e \"import('${repo_root}/scripts/cli/package-catalog.mjs').then(m=>{process.exit(m.loadPackageCatalog({includeUnavailable:true}).some(p=>p.id==='workspace-pack')?0:1)})\""
-printf '%s\n' '{"id":"jcodemunch","label":"Bad Replace","components":[]}' > "${workspace_resource_root}/packages/jcodemunch.json"
+mkdir -p "${workspace_resource_root}/packages/jcodemunch"
+printf '%s\n' '{"schemaVersion":1,"id":"jcodemunch","label":"Bad Replace","description":"Bad replace.","lifecycle":"optional","presentation":{"category":"commands","order":100},"resources":[]}' > "${workspace_resource_root}/packages/jcodemunch/package.config.json"
 assert "workspace resources: package collision requires typed override" \
   bash -c "! env HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node '${cli}' workspace validate >/dev/null 2>'${work}/workspace-package-collision.err' && grep -q 'conflicts with a built-in package' '${work}/workspace-package-collision.err'"
 mkdir -p "${workspace_resource_root}/overrides"
@@ -111,7 +112,7 @@ printf 'custom import command\n' > "${legacy_source}/globals/commands/custom-imp
 printf '%s\n' '{"packages":[{"id":"workspace-import","label":"Workspace Import","components":[]},{"id":"jcodemunch","label":"Changed Builtin","components":[]}]}' > "${legacy_source}/manifests/inventory/packages.json"
 printf '%s\n' '{"servers":[{"name":"custom-server","commandOrUrl":"node","args":["x"],"harnesses":["codex"]},{"name":"jcodemunch","commandOrUrl":"node","args":["changed"],"harnesses":["codex"]}]}' > "${legacy_source}/manifests/inventory/mcp-servers.json"
 assert "workspace import: copies obvious custom content and reports changed built-ins" \
-  bash -c "HOME='${legacy_workspace_home}' ROBOREPO_STATE_ROOT='${legacy_workspace_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${legacy_workspace_root}' node '${cli}' workspace import '${legacy_source}' >'${work}/workspace-import.out' && test -f '${legacy_workspace_root}/skills/custom-import/SKILL.md' && ! test -e '${legacy_workspace_root}/skills/case-study' && test -f '${legacy_workspace_root}/commands/custom-import.md' && test -f '${legacy_workspace_root}/packages/workspace-import.json' && grep -q 'custom-server' '${legacy_workspace_root}/mcp/servers.json' && grep -q 'changed built-ins left for review: skill:case-study' '${work}/workspace-import.out'"
+  bash -c "HOME='${legacy_workspace_home}' ROBOREPO_STATE_ROOT='${legacy_workspace_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${legacy_workspace_root}' node '${cli}' workspace import '${legacy_source}' >'${work}/workspace-import.out' && test -f '${legacy_workspace_root}/skills/custom-import/SKILL.md' && ! test -e '${legacy_workspace_root}/skills/case-study' && test -f '${legacy_workspace_root}/commands/custom-import.md' && test -f '${legacy_workspace_root}/packages/workspace-import/package.config.json' && grep -q 'custom-server' '${legacy_workspace_root}/mcp/servers.json' && grep -q 'changed built-ins left for review: skill:case-study' '${work}/workspace-import.out'"
 
 # Codex PreToolUse hooks must never surface a hook failure just because Codex passes an empty or
 # malformed payload, and installed hooks must find the repo manifest from install-state.json rather
@@ -238,9 +239,9 @@ mkdir -p "${sync_home}/.claude" "${sync_home}/.codex"
 assert "skill sync-global: refreshes cache and harness links" \
   bash -c "cd '${repo_root}' && HOME='${sync_home}' ROBOREPO_STATE_DIR='${sync_home}/.roborepo' node '${cli}' skill sync-global >/dev/null"
 assert "skill sync-global: Claude skill cache link created" \
-  assert_skill_cache_link "${sync_home}" "claude" "case-study" "${repo_root}/globals/agents/skills/case-study" "skill sync-global: Claude skill cache link created"
+  assert_skill_cache_link "${sync_home}" "claude" "case-study" "${repo_root}/globals/packages/case-study-pack/skills/case-study" "skill sync-global: Claude skill cache link created"
 assert "skill sync-global: Codex skill cache link created" \
-  assert_skill_cache_link "${sync_home}" "codex" "case-study" "${repo_root}/globals/agents/skills/case-study" "skill sync-global: Codex skill cache link created"
+  assert_skill_cache_link "${sync_home}" "codex" "case-study" "${repo_root}/globals/packages/case-study-pack/skills/case-study" "skill sync-global: Codex skill cache link created"
 assert "skill inspect: reports managed source and harness state" \
   bash -c "HOME='${sync_home}' ROBOREPO_STATE_DIR='${sync_home}/.roborepo' node '${cli}' skill inspect case-study >'${work}/inspect-managed.out' && grep -q 'ownership: managed' '${work}/inspect-managed.out' && grep -q 'claude: managed' '${work}/inspect-managed.out' && grep -q 'codex: managed' '${work}/inspect-managed.out'"
 mkdir -p "${sync_home}/.claude/skills/native-only/agents"
@@ -303,8 +304,8 @@ assert "skill audit: generated audit is current" \
   bash -c "cd '${repo_root}' && node '${cli}' skill audit --check >/dev/null"
 assert "skill triggers: medium-risk trigger fixtures pass" \
   bash -c "cd '${repo_root}' && node '${cli}' skill triggers --check >/dev/null"
-assert "skill invocation: manual-only policy requires explicit command" \
-  bash -c "node -e \"import('${repo_root}/scripts/cli/slash-command-validation.mjs').then(m=>{try{m.validateSkillManifest({skills:[{skill:'demo',risk:'medium',invocation:'manual',explicit_command:false}]},new Set(['demo']));process.exit(1)}catch(e){process.exit(String(e.message).includes('requires explicit_command=true')?0:1)}})\""
+assert "package validation: manual-only skill requires an entrypoint" \
+  bash -c "d=\$(mktemp -d); trap 'rm -rf \"\$d\"' EXIT; mkdir -p \"\$d/globals/packages/manual-only/skills/manual-only\" \"\$d/manifests/inventory\"; cp '${repo_root}/manifests/inventory/package-categories.json' \"\$d/manifests/inventory/package-categories.json\"; printf '%s\n' '{\"schemaVersion\":1,\"id\":\"manual-only\",\"label\":\"Manual Only\",\"description\":\"Manual only.\",\"lifecycle\":\"optional\",\"presentation\":{\"category\":\"commands\",\"order\":1},\"resources\":[{\"type\":\"skill\",\"id\":\"manual-only\",\"source\":\"skills/manual-only\",\"invocation\":\"manual\",\"risk\":\"medium\"}]}' > \"\$d/globals/packages/manual-only/package.config.json\"; printf -- '---\nname: manual-only\ndescription: Manual only.\n---\n' > \"\$d/globals/packages/manual-only/skills/manual-only/SKILL.md\"; ROBOREPO_APP_ROOT=\"\$d\" node -e \"import('${repo_root}/scripts/cli/package-catalog.mjs').then(m=>{try{m.loadPackageCatalog({includeUnavailable:true});process.exit(1)}catch(e){process.exit(String(e.message).includes('manual-only')?0:1)}})\""
 
 # skill new: scaffold shared skills/commands against a throwaway harness root, never this repo.
 new_harness="${work}/new-harness"
@@ -314,6 +315,7 @@ mkdir -p \
   "${new_harness}/manifests/inventory" \
   "${new_harness}/manifests/platform" \
   "${new_harness}/globals/agents/skills" \
+  "${new_harness}/globals/packages" \
   "${new_harness}/globals/claude/commands" \
   "${new_harness}/globals/codex/commands" \
   "${new_harness}/local/skills"
@@ -322,10 +324,9 @@ cp "${repo_root}/scripts/build/link-skills.sh" "${new_harness}/scripts/build/lin
 cp "${repo_root}/scripts/build/link-global-skills.sh" "${new_harness}/scripts/build/link-global-skills.sh"
 cp "${repo_root}/scripts/build/skill-lib.sh" "${new_harness}/scripts/build/skill-lib.sh"
 cp "${repo_root}/scripts/build/render-slash-commands.mjs" "${new_harness}/scripts/build/render-slash-commands.mjs"
-printf '{"skills":[]}\n' > "${new_harness}/manifests/inventory/skill-invocation.json"
-printf '{"commands":[]}\n' > "${new_harness}/manifests/inventory/slash-commands.json"
 cp "${repo_root}/manifests/platform/cli-commands.json" "${new_harness}/manifests/platform/cli-commands.json"
 cp "${repo_root}/manifests/inventory/mcp-presets.json" "${new_harness}/manifests/inventory/mcp-presets.json"
+cp "${repo_root}/manifests/inventory/package-categories.json" "${new_harness}/manifests/inventory/package-categories.json"
 cat > "${new_harness}/README.md" <<'EOF_README'
 # Test Harness
 
@@ -344,9 +345,9 @@ EOF_README
 
 ( cd "${work}" && node "${new_harness}/scripts/cli/main.mjs" skill new --kind=auto --name=demo-helper --description="Demo helper workflow." --category=repo >/dev/null )
 assert "skill new: auto helper creates skill" \
-  test -f "${new_harness}/globals/agents/skills/demo-helper/SKILL.md"
-assert "skill new: auto helper updates policy manifest" \
-  grep -q '"explicit_command": false' "${new_harness}/manifests/inventory/skill-invocation.json"
+  test -f "${new_harness}/globals/packages/demo-helper/skills/demo-helper/SKILL.md"
+assert "skill new: auto helper writes package policy" \
+  grep -q '"invocation": "auto"' "${new_harness}/globals/packages/demo-helper/package.config.json"
 assert "skill new: auto helper updates README Automatic Helpers" \
   grep -q 'demo-helper' "${new_harness}/README.md"
 
@@ -354,17 +355,17 @@ assert "skill new: auto helper updates README Automatic Helpers" \
 assert "skill new: skill-command creates command wrapper" \
   grep -q 'Use the `demo-plan` skill' "${new_harness}/globals/claude/commands/demo-plan.md"
 assert "skill new: skill-command updates slash manifest" \
-  grep -q '"kind": "skill-backed"' "${new_harness}/manifests/inventory/slash-commands.json"
+  grep -q '"entrypoints"' "${new_harness}/globals/packages/demo-plan/package.config.json"
 
 ( cd "${work}" && node "${new_harness}/scripts/cli/main.mjs" skill new --kind=standalone --name=demo-command --description="Demo command workflow." --harnesses=claude >/dev/null )
 assert "skill new: standalone creates shared command source" \
-  test -f "${new_harness}/globals/commands/demo-command.md"
+  test -f "${new_harness}/globals/packages/demo-command/commands/demo-command.md"
 assert "skill new: standalone renders selected harness only" \
   bash -c "test -f '${new_harness}/globals/claude/commands/demo-command.md' && ! test -e '${new_harness}/globals/codex/commands/demo-command.md'"
 assert "skill new: duplicate harness rejected" \
   bash -c "cd '${work}' && ! node '${new_harness}/scripts/cli/main.mjs' skill new --kind=standalone --name=dupe-harness --description='Duplicate harness workflow.' --harnesses=claude,claude >/dev/null 2>&1"
 assert "skill new: duplicate command rejected before partial skill write" \
-  bash -c "cd '${work}' && ! node '${new_harness}/scripts/cli/main.mjs' skill new --kind=skill-command --name=partial-skill --command=demo-command --description='Partial write guard.' >/dev/null 2>&1 && ! test -e '${new_harness}/globals/agents/skills/partial-skill'"
+  bash -c "cd '${work}' && ! node '${new_harness}/scripts/cli/main.mjs' skill new --kind=skill-command --name=partial-skill --command=demo-command --description='Partial write guard.' >/dev/null 2>&1 && ! test -e '${new_harness}/globals/packages/partial-skill'"
 assert "skill new: standalone rejects irrelevant risk flag" \
   bash -c "cd '${work}' && ! node '${new_harness}/scripts/cli/main.mjs' skill new --kind=standalone --name=bad-risk --description='Bad risk workflow.' --risk=medium >/dev/null 2>&1"
 assert "skill new: skill-command rejects irrelevant category flag" \
@@ -378,7 +379,7 @@ assert "skill new: standalone rejects irrelevant command flag" \
 mkdir -p "${new_harness}/globals/agents/skills/existing-dir"
 printf 'support only\n' > "${new_harness}/globals/agents/skills/existing-dir/notes.txt"
 assert "skill new: refuses existing skill dir without partial write" \
-  bash -c "cd '${work}' && ! node '${new_harness}/scripts/cli/main.mjs' skill new --kind=auto --name=existing-dir --description='Existing dir guard.' >/dev/null 2>&1 && ! test -e '${new_harness}/globals/agents/skills/existing-dir/SKILL.md'"
+  bash -c "cd '${work}' && ! node '${new_harness}/scripts/cli/main.mjs' skill new --kind=auto --name=existing-dir --description='Existing dir guard.' >/dev/null 2>&1 && ! test -e '${new_harness}/globals/packages/existing-dir'"
 
 # ---------------------------------------------------------------------------
 # roborepo skill export-to-project
@@ -440,24 +441,6 @@ assert "run: failure propagates non-zero exit" \
   bash -c "! node '${cli}' run false >/dev/null 2>&1"
 assert "run: no command exits non-zero" \
   bash -c "! node '${cli}' run >/dev/null 2>&1"
-
-# ---------------------------------------------------------------------------
-# roborepo project-context
-# ---------------------------------------------------------------------------
-pc_repo="${work}/project-context"
-mkdir -p "${pc_repo}/src" "${pc_repo}/docs/project-context"
-printf '{"name":"pc-demo","scripts":{"test":"node --test"}}\n' > "${pc_repo}/package.json"
-printf 'export function demo() { return true; }\n' > "${pc_repo}/src/demo.js"
-printf '# Project Context\n' > "${pc_repo}/docs/project-context/README.md"
-printf '# Glossary\n' > "${pc_repo}/docs/project-context/glossary.md"
-printf '# Inventory\n' > "${pc_repo}/docs/project-context/inventory.md"
-assert "project-context inventory: writes generated facts and summary" \
-  bash -c "cd '${pc_repo}' && node '${cli}' project-context inventory . --summary >/dev/null && test -f docs/project-context/generated/repo-scan.json && test -f docs/project-context/generated/repo-summary.md"
-assert "project-context check: validates generated facts and curated docs" \
-  bash -c "cd '${pc_repo}' && node '${cli}' project-context check . >/dev/null"
-printf '{"schemaVersion":999}\n' > "${pc_repo}/docs/project-context/generated/repo-scan.json"
-assert "project-context check: fails stale generated schema" \
-  bash -c "cd '${pc_repo}' && ! node '${cli}' project-context check . >/dev/null 2>&1"
 
 # ---------------------------------------------------------------------------
 # roborepo bundles / telemetry
@@ -573,7 +556,7 @@ adopt_skill_home="${work}/adopt-skill-home"
 mkdir -p "${adopt_skill_home}/.claude" "${adopt_skill_home}/.codex" "${adopt_skill_home}/.roborepo/skills"
 echo '{}' > "${adopt_skill_home}/.claude/settings.json"
 printf '' > "${adopt_skill_home}/.codex/config.toml"
-cp -R "${repo_root}/globals/agents/skills/case-study" "${adopt_skill_home}/.roborepo/skills/case-study"
+cp -R "${repo_root}/globals/packages/case-study-pack/skills/case-study" "${adopt_skill_home}/.roborepo/skills/case-study"
 touch "${adopt_skill_home}/.roborepo/skills/case-study/.roborepo-managed"
 adopt_skill_env="HOME='${adopt_skill_home}' ROBOREPO_STATE_DIR='${adopt_skill_home}/.roborepo' ROBOREPO_SKIP_MCP=1"
 assert "package adopt-live marks external skill-component package as enabled" \
@@ -638,58 +621,38 @@ assert "config: disable service package clears telemetry state" \
 # the same skill materializer as the Code Conventions toggles.
 bash -c "${cfg_env} node '${cli}' enable case-study-pack >/dev/null 2>&1" || true
 assert "config: enabling a skill-component package links the Claude view" \
-  assert_skill_cache_link "${cfg_home}" "claude" "case-study" "${repo_root}/globals/agents/skills/case-study" "config: Claude skill cache link created"
+  assert_skill_cache_link "${cfg_home}" "claude" "case-study" "${repo_root}/globals/packages/case-study-pack/skills/case-study" "config: Claude skill cache link created"
 assert "config: enabling a skill-component package links the Codex view" \
-  assert_skill_cache_link "${cfg_home}" "codex" "case-study" "${repo_root}/globals/agents/skills/case-study" "config: Codex skill cache link created"
+  assert_skill_cache_link "${cfg_home}" "codex" "case-study" "${repo_root}/globals/packages/case-study-pack/skills/case-study" "config: Codex skill cache link created"
 assert "config: skill-component package reports enabled" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{process.exit(c.readConfigSnapshot().packages.find(p=>p.id==='case-study-pack')?.enabled?0:1)})\""
 bash -c "${cfg_env} node '${cli}' disable case-study-pack >/dev/null 2>&1" || true
 assert "config: disabling a skill-component package removes the skill links" \
   bash -c "! test -e '${cfg_home}/.claude/skills/case-study' && ! test -e '${cfg_home}/.codex/skills/case-study' && ! test -e '${cfg_home}/.roborepo/skills/case-study'"
 
-# /inventory is a pending package-owned command: default config hides it, and the CLI refuses
-# mutation until the hidden experimental switch is enabled. Once enabled, toggling it controls both
-# the project-context skill and the Project Context rules slice.
-assert "config: pending /inventory package hidden by default" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const inv=s.behaviorView.find(x=>x.category==='Commands').items.find(x=>x.label==='/inventory');const pkg=s.packages.find(x=>x.id==='project-context');process.exit(!inv&&!pkg?0:1)})\""
-assert "config: pending package enable rejected without experimental flag" \
-  bash -c "! ${cfg_env} node '${cli}' enable project-context >'${cfg_home}/pending.out' 2>&1 && grep -q 'roborepo experimental enable' '${cfg_home}/pending.out'"
-assert "config: experimental enable exposes pending packages" \
-  bash -c "${cfg_env} node '${cli}' experimental enable >/dev/null && [ \"\$(${cfg_env} node '${cli}' experimental status)\" = enabled ]"
-assert "config: pending /inventory package visible with experimental flag" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const inv=s.behaviorView.find(x=>x.category==='Commands').items.find(x=>x.label==='/inventory');const pkg=s.packages.find(x=>x.id==='project-context');process.exit(inv&&inv.id==='project-context'&&inv.toggle==='package'&&inv.badges.includes('pending')&&pkg?.catalogStatus==='pending'?0:1)})\""
-bash -c "${cfg_env} node '${cli}' enable project-context >/dev/null 2>&1" || true
-assert "config: enabling pending project-context links the command skill when experimental" \
-  assert_skill_cache_link "${cfg_home}" "codex" "project-context" "${repo_root}/globals/agents/skills/project-context" "config: project-context skill cache link created"
-assert "config: enabling pending project-context merges its rules when experimental" \
-  bash -c "grep -q '## Project Context' '${cfg_home}/.claude/CLAUDE.md' && grep -q '## Project Context' '${cfg_home}/.codex/AGENTS.md'"
-assert "config: pending rules are skipped again without experimental flag" \
-  bash -c "${cfg_env} node '${cli}' experimental disable >/dev/null && ${cfg_env} node '${cli}' rules render >/dev/null && ! grep -q '## Project Context' '${cfg_home}/.codex/AGENTS.md'"
-bash -c "${cfg_env} node '${cli}' experimental enable >/dev/null && ${cfg_env} node '${cli}' disable project-context >/dev/null 2>&1" || true
-assert "config: disabling pending project-context removes skill and rules" \
-  bash -c "! test -e '${cfg_home}/.codex/skills/project-context' && ! test -e '${cfg_home}/.roborepo/skills/project-context' && ! grep -q '## Project Context' '${cfg_home}/.codex/AGENTS.md'"
-
 # Composite package: a package that `requires` others. Enabling it enables every dependency (deps
 # first), and the composite reports enabled iff all deps are.
 bash -c "${cfg_env} node '${cli}' enable code-intel >/dev/null 2>&1" || true
 assert "config: enabling a composite package enables its required packages" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const e=id=>s.packages.find(p=>p.id===id)?.enabled;process.exit(e('jcodemunch')&&e('jdocmunch')&&e('code-intel')?0:1)})\""
-bash -c "${cfg_env} node '${cli}' disable jdocmunch >/dev/null 2>&1" || true
-assert "config: composite reports disabled when a dependency is disabled" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(s.packages.find(p=>p.id==='code-intel')?.enabled===false?0:1)})\""
+assert "config: disabling dependency required by enabled package is rejected" \
+  bash -c "! ${cfg_env} node '${cli}' disable jdocmunch >/dev/null 2>&1"
+assert "config: cascade disables dependent package and dependency" \
+  bash -c "${cfg_env} node '${cli}' disable jdocmunch --cascade >/dev/null 2>&1 && ${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const e=id=>s.packages.find(p=>p.id===id)?.enabled;process.exit(!e('jdocmunch')&&!e('code-intel')?0:1)})\""
 assert "config: snapshot exposes a package's requires list" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='code-intel');process.exit(Array.isArray(p.requires)&&p.requires.includes('jcodemunch')&&p.requires.includes('jdocmunch')?0:1)})\""
 
 # Skill toggle links into the machine-local cache plus both harness views, then removes only owned links.
-cfg_skill="$(ls "${repo_root}/globals/agents/skills" | head -1)"
+cfg_skill="case-study"
+cfg_skill_source="${repo_root}/globals/packages/case-study-pack/skills/case-study"
 assert "config: setSkillInstalled links both harness views" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',true);process.exit(r.ok?0:1)})\" && test -d '${cfg_home}/.roborepo/skills/${cfg_skill}' && test -e '${cfg_home}/.roborepo/skills/${cfg_skill}/.roborepo-managed'"
 assert "package snapshot: direct skill install is external until package desired state is set" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='case-study-pack');process.exit(p?.enabled===false&&p?.desired===false&&p?.status==='external'&&p.componentStatus?.[0]?.state==='external'?0:1)})\""
 assert "config: Claude skill view points at the cache" \
-  assert_skill_cache_link "${cfg_home}" "claude" "${cfg_skill}" "${repo_root}/globals/agents/skills/${cfg_skill}" "config: Claude skill cache link created"
+  assert_skill_cache_link "${cfg_home}" "claude" "${cfg_skill}" "${cfg_skill_source}" "config: Claude skill cache link created"
 assert "config: Codex skill view points at the cache" \
-  assert_skill_cache_link "${cfg_home}" "codex" "${cfg_skill}" "${repo_root}/globals/agents/skills/${cfg_skill}" "config: Codex skill cache link created"
+  assert_skill_cache_link "${cfg_home}" "codex" "${cfg_skill}" "${cfg_skill_source}" "config: Codex skill cache link created"
 assert "config: setSkillInstalled removes owned links" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setSkillInstalled('${cfg_skill}',false);process.exit(r.ok?0:1)})\" && ! test -e '${cfg_home}/.claude/skills/${cfg_skill}' && ! test -e '${cfg_home}/.codex/skills/${cfg_skill}' && ! test -e '${cfg_home}/.roborepo/skills/${cfg_skill}'"
 assert "config: setSkillInstalled rejects unknown skill" \
@@ -1068,7 +1031,7 @@ pkg_doctor_root="${work}/pkg-doctor-root"
 mkdir -p "${pkg_doctor_root}"
 # Copy tracked working-tree files (reflects uncommitted edits) except the dev-only paths and the
 # project-scope skill symlinks that point into local/skills (excluding those avoids dangling links).
-( cd "${repo_root}" && git ls-files | grep -vE '^(local/skills/|scripts/test/|\.claude/skills/|\.codex/skills/)' \
+( cd "${repo_root}" && git ls-files | while IFS= read -r file; do [[ -e "${file}" ]] && printf '%s\n' "${file}"; done | grep -vE '^(local/skills/|scripts/test/|\.claude/skills/|\.codex/skills/)' \
     | tar -cf - -T - | tar -xf - -C "${pkg_doctor_root}" )
 pkg_doctor_out="${work}/pkg-doctor.out"
 ROBOREPO_MODE=package bash "${pkg_doctor_root}/scripts/doctor.sh" >"${pkg_doctor_out}" 2>&1 || true

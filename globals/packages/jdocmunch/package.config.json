@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "jdocmunch",
+  "label": "JDocMunch doc intelligence",
+  "description": "Local docs index with section search, TOC, and context retrieval. Routes doc exploration through jdocmunch tools instead of reading full files.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "token-optimization",
+    "order": 20
+  },
+  "urls": [
+    {
+      "label": "PyPI",
+      "url": "https://pypi.org/project/jdocmunch-mcp/"
+    }
+  ],
+  "resources": [
+    {
+      "type": "mcp",
+      "preset": "jdocmunch"
+    },
+    {
+      "type": "cli-command",
+      "name": "index docs",
+      "commandOrUrl": "uvx",
+      "args": ["jdocmunch-mcp", "index-local", "--path"],
+      "mode": "target"
+    },
+    {
+      "type": "rules",
+      "source": "rules.md",
+      "harness": "claude"
+    },
+    {
+      "type": "hooks",
+      "source": "hooks-claude.json",
+      "harness": "claude"
+    }
+  ]
+}

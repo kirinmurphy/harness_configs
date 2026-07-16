@@ -4,6 +4,7 @@ import path from "node:path";
 import { repoRoot, sharedSkillsDir } from "./paths.mjs";
 import { roborepoSkillsDir } from "./state-paths.mjs";
 import { listSourceSkills } from "./skill-lib.mjs";
+import { loadPackageCatalog } from "./package-catalog.mjs";
 
 const HARNESSES = [
   { id: "claude", dir: path.join(os.homedir(), ".claude", "skills") },
@@ -124,7 +125,7 @@ function classifyPath(skillPath, cachePath) {
 }
 
 export function listSkillInventory() {
-  const names = new Set(listSourceSkills(sharedSkillsDir));
+  const names = new Set([...packageSkillSources().keys(), ...listSourceSkills(sharedSkillsDir)]);
   for (const { dir } of HARNESSES) {
     let entries = [];
     try {
@@ -141,7 +142,8 @@ export function listSkillInventory() {
 }
 
 export function inspectSkill(name) {
-  const sourcePath = path.join(sharedSkillsDir, name);
+  const packageSource = packageSkillSources().get(name);
+  const sourcePath = packageSource || path.join(sharedSkillsDir, name);
   const cachePath = path.join(roborepoSkillsDir, name);
   const source = statInfo(sourcePath);
   const cache = statInfo(cachePath);
@@ -200,6 +202,17 @@ export function inspectSkill(name) {
     nativeMetadata: exists(inspectPath) ? nativeMetadata(inspectPath) : [],
     inspectPath: exists(skillMdPath) ? skillMdPath : null,
   };
+}
+
+function packageSkillSources() {
+  const sources = new Map();
+  for (const pkg of loadPackageCatalog({ includeUnavailable: true })) {
+    for (const resource of pkg.resources || []) {
+      if (resource.type !== "skill") continue;
+      sources.set(resource.id, path.join(pkg.sourceRoot, resource.source));
+    }
+  }
+  return sources;
 }
 
 export function skillInventorySource(name) {

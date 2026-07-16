@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "case-study-pack",
+  "label": "Case study skill",
+  "description": "Write a long-form architecture case study about a real design decision.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "commands",
+    "order": 10
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "case-study",
+      "source": "skills/case-study",
+      "invocation": "auto",
+      "risk": "medium",
+      "entrypoints": [
+        {
+          "type": "slash-command",
+          "name": "case-study",
+          "description": "Write a long-form architecture case study about a real design decision.",
+          "harnesses": ["claude", "codex"]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "supabase-integration-testing",
+  "label": "Supabase Integration Testing",
+  "description": "Remote or real Supabase integration tests, RLS policies, RPC calls, migrations, and database/API behavior.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "code-conventions",
+    "order": 40
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "supabase-integration-testing",
+      "source": "skills/supabase-integration-testing",
+      "invocation": "auto",
+      "risk": "medium"
+    }
+  ]
+}

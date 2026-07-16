@@ -17,8 +17,8 @@ import {
   linkLocalSkills,
 } from "./skill-lib.mjs";
 import { initializeWorkspace, packageMode, repoRoot, sharedSkillsDir, workspaceSkillsDir } from "./paths.mjs";
-import { addSkillPolicy } from "./skill-new-manifests.mjs";
 import { formatSkillInspection, inspectSkill } from "./skill-inventory.mjs";
+import { loadPackageCatalog } from "./package-catalog.mjs";
 
 function runChecked(label, command, args) {
   const result = spawnSync(command, args, { cwd: repoRoot, stdio: "inherit" });
@@ -130,7 +130,8 @@ export function skillAdopt(args) {
     console.error(`built-in skill exists: ${name}; workspace skill overrides are not supported`);
     process.exit(1);
   }
-  const dest = path.join(packageMode ? workspaceSkillsDir : sharedSkillsDir, name);
+  const packageDir = path.join(repoRoot, "globals", "packages", name);
+  const dest = path.join(packageMode ? workspaceSkillsDir : path.join(packageDir, "skills"), name);
   if (fs.existsSync(dest)) {
     console.error(`${path.relative(packageMode ? path.dirname(workspaceSkillsDir) : repoRoot, dest)} already exists — skill already adopted or name collision`);
     process.exit(1);
@@ -141,6 +142,7 @@ export function skillAdopt(args) {
     process.exit(1);
   }
 
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
   copyDir(src, dest);
   console.log(`adopted: ${src} -> ${dest}`);
 
@@ -151,7 +153,17 @@ export function skillAdopt(args) {
     return;
   }
 
-  addSkillPolicy({ name, risk: "low", explicitCommand: false, description: `adopted skill` });
+  fs.writeFileSync(path.join(packageDir, "package.config.json"), `${JSON.stringify({
+    schemaVersion: 1,
+    id: name,
+    label: name.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" "),
+    description: "Adopted skill.",
+    lifecycle: "optional",
+    presentation: { category: "code-conventions", order: 100 },
+    resources: [
+      { type: "skill", id: name, source: `skills/${name}`, invocation: "auto", risk: "low" },
+    ],
+  }, null, 2)}\n`);
 
   runChecked("skill link-globals", "bash", [path.join(repoRoot, "scripts", "build", "link-global-skills.sh")]);
   runChecked("slash command render", process.execPath, [
@@ -160,8 +172,8 @@ export function skillAdopt(args) {
   ]);
 
   console.log("");
-  console.log(`skill '${name}' adopted into globals/agents/skills/${name}`);
-  console.log("next: review SKILL.md, update description in manifests/inventory/skill-invocation.json, then:");
+  console.log(`skill '${name}' adopted into globals/packages/${name}`);
+  console.log("next: review SKILL.md and package.config.json, then:");
   console.log("  scripts/doctor.sh --quiet");
 }
 
@@ -378,9 +390,9 @@ export async function skillExport(flags, commandName = "skill export-to-project"
   const dests = resolveClientSkillDirs(cwd, { create: true });
   console.log(`destinations: ${dests.map((d) => path.relative(cwd, d) || d).join(", ")}`);
 
-  const skills = listSourceSkills(sharedSkillsDir);
+  const skills = packageSkillSources();
   if (skills.length === 0) {
-    console.error(`no shared skills found under ${sharedSkillsDir}`);
+    console.error(`no package-owned skills found`);
     prompter.close();
     process.exit(1);
   }
@@ -389,7 +401,7 @@ export async function skillExport(flags, commandName = "skill export-to-project"
   const zipPath = path.join(cwd, `${bundleName}.zip`);
   writeZip(
     zipPath,
-    skills.map((name) => ({ srcDir: path.join(sharedSkillsDir, name), nameInZip: `${bundleName}/${name}` })),
+    skills.map((skill) => ({ srcDir: skill.source, nameInZip: `${bundleName}/${skill.name}` })),
   );
   console.log(`bundled ${skills.length} skill(s) -> ${path.basename(zipPath)} (shareable artifact)`);
 
@@ -399,8 +411,8 @@ export async function skillExport(flags, commandName = "skill export-to-project"
 
   for (const dest of dests) {
     fs.mkdirSync(dest, { recursive: true });
-    for (const name of skills) {
-      const src = path.join(sharedSkillsDir, name);
+    for (const skill of skills) {
+      const { name, source: src } = skill;
       const target = path.join(dest, name);
 
       if (!fs.existsSync(target)) {
@@ -430,4 +442,12 @@ export async function skillExport(flags, commandName = "skill export-to-project"
   console.log("");
   console.log(`done: ${copied} copied, ${overridden} overridden, ${skipped} skipped.`);
   console.log(`shareable bundle left at: ${path.basename(zipPath)}`);
+}
+
+function packageSkillSources() {
+  return loadPackageCatalog({ includeUnavailable: true })
+    .flatMap((pkg) => (pkg.resources || [])
+      .filter((resource) => resource.type === "skill")
+      .map((resource) => ({ name: resource.id, source: path.join(pkg.sourceRoot, resource.source) })))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }

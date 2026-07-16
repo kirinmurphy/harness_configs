@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "test-harness",
+  "label": "Test Harness",
+  "description": "Choose, add, run, and explain tests using repo-native verification.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "code-conventions",
+    "order": 50
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "test-harness",
+      "source": "skills/test-harness",
+      "invocation": "auto",
+      "risk": "low"
+    }
+  ]
+}

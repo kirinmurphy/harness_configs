@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "categories": [
+    {
+      "id": "token-optimization",
+      "label": "Token Optimization",
+      "order": 10
+    },
+    {
+      "id": "commands",
+      "label": "Commands",
+      "order": 20
+    },
+    {
+      "id": "code-conventions",
+      "label": "Code Conventions",
+      "order": 30
+    },
+    {
+      "id": "chat-time-output",
+      "label": "Chat-Time Output",
+      "order": 40
+    },
+    {
+      "id": "integrations",
+      "label": "Integrations",
+      "order": 50
+    }
+  ]
+}

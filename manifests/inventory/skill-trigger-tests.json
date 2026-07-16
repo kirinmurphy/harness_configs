@@ -27,17 +27,19 @@
       "skipPhrases": ["backend-only", "small copy/style tweaks", "ordinary React/TypeScript fixes"]
     },
     {
-      "skill": "technical-planning-docs",
+      "skill": "plan-docs",
       "match": [
         "create an implementation plan for package reconciliation",
-        "revise these migration docs"
+        "sync this plan with what we just changed",
+        "/plan-docs validate docs/plans/backlog/example.md"
       ],
       "nearMiss": [
         "write a quick PR summary",
-        "give me a brief answer about this function"
+        "give me a brief answer about this function",
+        "implement this ordinary code change"
       ],
-      "triggerPhrases": ["technical planning docs", "implementation plan", "migration docs"],
-      "skipPhrases": ["brief answers", "PR descriptions", "quick todos"]
+      "triggerPhrases": ["/plan-docs", "implementation plan", "sync this plan", "review whether a plan is complete"],
+      "skipPhrases": ["brief answers", "PR descriptions", "ordinary implementation"]
     },
     {
       "skill": "tighten",

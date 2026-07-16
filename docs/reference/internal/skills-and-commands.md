@@ -39,7 +39,7 @@ and commands are loaded only for the current turn or current task.
 Reusable means the same workflow body is useful from multiple entry points:
 
 - the user says a natural phrase such as "capture this"
-- the user invokes a slash command such as `/technical-planning`
+- the user invokes a slash command such as `/plan-docs`
 - the user explicitly names a skill
 - a future command or harness wrapper should reuse the same instructions
 
@@ -63,8 +63,7 @@ Examples:
 - `code-style`: implicit helper skill; no slash command needed.
 - `javascript-typescript`: implicit helper skill; no slash command needed.
 - `react`: implicit helper skill; no slash command needed.
-- `technical-planning-docs`: reusable writing workflow; can also have a slash
-  command.
+- `plan-docs`: managed plan-document workflow behind `/plan-docs`.
 - `tighten`: explicit-only review/fix workflow behind `/tighten`.
 - `wrap-up`: explicit-only session close-out workflow (review, docs, commit, handoff
   prompt) behind `/wrap-up`.
@@ -89,7 +88,7 @@ Current generated examples:
 
 - `/case-study` -> `case-study`
 - `/frontend-design` -> `frontend-design`
-- `/technical-planning` -> `technical-planning-docs`
+- `/plan-docs` -> `plan-docs`
 - `/tighten` -> `tighten`
 - `/wrap-up` -> `wrap-up`
 
@@ -124,7 +123,7 @@ Convention capture has three parts:
 Capture does not currently need a slash command. The useful product behavior is
 the observer: the agent flags likely capture candidates. Once the user sees that
 flag, they can make an ordinary chat request such as "update CLAUDE.md with
-this" or "add this to the technical-planning-docs skill."
+this" or "add this to the plan-docs skill."
 
 If capture later grows a stricter multi-step workflow that users should invoke
 by name, make it a skill-backed command. Until then, keep it as a default-on

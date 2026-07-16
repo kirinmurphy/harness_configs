@@ -134,8 +134,8 @@ It may express shared intent such as:
 
 ```json
 {
-  "skill": "technical-planning-docs",
-  "invocation": "auto",
+  "skill": "plan-docs",
+  "invocation": "manual",
   "risk": "medium",
   "explicit_command": true
 }

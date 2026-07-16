@@ -17,6 +17,17 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 | `roborepo rules [--check]` | Renders generated Claude/Codex global instruction files, or verifies them with `--check`.                                                                        |
 | `roborepo config root inspect` | Read-only report of each harness root config (`~/.claude/settings.json`, `~/.codex/config.toml`): baseline vs. active file and its drift state — `in sync`, `drifted` (edited since roborepo's last write), `staged update pending`, or untracked. |
 
+## Local Portal
+
+| | |
+| --- | --- |
+| `roborepo serve` | Starts the local portal. `/config` manages packages/permissions, `/plans` browses plan docs, and `/telemetry` shows token usage when telemetry has data. |
+| `roborepo web` | Starts the same portal detached and opens it in the browser. |
+
+The `/plans` page scans configured roots for `docs/plans/**/*.md`. See
+[Plan Docs Walkthrough](../../guides/plan-docs.md) and
+[Plans Portal Technical Reference](plans-portal.md).
+
 ## Indexing
 
 |                              |                                                                                      |

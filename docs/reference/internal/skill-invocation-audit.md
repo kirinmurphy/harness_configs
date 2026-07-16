@@ -6,7 +6,7 @@
 
 - Shared skills: 10
 - Package skill resources: 10
-- Static findings: 2
+- Static findings: 1
 - Unknown manifest entries: none
 
 ## Compatibility Result
@@ -30,7 +30,7 @@ Keep shared `SKILL.md` frontmatter portable; use package-backed checks before ad
 | `test-harness` | auto | low | false | none | Keep auto if trigger remains narrow. |
 | `case-study` | auto | medium | true | side-effect keyword | Keep trigger narrow; add near-miss tests. |
 | `frontend-design` | auto | medium | true | none | Keep trigger narrow; add near-miss tests. |
-| `technical-planning-docs` | auto | medium | true | side-effect keyword | Keep trigger narrow; add near-miss tests. |
+| `plan-docs` | manual | medium | true | none | Keep manual-only or command-gated. |
 | `tighten` | auto | medium | true | none | Keep trigger narrow; add near-miss tests. |
 | `wrap-up` | manual | medium | true | none | Keep manual-only or command-gated. |
 

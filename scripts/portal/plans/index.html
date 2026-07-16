@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>roborepo plans</title>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("roborepo-theme");
+          document.documentElement.dataset.theme = t === "light" ? "light" : "dark";
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/portal/shared/base.css" />
+    <link rel="stylesheet" href="/portal/plans/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>roborepo</h1>
+      <span id="status">loading...</span>
+      <nav id="nav"></nav>
+    </header>
+    <main>
+      <section class="toolbar">
+        <input id="search" type="search" placeholder="search plans" />
+        <select id="repository"></select>
+        <select id="lifecycle"></select>
+        <select id="priority"></select>
+        <select id="blocked"></select>
+        <select id="readiness"></select>
+        <select id="review"></select>
+        <select id="health"></select>
+        <button id="refresh" type="button">Refresh</button>
+        <button id="next-prompt" type="button" hidden>Copy next prompt</button>
+      </section>
+      <section class="settings">
+        <div>
+          <h2>Discovery roots</h2>
+          <div id="roots"></div>
+        </div>
+        <form id="root-form">
+          <input id="root-input" placeholder="/path/to/repo or /path/to/projects" />
+          <button type="submit">Add root</button>
+        </form>
+      </section>
+      <section id="package-banner" class="package-banner" hidden></section>
+      <section id="warnings" class="warnings" hidden></section>
+      <section id="groups" class="groups"></section>
+    </main>
+    <div class="drawer-backdrop" id="drawer" hidden>
+      <aside class="drawer-panel">
+        <div class="drawer-head">
+          <div>
+            <h2 id="drawer-title"></h2>
+            <p id="drawer-path"></p>
+          </div>
+          <button id="drawer-close" type="button">Close</button>
+        </div>
+        <div class="drawer-actions" id="drawer-actions"></div>
+        <div class="drawer-grid">
+          <section>
+            <h3>Metadata</h3>
+            <dl id="drawer-meta"></dl>
+          </section>
+          <section>
+            <h3>Warnings</h3>
+            <ul id="drawer-warnings"></ul>
+          </section>
+          <section>
+            <h3>Tasks</h3>
+            <ul id="drawer-tasks"></ul>
+          </section>
+        </div>
+        <article class="markdown" id="drawer-doc"></article>
+      </aside>
+    </div>
+    <script src="/portal/shared/theme.js" defer></script>
+    <script src="/portal/plans/app.js" defer></script>
+  </body>
+</html>

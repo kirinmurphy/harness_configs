@@ -26,7 +26,7 @@ for (const name of ["index code", "index docs", "watch code"]) {
 }
 
 const slashNames = loadSlashCommandPlan().commands.map((command) => command.name).sort();
-for (const name of ["case-study", "frontend-design", "technical-planning", "tighten", "wrap-up"]) {
+for (const name of ["case-study", "frontend-design", "plan-docs", "tighten", "wrap-up"]) {
   assert(slashNames.includes(name), `missing slash command: ${name}`);
 }
 

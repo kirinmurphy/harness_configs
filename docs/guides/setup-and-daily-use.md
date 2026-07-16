@@ -104,6 +104,29 @@ installer (no manual PATH step on macOS/Linux); open a new shell after the first
 resolves. Run `roborepo` with no arguments for an interactive menu, or call a subcommand directly
 as shown below. Full reference: [roborepo CLI](../reference/services/roborepo.md).
 
+### Browse and manage plan docs
+
+Open the local portal and go to `/plans`:
+
+```sh
+roborepo serve
+```
+
+The Plans page discovers Markdown files under `docs/plans/**/*.md` from configured discovery roots.
+It works without enabling any workflow package: you can filter plans, open rendered Markdown, inspect
+warnings/tasks, and copy repository-aware context.
+
+Enable the Plan Docs package when you want agent workflow prompts and the `/plan-docs` slash command:
+
+```sh
+roborepo enable plan-docs
+```
+
+Then use `/plan-docs create`, `/plan-docs start`, `/plan-docs sync`, `/plan-docs validate`,
+`/plan-docs review`, or `/plan-docs handoff`.
+
+See [Plan Docs Walkthrough](plan-docs.md) for the full user flow.
+
 ### Index and watch a repo
 
 Keep the package-owned code index current so Claude can navigate your codebase. Start this when opening a project you'll be actively coding in. The watcher runs continuously — edits are picked up automatically within the session.

@@ -10,6 +10,7 @@ import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { startPortalServer } from "./portal-server.mjs";
 import { readConfigSnapshot, loadConfigSource } from "./config.mjs";
 import { mutatePackage, setSkillInstalled, setBehaviorBucket, setCommandBucket } from "./config-mutate.mjs";
+import { loadPlansSnapshot, loadPlanDocument, buildPlansPrompt, updatePlanSettings, refreshPlans } from "./plans.mjs";
 import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
 
@@ -370,7 +371,7 @@ export async function serveCommand(args, { allowPortFallback = false } = {}) {
   // A `window` ({ rangeMs, end }) scopes the whole report to a trailing time slice before analysis,
   // so every panel — not just the chart — reflects the dashboard's time filter. loadSession bridges
   // a flagged event to its chat transcript (file I/O lives here, not in the server).
-    startPortalServer({
+  startPortalServer({
     port: options.port,
     loadAnalysis: (window, harness) => {
       const allEvents = readSpoolEvents();
@@ -395,6 +396,11 @@ export async function serveCommand(args, { allowPortFallback = false } = {}) {
     loadInsightsLlm: () => loadInsightsLlm(),
     loadConfig: () => readConfigSnapshot(),
     loadConfigSource: (params) => loadConfigSource(params),
+    loadPlans: () => loadPlansSnapshot(),
+    loadPlanDocument: (params) => loadPlanDocument(params),
+    buildPlansPrompt: (params) => buildPlansPrompt(params),
+    updatePlanSettings: (params) => updatePlanSettings(params),
+    refreshPlans: () => refreshPlans(),
     mutatePackage: (id, enabled) => mutatePackage(id, enabled),
     mutateSkill: (id, enabled) => setSkillInstalled(id, enabled),
     mutateBehavior: (behaviorId, bucket) => setBehaviorBucket(behaviorId, bucket),

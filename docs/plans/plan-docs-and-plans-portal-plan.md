@@ -23,7 +23,7 @@ The two layers share the same plan-document model but have different dependencie
    - Adds agent workflows for creating, validating, prioritizing, starting, syncing, reviewing, completing, archiving, and handing off plans.
    - Unlocks workflow-specific copy actions on the Plans page.
 
-The existing `technical-planning-docs` skill and `/technical-planning` command should be retired. Their reusable writing guidance should move into reference files inside the unified `plan-docs` skill. The implementation should not depend on skill chaining.
+The previous planning-doc skill and legacy planning slash command should be retired. Their reusable writing guidance should move into reference files inside the unified `plan-docs` skill. The implementation should not depend on skill chaining.
 
 The Plans page is built into RoboRepo rather than loaded as a portal plugin. "Built in" means the
 portal route, API handlers, static assets, navigation item, scanner, parser, and deterministic
@@ -77,7 +77,7 @@ This plan does not use `project-context` as a foundation or migration source.
 
 ### Skill goals
 
-- Replace `technical-planning-docs` with one cohesive `plan-docs` skill.
+- Replace the previous planning-doc skill with one cohesive `plan-docs` skill.
 - Provide one explicit slash command:
 
   ```text
@@ -133,7 +133,7 @@ The first implementation does not:
 - make the optional package responsible for serving the portal
 - add a separate background service or daemon
 - implement a general package-driven portal-page extension API
-- preserve `technical-planning-docs` as a second installed skill
+- preserve the previous planning-doc skill as a second installed skill
 
 ---
 
@@ -334,14 +334,14 @@ The skill should use progressive disclosure:
 
 ---
 
-## Consolidating `technical-planning-docs`
+## Consolidating the previous planning-doc skill
 
-The existing `technical-planning-docs` skill should not remain as a second installed skill.
+The previous planning-doc skill should not remain as a second installed skill.
 
 Move its useful guidance into `plan-docs` references:
 
 ```text
-technical-planning-docs concepts
+previous planning-doc concepts
   → plan-docs/references/writing-guidelines.md
   → plan-docs/references/workflow-create.md
   → plan-docs/references/workflow-validate.md
@@ -361,8 +361,8 @@ Preserve useful principles such as:
 
 Remove:
 
-- the `technical-planning-docs` skill registration
-- `/technical-planning`
+- the previous planning-doc skill registration
+- the legacy planning slash command
 - generated command wrappers
 - onboarding and Config UI references
 - README and maintainer documentation that presents it as a separate workflow
@@ -1670,7 +1670,7 @@ The page should include an Errors or Warnings filter.
 - Confirm `/plans` remains built-in and independent.
 - Confirm package presentation category is `commands`.
 - Confirm lifecycle folder names.
-- Confirm `technical-planning-docs` will be replaced, not chained.
+- Confirm the previous planning-doc skill will be replaced, not chained.
 - Treat `project-context` removal as already completed by package unification cleanup.
 
 Deliverable:
@@ -1795,8 +1795,8 @@ Migrate:
 
 Remove:
 
-- `technical-planning-docs`
-- `/technical-planning`
+- the previous planning-doc skill
+- the legacy planning slash command
 - old registrations and generated outputs
 
 Deliverable:
@@ -1896,8 +1896,8 @@ Update:
 
 Verify:
 
-- no references to `/technical-planning`
-- no installed `technical-planning-docs` skill
+- no references to the legacy planning slash command
+- no installed previous planning-doc skill
 - `/plans` works with package disabled
 - `/plan-docs` works with portal closed
 - package enablement reveals workflow actions
@@ -2087,7 +2087,7 @@ The implementation is complete when:
 - repository-aware and portable copy actions work
 - the optional `plan-docs` package installs one unified skill
 - `/plan-docs` is generated for Claude and Codex
-- `technical-planning-docs` and `/technical-planning` are removed
+- the previous planning-doc skill and legacy planning slash command are removed
 - package-enabled workflow buttons appear on the Plans page
 - disabling the package removes workflow availability but not the viewer
 - no database or separate service is required

@@ -1,0 +1,369 @@
+const token = document.querySelector('meta[name="roborepo-portal-token"]')?.content || "";
+const state = {
+  snapshot: null,
+  filters: {
+    search: "",
+    repository: "all",
+    lifecycle: "all",
+    priority: "all",
+    blocked: "all",
+    readiness: "all",
+    review: "all",
+    health: "all",
+  },
+};
+
+const statusEl = document.getElementById("status");
+const groupsEl = document.getElementById("groups");
+const warningsEl = document.getElementById("warnings");
+const bannerEl = document.getElementById("package-banner");
+const rootsEl = document.getElementById("roots");
+const drawer = document.getElementById("drawer");
+const nextPrompt = document.getElementById("next-prompt");
+
+document.getElementById("refresh").addEventListener("click", () => postJson("/api/plans/refresh", {}).then(applySnapshot).catch(showError));
+nextPrompt.addEventListener("click", () => copyVisibleNextPrompt().catch(showError));
+document.getElementById("root-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = document.getElementById("root-input");
+  const current = state.snapshot?.settings?.discoveryRoots || [];
+  await postJson("/api/plans/settings", { discoveryRoots: [...current, input.value] }).then((snap) => {
+    input.value = "";
+    applySnapshot(snap);
+  }).catch(showError);
+});
+document.getElementById("drawer-close").addEventListener("click", () => { drawer.hidden = true; });
+for (const id of ["search", "repository", "lifecycle", "priority", "blocked", "readiness", "review", "health"]) {
+  const node = document.getElementById(id);
+  node.addEventListener(id === "search" ? "input" : "change", () => {
+    state.filters[id] = node.value;
+    render();
+  });
+}
+
+async function load() {
+  try {
+    const res = await fetch("/api/plans");
+    applySnapshot(await res.json());
+  } catch (err) {
+    showError(err);
+  }
+}
+
+function applySnapshot(snapshot) {
+  state.snapshot = snapshot;
+  statusEl.textContent = statusText(snapshot);
+  renderRoots(snapshot.settings.discoveryRoots);
+  populateFilters(snapshot);
+  render();
+}
+
+function renderRoots(roots) {
+  if (!roots.length) {
+    rootsEl.replaceChildren("No discovery roots configured.");
+    return;
+  }
+  rootsEl.replaceChildren(...roots.map((root) => {
+    const remove = el("button", { type: "button", class: "root-remove", title: "Remove discovery root" }, "Remove");
+    remove.addEventListener("click", () => removeRoot(root));
+    return el("span", { class: "root-chip" }, el("span", {}, root), remove);
+  }));
+}
+
+async function removeRoot(root) {
+  const current = state.snapshot?.settings?.discoveryRoots || [];
+  await postJson("/api/plans/settings", { discoveryRoots: current.filter((item) => item !== root) }).then(applySnapshot).catch(showError);
+}
+
+function populateFilters(snapshot) {
+  setOptions("repository", [["all", "all repositories"], ...snapshot.repositories.map((repo) => [repo.id, repo.name])]);
+  setOptions("lifecycle", [["all", "all lifecycle"], ...["active", "backlog", "completed", "archived", "unclassified"].map((v) => [v, v])]);
+  setOptions("priority", [["all", "all priority"], ...["high", "medium", "low", "none"].map((v) => [v, v])]);
+  setOptions("blocked", [["all", "all blockers"], ["blocked", "blocked"], ["unblocked", "unblocked"]]);
+  setOptions("readiness", [["all", "all readiness"], ["ready", "ready"], ["draft", "draft"]]);
+  setOptions("review", [["all", "all review"], ...["never-reviewed", "current", "possibly-stale", "unknown"].map((v) => [v, v])]);
+  setOptions("health", [["all", "all health"], ["warnings", "has warnings"], ["valid", "valid"]]);
+}
+
+function setOptions(id, options) {
+  const select = document.getElementById(id);
+  const previous = select.value || "all";
+  select.replaceChildren(...options.map(([value, label]) => el("option", { value }, label)));
+  select.value = options.some(([value]) => value === previous) ? previous : "all";
+  state.filters[id] = select.value;
+}
+
+function render() {
+  const snapshot = state.snapshot;
+  if (!snapshot) return;
+  renderWarnings(snapshot);
+  renderPackageBanner(snapshot);
+  const plans = filteredPlans(snapshot.plans);
+  nextPrompt.hidden = !snapshot.planDocsPackage.enabled || actionablePlans(plans).length === 0;
+  if (plans.length === 0) {
+    groupsEl.replaceChildren(renderEmptyState(snapshot));
+    return;
+  }
+  const order = ["active", "backlog", "completed", "archived", "unclassified"];
+  groupsEl.replaceChildren(...order.map((life) => renderGroup(life, plans.filter((record) => record.plan.lifecycle === life))).filter(Boolean));
+}
+
+async function copyVisibleNextPrompt() {
+  const keys = actionablePlans(filteredPlans(state.snapshot.plans))
+    .map((record) => record.key)
+    .slice(0, 20);
+  if (keys.length === 0) throw new Error("no active or backlog plans in the current view");
+  await copyPrompt("next", keys, "portable");
+}
+
+function actionablePlans(plans) {
+  return plans.filter((record) => !["completed", "archived"].includes(record.plan.lifecycle));
+}
+
+function renderEmptyState(snapshot) {
+  if (!snapshot.settings.discoveryRoots.length) {
+    return el("section", { class: "empty-state" },
+      el("h2", {}, "No discovery roots configured"),
+      el("p", {}, "Add a repository path or a directory that contains repositories."),
+    );
+  }
+  if (snapshot.plans.length === 0) {
+    return el("section", { class: "empty-state" },
+      el("h2", {}, "No plan documents found"),
+      el("p", {}, "The scanner looks for Markdown files under docs/plans in each discovered repository."),
+    );
+  }
+  return el("section", { class: "empty-state" },
+    el("h2", {}, "No matching plans"),
+    el("p", {}, "Adjust search or filters to show more results."),
+  );
+}
+
+function renderWarnings(snapshot) {
+  const warnings = [
+    ...(snapshot.errors || []).map((err) => `${err.root || err.repository || "scan"}: ${err.error}`),
+    ...(snapshot.truncated ? ["Scan results truncated. Narrow discovery roots."] : []),
+  ];
+  warningsEl.hidden = warnings.length === 0;
+  warningsEl.replaceChildren(...warnings.map((warning) => el("div", {}, warning)));
+}
+
+function renderPackageBanner(snapshot) {
+  const pkg = snapshot.planDocsPackage || {};
+  if (pkg.enabled) {
+    bannerEl.hidden = true;
+    return;
+  }
+  bannerEl.hidden = false;
+  const text = pkg.available
+    ? "Browse plans now, or enable Plan Docs workflows to add /plan-docs prompts."
+    : "Browse plans now. Plan Docs workflow package is not available in this install.";
+  const enable = el("button", { type: "button" }, "Enable Plan Docs");
+  enable.disabled = !pkg.available;
+  enable.addEventListener("click", enablePackage);
+  bannerEl.replaceChildren(el("div", {}, el("strong", {}, "Plan Docs workflows are not enabled. "), text), enable);
+}
+
+async function enablePackage() {
+  try {
+    await postJson("/api/config/packages", { id: "plan-docs", enabled: true });
+    const res = await fetch("/api/plans");
+    applySnapshot(await res.json());
+  } catch (err) {
+    showError(err);
+  }
+}
+
+function filteredPlans(plans) {
+  const q = state.filters.search.toLowerCase().trim();
+  return plans.filter((record) => {
+    const plan = record.plan;
+    if (state.filters.repository !== "all" && record.repository.id !== state.filters.repository) return false;
+    if (state.filters.lifecycle !== "all" && plan.lifecycle !== state.filters.lifecycle) return false;
+    if (state.filters.priority !== "all" && plan.priority !== state.filters.priority) return false;
+    if (state.filters.blocked === "blocked" && plan.blockers.length === 0) return false;
+    if (state.filters.blocked === "unblocked" && plan.blockers.length > 0) return false;
+    if (state.filters.readiness !== "all" && plan.readiness !== state.filters.readiness) return false;
+    if (state.filters.review !== "all" && plan.reviewState !== state.filters.review) return false;
+    if (state.filters.health === "warnings" && plan.validation.warnings.length === 0) return false;
+    if (state.filters.health === "valid" && plan.validation.warnings.length > 0) return false;
+    if (!q) return true;
+    return [
+      plan.title,
+      plan.id,
+      plan.relativePath,
+      plan.nextAction,
+      record.repository.name,
+      ...plan.blockers,
+      ...plan.validation.warnings,
+    ].join(" ").toLowerCase().includes(q);
+  }).sort(planSort);
+}
+
+function planSort(a, b) {
+  const priority = { high: 0, medium: 1, low: 2, none: 3 };
+  const activeBlocked = (b.plan.lifecycle === "active" && b.plan.blockers.length ? 1 : 0)
+    - (a.plan.lifecycle === "active" && a.plan.blockers.length ? 1 : 0);
+  return activeBlocked
+    || (priority[a.plan.priority] ?? 3) - (priority[b.plan.priority] ?? 3)
+    || Date.parse(b.plan.modifiedAt) - Date.parse(a.plan.modifiedAt)
+    || a.plan.title.localeCompare(b.plan.title);
+}
+
+function renderGroup(lifecycle, plans) {
+  if (plans.length === 0) return null;
+  return el("section", { class: "group" },
+    el("h2", {}, `${lifecycle} (${plans.length})`),
+    el("div", { class: "card-grid" }, ...plans.map(renderCard)),
+  );
+}
+
+function renderCard(record) {
+  const plan = record.plan;
+  const warnings = plan.validation.warnings.length;
+  return el("article", { class: "plan-card" },
+    el("div", {}, el("h3", {}, plan.title), el("div", { class: "path-line" }, `${record.repository.name} / ${plan.relativePath}`)),
+    el("div", { class: "chips" },
+      chip(plan.priority, plan.priority === "high" ? "warn" : ""),
+      chip(plan.readiness, plan.readiness === "ready" ? "ok" : ""),
+      chip(plan.reviewState, plan.reviewState === "possibly-stale" ? "warn" : ""),
+      plan.blockers.length ? chip(`${plan.blockers.length} blockers`, "warn") : chip("unblocked", "ok"),
+      chip(`${plan.taskCounts.remaining}/${plan.taskCounts.total} tasks`),
+      warnings ? chip(`${warnings} warnings`, "warn") : chip("valid", "ok"),
+    ),
+    el("div", { class: "next-line" }, plan.nextAction || "No next action"),
+    el("div", { class: "meta-line" }, `modified ${formatDate(plan.modifiedAt)}`),
+    el("div", { class: "card-actions" },
+      action("Open", () => openPlan(record.key)),
+      action("Copy path", () => copyText(plan.relativePath)),
+      action("Context", () => copyText(repositoryContext(record))),
+      ...(state.snapshot.planDocsPackage.enabled ? [action("/plan-docs start", () => copyPrompt("start", [record.key]))] : []),
+    ),
+  );
+}
+
+async function openPlan(key) {
+  try {
+    const res = await fetch(`/api/plans/document?key=${encodeURIComponent(key)}`);
+    const doc = await res.json();
+    if (!res.ok) throw new Error(doc.error || "failed to load document");
+    renderDrawer(doc);
+  } catch (err) {
+    showError(err);
+  }
+}
+
+function renderDrawer(doc) {
+  const plan = doc.plan.plan;
+  document.getElementById("drawer-title").textContent = plan.title;
+  document.getElementById("drawer-path").textContent = `${doc.plan.repository.name} / ${plan.relativePath}`;
+  document.getElementById("drawer-doc").innerHTML = doc.html;
+  document.getElementById("drawer-meta").replaceChildren(
+    ...dtdd("id", plan.id || "(missing)"),
+    ...dtdd("lifecycle", plan.lifecycle),
+    ...dtdd("priority", plan.priority),
+    ...dtdd("next action", plan.nextAction || "(none)"),
+    ...dtdd("review", plan.reviewState),
+    ...dtdd("tasks", `${plan.taskCounts.complete}/${plan.taskCounts.total} complete`),
+  );
+  const warnings = plan.validation.warnings.length ? plan.validation.warnings : ["none"];
+  document.getElementById("drawer-warnings").replaceChildren(...warnings.map((warning) => el("li", {}, warning)));
+  renderDrawerTasks(doc.parsed?.tasks || []);
+  const actions = [
+    action("Copy Markdown", () => copyText(doc.markdown)),
+    action("Copy path", () => copyText(plan.relativePath)),
+    action("Repository context", () => copyText(repositoryContext(doc.plan))),
+    action("Portable context", () => copyPrompt("review", [doc.plan.key], "portable")),
+  ];
+  if (state.snapshot.planDocsPackage.enabled) {
+    for (const mode of ["start", "sync", "validate", "review", "handoff"]) actions.push(action(`/plan-docs ${mode}`, () => copyPrompt(mode, [doc.plan.key])));
+  }
+  document.getElementById("drawer-actions").replaceChildren(...actions);
+  drawer.hidden = false;
+}
+
+function renderDrawerTasks(tasks) {
+  const list = document.getElementById("drawer-tasks");
+  if (!tasks.length) {
+    list.replaceChildren(el("li", {}, "none"));
+    return;
+  }
+  list.replaceChildren(...tasks.map((task) => el("li", {
+    class: task.done ? "task-done" : "task-open",
+  }, `${task.done ? "[x]" : "[ ]"} ${task.text}`)));
+}
+
+async function copyPrompt(actionName, keys, mode = "repository-aware") {
+  const result = await postJson("/api/plans/prompt", { action: actionName, keys, mode });
+  await copyText(result.prompt);
+}
+
+function repositoryContext(record) {
+  return `Review the plan at \`${record.plan.relativePath}\` in this repository.\n\nFocus on:\n- the current next action\n- unresolved tasks\n- blockers\n- whether the plan still matches the implementation\n\nDo not assume the document is current. Verify relevant claims against the repository.`;
+}
+
+async function postJson(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Roborepo-Portal-Token": token },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || data.message || "request failed");
+  return data;
+}
+
+async function copyText(text) {
+  await navigator.clipboard.writeText(text);
+  statusEl.textContent = "copied";
+  setTimeout(() => { if (state.snapshot) statusEl.textContent = statusText(state.snapshot); }, 1200);
+}
+
+function action(label, onClick) {
+  const button = el("button", { type: "button" }, label);
+  button.addEventListener("click", () => {
+    try {
+      const result = onClick();
+      if (result?.catch) result.catch(showError);
+    } catch (err) {
+      showError(err);
+    }
+  });
+  return button;
+}
+
+function chip(text, cls = "") {
+  return el("span", { class: `chip ${cls}`.trim() }, text);
+}
+
+function dtdd(term, value) {
+  return [el("dt", {}, term), el("dd", {}, value)];
+}
+
+function formatDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "unknown" : date.toLocaleString();
+}
+
+function statusText(snapshot) {
+  return `${snapshot.plans.length} plans · ${snapshot.repositories.length} repos`;
+}
+
+function showError(err) {
+  statusEl.textContent = "error";
+  warningsEl.hidden = false;
+  warningsEl.textContent = String(err?.message || err);
+}
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key === "class") node.className = value;
+    else if (key === "value") node.value = value;
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  return node;
+}
+
+load();

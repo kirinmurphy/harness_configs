@@ -8,6 +8,7 @@
 // Keep in sync with PAGES in scripts/cli/portal-server.mjs (path + title). Order = nav order.
 const PORTAL_PAGES = [
   { path: "/", title: "Config" },
+  { path: "/plans", title: "Plans" },
   { path: "/telemetry", title: "Telemetry" },
 ];
 

@@ -22,6 +22,7 @@ const STATIC_TYPES = {
 // existing docs, tests, and saved browser links.
 export const PAGES = [
   { path: "/", id: "config", title: "Config", dir: "config", default: true },
+  { path: "/plans", id: "plans", title: "Plans", dir: "plans" },
   { path: "/telemetry", id: "telemetry", title: "Telemetry", dir: "telemetry" },
 ];
 const PAGE_BY_PATH = new Map(PAGES.flatMap((p) => (
@@ -76,7 +77,22 @@ function mutationTokenAllowed(req, token) {
 }
 
 function route(req, res, handlers, mutationToken) {
-  const { loadAnalysis, loadSession, loadInsightsLlm, loadConfig, loadConfigSource, mutatePackage, mutateSkill, mutateBehavior, mutateCommand } = handlers;
+  const {
+    loadAnalysis,
+    loadSession,
+    loadInsightsLlm,
+    loadConfig,
+    loadConfigSource,
+    loadPlans,
+    loadPlanDocument,
+    buildPlansPrompt,
+    updatePlanSettings,
+    refreshPlans,
+    mutatePackage,
+    mutateSkill,
+    mutateBehavior,
+    mutateCommand,
+  } = handlers;
   const [urlPath, qs = ""] = (req.url || "/").split("?");
 
   if (req.method === "POST" && !originAllowed(req)) {
@@ -139,6 +155,40 @@ function route(req, res, handlers, mutationToken) {
       harness: params.get("harness") || "claude",
     });
     return send(res, result.ok ? 200 : 400, "application/json", JSON.stringify(result));
+  }
+  if (urlPath === "/api/plans") {
+    return send(res, 200, "application/json", JSON.stringify(loadPlans()));
+  }
+  if (urlPath === "/api/plans/document") {
+    const params = new URLSearchParams(qs);
+    try {
+      return send(res, 200, "application/json", JSON.stringify(loadPlanDocument({ key: params.get("key") })));
+    } catch (err) {
+      return send(res, 400, "application/json", JSON.stringify({ error: String(err?.message || err) }));
+    }
+  }
+  if (req.method === "POST" && urlPath === "/api/plans/prompt") {
+    return readJsonBody(req, (body, err) => {
+      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
+      try {
+        return send(res, 200, "application/json", JSON.stringify(buildPlansPrompt(body || {})));
+      } catch (error) {
+        return send(res, 400, "application/json", JSON.stringify({ error: String(error?.message || error) }));
+      }
+    });
+  }
+  if (req.method === "POST" && urlPath === "/api/plans/settings") {
+    return readJsonBody(req, (body, err) => {
+      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
+      try {
+        return send(res, 200, "application/json", JSON.stringify(updatePlanSettings(body || {})));
+      } catch (error) {
+        return send(res, 400, "application/json", JSON.stringify({ error: String(error?.message || error) }));
+      }
+    });
+  }
+  if (req.method === "POST" && urlPath === "/api/plans/refresh") {
+    return send(res, 200, "application/json", JSON.stringify(refreshPlans()));
   }
   if (urlPath === "/api/insights-llm") {
     // On-demand LLM synthesis of the deterministic facts. May take seconds (shells to claude -p).

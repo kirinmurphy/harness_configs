@@ -91,7 +91,7 @@ location and exact command per element, see
 ## Step 1 — When they already agree: slash commands
 
 A _slash command_ is a workflow the **user** starts on purpose by typing `/case-study` or
-`/technical-planning`. It's the easiest case because both harnesses happen to agree on almost
+`/plan-docs`. It's the easiest case because both harnesses happen to agree on almost
 everything: both scan a `commands/` directory of Markdown files, same format, same idea. The only
 gap is location (`~/.claude/commands/` vs `~/.codex/commands/`).
 

@@ -311,9 +311,9 @@ assert "skill native --full: prints fallback when native help unavailable" \
 assert "skill render-commands: check dispatches generated command verifier" \
   bash -c "cd '${repo_root}' && node '${cli}' skill render-commands --check >/dev/null"
 assert "skill render-commands: generated Claude wrapper exists" \
-  grep -q 'Use the `technical-planning-docs` skill' "${repo_root}/globals/claude/commands/technical-planning.md"
+  grep -q 'Use the `plan-docs` skill' "${repo_root}/globals/claude/commands/plan-docs.md"
 assert "skill render-commands: generated Codex wrapper uses codex skill path" \
-  grep -q '~/.codex/skills/technical-planning-docs/SKILL.md' "${repo_root}/globals/codex/commands/technical-planning.md"
+  grep -q '~/.codex/skills/plan-docs/SKILL.md' "${repo_root}/globals/codex/commands/plan-docs.md"
 assert "skill render-commands: capture observer has no slash command" \
   bash -c "! test -e '${repo_root}/globals/claude/commands/capture-convention.md'"
 assert "skill render-commands: capture observer absent from Codex commands" \

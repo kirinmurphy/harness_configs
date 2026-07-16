@@ -38,6 +38,7 @@ Use the CLI to update items and configuration in your global setup so they work 
 | `roborepo skill triggers --check` | Check skill trigger fixtures so medium-risk skills do not drift into broad auto-load behavior.       |
 | `roborepo skill native [--full]` | Show native Claude/Codex plugin entrypoints; `--full` prints native help output inline.              |
 | `roborepo serve`                 | Open the local web portal at `http://127.0.0.1:4317/config`; use `--detach` to keep it running in the background. |
+| `roborepo serve` + `/plans`      | Browse local `docs/plans/**/*.md` files and copy plan context or `/plan-docs` workflow prompts.     |
 | `roborepo telemetry enable` / `disable` | Turn token-usage capture on or off. `telemetry status` shows capture state; `telemetry purge --all --backup` resets capture, backing up first. |
 | `roborepo doctor`                | Health-check the install and report what is linked, missing, or drifted.                             |
 
@@ -88,7 +89,7 @@ Use these when you want to intentionally start a named workflow.
 | --------------------- | ----------------------------------------------------------------------------------- | --- |
 | `/case-study`         | Write a long-form architecture case study about a real design decision.             |
 | `/frontend-design`    | Apply Claude's frontend design workflow to build or review a substantial UI change. |
-| `/technical-planning` | Create or revise a durable technical planning document.                             |
+| `/plan-docs`          | Create, manage, review, and continue repository plan documents.                     |
 | `/tighten`            | Clean up code against this project's own patterns with specific, anchored callouts. |
 | `/wrap-up`            | End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff prompt for the next chat. |
 
@@ -162,6 +163,7 @@ for the build/parity model; see **Under The Hood** below for the full doc set.
 - [First-Time Setup](docs/guides/first-time-setup.md)
 - [Setup and Daily Use](docs/guides/setup-and-daily-use.md)
 - [Install Workflow Choices](docs/guides/install-workflows.md)
+- [Plan Docs Walkthrough](docs/guides/plan-docs.md)
 - [roborepo CLI Commands](docs/reference/services/roborepo-cli.md)
 - [roborepo CLI Reference](docs/reference/services/roborepo.md)
 - [Documentation Index](docs/README.md)
@@ -174,5 +176,6 @@ for the build/parity model; see **Under The Hood** below for the full doc set.
 - [Config Collision Handling](docs/reference/internal/config-collision-handling.md)
 - [Rules Parity and Layering](docs/reference/internal/rules-parity-and-layering.md)
 - [Skills And Slash Commands](docs/reference/internal/skills-and-commands.md)
+- [Plans Portal Technical Reference](docs/reference/services/plans-portal.md)
 - [Claude Hooks](docs/reference/services/claude-hooks.md)
 - [Codex Hooks](docs/reference/services/codex-hooks.md)

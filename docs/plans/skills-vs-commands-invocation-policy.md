@@ -28,7 +28,7 @@ This policy answers three user-facing questions:
 
 Current shared skills include `case-study`, `code-style`, `frontend-design`,
 `javascript-typescript`, `react`, `roborepo-support`,
-`supabase-integration-testing`, `technical-planning-docs`, and `test-harness`.
+`supabase-integration-testing`, `plan-docs`, and `test-harness`.
 They are all currently treated as auto-invokable by description. The current
 shared skill format should not assume `disable-model-invocation` support until
 Claude and Codex support is verified.
@@ -78,7 +78,7 @@ Examples:
 - `supabase-integration-testing`: use only when most conditions match: Supabase,
   real integration behavior, RLS, RPC, migrations, service role, anon access, or
   database/API behavior that is not mocked.
-- `technical-planning-docs`: use for creating or revising planning docs; do not
+- `plan-docs`: use for creating or revising managed plan docs; do not
   use for ordinary quick notes or brief implementation summaries unless the user
   asks for a structured doc.
 
@@ -119,12 +119,12 @@ Proposed shared manifest:
 {
   "skills": [
     {
-      "skill": "technical-planning-docs",
-      "invocation": "auto",
+      "skill": "plan-docs",
+      "invocation": "manual",
       "risk": "medium",
       "claude_strategy": "shared-skill",
       "codex_strategy": "shared-skill",
-      "notes": "Tighten trigger before considering manual-only mode."
+      "notes": "Use explicit /plan-docs modes for plan lifecycle work."
     }
   ]
 }
@@ -170,7 +170,7 @@ Examples:
 ```
 
 ```txt
-/technical-planning-mode  # persistent mode
+/plan-docs mode           # persistent mode
 /audit-plan               # one-time action
 /generate-inventory       # one-time action
 ```
@@ -239,7 +239,7 @@ Classify each skill by the user impact of accidental loading.
 | Risk   | Meaning                                                                                                | Examples                                                       | Default policy                                                    |
 | ------ | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Low    | Adds narrow read-only context or style guidance                                                        | `react`, `javascript-typescript`, `code-style`, `test-harness` | Keep auto-invokable, tighten triggers                             |
-| Medium | Shapes output, structure, design taste, or writing mode                                                | `frontend-design`, `technical-planning-docs`, `case-study`           | Keep for now, tighten triggers, consider split into helper + mode |
+| Medium | Shapes output, structure, design taste, or writing mode                                                | `frontend-design`, `plan-docs`, `case-study`                         | Keep for now, tighten triggers, consider split into helper + mode |
 | High   | Changes permissions, grants tools, runs shell, commits, deploys, hands off, or creates persistent mode | future `commit`, `deploy`, `handoff`, shell-backed skills      | Manual command or hook only                                       |
 
 ### What improves

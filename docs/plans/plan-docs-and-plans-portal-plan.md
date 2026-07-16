@@ -12,7 +12,7 @@ The two layers share the same plan-document model but have different dependencie
 
 1. **Built-in Plans portal**
    - Always visible at `/plans`.
-   - Scans repositories found under configured `repoParents` for `docs/plans/**/*.md`.
+   - Scans repositories found under configured discovery roots for `docs/plans/**/*.md`.
    - Groups, filters, renders, and summarizes plan documents.
    - Works without installing an agent skill.
    - Remains primarily read-only in the first implementation.
@@ -67,7 +67,7 @@ This plan does not use `project-context` as a foundation or migration source.
 - Provide a persistent, scannable view of active, backlog, completed, and archived plans.
 - Keep Markdown files as the source of truth.
 - Avoid a database in the initial implementation.
-- Surface deterministic metadata such as lifecycle folder, priority, next action, blockers, review freshness, file modification time, and Git activity.
+- Surface deterministic metadata such as lifecycle folder, priority, next action, blockers, review state, file modification time, and Git activity.
 - Render plan Markdown safely in the existing local portal.
 - Provide one-click copy actions for paths, context, and agent prompts.
 - Show the Plans page even when the `plan-docs` package is disabled.
@@ -157,7 +157,7 @@ The page works regardless of package state.
 
 The page supports:
 
-- repository-parent configuration
+- discovery-root configuration
 - plan discovery
 - lifecycle grouping
 - search and filtering
@@ -285,14 +285,14 @@ The response should list supported modes, one-line purpose text, and examples:
 /plan-docs handoff   prepare a next-chat handoff
 ```
 
-For slash-command wrappers, this help text still reaches the agent runtime, so it may use a small
-amount of model context. Do not depend on a harness hook to implement first-version help. Hook-only
-or non-LLM command help can be explored later, but it should be a general slash-command optimization
-only if Claude and Codex can both support it reliably.
+For slash-command wrappers, this help text may initially reach the agent runtime, so it can use a
+small amount of model context.
 
-If hook-based help is added later, it should be shared infrastructure for other command families
-too: a deterministic preflight can return static usage text for invocations with no arguments, while
-mode-specific invocations still route to the agent workflow.
+The implementation plan should still track hook-only or non-LLM command help explicitly. The target
+shape is a shared deterministic command preflight that can return static usage text for invocations
+with no arguments, while mode-specific invocations still route to the agent workflow. Treat this as
+shared command infrastructure, not a `plan-docs`-only special case, if Claude and Codex can both
+support it reliably.
 
 ---
 
@@ -475,16 +475,20 @@ A blocked plan may remain in either `backlog` or `active`.
 
 Blocking is not a lifecycle folder because temporary blockers do not change the plan’s broader lifecycle.
 
-### Review freshness
+### Repository review state
 
 ```text
 never-reviewed
 current
-stale
+possibly-stale
 unknown
 ```
 
-Review freshness is derived by comparing `reviewed_commit` with repository Git state.
+Repository review state is derived by comparing `reviewed_commit` with repository Git state.
+
+In the first implementation, any commit after `reviewed_commit` means only that the repository has
+changed since review. It does not prove that files related to the plan changed. UI copy should say
+`possibly-stale` or equivalent rather than overstating certainty.
 
 ### Completion consistency
 
@@ -769,7 +773,7 @@ Illustrative normalized record:
     dependencies: [],
     related: [],
     reviewedCommit: "def456",
-    reviewState: "stale",
+    reviewState: "possibly-stale",
     modifiedAt: "2026-07-16T...",
     gitLastChangedAt: "2026-07-15T...",
     taskCounts: {
@@ -788,28 +792,38 @@ Illustrative normalized record:
 
 The browser should receive repository-relative paths for display and stable opaque IDs for API requests. It should not send arbitrary absolute file paths back to the server.
 
+Configured discovery roots grant discovery scope only. They do not grant a general file-read API.
+After discovery, browser requests must address plans through server-issued plan keys. The server
+must reject arbitrary file paths even when they are under a configured discovery root.
+
 ---
 
-## Repository-parent configuration
+## Configured discovery roots
 
-The page needs one or more local directories whose immediate children are repositories.
+The page needs one or more local discovery roots. A discovery root may be either:
 
-State file:
+- a repository itself, or
+- a directory whose immediate children are repositories
 
-```text
-~/.roborepo/plan-docs/settings.json
+State file location should be resolved from RoboRepo's existing `stateRoot`, not hard-coded to a
+home-directory path:
+
+```js
+path.join(stateRoot, "plan-docs", "settings.json")
 ```
+
+This preserves package-mode and test overrides such as `ROBOREPO_STATE_ROOT`.
 
 Illustrative content:
 
 ```json
 {
   "schemaVersion": 1,
-  "repoParents": [
+  "discoveryRoots": [
     "~/projects",
-    "~/work"
+    "~/work",
+    "~/src/specific-repo"
   ],
-  "repositories": [],
   "ignoredDirectories": [
     "node_modules",
     ".git",
@@ -820,9 +834,11 @@ Illustrative content:
 }
 ```
 
-`repoParents` is intentionally bounded. Each parent is scanned one level deep:
+`discoveryRoots` are intentionally bounded. Each root is inspected directly and then scanned one
+level deep:
 
 ```text
+~/src/specific-repo/docs/plans
 ~/projects/*/docs/plans
 ~/work/*/docs/plans
 ```
@@ -836,14 +852,14 @@ For example:
 ~/work/repo4/docs/plans
 ```
 
-`repositories` is an optional explicit list for repos that do not live under a configured parent.
-The first version may omit this UI if parent-directory discovery is enough, but the settings shape
-should leave room for it.
+If a user selects a repository directly, that repository must work without requiring the parent
+directory to be configured.
 
 ### Initial resolution order
 
-1. Saved `repoParents` and `repositories` in `~/.roborepo/plan-docs/settings.json`.
-2. `PROJECTS_ROOT` environment variable, when present, interpreted as one repo parent.
+1. Saved `discoveryRoots` in `path.join(stateRoot, "plan-docs", "settings.json")`.
+2. `ROBOREPO_PLAN_ROOTS` environment variable, when present, interpreted as a path-delimited list
+   of discovery roots.
 3. No implicit broad home-directory scan.
 
 The page should never recursively scan the entire home directory by default.
@@ -852,7 +868,7 @@ The page should never recursively scan the entire home directory by default.
 
 When no roots are configured:
 
-> No repository parents configured. Add the directory that contains your repositories.
+> No discovery roots configured. Add a repository or a directory that contains repositories.
 
 The page accepts a server-local filesystem path through a protected POST request.
 
@@ -862,15 +878,18 @@ The server should normalize `~`, resolve the path, verify it is a readable direc
 
 ## Repository discovery
 
-For each configured root:
+For each configured discovery root:
 
-1. Inspect immediate child directories only.
-2. Treat a child as a candidate repository when it contains either:
+1. Inspect the root itself.
+2. Treat the root as a candidate repository when it contains either:
    - `.git`, or
    - `docs/plans`
-3. Optionally inspect explicit `repositories` entries directly.
-4. Do not recursively descend arbitrary nested project trees in the initial implementation.
-5. Allow future `repoParents` entries to point at more deeply nested grouping directories.
+3. Inspect immediate child directories only.
+4. Treat a child as a candidate repository when it contains either:
+   - `.git`, or
+   - `docs/plans`
+5. Do not recursively descend arbitrary nested project trees in the initial implementation.
+6. Allow future discovery roots to point at more deeply nested grouping directories.
 
 The scanner searches candidate repositories for:
 
@@ -883,7 +902,7 @@ It ignores:
 - hidden temporary files
 - editor swap files
 - generated backups
-- symlink targets that escape the configured project root
+- symlink targets that escape the discovered repository boundary
 - files over a configured size limit
 
 Recommended initial document size limit:
@@ -898,8 +917,8 @@ Oversized files remain listed with a warning but are not fully rendered or embed
 
 The scanner should avoid open-ended file traversal:
 
-- only inspect immediate children of each `repoParent`
-- skip hidden child directories unless explicitly listed as repositories
+- only inspect immediate children of each `discoveryRoot`
+- skip hidden child directories unless explicitly configured as discovery roots
 - treat `.git` and `docs/plans` as cheap candidate checks before any glob
 - once a candidate repo is found, only scan `docs/plans/**/*.md`
 - cap candidate repositories per refresh and report truncation when exceeded
@@ -921,6 +940,7 @@ Supported forms:
 
 ```yaml
 key: scalar
+key: []
 key:
   - item
   - item
@@ -931,6 +951,13 @@ Supported scalar types:
 - strings
 - empty values
 - recognized enum strings
+
+Supported array forms:
+
+- empty inline arrays: `key: []`
+- block lists of scalar items
+
+Other inline arrays are deferred unless a full YAML parser is adopted.
 
 Unsupported advanced YAML should produce a clear validation warning rather than being interpreted unpredictably.
 
@@ -963,11 +990,11 @@ Git calls should be batched per repository where practical.
 The portal should not claim that a plan is stale merely because HEAD differs. Instead:
 
 - `current`: `reviewed_commit` equals HEAD
-- `stale`: `reviewed_commit` is an ancestor of HEAD and later commits exist
+- `possibly-stale`: `reviewed_commit` is an ancestor of HEAD and later commits exist
 - `unknown`: commit is unavailable, missing, or not in current history
 - `never-reviewed`: no `reviewed_commit`
 
-A later enhancement may compare changed paths against plan-related paths, but the first implementation should use the simpler repository-level freshness signal.
+A later enhancement may compare changed paths against plan-related paths, but the first implementation should use the simpler repository-level review-state signal.
 
 Repositories without Git remain fully browsable with Git fields omitted.
 
@@ -993,7 +1020,7 @@ Read full Markdown on demand for document rendering and portable prompt generati
 
 Persist only:
 
-- configured `repoParents` and explicit repositories
+- configured discovery roots
 - portal feature settings
 
 Do not persist a second copy of plan contents.
@@ -1007,7 +1034,7 @@ Use a staged implementation.
 ### Initial release
 
 - manual Refresh button
-- refresh after repository-parent configuration changes
+- refresh after discovery-root configuration changes
 - refresh after package enablement
 - optional periodic rescan while the Plans page is open
 
@@ -1045,8 +1072,8 @@ Suggested API routes:
 ```text
 GET  /api/plans
 GET  /api/plans/document
-GET  /api/plans/prompt
 GET  /api/plans/events
+POST /api/plans/prompt
 POST /api/plans/settings
 POST /api/plans/refresh
 ```
@@ -1080,13 +1107,17 @@ Returns:
 - validation results
 - Git metadata
 
-### `GET /api/plans/prompt`
+### `POST /api/plans/prompt`
 
 Accepts:
 
 - action
 - selected plan keys
 - prompt mode
+
+Use `POST` rather than query parameters because generated prompts may contain large or sensitive
+plan context. The request body should contain server-issued plan keys only, never arbitrary file
+paths.
 
 Prompt modes:
 
@@ -1097,7 +1128,7 @@ portable
 
 ### `POST /api/plans/settings`
 
-Updates configured repository parents and explicit repositories.
+Updates configured discovery roots.
 
 Requires the existing portal mutation token and loopback-origin checks.
 
@@ -1127,7 +1158,7 @@ Top controls:
 - readiness filter
 - review-state filter
 - Refresh
-- Configure repositories
+- Configure discovery roots
 
 Primary grouping:
 
@@ -1154,7 +1185,7 @@ Each plan card should show:
 - next action
 - blocker count
 - remaining task count
-- review freshness
+- review state
 - modified date
 - last Git activity when available
 - validation warning count
@@ -1572,9 +1603,9 @@ The portal remains loopback-only.
 
 ### Path safety
 
-- accept configured repository parents only through protected POST requests
+- accept configured discovery roots only through protected POST requests
 - resolve real paths
-- reject files outside configured repository parents or explicit repositories
+- reject files outside discovered repository boundaries
 - do not expose arbitrary file-read endpoints
 - use server-issued plan keys
 - reject symlink traversal outside repository boundaries
@@ -1601,7 +1632,7 @@ Agent workflows perform those operations under normal harness permissions.
 
 Initial targets:
 
-- scan configured repository parents without traversing dependency directories
+- scan configured discovery roots without traversing dependency directories
 - display the first index within a few seconds for a typical personal project directory
 - cache unchanged files
 - read full Markdown only on document open or portable prompt generation
@@ -1648,46 +1679,51 @@ Deliverable:
 
 ---
 
-## Phase 1: plan-domain core
+## Phase 1: discovery state, scanner, and parser
 
 Implement:
 
-- lifecycle path detection
+- settings path based on `stateRoot`
+- configured discovery roots
+- direct-root repository discovery
+- shallow child repository discovery
+- plan file discovery
+- strict path boundary checks
+- server-issued plan keys
 - strict frontmatter parser
 - Markdown heading and checkbox extraction
-- plan validation
+- lifecycle path detection
 - normalized plan record
-- stable ID validation
-- dependency resolution
-- prompt builders
-- filesystem boundary helpers
 
 Tests:
 
+- stateRoot override fixtures
+- direct-root repository fixtures
+- shallow parent-directory fixtures
 - parser fixtures
 - lifecycle fixtures
-- validation fixtures
 - path traversal fixtures
-- prompt snapshots
+- arbitrary-path rejection fixtures
 
 Deliverable:
 
-- portable module with no portal dependency
+- deterministic discovery and parsing module with no portal dependency
 
 ---
 
-## Phase 2: repository discovery and index
+## Phase 2: plan validation and index
 
 Implement:
 
-- repository-parent settings
-- candidate repository discovery
-- plan file discovery
-- parse cache
+- plan validation
+- stable ID validation
+- dependency resolution
 - Git metadata
+- repository review state
 - plan index
 - sorting and filtering
 - partial-error reporting
+- parse cache
 
 Tests:
 
@@ -1697,7 +1733,7 @@ Tests:
 - duplicate IDs
 - unclassified root plans
 - completed-plan inconsistency
-- stale review detection
+- possibly-stale review detection
 
 Deliverable:
 
@@ -1746,6 +1782,7 @@ Implement:
 - unified `plan-docs` skill
 - skill reference files
 - generated `/plan-docs` wrappers
+- default `/plan-docs` help text
 - package presentation in Commands
 - package enable/disable behavior
 - trigger tests
@@ -1765,6 +1802,28 @@ Remove:
 Deliverable:
 
 - optional package usable independently from the portal
+
+---
+
+## Phase 4b: optional static slash-command preflight
+
+Evaluate whether Claude and Codex can support deterministic no-argument command help without routing
+through the agent runtime.
+
+Implement only if both harnesses can support the behavior cleanly:
+
+- a shared command preflight layer for package-owned slash commands
+- static usage text for no-argument invocations
+- normal agent routing for invocations with workflow modes or arguments
+- tests for `plan-docs` and at least one other command-family fixture
+
+This is intentionally shared infrastructure. If only one harness supports it, or if the behavior
+requires brittle hook-specific workarounds, keep the first release's agent-routed help and leave this
+phase deferred.
+
+Deliverable:
+
+- no-token static help where harness support is reliable, or a documented deferral with the reason
 
 ---
 
@@ -1866,10 +1925,10 @@ Verify:
 
 ### Integration tests
 
-- scan a fixture repository parent
+- scan a fixture discovery root
 - scan multiple repositories
 - render a document
-- configure repository parents
+- configure discovery roots
 - enable the package
 - generate a start prompt
 - generate a cross-repository next prompt
@@ -1896,8 +1955,8 @@ Near misses:
 
 ### End-to-end verification
 
-1. Start portal with no configured repository parents.
-2. Add a repository parent.
+1. Start portal with no configured discovery roots.
+2. Add a discovery root.
 3. Confirm plans appear.
 4. Open and render a plan.
 5. Confirm lifecycle and validation metadata.
@@ -1975,12 +2034,12 @@ Mitigation:
 
 Mitigation:
 
-- shallow repository-parent discovery
+- shallow discovery-root discovery
 - file cache
 - compact index
 - batched Git calls
 - read documents on demand
-- configurable repository parents rather than whole-home scanning
+- configurable discovery roots rather than whole-home scanning
 
 ### Risk: portal and skill behavior drift
 
@@ -2017,14 +2076,14 @@ The implementation is complete when:
 
 - `/plans` is always present in portal navigation
 - the Plans page works with `plan-docs` disabled
-- users can configure one or more repository parents
+- users can configure one or more discovery roots
 - the scanner discovers `docs/plans/**/*.md`
 - lifecycle is derived from folders
 - root-level plan files are shown as unclassified
 - no `status` frontmatter field is required
-- readiness, blockers, review freshness, and completion consistency are derived
+- readiness, blockers, review state, and completion consistency are derived
 - plan Markdown renders safely
-- plan cards show next action, priority, tasks, blockers, and Git freshness
+- plan cards show next action, priority, tasks, blockers, and Git review state
 - repository-aware and portable copy actions work
 - the optional `plan-docs` package installs one unified skill
 - `/plan-docs` is generated for Claude and Codex
@@ -2055,4 +2114,5 @@ The implementation is complete when:
 - remote synchronization
 - collaborative access
 - package-provided portal pages
+- static slash-command help preflight if harness support is incomplete in the first release
 - long-running background indexing service

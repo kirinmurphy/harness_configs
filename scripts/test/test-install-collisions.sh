@@ -389,6 +389,11 @@ test_main_install_merges_root_configs_without_review_prompt() {
     && pass "main install preserves user Codex project trust" \
     || fail "main install preserves user Codex project trust" "$home_dir/out"
   assert_regular_file_contains "$home_dir/.codex/config.toml" "\\[mcp_servers\\.jcodemunch\\]" "main install adds repo Codex MCP config"
+
+  ROBOREPO_PRESETS_ONBOARD=skip run_expect_install_args "$home_dir" "$home_dir/second.out" --on-conflict overwrite
+  grep -qF '[projects."/tmp/user-project"]' "$home_dir/.codex/config.toml" \
+    && pass "main install clean update preserves user Codex project trust" \
+    || fail "main install clean update preserves user Codex project trust" "$home_dir/second.out"
 }
 
 test_repair_local_config_recovers_backup_only_codex_settings() {

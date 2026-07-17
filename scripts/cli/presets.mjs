@@ -632,9 +632,11 @@ function copyItem(row, policy) {
   if (row.kind === "root_config") {
     const drift = checkDrift(row.harness, row.homeAbs);
     if (drift.status === "clean") {
-      copyTree(source, row.homeAbs);
+      const repoText = fs.readFileSync(source, "utf8");
+      const localText = fs.readFileSync(row.homeAbs, "utf8");
+      fs.writeFileSync(row.homeAbs, mergeRootConfig(row.harness, repoText, localText));
       console.log(`update: ${row.homeAbs} <- ${source} (baseline changed, no local drift)`);
-      // copyTree just changed the file's content, so recordWrite must rehash post-copy — there's
+      // The merge just changed the file's content, so recordWrite must rehash post-write — there's
       // no precomputed hash to thread through here.
       recordWrite(row.harness, row.homeAbs);
       return;

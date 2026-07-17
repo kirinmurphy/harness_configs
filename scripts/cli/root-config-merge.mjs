@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 function isPlainObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -46,7 +47,7 @@ function mergeObjects(repo, local, path = []) {
   return out;
 }
 
-function mergeClaudeSettings(repoText, localText) {
+export function mergeClaudeSettings(repoText, localText) {
   let repo = {};
   let local = {};
   try { repo = JSON.parse(repoText || "{}"); } catch {}
@@ -168,11 +169,13 @@ function mergeTomlSection(repoSection, localSection) {
     if (seen.has(key)) continue;
     merged.push(...entry.comments, entry.line);
   }
-  if (localExtras.length) merged.push(...localExtras);
+  for (const line of localExtras) {
+    if (!merged.includes(line)) merged.push(line);
+  }
   return merged;
 }
 
-function mergeCodexConfig(repoText, localText) {
+export function mergeCodexConfig(repoText, localText) {
   const repoSections = splitTomlSections(repoText);
   const localSections = splitTomlSections(localText);
   const localByHeader = new Map(localSections.map((section) => [section.header, section]));
@@ -194,17 +197,23 @@ function mergeCodexConfig(repoText, localText) {
   return `${output}\n`;
 }
 
-const [harness, repoPath, localPath, outPath] = process.argv.slice(2);
-if (!harness || !repoPath || !localPath || !outPath) {
-  console.error("usage: root-config-merge.mjs claude|codex <repoPath> <localPath> <outPath>");
-  process.exit(2);
+export function mergeRootConfig(harness, repoText, localText) {
+  return harness === "codex"
+    ? mergeCodexConfig(repoText, localText)
+    : mergeClaudeSettings(repoText, localText);
 }
 
-const repoText = fs.existsSync(repoPath) ? fs.readFileSync(repoPath, "utf8") : "";
-const localText = fs.existsSync(localPath) ? fs.readFileSync(localPath, "utf8") : "";
-const merged = harness === "codex"
-  ? mergeCodexConfig(repoText, localText)
-  : mergeClaudeSettings(repoText, localText);
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const [harness, repoPath, localPath, outPath] = process.argv.slice(2);
+  if (!harness || !repoPath || !localPath || !outPath) {
+    console.error("usage: root-config-merge.mjs claude|codex <repoPath> <localPath> <outPath>");
+    process.exit(2);
+  }
 
-fs.mkdirSync(path.dirname(outPath), { recursive: true });
-fs.writeFileSync(outPath, merged);
+  const repoText = fs.existsSync(repoPath) ? fs.readFileSync(repoPath, "utf8") : "";
+  const localText = fs.existsSync(localPath) ? fs.readFileSync(localPath, "utf8") : "";
+  const merged = mergeRootConfig(harness, repoText, localText);
+
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, merged);
+}

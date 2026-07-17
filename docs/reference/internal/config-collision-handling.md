@@ -20,8 +20,8 @@ There is no managed/adopt install mode. The installer always copies or renders. 
 
 | Policy | Behavior |
 | --- | --- |
-| `keep` | Leave the local file active and stage the repo candidate beside it as `*_update_TIMESTAMP`. |
-| `overwrite` | Move the local file to `*_original_TIMESTAMP`, then copy the repo item into place. |
+| `keep` | Leave the local file active and stage the repo candidate beside it as `*_update_TIMESTAMP`. Root config is the exception: it is merged in place so local settings and repo defaults both survive. |
+| `overwrite` | Move the local file to `*_original_TIMESTAMP`, then copy the repo item into place. Root config is the exception: it is merged in place after the safety backup. |
 | `abort` | Stop before changing the conflicting path. |
 
 Use:
@@ -36,26 +36,24 @@ If no flag is supplied, the installer reuses the saved `onConflict` from `~/.rob
 
 ## Root Config Drift Detection
 
-Root config rows (`~/.claude/settings.json`, `~/.codex/config.toml`) get one additional check before
-the collision policy above applies. A byte mismatch against the current repo baseline does not by
-itself prove the user touched the file — the repo baseline itself is expected to change between
-installs (new permissions, hooks, MCP entries). Roborepo tracks a content hash of what it last wrote
-per harness (`~/.roborepo/config-state/root-config.json`); if the active file still matches that
-hash, the mismatch against the *new* baseline is a clean update, not a collision, and the file is
-regenerated silently. Only a file that changed since roborepo's own last write is treated as a real
-collision and falls into the policies above.
+Root config rows (`~/.claude/settings.json`, `~/.codex/config.toml`) are shared ownership files: the
+harness and user can write local settings, while roborepo contributes portable defaults. A byte
+mismatch against the current repo baseline does not by itself prove the user touched the file — the
+repo baseline itself is expected to change between installs (new permissions, hooks, MCP entries).
+Roborepo tracks a content hash of what it last wrote per harness
+(`~/.roborepo/config-state/root-config.json`); if the active file still matches that hash, the
+mismatch against the *new* baseline is a clean update. If the file drifted, roborepo still preserves
+local settings by using the same structured merge path instead of staging or replacing the active
+file like a normal managed copy.
 
-This check only ever *records* a write when roborepo can honestly treat the resulting active file as
-roborepo-owned: the file was already clean, missing, newly created, or matched the repo baseline
-before the write. Package toggles and portal mutations that merge into an already-drifted user file
-still preserve the user content, but do **not** record the merged result as clean — doing so would
-make a later update free to overwrite that user-owned slice. The `keep` policy's staged-candidate
-branch leaves the active file untouched, so it must not (and does not) record a write there. See
-`docs/plans/completed/root-config-layered-inheritance.md` for the full design and `scripts/cli/root-config-state.mjs`
-for the implementation. All three install paths (`presets.mjs` JS bundle-apply,
-`install-lib.sh` bash direct-installer, `install-windows.ps1` PowerShell) implement this check. On
-Windows both the `Invoke-RootConfigPreflight` collision resolver and the later `Export-UserConfig`
-write path are drift-aware, so a clean baseline change is not wrongly prompted as a collision.
+The installer records the merged active file after it writes it, so later drift reports are based on
+the current shared-notebook state. See
+`docs/plans/completed/root-config-layered-inheritance.md` for the full design and
+`scripts/cli/root-config-state.mjs` for the implementation. All three install paths (`presets.mjs`
+JS bundle-apply, `install-lib.sh` bash direct-installer, `install-windows.ps1` PowerShell) implement
+this check. On Windows both the `Invoke-RootConfigPreflight` collision resolver and the later
+`Export-UserConfig` write path are drift-aware, so a clean baseline change is not wrongly prompted as
+a collision.
 
 **Uninstall.** The same drift signal governs removal: `uninstall.sh`'s `remove_root_config` deletes a
 root config only when it still matches the recorded hash (`clean`), or when there is no recorded write

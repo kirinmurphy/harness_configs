@@ -257,6 +257,22 @@ check_package_command_catalog() {
   fi
 }
 
+check_local_config_repair_candidates() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped local config repair check"
+    return 0
+  fi
+  local output
+  if output="$(node "${repo_root}/scripts/cli/local-config-repair.mjs" --check 2>&1)"; then
+    ok "local config repair not needed"
+  else
+    failed=1
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && echo "${line}" >&2
+    done <<< "${output}"
+  fi
+}
+
 # Manifest guard: every link/root_config row in manifests/platform/manifest.tsv must name a real repo
 # source (cleanup rows have src_rel "-" and are skipped). This is what keeps the manifest —
 # now the single source of truth for the installer/verify/sync — from silently referencing a
@@ -382,6 +398,7 @@ if [[ "${check_installed}" -eq 1 ]]; then
     node "${repo_root}/scripts/cli/main.mjs" bundle check || failed=1
     node "${repo_root}/scripts/cli/rules-render.mjs" --check || failed=1
   fi
+  check_local_config_repair_candidates
   # Base install owns only roborepo-support. Optional skills are checked through their package/toggle
   # state, not as unconditional install payload.
   installed_has_claude=0; installed_has_codex=0

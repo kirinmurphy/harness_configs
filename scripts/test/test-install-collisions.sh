@@ -94,7 +94,7 @@ make_home() {
 seed_user_configs() {
   local home_dir="$1"
   printf '{"model":"opus","permissions":{"allow":["Bash(foo)"]}}\n' > "$home_dir/.claude/settings.json"
-  printf 'model = "o3"\n[profiles.personal]\nmodel = "gpt-5"\n[mcp_servers.personal]\ncommand = "foo"\n' > "$home_dir/.codex/config.toml"
+  printf 'model = "o3"\n[profiles.personal]\nmodel = "gpt-5"\n[mcp_servers.personal]\ncommand = "foo"\n[projects."/tmp/user-project"]\ntrust_level = "trusted"\n' > "$home_dir/.codex/config.toml"
 }
 
 run_expect_install() {
@@ -371,6 +371,66 @@ test_noninteractive_install_merges_root_configs() {
     || fail "noninteractive install preserves user Claude settings" "$home_dir/out"
   assert_regular_file_contains "$home_dir/.codex/config.toml" "\\[profiles\\.personal\\]" "noninteractive install preserves user Codex settings"
   [[ -e "$home_dir/.claude/CLAUDE.md" && -e "$home_dir/.codex/AGENTS.md" ]] && pass "noninteractive install completes and keeps merged files" || fail "noninteractive install completes and keeps merged files"
+}
+
+test_main_install_merges_root_configs_without_review_prompt() {
+  local home_dir
+  home_dir="$(make_home)"
+  seed_user_configs "$home_dir"
+
+  ROBOREPO_PRESETS_ONBOARD=skip run_expect_install_args "$home_dir" "$home_dir/out" --on-conflict overwrite
+
+  assert_file_not_contains "$home_dir/out" "MERGE REVIEW REQUIRED" "main install does not false-prompt for root config merge"
+  assert_file_contains "$home_dir/out" "local root config preserved" "main install reports structured root config merge"
+  grep -qF '[profiles.personal]' "$home_dir/.codex/config.toml" \
+    && pass "main install preserves user Codex profile" \
+    || fail "main install preserves user Codex profile" "$home_dir/out"
+  grep -qF '[projects."/tmp/user-project"]' "$home_dir/.codex/config.toml" \
+    && pass "main install preserves user Codex project trust" \
+    || fail "main install preserves user Codex project trust" "$home_dir/out"
+  assert_regular_file_contains "$home_dir/.codex/config.toml" "\\[mcp_servers\\.jcodemunch\\]" "main install adds repo Codex MCP config"
+}
+
+test_repair_local_config_recovers_backup_only_codex_settings() {
+  local home_dir ts
+  home_dir="$(make_home)"
+  ts="20260716-202503"
+
+  cp "$repo_root/globals/codex/config.toml" "$home_dir/.codex/config.toml"
+  {
+    printf '\n'
+    printf '[mcp_servers.jcodemunch.tools.register_edit]\n'
+    printf 'approval_mode = "auto"\n'
+  } >> "$home_dir/.codex/config.toml"
+  cp "$home_dir/.codex/config.toml" "$home_dir/.codex/config_original_${ts}.toml"
+  {
+    printf '\n'
+    printf '[projects."/tmp/user-project"]\n'
+    printf 'trust_level = "trusted"\n'
+  } >> "$home_dir/.codex/config_original_${ts}.toml"
+  printf '# END GENERATED AGENT PERMISSIONS\n' >> "$home_dir/.codex/config_original_${ts}.toml"
+
+  if HOME="$home_dir" node "$repo_root/scripts/cli/local-config-repair.mjs" --check >"$home_dir/check.out" 2>&1; then
+    fail "local-config check detects recoverable Codex settings" "$home_dir/check.out"
+  fi
+  assert_file_contains "$home_dir/check.out" "roborepo repair local-config --dry-run" "local-config check recommends exact repair command"
+
+  HOME="$home_dir" node "$repo_root/scripts/cli/local-config-repair.mjs" --dry-run >"$home_dir/dry.out" 2>&1
+  assert_file_contains "$home_dir/dry.out" "recover local-only settings" "local-config dry-run reports recovered backup content"
+
+  HOME="$home_dir" node "$repo_root/scripts/cli/local-config-repair.mjs" --apply >"$home_dir/apply.out" 2>&1
+  assert_file_contains "$home_dir/apply.out" "repair: $home_dir/.codex/config.toml" "local-config apply writes active Codex config"
+  grep -qF '[projects."/tmp/user-project"]' "$home_dir/.codex/config.toml" \
+    && pass "local-config repair restores project trust" \
+    || fail "local-config repair restores project trust" "$home_dir/apply.out"
+  grep -qF '[mcp_servers.jcodemunch.tools.register_edit]' "$home_dir/.codex/config.toml" \
+    && pass "local-config repair keeps newer active Codex setting" \
+    || fail "local-config repair keeps newer active Codex setting" "$home_dir/apply.out"
+  local marker_count
+  marker_count="$(grep -c '^# END GENERATED AGENT PERMISSIONS$' "$home_dir/.codex/config.toml")"
+  [[ "$marker_count" -eq 1 ]] \
+    && pass "local-config repair removes duplicate generated marker" \
+    || fail "local-config repair removes duplicate generated marker" "$home_dir/apply.out"
 }
 
 test_rendered_rules_backup_then_render() {
@@ -903,6 +963,8 @@ test_direct_claude_installer_removes_stale_retired_symlink
 test_verify_install_requires_active_root_configs
 test_dry_run_collision_no_mutation
 test_noninteractive_install_merges_root_configs
+test_main_install_merges_root_configs_without_review_prompt
+test_repair_local_config_recovers_backup_only_codex_settings
 test_rendered_rules_backup_then_render
 test_global_command_conflict_blocks_before_mutation
 test_direct_harness_conflict_dry_run_reports

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# roborepo repair — fix an install after the checkout was moved or renamed.
+# roborepo repair — fix install damage after checkout moves, plus targeted local config recovery.
 #
 # Symptom this fixes: every managed link under ~/.claude and ~/.codex (including per-skill links
 # under skills/) and the ~/.local/bin/roborepo command point at the checkout's old absolute path,
@@ -22,8 +22,13 @@ dry_run=0
 on_conflict="${ROBOREPO_ON_CONFLICT:-}"
 
 usage() {
-  echo "usage: $0 [--dry-run] [--on-conflict overwrite|keep|abort]" >&2
+  echo "usage: $0 [local-config] [--dry-run|--apply] [--on-conflict overwrite|keep|abort]" >&2
 }
+
+if [[ "${1:-}" == "local-config" ]]; then
+  shift
+  exec node "${repo_root}/scripts/cli/local-config-repair.mjs" "$@"
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -147,3 +152,4 @@ fi
 write_install_state "${on_conflict}"
 
 echo "Repair complete. Run 'roborepo doctor --installed' to confirm."
+node "${repo_root}/scripts/cli/local-config-repair.mjs" --hint || true

@@ -10,6 +10,7 @@ import { mutatePackage, setSkillInstalled, setBehaviorBucket } from "./config-mu
 import { renderHomeRules, removeHomeRules, isRenderedRulesOutput } from "./rules-render.mjs";
 import { confirmYesNo, makePrompter, selectMenu, wizard } from "./skill-lib.mjs";
 import { pathExists, findSiblingArtifact, copyTree, stageCandidate, backupOriginal } from "./staging-lib.mjs";
+import { mergeRootConfig } from "./root-config-merge.mjs";
 import { checkDrift, recordWrite } from "./root-config-state.mjs";
 
 const PRESET_MANIFEST = path.join(repoRoot, "manifests", "platform", "presets.json");
@@ -638,9 +639,16 @@ function copyItem(row, policy) {
       recordWrite(row.harness, row.homeAbs);
       return;
     }
-    // status is "unwritten" (no prior recorded write — fall through to existing collision
-    // handling below, same as any other managed_copy/link row) or "drifted" (handled by the same
-    // collision path, which already stages/backs up correctly).
+    // status is "unwritten" (no prior recorded write) or "drifted" (local edits after roborepo's
+    // last write). Root configs are mutable structured files, so preserve local behavior and layer
+    // repo-only additions through the root-config merge helper instead of treating them like
+    // replaceable managed copies.
+    const repoText = fs.readFileSync(source, "utf8");
+    const localText = fs.readFileSync(row.homeAbs, "utf8");
+    fs.writeFileSync(row.homeAbs, mergeRootConfig(row.harness, repoText, localText));
+    console.log(`merge: ${row.homeAbs} <- ${source} (local root config preserved)`);
+    recordWrite(row.harness, row.homeAbs);
+    return;
   }
 
   if (policy.onConflict === "keep") {

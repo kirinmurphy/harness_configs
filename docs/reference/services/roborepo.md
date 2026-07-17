@@ -144,6 +144,7 @@ roborepo run <cmd> [args...]
 
 roborepo update  [--dry-run]
 roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]
+roborepo repair local-config [--dry-run|--apply]
 roborepo doctor  [--installed]
 roborepo verify
 roborepo rules   [--check]
@@ -172,7 +173,10 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   import <path>` copies obvious custom additions from an existing checkout into the workspace and
   reports changed built-ins separately without modifying the source checkout.
 - `repair` relinks stale symlinks after the checkout was moved or renamed. It does not re-copy
-  managed content files/dirs; those stay put. Use `--on-conflict` only for noninteractive command
+  managed content files/dirs; those stay put. `repair local-config --dry-run` inspects recoverable
+  Claude/Codex local settings when `update`, `doctor`, or `verify` reports local config repair
+  candidates; `--apply` writes the repaired active files after creating repair backups. Use
+  `--on-conflict` only for noninteractive command
   recovery.
 - **Day to day** — `index code|docs` are one-shot indexers owned by packages; `watch code` runs a live indexer (and
   writes the pidfile the Claude SessionStart hook reads to report watcher status); `mcp add`
@@ -232,7 +236,8 @@ Lifecycle behavior:
 - `roborepo doctor` validates command resource shape and duplicate ownership inside package
   dependency closures; `roborepo verify` runs doctor, so it inherits the same guard.
 - `roborepo repair` relinks moved install paths and preserves package command state because the
-  command registry is path-independent runtime state.
+  command registry is path-independent runtime state. `roborepo repair local-config --dry-run`
+  handles the separate case where local Claude/Codex settings can be safely recovered from backup.
 - `roborepo uninstall` removes `~/.roborepo/enabled-packages.json`, so no package command ownership
   survives uninstall.
 

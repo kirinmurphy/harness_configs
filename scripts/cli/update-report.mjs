@@ -5,6 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { packageMode, repoRoot, harnessHome } from "./paths.mjs";
 import { enabledPackagesPath } from "./state-paths.mjs";
+import { buildLocalConfigRepairPlans } from "./local-config-repair.mjs";
 
 const HARNESS_HOME = harnessHome;
 
@@ -182,6 +183,7 @@ function printUpdateReport(before, after) {
   printGroup("package registry", compareScalar(before.packageRegistry, after.packageRegistry, "package registry"));
   printGroup("hooks", compareEntries(before.hooks, after.hooks));
   printGroup("permissions", compareEntries(before.permissions, after.permissions));
+  printLocalConfigRepairHint();
 }
 
 function compareScalar(before, after, label) {
@@ -216,4 +218,13 @@ function printGroup(label, result) {
 
 function unique(values) {
   return [...new Set(values)].sort();
+}
+
+function printLocalConfigRepairHint() {
+  const plans = buildLocalConfigRepairPlans();
+  if (!plans.length) return;
+  const harnesses = plans.map((plan) => plan.harness).join(", ");
+  console.log("");
+  console.log(`Local config repair candidates found (${harnesses}).`);
+  console.log("Run: roborepo repair local-config --dry-run");
 }

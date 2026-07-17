@@ -46,6 +46,7 @@
     "",
     "roborepo update  [--dry-run] [--on-conflict overwrite|keep|abort]   dev: pull new config + re-apply; package mode: alias for apply",
     "roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]  refresh copied install after the repo was moved/renamed",
+    "roborepo repair local-config [--dry-run|--apply]  recover local Claude/Codex settings from safe backups",
     "roborepo uninstall [--dry-run]",
     "roborepo doctor  [--installed] health check",
     "roborepo verify                post-install verification",
@@ -209,7 +210,7 @@
     {
       "label": "repair",
       "value": ["repair"],
-      "desc": "refresh copied install after the repo was moved/renamed"
+      "desc": "repair moved-checkout links; use local-config for Claude/Codex settings"
     },
     {
       "label": "uninstall",

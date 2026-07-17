@@ -82,6 +82,22 @@ check_active_file() {
   fi
 }
 
+check_local_config_repair_candidates() {
+  if ! command -v node >/dev/null 2>&1; then
+    pass_msg "node unavailable; skipped local config repair check"
+    return 0
+  fi
+  local output
+  if output="$(node "${repo_root}/scripts/cli/local-config-repair.mjs" --check 2>&1)"; then
+    pass_msg "local config repair not needed"
+  else
+    failed=1
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && echo "${line}" >&2
+    done <<< "${output}"
+  fi
+}
+
 check_link "bin/roborepo" "${HOME}/.local/bin/roborepo"
 
 node "${repo_root}/scripts/cli/main.mjs" bundle check || failed=1
@@ -89,6 +105,7 @@ node "${repo_root}/scripts/cli/main.mjs" bundle check || failed=1
 doctor_args=(--installed)
 [[ "${quiet}" -eq 1 ]] && doctor_args+=(--quiet)
 "${repo_root}/scripts/doctor.sh" "${doctor_args[@]}"
+check_local_config_repair_candidates
 
 if command -v uvx >/dev/null 2>&1; then
   pass_msg "uvx available for jcodemunch MCP"

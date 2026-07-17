@@ -73,6 +73,7 @@ async function load(force, opts) {
   document.getElementById("meta").textContent =
     data.capture_count + " captures · " + data.sessions.length + " sessions · spike ≥ " + fmt(data.spike_threshold) + " tok"
     + " · ~" + fmt(w.five_hour) + " tok last 5h / ~" + fmt(w.seven_day) + " last 7d (local estimate)" + scope + harnessScope;
+  window.roborepoSetUpdatedAt?.();
   // Update the deeper-read button label based on which CLI is available.
   if (data.deepread_cli !== undefined) {
     deepReadCli = data.deepread_cli;

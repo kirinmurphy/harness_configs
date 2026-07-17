@@ -76,6 +76,9 @@
 * {
   box-sizing: border-box;
 }
+[hidden] {
+  display: none !important;
+}
 body {
   margin: 0;
   font:
@@ -93,11 +96,17 @@ header {
   display: flex;
   gap: 20px;
   align-items: center;
+  min-height: 54px;
 }
 header h1 {
   font-size: 15px;
   margin: 0;
   font-weight: 600;
+}
+.portal-updated {
+  color: var(--dim);
+  font-size: 11px;
+  white-space: nowrap;
 }
 nav {
   display: flex;
@@ -136,4 +145,25 @@ nav a.active {
 .theme-toggle:hover {
   color: var(--ink);
   border-color: var(--line);
+}
+.page-status {
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
+  nav {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+  .portal-updated {
+    margin-left: auto;
+  }
 }

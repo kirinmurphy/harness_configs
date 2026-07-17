@@ -474,6 +474,7 @@ function applySnapshot(snap) {
   }
   document.getElementById("status").textContent =
     "updated " + new Date().toLocaleTimeString();
+  window.roborepoSetUpdatedAt?.();
 }
 async function load() {
   try {

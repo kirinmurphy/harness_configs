@@ -53,6 +53,7 @@ async function load() {
 function applySnapshot(snapshot) {
   state.snapshot = snapshot;
   statusEl.textContent = statusText(snapshot);
+  window.roborepoSetUpdatedAt?.();
   renderRoots(snapshot.settings.discoveryRoots);
   populateFilters(snapshot);
   render();

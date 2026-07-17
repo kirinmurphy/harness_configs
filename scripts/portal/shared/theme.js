@@ -17,7 +17,7 @@ const PORTAL_PAGES = [
   if (!nav) return;
   const here = location.pathname;
   const links = PORTAL_PAGES.map((p) => {
-    const active = p.path === here ? ' class="active"' : "";
+    const active = p.path === here || (p.path === "/" && here === "/config") ? ' class="active"' : "";
     return '<a href="' + p.path + '"' + active + ">" + p.title + "</a>";
   }).join("");
   nav.insertAdjacentHTML(
@@ -26,6 +26,15 @@ const PORTAL_PAGES = [
       '<button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle theme"></button>',
   );
 })();
+
+window.roborepoSetUpdatedAt = function roborepoSetUpdatedAt(date = new Date()) {
+  const node = document.getElementById("portal-updated");
+  if (!node) return;
+  const value = date instanceof Date ? date : new Date(date);
+  node.textContent = Number.isNaN(value.getTime())
+    ? "updated unknown"
+    : "updated " + value.toLocaleTimeString();
+};
 
 // Theme toggle: sun glyph in dark mode (click -> light), moon in light mode. Choice persists in
 // localStorage (key shared with the head init script) and is applied across all portal pages.

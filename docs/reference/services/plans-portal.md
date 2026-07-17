@@ -41,6 +41,9 @@ The page uses:
 - `modules/plan-docs/index.mjs` for discovery, parsing, validation, Git metadata, rendering, and prompt generation
 - `scripts/cli/plans.mjs` for portal-facing snapshots and package-state integration
 - `scripts/portal/plans/` for static HTML/CSS/JS
+- `scripts/portal/shared/base.css` and `scripts/portal/shared/theme.js` for the uniform portal
+  header, navigation, active-page state, updated-at text, theme toggle, and shared hidden-element
+  behavior
 
 The portal does not mutate plan Markdown. Settings writes only update discovery roots.
 
@@ -197,6 +200,8 @@ The Plans page uses the normalized package catalog state. It does not inspect sk
 - `modules/plan-docs/index.mjs`
 - `scripts/cli/plans.mjs`
 - `scripts/cli/portal-server.mjs`
+- `scripts/portal/shared/base.css`
+- `scripts/portal/shared/theme.js`
 - `scripts/portal/plans/index.html`
 - `scripts/portal/plans/app.js`
 - `scripts/portal/plans/styles.css`

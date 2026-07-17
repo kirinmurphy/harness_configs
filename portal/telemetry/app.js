@@ -1,3 +1,5 @@
+import { portalGetJson, portalPostJson, portalCopyText, portalSetUpdatedAt } from "/portal/shared/api.js";
+
 const fmt = (n) => Number(n||0).toLocaleString("en-US");
 const short = (id) => id && id !== "unknown" ? String(id).slice(0,8) : "unknown";
 // Escape user-derived text (prompt previews, paths) before it goes into innerHTML. The spool is
@@ -61,7 +63,7 @@ async function load(force, opts) {
   if (view.harness) qs += (qs ? "&" : "?") + "harness=" + encodeURIComponent(view.harness);
   let data;
   try {
-    data = await (await fetch("/api/data" + qs)).json();
+    data = await portalGetJson("/api/data" + qs);
   } finally {
     if (wipe) setLoading(false);
   }
@@ -73,7 +75,7 @@ async function load(force, opts) {
   document.getElementById("meta").textContent =
     data.capture_count + " captures · " + data.sessions.length + " sessions · spike ≥ " + fmt(data.spike_threshold) + " tok"
     + " · ~" + fmt(w.five_hour) + " tok last 5h / ~" + fmt(w.seven_day) + " last 7d (local estimate)" + scope + harnessScope;
-  window.roborepoSetUpdatedAt?.();
+  portalSetUpdatedAt();
   // Update the deeper-read button label based on which CLI is available.
   if (data.deepread_cli !== undefined) {
     deepReadCli = data.deepread_cli;
@@ -495,7 +497,7 @@ async function fetchSession(id, harness, finding, repo) {
   try {
     const qs = "id=" + encodeURIComponent(id) + "&harness=" + encodeURIComponent(harness || "claude")
       + "&finding=" + encodeURIComponent(finding || "") + "&repo=" + encodeURIComponent(repo || "");
-    const data = await (await fetch("/api/session?" + qs)).json();
+    const data = await portalGetJson("/api/session?" + qs);
     if (!data.found) {
       extra.innerHTML = "<div class='note'>transcript not found on disk (rotated or different machine). Use the analysis prompt above.</div>";
       return;
@@ -512,7 +514,7 @@ async function fetchSession(id, harness, finding, repo) {
 }
 
 async function copyText(text) {
-  try { await navigator.clipboard.writeText(text); } catch { /* clipboard blocked; no-op */ }
+  await portalCopyText(text);
 }
 
 // Detail modal for a flagged event (spike or loop): the same key/value rows, PLUS chat-identity
@@ -531,7 +533,7 @@ function flaggedEventModal({ title, sub, rows, sessionId, harness, finding, repo
         // basic one if the transcript is gone.
         const qs = "id=" + encodeURIComponent(sessionId) + "&harness=" + encodeURIComponent(harness || "claude")
           + "&finding=" + encodeURIComponent(finding || "") + "&repo=" + encodeURIComponent(repo || "");
-        const data = await (await fetch("/api/session?" + qs)).json();
+        const data = await portalGetJson("/api/session?" + qs);
         await copyText(data.analysis_prompt || "");
         const note = document.getElementById("modalextra");
         note.innerHTML = "<div class='note'>analysis prompt copied to clipboard ✓</div>";
@@ -763,7 +765,7 @@ async function runDeepRead() {
   const cli = deepReadCli || "claude";
   out.textContent = "asking " + cli + "… (this can take a few seconds)";
   try {
-    const data = await (await fetch("/api/insights-llm")).json();
+    const data = await portalGetJson("/api/insights-llm");
     if (data.ok) {
       out.textContent = data.text;
       lastDeepReadText = data.text;
@@ -964,7 +966,7 @@ window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal()
 // prompt offers a one-click enable that hits the SAME endpoint as onboarding / the config toggle.
 async function refreshTelemetryState() {
   try {
-    const cfg = await (await fetch("/api/config")).json();
+    const cfg = await portalGetJson("/api/config");
     const on = !!(cfg.telemetry && cfg.telemetry.enabled);
     document.getElementById("telemetryoff").style.display = on ? "none" : "";
   } catch { /* leave prompt hidden on error */ }
@@ -975,13 +977,7 @@ document.getElementById("enabletelemetry").addEventListener("click", async () =>
   const err = document.getElementById("enableerr");
   btn.disabled = true; err.textContent = "";
   try {
-    const res = await fetch("/api/config/packages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: "telemetry", enabled: true }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.ok) { err.textContent = data.error || data.message || "failed"; btn.disabled = false; return; }
+    await portalPostJson("/api/config/packages", { id: "telemetry", enabled: true });
     document.getElementById("telemetryoff").style.display = "none";
     load(true, { wipe: true });
   } catch (e) {
@@ -989,10 +985,13 @@ document.getElementById("enabletelemetry").addEventListener("click", async () =>
   }
 });
 
+const LOAD_POLL_INTERVAL_MS = 5000;
+const TELEMETRY_STATE_POLL_INTERVAL_MS = 10000;
+
 load(true);
 refreshTelemetryState();
-setInterval(() => load(false), 5000);
-setInterval(refreshTelemetryState, 10000);
+setInterval(() => load(false), LOAD_POLL_INTERVAL_MS);
+setInterval(refreshTelemetryState, TELEMETRY_STATE_POLL_INTERVAL_MS);
 window.addEventListener("resize", () => redrawChart());
 
 // The theme toggle + nav are wired by the shared /portal/shared/theme.js. Canvas colors are

@@ -39,6 +39,15 @@
   --row-hover: #1c2230;
   --modal-shadow: rgba(0, 0, 0, 0.6);
   --backdrop: rgba(0, 0, 0, 0.6);
+
+  /* Fixed type scale — every font-size in the portal maps to one of these instead of a bare px
+   * value, so sizing stays consistent across pages and can be re-tuned in one place. */
+  --text-2xs: 11px; /* fine print: timestamps, meta, badges */
+  --text-xs: 12px; /* secondary: labels, chips, table cells */
+  --text-sm: 13px; /* body default: card text, list items */
+  --text-md: 15px; /* emphasized body: card titles, nav */
+  --text-lg: 17px; /* section headers, drawer title */
+  --text-xl: 20px; /* page-level headings */
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -81,11 +90,9 @@
 }
 body {
   margin: 0;
-  font:
-    14px/1.5 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-sm);
+  line-height: 1.5;
   background: var(--bg);
   color: var(--ink);
 }
@@ -93,19 +100,24 @@ body {
 .portal-header {
   padding: 14px 20px;
   border-bottom: 1px solid var(--line);
-  display: flex;
-  gap: 20px;
-  align-items: center;
   min-height: 54px;
 }
+
+.portal-header,
+.portal-header > *,
+.portal-header .logo-wrapper > * {
+  display: inline-block;
+}
+
 .portal-header h1 {
-  font-size: 15px;
+  font-size: var(--text-md);
   margin: 0;
+  margin-right: 0.5rem;
   font-weight: 600;
 }
 .portal-updated {
   color: var(--dim);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   white-space: nowrap;
 }
 nav {
@@ -115,7 +127,7 @@ nav {
 }
 nav a {
   color: var(--dim);
-  font-size: 12px;
+  font-size: var(--text-xs);
   text-decoration: none;
   padding: 3px 10px;
   border-radius: 5px;
@@ -139,12 +151,12 @@ nav a.active {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  font-size: 11px;
+  font-size: var(--text-2xs);
 }
 .theme-toggle {
   color: var(--dim);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1;
   background: none;
   border: 1px solid transparent;
@@ -160,10 +172,10 @@ nav a.active {
   padding: 10px 20px;
   border-bottom: 1px solid var(--line);
   color: var(--dim);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 @media (max-width: 760px) {
-  .portal-header {
+  /* .portal-header {
     align-items: flex-start;
     flex-wrap: wrap;
     gap: 8px 14px;
@@ -175,5 +187,5 @@ nav a.active {
   }
   .portal-updated {
     margin-left: auto;
-  }
+  } */
 }

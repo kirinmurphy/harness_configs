@@ -1,4 +1,5 @@
-const token = document.querySelector('meta[name="roborepo-portal-token"]')?.content || "";
+import { portalEl as el, portalGetJson, portalPostJson, portalCopyText, portalSetUpdatedAt } from "/portal/shared/api.js";
+
 const state = {
   snapshot: null,
   filters: {
@@ -18,20 +19,25 @@ const groupsEl = document.getElementById("groups");
 const warningsEl = document.getElementById("warnings");
 const bannerEl = document.getElementById("package-banner");
 const rootsEl = document.getElementById("roots");
+const settingsEl = document.getElementById("settings");
 const drawer = document.getElementById("drawer");
 const nextPrompt = document.getElementById("next-prompt");
+const COLLAPSIBLE_GROUPS = new Set(["completed"]);
+const openGroups = new Set(); // lifecycle names the user has expanded, preserved across re-renders
 
-document.getElementById("refresh").addEventListener("click", () => postJson("/api/plans/refresh", {}).then(applySnapshot).catch(showError));
+document.getElementById("refresh").addEventListener("click", () => portalPostJson("/api/plans/refresh", {}).then(applySnapshot).catch(showError));
 nextPrompt.addEventListener("click", () => copyVisibleNextPrompt().catch(showError));
 document.getElementById("root-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const input = document.getElementById("root-input");
   const current = state.snapshot?.settings?.discoveryRoots || [];
-  await postJson("/api/plans/settings", { discoveryRoots: [...current, input.value] }).then((snap) => {
+  await portalPostJson("/api/plans/settings", { discoveryRoots: [...current, input.value] }).then((snap) => {
     input.value = "";
     applySnapshot(snap);
+    settingsEl.open = true; // stay open across multiple adds in one sitting
   }).catch(showError);
 });
+document.getElementById("roots-done").addEventListener("click", () => { settingsEl.open = false; });
 document.getElementById("drawer-close").addEventListener("click", () => { drawer.hidden = true; });
 for (const id of ["search", "repository", "lifecycle", "priority", "blocked", "readiness", "review", "health"]) {
   const node = document.getElementById(id);
@@ -43,8 +49,7 @@ for (const id of ["search", "repository", "lifecycle", "priority", "blocked", "r
 
 async function load() {
   try {
-    const res = await fetch("/api/plans");
-    applySnapshot(await res.json());
+    applySnapshot(await portalGetJson("/api/plans"));
   } catch (err) {
     showError(err);
   }
@@ -53,7 +58,7 @@ async function load() {
 function applySnapshot(snapshot) {
   state.snapshot = snapshot;
   statusEl.textContent = statusText(snapshot);
-  window.roborepoSetUpdatedAt?.();
+  portalSetUpdatedAt();
   renderRoots(snapshot.settings.discoveryRoots);
   populateFilters(snapshot);
   render();
@@ -62,18 +67,23 @@ function applySnapshot(snapshot) {
 function renderRoots(roots) {
   if (!roots.length) {
     rootsEl.replaceChildren("No discovery roots configured.");
+    settingsEl.open = true; // prominent until at least one root exists
     return;
   }
   rootsEl.replaceChildren(...roots.map((root) => {
     const remove = el("button", { type: "button", class: "root-remove", title: "Remove discovery root" }, "Remove");
-    remove.addEventListener("click", () => removeRoot(root));
+    remove.addEventListener("click", (event) => {
+      event.preventDefault(); // don't let the click also toggle the <details> open/closed
+      event.stopPropagation();
+      removeRoot(root);
+    });
     return el("span", { class: "root-chip" }, el("span", {}, root), remove);
   }));
 }
 
 async function removeRoot(root) {
   const current = state.snapshot?.settings?.discoveryRoots || [];
-  await postJson("/api/plans/settings", { discoveryRoots: current.filter((item) => item !== root) }).then(applySnapshot).catch(showError);
+  await portalPostJson("/api/plans/settings", { discoveryRoots: current.filter((item) => item !== root) }).then(applySnapshot).catch(showError);
 }
 
 function populateFilters(snapshot) {
@@ -167,9 +177,8 @@ function renderPackageBanner(snapshot) {
 
 async function enablePackage() {
   try {
-    await postJson("/api/config/packages", { id: "plan-docs", enabled: true });
-    const res = await fetch("/api/plans");
-    applySnapshot(await res.json());
+    await portalPostJson("/api/config/packages", { id: "plan-docs", enabled: true });
+    applySnapshot(await portalGetJson("/api/plans"));
   } catch (err) {
     showError(err);
   }
@@ -213,9 +222,22 @@ function planSort(a, b) {
 
 function renderGroup(lifecycle, plans) {
   if (plans.length === 0) return null;
+  const cards = el("div", { class: "card-grid" }, ...plans.map(renderCard));
+  if (COLLAPSIBLE_GROUPS.has(lifecycle)) {
+    const details = el("details", { class: "group" },
+      el("summary", {}, `${lifecycle} (${plans.length})`),
+      cards,
+    );
+    details.open = openGroups.has(lifecycle);
+    details.addEventListener("toggle", () => {
+      if (details.open) openGroups.add(lifecycle);
+      else openGroups.delete(lifecycle);
+    });
+    return details;
+  }
   return el("section", { class: "group" },
     el("h2", {}, `${lifecycle} (${plans.length})`),
-    el("div", { class: "card-grid" }, ...plans.map(renderCard)),
+    cards,
   );
 }
 
@@ -245,10 +267,7 @@ function renderCard(record) {
 
 async function openPlan(key) {
   try {
-    const res = await fetch(`/api/plans/document?key=${encodeURIComponent(key)}`);
-    const doc = await res.json();
-    if (!res.ok) throw new Error(doc.error || "failed to load document");
-    renderDrawer(doc);
+    renderDrawer(await portalGetJson(`/api/plans/document?key=${encodeURIComponent(key)}`));
   } catch (err) {
     showError(err);
   }
@@ -295,7 +314,7 @@ function renderDrawerTasks(tasks) {
 }
 
 async function copyPrompt(actionName, keys, mode = "repository-aware") {
-  const result = await postJson("/api/plans/prompt", { action: actionName, keys, mode });
+  const result = await portalPostJson("/api/plans/prompt", { action: actionName, keys, mode });
   await copyText(result.prompt);
 }
 
@@ -303,21 +322,11 @@ function repositoryContext(record) {
   return `Review the plan at \`${record.plan.relativePath}\` in this repository.\n\nFocus on:\n- the current next action\n- unresolved tasks\n- blockers\n- whether the plan still matches the implementation\n\nDo not assume the document is current. Verify relevant claims against the repository.`;
 }
 
-async function postJson(url, body) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Roborepo-Portal-Token": token },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || data.message || "request failed");
-  return data;
-}
-
 async function copyText(text) {
-  await navigator.clipboard.writeText(text);
-  statusEl.textContent = "copied";
-  setTimeout(() => { if (state.snapshot) statusEl.textContent = statusText(state.snapshot); }, 1200);
+  await portalCopyText(text, () => {
+    statusEl.textContent = "copied";
+    setTimeout(() => { if (state.snapshot) statusEl.textContent = statusText(state.snapshot); }, 1200);
+  });
 }
 
 function action(label, onClick) {
@@ -354,17 +363,6 @@ function showError(err) {
   statusEl.textContent = "error";
   warningsEl.hidden = false;
   warningsEl.textContent = String(err?.message || err);
-}
-
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (key === "class") node.className = value;
-    else if (key === "value") node.value = value;
-    else node.setAttribute(key, value);
-  }
-  for (const child of children.flat()) node.append(child instanceof Node ? child : document.createTextNode(String(child)));
-  return node;
 }
 
 load();

@@ -5,17 +5,9 @@
 // client-side reimplementation to drift from the server. Items carry web fields (toggle, inspect,
 // urls, badges) and terminal fields (hint); each renderer reads what it needs.
 
-// --------------------------------------------------------------------------- render helpers
+import { portalEl as el, portalGetJson, portalPostJson, portalSetUpdatedAt } from "/portal/shared/api.js";
 
-function el(tag, cls, ...children) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  for (const c of children) {
-    if (c == null) continue;
-    e.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
-  }
-  return e;
-}
+// --------------------------------------------------------------------------- render helpers
 
 function tpl(id) {
   return document.getElementById(id).content.firstElementChild.cloneNode(true);
@@ -25,25 +17,18 @@ function slot(root, name) {
   return root.querySelector(`[data-slot="${name}"]`);
 }
 
-function portalHeaders() {
-  return {
-    "Content-Type": "application/json",
-    "X-Roborepo-Portal-Token": document.querySelector('meta[name="roborepo-portal-token"]')?.content || "",
-  };
-}
-
 function setOptionalText(node, value) {
   node.textContent = value || "";
   node.hidden = !value;
 }
 
 function dot(on) {
-  return el("span", "dot " + (on ? "on" : "off"));
+  return el("span", { class: "dot " + (on ? "on" : "off") });
 }
 
 function badge(text) {
   const isCmd = text.startsWith("/");
-  return el("span", "badge " + (isCmd ? "badge-cmd" : "badge-skill"), text);
+  return el("span", { class: "badge " + (isCmd ? "badge-cmd" : "badge-skill") }, text);
 }
 
 function setModalContent(data) {
@@ -154,19 +139,8 @@ function toggleSwitch(item, statusSlot) {
     document.getElementById("status").textContent =
       "applying " + item.label + "…";
     try {
-      const res = await fetch(TOGGLE_ENDPOINT[item.toggle], {
-        method: "POST",
-        headers: portalHeaders(),
-        body: JSON.stringify({ id: item.id, enabled }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        input.checked = !enabled; // revert
-        statusSlot.className = "item-status error";
-        statusSlot.textContent = data.error || data.message || "failed";
-        document.getElementById("status").textContent =
-          "error: " + statusSlot.textContent;
-      } else if (data.config) {
+      const data = await portalPostJson(TOGGLE_ENDPOINT[item.toggle], { id: item.id, enabled });
+      if (data.config) {
         statusSlot.textContent = "saved";
         applySnapshot(data.config); // re-render from the authoritative post-mutation snapshot
         document.getElementById("status").textContent =
@@ -177,7 +151,7 @@ function toggleSwitch(item, statusSlot) {
           "saved " + item.label + " " + new Date().toLocaleTimeString();
       }
     } catch (e) {
-      input.checked = !enabled;
+      input.checked = !enabled; // revert
       statusSlot.className = "item-status error";
       statusSlot.textContent = e.message;
       document.getElementById("status").textContent = "error: " + e.message;
@@ -196,16 +170,7 @@ const BUCKETS = ["deny", "ask", "allow"];
 async function applyBucket(payload, errSlot) {
   errSlot.textContent = "";
   try {
-    const res = await fetch("/api/config/permissions", {
-      method: "POST",
-      headers: portalHeaders(),
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      errSlot.textContent = data.error || data.message || "failed";
-      return false;
-    }
+    const data = await portalPostJson("/api/config/permissions", payload);
     if (data.config) applySnapshot(data.config);
     return true;
   } catch (e) {
@@ -220,16 +185,16 @@ async function applyBucket(payload, errSlot) {
 // switching to a looser profile.
 function behaviorRow(item) {
   const row = tpl("tpl-permission-row");
-  const wrap = el("div", "behavior-row");
-  const head = el("div", "behavior-head");
-  const label = el("span", "behavior-label", item.label);
+  const wrap = el("div", { class: "behavior-row" });
+  const head = el("div", { class: "behavior-head" });
+  const label = el("span", { class: "behavior-label" }, item.label);
   head.appendChild(label);
-  if (item.codexOnly) head.appendChild(el("span", "codex-note", "Codex only"));
-  const err = el("div", "item-err");
+  if (item.codexOnly) head.appendChild(el("span", { class: "codex-note" }, "Codex only"));
+  const err = el("div", { class: "item-err" });
 
-  const buckets = el("div", "bucket-group");
+  const buckets = el("div", { class: "bucket-group" });
   for (const b of BUCKETS) {
-    const btn = el("button", "bucket-btn bucket-" + b, b);
+    const btn = el("button", { class: "bucket-btn bucket-" + b }, b);
     btn.type = "button";
     btn.classList.toggle("current", b === item.bucket);
     btn.disabled = b === item.bucket;
@@ -247,18 +212,18 @@ function behaviorRow(item) {
   head.appendChild(buckets);
 
   if (item.overridden) {
-    const badge = el("span", "override-badge", "⚡ custom");
-    const reset = el("button", "reset-link", "reset");
+    const badge = el("span", { class: "override-badge" }, "⚡ custom");
+    const reset = el("button", { class: "reset-link" }, "reset");
     reset.type = "button";
     reset.addEventListener("click", () => applyBucket({ behaviorId: item.id, bucket: "default" }, err));
     head.appendChild(badge);
     head.appendChild(reset);
   }
   wrap.appendChild(head);
-  if (item.description) wrap.appendChild(el("div", "behavior-desc", item.description));
-  if (item.overridden) wrap.appendChild(el("div", "behavior-default", "default: " + item.defaultBucket));
+  if (item.description) wrap.appendChild(el("div", { class: "behavior-desc" }, item.description));
+  if (item.overridden) wrap.appendChild(el("div", { class: "behavior-default" }, "default: " + item.defaultBucket));
   if (item.noCodexAsk && !item.codexOnly) {
-    wrap.appendChild(el("div", "codex-note", "Codex has no per-command ask — runs without a prompt there unless another setting forces approval."));
+    wrap.appendChild(el("div", { class: "codex-note" }, "Codex has no per-command ask — runs without a prompt there unless another setting forces approval."));
   }
   wrap.appendChild(err);
 
@@ -273,20 +238,20 @@ function behaviorRow(item) {
 // means it stops being tracked at all.
 function arbitraryListRow(item) {
   const row = tpl("tpl-permission-row");
-  const wrap = el("div", "arbitrary-list");
-  wrap.appendChild(el("div", "arbitrary-head", item.label));
-  if (item.description) wrap.appendChild(el("div", "arbitrary-desc", item.description));
+  const wrap = el("div", { class: "arbitrary-list" });
+  wrap.appendChild(el("div", { class: "arbitrary-head" }, item.label));
+  if (item.description) wrap.appendChild(el("div", { class: "arbitrary-desc" }, item.description));
 
-  const list = el("div", "arbitrary-items");
+  const list = el("div", { class: "arbitrary-items" });
   const renderItems = () => {
     list.replaceChildren(
       ...(item.items || []).map((c) => {
-        const line = el("div", "arbitrary-item");
-        line.appendChild(el("span", "arbitrary-label", c.label));
-        const err = el("span", "item-err");
-        const buckets = el("div", "bucket-group bucket-group-compact");
+        const line = el("div", { class: "arbitrary-item" });
+        line.appendChild(el("span", { class: "arbitrary-label" }, c.label));
+        const err = el("span", { class: "item-err" });
+        const buckets = el("div", { class: "bucket-group bucket-group-compact" });
         for (const b of BUCKETS) {
-          const btn = el("button", "bucket-btn bucket-" + b, b);
+          const btn = el("button", { class: "bucket-btn bucket-" + b }, b);
           btn.type = "button";
           btn.classList.toggle("current", b === c.bucket);
           btn.disabled = b === c.bucket;
@@ -301,12 +266,12 @@ function arbitraryListRow(item) {
         }
         line.appendChild(buckets);
         if (c.overridden) {
-          const remove = el("button", "reset-link", c.defaultBucket ? "reset" : "remove");
+          const remove = el("button", { class: "reset-link" }, c.defaultBucket ? "reset" : "remove");
           remove.type = "button";
           remove.addEventListener("click", () => applyBucket({ tokens: c.label.split(" "), bucket: "default" }, err));
           line.appendChild(remove);
         }
-        if (c.noCodexAsk) line.appendChild(el("span", "codex-note", "no per-command ask on Codex"));
+        if (c.noCodexAsk) line.appendChild(el("span", { class: "codex-note" }, "no per-command ask on Codex"));
         line.appendChild(err);
         return line;
       }),
@@ -315,14 +280,14 @@ function arbitraryListRow(item) {
   renderItems();
   wrap.appendChild(list);
 
-  const addRow = el("div", "arbitrary-add");
+  const addRow = el("div", { class: "arbitrary-add" });
   const input = document.createElement("input");
   input.type = "text";
   input.placeholder = "add a command, e.g. docker run";
   input.className = "arbitrary-input";
-  const addBtn = el("button", "arbitrary-add-btn", "add as ask");
+  const addBtn = el("button", { class: "arbitrary-add-btn" }, "add as ask");
   addBtn.type = "button";
-  const addErr = el("span", "item-err");
+  const addErr = el("span", { class: "item-err" });
   addBtn.addEventListener("click", async () => {
     const tokens = input.value.trim().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) return;
@@ -390,7 +355,7 @@ function renderStandardSection(section) {
     if (item.urls && item.urls.length) {
       urlRow.replaceChildren(
         ...item.urls.map((u) => {
-          const a = el("a", "url-link", u.url);
+          const a = el("a", { class: "url-link" }, u.url);
           a.href = u.url;
           a.target = "_blank";
           a.rel = "noopener noreferrer";
@@ -474,17 +439,19 @@ function applySnapshot(snap) {
   }
   document.getElementById("status").textContent =
     "updated " + new Date().toLocaleTimeString();
-  window.roborepoSetUpdatedAt?.();
+  portalSetUpdatedAt();
 }
 async function load() {
   try {
-    applySnapshot(await fetch("/api/config").then((r) => r.json()));
+    applySnapshot(await portalGetJson("/api/config"));
   } catch (e) {
     document.getElementById("status").textContent = "error: " + e.message;
   }
 }
 
+const POLL_INTERVAL_MS = 10000;
+
 load();
-setInterval(load, 10000);
+setInterval(load, POLL_INTERVAL_MS);
 // Theme toggle + nav live in the shared /portal/shared/theme.js. The config page has no
 // canvas to redraw, so it needs no "roborepo:themechange" listener.

@@ -72,6 +72,11 @@ Limits:
 Hidden files, editor swap files, backup suffixes, and symlink escapes outside the repository boundary
 are skipped.
 
+Per-file scan results (parsed content, task counts, and git-derived fields like `reviewState`) are
+cached in-process keyed by the file's mtime, so a file is only re-parsed and re-queried against git
+when it actually changes on disk. Directory listing itself always runs fresh, so added/removed
+files are seen immediately; only the expensive per-file work is skipped for unchanged files.
+
 ## Plan Parsing
 
 Frontmatter supports a strict YAML-compatible subset:

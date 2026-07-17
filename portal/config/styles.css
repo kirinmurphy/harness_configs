@@ -2,7 +2,7 @@
  * This file holds only config-page-specific styles. */
 #status {
   color: var(--dim);
-  font-size: 11px;
+  font-size: var(--text-2xs);
 }
 main {
   padding: 20px;
@@ -24,7 +24,7 @@ main {
   margin: 0 0 1rem;
 }
 .panel-head h2 {
-  font-size: 12px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--dim);
@@ -33,7 +33,7 @@ main {
   display: inline;
 }
 .panel-desc {
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: var(--off);
   margin: 0 0 12px;
 }
@@ -72,7 +72,7 @@ main {
 }
 .item-label {
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 .item-label.dim {
@@ -80,13 +80,13 @@ main {
 }
 .item-desc {
   color: var(--dim);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   margin-top: 2px;
   line-height: 1.4;
 }
 .item-hint {
   color: var(--accent);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   margin-top: 3px;
 }
 .item-hint:not(:empty)::before {
@@ -94,7 +94,7 @@ main {
 }
 .item-status {
   color: var(--ok);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   margin-top: 3px;
 }
 .item-status.error {
@@ -106,7 +106,7 @@ main {
 /* badges */
 .badge {
   display: inline-block;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   padding: 1px 5px;
   border-radius: 3px;
   border: 1px solid;
@@ -127,7 +127,7 @@ main {
 .drift-chip {
   display: inline-block;
   margin-left: 6px;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   padding: 1px 5px;
   border-radius: 3px;
   border: 1px solid;
@@ -194,7 +194,7 @@ main {
 }
 .item-err {
   color: var(--danger);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   margin-top: 3px;
 }
 .item-err:empty {
@@ -204,7 +204,7 @@ main {
 .perm-row {
   padding: 8px 0;
   border-top: 1px solid var(--line);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 .perm-row:first-of-type {
   border-top: none;
@@ -228,12 +228,12 @@ main {
 }
 .behavior-default {
   color: var(--off);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   margin-top: 2px;
 }
 .codex-note {
   color: var(--warn);
-  font-size: 11px;
+  font-size: var(--text-2xs);
 }
 .bucket-group {
   display: inline-flex;
@@ -245,7 +245,7 @@ main {
 }
 .bucket-btn {
   font:
-    11px/1.4 ui-monospace,
+    var(--text-2xs)/1.4 ui-monospace,
     SFMono-Regular,
     Menlo,
     monospace;
@@ -286,11 +286,11 @@ main {
   cursor: default;
 }
 .override-badge {
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: var(--accent);
 }
 .reset-link {
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: var(--dim);
   background: none;
   border: none;
@@ -325,11 +325,11 @@ main {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: var(--text-2xs);
 }
 .arbitrary-label {
   font:
-    11px/1.4 ui-monospace,
+    var(--text-2xs)/1.4 ui-monospace,
     SFMono-Regular,
     Menlo,
     monospace;
@@ -348,7 +348,7 @@ main {
 .arbitrary-input {
   flex: 1;
   font:
-    12px/1.4 ui-monospace,
+    var(--text-xs)/1.4 ui-monospace,
     SFMono-Regular,
     Menlo,
     monospace;
@@ -364,7 +364,7 @@ main {
 }
 .arbitrary-add-btn {
   font:
-    11px/1.4 ui-monospace,
+    var(--text-2xs)/1.4 ui-monospace,
     SFMono-Regular,
     Menlo,
     monospace;
@@ -380,7 +380,7 @@ main {
   color: var(--accent);
 }
 .panel-footnote {
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: var(--off);
   margin: 10px 0 0;
   border-top: 1px solid var(--line);
@@ -394,7 +394,7 @@ main {
   margin-top: 4px;
 }
 .url-link {
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -430,7 +430,7 @@ main {
 .config-grid-head {
   background: var(--bg);
   color: var(--dim);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -450,12 +450,12 @@ main {
   display: inline-block;
 }
 .config-type strong {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--ink);
   margin-right: 0.5rem;
 }
 .config-type span {
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: var(--dim);
 }
 .markdown h1,
@@ -545,7 +545,7 @@ main {
 .source-section-label {
   margin: 0 0 8px;
   color: var(--dim);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -579,7 +579,7 @@ main {
 .markdown .md-meta {
   margin: 0.25em 0;
   color: var(--dim);
-  font-size: 11px;
+  font-size: var(--text-2xs);
 }
 .markdown .md-meta code {
   color: var(--warn);
@@ -590,7 +590,7 @@ main {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: var(--dim);
 }
 .defaults-menu {
@@ -599,7 +599,7 @@ main {
 .defaults-menu summary {
   list-style: none;
   font:
-    11px/1.4 ui-monospace,
+    var(--text-2xs)/1.4 ui-monospace,
     SFMono-Regular,
     Menlo,
     monospace;
@@ -637,7 +637,7 @@ main {
 }
 .globals-default {
   font:
-    11px/1.4 ui-monospace,
+    var(--text-2xs)/1.4 ui-monospace,
     SFMono-Regular,
     Menlo,
     monospace;
@@ -659,7 +659,7 @@ main {
 }
 .text-link {
   font:
-    12px/1.4 ui-monospace,
+    var(--text-xs)/1.4 ui-monospace,
     SFMono-Regular,
     Menlo,
     monospace;
@@ -707,12 +707,12 @@ main {
   gap: 12px;
 }
 .modal-title {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--ink);
   font-weight: 600;
 }
 .modal-path {
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: var(--off);
 }
 .modal-close {

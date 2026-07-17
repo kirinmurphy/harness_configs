@@ -32,16 +32,17 @@
         <button id="refresh" type="button">Refresh</button>
         <button id="next-prompt" type="button" hidden>Copy next prompt</button>
       </section>
-      <section class="settings">
-        <div>
-          <h2>Discovery roots</h2>
+      <details class="settings" id="settings">
+        <summary>
+          <span class="settings-label">Discovery roots</span>
           <div id="roots"></div>
-        </div>
+        </summary>
         <form id="root-form">
           <input id="root-input" placeholder="/path/to/repo or /path/to/projects" />
           <button type="submit">Add root</button>
+          <button id="roots-done" type="button">Done</button>
         </form>
-      </section>
+      </details>
       <section id="package-banner" class="package-banner" hidden></section>
       <section id="warnings" class="warnings" hidden></section>
       <section id="groups" class="groups"></section>
@@ -73,7 +74,7 @@
         <article class="markdown" id="drawer-doc"></article>
       </aside>
     </div>
-    <script src="/portal/shared/theme.js" defer></script>
-    <script src="/portal/plans/app.js" defer></script>
+    <script src="/portal/shared/theme.js" type="module"></script>
+    <script src="/portal/plans/app.js" type="module"></script>
   </body>
 </html>

@@ -11,6 +11,12 @@ const MAX_DOC_BYTES = 1024 * 1024;
 const MAX_REPOS = 250;
 const MAX_PLANS_PER_REPO = 500;
 
+// Per-file record cache keyed by absolute path. Each entry is invalidated the moment a file's own
+// mtime changes, so edits are always picked up — this only skips the expensive re-parse + git
+// shell-outs (readPlanRecord) for files that haven't changed since the last scan. Directory
+// listing still runs on every call (cheap `readdirSync`), so new/removed files are always seen.
+const planRecordCache = new Map();
+
 export function settingsPath(stateRoot) {
   return path.join(stateRoot, "plan-docs", "settings.json");
 }
@@ -233,6 +239,18 @@ function walkPlans(dir, repoRoot, files, errors) {
 function readPlanRecord(repository, absolutePath) {
   const relativePath = relative(repository.root, absolutePath);
   const stat = fs.statSync(absolutePath);
+  const cached = planRecordCache.get(absolutePath);
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.repositoryRoot === repository.root) {
+    // Repository-level fields (truncated/errors) can change between scans even when the file
+    // itself hasn't, so refresh those on the cached record instead of trusting them blindly.
+    return { ...cached.record, repository };
+  }
+  const record = buildPlanRecord(repository, absolutePath, relativePath, stat);
+  planRecordCache.set(absolutePath, { mtimeMs: stat.mtimeMs, repositoryRoot: repository.root, record });
+  return record;
+}
+
+function buildPlanRecord(repository, absolutePath, relativePath, stat) {
   const tooLarge = stat.size > MAX_DOC_BYTES;
   const markdown = tooLarge ? "" : fs.readFileSync(absolutePath, "utf8");
   const parsed = tooLarge ? emptyParsed("Document is over 1 MiB and was not parsed.") : parsePlanMarkdown(markdown, { repository, relativePath });

@@ -49,7 +49,7 @@
     "roborepo repair local-config [--dry-run|--apply]  recover local Claude/Codex settings from safe backups",
     "roborepo uninstall [--dry-run]",
     "roborepo doctor  [--installed] health check",
-    "roborepo verify                post-install verification",
+    "roborepo verify [--verbose]    post-install verification",
     "roborepo rules   [--check]     render/check tracked generated agent rules",
     "roborepo rules check-home      check rendered home rules against enabled packages",
     "roborepo permissions [--check] render/check agent permission outputs",

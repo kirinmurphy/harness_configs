@@ -14,7 +14,7 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 | `roborepo repair [--dry-run] [--on-conflict ...]` | Repairs a moved or renamed checkout by relinking stale symlinks against the current path; it leaves copied config content alone. |
 | `roborepo repair local-config [--dry-run or --apply]` | Recovers safe local Claude/Codex settings from recent backups when `update`, `doctor`, or `verify` reports local config repair candidates. |
 | `roborepo doctor`          | Runs harness health checks for config files, links, helper commands, dependencies, and generated outputs.                                                        |
-| `roborepo verify`          | Runs post-install verification that the installed harness paths resolve correctly.                                                                               |
+| `roborepo verify [--verbose]` | Runs post-install verification that the installed harness paths resolve correctly; default output is concise.                                                   |
 | `roborepo rules [--check]` | Renders generated Claude/Codex global instruction files, or verifies them with `--check`.                                                                        |
 | `roborepo config root inspect` | Read-only report of each harness root config (`~/.claude/settings.json`, `~/.codex/config.toml`): baseline vs. active file and its drift state — `in sync`, `drifted` (edited since roborepo's last write), `staged update pending`, or untracked. |
 

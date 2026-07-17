@@ -214,8 +214,14 @@ async function dispatch(args) {
       return runRepoCommand(cliCatalog.repoScripts.uninstall, [sub, ...rest].filter(Boolean));
     case "doctor":
       return runRepoCommand(cliCatalog.repoScripts.doctor, [sub, ...rest].filter(Boolean));
-    case "verify":
-      return runRepoCommand(cliCatalog.repoScripts.verify, [sub, ...rest].filter(Boolean));
+    case "verify": {
+      const verifyArgs = [sub, ...rest].filter(Boolean);
+      const verbose = verifyArgs.includes("--verbose");
+      return runRepoCommand(
+        cliCatalog.repoScripts.verify,
+        verbose ? verifyArgs.filter((arg) => arg !== "--verbose") : [...verifyArgs, "--quiet"],
+      );
+    }
     case "rules":
       if (sub === "render") {
         const { renderHomeRules } = await import("./rules-render.mjs");

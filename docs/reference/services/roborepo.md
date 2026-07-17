@@ -146,7 +146,7 @@ roborepo update  [--dry-run] [--verbose]
 roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]
 roborepo repair local-config [--dry-run|--apply]
 roborepo doctor  [--installed]
-roborepo verify
+roborepo verify [--verbose]
 roborepo rules   [--check]
 roborepo permissions [--check]
 

@@ -14,9 +14,13 @@ const MANAGED_MARKER = ".roborepo-managed";
 export function runUpdateWithReport(commandConfig, args) {
   const { installArgs, verbose } = parseReportArgs(args);
   const before = snapshotInstallState();
-  const result = runInstall(commandConfig, installArgs);
+  const result = runInstall(commandConfig, installArgs, { verbose });
+  const installOutput = `${result.stdout || ""}${result.stderr || ""}`;
+  if (!verbose && result.status !== 0) {
+    process.stdout.write(installOutput);
+  }
   if (result.status === 0) {
-    printUpdateReport(before, snapshotInstallState(), { verbose });
+    printUpdateReport(before, snapshotInstallState(), { verbose, installOutput });
   }
   process.exit(result.status ?? 1);
 }
@@ -34,7 +38,7 @@ function parseReportArgs(args) {
   return { installArgs, verbose };
 }
 
-function runInstall(commandConfig, args) {
+function runInstall(commandConfig, args, { verbose = false } = {}) {
   if (!commandConfig?.path || commandConfig.runtime !== "bash") {
     console.error("invalid update command config");
     process.exit(1);
@@ -47,7 +51,8 @@ function runInstall(commandConfig, args) {
   }
 
   const result = spawnSync("bash", [script, ...args], {
-    stdio: "inherit",
+    encoding: "utf8",
+    stdio: verbose ? "inherit" : "pipe",
     env: { ...process.env, ...(packageMode ? { ROBOREPO_PACKAGE_MODE: "1" } : {}) },
   });
   if (result.error) {
@@ -186,18 +191,19 @@ function hashParts(parts) {
   return hash.digest("hex");
 }
 
-function printUpdateReport(before, after, { verbose = false } = {}) {
+function printUpdateReport(before, after, { verbose = false, installOutput = "" } = {}) {
   console.log("");
-  console.log("Update change report:");
   const groups = [
-    compareEntries(before.renderedRules, after.renderedRules),
-    compareEntries(before.rootConfig, after.rootConfig),
-    compareEntries(before.copied, after.copied),
-    compareEntries(before.skills, after.skills),
-    compareScalar(before.packageRegistry, after.packageRegistry, "package registry"),
-    compareEntries(before.hooks, after.hooks),
-    compareEntries(before.permissions, after.permissions),
+    ["rules", compareEntries(before.renderedRules, after.renderedRules)],
+    ["root config", compareEntries(before.rootConfig, after.rootConfig)],
+    ["copied files", compareEntries(before.copied, after.copied)],
+    ["skills", compareEntries(before.skills, after.skills)],
+    ["package registry", compareScalar(before.packageRegistry, after.packageRegistry, "package registry")],
+    ["hooks", compareEntries(before.hooks, after.hooks)],
+    ["permissions", compareEntries(before.permissions, after.permissions)],
   ];
+  if (!verbose) printUpdateSummary(groups, installOutput);
+  console.log("Update change report:");
   printReportGroups(groups, { verbose });
   printLocalConfigRepairHint();
 }
@@ -224,9 +230,39 @@ function compareEntries(beforeEntries, afterEntries) {
   return { changed, unchanged };
 }
 
+function printUpdateSummary(groups, installOutput) {
+  console.log("━━━ roborepo update ━━━━━━━━━━━━━━━━━━━━━━━");
+  printSummaryLine("ok", "shell + PATH");
+  printSummaryLine("ok", "base skills");
+  printSummaryLine(groupChanged(groups, "root config") ? "changed" : "ok", "local config");
+  printSummaryLine(groupsChanged(groups, ["skills", "package registry"]) ? "changed" : "ok", "enabled packages");
+  printSummaryLine(groupChanged(groups, "rules") ? "changed" : "ok", "rendered rules");
+  for (const line of notableLines(installOutput)) console.log(line);
+  console.log("");
+}
+
+function printSummaryLine(status, label) {
+  console.log(`${status}: ${label}`);
+}
+
+function groupChanged(groups, label) {
+  return groups.find(([groupLabel]) => groupLabel === label)?.[1].changed.length > 0;
+}
+
+function groupsChanged(groups, labels) {
+  return labels.some((label) => groupChanged(groups, label));
+}
+
+function notableLines(output) {
+  return String(output || "").split(/\r?\n/).filter((line) => {
+    return /^(warn|fail|error|needs action|conflict|abort):/i.test(line)
+      || /MERGE REVIEW REQUIRED|Run: roborepo repair local-config/.test(line);
+  });
+}
+
 function printReportGroups(groups, { verbose }) {
-  const changed = unique(groups.flatMap((group) => group.changed));
-  const unchanged = unique(groups.flatMap((group) => group.unchanged));
+  const changed = unique(groups.flatMap(([, group]) => group.changed));
+  const unchanged = unique(groups.flatMap(([, group]) => group.unchanged));
   console.log(`  changed: ${changed.length ? changed.join(", ") : "none"}`);
   if (verbose && unchanged.length) {
     console.log(`  unchanged: ${unchanged.join(", ")}`);

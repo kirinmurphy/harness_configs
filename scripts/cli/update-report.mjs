@@ -12,12 +12,26 @@ const HARNESS_HOME = harnessHome;
 const MANAGED_MARKER = ".roborepo-managed";
 
 export function runUpdateWithReport(commandConfig, args) {
+  const { installArgs, verbose } = parseReportArgs(args);
   const before = snapshotInstallState();
-  const result = runInstall(commandConfig, args);
+  const result = runInstall(commandConfig, installArgs);
   if (result.status === 0) {
-    printUpdateReport(before, snapshotInstallState());
+    printUpdateReport(before, snapshotInstallState(), { verbose });
   }
   process.exit(result.status ?? 1);
+}
+
+function parseReportArgs(args) {
+  const installArgs = [];
+  let verbose = process.env.ROBOREPO_UPDATE_VERBOSE === "1";
+  for (const arg of args) {
+    if (arg === "--verbose") {
+      verbose = true;
+      continue;
+    }
+    installArgs.push(arg);
+  }
+  return { installArgs, verbose };
 }
 
 function runInstall(commandConfig, args) {
@@ -50,7 +64,7 @@ function snapshotInstallState() {
     rootConfig: snapshotManifestRows(rows, "root_config"),
     renderedRules: snapshotManifestRows(rows, "rendered_rules"),
     hooks: snapshotNamedRows(rows, new Set(["hooks", "hooks.json"])),
-    permissions: snapshotNamedRows(rows, new Set(["settings.json", "config.toml", "rules"])),
+    permissions: snapshotNamedRows(rows, new Set(["rules"])),
     packageRegistry: fileDigest(enabledPackagesPath),
     skills: snapshotManagedSkills(),
   };
@@ -100,7 +114,6 @@ function labelForRow(row) {
   if (row.kind === "root_config") return `root config ${row.harness}`;
   if (row.homeSub === "hooks" || row.homeSub === "hooks.json") return `hooks ${row.harness}`;
   if (row.homeSub === "rules") return `permissions ${row.harness}`;
-  if (row.homeSub === "settings.json" || row.homeSub === "config.toml") return `permissions ${row.harness}`;
   return `${row.homeSub.replaceAll("/", " ")} ${row.harness}`;
 }
 
@@ -173,16 +186,19 @@ function hashParts(parts) {
   return hash.digest("hex");
 }
 
-function printUpdateReport(before, after) {
+function printUpdateReport(before, after, { verbose = false } = {}) {
   console.log("");
   console.log("Update change report:");
-  printGroup("rules", compareEntries(before.renderedRules, after.renderedRules));
-  printGroup("root config", compareEntries(before.rootConfig, after.rootConfig));
-  printGroup("copied files", compareEntries(before.copied, after.copied));
-  printGroup("skills", compareEntries(before.skills, after.skills));
-  printGroup("package registry", compareScalar(before.packageRegistry, after.packageRegistry, "package registry"));
-  printGroup("hooks", compareEntries(before.hooks, after.hooks));
-  printGroup("permissions", compareEntries(before.permissions, after.permissions));
+  const groups = [
+    compareEntries(before.renderedRules, after.renderedRules),
+    compareEntries(before.rootConfig, after.rootConfig),
+    compareEntries(before.copied, after.copied),
+    compareEntries(before.skills, after.skills),
+    compareScalar(before.packageRegistry, after.packageRegistry, "package registry"),
+    compareEntries(before.hooks, after.hooks),
+    compareEntries(before.permissions, after.permissions),
+  ];
+  printReportGroups(groups, { verbose });
   printLocalConfigRepairHint();
 }
 
@@ -208,12 +224,15 @@ function compareEntries(beforeEntries, afterEntries) {
   return { changed, unchanged };
 }
 
-function printGroup(label, result) {
-  const changed = unique(result.changed);
-  const unchanged = unique(result.unchanged);
-  void label;
-  if (changed.length) console.log(`  changed: ${changed.join(", ")}`);
-  if (!changed.length && unchanged.length) console.log(`  unchanged: ${unchanged.join(", ")}`);
+function printReportGroups(groups, { verbose }) {
+  const changed = unique(groups.flatMap((group) => group.changed));
+  const unchanged = unique(groups.flatMap((group) => group.unchanged));
+  console.log(`  changed: ${changed.length ? changed.join(", ") : "none"}`);
+  if (verbose && unchanged.length) {
+    console.log(`  unchanged: ${unchanged.join(", ")}`);
+  } else if (!verbose && unchanged.length) {
+    console.log(`  unchanged: ${unchanged.length} item(s) hidden (run: roborepo update --verbose)`);
+  }
 }
 
 function unique(values) {

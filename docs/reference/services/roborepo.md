@@ -142,7 +142,7 @@ roborepo telemetry install|start|stop|enable|disable|status|report|export|backup
 
 roborepo run <cmd> [args...]
 
-roborepo update  [--dry-run]
+roborepo update  [--dry-run] [--verbose]
 roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]
 roborepo repair local-config [--dry-run|--apply]
 roborepo doctor  [--installed]

@@ -1059,7 +1059,9 @@ assert "package mode: doctor does not fail on dev-only source files" \
   bash -c "! grep -qE 'fail: (local/skills|scripts/test/test-roborepo\.sh) missing' '${pkg_doctor_out}'"
 update_out="${work}/update-report.out"
 assert "lifecycle: roborepo update --dry-run dispatches and reports changes" \
-  bash -c "HOME='${update_home}' node '${cli}' update --dry-run >'${update_out}' 2>&1 && grep -q 'Update change report:' '${update_out}' && grep -q 'unchanged: package registry' '${update_out}'"
+  bash -c "HOME='${update_home}' node '${cli}' update --dry-run >'${update_out}' 2>&1 && grep -q 'Update change report:' '${update_out}' && grep -q 'changed:' '${update_out}' && grep -q 'unchanged: .* hidden' '${update_out}' && ! grep -q 'unchanged: package registry' '${update_out}'"
+assert "lifecycle: roborepo update --verbose reports unchanged detail" \
+  bash -c "HOME='${update_home}' node '${cli}' update --dry-run --verbose >'${update_out}.verbose' 2>&1 && grep -q 'unchanged: .*package registry' '${update_out}.verbose'"
 assert "lifecycle: roborepo update preserves local hooks, trust, and enabled skills" \
   bash -c "HOME='${update_home}' ROBOREPO_STATE_DIR='${update_home}/.roborepo' node '${cli}' update >/dev/null 2>&1 && node -e \"const fs=require('fs');const s=JSON.parse(fs.readFileSync('${update_home}/.claude/settings.json','utf8'));process.exit((s.hooks?.PreToolUse||[]).some(e=>(e.hooks||[]).some(h=>h.command.includes('capture-dense-bash.mjs')))?0:1)\" && grep -q '\\[projects\\.\"/Users/kirinmurphy/projects/activedev/roborepo\"\\]' '${update_home}/.codex/config.toml' && test -L '${update_home}/.claude/skills/case-study' && test -L '${update_home}/.codex/skills/case-study'"
 

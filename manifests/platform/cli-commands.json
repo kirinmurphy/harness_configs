@@ -44,7 +44,7 @@
     "",
     "roborepo run <cmd> [args...]",
     "",
-    "roborepo update  [--dry-run] [--on-conflict overwrite|keep|abort]   dev: pull new config + re-apply; package mode: alias for apply",
+    "roborepo update  [--dry-run] [--verbose] [--on-conflict overwrite|keep|abort]   dev: pull new config + re-apply; package mode: alias for apply",
     "roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]  refresh copied install after the repo was moved/renamed",
     "roborepo repair local-config [--dry-run|--apply]  recover local Claude/Codex settings from safe backups",
     "roborepo uninstall [--dry-run]",

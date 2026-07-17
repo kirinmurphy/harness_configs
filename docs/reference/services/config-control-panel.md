@@ -49,8 +49,8 @@ Adding a new feature of an existing shape is data, not code: declare its resourc
 
 A package may list `requires: [pkgId, ...]`. Enabling it enables every required package
 first (deduped, cycle-safe), then its own resources. A composite package — one whose
-payload is purely `requires` — bundles other packages under a single toggle. Example:
-`code-intel` requires `jcodemunch` + `jdocmunch`, so enabling it enables both indexers.
+payload is purely `requires` — bundles other packages under a single toggle. Composite packages
+enable every required package before reporting themselves enabled.
 
 A composite is reported enabled only when its own resources and every required package
 are enabled.
@@ -175,6 +175,6 @@ behavior or command.
 - `scripts/cli/permissions-render.mjs` — the permission render core.
 - `scripts/cli/config-dashboard.mjs` — the `/config` web view.
 - `scripts/cli/portal-server.mjs` — the HTTP routes.
-- `scripts/portal/config/` — the config page HTML, CSS, and browser JavaScript.
+- `portal/config/` — the config page HTML, CSS, and browser JavaScript.
 - `globals/packages/*/package.config.json` — built-in package configs.
 - workspace `packages/*/package.config.json` — imported or locally authored package configs.

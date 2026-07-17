@@ -1,7 +1,7 @@
 /* Shared portal base: the single source of truth for the theme palette, the CSS reset, and the
- * common header / nav / theme-toggle chrome. Both the config page and the telemetry dashboard
+ * common header / nav / footer / theme-toggle chrome. Every portal page
  * link this file, then add their own page-specific stylesheet on top. A new page only needs to
- * link this + its own styles.css to inherit the palette and header.
+ * links this + its own styles.css to inherit the palette and chrome.
  *
  * The palette is a SUPERSET of what any one page needs — unused vars cost nothing, and keeping
  * one copy means light/dark can never drift between pages. Data-viz colors that must stay fixed
@@ -89,8 +89,8 @@ body {
   background: var(--bg);
   color: var(--ink);
 }
-/* Common header + nav across every portal page. */
-header {
+/* Common header, footer, and nav across every portal page. */
+.portal-header {
   padding: 14px 20px;
   border-bottom: 1px solid var(--line);
   display: flex;
@@ -98,7 +98,7 @@ header {
   align-items: center;
   min-height: 54px;
 }
-header h1 {
+.portal-header h1 {
   font-size: 15px;
   margin: 0;
   font-weight: 600;
@@ -130,8 +130,18 @@ nav a.active {
   background: var(--panel);
   border-color: var(--line);
 }
+.portal-footer {
+  margin-top: 24px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  font-size: 11px;
+}
 .theme-toggle {
-  margin-left: 8px;
   color: var(--dim);
   font: inherit;
   font-size: 13px;
@@ -153,7 +163,7 @@ nav a.active {
   font-size: 12px;
 }
 @media (max-width: 760px) {
-  header {
+  .portal-header {
     align-items: flex-start;
     flex-wrap: wrap;
     gap: 8px 14px;

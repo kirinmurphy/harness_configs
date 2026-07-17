@@ -20,7 +20,7 @@ subcommand implementations live under `scripts/cli/`, one module per category:
 | `scripts/cli/telemetry.mjs` | `telemetry install\|start\|stop\|enable\|disable\|status\|report\|export\|serve\|backup\|purge\|capture` |
 | `scripts/cli/telemetry-transcript.mjs` | parse harness transcript -> token/tool/MCP session stats + tool-result sizes |
 | `scripts/cli/telemetry-analyze.mjs` | sessions, spikes, spike causes, token contributors, usage windows, spike-vs-normal |
-| `scripts/cli/portal-server.mjs` + `scripts/portal/` | loopback-only web portal routes and static assets |
+| `scripts/cli/portal-server.mjs` + `portal/` | loopback-only web portal routes and static assets |
 | `scripts/cli/paths.mjs` | shared `repoRoot` / `sharedSkillsDir` |
 | `scripts/cli/skill-lib.mjs` | shared Node core (zip, prompts, symlink helpers) |
 
@@ -354,7 +354,10 @@ id, heaviest turns surfaced, plus a copy-paste analysis prompt).
 
 `roborepo serve [--detach] [--no-open] [--port <n>]` (default `4317`) starts a dependency-free local
 web portal on `127.0.0.1` and opens `/config` by default (`--detach` forks it into the background and
-writes the PID file; this is what `roborepo web` uses under the hood). It serves the same analysis as JSON and renders it with a self-contained `<canvas>`
+writes the PID file; this is what `roborepo web` uses under the hood). Before binding, it probes an
+occupied port through `/api/portal/status`: a current portal is reused/adopted, while an old or
+unhealthy listener on the default port causes the new server to pick an available fallback port.
+It serves the same analysis as JSON and renders it with a self-contained `<canvas>`
 UI: a "what's causing spikes" panel leads with the spike-cause breakdown (each row a behavior to
 change), the recent-usage estimate shows in the header, and the token-delta timeline buckets to one
 column per pixel client-side, so dense histories with thousands of captures stay fast and the spike

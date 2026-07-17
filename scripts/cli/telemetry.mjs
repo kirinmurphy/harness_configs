@@ -354,14 +354,27 @@ function telemetryExport(args) {
 
 export async function serveCommand(args, { allowPortFallback = false } = {}) {
   const options = parseServeArgs(args);
-  const portalUrl = `http://127.0.0.1:${options.port}`;
   if (options.detach) {
-    const port = await startDetachedPortal(options.port, { allowPortFallback });
+    const port = await startDetachedPortal(options.port, { allowPortFallback, portExplicit: options.portExplicit });
     const detachedPortalUrl = `http://127.0.0.1:${port}`;
     console.log(`roborepo portal: ${detachedPortalUrl}  (detached · use: roborepo telemetry stop)`);
     if (options.open) openLocalUrl(detachedPortalUrl);
     return;
   }
+  const resolved = await resolvePortalPort(options.port, {
+    allowPortFallback,
+    portExplicit: options.portExplicit,
+    warn: true,
+  });
+  if (resolved.reuse) {
+    const existingUrl = `http://127.0.0.1:${resolved.port}`;
+    writePid(resolved.pid);
+    console.log(`roborepo portal already running: ${existingUrl}`);
+    if (options.open) openLocalUrl(existingUrl);
+    return;
+  }
+  options.port = resolved.port;
+  const portalUrl = (port) => `http://127.0.0.1:${port}`;
   // Clean up the PID file when the server exits cleanly (SIGTERM from stop or OS shutdown).
   process.on("SIGTERM", () => { clearPid(); process.exit(0); });
   if (readTelemetryState().enabled !== true) {
@@ -405,21 +418,21 @@ export async function serveCommand(args, { allowPortFallback = false } = {}) {
     mutateSkill: (id, enabled) => setSkillInstalled(id, enabled),
     mutateBehavior: (behaviorId, bucket) => setBehaviorBucket(behaviorId, bucket),
     mutateCommand: (tokens, bucket) => setCommandBucket(tokens, bucket),
-    onListening: options.open ? () => openLocalUrl(portalUrl) : null,
-    onPortInUse: options.open ? () => {
-      console.log(`roborepo portal already appears to be running: ${portalUrl}`);
-      openLocalUrl(portalUrl);
-      return true;
-    } : null,
+    onListening: options.open ? (actualPort) => openLocalUrl(portalUrl(actualPort)) : null,
   });
 }
 
 function parseServeArgs(args) {
-  const options = { port: 4317, detach: false, open: true, allowZeroPort: false };
+  const options = { port: 4317, portExplicit: false, detach: false, open: true, allowZeroPort: false };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--port") options.port = Number(args[++i]);
-    else if (arg.startsWith("--port=")) options.port = Number(arg.slice("--port=".length));
+    if (arg === "--port") {
+      options.port = Number(args[++i]);
+      options.portExplicit = true;
+    } else if (arg.startsWith("--port=")) {
+      options.port = Number(arg.slice("--port=".length));
+      options.portExplicit = true;
+    }
     else if (arg === "--detach") options.detach = true;
     else if (arg === "--open") options.open = true;
     else if (arg === "--no-open") options.open = false;
@@ -676,9 +689,14 @@ function stopServer() {
   try { process.kill(pid, "SIGTERM"); return true; } catch { return false; }
 }
 
-async function startDetachedPortal(port, { allowPortFallback = false } = {}) {
+async function startDetachedPortal(port, { allowPortFallback = false, portExplicit = false } = {}) {
   killExistingServer();
-  const selectedPort = allowPortFallback ? await pickAvailablePort(port) : port;
+  const resolved = await resolvePortalPort(port, { allowPortFallback, portExplicit, warn: true });
+  if (resolved.reuse) {
+    writePid(resolved.pid);
+    return resolved.port;
+  }
+  const selectedPort = resolved.port;
   const { child, readyFile } = spawnDetachedServer(selectedPort);
   const ready = await waitForPortalReady(selectedPort, child, readyFile);
   if (!ready.ok) {
@@ -694,9 +712,23 @@ async function startDetachedPortal(port, { allowPortFallback = false } = {}) {
   return ready.port ?? selectedPort;
 }
 
-async function pickAvailablePort(startPort, attempts = 16) {
-  const candidate = Number.isFinite(startPort) && startPort > 0 ? Math.trunc(startPort) : 4317;
-  return await canBindPort(candidate) ? candidate : 0;
+async function resolvePortalPort(port, { allowPortFallback = false, portExplicit = false, warn = false } = {}) {
+  if (port === 0 || await canBindPort(port)) return { port, reuse: false };
+
+  const existing = await probePortal(port);
+  if (existing.current) return { port, reuse: true, pid: existing.pid };
+
+  if (allowPortFallback || !portExplicit) {
+    if (warn) {
+      console.error(
+        `port ${port} is occupied by a non-current or unhealthy process; starting this portal on an available port instead.`,
+      );
+    }
+    return { port: 0, reuse: false };
+  }
+
+  console.error(`port ${port} is occupied by a non-current or unhealthy process; stop it or pass --port <n>.`);
+  process.exit(1);
 }
 
 function canBindPort(port) {
@@ -708,6 +740,26 @@ function canBindPort(port) {
       server.close(() => resolve(true));
     });
   });
+}
+
+async function probePortal(port) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 500);
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/portal/status`, { signal: controller.signal });
+    if (!res.ok) return { current: false };
+    const data = await res.json();
+    const currentPortalDir = path.join(repoRoot, "portal");
+    const pid = Number(data?.pid);
+    return {
+      current: data?.ok === true && data?.appRoot === repoRoot && data?.portalDir === currentPortalDir && Number.isInteger(pid),
+      pid,
+    };
+  } catch {
+    return { current: false };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // Spawn a new foreground `serve` process in the background. The caller writes the PID only after the

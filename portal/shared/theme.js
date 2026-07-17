@@ -1,6 +1,6 @@
-// Shared portal chrome: renders the nav from one page list and wires the theme toggle. Both pages
-// load this before their own app.js. Adding a portal page = add one entry to PORTAL_PAGES here
-// (and the matching PAGES entry + folder server-side) — the nav then updates on every page.
+// Shared portal chrome: renders the global header, footer, nav, and theme toggle. Every page loads
+// this before its own app.js. Adding a portal page = add one entry to PORTAL_PAGES here (and the
+// matching PAGES entry + folder server-side) — the nav then updates on every page.
 //
 // The no-flash theme *init* is NOT here: it must run before first paint, so it stays as a tiny
 // inline <script> in each page's <head>. This file only handles the interactive toggle + nav.
@@ -12,7 +12,26 @@ const PORTAL_PAGES = [
   { path: "/telemetry", title: "Telemetry" },
 ];
 
-(function renderNav() {
+(function renderChrome() {
+  if (!document.querySelector(".portal-header")) {
+    document.body.insertAdjacentHTML(
+      "afterbegin",
+      '<header class="portal-header">' +
+        '<h1>roborepo</h1>' +
+        '<span id="portal-updated" class="portal-updated">updated --</span>' +
+        '<nav id="nav" aria-label="Portal sections"></nav>' +
+      "</header>",
+    );
+  }
+  if (!document.querySelector(".portal-footer")) {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<footer class="portal-footer">' +
+        '<span>local portal</span>' +
+        '<button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle theme"></button>' +
+      "</footer>",
+    );
+  }
   const nav = document.getElementById("nav");
   if (!nav) return;
   const here = location.pathname;
@@ -20,11 +39,7 @@ const PORTAL_PAGES = [
     const active = p.path === here || (p.path === "/" && here === "/config") ? ' class="active"' : "";
     return '<a href="' + p.path + '"' + active + ">" + p.title + "</a>";
   }).join("");
-  nav.insertAdjacentHTML(
-    "afterbegin",
-    links +
-      '<button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle theme"></button>',
-  );
+  nav.insertAdjacentHTML("afterbegin", links);
 })();
 
 window.roborepoSetUpdatedAt = function roborepoSetUpdatedAt(date = new Date()) {

@@ -1,4 +1,4 @@
-/* Palette, reset, and header/nav/theme-toggle chrome live in /portal/shared/base.css.
+/* Palette, reset, and header/nav/footer/theme-toggle chrome live in /portal/shared/base.css.
  * This file holds only config-page-specific styles. */
 #status {
   color: var(--dim);

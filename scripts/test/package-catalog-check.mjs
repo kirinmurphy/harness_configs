@@ -16,9 +16,10 @@ const catalog = loadPackageCatalog({ includeUnavailable: true });
 validatePackageCatalog(catalog);
 
 const packageIds = new Set(catalog.map((pkg) => pkg.id));
-for (const id of ["jcodemunch", "jdocmunch", "code-intel", "telemetry", "caveman"]) {
+for (const id of ["jcodemunch", "jdocmunch", "telemetry", "caveman"]) {
   assert(packageIds.has(id), `missing package: ${id}`);
 }
+assert(!packageIds.has("code-intel"), "Code Intelligence composite package should not be present");
 
 const commands = listPackageCommands({ includeUnavailable: true }).map((command) => command.name).sort();
 for (const name of ["index code", "index docs", "watch code"]) {

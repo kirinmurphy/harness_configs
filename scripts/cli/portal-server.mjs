@@ -7,7 +7,7 @@ import { repoRoot } from "./paths.mjs";
 // Tiny local-only portal server. Binds to loopback only so telemetry/config data never leaves the
 // machine. Stdlib `http` keeps the install dependency-free, matching the rest of the CLI.
 const LOOPBACK = "127.0.0.1";
-const PORTAL_DIR = path.join(repoRoot, "scripts", "portal");
+const PORTAL_DIR = path.join(repoRoot, "portal");
 const STATIC_TYPES = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -15,8 +15,8 @@ const STATIC_TYPES = {
 };
 
 // Single source of truth for portal HTML pages. To add a page: (1) add an entry here, (2) create
-// scripts/portal/<dir>/{index.html,styles.css,app.js} linking /portal/shared/base.css + theme.js,
-// (3) add the page to PORTAL_PAGES in scripts/portal/shared/theme.js so the nav includes it.
+// portal/<dir>/{index.html,styles.css,app.js} linking /portal/shared/base.css + theme.js,
+// (3) add the page to PORTAL_PAGES in portal/shared/theme.js so the shared nav includes it.
 // Each page's HTML is just its index.html read from disk (mirrors static assets). `default: true`
 // marks the page served at "/" (what `roborepo serve` opens). Keep "/config" as a stable alias for
 // existing docs, tests, and saved browser links.
@@ -42,17 +42,17 @@ export function startPortalServer(handlers) {
     }
   });
   server.listen(port, LOOPBACK, () => {
+    const addr = server.address();
+    const actualPort = typeof addr === "object" && addr ? addr.port : port;
     if (process.env.ROBOREPO_PORTAL_READY_FILE) {
       try {
-        const addr = server.address();
-        const actualPort = typeof addr === "object" && addr ? addr.port : port;
         fs.writeFileSync(process.env.ROBOREPO_PORTAL_READY_FILE, `ready:${actualPort}\n`);
       } catch {}
     }
-    console.log(`roborepo portal:     http://${LOOPBACK}:${port}`);
-    console.log(`telemetry dashboard: http://${LOOPBACK}:${port}/telemetry`);
+    console.log(`roborepo portal:     http://${LOOPBACK}:${actualPort}`);
+    console.log(`telemetry dashboard: http://${LOOPBACK}:${actualPort}/telemetry`);
     console.log("(Ctrl-C to stop)");
-    handlers.onListening?.();
+    handlers.onListening?.(actualPort);
   });
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE" && handlers.onPortInUse?.() === true) return;
@@ -142,6 +142,15 @@ function route(req, res, handlers, mutationToken) {
   const page = PAGE_BY_PATH.get(urlPath);
   if (page) return send(res, 200, "text/html; charset=utf-8", pageHtml(page.dir, mutationToken));
   if (urlPath.startsWith("/portal/")) return servePortalAsset(urlPath, res);
+  if (urlPath === "/api/portal/status") {
+    return send(res, 200, "application/json", JSON.stringify({
+      ok: true,
+      pid: process.pid,
+      appRoot: repoRoot,
+      portalDir: PORTAL_DIR,
+      pages: PAGES.map(({ path, id, title }) => ({ path, id, title })),
+    }));
+  }
   if (urlPath === "/api/config") {
     return send(res, 200, "application/json", JSON.stringify(loadConfig()));
   }

@@ -14,7 +14,7 @@
     "scripts/cli/",
     "scripts/install/",
     "scripts/lib/",
-    "scripts/portal/",
+    "portal/",
     "scripts/doctor.sh",
     "scripts/verify-install.sh",
     "shell/",

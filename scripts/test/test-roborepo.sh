@@ -491,6 +491,7 @@ assert "telemetry enable: marks package desired state" \
 # Runs against a throwaway harness root so it never touches the real ~/.claude.
 # ---------------------------------------------------------------------------
 cfg_home="${work}/config-home"
+cfg_workspace="${cfg_home}/workspace"
 mkdir -p "${cfg_home}/.claude/skills" "${cfg_home}/.codex/skills"
 echo '{}' > "${cfg_home}/.claude/settings.json"
 printf '' > "${cfg_home}/.codex/config.toml"
@@ -498,7 +499,7 @@ printf '' > "${cfg_home}/.codex/config.toml"
 # TRACKED repo source (globals/claude/settings.json + manifests/inventory/mcp-servers.json) and the
 # real `claude` CLI. Skip that step so the test exercises perms/hooks/rules without polluting the
 # working tree or depending on global mcp state.
-cfg_env="HOME='${cfg_home}' ROBOREPO_STATE_DIR='${cfg_home}/.roborepo' ROBOREPO_SKIP_MCP=1"
+cfg_env="HOME='${cfg_home}' ROBOREPO_STATE_DIR='${cfg_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${cfg_workspace}' ROBOREPO_SKIP_MCP=1"
 
 # Guard: enabling a package must not mutate tracked repo source (it writes the consumer's home only).
 cfg_settings_before="$(git -C "${repo_root}" status --porcelain globals/claude/settings.json manifests/inventory/mcp-servers.json)"
@@ -651,16 +652,33 @@ assert "config: disabling a skill-component package removes the skill links" \
   bash -c "! test -e '${cfg_home}/.claude/skills/case-study' && ! test -e '${cfg_home}/.codex/skills/case-study' && ! test -e '${cfg_home}/.roborepo/skills/case-study'"
 
 # Composite package: a package that `requires` others. Enabling it enables every dependency (deps
-# first), and the composite reports enabled iff all deps are.
-bash -c "${cfg_env} node '${cli}' enable code-intel >/dev/null 2>&1" || true
+# first), and the composite reports enabled iff all deps are. The product-facing Code Intelligence
+# bundle was removed; keep dependency behavior covered with a workspace-only test package.
+mkdir -p "${cfg_workspace}/packages/test-composite"
+cat > "${cfg_workspace}/packages/test-composite/package.config.json" <<'JSON'
+{
+  "schemaVersion": 1,
+  "id": "test-composite",
+  "label": "Test composite",
+  "description": "Test-only package that bundles two dependencies.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "token-optimization",
+    "order": 99
+  },
+  "requires": ["jcodemunch", "jdocmunch"],
+  "resources": []
+}
+JSON
+bash -c "${cfg_env} node '${cli}' enable test-composite >/dev/null 2>&1" || true
 assert "config: enabling a composite package enables its required packages" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const e=id=>s.packages.find(p=>p.id===id)?.enabled;process.exit(e('jcodemunch')&&e('jdocmunch')&&e('code-intel')?0:1)})\""
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const e=id=>s.packages.find(p=>p.id===id)?.enabled;process.exit(e('jcodemunch')&&e('jdocmunch')&&e('test-composite')?0:1)})\""
 assert "config: disabling dependency required by enabled package is rejected" \
   bash -c "! ${cfg_env} node '${cli}' disable jdocmunch >/dev/null 2>&1"
 assert "config: cascade disables dependent package and dependency" \
-  bash -c "${cfg_env} node '${cli}' disable jdocmunch --cascade >/dev/null 2>&1 && ${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const e=id=>s.packages.find(p=>p.id===id)?.enabled;process.exit(!e('jdocmunch')&&!e('code-intel')?0:1)})\""
+  bash -c "${cfg_env} node '${cli}' disable jdocmunch --cascade >/dev/null 2>&1 && ${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const e=id=>s.packages.find(p=>p.id===id)?.enabled;process.exit(!e('jdocmunch')&&!e('test-composite')?0:1)})\""
 assert "config: snapshot exposes a package's requires list" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='code-intel');process.exit(Array.isArray(p.requires)&&p.requires.includes('jcodemunch')&&p.requires.includes('jdocmunch')?0:1)})\""
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='test-composite');process.exit(Array.isArray(p.requires)&&p.requires.includes('jcodemunch')&&p.requires.includes('jdocmunch')?0:1)})\""
 
 # Skill toggle links into the machine-local cache plus both harness views, then removes only owned links.
 cfg_skill="case-study"
@@ -699,6 +717,10 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
   done
   assert "config: portal server starts on an allocated port" \
     bash -c "test -n '${cfg_port}' && curl -s 'http://127.0.0.1:${cfg_port}/api/config' >/dev/null"
+  assert "config: portal status identifies current app" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/portal/status' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.appRoot==='${repo_root}'&&String(j.portalDir).endsWith('/portal')&&Number.isInteger(j.pid)?0:1)})\""
+  assert "config: serve reuses an existing current portal" \
+    bash -c "${cfg_env} node '${cli}' serve --no-open --port '${cfg_port}' >'${cfg_home}/portal-reuse.log' 2>&1 && grep -q 'already running' '${cfg_home}/portal-reuse.log'"
   cfg_token="$(curl -s "http://127.0.0.1:${cfg_port}/config" | sed -n 's/.*name="roborepo-portal-token" content="\([^"]*\)".*/\1/p' | head -1)"
   assert "config: portal exposes mutation token only in served HTML" \
     bash -c "test -n '${cfg_token}'"

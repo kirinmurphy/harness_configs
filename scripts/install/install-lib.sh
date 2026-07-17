@@ -640,6 +640,7 @@ export_user_config() {
   local src="${repo_root}/${repo_rel}"
   local merge_helper="${repo_root}/scripts/cli/root-config-merge.mjs"
   local converted_from_symlink=0
+  local merge_tmp=""
 
   if [[ "${dry_run}" -eq 1 ]]; then
     say merge "${home_path} <- ${src}"
@@ -657,11 +658,23 @@ export_user_config() {
   fi
 
   mkdir -p "$(dirname "${home_path}")"
-  node "${merge_helper}" "${harness}" "${src}" "${home_path}" "${home_path}"
+  merge_tmp="$(mktemp "${home_path}.merge.XXXXXX")"
+  if ! node "${merge_helper}" "${harness}" "${src}" "${home_path}" "${merge_tmp}"; then
+    rm -f "${merge_tmp}"
+    return 1
+  fi
+  if [[ -f "${home_path}" ]] && cmp -s "${merge_tmp}" "${home_path}"; then
+    rm -f "${merge_tmp}"
+    say ok "${home_path} ${RR_DIM}(local root config already current)${RR_RESET}"
+    record_root_config_write "${harness}" "${home_path}"
+    cleanup_original_backup_if_redundant "${home_path}"
+    return 0
+  fi
+  mv "${merge_tmp}" "${home_path}"
   if [[ "${converted_from_symlink}" -eq 1 ]]; then
-    say copy "${home_path} <- ${src} ${RR_DIM}(converted from repo symlink, merged local root config preserved)${RR_RESET}"
+    say merge "${home_path} <- ${src} ${RR_DIM}(converted from repo symlink, local root config preserved)${RR_RESET}"
   else
-    say copy "${home_path} <- ${src} ${RR_DIM}(merged local root config preserved)${RR_RESET}"
+    say merge "${home_path} <- ${src} ${RR_DIM}(local root config preserved)${RR_RESET}"
   fi
   record_root_config_write "${harness}" "${home_path}"
   cleanup_original_backup_if_redundant "${home_path}"

@@ -220,7 +220,7 @@ test_overwrite_policy_preserves_existing_root_configs() {
 
   run_harness_install_args "$home_dir" "$home_dir/out" --on-conflict overwrite
 
-  assert_file_contains "$home_dir/out" "merged local root config preserved" "overwrite merges existing root configs"
+  assert_file_contains "$home_dir/out" "local root config preserved" "overwrite merges existing root configs"
   grep -qF 'Bash(foo)' "$home_dir/.claude/settings.json" \
     && pass "overwrite preserves user Claude settings" \
     || fail "overwrite preserves user Claude settings" "$home_dir/out"
@@ -365,7 +365,7 @@ test_noninteractive_install_merges_root_configs() {
 
   run_harness_install_args "$home_dir" "$home_dir/out"
 
-  assert_file_contains "$home_dir/out" "merged local root config preserved" "noninteractive install merges root config instead of blocking"
+  assert_file_contains "$home_dir/out" "local root config preserved" "noninteractive install merges root config instead of blocking"
   grep -qF 'Bash(foo)' "$home_dir/.claude/settings.json" \
     && pass "noninteractive install preserves user Claude settings" \
     || fail "noninteractive install preserves user Claude settings" "$home_dir/out"
@@ -394,6 +394,7 @@ test_main_install_merges_root_configs_without_review_prompt() {
   grep -qF '[projects."/tmp/user-project"]' "$home_dir/.codex/config.toml" \
     && pass "main install clean update preserves user Codex project trust" \
     || fail "main install clean update preserves user Codex project trust" "$home_dir/second.out"
+  assert_file_contains "$home_dir/second.out" "local root config already current" "main install reports no-op root config merge as ok"
 }
 
 test_repair_local_config_recovers_backup_only_codex_settings() {

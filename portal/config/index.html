@@ -1,39 +1,19 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>roborepo config</title>
-    <script>
-      // Set theme before first paint to avoid a flash. Default dark.
-      (function () {
-        try {
-          var t = localStorage.getItem("roborepo-theme");
-          document.documentElement.dataset.theme =
-            t === "light" ? "light" : "dark";
-        } catch (e) {
-          document.documentElement.dataset.theme = "dark";
-        }
-      })();
-    </script>
-    <link rel="stylesheet" href="/portal/shared/base.css" />
-    <link rel="stylesheet" href="/portal/config/styles.css" />
-  </head>
+  {{HEAD}}
   <body>
     <main id="main"></main>
-    <div class="modal-backdrop" id="modal">
-      <div class="modal">
-        <div class="modal-head">
-          <span class="modal-title" id="modal-title"></span>
-          <span class="modal-path" id="modal-path"></span>
-          <button class="modal-close" id="modal-close">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="markdown" id="modal-content"></div>
-        </div>
-        <div class="modal-footer" id="modal-footer" hidden></div>
+    <dialog id="config-modal" aria-labelledby="modal-title">
+      <div class="modal-head">
+        <span class="modal-title" id="modal-title"></span>
+        <span class="modal-path" id="modal-path"></span>
+        <button class="modal-close" id="modal-close">✕</button>
       </div>
-    </div>
+      <div class="modal-body">
+        <div class="markdown" id="modal-content"></div>
+      </div>
+      <div class="modal-footer" id="modal-footer" hidden></div>
+    </dialog>
     <template id="tpl-config-files">
       <section class="panel wide">
         <div class="panel-head"><h2>Generated Files</h2></div>
@@ -230,17 +210,12 @@
         <span data-slot="toggle"></span>
       </div>
     </template>
-    <template id="tpl-toggle">
-      <label class="switch">
-        <input type="checkbox" />
-        <span class="switch-track"><span class="switch-knob"></span></span>
-      </label>
-    </template>
     <template id="tpl-permission-row">
       <div class="perm-row">
         <div data-slot="content"></div>
       </div>
     </template>
+    <script src="/portal/config/elements/index.js" type="module"></script>
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/config/app.js" type="module"></script>
   </body>

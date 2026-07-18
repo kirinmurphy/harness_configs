@@ -200,18 +200,29 @@ nav a.active {
 .page-loading.hidden {
   display: none;
 }
+/* Shared spinner shape for every page's inline/loading indicators (page-loading overlay, plans'
+ * root-add button, telemetry's chart load overlay). Pages set width/height to size it. */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  animation: portal-spin 0.7s linear infinite;
+}
+@keyframes portal-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .page-loading .loading-spinner {
   width: 22px;
   height: 22px;
   border-radius: 50%;
   border: 2px solid var(--line);
   border-top-color: var(--accent);
-  animation: page-loading-spin 0.7s linear infinite;
-}
-@keyframes page-loading-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  animation: portal-spin 0.7s linear infinite;
 }
 /* Ordinary in-page status/meta line, scoped near the content it describes (NOT a persistent
  * top bar) — used by /config, /plans, /telemetry for their own load-scoped status text. */
@@ -227,6 +238,27 @@ nav a.active {
 }
 .item-err:empty {
   display: none;
+}
+/* Shared chrome-panel shape used by /config and /telemetry (byte-identical subset of what each
+ * page's own .panel rule had). Page-specific extras (e.g. config's .panel.wide) stay in that
+ * page's own styles.css. */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+.panel-head {
+  margin: 0 0 1rem;
+}
+.panel-head h2 {
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  margin: 0;
+  font-weight: 600;
+  display: inline;
 }
 @media (max-width: 760px) {
   /* .portal-header {

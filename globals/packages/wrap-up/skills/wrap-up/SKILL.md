@@ -5,11 +5,11 @@ description: >
   chat/session before starting a new one — via the `/wrap-up` command or a clear
   instruction like "wrap this up", "let's close this out", "get this ready for a new
   chat". Runs a fixed sequence: self-review the code changed this session, sync
-  relevant docs (including project-specific docs like an abstraction-matrix when the
-  project has one), flag stray/uncommitted files, commit, then produce a status
-  summary and a ready-to-paste handoff prompt for the next chat. Do not auto-invoke on
-  ordinary edits, do not trigger on the mere presence of a diff, and do not run mid-task
-  — this is an end-of-session action.
+  project-specific tracking docs when they exist (e.g. an abstraction-matrix), flag
+  stray/uncommitted files, commit, then produce a status summary and a ready-to-paste
+  handoff prompt for the next chat. Do not auto-invoke on ordinary edits, do not
+  trigger on the mere presence of a diff, and do not run mid-task — this is an
+  end-of-session action.
 ---
 
 # Wrap Up
@@ -55,15 +55,12 @@ say so explicitly rather than guessing from the working tree.
 
 ### 2. Sync documentation
 
-- If the project has a handoff or inventory doc set (`docs/handoff/`, `docs/inventory/`, or a
-  project-specific equivalent), update only the docs touched by this session's changes using direct
-  code inspection. If a dedicated doc-refresh skill exists in the current environment, load it;
-  otherwise proceed without one.
-- Separately, check for any other project-specific tracking doc implied by the
-  session's own work — e.g. an abstraction matrix, decision log, architecture doc,
-  ADR directory, changelog. These are project-defined, not roborepo-defined: find them
-  by name/convention already established in the repo (search for the doc, don't invent
-  a new one) and update the ones this session's changes actually affect.
+- Check for any project-specific tracking doc implied by the session's own work — e.g.
+  an abstraction matrix, decision log, architecture doc, ADR directory, changelog. These
+  are project-defined, not roborepo-defined: find them by name/convention already
+  established in the repo (search for the doc, don't invent a new one) and update the
+  ones this session's changes actually affect. If a dedicated doc-refresh skill exists
+  in the current environment, load it; otherwise proceed without one.
 - Do not restructure or rewrite docs wholesale. Small, targeted edits, preserving existing
   structure.
 - Report drift found but not fixed, separately from what was changed.

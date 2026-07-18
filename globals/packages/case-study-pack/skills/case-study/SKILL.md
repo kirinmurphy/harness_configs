@@ -23,10 +23,10 @@ The audience spans non-technical to highly technical and everywhere between.
 
 - **This is NOT a coding tutorial.** The purpose is to convey architectural ideas
   and the relationships between them, not to teach programming. Code examples
-  illustrate *relationships*, not *how-to*.
+  illustrate _relationships_, not _how-to_.
 - **Comprehensible, not condescending.** A non-technical reader should be able to
   follow the logic of every decision — explained without assuming they already have
-  the context. But the writing is not *for* an audience with zero code background.
+  the context. But the writing is not _for_ an audience with zero code background.
 - **Don't overwhelm the technical reader.** The extra context that helps a less
   technical reader must stay concise and woven in. A highly technical reader should
   find the piece logical and fluid, never padded with beginner explanation.
@@ -62,7 +62,7 @@ The audience spans non-technical to highly technical and everywhere between.
 - **Don't show code for generic or rudimentary logic.** If the snippet is the same
   thing anyone would write regardless of this architecture (a read-decide-write loop, a
   basic null check, a standard CRUD call), describe it in one prose sentence and cut the
-  block. Spend the code budget only on what is non-obvious or specific to *this* design —
+  block. Spend the code budget only on what is non-obvious or specific to _this_ design —
   the platform quirk, the deliberate seam, the surprising line. A block earns its place
   by showing something the prose can't say as cleanly, not by proving the code exists.
 - A diagram or analogy is often better than code for this audience — prefer it when
@@ -73,7 +73,7 @@ The audience spans non-technical to highly technical and everywhere between.
 
 Actively look for places a **mermaid** diagram conveys a relationship or workflow
 better than prose or code, and use one when it does. This audience often follows a
-picture of *how pieces relate* faster than a paragraph describing it.
+picture of _how pieces relate_ faster than a paragraph describing it.
 
 - **Where diagrams earn their place:** a sequence of steps where order matters (what
   happens before what), a flow from one source to several outputs, a decision with
@@ -112,7 +112,7 @@ decision), not by user-facing feature.** Splitting by feature slices one concept
 several articles and pads each with a neighbor's concept.
 
 - **One article owns one decision.** "No database," "branch state is the source of truth"
-  are decisions. "Preview," "publishing," "multilingual" are usually *consequences* of a
+  are decisions. "Preview," "publishing," "multilingual" are usually _consequences_ of a
   decision, not decisions — fold each into the article whose decision produces it.
 - **Demote a feature to an example when it isn't the concept.** If the article is about a
   mechanism (atomic multi-file commit) and the feature (multilingual publishing) is one
@@ -166,7 +166,7 @@ up front. This is what keeps the piece readable across skill levels.
    address the reader in the second person to set it up.
 
 3. **What That Forced On Us** — The architectural necessities the experience
-   *demands*. The bridge beat: introduce the core technical concepts here, each one
+   _demands_. The bridge beat: introduce the core technical concepts here, each one
    justified by beat 2. "Because we wanted X, we now needed Y."
 
 4. **How We Built It** — The implementation and how it satisfies beat 3. Walk the
@@ -193,8 +193,8 @@ alternative the analysis concludes is worth acting on, not just living with.
 What it must contain:
 
 - **The recommendation, stated plainly.** What should change.
-- **The qualitative case for why it crosses the line.** Not just *what* the behavior
-  is — that may already be covered in beat 5 or 6 — but *why* it outranks the things the
+- **The qualitative case for why it crosses the line.** Not just _what_ the behavior
+  is — that may already be covered in beat 5 or 6 — but _why_ it outranks the things the
   design currently keeps. What makes this the one worth replacing: the cost it imposes,
   the risk it carries, the leverage of fixing it, why it matters more than the other
   open items. The reader should understand the priority judgment, not just the change.
@@ -215,13 +215,13 @@ subjective coloring of an outcome. Let the reader draw the value judgment; the p
 supplies the facts and the reasoning.
 
 - **No emotional or evaluative adjectives about the work itself.** Cut words like
-  *uncomfortable, proudest, happy, striking, awkward, elegant, beautiful, painful,
-  scary, gold, exciting*. If a word rates how the reader or author should *feel* about
+  _uncomfortable, proudest, happy, striking, awkward, elegant, beautiful, painful,
+  scary, gold, exciting_. If a word rates how the reader or author should _feel_ about
   a fact, remove it and let the fact stand.
 - **Opinion is allowed; emotion is not.** Comparative, defensible judgments belong in
   the piece — "A is more reliable than B," "this approach is overkill for the current
   case," "the index is the better fit." State them flatly, backed by the reason. What's
-  banned is sentiment *about* the outcome, not the analytical conclusion.
+  banned is sentiment _about_ the outcome, not the analytical conclusion.
 - **No unfounded claims about what "most teams" or "everyone" does.** Don't open or
   argue from an unsupported generalization about industry behavior ("Most teams add a
   dedicated search engine the moment a product needs filters"). It rests on sentiment,
@@ -272,8 +272,8 @@ information — cut them.
 
 Once the draft is complete and coherent, do a separate pass whose only goal is fewer
 words with zero context lost. Editing for concision is a distinct task from drafting —
-do not try to do both at once. The rule for this pass: condense the *wording*, never
-remove the *information*. A technical identifier, a number, a named mechanism, a tradeoff,
+do not try to do both at once. The rule for this pass: condense the _wording_, never
+remove the _information_. A technical identifier, a number, a named mechanism, a tradeoff,
 a caveat — all stay. Only the words spent explaining them shrink.
 
 - **Cut duplicate references across sections.** The strongest source of bloat in a
@@ -284,21 +284,21 @@ a caveat — all stay. Only the words spent explaining them shrink.
   architecture section said "token counts and a `call_count`" — the same fact twice.
   Keep it in the one whose job it is; delete it from the other.
 - **State the thesis once, then derive from it — don't re-argue it across beats.**
-  Distinct from duplicate *facts*: this is the same load-bearing *claim* re-asserted in a
+  Distinct from duplicate _facts_: this is the same load-bearing _claim_ re-asserted in a
   new framing in each successive beat. The 6-beat arc invites it — Problem, Experience,
   and What That Forced can each end up restating the piece's central constraint in their
   own words. Establish the claim in the beat that owns it, then have every later beat
-  *use* it as a given, never re-state it. The tell is a beat that opens by re-proving the
+  _use_ it as a given, never re-state it. The tell is a beat that opens by re-proving the
   prior beat's conclusion before doing its own job. Example from practice: a search
   article asserted "results identical for every viewer" in the Experience beat, then the
   next beat opened "If the result set must be identical for every viewer, then…" —
   restating the thesis as its own premise. Fixed by making the later beat consume it:
   "A viewer-independent result set has a hard consequence: the query cannot reference the
-  user." Same information, but the claim is *used* to derive the next step rather than
+  user." Same information, but the claim is _used_ to derive the next step rather than
   argued a second time. Check each beat's opening sentence: if it re-establishes a claim
   an earlier beat already made, cut to the derivation.
 - **Give each labeled section one job.** When the format uses repeated labels (e.g.
-  *What it does* / *How it's built* / *When to apply*), police the boundary: the "what"
+  _What it does_ / _How it's built_ / _When to apply_), police the boundary: the "what"
   section describes observable behavior, the "how" section describes mechanism. A detail
   that belongs to one should not also appear in the other. This both shortens the piece
   and sharpens what each section is for.
@@ -342,7 +342,7 @@ identifier, number, and tradeoff from the previous version is still present.
 - Section headers map to the 6 beats but phrased in the article's own voice.
 - **Use `###` subheaders to name and split a beat's sub-topics.** When a beat covers more
   than one distinct idea, give each its own subheader rather than running them together
-  under one heading. Even a single-topic beat reads better when the topic is *named* — an
+  under one heading. Even a single-topic beat reads better when the topic is _named_ — an
   unlabeled section makes the reader infer what it's about. Naming the sub-topic is itself
   the value: it tells the reader what they're about to read and lets a skimmer navigate.
   Phrase subheaders in the article's voice, like the beat headers.
@@ -371,12 +371,12 @@ The loop:
 2. **If the validator finds violations**, hand the report to the creator. The creator
    revises the draft to address every reported item, then the loop returns to step 1
    for a fresh validator pass on the revised draft.
-3. **If the validator finds nothing**, the article passes — proceed to *After drafting*.
+3. **If the validator finds nothing**, the article passes — proceed to _After drafting_.
 4. **Cap the loop at 10 validator passes.** If the validator still reports violations on
    the 10th pass, stop and report the last validator report as an error — do not keep
    looping. Surface what remained unresolved so the user can decide.
 
-Each pass validates the *revised* draft, not the original — a fix in one round may
+Each pass validates the _revised_ draft, not the original — a fix in one round may
 introduce a new violation, which the next pass catches.
 
 **Surface the validator's report to the user in chat on each pass** — the violations

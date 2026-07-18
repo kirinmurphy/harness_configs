@@ -17,10 +17,10 @@ export function rootChip(root, onRemove) {
 }
 
 export function filterChip({ id, label, chipValue }) {
-  const chip = tpl("tpl-filter-chip");
-  chip.querySelector("[data-slot=label]").textContent = label;
-  chip.querySelector("[data-slot=value]").textContent = chipValue;
-  chip.querySelector("[data-slot=remove]").dataset.filterId = id;
+  const chip = document.createElement("filter-chip");
+  chip.setAttribute("filter-id", id);
+  chip.setAttribute("label", label);
+  chip.setAttribute("value", chipValue);
   return chip;
 }
 
@@ -82,7 +82,7 @@ export function packageBanner(pkg, onEnable) {
 export function group(lifecycle, plans, { collapsible, open, onToggle, cardActions }) {
   if (plans.length === 0) return null;
   const title = `${lifecycle} (${plans.length})`;
-  const cards = plans.map((record) => card(record, cardActions));
+  const cards = plans.map((record) => planCardElement(record, cardActions));
   if (collapsible) {
     const details = fill(tpl("tpl-group-collapsible"), { title });
     details.querySelector("[data-slot=cards]").append(...cards);
@@ -96,34 +96,10 @@ export function group(lifecycle, plans, { collapsible, open, onToggle, cardActio
 }
 
 // cardActions: { onOpen, onCopyPath, onCopyContext, onPlanDocsStart, planDocsEnabled, onError }
-function card(record, cardActions) {
-  const plan = record.plan;
-  const warnings = plan.validation.warnings.length;
-  const { onError } = cardActions;
-  const node = fill(tpl("tpl-plan-card"), {
-    title: plan.title,
-    path: `${record.repository.name} / ${plan.relativePath}`,
-    next: plan.nextAction || "No next action",
-    meta: `modified ${formatDate(plan.modifiedAt)}`,
-  });
-  node.querySelector("[data-slot=chips]").append(
-    chip(plan.priority, plan.priority === "high" ? "warn" : ""),
-    chip(plan.readiness, plan.readiness === "ready" ? "ok" : ""),
-    chip(plan.reviewState, plan.reviewState === "possibly-stale" ? "warn" : ""),
-    plan.blockers.length
-      ? chip(`${plan.blockers.length} blockers`, "warn")
-      : chip("unblocked", "ok"),
-    chip(`${plan.taskCounts.remaining}/${plan.taskCounts.total} tasks`),
-    warnings ? chip(`${warnings} warnings`, "warn") : chip("valid", "ok"),
-  );
-  node.querySelector("[data-slot=actions]").append(
-    actionButton("Open", () => cardActions.onOpen(record.key), onError),
-    actionButton("Copy path", () => cardActions.onCopyPath(plan.relativePath), onError),
-    actionButton("Context", () => cardActions.onCopyContext(record), onError),
-    ...(cardActions.planDocsEnabled
-      ? [actionButton("/plan-docs start", () => cardActions.onPlanDocsStart(record.key), onError)]
-      : []),
-  );
+function planCardElement(record, cardActions) {
+  const node = document.createElement("plan-card");
+  node.record = record;
+  node.actions = cardActions;
   return node;
 }
 
@@ -182,25 +158,13 @@ export function drawerTaskItems(tasks) {
 }
 
 export function actionButton(label, onClick, onError) {
-  const button = tpl("tpl-action-button");
-  button.textContent = label;
-  button.addEventListener("click", () => {
-    try {
-      const result = onClick();
-      if (result?.catch) result.catch(onError);
-    } catch (err) {
-      onError(err);
-    }
-  });
+  const button = document.createElement("action-button");
+  button.setAttribute("label", label);
+  button.onClick = onClick;
+  button.onError = onError;
   return button;
 }
 
-export function chip(text, cls = "") {
-  const node = tpl("tpl-chip");
-  node.textContent = text;
-  if (cls) node.classList.add(cls);
-  return node;
-}
 
 export function dtdd(term, value) {
   return fill(tpl("tpl-dtdd-row"), { term, value });

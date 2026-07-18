@@ -31,7 +31,17 @@ const PAGE_BY_PATH = new Map(PAGES.flatMap((p) => (
 )));
 // Shape shared by /api/portal/status and the browser-injected manifest so both can never drift.
 const pageManifest = () => PAGES.map(({ path, id, title }) => ({ path, id, title }));
-const pageHtml = (dir, token) => fs.readFileSync(path.join(PORTAL_DIR, dir, "index.html"), "utf8")
+
+// The <head> boilerplate (theme-flash guard + meta tags) is identical across every page except
+// the title and stylesheet href, so each page's index.html holds just a {{HEAD}} marker instead
+// of repeating it. Resolved from PAGES' own title/dir fields — nothing to hand-sync per page.
+const HEAD_PARTIAL_PATH = path.join(PORTAL_DIR, "shared", "head-partial.html");
+const renderHead = (page) => fs.readFileSync(HEAD_PARTIAL_PATH, "utf8")
+  .replace("{{TITLE}}", page.title.toLowerCase())
+  .replace("{{STYLE_HREF}}", `/portal/${page.dir}/styles.css`);
+
+const pageHtml = (page, token) => fs.readFileSync(path.join(PORTAL_DIR, page.dir, "index.html"), "utf8")
+  .replace("{{HEAD}}", renderHead(page))
   .replace("</head>", `<meta name="roborepo-portal-token" content="${token}" />\n`
     + `<script>window.ROBOREPO_PORTAL = ${JSON.stringify({ token, pages: pageManifest() })};</script>\n</head>`);
 
@@ -105,7 +115,7 @@ function route(req, res, handlers, mutationToken) {
 function handlePortalPage(req, res, urlPath, mutationToken) {
   const page = PAGE_BY_PATH.get(urlPath);
   if (!page) return false;
-  send(res, 200, "text/html; charset=utf-8", pageHtml(page.dir, mutationToken));
+  send(res, 200, "text/html; charset=utf-8", pageHtml(page, mutationToken));
   return true;
 }
 

@@ -52,9 +52,7 @@ function bindStaticControls() {
     .getElementById("refresh")
     .addEventListener("click", () => api.refreshSnapshot().then(applySnapshot).catch(showError));
   nextPrompt.addEventListener("click", () => copyVisibleNextPrompt().catch(showError));
-  document.getElementById("drawer-close").addEventListener("click", () => {
-    drawer.hidden = true;
-  });
+  document.getElementById("drawer-close").addEventListener("click", () => drawer.close());
   for (const id of FILTER_IDS) {
     const node = document.getElementById(id);
     node.addEventListener(id === "search" ? "input" : "change", () => {
@@ -64,11 +62,7 @@ function bindStaticControls() {
   }
   document.getElementById("filters-toggle").addEventListener("click", () => setFiltersExpanded(true));
   document.getElementById("filters-done").addEventListener("click", () => setFiltersExpanded(false));
-  filterChipsEl.addEventListener("click", (event) => {
-    const btn = event.target.closest("[data-filter-id]");
-    if (!btn) return;
-    resetFilter(btn.dataset.filterId);
-  });
+  filterChipsEl.addEventListener("chip-remove", (event) => resetFilter(event.detail));
 }
 
 function setFiltersExpanded(expanded) {
@@ -245,7 +239,7 @@ function renderDrawer(doc) {
     .replaceChildren(...content.warnings.map(tmpl.listItem));
   document.getElementById("drawer-tasks").replaceChildren(...tmpl.drawerTaskItems(content.tasks));
   document.getElementById("drawer-actions").replaceChildren(...content.actions);
-  drawer.hidden = false;
+  drawer.open();
 }
 
 async function copyPrompt(actionName, keys, mode = "repository-aware") {

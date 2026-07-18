@@ -1,23 +1,6 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>roborepo plans</title>
-    <script>
-      (function () {
-        try {
-          var t = localStorage.getItem("roborepo-theme");
-          document.documentElement.dataset.theme =
-            t === "light" ? "light" : "dark";
-        } catch (e) {
-          document.documentElement.dataset.theme = "dark";
-        }
-      })();
-    </script>
-    <link rel="stylesheet" href="/portal/shared/base.css" />
-    <link rel="stylesheet" href="/portal/plans/styles.css" />
-  </head>
+  {{HEAD}}
   <body>
     <section id="package-banner" class="package-banner" hidden></section>
     <main>
@@ -117,26 +100,20 @@
       <section id="warnings" class="warnings" hidden></section>
       <section id="groups" class="groups"></section>
     </main>
-    <div class="modal-backdrop" id="info-modal" hidden>
-      <div
-        class="modal-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="info-modal-title"
-      >
-        <div class="modal-head">
-          <h2 id="info-modal-title">How folder scanning works</h2>
-          <button
-            type="button"
-            id="info-modal-close"
-            class="modal-close"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-        <div class="modal-body">
-          <pre class="folder-tree"><span class="tree-root">projects/</span>
+    <dialog id="info-modal" aria-labelledby="info-modal-title">
+      <div class="modal-head">
+        <h2 id="info-modal-title">How folder scanning works</h2>
+        <button
+          type="button"
+          id="info-modal-close"
+          class="modal-close"
+          aria-label="Close"
+        >
+          ×
+        </button>
+      </div>
+      <div class="modal-body">
+        <pre class="folder-tree"><span class="tree-root">projects/</span>
 <span class="tree-branch">├── </span><span class="project-folder">git_repo1/</span>
 <span class="tree-branch">│   └── </span><span class="tree-matched">docs/plans/</span>
 <span class="tree-branch">└── </span><span class="project-folder">repos_folder/</span>
@@ -144,29 +121,28 @@
 <span class="tree-branch">    │   └── </span><span class="tree-matched">docs/plans/</span>
 <span class="tree-branch">    └── </span><span class="tree-plain">git_repo3/</span>
 <span class="tree-branch">        └── </span><span class="tree-plain">docs/</span>  <span class="tree-note">(no plans/ dir)</span></pre>
-          <ul class="tree-legend">
-            <li>
-              <span class="legend-swatch legend-repo"></span> project folder (a
-              repository root)
-            </li>
-            <li>
-              <span class="legend-swatch legend-matched"></span> matched
-              docs/plans folder
-            </li>
-          </ul>
-          <p class="modal-note">
-            Stops at the first repository found in each branch — nested folders
-            inside a repo aren't re-scanned. Skips node_modules, dist, .venv,
-            and similar.
-          </p>
-          <p class="modal-note">
-            Results are cached per file and refreshed automatically when files
-            change; use Refresh to force a full re-scan.
-          </p>
-        </div>
+        <ul class="tree-legend">
+          <li>
+            <span class="legend-swatch legend-repo"></span> project folder (a
+            repository root)
+          </li>
+          <li>
+            <span class="legend-swatch legend-matched"></span> matched
+            docs/plans folder
+          </li>
+        </ul>
+        <p class="modal-note">
+          Stops at the first repository found in each branch — nested folders
+          inside a repo aren't re-scanned. Skips node_modules, dist, .venv,
+          and similar.
+        </p>
+        <p class="modal-note">
+          Results are cached per file and refreshed automatically when files
+          change; use Refresh to force a full re-scan.
+        </p>
       </div>
-    </div>
-    <div class="drawer-backdrop" id="drawer" hidden>
+    </dialog>
+    <plan-drawer id="drawer" hidden>
       <aside class="drawer-panel">
         <div class="drawer-head">
           <div>
@@ -192,21 +168,7 @@
         </div>
         <article class="markdown" id="drawer-doc"></article>
       </aside>
-    </div>
-    <template id="tpl-filter-chip">
-      <span class="filter-chip">
-        <span class="filter-chip-label" data-slot="label"></span>
-        <span class="filter-chip-value" data-slot="value"></span>
-        <button
-          type="button"
-          class="filter-chip-remove"
-          data-slot="remove"
-          title="Remove filter"
-        >
-          ×
-        </button>
-      </span>
-    </template>
+    </plan-drawer>
     <template id="tpl-package-banner">
       <div id="package-not-installed-banner">
         <div>
@@ -262,15 +224,13 @@
         <div class="card-actions" data-slot="actions"></div>
       </article>
     </template>
-    <template id="tpl-action-button">
-      <button type="button"></button>
-    </template>
     <template id="tpl-dtdd-row">
       <div class="dtdd-row">
         <dt data-slot="term"></dt>
         <dd data-slot="value"></dd>
       </div>
     </template>
+    <script src="/portal/plans/elements/index.js" type="module"></script>
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/plans/app.js" type="module"></script>
   </body>

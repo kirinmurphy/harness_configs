@@ -84,14 +84,13 @@ export function createInfoModal() {
   infoIconEl.addEventListener("click", () => setOpen(true));
   document.getElementById("info-modal-close").addEventListener("click", () => setOpen(false));
   infoModalEl.addEventListener("click", (event) => {
-    if (event.target === infoModalEl) setOpen(false); // click on the overlay itself, not the panel
+    if (event.target === infoModalEl) setOpen(false); // click landed on the dialog's own backdrop area
   });
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !infoModalEl.hidden) setOpen(false);
-  });
+  infoModalEl.addEventListener("close", () => infoIconEl.setAttribute("aria-expanded", "false"));
 
   function setOpen(open) {
-    infoModalEl.hidden = !open;
+    if (open) infoModalEl.showModal();
+    else infoModalEl.close();
     infoIconEl.setAttribute("aria-expanded", String(open));
   }
 }

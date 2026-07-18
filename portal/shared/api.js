@@ -58,6 +58,22 @@ export function portalTpl(id) {
   return document.getElementById(id).content.firstElementChild.cloneNode(true);
 }
 
+// Fills a cloned template's [data-slot] elements in one call. Each `fills` key matches a
+// data-slot name; string/number values become that slot's textContent, a Node replaces the slot
+// element outright (e.g. swapping in a button with its own listener), and `{attr: {...}}` sets
+// attributes on the slot without touching its content. Slot names not present in `fills` are left
+// untouched, so callers can pre-fill some slots via the DOM and the rest here.
+export function portalFillSlots(node, fills) {
+  for (const [name, value] of Object.entries(fills)) {
+    const slot = node.querySelector(`[data-slot="${name}"]`);
+    if (!slot || value == null) continue;
+    if (value instanceof Node) slot.replaceWith(value);
+    else if (typeof value === "object") for (const [attr, v] of Object.entries(value)) slot.setAttribute(attr, v);
+    else slot.textContent = String(value);
+  }
+  return node;
+}
+
 export function portalEl(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {

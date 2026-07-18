@@ -31,3 +31,10 @@ Apply this when the repo or touched files use JavaScript or TypeScript. Pair wit
 
 - Use repo-native scripts and config. Do not invent ESLint, Prettier, or typecheck commands.
 - For file-scoped fixes, prefer scoped lint/format commands only when the repo supports them.
+
+## Building Markup
+
+- Never hand-assemble multi-element DOM structures as nested builder calls in JS (e.g. chained `createElement`/`appendChild`, or a custom `el(tag, attrs, ...children)` helper composing several nested tags). This scatters markup and styling decisions into procedural code, making structure hard to see and hard to edit as HTML/CSS.
+- Use whatever templating mechanism the project already has: JSX/TSX components, a framework's template syntax (Vue SFC, Svelte, Astro), or plain HTML `<template>` elements with a slot-fill helper when there is no framework.
+- If the project has no framework and no existing templating convention, introduce one (e.g. `<template>` + a small slot-fill utility) rather than defaulting to JS-composed markup.
+- A single leaf node with dynamic text or a dynamic class (e.g. one `<span>` or `<li>`) is fine as a one-line builder call — the rule targets nested, multi-element structure, not every dynamic DOM write.

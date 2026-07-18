@@ -8,14 +8,14 @@ main {
   border: 1px solid var(--line);
   background: var(--panel);
   border-radius: 8px;
-  padding: 12px;
+  padding: 1rem 1.5rem;
 }
 /* Discovery-root ("Project Folders") section: a subtly different background/border from
  * read-only sections (.warnings/.package-banner use plain --panel/--line) so it visibly reads as
  * an editable control surface, not just another info panel. */
 .settings {
   background: color-mix(in srgb, var(--accent) 6%, var(--panel));
-  border-color: var(--accent);
+  /* border-color: var(--accent); */
 }
 .filters {
   border: 1px solid var(--line);
@@ -38,41 +38,95 @@ main {
 .filter-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  border-radius: 12px;
-  padding: 2px 4px 2px 9px;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: 5px;
+  padding: 3px 4px 3px 9px;
   font-size: var(--text-2xs);
+}
+.filter-chip-label {
+  color: var(--dim);
+  text-transform: uppercase;
+  font-size: var(--text-3xs, 10px);
+  letter-spacing: 0.04em;
+}
+.filter-chip-value {
+  color: var(--ink);
+  font-weight: 600;
 }
 .filter-chip-remove {
   border: none;
   background: none;
-  color: inherit;
+  color: var(--dim);
   font: inherit;
+  font-size: var(--text-sm);
   cursor: pointer;
-  padding: 0 4px;
-  line-height: 1.4;
+  padding: 3px 7px;
+  line-height: 1;
+  border-radius: 4px;
+}
+.filter-chip-remove:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--line) 60%, transparent);
 }
 .filters-body {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
+  display: grid;
+  gap: 10px;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
-.filters-body #search {
-  flex: 1 1 180px;
-  min-width: 140px;
+.filter-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 10px;
 }
-.filters-body select {
-  flex: 0 1 145px;
-  min-width: 110px;
+.filter-row label {
+  font-size: var(--text-xs);
+  color: var(--dim);
 }
-.filters-body button {
-  flex: 0 0 auto;
+.filter-row select {
+  width: 100%;
+}
+.filter-row-actions {
+  grid-template-columns: none;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+.search-field {
+  position: relative;
+}
+.search-field::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translateY(-50%);
+  border: 2px solid var(--dim);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.search-field::after {
+  content: "";
+  position: absolute;
+  left: 19px;
+  top: 65%;
+  width: 6px;
+  height: 2px;
+  background: var(--dim);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.search-field #search {
+  width: 100%;
+  padding-left: 32px;
 }
 input,
 select,
@@ -90,54 +144,50 @@ select {
 }
 button {
   color: var(--ink);
-  background: var(--bg);
+  background: color-mix(in srgb, var(--ok) 16%, var(--bg));
   border: 1px solid var(--line);
   border-radius: 5px;
   padding: 7px 10px;
   cursor: pointer;
 }
 button:hover {
-  border-color: var(--accent);
+  background: color-mix(in srgb, var(--ok) 26%, var(--bg));
 }
-.settings summary {
-  cursor: pointer;
-  list-style: none;
+button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.settings-header {
   display: flex;
-  gap: 10px;
   align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
 }
-.settings summary::-webkit-details-marker {
-  display: none;
-}
+/* Matches .empty-state h2's weight/size in both states, so "No Project Folders configured" and
+ * "Project Folders (N selected)" read as the same heading style. */
 .settings-label {
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  color: var(--dim);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--ink);
   flex: 0 0 auto;
 }
-/* Empty state (no roots yet) stays prominent: no disclosure caret, label reads as a call to action. */
-.settings:not(:has(.root-chip)) .settings-label::after {
-  content: " — click to add a root";
-  text-transform: none;
-  color: var(--accent);
+.settings-toggle {
+  margin-left: auto;
 }
-.settings:has(.root-chip) summary::before {
-  content: "▶";
-  font-size: 9px;
-  color: var(--dim);
-  transition: transform 0.1s ease;
-}
-.settings[open]:has(.root-chip) summary::before {
-  transform: rotate(90deg);
+.settings-body {
+  margin-top: 10px;
 }
 #roots {
-  margin: 0;
+  margin: 0 0 12px;
   color: var(--dim);
   font-size: var(--text-xs);
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+#roots:not(:empty) {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
 }
 .root-chip {
   display: inline-flex;
@@ -161,11 +211,17 @@ button:hover {
   margin-top: 10px;
   max-width: 640px;
 }
+.root-form-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
 #root-form label {
-  display: block;
+  display: inline-block;
   font-size: var(--text-xs);
   color: var(--dim);
-  margin-bottom: 6px;
+  margin-bottom: 0;
 }
 .root-form-row {
   display: flex;
@@ -174,8 +230,133 @@ button:hover {
 #root-input {
   flex: 1;
 }
-.root-form-row #roots-done {
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--dim);
+  background: none;
+  color: var(--dim);
+  font-size: var(--text-2xs);
+  font-style: italic;
+  line-height: 1;
+  cursor: pointer;
+}
+.info-icon:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+  background: none;
+}
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  padding: 24px;
+}
+.modal-panel {
+  width: min(560px, 100%);
+  max-height: 85vh;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px var(--modal-shadow);
+  padding: 18px;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.modal-head h2 {
+  margin: 0;
+  font-size: var(--text-md);
+}
+.modal-close {
   flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-md);
+  line-height: 1;
+}
+.modal-body {
+  font-size: var(--text-sm);
+  color: var(--dim);
+}
+.folder-tree {
+  margin: 0 0 12px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--dim);
+  overflow-x: auto;
+}
+.tree-root {
+  color: var(--ink);
+  font-weight: 600;
+}
+.tree-branch {
+  color: var(--dim);
+}
+.project-folder {
+  color: var(--warn);
+  font-weight: 600;
+}
+.tree-matched {
+  color: var(--ok);
+  font-weight: 600;
+}
+.tree-plain {
+  color: var(--dim);
+}
+.tree-note {
+  color: var(--dim);
+  font-style: italic;
+}
+.tree-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+}
+.legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+.legend-repo {
+  background: var(--warn);
+}
+.legend-matched {
+  background: var(--ok);
+}
+.modal-note {
+  margin: 0 0 8px;
+  font-size: var(--text-2xs);
+  color: var(--dim);
 }
 /* Full-width banner, flush to the viewport edges — a sibling of <main> (not a child), so it can
  * break out of main's padding. Scrolls normally with the page (no sticky/fixed). */
@@ -379,6 +560,9 @@ dl {
   gap: 5px 10px;
   margin: 0;
 }
+.dtdd-row {
+  display: contents;
+}
 dt {
   color: var(--dim);
 }
@@ -422,4 +606,41 @@ dd {
   #root-form {
     display: grid;
   }
+  .filter-row {
+    grid-template-columns: 1fr;
+  }
+}
+.spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--line);
+  border-top-color: var(--ok);
+  border-radius: 50%;
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: -1px;
+  animation: plans-spin 0.7s linear infinite;
+}
+@keyframes plans-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+#package-not-installed-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: right;
+}
+
+#package-not-installed-banner > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: left;
+}
+
+#package-not-installed-banner > button {
+  display: inline !important;
 }

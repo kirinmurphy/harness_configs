@@ -34,7 +34,5 @@ Apply this when the repo or touched files use JavaScript or TypeScript. Pair wit
 
 ## Building Markup
 
-- Never hand-assemble multi-element DOM structures as nested builder calls in JS (e.g. chained `createElement`/`appendChild`, or a custom `el(tag, attrs, ...children)` helper composing several nested tags). This scatters markup and styling decisions into procedural code, making structure hard to see and hard to edit as HTML/CSS.
-- Use whatever templating mechanism the project already has: JSX/TSX components, a framework's template syntax (Vue SFC, Svelte, Astro), or plain HTML `<template>` elements with a slot-fill helper when there is no framework.
-- If the project has no framework and no existing templating convention, introduce one (e.g. `<template>` + a small slot-fill utility) rather than defaulting to JS-composed markup.
-- A single leaf node with dynamic text or a dynamic class (e.g. one `<span>` or `<li>`) is fine as a one-line builder call — the rule targets nested, multi-element structure, not every dynamic DOM write.
+- If the project has no component framework (no React/Vue/Svelte/Astro or similar) and the task involves building DOM structure directly, read `references/framework-less-markup.md` before hand-assembling elements — it covers the `<template>`+slot-fill convention and when a rendered unit is worth promoting to a light-DOM custom element.
+- Otherwise, use the project's existing framework/templating mechanism (JSX/TSX components, a framework's template syntax) — do not introduce framework-less patterns into a project that already has one.

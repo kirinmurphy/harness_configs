@@ -490,55 +490,6 @@ main {
 .markdown a:hover {
   text-decoration: underline;
 }
-.skill-source-view {
-  display: grid;
-  gap: 14px;
-}
-.source-section {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 12px;
-}
-.source-section > :first-child:not(.source-section-label) {
-  margin-top: 0;
-}
-.source-section > :last-child {
-  margin-bottom: 0;
-}
-.source-section-label {
-  margin: 0 0 8px;
-  color: var(--dim);
-  font-size: var(--text-2xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.skill-trigger {
-  border-color: var(--warn-line);
-  background: var(--warn-bg);
-}
-.skill-trigger p {
-  margin: 0;
-  color: var(--warn);
-  line-height: 1.6;
-}
-.skill-name {
-  margin-bottom: 8px;
-}
-.skill-body {
-  background: var(--code-bg);
-}
-.skill-context {
-  background: var(--bg);
-}
-.skill-context ul {
-  margin: 0;
-  padding-left: 1.3em;
-}
-.source-empty {
-  margin: 0;
-  color: var(--off);
-}
 .markdown .md-meta {
   margin: 0.25em 0;
   color: var(--dim);

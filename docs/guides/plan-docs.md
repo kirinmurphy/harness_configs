@@ -16,10 +16,10 @@ Use it when you want to:
 
 There are two pieces:
 
-| Piece | Always available? | What it does |
-| --- | --- | --- |
-| Plans page | Yes | Local `/plans` portal view for discovering, filtering, rendering, and copying plan context |
-| Plan Docs workflows | Optional package | Installs the `/plan-docs` slash command and workflow skill |
+| Piece               | Always available? | What it does                                                                               |
+| ------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
+| Plans page          | Yes               | Local `/plans` portal view for discovering, filtering, rendering, and copying plan context |
+| Plan Docs workflows | Optional package  | Installs the `/plan-docs` slash command and workflow skill                                 |
 
 The Plans page works even when the optional package is disabled. Enabling Plan Docs adds workflow
 prompt buttons such as `/plan-docs start`, `/plan-docs sync`, `/plan-docs review`, and `/plan-docs handoff`.
@@ -132,7 +132,7 @@ After enabling Plan Docs workflows, you also get prompt buttons for:
 
 The browser copies prompts. It does not launch Claude or Codex.
 
-## Enable Plan Docs Workflows
+## Enable /plan-docs Workflows
 
 Enable from the Plans page, Config page, onboarding, or CLI:
 
@@ -166,7 +166,7 @@ Common modes:
 1. Run `roborepo serve` and open `/plans`.
 2. Add a discovery root.
 3. Open a plan and check warnings, tasks, blockers, and review state.
-4. Enable Plan Docs workflows if not already enabled.
+4. Enable /plan-docs workflows if not already enabled.
 5. Copy `/plan-docs start` for the chosen plan.
 6. Let the agent verify the plan against the repo before changing files.
 7. After work, copy `/plan-docs sync` or run `/plan-docs sync` directly.

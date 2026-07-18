@@ -3,16 +3,22 @@
 // insert. Nothing here reads or writes app state directly — app.js wires results into the page
 // and back into state.
 
-import { portalEl as el, portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
+import {
+  portalEl as el,
+  portalTpl as tpl,
+  portalFillSlots as fill,
+} from "/portal/shared/api.js";
 import { FILTER_LABELS, formatDate } from "./state.js";
 
 export function rootChip(root, onRemove) {
   const node = fill(tpl("tpl-root-chip"), { path: root });
-  node.querySelector("[data-slot=remove]").addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    onRemove(root);
-  });
+  node
+    .querySelector("[data-slot=remove]")
+    .addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onRemove(root);
+    });
   return node;
 }
 
@@ -30,7 +36,8 @@ export function filterChipDescriptors(filters, defaults, optionLabelFor) {
     const value = filters[id];
     if (value === defaults[id]) continue;
     const label = id === "search" ? "search" : FILTER_LABELS[id];
-    const chipValue = id === "search" ? `"${value}"` : optionLabelFor(id, value);
+    const chipValue =
+      id === "search" ? `"${value}"` : optionLabelFor(id, value);
     chips.push({ id, label, chipValue });
   }
   return chips;
@@ -70,16 +77,24 @@ export function spinner() {
 
 export function packageBanner(pkg, onEnable) {
   const text = pkg.available
-    ? "Browse plans now, or enable Plan Docs workflows to add /plan-docs prompts."
-    : "Browse plans now. Plan Docs workflow package is not available in this install.";
+    ? "Enable skill to add functionality for managing markdown planning documents."
+    : "";
   const node = fill(tpl("tpl-package-banner"), { text });
+  const details = node.querySelector("[data-slot=details]");
+  details.addEventListener("click", () =>
+    document.getElementById("skill-modal").open("plan-docs", "plan-docs"),
+  );
   const action = node.querySelector("[data-slot=action]");
   action.disabled = !pkg.available;
   action.addEventListener("click", onEnable);
   return node;
 }
 
-export function group(lifecycle, plans, { collapsible, open, onToggle, cardActions }) {
+export function group(
+  lifecycle,
+  plans,
+  { collapsible, open, onToggle, cardActions },
+) {
   if (plans.length === 0) return null;
   const title = `${lifecycle} (${plans.length})`;
   const cards = plans.map((record) => planCardElement(record, cardActions));
@@ -109,9 +124,21 @@ export function drawerContent(doc, drawerActions) {
   const plan = doc.plan.plan;
   const { onError } = drawerActions;
   const actions = [
-    actionButton("Copy Markdown", () => drawerActions.onCopyMarkdown(doc.markdown), onError),
-    actionButton("Copy path", () => drawerActions.onCopyPath(plan.relativePath), onError),
-    actionButton("Repository context", () => drawerActions.onCopyRepoContext(doc.plan), onError),
+    actionButton(
+      "Copy Markdown",
+      () => drawerActions.onCopyMarkdown(doc.markdown),
+      onError,
+    ),
+    actionButton(
+      "Copy path",
+      () => drawerActions.onCopyPath(plan.relativePath),
+      onError,
+    ),
+    actionButton(
+      "Repository context",
+      () => drawerActions.onCopyRepoContext(doc.plan),
+      onError,
+    ),
     actionButton(
       "Portable context",
       () => drawerActions.onCopyPortableContext(doc.plan.key),
@@ -138,9 +165,14 @@ export function drawerContent(doc, drawerActions) {
       dtdd("priority", plan.priority),
       dtdd("next action", plan.nextAction || "(none)"),
       dtdd("review", plan.reviewState),
-      dtdd("tasks", `${plan.taskCounts.complete}/${plan.taskCounts.total} complete`),
+      dtdd(
+        "tasks",
+        `${plan.taskCounts.complete}/${plan.taskCounts.total} complete`,
+      ),
     ],
-    warnings: plan.validation.warnings.length ? plan.validation.warnings : ["none"],
+    warnings: plan.validation.warnings.length
+      ? plan.validation.warnings
+      : ["none"],
     tasks: doc.parsed?.tasks || [],
     actions,
   };
@@ -164,7 +196,6 @@ export function actionButton(label, onClick, onError) {
   button.onError = onError;
   return button;
 }
-
 
 export function dtdd(term, value) {
   return fill(tpl("tpl-dtdd-row"), { term, value });

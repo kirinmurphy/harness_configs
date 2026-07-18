@@ -30,7 +30,7 @@ const state = {
 const COLLAPSIBLE_GROUPS = new Set(["completed"]);
 const openGroups = new Set(); // lifecycle names the user has expanded, preserved across re-renders
 
-const statusEl = document.getElementById("status");
+const toastEl = document.getElementById("toast");
 const groupsEl = document.getElementById("groups");
 const warningsEl = document.getElementById("warnings");
 const bannerEl = document.getElementById("package-banner");
@@ -97,7 +97,6 @@ async function load() {
 
 function applySnapshot(snapshot) {
   state.snapshot = snapshot;
-  statusEl.hidden = true;
   portalSetUpdatedAt();
   rootsPanel.render(snapshot.settings.discoveryRoots);
   controlBarEl.hidden = snapshot.settings.discoveryRoots.length === 0;
@@ -256,13 +255,17 @@ async function copyPrompt(actionName, keys, mode = "repository-aware") {
 }
 
 async function copyText(text) {
-  await portalCopyText(text, () => {
-    statusEl.hidden = false;
-    statusEl.textContent = "copied";
-    setTimeout(() => {
-      statusEl.hidden = true;
-    }, 1200);
-  });
+  await portalCopyText(text, () => showToast("copied"));
+}
+
+let toastTimer;
+function showToast(text) {
+  clearTimeout(toastTimer);
+  toastEl.textContent = text;
+  toastEl.hidden = false;
+  toastTimer = setTimeout(() => {
+    toastEl.hidden = true;
+  }, 1200);
 }
 
 function setPluralCount(node, count, noun) {
@@ -272,8 +275,6 @@ function setPluralCount(node, count, noun) {
 }
 
 function showError(err) {
-  statusEl.hidden = false;
-  statusEl.textContent = "error";
   warningsEl.hidden = false;
   warningsEl.textContent = String(err?.message || err);
 }

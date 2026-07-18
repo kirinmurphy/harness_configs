@@ -3,8 +3,86 @@
   {{HEAD}}
   <body>
     <section id="package-banner" class="package-banner" hidden></section>
+    <section class="control-bar" id="control-bar" hidden>
+      <div class="control-bar-row">
+        <span class="repo-count">
+          Monitoring
+          <span id="plans-count-text"><strong>0</strong> Plans</span>
+          in
+          <span id="repos-count-text"><strong>0</strong> Repos</span>
+          <button type="button" class="control-underline" id="roots-toggle">
+            update
+          </button>
+        </span>
+        <button
+          type="button"
+          class="control-item control-item-action"
+          id="filters-toggle"
+        >
+          <svg
+            class="control-icon"
+            viewBox="0 0 16 16"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M2 3h12L9.5 8.2v4.3L6.5 14V8.2L2 3Z"
+              stroke="currentColor"
+              stroke-width="1.3"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="control-underline">Filters</span>
+        </button>
+      </div>
+      <div id="roots-panel-mount" hidden></div>
+      <div class="filter-chips" id="filter-chips"></div>
+      <div class="filters-body" id="filters-body" hidden>
+        <div class="filter-row filter-row-search">
+          <label for="search">Search</label>
+          <div class="search-field">
+            <input id="search" type="search" placeholder="search plans" />
+          </div>
+        </div>
+        <div class="filter-row">
+          <label for="repository">Repository</label>
+          <select id="repository"></select>
+        </div>
+        <div class="filter-row">
+          <label for="lifecycle">Lifecycle</label>
+          <select id="lifecycle"></select>
+        </div>
+        <div class="filter-row">
+          <label for="priority">Priority</label>
+          <select id="priority"></select>
+        </div>
+        <div class="filter-row">
+          <label for="blocked">Blocked</label>
+          <select id="blocked"></select>
+        </div>
+        <div class="filter-row">
+          <label for="readiness">Readiness</label>
+          <select id="readiness"></select>
+        </div>
+        <div class="filter-row">
+          <label for="review">Review</label>
+          <select id="review"></select>
+        </div>
+        <div class="filter-row">
+          <label for="health">Health</label>
+          <select id="health"></select>
+        </div>
+        <div class="filter-row filter-row-actions">
+          <button id="refresh" type="button">Refresh</button>
+          <button id="next-prompt" type="button" hidden>
+            Copy next prompt
+          </button>
+          <button id="filters-done" type="button">Done</button>
+        </div>
+      </div>
+    </section>
+    <div id="toast" class="toast" hidden></div>
     <main>
-      <div class="page-meta" id="status" hidden></div>
       <div class="settings" id="settings">
         <span class="settings-label" id="settings-label"
           >No Project Folders configured</span
@@ -38,80 +116,6 @@
           </form>
         </div>
       </div>
-      <section class="control-bar" id="control-bar" hidden>
-        <div class="control-bar-row">
-          <span class="control-item" id="plans-count">
-            <svg class="control-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M4 1.5h5.5L12.5 4.5V14.5H4V1.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-              <path d="M9.5 1.5V4.5H12.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-              <path d="M6 8H10.5M6 10.5H10.5M6 5.5H7.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
-            </svg>
-            <span id="plans-count-text"><strong>0</strong> Plans</span>
-          </span>
-          <span class="control-item">
-            <svg class="control-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M2.5 3.5h9M2.5 3.5V9M2.5 9v3.5M2.5 9h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-              <rect x="1" y="1.5" width="3" height="2.4" rx="0.4" stroke="currentColor" stroke-width="1.1"/>
-              <rect x="10" y="2.3" width="3" height="2.4" rx="0.4" stroke="currentColor" stroke-width="1.1"/>
-              <rect x="5" y="7.8" width="3" height="2.4" rx="0.4" stroke="currentColor" stroke-width="1.1"/>
-              <rect x="1" y="10.8" width="3" height="2.4" rx="0.4" stroke="currentColor" stroke-width="1.1"/>
-            </svg>
-            <span id="repos-count-text"><strong>0</strong> Repos</span>
-            <button type="button" class="control-underline" id="roots-toggle">update</button>
-          </span>
-          <button type="button" class="control-item control-item-action" id="filters-toggle">
-            <svg class="control-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M2 3h12L9.5 8.2v4.3L6.5 14V8.2L2 3Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-            </svg>
-            <span class="control-underline">Filters</span>
-          </button>
-        </div>
-        <div id="roots-panel-mount" hidden></div>
-        <div class="filter-chips" id="filter-chips"></div>
-        <div class="filters-body" id="filters-body" hidden>
-          <div class="filter-row filter-row-search">
-            <label for="search">Search</label>
-            <div class="search-field">
-              <input id="search" type="search" placeholder="search plans" />
-            </div>
-          </div>
-          <div class="filter-row">
-            <label for="repository">Repository</label>
-            <select id="repository"></select>
-          </div>
-          <div class="filter-row">
-            <label for="lifecycle">Lifecycle</label>
-            <select id="lifecycle"></select>
-          </div>
-          <div class="filter-row">
-            <label for="priority">Priority</label>
-            <select id="priority"></select>
-          </div>
-          <div class="filter-row">
-            <label for="blocked">Blocked</label>
-            <select id="blocked"></select>
-          </div>
-          <div class="filter-row">
-            <label for="readiness">Readiness</label>
-            <select id="readiness"></select>
-          </div>
-          <div class="filter-row">
-            <label for="review">Review</label>
-            <select id="review"></select>
-          </div>
-          <div class="filter-row">
-            <label for="health">Health</label>
-            <select id="health"></select>
-          </div>
-          <div class="filter-row filter-row-actions">
-            <button id="refresh" type="button">Refresh</button>
-            <button id="next-prompt" type="button" hidden>
-              Copy next prompt
-            </button>
-            <button id="filters-done" type="button">Done</button>
-          </div>
-        </div>
-      </section>
       <section id="warnings" class="warnings" hidden></section>
       <section id="groups" class="groups"></section>
     </main>
@@ -148,8 +152,8 @@
         </ul>
         <p class="modal-note">
           Stops at the first repository found in each branch — nested folders
-          inside a repo aren't re-scanned. Skips node_modules, dist, .venv,
-          and similar.
+          inside a repo aren't re-scanned. Skips node_modules, dist, .venv, and
+          similar.
         </p>
         <p class="modal-note">
           Results are cached per file and refreshed automatically when files
@@ -157,6 +161,7 @@
         </p>
       </div>
     </dialog>
+    <skill-detail-modal id="skill-modal"></skill-detail-modal>
     <plan-drawer id="drawer" hidden>
       <aside class="drawer-panel">
         <div class="drawer-head">
@@ -186,11 +191,19 @@
     </plan-drawer>
     <template id="tpl-package-banner">
       <div id="package-not-installed-banner">
-        <div>
-          <strong>Plan Docs workflows are not enabled. </strong
+        <header>
+          <strong>/plan-docs workflows are not enabled </strong
           ><span data-slot="text"></span>
+        </header>
+        <div class="banner-links">
+          <button type="button" class="banner-link" data-slot="details">
+            View Skill Details
+          </button>
+          <span class="banner-sep">|</span>
+          <button type="button" class="banner-link" data-slot="action">
+            Enable Skill
+          </button>
         </div>
-        <button type="button" data-slot="action">Enable Plan Docs</button>
       </div>
     </template>
     <template id="tpl-root-chip">

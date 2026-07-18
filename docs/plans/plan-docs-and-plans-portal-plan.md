@@ -171,13 +171,13 @@ The page supports:
 
 The page also displays:
 
-> **Plan Docs workflows are not enabled.**
+> **/plan-docs workflows are not enabled.**
 > Browse and copy your planning documents now, or enable Plan Docs to add `/plan-docs` workflows for creating, prioritizing, starting, syncing, reviewing, and handing off work.
 
 Action:
 
 ```text
-Enable Plan Docs
+Enable /plan-docs
 ```
 
 The button delegates to the existing package mutation path.
@@ -255,10 +255,7 @@ Illustrative configuration:
           "type": "slash-command",
           "name": "plan-docs",
           "description": "Create, manage, review, and continue repository plan documents.",
-          "harnesses": [
-            "claude",
-            "codex"
-          ]
+          "harnesses": ["claude", "codex"]
         }
       ]
     }
@@ -734,14 +731,14 @@ The module should expose plain functions and plain data.
 Illustrative interface:
 
 ```js
-discoverRepositories(roots, options)
-discoverPlans(repositories, options)
-readPlan(planRef)
-parsePlan(markdown, context)
-validatePlan(plan)
-buildPlanIndex(plans)
-buildPrompt(action, selection, options)
-movePlan(planRef, lifecycle)
+discoverRepositories(roots, options);
+discoverPlans(repositories, options);
+readPlan(planRef);
+parsePlan(markdown, context);
+validatePlan(plan);
+buildPlanIndex(plans);
+buildPrompt(action, selection, options);
+movePlan(planRef, lifecycle);
 ```
 
 The initial portal should not call `movePlan`; lifecycle movement remains an agent workflow. Keeping the function boundary available allows future direct management without rewriting the domain model.
@@ -809,7 +806,7 @@ State file location should be resolved from RoboRepo's existing `stateRoot`, not
 home-directory path:
 
 ```js
-path.join(stateRoot, "plan-docs", "settings.json")
+path.join(stateRoot, "plan-docs", "settings.json");
 ```
 
 This preserves package-mode and test overrides such as `ROBOREPO_STATE_ROOT`.
@@ -819,18 +816,8 @@ Illustrative content:
 ```json
 {
   "schemaVersion": 1,
-  "discoveryRoots": [
-    "~/projects",
-    "~/work",
-    "~/src/specific-repo"
-  ],
-  "ignoredDirectories": [
-    "node_modules",
-    ".git",
-    "vendor",
-    "dist",
-    "build"
-  ]
+  "discoveryRoots": ["~/projects", "~/work", "~/src/specific-repo"],
+  "ignoredDirectories": ["node_modules", ".git", "vendor", "dist", "build"]
 }
 ```
 
@@ -1832,7 +1819,7 @@ Deliverable:
 Implement:
 
 - package state in Plans API
-- Enable Plan Docs button
+- Enable /plan-docs button
 - workflow prompt builder
 - plan-level workflow actions
 - task-level start prompts

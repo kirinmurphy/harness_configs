@@ -44,12 +44,12 @@
 
   /* Fixed type scale — every font-size in the portal maps to one of these instead of a bare px
    * value, so sizing stays consistent across pages and can be re-tuned in one place. */
-  --text-2xs: 11px; /* fine print: timestamps, meta, badges */
-  --text-xs: 12px; /* secondary: labels, chips, table cells */
-  --text-sm: 13px; /* body default: card text, list items */
-  --text-md: 15px; /* emphasized body: card titles, nav */
-  --text-lg: 17px; /* section headers, drawer title */
-  --text-xl: 20px; /* page-level headings */
+  --text-2xs: 12px; /* fine print: timestamps, meta, badges */
+  --text-xs: 13px; /* secondary: labels, chips, table cells */
+  --text-sm: 14px; /* body default: card text, list items */
+  --text-md: 16px; /* emphasized body: card titles, nav */
+  --text-lg: 20px; /* section headers, drawer title */
+  --text-xl: 24px; /* page-level headings */
 }
 :root[data-theme="light"] {
   color-scheme: light;

@@ -4,21 +4,11 @@
   <body>
     <section id="package-banner" class="package-banner" hidden></section>
     <main>
-      <div class="page-meta" id="status"></div>
+      <div class="page-meta" id="status" hidden></div>
       <div class="settings" id="settings">
-        <div class="settings-header">
-          <span class="settings-label" id="settings-label"
-            >No Project Folders configured</span
-          >
-          <button
-            id="roots-toggle"
-            type="button"
-            class="settings-toggle"
-            hidden
-          >
-            View/Add Folders
-          </button>
-        </div>
+        <span class="settings-label" id="settings-label"
+          >No Project Folders configured</span
+        >
         <div class="settings-body" id="settings-body">
           <div id="roots"></div>
           <form id="root-form">
@@ -42,17 +32,42 @@
                 placeholder="/path/to/repo or /path/to/projects"
               />
               <button type="submit" id="root-submit">Add Folder</button>
-              <button id="roots-done" type="button">Done</button>
+              <button id="roots-done" type="button" hidden>Done</button>
             </div>
             <div class="item-err" id="root-form-err"></div>
           </form>
         </div>
       </div>
-      <section class="filters" id="filters">
-        <div class="filters-summary" id="filters-summary">
-          <div class="filter-chips" id="filter-chips"></div>
-          <button id="filters-toggle" type="button">Add filters</button>
+      <section class="control-bar" id="control-bar" hidden>
+        <div class="control-bar-row">
+          <span class="control-item" id="plans-count">
+            <svg class="control-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M4 1.5h5.5L12.5 4.5V14.5H4V1.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+              <path d="M9.5 1.5V4.5H12.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+              <path d="M6 8H10.5M6 10.5H10.5M6 5.5H7.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+            </svg>
+            <span id="plans-count-text"><strong>0</strong> Plans</span>
+          </span>
+          <span class="control-item">
+            <svg class="control-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M2.5 3.5h9M2.5 3.5V9M2.5 9v3.5M2.5 9h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              <rect x="1" y="1.5" width="3" height="2.4" rx="0.4" stroke="currentColor" stroke-width="1.1"/>
+              <rect x="10" y="2.3" width="3" height="2.4" rx="0.4" stroke="currentColor" stroke-width="1.1"/>
+              <rect x="5" y="7.8" width="3" height="2.4" rx="0.4" stroke="currentColor" stroke-width="1.1"/>
+              <rect x="1" y="10.8" width="3" height="2.4" rx="0.4" stroke="currentColor" stroke-width="1.1"/>
+            </svg>
+            <span id="repos-count-text"><strong>0</strong> Repos</span>
+            <button type="button" class="control-underline" id="roots-toggle">update</button>
+          </span>
+          <button type="button" class="control-item control-item-action" id="filters-toggle">
+            <svg class="control-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M2 3h12L9.5 8.2v4.3L6.5 14V8.2L2 3Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+            </svg>
+            <span class="control-underline">Filters</span>
+          </button>
         </div>
+        <div id="roots-panel-mount" hidden></div>
+        <div class="filter-chips" id="filter-chips"></div>
         <div class="filters-body" id="filters-body" hidden>
           <div class="filter-row filter-row-search">
             <label for="search">Search</label>

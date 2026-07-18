@@ -19,7 +19,6 @@ import {
   optionCounts,
   optionLabel,
   repositoryContext,
-  statusText,
 } from "./state.js";
 
 const state = {
@@ -37,11 +36,19 @@ const warningsEl = document.getElementById("warnings");
 const bannerEl = document.getElementById("package-banner");
 const drawer = document.getElementById("drawer");
 const nextPrompt = document.getElementById("next-prompt");
-const filtersEl = document.getElementById("filters");
+const controlBarEl = document.getElementById("control-bar");
+const filtersToggleEl = document.getElementById("filters-toggle");
 const filtersBodyEl = document.getElementById("filters-body");
 const filterChipsEl = document.getElementById("filter-chips");
+const plansCountTextEl = document.getElementById("plans-count-text");
+const reposCountTextEl = document.getElementById("repos-count-text");
 
-const rootsPanel = createRootsPanel({ onSnapshot: applySnapshot, onError: showError });
+// Only one of {roots panel, filter panel} is open at a time — each setter closes the other.
+const rootsPanel = createRootsPanel({
+  onSnapshot: applySnapshot,
+  onError: showError,
+  onExpand: () => setFiltersExpanded(false),
+});
 createInfoModal();
 
 bindStaticControls();
@@ -60,7 +67,7 @@ function bindStaticControls() {
       render();
     });
   }
-  document.getElementById("filters-toggle").addEventListener("click", () => setFiltersExpanded(true));
+  filtersToggleEl.addEventListener("click", () => setFiltersExpanded(filtersBodyEl.hidden));
   document.getElementById("filters-done").addEventListener("click", () => setFiltersExpanded(false));
   filterChipsEl.addEventListener("chip-remove", (event) => resetFilter(event.detail));
 }
@@ -68,7 +75,7 @@ function bindStaticControls() {
 function setFiltersExpanded(expanded) {
   state.filtersExpanded = expanded;
   filtersBodyEl.hidden = !expanded;
-  filtersEl.classList.toggle("expanded", expanded);
+  if (expanded) rootsPanel.setExpanded(false);
 }
 
 function resetFilter(id) {
@@ -90,10 +97,12 @@ async function load() {
 
 function applySnapshot(snapshot) {
   state.snapshot = snapshot;
-  statusEl.textContent = statusText(snapshot);
+  statusEl.hidden = true;
   portalSetUpdatedAt();
   rootsPanel.render(snapshot.settings.discoveryRoots);
-  filtersEl.hidden = snapshot.settings.discoveryRoots.length === 0;
+  controlBarEl.hidden = snapshot.settings.discoveryRoots.length === 0;
+  setPluralCount(plansCountTextEl, snapshot.plans.length, "Plan");
+  setPluralCount(reposCountTextEl, snapshot.repositories.length, "Repo");
   populateFilters(snapshot);
   render();
 }
@@ -248,14 +257,22 @@ async function copyPrompt(actionName, keys, mode = "repository-aware") {
 
 async function copyText(text) {
   await portalCopyText(text, () => {
+    statusEl.hidden = false;
     statusEl.textContent = "copied";
     setTimeout(() => {
-      if (state.snapshot) statusEl.textContent = statusText(state.snapshot);
+      statusEl.hidden = true;
     }, 1200);
   });
 }
 
+function setPluralCount(node, count, noun) {
+  const strong = document.createElement("strong");
+  strong.textContent = count;
+  node.replaceChildren(strong, ` ${noun}${count === 1 ? "" : "s"}`);
+}
+
 function showError(err) {
+  statusEl.hidden = false;
   statusEl.textContent = "error";
   warningsEl.hidden = false;
   warningsEl.textContent = String(err?.message || err);

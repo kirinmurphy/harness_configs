@@ -176,10 +176,6 @@ export function repositoryContext(record) {
   return `Review the plan at \`${record.plan.relativePath}\` in this repository.\n\nFocus on:\n- the current next action\n- unresolved tasks\n- blockers\n- whether the plan still matches the implementation\n\nDo not assume the document is current. Verify relevant claims against the repository.`;
 }
 
-export function statusText(snapshot) {
-  return `${snapshot.plans.length} plans · ${snapshot.repositories.length} repos`;
-}
-
 export function formatDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "unknown" : date.toLocaleString();

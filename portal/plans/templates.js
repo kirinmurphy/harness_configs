@@ -42,7 +42,7 @@ export function selectOption([value, label]) {
 
 export function emptyState(snapshot) {
   if (!snapshot.settings.discoveryRoots.length) {
-    return null; // the "No Project Folders configured" message already lives in the settings header
+    return null; // the "No Project Folders configured" message already lives in the .settings block
   }
   if (snapshot.plans.length === 0) {
     return fill(tpl("tpl-empty-state"), {

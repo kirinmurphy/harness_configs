@@ -17,23 +17,73 @@ main {
   background: color-mix(in srgb, var(--accent) 6%, var(--panel));
   /* border-color: var(--accent); */
 }
-.filters {
+/* Control bar: Plans/Repos/Filters row + persistent chips + whichever panel is open. Slightly
+ * heavier border than plain --panel sections so it reads as a defined control surface. */
+.control-bar {
   border: 1px solid var(--line);
   background: var(--panel);
   border-radius: 8px;
-  padding: 12px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
 }
-.filters-summary {
+.control-bar-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+}
+.control-bar-row > * + *::before {
+  content: "•";
+  margin-right: 10px;
+  color: var(--line);
+}
+.control-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dim);
+  font-size: var(--text-md);
+}
+.control-item strong {
+  color: var(--ink);
+}
+.control-item-action {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.control-item-action:hover {
+  color: var(--ink);
+}
+.control-icon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+.control-underline {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.control-underline:hover {
+  background: none;
+  color: var(--ink);
 }
 .filter-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  flex: 1;
+}
+.filter-chips:empty {
+  display: none;
 }
 .filter-chip {
   display: inline-flex;
@@ -157,25 +207,23 @@ button:disabled {
   cursor: default;
   opacity: 0.6;
 }
-.settings-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-/* Matches .empty-state h2's weight/size in both states, so "No Project Folders configured" and
- * "Project Folders (N selected)" read as the same heading style. */
+/* Matches .empty-state h2's weight/size, so "No Project Folders configured" reads as the same
+ * heading style. Only shown in the true-empty state — once roots exist, the row-1 "N Repos"
+ * control item takes over and this whole block relocates into the control bar (unlabeled). */
 .settings-label {
+  display: block;
+  margin-bottom: 10px;
   font-size: var(--text-md);
   font-weight: 600;
   color: var(--ink);
-  flex: 0 0 auto;
-}
-.settings-toggle {
-  margin-left: auto;
 }
 .settings-body {
   margin-top: 10px;
+}
+#roots-panel-mount:not([hidden]) .settings-body {
+  margin-top: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 #roots {
   margin: 0 0 12px;

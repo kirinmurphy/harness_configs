@@ -186,12 +186,12 @@ nav a.active {
   color: var(--ink);
   border-color: var(--line);
 }
-/* Full-page loading overlay: shown until each page's first data fetch resolves, then hidden for
- * the rest of that page's life (subsequent polls never bring it back). */
+/* Loading state: shown until each page's first data fetch resolves, then hidden for the rest of
+ * that page's life (subsequent polls never bring it back). Occupies a fixed-height block in normal
+ * flow rather than a full-viewport overlay, so the sticky header and footer stay visible while the
+ * page's own content loads underneath. */
 .page-loading {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
+  height: 60vh;
   display: flex;
   align-items: center;
   justify-content: center;

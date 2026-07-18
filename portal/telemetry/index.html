@@ -1,24 +1,6 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>roborepo telemetry</title>
-    <script>
-      // Set theme before first paint to avoid a flash. Default dark.
-      (function () {
-        try {
-          var t = localStorage.getItem("roborepo-theme");
-          document.documentElement.dataset.theme =
-            t === "light" ? "light" : "dark";
-        } catch (e) {
-          document.documentElement.dataset.theme = "dark";
-        }
-      })();
-    </script>
-    <link rel="stylesheet" href="/portal/shared/base.css" />
-    <link rel="stylesheet" href="/portal/telemetry/styles.css" />
-  </head>
+  {{HEAD}}
   <body>
     <div class="filterbar">
       <div class="ranges" id="ranges">
@@ -221,16 +203,14 @@
         </div>
       </div>
     </template>
-    <div class="modal-back" id="modalback">
-      <div class="modal" id="modal">
-        <button class="closebtn" id="modalclose">×</button>
-        <h3 id="modaltitle"></h3>
-        <div class="sub" id="modalsub"></div>
-        <dl id="modalbody"></dl>
-        <div class="modalactions" id="modalactions"></div>
-        <div class="modalextra" id="modalextra"></div>
-      </div>
-    </div>
+    <dialog id="telemetry-modal">
+      <button class="closebtn" id="modalclose">×</button>
+      <h3 id="modaltitle"></h3>
+      <div class="sub" id="modalsub"></div>
+      <dl id="modalbody"></dl>
+      <div class="modalactions" id="modalactions"></div>
+      <div class="modalextra" id="modalextra"></div>
+    </dialog>
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/telemetry/app.js" type="module"></script>
   </body>

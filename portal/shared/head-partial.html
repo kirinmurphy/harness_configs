@@ -1,0 +1,18 @@
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>roborepo {{TITLE}}</title>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("roborepo-theme");
+        document.documentElement.dataset.theme =
+          t === "light" ? "light" : "dark";
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/portal/shared/base.css" />
+  <link rel="stylesheet" href="{{STYLE_HREF}}" />
+</head>

@@ -37,8 +37,11 @@ const PORTAL_PAGES = window.ROBOREPO_PORTAL.pages;
     );
   }
   if (!document.querySelector(".page-loading")) {
-    document.body.insertAdjacentHTML(
-      "afterbegin",
+    // Inserted right after the header (not "afterbegin" on body) so the loading block sits in
+    // normal flow below the sticky header, not on top of it — the header/footer chrome stays
+    // visible while this occupies its own allocated space.
+    document.querySelector(".portal-header").insertAdjacentHTML(
+      "afterend",
       '<div class="page-loading" id="page-loading"><span class="loading-spinner"></span></div>',
     );
   }

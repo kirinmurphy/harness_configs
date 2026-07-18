@@ -14,6 +14,7 @@
   --line: #2d333b;
   --ink: #e6edf3;
   --dim: #a3adb8;
+  --active: #333;
   --accent: #58a6ff;
   --ok: #3fb950;
   --off: #484f58;
@@ -56,6 +57,7 @@
   --line: #d0d7de;
   --ink: #1f2328;
   --dim: #656d76;
+  --active: #ddd;
   --accent: #0969da;
   --ok: #1a7f37;
   --off: #afb8c1;
@@ -98,15 +100,24 @@ body {
 }
 /* Common header, footer, and nav across every portal page. */
 .portal-header {
-  padding: 14px 20px;
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
-  min-height: 54px;
 }
 
-.portal-header,
-.portal-header > *,
-.portal-header .logo-wrapper > * {
-  display: inline-block;
+.portal-header .inner {
+  display: flex;
+}
+
+.portal-header .logo-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.25rem;
 }
 
 .portal-header h1 {
@@ -122,24 +133,29 @@ body {
 }
 nav {
   display: flex;
-  gap: 2px;
   margin-left: auto;
 }
 nav a {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   color: var(--dim);
   font-size: var(--text-xs);
   text-decoration: none;
-  padding: 3px 10px;
-  border-radius: 5px;
-  border: 1px solid transparent;
+  padding: 0.25rem 1rem;
 }
+
+nav a:not(:last-of-type) {
+  border-right: 1px solid var(--line);
+}
+
 nav a:hover {
   color: var(--ink);
   border-color: var(--line);
 }
 nav a.active {
   color: var(--ink);
-  background: var(--panel);
+  background: var(--active);
   border-color: var(--line);
 }
 .portal-footer {

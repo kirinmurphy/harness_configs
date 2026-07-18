@@ -18,11 +18,13 @@ const PORTAL_PAGES = window.ROBOREPO_PORTAL.pages;
     document.body.insertAdjacentHTML(
       "afterbegin",
       '<header class="portal-header">' +
+        '<div class="inner">' +
         '<div class="logo-wrapper">' +
         "<h1>roborepo</h1>" +
         '<span id="portal-updated" class="portal-updated">updated --</span>' +
         "</div>" +
         '<nav id="nav" aria-label="Portal sections"></nav>' +
+        "</div>" +
         "</header>",
     );
   }
@@ -30,7 +32,6 @@ const PORTAL_PAGES = window.ROBOREPO_PORTAL.pages;
     document.body.insertAdjacentHTML(
       "beforeend",
       '<footer class="portal-footer">' +
-        "<span>local portal</span>" +
         '<button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle theme"></button>' +
         "</footer>",
     );

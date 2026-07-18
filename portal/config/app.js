@@ -5,13 +5,9 @@
 // client-side reimplementation to drift from the server. Items carry web fields (toggle, inspect,
 // urls, badges) and terminal fields (hint); each renderer reads what it needs.
 
-import { portalEl as el, portalGetJson, portalPostJson, portalSetUpdatedAt } from "/portal/shared/api.js";
+import { portalEl as el, portalGetJson, portalPostJson, portalSetUpdatedAt, portalHideLoading, portalTpl as tpl } from "/portal/shared/api.js";
 
 // --------------------------------------------------------------------------- render helpers
-
-function tpl(id) {
-  return document.getElementById(id).content.firstElementChild.cloneNode(true);
-}
 
 function slot(root, name) {
   return root.querySelector(`[data-slot="${name}"]`);
@@ -136,25 +132,14 @@ function toggleSwitch(item, statusSlot) {
     input.disabled = true;
     statusSlot.className = "item-status";
     statusSlot.textContent = "applying…";
-    document.getElementById("status").textContent =
-      "applying " + item.label + "…";
     try {
       const data = await portalPostJson(TOGGLE_ENDPOINT[item.toggle], { id: item.id, enabled });
-      if (data.config) {
-        statusSlot.textContent = "saved";
-        applySnapshot(data.config); // re-render from the authoritative post-mutation snapshot
-        document.getElementById("status").textContent =
-          "saved " + item.label + " " + new Date().toLocaleTimeString();
-      } else {
-        statusSlot.textContent = "saved";
-        document.getElementById("status").textContent =
-          "saved " + item.label + " " + new Date().toLocaleTimeString();
-      }
+      statusSlot.textContent = "saved";
+      if (data.config) applySnapshot(data.config); // re-render from the authoritative post-mutation snapshot
     } catch (e) {
       input.checked = !enabled; // revert
       statusSlot.className = "item-status error";
       statusSlot.textContent = e.message;
-      document.getElementById("status").textContent = "error: " + e.message;
     } finally {
       input.disabled = false;
     }
@@ -345,26 +330,21 @@ function renderStandardSection(section) {
       labelEl.title = "view source";
       labelEl.addEventListener("click", () => openSourceModal(item.inspect));
     }
+    // Info URL (GitHub / docs / PyPI): a single inline icon on the label row, opening the FIRST
+    // urls[] entry. Items with more than one URL only expose that first one via the portal — any
+    // additional related links must be reachable from that page instead (e.g. its README).
+    if (item.urls && item.urls.length) {
+      const link = el("a", { class: "item-link-icon", title: item.urls[0].url }, "↗");
+      link.href = item.urls[0].url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      slot(row, "label").insertAdjacentElement("afterend", link);
+    }
     slot(row, "badges").replaceChildren(
       ...(item.badges || []).map((b) => badge(b)),
     );
     setOptionalText(slot(row, "description"), item.description);
     setOptionalText(slot(row, "hint"), item.hint);
-    // Info URLs (GitHub / docs / PyPI) as inline links.
-    const urlRow = slot(row, "urls");
-    if (item.urls && item.urls.length) {
-      urlRow.replaceChildren(
-        ...item.urls.map((u) => {
-          const a = el("a", { class: "url-link" }, u.url);
-          a.href = u.url;
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
-          return a;
-        }),
-      );
-    } else {
-      urlRow.hidden = true;
-    }
     const errSlot = slot(row, "status");
     const toggleSlot = slot(row, "toggle");
     if (item.toggle) toggleSlot.replaceWith(toggleSwitch(item, errSlot));
@@ -437,15 +417,15 @@ function applySnapshot(snap) {
     last = sig;
     render(snap);
   }
-  document.getElementById("status").textContent =
-    "updated " + new Date().toLocaleTimeString();
   portalSetUpdatedAt();
 }
 async function load() {
   try {
     applySnapshot(await portalGetJson("/api/config"));
   } catch (e) {
-    document.getElementById("status").textContent = "error: " + e.message;
+    console.error(e);
+  } finally {
+    portalHideLoading();
   }
 }
 

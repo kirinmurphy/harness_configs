@@ -41,6 +41,11 @@ attribute is needed).
    active link. If the global is missing (e.g. a page opened directly as a file, or a broken
    injection), `theme.js` throws `"portal manifest missing"` immediately instead of silently
    rendering an empty nav.
+5. `theme.js` also injects a full-page loading overlay (`#page-loading`) alongside the header and
+   footer. Each page hides it (via `portalHideLoading()`) once its own first data fetch resolves;
+   it is not shown again on later polls. Page-specific status/metadata (plan counts, telemetry
+   stats, etc.) is ordinary in-page markup scoped near what it describes — not a persistent status
+   bar.
 
 ## Adding a Page
 
@@ -69,6 +74,8 @@ it:
 | `portalPostJson(path, body)` | Same, but POST with `Content-Type: application/json` and `X-Roborepo-Portal-Token` attached from `portalConfig().token`. Also throws if the response body has `ok: false`. |
 | `portalCopyText(text, onCopied?)` | Wraps `navigator.clipboard.writeText`; swallows clipboard-blocked errors; calls `onCopied()` on success. |
 | `portalSetUpdatedAt(date?)` | Updates the `#portal-updated` header chip. |
+| `portalHideLoading()` | Hides the shared full-page loading overlay (`#page-loading`, injected by `theme.js`). Call once after a page's first data fetch resolves — success or handled error — never again after that. |
+| `portalTpl(id)` | Clones a `<template>` element's first child by id. The shared render pattern for dynamically-injected markup, so pages keep an HTML anchor instead of building raw strings. |
 | `portalEl(tag, attrs, ...children)` | Small DOM builder: `attrs.class` sets `className`, other keys become attributes; children can be strings or nodes. |
 
 ### Adding a Read API

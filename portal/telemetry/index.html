@@ -20,7 +20,6 @@
     <link rel="stylesheet" href="/portal/telemetry/styles.css" />
   </head>
   <body>
-    <div class="page-status meta" id="meta">loading…</div>
     <div class="filterbar">
       <div class="ranges" id="ranges">
         <span class="flabel">time range</span>
@@ -35,6 +34,7 @@
         </div>
       </div>
     </div>
+    <div class="page-meta stat-row" id="meta"></div>
     <main>
       <!-- TIER 1 — conclusions & action items (the headline; always first) -->
       <section class="panel" id="insightspanel">
@@ -194,6 +194,12 @@
         </section>
       </details>
     </main>
+    <template id="tpl-stat">
+      <div class="stat-item">
+        <div class="stat-label" data-slot="label"></div>
+        <div class="stat-value" data-slot="value"></div>
+      </div>
+    </template>
     <div class="modal-back" id="modalback">
       <div class="modal" id="modal">
         <button class="closebtn" id="modalclose">×</button>

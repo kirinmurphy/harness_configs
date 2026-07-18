@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildPlanSnapshot,
   buildPrompt,
+  discoverRepositories,
   parseFrontmatter,
   readPlanDocument,
   writePlanSettings,
@@ -104,6 +105,46 @@ Run targeted checks.
   assert.equal(portalSnapshot.repositories[0].root, undefined);
   assert.equal(portalSnapshot.plans[0].absolutePath, undefined);
   assert.equal(portalSnapshot.plans[0].repository.root, undefined);
+
+  // --- repository discovery traversal (recursive walk rewrite) ---------------------------------
+  const traversalRoot = path.join(tempRoot, "traversal");
+
+  // Nested repo discovery: a repo 2+ levels deep under the discovery root must be found.
+  const nested = path.join(traversalRoot, "group-a", "group-b", "nested-repo");
+  fs.mkdirSync(nested, { recursive: true });
+  fs.writeFileSync(path.join(nested, ".git"), "gitdir: nowhere\n");
+
+  // Stop-at-first-.git: a subfolder of a repo must NOT be double-counted as its own repo root,
+  // even though it satisfies candidateRepository's docs/plans check.
+  fs.mkdirSync(path.join(nested, "docs", "plans"), { recursive: true });
+  fs.mkdirSync(path.join(nested, "vendor", "docs", "plans"), { recursive: true }); // also blacklist-covered
+
+  // Blacklist bail-out: a repo living inside an ignored directory name must not be discovered.
+  const blacklisted = path.join(traversalRoot, "node_modules", "should-not-be-found");
+  fs.mkdirSync(blacklisted, { recursive: true });
+  fs.writeFileSync(path.join(blacklisted, ".git"), "gitdir: nowhere\n");
+  const cacheBlacklisted = path.join(traversalRoot, ".cache", "also-should-not-be-found");
+  fs.mkdirSync(cacheBlacklisted, { recursive: true });
+  fs.writeFileSync(path.join(cacheBlacklisted, ".git"), "gitdir: nowhere\n");
+
+  const traversalSettings = { discoveryRoots: [traversalRoot], ignoredDirectories: undefined };
+  const discovery = discoverRepositories(traversalSettings);
+  assert.equal(discovery.repositories.length, 1, "expected exactly one discovered repo (nested-repo), got: " + JSON.stringify(discovery.repositories.map((r) => r.name)));
+  assert.equal(discovery.repositories[0].name, "nested-repo");
+  assert.equal(discovery.truncated, false);
+
+  // Depth cap: a repo deeper than DISCOVERY_MAX_DEPTH (6) below the root must not be found.
+  const deepRoot = path.join(tempRoot, "deep");
+  const tooDeepSegments = Array.from({ length: 8 }, (_, i) => `d${i}`);
+  const tooDeepRepo = path.join(deepRoot, ...tooDeepSegments);
+  fs.mkdirSync(tooDeepRepo, { recursive: true });
+  fs.writeFileSync(path.join(tooDeepRepo, ".git"), "gitdir: nowhere\n");
+  const deepDiscovery = discoverRepositories({ discoveryRoots: [deepRoot], ignoredDirectories: undefined });
+  assert.equal(deepDiscovery.repositories.length, 0, "repo beyond the depth cap should not be found");
+
+  // Time-budget truncation is not exercised here: a real test would need a tree slow enough to
+  // exceed DISCOVERY_TIME_BUDGET_MS, which is either flaky (timing-dependent) or requires an
+  // impractically large synthetic tree. Not covered — verify manually if the budget logic changes.
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }

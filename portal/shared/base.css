@@ -14,6 +14,7 @@
   --line: #2d333b;
   --ink: #e6edf3;
   --dim: #a3adb8;
+  --desc-dim: #c3cad3;
   --active: #333;
   --accent: #58a6ff;
   --ok: #3fb950;
@@ -57,6 +58,7 @@
   --line: #d0d7de;
   --ink: #1f2328;
   --dim: #656d76;
+  --desc-dim: #454f58;
   --active: #ddd;
   --accent: #0969da;
   --ok: #1a7f37;
@@ -184,9 +186,37 @@ nav a.active {
   color: var(--ink);
   border-color: var(--line);
 }
-.page-status {
+/* Full-page loading overlay: shown until each page's first data fetch resolves, then hidden for
+ * the rest of that page's life (subsequent polls never bring it back). */
+.page-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.page-loading.hidden {
+  display: none;
+}
+.page-loading .loading-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  animation: page-loading-spin 0.7s linear infinite;
+}
+@keyframes page-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* Ordinary in-page status/meta line, scoped near the content it describes (NOT a persistent
+ * top bar) — used by /config, /plans, /telemetry for their own load-scoped status text. */
+.page-meta {
   padding: 10px 20px;
-  border-bottom: 1px solid var(--line);
   color: var(--dim);
   font-size: var(--text-xs);
 }

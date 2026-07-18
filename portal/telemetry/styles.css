@@ -1,6 +1,11 @@
   /* Palette, reset, and header/nav/footer/theme-toggle chrome live in /portal/shared/base.css.
      This file holds only telemetry-page-specific styles. */
   header .meta { color:var(--dim); font-size:var(--text-xs); }
+  /* Meta stat row: label/value pairs, replacing the old single dot-separated status string. */
+  .stat-row { display:flex; flex-wrap:wrap; gap:20px; padding:12px 20px; }
+  .stat-item { display:flex; flex-direction:column; gap:2px; }
+  .stat-label { color:var(--dim); font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.06em; }
+  .stat-value { color:var(--ink); font-size:var(--text-md); font-variant-numeric:tabular-nums; }
   main { padding:20px; display:grid; gap:20px; max-width:1200px; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; }
   .panel h2 { font-size:var(--text-xs); text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 12px; }

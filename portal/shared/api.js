@@ -46,6 +46,18 @@ export function portalSetUpdatedAt(date = new Date()) {
     : "updated " + value.toLocaleTimeString();
 }
 
+// Hides the full-page loading overlay after a page's first data fetch resolves (success or
+// handled error) — never called again after that, so later polls don't re-show it.
+export function portalHideLoading() {
+  document.getElementById("page-loading")?.classList.add("hidden");
+}
+
+// Clones a <template>'s first child by id — the shared render pattern for dynamically-injected
+// markup, so pages keep an HTML anchor for new elements instead of building raw strings.
+export function portalTpl(id) {
+  return document.getElementById(id).content.firstElementChild.cloneNode(true);
+}
+
 export function portalEl(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {

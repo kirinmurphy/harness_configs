@@ -6,10 +6,17 @@ import { spawnSync } from "node:child_process";
 
 export const LIFECYCLES = new Set(["backlog", "active", "completed", "archived"]);
 export const PRIORITIES = new Set(["high", "medium", "low", "none"]);
-const DEFAULT_IGNORED = new Set(["node_modules", ".git", "vendor", "dist", "build"]);
+const DEFAULT_IGNORED = new Set([
+  "node_modules", ".git", "vendor", "dist", "build",
+  ".cache", "coverage", ".next", ".venv", "__pycache__",
+]);
 const MAX_DOC_BYTES = 1024 * 1024;
 const MAX_REPOS = 250;
 const MAX_PLANS_PER_REPO = 500;
+// Repo-discovery traversal limits — guard against a misconfigured discovery root (e.g. $HOME or
+// /) walking indefinitely or across the whole filesystem.
+const DISCOVERY_MAX_DEPTH = 6;
+const DISCOVERY_TIME_BUDGET_MS = 2500;
 
 // Per-file record cache keyed by absolute path. Each entry is invalidated the moment a file's own
 // mtime changes, so edits are always picked up — this only skips the expensive re-parse + git
@@ -67,7 +74,66 @@ export function discoverRepositories(settings) {
   const repositories = [];
   const errors = [];
   const seen = new Set();
+  const visitedReal = new Set(); // realpath'd dirs already descended into (symlink-cycle guard)
   let truncated = false;
+  const deadline = Date.now() + DISCOVERY_TIME_BUDGET_MS;
+
+  const addRepo = (candidate) => {
+    if (repositories.length >= MAX_REPOS) {
+      truncated = true;
+      return true; // stop
+    }
+    const repo = candidateRepository(candidate);
+    if (repo && !seen.has(repo.root)) {
+      seen.add(repo.root);
+      repositories.push(repo);
+    }
+    return false;
+  };
+
+  // Recursive walk from `dir`. Stops descending the moment a folder is itself an eligible repo
+  // (has a .git entry) — a repo's internal subfolders are never re-scanned as repo candidates.
+  const walk = (dir, depth) => {
+    if (truncated) return;
+    if (Date.now() > deadline) {
+      truncated = true;
+      return;
+    }
+    if (depth > DISCOVERY_MAX_DEPTH) return;
+    let real;
+    try {
+      real = fs.realpathSync(dir);
+    } catch {
+      return;
+    }
+    if (visitedReal.has(real)) return; // symlink cycle guard
+    visitedReal.add(real);
+
+    // A folder counts as an eligible repo root the moment it has EITHER a .git entry or a
+    // docs/plans dir (matches the pre-existing candidateRepository contract) — stop descending
+    // past it either way so a repo's own subfolders are never re-scanned as repo candidates.
+    if (fs.existsSync(path.join(dir, ".git")) || fs.existsSync(path.join(dir, "docs", "plans"))) {
+      addRepo(dir);
+      return;
+    }
+
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (err) {
+      // Permission-denied or otherwise unreadable mid-walk: don't abort the whole scan, just skip
+      // this branch (matches walkPlans()'s existing error-tolerant pattern).
+      errors.push({ root: dir, error: String(err?.message || err) });
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith(".")) continue;
+      if (ignored.has(entry.name)) continue;
+      if (truncated) return;
+      walk(path.join(dir, entry.name), depth + 1);
+    }
+  };
 
   for (const rootText of settings.discoveryRoots || []) {
     let root;
@@ -77,16 +143,7 @@ export function discoverRepositories(settings) {
       errors.push({ root: rootText, error: String(err?.message || err) });
       continue;
     }
-    for (const candidate of [root, ...immediateChildren(root, ignored)]) {
-      if (repositories.length >= MAX_REPOS) {
-        truncated = true;
-        break;
-      }
-      const repo = candidateRepository(candidate);
-      if (!repo || seen.has(repo.root)) continue;
-      seen.add(repo.root);
-      repositories.push(repo);
-    }
+    walk(root, 0);
   }
 
   return { repositories, errors, truncated };
@@ -167,20 +224,6 @@ export function buildPrompt(action, selectedPlans, { mode = "repository-aware" }
     "",
     "Verify material claims against the current repository before changing lifecycle or marking work complete.",
   ].join("\n");
-}
-
-function immediateChildren(root, ignored) {
-  let entries = [];
-  try {
-    entries = fs.readdirSync(root, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  return entries
-    .filter((entry) => entry.isDirectory())
-    .filter((entry) => !entry.name.startsWith("."))
-    .filter((entry) => !ignored.has(entry.name))
-    .map((entry) => path.join(root, entry.name));
 }
 
 function candidateRepository(dir) {

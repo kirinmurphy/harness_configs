@@ -18,32 +18,43 @@
     <link rel="stylesheet" href="/portal/plans/styles.css" />
   </head>
   <body>
-    <div class="page-status" id="status">loading...</div>
+    <section id="package-banner" class="package-banner" hidden></section>
     <main>
-      <section class="toolbar">
-        <input id="search" type="search" placeholder="search plans" />
-        <select id="repository"></select>
-        <select id="lifecycle"></select>
-        <select id="priority"></select>
-        <select id="blocked"></select>
-        <select id="readiness"></select>
-        <select id="review"></select>
-        <select id="health"></select>
-        <button id="refresh" type="button">Refresh</button>
-        <button id="next-prompt" type="button" hidden>Copy next prompt</button>
-      </section>
+      <div class="page-meta" id="status"></div>
       <details class="settings" id="settings">
         <summary>
-          <span class="settings-label">Discovery roots</span>
+          <span class="settings-label">Project Folders</span>
           <div id="roots"></div>
         </summary>
         <form id="root-form">
-          <input id="root-input" placeholder="/path/to/repo or /path/to/projects" />
-          <button type="submit">Add root</button>
-          <button id="roots-done" type="button">Done</button>
+          <label for="root-input">Look for docs in:</label>
+          <div class="root-form-row">
+            <input id="root-input" placeholder="/path/to/repo or /path/to/projects" />
+            <button type="submit">Add Root</button>
+            <button id="roots-done" type="button">Done</button>
+          </div>
+          <div class="item-err" id="root-form-err"></div>
         </form>
       </details>
-      <section id="package-banner" class="package-banner" hidden></section>
+      <section class="filters" id="filters">
+        <div class="filters-summary" id="filters-summary">
+          <div class="filter-chips" id="filter-chips"></div>
+          <button id="filters-toggle" type="button">Add filters</button>
+        </div>
+        <div class="filters-body" id="filters-body" hidden>
+          <input id="search" type="search" placeholder="search plans" />
+          <select id="repository"></select>
+          <select id="lifecycle"></select>
+          <select id="priority"></select>
+          <select id="blocked"></select>
+          <select id="readiness"></select>
+          <select id="review"></select>
+          <select id="health"></select>
+          <button id="refresh" type="button">Refresh</button>
+          <button id="next-prompt" type="button" hidden>Copy next prompt</button>
+          <button id="filters-done" type="button">Done</button>
+        </div>
+      </section>
       <section id="warnings" class="warnings" hidden></section>
       <section id="groups" class="groups"></section>
     </main>
@@ -74,6 +85,12 @@
         <article class="markdown" id="drawer-doc"></article>
       </aside>
     </div>
+    <template id="tpl-filter-chip">
+      <span class="filter-chip">
+        <span data-slot="label"></span>
+        <button type="button" class="filter-chip-remove" data-slot="remove" title="Remove filter">×</button>
+      </span>
+    </template>
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/plans/app.js" type="module"></script>
   </body>

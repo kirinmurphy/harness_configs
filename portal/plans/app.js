@@ -1,17 +1,13 @@
-import { portalEl as el, portalGetJson, portalPostJson, portalCopyText, portalSetUpdatedAt } from "/portal/shared/api.js";
+import { portalEl as el, portalGetJson, portalPostJson, portalCopyText, portalSetUpdatedAt, portalHideLoading, portalTpl as tpl } from "/portal/shared/api.js";
+
+const FILTER_IDS = ["search", "repository", "lifecycle", "priority", "blocked", "readiness", "review", "health"];
+const FILTER_DEFAULTS = { search: "", repository: "all", lifecycle: "all", priority: "all", blocked: "all", readiness: "all", review: "all", health: "all" };
+const FILTER_LABELS = { repository: "repo", lifecycle: "lifecycle", priority: "priority", blocked: "blocked", readiness: "readiness", review: "review", health: "health" };
 
 const state = {
   snapshot: null,
-  filters: {
-    search: "",
-    repository: "all",
-    lifecycle: "all",
-    priority: "all",
-    blocked: "all",
-    readiness: "all",
-    review: "all",
-    health: "all",
-  },
+  filters: { ...FILTER_DEFAULTS },
+  filtersExpanded: false,
 };
 
 const statusEl = document.getElementById("status");
@@ -22,6 +18,10 @@ const rootsEl = document.getElementById("roots");
 const settingsEl = document.getElementById("settings");
 const drawer = document.getElementById("drawer");
 const nextPrompt = document.getElementById("next-prompt");
+const filtersEl = document.getElementById("filters");
+const filtersBodyEl = document.getElementById("filters-body");
+const filterChipsEl = document.getElementById("filter-chips");
+const rootFormErrEl = document.getElementById("root-form-err");
 const COLLAPSIBLE_GROUPS = new Set(["completed"]);
 const openGroups = new Set(); // lifecycle names the user has expanded, preserved across re-renders
 
@@ -29,22 +29,46 @@ document.getElementById("refresh").addEventListener("click", () => portalPostJso
 nextPrompt.addEventListener("click", () => copyVisibleNextPrompt().catch(showError));
 document.getElementById("root-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  rootFormErrEl.textContent = "";
   const input = document.getElementById("root-input");
   const current = state.snapshot?.settings?.discoveryRoots || [];
-  await portalPostJson("/api/plans/settings", { discoveryRoots: [...current, input.value] }).then((snap) => {
+  try {
+    const snap = await portalPostJson("/api/plans/settings", { discoveryRoots: [...current, input.value] });
     input.value = "";
     applySnapshot(snap);
     settingsEl.open = true; // stay open across multiple adds in one sitting
-  }).catch(showError);
+  } catch (err) {
+    rootFormErrEl.textContent = err.message;
+  }
 });
 document.getElementById("roots-done").addEventListener("click", () => { settingsEl.open = false; });
 document.getElementById("drawer-close").addEventListener("click", () => { drawer.hidden = true; });
-for (const id of ["search", "repository", "lifecycle", "priority", "blocked", "readiness", "review", "health"]) {
+for (const id of FILTER_IDS) {
   const node = document.getElementById(id);
   node.addEventListener(id === "search" ? "input" : "change", () => {
     state.filters[id] = node.value;
     render();
   });
+}
+document.getElementById("filters-toggle").addEventListener("click", () => setFiltersExpanded(true));
+document.getElementById("filters-done").addEventListener("click", () => setFiltersExpanded(false));
+filterChipsEl.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-filter-id]");
+  if (!btn) return;
+  resetFilter(btn.dataset.filterId);
+});
+
+function setFiltersExpanded(expanded) {
+  state.filtersExpanded = expanded;
+  filtersBodyEl.hidden = !expanded;
+  filtersEl.classList.toggle("expanded", expanded);
+}
+
+function resetFilter(id) {
+  state.filters[id] = FILTER_DEFAULTS[id];
+  const node = document.getElementById(id);
+  if (node) node.value = FILTER_DEFAULTS[id];
+  render();
 }
 
 async function load() {
@@ -52,6 +76,8 @@ async function load() {
     applySnapshot(await portalGetJson("/api/plans"));
   } catch (err) {
     showError(err);
+  } finally {
+    portalHideLoading();
   }
 }
 
@@ -65,8 +91,9 @@ function applySnapshot(snapshot) {
 }
 
 function renderRoots(roots) {
+  filtersEl.hidden = roots.length === 0;
   if (!roots.length) {
-    rootsEl.replaceChildren("No discovery roots configured.");
+    rootsEl.replaceChildren();
     settingsEl.open = true; // prominent until at least one root exists
     return;
   }
@@ -109,6 +136,7 @@ function render() {
   if (!snapshot) return;
   renderWarnings(snapshot);
   renderPackageBanner(snapshot);
+  renderFilterChips();
   const plans = filteredPlans(snapshot.plans);
   nextPrompt.hidden = !snapshot.planDocsPackage.enabled || actionablePlans(plans).length === 0;
   if (plans.length === 0) {
@@ -117,6 +145,22 @@ function render() {
   }
   const order = ["active", "backlog", "completed", "archived", "unclassified"];
   groupsEl.replaceChildren(...order.map((life) => renderGroup(life, plans.filter((record) => record.plan.lifecycle === life))).filter(Boolean));
+}
+
+function renderFilterChips() {
+  const chips = [];
+  for (const id of FILTER_IDS) {
+    const value = state.filters[id];
+    if (value === FILTER_DEFAULTS[id]) continue;
+    const label = id === "search" ? `search: "${value}"` : `${FILTER_LABELS[id]}: ${value}`;
+    chips.push({ id, label });
+  }
+  filterChipsEl.replaceChildren(...chips.map((c) => {
+    const chip = tpl("tpl-filter-chip");
+    chip.querySelector("[data-slot=label]").textContent = c.label;
+    chip.querySelector("[data-slot=remove]").dataset.filterId = c.id;
+    return chip;
+  }));
 }
 
 async function copyVisibleNextPrompt() {
@@ -134,8 +178,9 @@ function actionablePlans(plans) {
 function renderEmptyState(snapshot) {
   if (!snapshot.settings.discoveryRoots.length) {
     return el("section", { class: "empty-state" },
-      el("h2", {}, "No discovery roots configured"),
-      el("p", {}, "Add a repository path or a directory that contains repositories."),
+      el("h2", {}, "No Project Folders configured"),
+      el("p", {}, "Add a repository path, or a folder containing repositories, above."),
+      el("p", {}, "The scanner walks each Project Folder looking for a repository (a folder with a .git entry) and, inside it, a docs/plans directory. It stops descending the moment it finds a repository — nested folders inside a repo are never re-scanned — and skips common non-project directories like node_modules, dist, and .venv."),
     );
   }
   if (snapshot.plans.length === 0) {

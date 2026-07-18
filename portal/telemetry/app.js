@@ -1,6 +1,29 @@
-import { portalGetJson, portalPostJson, portalCopyText, portalSetUpdatedAt } from "/portal/shared/api.js";
+import { portalGetJson, portalPostJson, portalCopyText, portalSetUpdatedAt, portalHideLoading, portalTpl as tpl } from "/portal/shared/api.js";
 
 const fmt = (n) => Number(n||0).toLocaleString("en-US");
+let firstLoad = true;
+function statItem(label, value) {
+  const node = tpl("tpl-stat");
+  node.querySelector("[data-slot=label]").textContent = label;
+  node.querySelector("[data-slot=value]").textContent = value;
+  return node;
+}
+// Meta stat set: spike rate + raw counts only — both computable from the report's existing shape
+// with zero new server aggregation. Token-budget-ceiling and prior-window-trend metrics were
+// considered but dropped (no server-side ceiling or prior-window comparison exists today;
+// telemetry-analyze.mjs would need new aggregation work for either).
+function renderMeta(data) {
+  const meta = document.getElementById("meta");
+  const spikeCount = (data.spikes || []).length;
+  const spikeRate = data.capture_count > 0 ? Math.round((spikeCount / data.capture_count) * 1000) / 10 : 0;
+  const scope = (view.rangeMs == null ? "all time" : "filtered") + (view.harness ? " · " + view.harness + " only" : "");
+  meta.replaceChildren(
+    statItem("captures", fmt(data.capture_count)),
+    statItem("sessions", fmt(data.sessions.length)),
+    statItem("spike rate", spikeRate + "%" + (spikeCount ? " (" + fmt(spikeCount) + ")" : "")),
+    statItem("scope", scope),
+  );
+}
 const short = (id) => id && id !== "unknown" ? String(id).slice(0,8) : "unknown";
 // Escape user-derived text (prompt previews, paths) before it goes into innerHTML. The spool is
 // local and self-authored, but prompts can contain </>/& that would otherwise break rendering.
@@ -66,15 +89,11 @@ async function load(force, opts) {
     data = await portalGetJson("/api/data" + qs);
   } finally {
     if (wipe) setLoading(false);
+    if (firstLoad) { firstLoad = false; portalHideLoading(); }
   }
   if (!force && data.version === lastVersion) return;
   lastVersion = data.version;
-  const w = data.usage_windows || {};
-  const scope = view.rangeMs == null ? "" : " · filtered";
-  const harnessScope = view.harness ? " · " + view.harness + " only" : "";
-  document.getElementById("meta").textContent =
-    data.capture_count + " captures · " + data.sessions.length + " sessions · spike ≥ " + fmt(data.spike_threshold) + " tok"
-    + " · ~" + fmt(w.five_hour) + " tok last 5h / ~" + fmt(w.seven_day) + " last 7d (local estimate)" + scope + harnessScope;
+  renderMeta(data);
   portalSetUpdatedAt();
   // Update the deeper-read button label based on which CLI is available.
   if (data.deepread_cli !== undefined) {

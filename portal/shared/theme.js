@@ -36,6 +36,12 @@ const PORTAL_PAGES = window.ROBOREPO_PORTAL.pages;
         "</footer>",
     );
   }
+  if (!document.querySelector(".page-loading")) {
+    document.body.insertAdjacentHTML(
+      "afterbegin",
+      '<div class="page-loading" id="page-loading"><span class="loading-spinner"></span></div>',
+    );
+  }
   const nav = document.getElementById("nav");
   if (!nav) return;
   const here = location.pathname;

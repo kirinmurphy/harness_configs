@@ -13,7 +13,7 @@ This reference describes the current runtime behavior. Historical implementation
 | Noun | Meaning | Source of truth |
 | --- | --- | --- |
 | Discovery root | Local directory configured by the user | `path.join(stateRoot, "plan-docs", "settings.json")` or `ROBOREPO_PLAN_ROOTS` |
-| Repository | A discovery root or immediate child containing `.git` or `docs/plans` | filesystem |
+| Repository | The first directory found while walking a discovery root that contains `.git` or `docs/plans` | filesystem |
 | Plan | Markdown file under `docs/plans/**/*.md` | repository file |
 | Lifecycle | Folder under `docs/plans` | path, not frontmatter |
 | Readiness | Deterministic validation result | parser/validator |
@@ -55,22 +55,32 @@ Resolution order:
 2. `ROBOREPO_PLAN_ROOTS`, split by the platform path delimiter.
 3. Empty roots.
 
-For each discovery root, the scanner checks:
+For each discovery root, the scanner does a real recursive walk: it descends into subdirectories
+looking for the first folder that has either `.git` or `docs/plans`. The moment it finds one, that
+folder is treated as a repository root and the walk does not descend further into it — a
+repository's own subfolders are never re-scanned as repository candidates. Nested repositories
+(a repo living inside another discovered repo's tree) are still found independently as long as they
+aren't inside an already-claimed repository boundary.
+Within a repository, only `docs/plans/**/*.md` is scanned (unchanged, separate walk).
 
-1. the root itself
-2. immediate child directories only
+Directories are skipped during the walk (not descended into) if they:
 
-A candidate repository is any checked directory with either `.git` or `docs/plans`.
-Within a repository, only `docs/plans/**/*.md` is scanned.
+- start with `.` (hidden), or
+- match the ignored-directory list: `node_modules`, `.git`, `vendor`, `dist`, `build`, `.cache`,
+  `coverage`, `.next`, `.venv`, `__pycache__` by default (`ignoredDirectories` in settings)
 
 Limits:
 
 - maximum document size for rendering/prompt embedding: 1 MiB
 - maximum candidate repositories per refresh: 250
 - maximum plan files per repository: 500
+- maximum traversal depth: 6 levels below the discovery root
+- wall-clock time budget per discovery call: ~2.5s, after which the walk stops and the result is
+  marked `truncated: true`
 
 Hidden files, editor swap files, backup suffixes, and symlink escapes outside the repository boundary
-are skipped.
+are skipped. The walk also guards against symlink cycles by tracking each directory's realpath and
+never descending into one already visited.
 
 Per-file scan results (parsed content, task counts, and git-derived fields like `reviewState`) are
 cached in-process keyed by the file's mtime, so a file is only re-parsed and re-queried against git

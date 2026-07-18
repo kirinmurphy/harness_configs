@@ -189,12 +189,7 @@ main {
   opacity: 0.5;
 }
 .item-err {
-  color: var(--danger);
-  font-size: var(--text-2xs);
   margin-top: 3px;
-}
-.item-err:empty {
-  display: none;
 }
 /* permissions section: flat behavior list, each row deny/ask/allow */
 .perm-row {

@@ -49,8 +49,6 @@
   .enablebtn { background:var(--accent); border:none; color:var(--on-accent); font:inherit; font-size:var(--text-xs); font-weight:600; cursor:pointer; padding:6px 14px; border-radius:6px; }
   .enablebtn:hover { filter:brightness(1.1); }
   .enablebtn:disabled { opacity:.6; cursor:default; }
-  .item-err { color:var(--spike); font-size:var(--text-2xs); margin-top:6px; }
-  .item-err:empty { display:none; }
   .tooltip { position:absolute; pointer-events:none; z-index:5; background:var(--tooltip-bg); border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-size:var(--text-2xs); line-height:1.5; color:var(--ink); box-shadow:0 4px 16px var(--tooltip-shadow); display:none; max-width:280px; }
   .tooltip .t-head { color:var(--accent); font-weight:600; margin-bottom:4px; }
   .tooltip .t-spike { color:var(--spike); }

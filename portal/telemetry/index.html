@@ -200,6 +200,27 @@
         <div class="stat-value" data-slot="value"></div>
       </div>
     </template>
+    <template id="tpl-datatable">
+      <table><thead><tr data-slot="headrow"></tr></thead><tbody data-slot="body"></tbody></table>
+    </template>
+    <template id="tpl-datatable-th">
+      <th></th>
+    </template>
+    <template id="tpl-datatable-row">
+      <tr></tr>
+    </template>
+    <template id="tpl-datatable-td">
+      <td></td>
+    </template>
+    <template id="tpl-insight">
+      <div class="insight">
+        <span class="dot"></span>
+        <div class="body">
+          <div class="hl" data-slot="headline"></div>
+          <div class="dt" data-slot="detail"></div>
+        </div>
+      </div>
+    </template>
     <div class="modal-back" id="modalback">
       <div class="modal" id="modal">
         <button class="closebtn" id="modalclose">×</button>

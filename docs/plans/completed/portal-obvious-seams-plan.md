@@ -2,7 +2,11 @@
 
 ## Status
 
-Proposed
+Completed. All checklist items landed (manifest single-sourced, shared API helpers adopted by
+every page including the config source-inspect fetch, server routes split by domain,
+`showError()` added to config/telemetry to match the `plans` page convention, maintainer guide
+at `docs/reference/services/portal.md`). Verified via `npm test` (285/285 passing) and manual
+code cross-check against every checklist item.
 
 ## Purpose
 

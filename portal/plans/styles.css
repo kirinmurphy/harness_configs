@@ -177,14 +177,6 @@ button:hover {
 .root-form-row #roots-done {
   flex: 0 0 auto;
 }
-.item-err {
-  color: var(--danger);
-  font-size: var(--text-2xs);
-  margin-top: 6px;
-}
-.item-err:empty {
-  display: none;
-}
 /* Full-width banner, flush to the viewport edges — a sibling of <main> (not a child), so it can
  * break out of main's padding. Scrolls normally with the page (no sticky/fixed). */
 .package-banner {

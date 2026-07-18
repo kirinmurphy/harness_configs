@@ -72,9 +72,7 @@ async function openSourceModal(inspect) {
   try {
     const qs = new URLSearchParams({ kind: inspect.kind, id: inspect.id });
     if (inspect.harness) qs.set("harness", inspect.harness);
-    const data = await fetch("/api/config/source?" + qs.toString()).then((r) =>
-      r.json(),
-    );
+    const data = await portalGetJson("/api/config/source?" + qs.toString());
     if (!data.ok) {
       document.getElementById("modal-path").textContent = "";
       document.getElementById("modal-content").textContent =
@@ -419,11 +417,15 @@ function applySnapshot(snap) {
   }
   portalSetUpdatedAt();
 }
+function showError(err) {
+  console.error(err);
+}
+
 async function load() {
   try {
     applySnapshot(await portalGetJson("/api/config"));
   } catch (e) {
-    console.error(e);
+    showError(e);
   } finally {
     portalHideLoading();
   }

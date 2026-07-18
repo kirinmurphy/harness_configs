@@ -2,7 +2,15 @@
 
 ## Status
 
-Proposed — needs review before execution. Written for a new agent to pick up cold.
+Completed. All four sections (global loading, /config, /plans, /telemetry) and all 7 Open
+Questions are resolved in code. The discovery-root time-budget truncation path is now covered:
+`DISCOVERY_TIME_BUDGET_MS` (`modules/plan-docs/index.mjs`) is overridable via
+`ROBOREPO_DISCOVERY_TIME_BUDGET_MS`, letting `scripts/test/plan-docs-check.mjs` force the deadline
+to 0ms against the existing traversal test tree and assert `truncated: true` deterministically —
+no real slow scan or huge synthetic tree needed. Default budget raised 2.5s → 5s (per-directory
+walk cost is ~0.05-0.2ms; 5s covers well beyond any realistic discovery-root folder size, and the
+only cost of a longer budget is extra wait time on a misconfigured root before it gives up).
+Verified via `npm test` (285/285 passing, including the new truncation case).
 
 ## Purpose
 

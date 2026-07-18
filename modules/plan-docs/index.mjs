@@ -16,7 +16,11 @@ const MAX_PLANS_PER_REPO = 500;
 // Repo-discovery traversal limits — guard against a misconfigured discovery root (e.g. $HOME or
 // /) walking indefinitely or across the whole filesystem.
 const DISCOVERY_MAX_DEPTH = 6;
-const DISCOVERY_TIME_BUDGET_MS = 2500;
+// Overridable so tests can force truncation deterministically (set to 0ms against a normal-size
+// tree) instead of needing a real slow scan or a huge synthetic directory tree.
+const DISCOVERY_TIME_BUDGET_MS = process.env.ROBOREPO_DISCOVERY_TIME_BUDGET_MS !== undefined
+  ? Number(process.env.ROBOREPO_DISCOVERY_TIME_BUDGET_MS)
+  : 5000;
 
 // Per-file record cache keyed by absolute path. Each entry is invalidated the moment a file's own
 // mtime changes, so edits are always picked up — this only skips the expensive re-parse + git

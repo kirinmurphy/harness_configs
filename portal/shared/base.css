@@ -220,6 +220,14 @@ nav a.active {
   color: var(--dim);
   font-size: var(--text-xs);
 }
+.item-err {
+  color: var(--danger);
+  font-size: var(--text-2xs);
+  margin-top: 6px;
+}
+.item-err:empty {
+  display: none;
+}
 @media (max-width: 760px) {
   /* .portal-header {
     align-items: flex-start;

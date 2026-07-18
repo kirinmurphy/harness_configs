@@ -142,9 +142,19 @@ Run targeted checks.
   const deepDiscovery = discoverRepositories({ discoveryRoots: [deepRoot], ignoredDirectories: undefined });
   assert.equal(deepDiscovery.repositories.length, 0, "repo beyond the depth cap should not be found");
 
-  // Time-budget truncation is not exercised here: a real test would need a tree slow enough to
-  // exceed DISCOVERY_TIME_BUDGET_MS, which is either flaky (timing-dependent) or requires an
-  // impractically large synthetic tree. Not covered — verify manually if the budget logic changes.
+  // Time-budget truncation: force the budget to ~0ms via env override so the walk's first
+  // deadline check trips immediately, without needing a real slow scan or a huge synthetic tree.
+  const budgetCheck = spawnSync(process.execPath, [
+    "-e",
+    "import('./modules/plan-docs/index.mjs').then((m) => { const d = m.discoverRepositories({ discoveryRoots: [process.env.TRAVERSAL_ROOT], ignoredDirectories: undefined }); process.stdout.write(JSON.stringify(d)); })",
+  ], {
+    cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".."),
+    env: { ...process.env, ROBOREPO_DISCOVERY_TIME_BUDGET_MS: "0", TRAVERSAL_ROOT: traversalRoot },
+    encoding: "utf8",
+  });
+  assert.equal(budgetCheck.status, 0, budgetCheck.stderr);
+  const budgetResult = JSON.parse(budgetCheck.stdout);
+  assert.equal(budgetResult.truncated, true, "expected truncation with a ~0ms time budget");
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }

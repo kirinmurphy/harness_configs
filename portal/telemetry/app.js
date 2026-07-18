@@ -722,7 +722,7 @@ function renderSessions(rows) {
     const headline = s.title || s.activity || short(s.session_id);
     const sub = repoBranch + (s.harness ? " · " + s.harness : "") + " · " + short(s.session_id);
     const label = esc(clip(headline, 56)) + " <span class='go'>view chat ›</span><br><span style='color:var(--dim);font-size:11px'>" + esc(sub) + "</span>";
-    return [label, durLabel(s.first_ts, s.last_ts), { num: fmt(s.total_tokens) }, { num: s.tool_calls }, { num: s.mcp_calls }];
+    return [{ html: label }, durLabel(s.first_ts, s.last_ts), { num: fmt(s.total_tokens) }, { num: s.tool_calls }, { num: s.mcp_calls }];
   }), data.map((s) => () => openSessionModal(s)));
 }
 function renderSpikes(rows) {
@@ -730,7 +730,7 @@ function renderSpikes(rows) {
   const data = rows.slice(0, 12);
   table("spikes", ["time", "where", "worst Δ", "event", "hits"], data.map((s) => [
     s.ts.slice(0, 19),
-    esc(s.context?.title ? clip(s.context.title, 32) : short(s.session_id)),
+    s.context?.title ? clip(s.context.title, 32) : short(s.session_id),
     { num: "+" + fmt(s.delta_tokens), cls: "spike" },
     s.tool ? s.event + " (" + s.tool + ")" : s.event,
     s.spike_count > 1 ? { num: "×" + s.spike_count } : "—",
@@ -766,12 +766,16 @@ const emptyPanel = (id, msg) => { document.getElementById(id).innerHTML = "<p st
 // The headline panel: deterministic conclusions, severity-marked. This is the "what this means"
 // read so the user does not scan tables.
 function renderInsights(rows) {
-  const el = document.getElementById("insights");
-  if (!rows || !rows.length) { el.innerHTML = "<p style='color:var(--dim)'>not enough data yet for conclusions</p>"; return; }
-  el.innerHTML = rows.map((f) =>
-    "<div class='insight " + esc(f.severity) + "'><span class='dot'></span><div class='body'>"
-    + "<div class='hl'>" + esc(f.headline) + "</div><div class='dt'>" + esc(f.detail) + "</div></div></div>"
-  ).join("");
+  const container = document.getElementById("insights");
+  container.innerHTML = "";
+  if (!rows || !rows.length) { emptyPanel("insights", "not enough data yet for conclusions"); return; }
+  for (const f of rows) {
+    const row = tpl("tpl-insight");
+    row.classList.add(f.severity);
+    row.querySelector("[data-slot=headline]").textContent = f.headline;
+    row.querySelector("[data-slot=detail]").textContent = f.detail;
+    container.appendChild(row);
+  }
 }
 
 // Optional LLM synthesis on demand. Hits /api/insights-llm (shells to claude/codex -p server-side).
@@ -800,14 +804,14 @@ async function runDeepRead() {
 function renderGroupCost(rows) {
   if (!rows || !rows.length) { emptyPanel("groupcost", "no tool-result data yet"); return; }
   table("groupcost", ["group", "avg tokens/call", "calls/session", "calls", "total"], rows.map((r) => [
-    esc(r.group), { num: fmt(r.avg_tokens) }, { num: r.calls_per_session ?? "—" }, { num: r.calls }, { num: fmt(r.total_tokens) },
+    r.group, { num: fmt(r.avg_tokens) }, { num: r.calls_per_session ?? "—" }, { num: r.calls }, { num: fmt(r.total_tokens) },
   ]));
 }
 function renderToolCost(rows) {
   if (!rows || !rows.length) { emptyPanel("toolcost", "no tool-result data yet"); return; }
   const data = rows.slice(0, 14);
   table("toolcost", ["tool", "avg tokens/call", "max", "calls"], data.map((r) => [
-    esc(r.tool), { num: fmt(r.avg_tokens) }, { num: fmt(r.max_tokens) }, { num: r.calls },
+    r.tool, { num: fmt(r.avg_tokens) }, { num: fmt(r.max_tokens) }, { num: r.calls },
   ]), data.map((r) => () => openModal(
     r.tool + " — cost per call",
     "group: " + r.group + " · approx tokens from result size",
@@ -823,7 +827,7 @@ function renderToolCost(rows) {
 function renderAnatomy(a) {
   if (!a || !a.groups.length) { emptyPanel("anatomy", "no spikes with attributed results yet"); return; }
   table("anatomy", ["group", "lift vs normal", "% of spikes", "avg tokens"], a.groups.slice(0, 8).map((g) => [
-    esc(g.group),
+    g.group,
     g.lift == null ? "only in spikes" : { num: g.lift + "×", cls: g.lift >= 1 ? "spike" : "" },
     { num: Math.round(g.spike_share * 100) + "%" },
     { num: fmt(g.avg_tokens) },
@@ -832,13 +836,13 @@ function renderAnatomy(a) {
 function renderPackageCost(rows) {
   if (!rows || !rows.length) { emptyPanel("packagecost", "no package data yet"); return; }
   table("packagecost", ["package", "avg tokens/call", "calls", "total"], rows.map((r) => [
-    esc(r.package), { num: fmt(r.avg_tokens) }, { num: r.calls }, { num: fmt(r.total_tokens) },
+    r.package, { num: fmt(r.avg_tokens) }, { num: r.calls }, { num: fmt(r.total_tokens) },
   ]));
 }
 function renderRegression(r) {
   if (!r || !r.groups.length) { document.getElementById("regression").innerHTML = ""; return; }
   table("regression", ["group", "before", "after", "Δ tokens/call"], r.groups.slice(0, 8).map((g) => [
-    esc(g.group),
+    g.group,
     { num: fmt(g.before_avg_tokens) },
     { num: fmt(g.after_avg_tokens) },
     { num: (g.delta_tokens > 0 ? "↑" : g.delta_tokens < 0 ? "↓" : "·") + fmt(Math.abs(g.delta_tokens)), cls: g.delta_tokens > 0 ? "spike" : "" },
@@ -850,8 +854,8 @@ function renderLoops(rows) {
   panel.style.display = "";
   const data = rows.slice(0, 10);
   table("loops", ["session", "tool", "repeats"], data.map((l) => [
-    esc(l.context?.title ? clip(l.context.title, 36) : l.repo + "/" + short(l.session_id)),
-    esc(l.tool), { num: l.max_repeat, cls: "spike" },
+    l.context?.title ? clip(l.context.title, 36) : l.repo + "/" + short(l.session_id),
+    l.tool, { num: l.max_repeat, cls: "spike" },
   ]), data.map((l) => () => flaggedEventModal({
     title: "⚠ loop · " + l.tool + " ×" + l.max_repeat,
     sub: l.repo + (l.harness ? " · " + l.harness : ""),
@@ -887,16 +891,44 @@ function table(id, headers, rows, details) {
   // Align each header to match its column's data, not by position: a column is numeric (right-
   // aligned) when its first data cell is a {num} object. Keeps header and content alignment in sync
   // for mixed tables (e.g. a string "time"/"where"/"event" column sitting among numeric ones).
-  const numericCol = headers.map((_, i) => rows.length > 0 && rows[0][i] && typeof rows[0][i] === "object");
-  const head = "<tr>" + headers.map((h, i) => "<th" + (numericCol[i] ? " class='num'" : "") + ">" + h + "</th>").join("") + "</tr>";
-  const body = rows.map((cells, ri) => {
-    const clickable = details && details[ri] ? " class='clickable' data-row='" + ri + "'" : "";
-    return "<tr" + clickable + ">" + cells.map((cell) => {
-      if (cell && typeof cell === "object") return "<td class='num " + (cell.cls || "") + "'>" + cell.num + "</td>";
-      return "<td>" + cell + "</td>";
-    }).join("") + "</tr>";
-  }).join("");
-  document.getElementById(id).innerHTML = "<table>" + head + body + "</table>";
+  const numericCol = headers.map((_, i) => rows.length > 0 && rows[0][i] && typeof rows[0][i] === "object" && "num" in rows[0][i]);
+  const tableEl = tpl("tpl-datatable");
+  const headRow = tableEl.querySelector("[data-slot=headrow]");
+  headers.forEach((h, i) => {
+    const th = tpl("tpl-datatable-th");
+    th.textContent = h;
+    if (numericCol[i]) th.className = "num";
+    headRow.appendChild(th);
+  });
+  const body = tableEl.querySelector("[data-slot=body]");
+  rows.forEach((cells, ri) => {
+    const tr = tpl("tpl-datatable-row");
+    if (details && details[ri]) {
+      tr.className = "clickable";
+      tr.dataset.row = ri;
+    }
+    // Cell content lands via textContent by default, not innerHTML — callers pass raw
+    // user/telemetry strings (session titles, tool names, etc.) with no consistent escaping
+    // today. A cell shaped {html: "..."} opts into raw markup for the rare row that needs it
+    // (e.g. the sessions table's headline + sub-line); the caller is responsible for escaping
+    // any interpolated values in that string.
+    cells.forEach((cell) => {
+      const td = tpl("tpl-datatable-td");
+      if (cell && typeof cell === "object" && "num" in cell) {
+        td.className = "num " + (cell.cls || "");
+        td.textContent = cell.num;
+      } else if (cell && typeof cell === "object" && "html" in cell) {
+        td.innerHTML = cell.html;
+      } else {
+        td.textContent = cell;
+      }
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+  const container = document.getElementById(id);
+  container.innerHTML = "";
+  container.appendChild(tableEl);
   tableDetails[id] = details || null;
 }
 
@@ -1007,9 +1039,13 @@ document.getElementById("enabletelemetry").addEventListener("click", async () =>
 const LOAD_POLL_INTERVAL_MS = 5000;
 const TELEMETRY_STATE_POLL_INTERVAL_MS = 10000;
 
-load(true);
+function showError(err) {
+  console.error(err);
+}
+
+load(true).catch(showError);
 refreshTelemetryState();
-setInterval(() => load(false), LOAD_POLL_INTERVAL_MS);
+setInterval(() => load(false).catch(showError), LOAD_POLL_INTERVAL_MS);
 setInterval(refreshTelemetryState, TELEMETRY_STATE_POLL_INTERVAL_MS);
 window.addEventListener("resize", () => redrawChart());
 

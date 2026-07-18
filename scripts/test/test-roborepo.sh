@@ -1360,7 +1360,7 @@ assert "mcp: enabling a built-in MCP package does not record it into the workspa
 assert "workspace: built-in conflicts require a typed replace override" \
   node "${repo_root}/scripts/test/workspace-resources-check.mjs"
 
-# Root config drift VIEW (buildRootConfigView in config.mjs): the per-harness state the terminal
+# Root config drift VIEW (buildRootConfigView in root-config-view.mjs): the per-harness state the terminal
 # `config root inspect` report and the web /config drift chip both render from — not-installed /
 # unwritten / in-sync / drifted / staged-pending.
 assert "root-config-view: per-harness drift state covers every user-facing case" \

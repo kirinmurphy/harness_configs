@@ -166,7 +166,12 @@ behavior or command.
 ## Key Files
 
 - `scripts/cli/config.mjs` — `readConfigSnapshot()`, `buildBehaviorView()`,
-  source-popup rendering.
+  `loadConfigSource()` (orchestrator).
+- `scripts/cli/config-source-lookup.mjs` / `config-source-render.mjs` — source-popup file
+  resolution and HTML rendering.
+- `scripts/cli/root-config-view.mjs` — per-harness root-config drift view (shared by CLI and portal).
+- `scripts/cli/config-live-rules.mjs` — live CLAUDE.md/AGENTS.md reading.
+- `scripts/cli/config-cli-print.mjs` — terminal-only `roborepo config` output.
 - `scripts/cli/skill-inventory.mjs` — shared read-only skill inventory for the CLI and portal.
 - `scripts/cli/package-probes.mjs` — read-only package live-state reconciliation.
 - `scripts/cli/config-mutate.mjs` — the shared mutate primitives.

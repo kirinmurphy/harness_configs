@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Unit test for buildRootConfigView (scripts/cli/config.mjs), the per-harness drift view the
+// Unit test for buildRootConfigView (scripts/cli/root-config-view.mjs), the per-harness drift view the
 // terminal `roborepo config root inspect` report and the web /config drift chip both render from.
 // Drives a throwaway HOME so rootConfigActive/rootConfigBaseline resolve into a temp tree, then
 // exercises each user-facing state: not-installed, unwritten, in-sync, drifted, staged-pending. See
@@ -17,7 +17,7 @@ process.env.ROBOREPO_STATE_DIR = stateDir;
 fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
 fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
 
-const { buildRootConfigView } = await import("../cli/config.mjs");
+const { buildRootConfigView } = await import("../cli/root-config-view.mjs");
 const { recordWrite } = await import("../cli/root-config-state.mjs");
 
 const claudeActive = path.join(home, ".claude", "settings.json");

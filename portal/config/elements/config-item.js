@@ -3,20 +3,13 @@
 // ({onInspect, onToggle}) as properties right after creation. Builds itself from the
 // tpl-config-item template, owns conditional listener wiring (inspect-click, toggle-swap)
 // internally, embeds <config-toggle> in its toggle slot when the item is mutable.
-import { portalTpl as tpl, portalEl as el } from "/portal/shared/api.js";
-
-function dot(on) {
-  return el("span", { class: "dot " + (on ? "on" : "off") });
-}
+import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
 
 function badge(text) {
   const isCmd = text.startsWith("/");
-  return el("span", { class: "badge " + (isCmd ? "badge-cmd" : "badge-skill") }, text);
-}
-
-function setOptionalText(node, value) {
-  node.textContent = value || "";
-  node.hidden = !value;
+  const node = fill(tpl("tpl-badge"), { text });
+  node.classList.add(isCmd ? "badge-cmd" : "badge-skill");
+  return node;
 }
 
 class ConfigItemElement extends HTMLElement {
@@ -43,15 +36,19 @@ class ConfigItemElement extends HTMLElement {
   render() {
     const item = this._item;
     const { onInspect, onToggle } = this._actions;
-    const row = tpl("tpl-config-item");
+    const row = fill(tpl("tpl-config-item"), {
+      description: item.description,
+      hint: item.hint,
+    });
 
-    row.querySelector('[data-slot="dot"]').replaceWith(dot(item.active));
+    const dotEl = row.querySelector('[data-slot="dot"]');
+    dotEl.classList.add(item.active ? "on" : "off");
 
     // Inspectable items (skills/commands/chat-time rules) get a clickable label that opens the
     // source popup. The label still reflects active/dim state.
     const labelEl = row.querySelector('[data-slot="label"]');
-    labelEl.className =
-      "item-label" + (item.active ? "" : " dim") + (item.inspect ? " clickable" : "");
+    labelEl.classList.toggle("dim", !item.active);
+    labelEl.classList.toggle("clickable", !!item.inspect);
     labelEl.textContent = item.label;
     if (item.inspect) {
       labelEl.title = "view source";
@@ -61,19 +58,19 @@ class ConfigItemElement extends HTMLElement {
     // Info URL (GitHub / docs / PyPI): a single inline icon on the label row, opening the FIRST
     // urls[] entry. Items with more than one URL only expose that first one via the portal — any
     // additional related links must be reachable from that page instead (e.g. its README).
+    const linkEl = row.querySelector('[data-slot="link-icon"]');
     if (item.urls && item.urls.length) {
-      const link = el("a", { class: "item-link-icon", title: item.urls[0].url }, "↗");
-      link.href = item.urls[0].url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      labelEl.insertAdjacentElement("afterend", link);
+      linkEl.href = item.urls[0].url;
+      linkEl.title = item.urls[0].url;
+      linkEl.hidden = false;
     }
+
+    row.querySelector('[data-slot="description"]').hidden = !item.description;
+    row.querySelector('[data-slot="hint"]').hidden = !item.hint;
 
     row.querySelector('[data-slot="badges"]').replaceChildren(
       ...(item.badges || []).map((b) => badge(b)),
     );
-    setOptionalText(row.querySelector('[data-slot="description"]'), item.description);
-    setOptionalText(row.querySelector('[data-slot="hint"]'), item.hint);
 
     const statusEl = row.querySelector('[data-slot="status"]');
     const toggleSlot = row.querySelector('[data-slot="toggle"]');

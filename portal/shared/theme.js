@@ -5,6 +5,11 @@
 //
 // The no-flash theme *init* is NOT here: it must run before first paint, so it stays as a tiny
 // inline <script> in each page's <head>. This file only handles the interactive toggle + nav.
+//
+// The header/footer/loading-overlay/nav-link markup is cloned from <template>s injected via the
+// {{CHROME}} marker (portal/shared/chrome-partial.html, rendered server-side in
+// scripts/cli/portal-server.mjs) — one source of truth instead of duplicating markup per page.
+import { portalTpl as tpl } from "/portal/shared/api.js";
 
 if (!window.ROBOREPO_PORTAL) {
   throw new Error(
@@ -15,47 +20,29 @@ const PORTAL_PAGES = window.ROBOREPO_PORTAL.pages;
 
 (function renderChrome() {
   if (!document.querySelector(".portal-header")) {
-    document.body.insertAdjacentHTML(
-      "afterbegin",
-      '<header class="portal-header">' +
-        '<div class="inner">' +
-        '<div class="logo-wrapper">' +
-        "<h1>roborepo</h1>" +
-        '<span id="portal-updated" class="portal-updated">updated --</span>' +
-        "</div>" +
-        '<nav id="nav" aria-label="Portal sections"></nav>' +
-        "</div>" +
-        "</header>",
-    );
+    document.body.prepend(tpl("tpl-portal-header"));
   }
   if (!document.querySelector(".portal-footer")) {
-    document.body.insertAdjacentHTML(
-      "beforeend",
-      '<footer class="portal-footer">' +
-        '<button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle theme"></button>' +
-        "</footer>",
-    );
+    document.body.append(tpl("tpl-portal-footer"));
   }
   if (!document.querySelector(".page-loading")) {
-    // Inserted right after the header (not "afterbegin" on body) so the loading block sits in
+    // Inserted right after the header (not prepended on body) so the loading block sits in
     // normal flow below the sticky header, not on top of it — the header/footer chrome stays
     // visible while this occupies its own allocated space.
-    document.querySelector(".portal-header").insertAdjacentHTML(
-      "afterend",
-      '<div class="page-loading" id="page-loading"><span class="loading-spinner"></span></div>',
-    );
+    document.querySelector(".portal-header").insertAdjacentElement("afterend", tpl("tpl-page-loading"));
   }
   const nav = document.getElementById("nav");
   if (!nav) return;
   const here = location.pathname;
-  const links = PORTAL_PAGES.map((p) => {
-    const active =
-      p.path === here || (p.path === "/" && here === "/config")
-        ? ' class="active"'
-        : "";
-    return '<a href="' + p.path + '"' + active + ">" + p.title + "</a>";
-  }).join("");
-  nav.insertAdjacentHTML("afterbegin", links);
+  nav.prepend(
+    ...PORTAL_PAGES.map((p) => {
+      const link = tpl("tpl-nav-link");
+      link.href = p.path;
+      link.textContent = p.title;
+      if (p.path === here || (p.path === "/" && here === "/config")) link.classList.add("active");
+      return link;
+    }),
+  );
 })();
 
 // Theme toggle: sun glyph in dark mode (click -> light), moon in light mode. Choice persists in

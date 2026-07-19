@@ -4,6 +4,8 @@
 // properties right after creation. .compact toggles the tighter spacing used in arbitrary-command
 // rows. Eliminates the deny/ask/allow button-building loop that was duplicated near-verbatim
 // between behaviorRow and arbitraryListRow in templates.js.
+import { portalTpl as tpl } from "/portal/shared/api.js";
+
 const BUCKETS = ["deny", "ask", "allow"];
 
 class BucketControlElement extends HTMLElement {
@@ -38,9 +40,8 @@ class BucketControlElement extends HTMLElement {
     const wrap = document.createElement("div");
     wrap.className = "bucket-group" + (this._compact ? " bucket-group-compact" : "");
     for (const bucket of BUCKETS) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "bucket-btn bucket-" + bucket;
+      const btn = tpl("tpl-bucket-btn");
+      btn.classList.add("bucket-" + bucket);
       btn.textContent = bucket;
       btn.classList.toggle("current", bucket === this._current);
       btn.disabled = bucket === this._current;

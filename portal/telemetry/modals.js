@@ -3,10 +3,12 @@
 // session, a spike, a loop. renders.js calls into these; app.js wires createModalOpeners() once
 // at startup and hands the result to both renders.js and its own event-delegation handlers.
 
-import { portalCopyText } from "/portal/shared/api.js";
+import { portalCopyText, portalEl as el } from "/portal/shared/api.js";
 import * as api from "./api.js";
 import * as tmpl from "./templates.js";
-import { fmt, short, durLabel, esc } from "./state.js";
+import { fmt, short, durLabel } from "./state.js";
+
+const note = (text) => el("div", { class: "note" }, text);
 
 // getThreshold: () => number — read fresh each call since curThreshold updates on every load().
 export function createModalOpeners({ modal, getThreshold }) {
@@ -21,17 +23,17 @@ export function createModalOpeners({ modal, getThreshold }) {
   // the modal's extra region. Best-effort: a missing transcript shows a note, never an error.
   async function fetchSessionContext(id, harness, finding, repo) {
     const extra = modal.extra();
-    extra.innerHTML = "<div class='note'>loading chat context…</div>";
+    extra.replaceChildren(note("loading chat context…"));
     try {
       const data = await api.fetchSession({ id, harness, finding, repo });
       if (!data.found) {
-        extra.innerHTML = "<div class='note'>transcript not found on disk (rotated or different machine). Use the analysis prompt above.</div>";
+        extra.replaceChildren(note("transcript not found on disk (rotated or different machine). Use the analysis prompt above."));
         return;
       }
-      extra.innerHTML = "<div class='note'>heaviest turns in this chat (result size = context cost):</div>";
+      extra.replaceChildren(note("heaviest turns in this chat (result size = context cost):"));
       extra.append(...(data.heavy_turns || []).map(tmpl.turnRow));
     } catch (err) {
-      extra.innerHTML = "<div class='note'>could not load transcript: " + esc(String((err && err.message) || err)) + "</div>";
+      extra.replaceChildren(note("could not load transcript: " + String((err && err.message) || err)));
     }
   }
 
@@ -51,7 +53,7 @@ export function createModalOpeners({ modal, getThreshold }) {
           // basic one if the transcript is gone.
           const data = await api.fetchSession({ id: sessionId, harness, finding, repo });
           await portalCopyText(data.analysis_prompt || "");
-          modal.extra().innerHTML = "<div class='note'>analysis prompt copied to clipboard ✓</div>";
+          modal.extra().replaceChildren(note("analysis prompt copied to clipboard ✓"));
         } },
       ],
     });

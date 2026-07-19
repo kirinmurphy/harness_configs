@@ -44,8 +44,15 @@ const renderHead = (page) => fs.readFileSync(HEAD_PARTIAL_PATH, "utf8")
   .replace("{{TITLE}}", page.title.toLowerCase())
   .replace("{{STYLE_HREF}}", `/portal/${page.dir}/styles.css`);
 
+// The header/footer/loading-overlay/nav-link <template>s (cloned client-side by
+// portal/shared/theme.js) are identical across every page, so they live in one partial here
+// instead of being duplicated per index.html — same pattern as {{HEAD}} above.
+const CHROME_PARTIAL_PATH = path.join(PORTAL_DIR, "shared", "chrome-partial.html");
+const renderChrome = () => fs.readFileSync(CHROME_PARTIAL_PATH, "utf8");
+
 const pageHtml = (page, token) => fs.readFileSync(path.join(PORTAL_DIR, page.dir, "index.html"), "utf8")
   .replace("{{HEAD}}", renderHead(page))
+  .replace("{{CHROME}}", renderChrome())
   .replace("</head>", `<meta name="roborepo-portal-token" content="${token}" />\n`
     + `<script>window.ROBOREPO_PORTAL = ${JSON.stringify({ token, pages: pageManifest() })};</script>\n</head>`);
 

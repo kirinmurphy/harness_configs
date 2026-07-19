@@ -2,6 +2,7 @@
 <html lang="en">
   {{HEAD}}
   <body>
+    {{CHROME}}
     <main id="main"></main>
     <dialog id="config-modal" aria-labelledby="modal-title">
       <div class="modal-head">
@@ -197,10 +198,11 @@
     </template>
     <template id="tpl-config-item">
       <div class="item">
-        <span data-slot="dot"></span>
+        <span class="dot" data-slot="dot"></span>
         <div class="item-body">
           <div class="item-row">
-            <span data-slot="label"></span>
+            <span class="item-label" data-slot="label"></span>
+            <a class="item-link-icon" data-slot="link-icon" target="_blank" rel="noopener noreferrer" hidden>↗</a>
             <span data-slot="badges"></span>
           </div>
           <div class="item-desc" data-slot="description"></div>
@@ -209,6 +211,12 @@
         </div>
         <span data-slot="toggle"></span>
       </div>
+    </template>
+    <template id="tpl-badge">
+      <span class="badge" data-slot="text"></span>
+    </template>
+    <template id="tpl-bucket-btn">
+      <button type="button" class="bucket-btn"></button>
     </template>
     <template id="tpl-config-toggle">
       <label class="switch">

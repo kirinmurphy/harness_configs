@@ -9,7 +9,8 @@
 // that must stay app.js-owned: chart.js takes callbacks (onBarClick, onSessionClick) rather than
 // importing the modal directly, keeping the dependency direction one-way.
 
-import { M, SESSION_COLORS, GROUP_COLORS, tokShort, clockLabel, pointGroup, perSessionSeries, esc, fmt, short, clip } from "./state.js";
+import { M, SESSION_COLORS, GROUP_COLORS, tokShort, clockLabel, pointGroup, perSessionSeries, fmt, short, clip } from "./state.js";
+import { legendDeltas, legendCumulativeHead, legendGroupHead, legendSessionItem, legendGroupItem, legendList, tooltipHead, tooltipRow } from "./templates.js";
 
 export function createChart({ onBarClick, onSessionClick, getSessionById }) {
   const canvas = document.getElementById("timeline");
@@ -89,7 +90,7 @@ export function createChart({ onBarClick, onSessionClick, getSessionById }) {
   function drawTimeline(points, threshold) {
     chartBars = [];
     const geo = chartSetup();
-    if (!points.length) { geo.ctx.fillStyle = theme.dim; geo.ctx.fillText("no token data yet", M.left, geo.H / 2); legend.innerHTML = ""; return; }
+    if (!points.length) { geo.ctx.fillStyle = theme.dim; geo.ctx.fillText("no token data yet", M.left, geo.H / 2); legend.replaceChildren(); return; }
     if (chartMode === "cumulative") return drawCumulative(points, geo);
     if (chartMode === "bygroup") return drawCumulativeByGroup(points, geo);
     return drawDeltas(points, threshold, geo);
@@ -140,8 +141,8 @@ export function createChart({ onBarClick, onSessionClick, getSessionById }) {
       ctx.moveTo(M.left, y); ctx.lineTo(W - M.right, y); ctx.stroke(); ctx.setLineDash([]);
     }
     const hidden = points.length - shown.length;
-    legend.innerHTML = "<span class='swatch' style='background:var(--accent)'></span>per-turn delta tokens · <span class='swatch' style='background:var(--spike)'></span>spike threshold · click a bar for chat detail · drag to pan"
-      + " · <button class='linkbtn' id='deltafilter'>" + (showAllDeltas ? "showing all" : "showing notable (≥ " + tokShort(baseline) + " tok)" + (hidden > 0 ? " — " + hidden + " hidden" : "")) + " · toggle</button>";
+    const filterLabel = (showAllDeltas ? "showing all" : "showing notable (≥ " + tokShort(baseline) + " tok)" + (hidden > 0 ? " — " + hidden + " hidden" : "")) + " · toggle";
+    legend.replaceChildren(legendDeltas(filterLabel));
   }
 
   // Cumulative session total over time: one line per session showing context size climbing within the
@@ -189,13 +190,17 @@ export function createChart({ onBarClick, onSessionClick, getSessionById }) {
     const legendItems = drawnSeries.slice(0, shown).map((s, i) => {
       const sess = getSessionById(s.id);
       const label = sess && sess.title ? clip(sess.title, 48) : short(s.id);
-      return "<li><span class='swatch' style='background:" + SESSION_COLORS[i] + ";flex:none'></span>"
-        + "<button class='linkbtn sesschip lbl' data-sid='" + esc(s.id) + "' title='" + esc(sess?.title || s.id) + "'>" + esc(label) + " <span style='color:var(--dim)'>(" + tokShort(s.total) + ")</span></button></li>";
+      return legendSessionItem({
+        color: SESSION_COLORS[i],
+        sessionId: s.id,
+        title: sess?.title || s.id,
+        label,
+        tokenLabel: tokShort(s.total),
+      });
     });
     const moreCount = drawnSeries.length - shown;
-    legend.innerHTML = "cumulative session tokens (context size) over time · <span class='swatch' style='background:var(--spike)'></span>concern limit · click a session to inspect its chat:"
-      + "<ul class='legend-list'>" + legendItems.join("") + "</ul>"
-      + (moreCount > 0 ? "<button class='viewmore' id='viewmore-cumulative'>show " + Math.min(moreCount, 10) + " more (" + moreCount + " remaining)</button>" : "");
+    const moreLabel = moreCount > 0 ? "show " + Math.min(moreCount, 10) + " more (" + moreCount + " remaining)" : null;
+    legend.replaceChildren(legendCumulativeHead(), legendList(legendItems, moreLabel, "viewmore-cumulative"));
   }
 
   // Cumulative tokens BY TOOL GROUP within the window: a running total line per functional group
@@ -204,7 +209,7 @@ export function createChart({ onBarClick, onSessionClick, getSessionById }) {
   function drawCumulativeByGroup(points, geo) {
     const { ctx, plotW } = geo;
     const withResult = points.filter((p) => p.result_chars != null && p.tool).sort((a, b) => a.ts.localeCompare(b.ts));
-    if (!withResult.length) { ctx.fillStyle = theme.dim; ctx.fillText("no tool-result data in this window", M.left, geo.H / 2); legend.innerHTML = ""; return; }
+    if (!withResult.length) { ctx.fillStyle = theme.dim; ctx.fillText("no tool-result data in this window", M.left, geo.H / 2); legend.replaceChildren(); return; }
     const t0 = Date.parse(withResult[0].ts), tN = Date.parse(withResult[withResult.length - 1].ts);
     const span = Math.max(1, tN - t0);
     // Build a cumulative running total per group over time.
@@ -246,12 +251,11 @@ export function createChart({ onBarClick, onSessionClick, getSessionById }) {
     const shown = legendShown.bygroup;
     const legendItems = order.slice(0, shown).map((g) => {
       const color = GROUP_COLORS[g] || theme.dim;
-      return "<li><span class='swatch' style='background:" + color + ";flex:none'></span><span class='lbl'>" + esc(g) + " <span style='color:var(--dim)'>(" + tokShort(running[g]) + ")</span></span></li>";
+      return legendGroupItem({ color, group: g, tokenLabel: tokShort(running[g]) });
     });
     const moreCount = order.length - shown;
-    legend.innerHTML = "cumulative tokens by tool group (approx, result size) · what drives the context climb:"
-      + "<ul class='legend-list'>" + legendItems.join("") + "</ul>"
-      + (moreCount > 0 ? "<button class='viewmore' id='viewmore-bygroup'>show " + Math.min(moreCount, 10) + " more (" + moreCount + " remaining)</button>" : "");
+    const moreLabel = moreCount > 0 ? "show " + Math.min(moreCount, 10) + " more (" + moreCount + " remaining)" : null;
+    legend.replaceChildren(legendGroupHead(), legendList(legendItems, moreLabel, "viewmore-bygroup"));
   }
 
   // Nearest drawn bar/point to a cursor position, or null if none within hit tolerance.
@@ -290,35 +294,41 @@ export function createChart({ onBarClick, onSessionClick, getSessionById }) {
     if (newIdx !== hoverIdx) { hoverIdx = newIdx; drawTimeline(curPoints, curThreshold); }
     if (!best) { tip.style.display = "none"; return; }
     const p = best.point;
-    let tipHTML;
+    let tipNodes;
     if (chartMode === "cumulative") {
       const sess = getSessionById(best.sessId);
       const label = sess && sess.title ? clip(sess.title, 40) : short(best.sessId);
-      tipHTML = "<div class='t-head' style='color:" + (best.color || "var(--accent)") + "'>" + esc(label) + "</div>"
-        + "<div class='t-row'><span>total:</span> " + fmt(p.total || 0) + " tok</div>"
-        + "<div class='t-row'><span>when:</span> " + clockLabel(p.ts) + " · " + p.ts.slice(0, 10) + "</div>"
-        + "<div class='t-row'><span>click</span> to open session detail</div>";
+      tipNodes = [
+        tooltipHead(label, { color: best.color || "var(--accent)" }),
+        tooltipRow("total:", fmt(p.total || 0) + " tok"),
+        tooltipRow("when:", clockLabel(p.ts) + " · " + p.ts.slice(0, 10)),
+        tooltipRow("click", "to open session detail"),
+      ];
     } else if (chartMode === "bygroup") {
-      tipHTML = "<div class='t-head' style='color:" + (best.color || "var(--accent)") + "'>" + esc(best.group || "group") + "</div>"
-        + "<div class='t-row'><span>cumulative:</span> " + fmt(p.total || 0) + " tok</div>"
-        + "<div class='t-row'><span>when:</span> " + clockLabel(p.ts) + " · " + p.ts.slice(0, 10) + "</div>";
+      tipNodes = [
+        tooltipHead(best.group || "group", { color: best.color || "var(--accent)" }),
+        tooltipRow("cumulative:", fmt(p.total || 0) + " tok"),
+        tooltipRow("when:", clockLabel(p.ts) + " · " + p.ts.slice(0, 10)),
+      ];
     } else {
       const spike = p.delta && document.body.dataset.threshold && p.delta >= Number(document.body.dataset.threshold);
       const tool = p.mcp_tool ? p.tool + " (" + p.mcp_tool + ")" : p.tool || p.event || "—";
       const rows = [
-        ["when", clockLabel(p.ts) + " · " + p.ts.slice(0, 10)],
-        ["event", p.event || "—"],
-        ["tool", tool],
-        p.file_ext ? ["file", "." + p.file_ext] : null,
-        p.result_chars != null ? ["result", fmt(p.result_chars) + " chars"] : null,
-        p.duration_ms != null ? ["took", p.duration_ms + " ms"] : null,
-        ["cause", p.cause || "—"],
-        ["repo", p.repo + (p.session_id ? " / " + short(p.session_id) : "")],
+        ["when:", clockLabel(p.ts) + " · " + p.ts.slice(0, 10)],
+        ["event:", p.event || "—"],
+        ["tool:", tool],
+        p.file_ext ? ["file:", "." + p.file_ext] : null,
+        p.result_chars != null ? ["result:", fmt(p.result_chars) + " chars"] : null,
+        p.duration_ms != null ? ["took:", p.duration_ms + " ms"] : null,
+        ["cause:", p.cause || "—"],
+        ["repo:", p.repo + (p.session_id ? " / " + short(p.session_id) : "")],
       ].filter(Boolean);
-      tipHTML = "<div class='t-head" + (spike ? " t-spike" : "") + "'>" + (spike ? "▲ " : "") + "+" + fmt(p.delta) + " tok</div>"
-        + rows.map((r) => "<div class='t-row'><span>" + r[0] + ":</span> " + r[1] + "</div>").join("");
+      tipNodes = [
+        tooltipHead("+" + fmt(p.delta) + " tok", { spike }),
+        ...rows.map(([term, value]) => tooltipRow(term, value)),
+      ];
     }
-    tip.innerHTML = tipHTML;
+    tip.replaceChildren(...tipNodes);
     tip.style.display = "block";
     const tipW = tip.offsetWidth;
     const left = best.x + tipW + 14 > rect.width ? best.x - tipW - 8 : best.x + 8;

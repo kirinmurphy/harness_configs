@@ -133,16 +133,10 @@ function updateHarnessFilter(harnesses) {
   if (cur === ["all", ...harnesses].join(",")) return;
   const existing = [...el.querySelectorAll("button[data-harness]")];
   for (const b of existing) b.remove();
-  const allBtn = document.createElement("button");
-  allBtn.dataset.harness = "all"; allBtn.textContent = "all";
-  if (!view.harness) allBtn.classList.add("active");
-  el.appendChild(allBtn);
-  for (const h of harnesses) {
-    const btn = document.createElement("button");
-    btn.dataset.harness = h; btn.textContent = h;
-    if (view.harness === h) btn.classList.add("active");
-    el.appendChild(btn);
-  }
+  el.append(
+    tmpl.harnessBtn("all", !view.harness),
+    ...harnesses.map((h) => tmpl.harnessBtn(h, view.harness === h)),
+  );
 }
 
 // Optional LLM synthesis on demand. Hits /api/insights-llm (shells to claude/codex -p server-side).

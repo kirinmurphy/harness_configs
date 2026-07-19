@@ -5,9 +5,11 @@
 // createRenders() time so this file never imports panels.js/api.js directly.
 
 import * as tmpl from "./templates.js";
-import { fmt, short, durLabel, clip, esc } from "./state.js";
+import { portalEl as el } from "/portal/shared/api.js";
+import { fmt, short, durLabel, clip } from "./state.js";
 
-const emptyPanel = (id, msg) => { document.getElementById(id).innerHTML = "<p style='color:var(--dim)'>" + msg + "</p>"; };
+const dimNote = (msg) => el("p", { style: "color:var(--dim)" }, msg);
+const emptyPanel = (id, msg) => { document.getElementById(id).replaceChildren(dimNote(msg)); };
 
 // modals: the object returned by createModalOpeners() in modals.js.
 export function createRenders(modals) {
@@ -15,7 +17,7 @@ export function createRenders(modals) {
 
   // The headline panel: each spike cause as a row, biggest token cost first. Click a row for what to do.
   function renderCauses(rows) {
-    if (!rows || !rows.length) { document.getElementById("causes").innerHTML = "<p style='color:var(--dim)'>no spikes yet — nothing blowing up your tokens</p>"; return; }
+    if (!rows || !rows.length) { document.getElementById("causes").replaceChildren(dimNote("no spikes yet — nothing blowing up your tokens")); return; }
     const data = rows.slice(0, 8);
     tmpl.table("causes", ["cause", "spikes", "avg Δ", "worst Δ", "repo"], data.map((c) => [
       c.cause,
@@ -45,13 +47,12 @@ export function createRenders(modals) {
       // then to the bare id. Repo/harness become the secondary context.
       const headline = s.title || s.activity || short(s.session_id);
       const sub = repoBranch + (s.harness ? " · " + s.harness : "") + " · " + short(s.session_id);
-      const label = esc(clip(headline, 56)) + " <span class='go'>view chat ›</span><br><span style='color:var(--dim);font-size:11px'>" + esc(sub) + "</span>";
-      return [{ html: label }, durLabel(s.first_ts, s.last_ts), { num: fmt(s.total_tokens) }, { num: s.tool_calls }, { num: s.mcp_calls }];
+      return [tmpl.sessionCell(clip(headline, 56), sub), durLabel(s.first_ts, s.last_ts), { num: fmt(s.total_tokens) }, { num: s.tool_calls }, { num: s.mcp_calls }];
     }), data.map((s) => () => openSessionModal(s)));
   }
 
   function renderSpikes(rows) {
-    if (!rows || !rows.length) { document.getElementById("spikes").innerHTML = "<p style='color:var(--dim)'>no spikes</p>"; return; }
+    if (!rows || !rows.length) { document.getElementById("spikes").replaceChildren(dimNote("no spikes")); return; }
     const data = rows.slice(0, 12);
     tmpl.table("spikes", ["time", "where", "worst Δ", "event", "hits"], data.map((s) => [
       s.ts.slice(0, 19),
@@ -90,7 +91,7 @@ export function createRenders(modals) {
   // read so the user does not scan tables.
   function renderInsights(rows) {
     const container = document.getElementById("insights");
-    container.innerHTML = "";
+    container.replaceChildren();
     if (!rows || !rows.length) { emptyPanel("insights", "not enough data yet for conclusions"); return; }
     for (const f of rows) container.appendChild(tmpl.insightRow(f));
   }
@@ -138,7 +139,7 @@ export function createRenders(modals) {
   }
 
   function renderRegression(r) {
-    if (!r || !r.groups.length) { document.getElementById("regression").innerHTML = ""; return; }
+    if (!r || !r.groups.length) { document.getElementById("regression").replaceChildren(); return; }
     tmpl.table("regression", ["group", "before", "after", "Δ tokens/call"], r.groups.slice(0, 8).map((g) => [
       g.group,
       { num: fmt(g.before_avg_tokens) },

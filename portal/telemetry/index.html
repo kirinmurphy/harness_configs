@@ -2,6 +2,7 @@
 <html lang="en">
   {{HEAD}}
   <body>
+    {{CHROME}}
     <div class="filterbar">
       <div class="ranges" id="ranges">
         <span class="flabel">time range</span>
@@ -217,6 +218,61 @@
         <dt data-slot="term"></dt>
         <dd data-slot="value"></dd>
       </div>
+    </template>
+    <template id="tpl-session-cell">
+      <span>
+        <span data-slot="headline"></span> <span class="go">view chat ›</span><br />
+        <span class="sub" data-slot="sub"></span>
+      </span>
+    </template>
+    <template id="tpl-harness-btn">
+      <button></button>
+    </template>
+    <template id="tpl-legend-deltas">
+      <span>
+        <span class="swatch" style="background:var(--accent)"></span>per-turn delta tokens ·
+        <span class="swatch" style="background:var(--spike)"></span>spike threshold · click a bar
+        for chat detail · drag to pan ·
+        <button class="linkbtn" id="deltafilter" data-slot="filter-label"></button>
+      </span>
+    </template>
+    <template id="tpl-legend-cumulative-head">
+      <span>
+        cumulative session tokens (context size) over time ·
+        <span class="swatch" style="background:var(--spike)"></span>concern limit · click a
+        session to inspect its chat:
+      </span>
+    </template>
+    <template id="tpl-legend-group-head">
+      <span>cumulative tokens by tool group (approx, result size) · what drives the context climb:</span>
+    </template>
+    <template id="tpl-legend-session-item">
+      <li>
+        <span class="swatch" data-slot="swatch"></span>
+        <button class="linkbtn sesschip lbl" data-slot="chip"
+          ><span data-slot="chip-text"></span>&nbsp;<span class="dim" data-slot="token"></span
+        ></button>
+      </li>
+    </template>
+    <template id="tpl-legend-group-item">
+      <li>
+        <span class="swatch" data-slot="swatch"></span>
+        <span class="lbl" data-slot="label"
+          ><span data-slot="label-text"></span>&nbsp;<span class="dim" data-slot="token"></span
+        ></span>
+      </li>
+    </template>
+    <template id="tpl-legend-list">
+      <span>
+        <ul class="legend-list" data-slot="items"></ul>
+        <button class="viewmore" data-slot="viewmore" hidden></button>
+      </span>
+    </template>
+    <template id="tpl-tooltip-head">
+      <div class="t-head" data-slot="label"></div>
+    </template>
+    <template id="tpl-tooltip-row">
+      <div class="t-row"><span data-slot="term"></span> <span data-slot="value"></span></div>
     </template>
     <dialog id="telemetry-modal">
       <button class="closebtn" id="modalclose">×</button>

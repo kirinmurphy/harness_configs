@@ -260,6 +260,63 @@ nav a.active {
   font-weight: 600;
   display: inline;
 }
+/* Shared key/value grid — used by /plans' drawer (dtdd via tpl-dtdd-row) and /telemetry's detail
+ * modal (#modalbody, same template). .dtdd-row is `display: contents` so it's invisible to the
+ * dl's own grid layout — its dt/dd children lay out as direct grid items. */
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 5px 10px;
+  margin: 0;
+}
+.dtdd-row {
+  display: contents;
+}
+dt {
+  color: var(--dim);
+}
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+/* Shared modal chrome — used by /config's #config-modal and /plans' #skill-modal. Each dialog's
+ * own box styling (size, background, backdrop) stays in that page's own styles.css keyed off its
+ * id; only the reusable head/title/path/close/body classes live here. */
+.modal-head {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.modal-title {
+  font-size: var(--text-sm);
+  color: var(--ink);
+  font-weight: 600;
+}
+.modal-path {
+  font-size: var(--text-2xs);
+  color: var(--off);
+}
+.modal-close {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  border-radius: 5px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.modal-close:hover {
+  color: var(--ink);
+  border-color: var(--dim);
+}
+.modal-body {
+  overflow: auto;
+}
+.modal-body > .markdown {
+  padding: 14px 16px;
+}
 @media (max-width: 760px) {
   /* .portal-header {
     align-items: flex-start;

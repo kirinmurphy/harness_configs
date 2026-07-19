@@ -2,7 +2,7 @@
 // the handful of elements that need a listener) and returns a DOM node. Nothing here reads or
 // writes app state directly, and nothing here imports the modal — app.js wires callbacks in.
 
-import { portalEl as el, portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
+import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
 import { SECTION_TEMPLATE_ID, resolveDriftChip } from "./state.js";
 
 export function modalDefaults(rules, onDefaultClick) {
@@ -25,20 +25,38 @@ function bucketControl({ current, compact, onSelect }) {
   return node;
 }
 
+// Shows/hides a data-slot element by selector; when `show` is truthy and `text` is given, fills
+// its textContent too. Centralizes the "conditional slot" idiom used across the behavior/
+// arbitrary-command row templates, where several optional pieces (badges, notes, buttons) only
+// appear when the item's data warrants them.
+function toggleSlot(node, name, show, text) {
+  const slot = node.querySelector(`[data-slot="${name}"]`);
+  slot.hidden = !show;
+  if (show && text != null) slot.textContent = text;
+  return slot;
+}
+
 // One named behavior: label, a deny/ask/allow segmented control, and — only when the live value
 // differs from the manifest default — a "custom" badge with a one-click revert. Confirms before
 // moving OUT of deny (the "loosening" action), same reasoning the old profile selector used for
 // switching to a looser profile.
 export function behaviorRow(item, { onApplyBucket }) {
   const row = tpl("tpl-permission-row");
-  const wrap = el("div", { class: "behavior-row" });
-  const head = el("div", { class: "behavior-head" });
-  const label = el("span", { class: "behavior-label" }, item.label);
-  head.appendChild(label);
-  if (item.codexOnly) head.appendChild(el("span", { class: "codex-note" }, "Codex only"));
-  const err = el("div", { class: "item-err" });
+  const wrap = tpl("tpl-behavior-row");
+  const err = wrap.querySelector('[data-slot="err"]');
 
-  head.appendChild(bucketControl({
+  fill(wrap, { label: item.label });
+  toggleSlot(wrap, "codex-only", item.codexOnly);
+  toggleSlot(wrap, "description", item.description, item.description);
+  toggleSlot(wrap, "no-codex-ask", item.noCodexAsk && !item.codexOnly);
+  toggleSlot(wrap, "default-bucket", item.overridden, "default: " + item.defaultBucket);
+  toggleSlot(wrap, "override-badge", item.overridden);
+  const reset = toggleSlot(wrap, "reset", item.overridden);
+  if (item.overridden) {
+    reset.addEventListener("click", () => onApplyBucket({ behaviorId: item.id, bucket: "default" }, err));
+  }
+
+  wrap.querySelector('[data-slot="bucket-control"]').replaceWith(bucketControl({
     current: item.bucket,
     onSelect: async (b) => {
       if (item.bucket === "deny" && b !== "deny") {
@@ -51,22 +69,6 @@ export function behaviorRow(item, { onApplyBucket }) {
     },
   }));
 
-  if (item.overridden) {
-    const badgeEl = el("span", { class: "override-badge" }, "⚡ custom");
-    const reset = el("button", { class: "reset-link" }, "reset");
-    reset.type = "button";
-    reset.addEventListener("click", () => onApplyBucket({ behaviorId: item.id, bucket: "default" }, err));
-    head.appendChild(badgeEl);
-    head.appendChild(reset);
-  }
-  wrap.appendChild(head);
-  if (item.description) wrap.appendChild(el("div", { class: "behavior-desc" }, item.description));
-  if (item.overridden) wrap.appendChild(el("div", { class: "behavior-default" }, "default: " + item.defaultBucket));
-  if (item.noCodexAsk && !item.codexOnly) {
-    wrap.appendChild(el("div", { class: "codex-note" }, "Codex has no per-command ask — runs without a prompt there unless another setting forces approval."));
-  }
-  wrap.appendChild(err);
-
   fill(row, { content: wrap });
   return row;
 }
@@ -75,63 +77,50 @@ export function behaviorRow(item, { onApplyBucket }) {
 // same bucket control as behaviorRow; "remove" reverts to default, which for a manifest-default
 // command means falling back to its allow-by-default state, and for a purely personal addition
 // means it stops being tracked at all.
+function arbitraryItemRow(c, { onApplyBucket }) {
+  const line = tpl("tpl-arbitrary-item");
+  const err = line.querySelector('[data-slot="err"]');
+  fill(line, { label: c.label });
+  toggleSlot(line, "no-codex-ask", c.noCodexAsk);
+
+  line.querySelector('[data-slot="bucket-control"]').replaceWith(bucketControl({
+    current: c.bucket,
+    compact: true,
+    onSelect: async (b) => {
+      if (c.bucket === "deny" && b !== "deny") {
+        const ok = window.confirm("Moving \"" + c.label + "\" out of deny loosens safety. Apply anyway?");
+        if (!ok) return;
+      }
+      await onApplyBucket({ tokens: c.label.split(" "), bucket: b }, err);
+    },
+  }));
+
+  const reset = toggleSlot(line, "reset", c.overridden, c.defaultBucket ? "reset" : "remove");
+  if (c.overridden) {
+    reset.addEventListener("click", () => onApplyBucket({ tokens: c.label.split(" "), bucket: "default" }, err));
+  }
+  return line;
+}
+
 export function arbitraryListRow(item, { onApplyBucket }) {
   const row = tpl("tpl-permission-row");
-  const wrap = el("div", { class: "arbitrary-list" });
-  wrap.appendChild(el("div", { class: "arbitrary-head" }, item.label));
-  if (item.description) wrap.appendChild(el("div", { class: "arbitrary-desc" }, item.description));
+  const wrap = tpl("tpl-arbitrary-list-row");
+  fill(wrap, { label: item.label });
+  toggleSlot(wrap, "description", item.description, item.description);
 
-  const list = el("div", { class: "arbitrary-items" });
-  const renderItems = () => {
-    list.replaceChildren(
-      ...(item.items || []).map((c) => {
-        const line = el("div", { class: "arbitrary-item" });
-        line.appendChild(el("span", { class: "arbitrary-label" }, c.label));
-        const err = el("span", { class: "item-err" });
-        line.appendChild(bucketControl({
-          current: c.bucket,
-          compact: true,
-          onSelect: async (b) => {
-            if (c.bucket === "deny" && b !== "deny") {
-              const ok = window.confirm("Moving \"" + c.label + "\" out of deny loosens safety. Apply anyway?");
-              if (!ok) return;
-            }
-            await onApplyBucket({ tokens: c.label.split(" "), bucket: b }, err);
-          },
-        }));
-        if (c.overridden) {
-          const remove = el("button", { class: "reset-link" }, c.defaultBucket ? "reset" : "remove");
-          remove.type = "button";
-          remove.addEventListener("click", () => onApplyBucket({ tokens: c.label.split(" "), bucket: "default" }, err));
-          line.appendChild(remove);
-        }
-        if (c.noCodexAsk) line.appendChild(el("span", { class: "codex-note" }, "no per-command ask on Codex"));
-        line.appendChild(err);
-        return line;
-      }),
-    );
-  };
-  renderItems();
-  wrap.appendChild(list);
+  const list = wrap.querySelector('[data-slot="items"]');
+  list.replaceChildren(
+    ...(item.items || []).map((c) => arbitraryItemRow(c, { onApplyBucket })),
+  );
 
-  const addRow = el("div", { class: "arbitrary-add" });
-  const input = document.createElement("input");
-  input.type = "text";
-  input.placeholder = "add a command, e.g. docker run";
-  input.className = "arbitrary-input";
-  const addBtn = el("button", { class: "arbitrary-add-btn" }, "add as ask");
-  addBtn.type = "button";
-  const addErr = el("span", { class: "item-err" });
-  addBtn.addEventListener("click", async () => {
+  const input = wrap.querySelector('[data-slot="input"]');
+  const addErr = wrap.querySelector('[data-slot="add-err"]');
+  wrap.querySelector('[data-slot="add-btn"]').addEventListener("click", async () => {
     const tokens = input.value.trim().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) return;
     const ok = await onApplyBucket({ tokens, bucket: "ask" }, addErr);
     if (ok) input.value = "";
   });
-  addRow.appendChild(input);
-  addRow.appendChild(addBtn);
-  addRow.appendChild(addErr);
-  wrap.appendChild(addRow);
 
   fill(row, { content: wrap });
   return row;

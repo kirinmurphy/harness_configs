@@ -318,18 +318,23 @@ dialog#info-modal {
 dialog#info-modal::backdrop {
   background: var(--backdrop);
 }
-.modal-head {
+/* info-modal only — narrower box, different head/close treatment than the shared .modal-* chrome
+ * in base.css (which #skill-modal below uses as-is). Scoped to the id so it doesn't leak onto
+ * #skill-modal via the shared class names. */
+#info-modal .modal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+  padding: 0;
+  border-bottom: none;
 }
-.modal-head h2 {
+#info-modal .modal-head h2 {
   margin: 0;
   font-size: var(--text-md);
 }
-.modal-close {
+#info-modal .modal-close {
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
@@ -339,10 +344,27 @@ dialog#info-modal::backdrop {
   justify-content: center;
   font-size: var(--text-md);
   line-height: 1;
+  margin-left: 0;
 }
-.modal-body {
+#info-modal .modal-body {
   font-size: var(--text-sm);
   color: var(--dim);
+}
+dialog#skill-modal {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-width: 900px;
+  width: 100%;
+  max-height: 85vh;
+  padding: 0;
+}
+dialog#skill-modal[open] {
+  display: flex;
+  flex-direction: column;
+}
+dialog#skill-modal::backdrop {
+  background: var(--backdrop);
 }
 .folder-tree {
   margin: 0 0 12px;
@@ -619,22 +641,6 @@ plan-drawer[hidden] {
   color: var(--dim);
   font-size: var(--text-xs);
   text-transform: uppercase;
-}
-dl {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 5px 10px;
-  margin: 0;
-}
-.dtdd-row {
-  display: contents;
-}
-dt {
-  color: var(--dim);
-}
-dd {
-  margin: 0;
-  overflow-wrap: anywhere;
 }
 .task-done {
   color: var(--dim);

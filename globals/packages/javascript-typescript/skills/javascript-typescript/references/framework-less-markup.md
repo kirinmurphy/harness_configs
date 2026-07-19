@@ -15,6 +15,13 @@ template syntax, or plain HTML `<template>` elements with a slot-fill helper whe
 framework. If the project has no framework and no existing templating convention, introduce one
 (e.g. `<template>` + a small slot-fill utility) rather than defaulting to JS-composed markup.
 
+Assigning a JS template-literal string to a `<template>`'s `.innerHTML` (`const t =
+document.createElement("template"); t.innerHTML = \`...\`;`) is still the banned pattern, not a
+fix for it — the structure is still authored as a JS string, just wrapped in a `<template>`
+variable instead of applied directly. A real fix means the markup exists as an actual `<template>`
+tag somewhere (in the host page's HTML, or a server-rendered partial), not constructed by JS at
+runtime.
+
 A single leaf node with dynamic text or a dynamic class (e.g. one `<span>` or `<li>`) is fine as a
 one-line builder call — the rule targets nested, multi-element structure, not every dynamic DOM
 write.

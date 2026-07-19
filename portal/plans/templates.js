@@ -75,15 +75,13 @@ export function spinner() {
   return el("span", { class: "spinner" });
 }
 
-export function packageBanner(pkg, onEnable) {
+export function packageBanner(pkg, onEnable, skillModal) {
   const text = pkg.available
     ? "Enable skill to add functionality for managing markdown planning documents."
     : "";
   const node = fill(tpl("tpl-package-banner"), { text });
   const details = node.querySelector("[data-slot=details]");
-  details.addEventListener("click", () =>
-    document.getElementById("skill-modal").open("plan-docs", "plan-docs"),
-  );
+  details.addEventListener("click", () => skillModal.open("plan-docs", "plan-docs"));
   const action = node.querySelector("[data-slot=action]");
   action.disabled = !pkg.available;
   action.addEventListener("click", onEnable);

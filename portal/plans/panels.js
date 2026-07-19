@@ -2,6 +2,7 @@
 // ("Project Folders") settings panel and the info modal. Each exposes a small controller so
 // app.js can call into it without owning DOM refs or listeners for these panels itself.
 
+import { portalWireBackdropClose } from "/portal/shared/api.js";
 import * as api from "./api.js";
 import * as tmpl from "./templates.js";
 
@@ -93,9 +94,7 @@ export function createInfoModal() {
 
   infoIconEl.addEventListener("click", () => setOpen(true));
   document.getElementById("info-modal-close").addEventListener("click", () => setOpen(false));
-  infoModalEl.addEventListener("click", (event) => {
-    if (event.target === infoModalEl) setOpen(false); // click landed on the dialog's own backdrop area
-  });
+  portalWireBackdropClose(infoModalEl, () => setOpen(false));
   infoModalEl.addEventListener("close", () => infoIconEl.setAttribute("aria-expanded", "false"));
 
   function setOpen(open) {

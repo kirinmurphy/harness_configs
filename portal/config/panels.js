@@ -4,6 +4,7 @@
 // panel-factory (like createInfoModal in plans/panels.js), not a custom element: the modal is a
 // page singleton referenced by id, never declaratively instantiated or cloned.
 
+import { portalWireBackdropClose } from "/portal/shared/api.js";
 import * as api from "./api.js";
 import * as tmpl from "./templates.js";
 
@@ -15,9 +16,7 @@ export function createConfigModal() {
   const footerEl = document.getElementById("modal-footer");
 
   document.getElementById("modal-close").addEventListener("click", close);
-  dialogEl.addEventListener("click", (event) => {
-    if (event.target === dialogEl) close(); // click landed on the dialog's own backdrop area
-  });
+  portalWireBackdropClose(dialogEl, close);
 
   function setHeader(title, pathText) {
     titleEl.textContent = title || "";

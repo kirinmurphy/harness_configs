@@ -55,8 +55,9 @@ attribute is needed).
    `type="module"`.
 3. In `app.js`, import what you need from `/portal/shared/api.js` (see below) instead of writing
    page-local fetch/token/clipboard helpers.
-4. If the page needs its own read or mutating API routes, add a `handle<Domain>Api` function in
-   `portal-server.mjs` (see "Server Route Dispatch") and wire it into `route()`.
+4. If the page needs its own read or mutating API routes, add a `scripts/cli/portal-routes-<domain>.mjs`
+   exporting a `handle<Domain>Api` function (see "Server Route Dispatch") and wire it into `route()`
+   in `portal-server.mjs`.
 5. Run the checks in "Checks to Run" below.
 
 Nothing else needs updating — the nav, `/api/portal/status`, and the `/config` alias behavior are
@@ -80,10 +81,10 @@ it:
 
 ### Adding a Read API
 
-Add a branch to the relevant `handle<Domain>Api` function in `portal-server.mjs` (see below) that
-returns JSON via `send(res, 200, "application/json", JSON.stringify(...))`. No token or origin
-check is required for GET routes — they stay tokenless on purpose so `curl`/local debugging keeps
-working. Call it from the page with `portalGetJson(path)`.
+Add a branch to the relevant `handle<Domain>Api` function in its `scripts/cli/portal-routes-<domain>.mjs`
+file (see below) that returns JSON via `send(res, 200, "application/json", JSON.stringify(...))`.
+No token or origin check is required for GET routes — they stay tokenless on purpose so
+`curl`/local debugging keeps working. Call it from the page with `portalGetJson(path)`.
 
 ### Adding a Mutating API
 
@@ -95,21 +96,27 @@ itself only needs to validate its body shape and return a JSON result. Call it f
 ## Server Route Dispatch
 
 `route()` in `scripts/cli/portal-server.mjs` only does: URL/query parsing, the origin + mutation-
-token guard, calling each domain handler in order, and the final 404. Each handler receives
-`(req, res, urlPath, qs, handlers)` and returns `true` once it has written a response, `false` if
-the URL/method didn't match so `route()` falls through to the next one:
+token guard, calling each domain handler in order, and the final 404. Each `handle<Domain>Api`
+function lives in its own `scripts/cli/portal-routes-<domain>.mjs` file (imported into
+`portal-server.mjs`), receives `(req, res, urlPath, qs, handlers)`, and returns `true` once it has
+written a response, `false` if the URL/method didn't match so `route()` falls through to the next
+one. `scripts/cli/portal-routes-http.mjs` holds the `send`/`readJsonBody` helpers every route file
+imports:
 
-- `handleConfigApi` — `/api/config`, `/api/config/source`, `/api/config/packages`,
-  `/api/config/skills`, `/api/config/permissions`
-- `handlePlansApi` — `/api/plans`, `/api/plans/document`, `/api/plans/prompt`,
-  `/api/plans/settings`, `/api/plans/refresh`
-- `handlePortalPage` — serves a page's `index.html` (with the injected manifest + token)
-- `handlePortalAsset` — static files under `/portal/`
-- `handlePortalStatus` — `/api/portal/status`
-- `handleTelemetryApi` — `/api/data`, `/api/session`, `/api/insights-llm`
+- `portal-routes-config.mjs` → `handleConfigApi` — `/api/config`, `/api/config/source`,
+  `/api/config/packages`, `/api/config/skills`, `/api/config/permissions`
+- `portal-routes-plans.mjs` → `handlePlansApi` — `/api/plans`, `/api/plans/document`,
+  `/api/plans/prompt`, `/api/plans/settings`, `/api/plans/refresh`
+- `handlePortalPage` (in `portal-server.mjs`) — serves a page's `index.html` (with the injected
+  manifest + token)
+- `handlePortalAsset` (in `portal-server.mjs`) — static files under `/portal/`
+- `handlePortalStatus` (in `portal-server.mjs`) — `/api/portal/status`
+- `portal-routes-telemetry.mjs` → `handleTelemetryApi` — `/api/data`, `/api/session`,
+  `/api/insights-llm`
 
-Adding a new API domain means adding one more `handle<Domain>Api` function and one more line in
-`route()` — the dispatch chain stays flat instead of growing one long `if` chain.
+Adding a new API domain means adding one more `portal-routes-<domain>.mjs` file and one more import
++ dispatch line in `route()` — each domain's API surface stays in its own file instead of growing
+a shared one.
 
 ## Mutation-Token Contract
 

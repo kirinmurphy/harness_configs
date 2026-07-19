@@ -2,12 +2,35 @@
 // orchestration. Mirrors portal/plans/templates.js and portal/config/templates.js.
 
 import { portalTpl as tpl } from "/portal/shared/api.js";
+import { fmt } from "./state.js";
 
 export function statItem(label, value) {
   const node = tpl("tpl-stat");
   node.querySelector("[data-slot=label]").textContent = label;
   node.querySelector("[data-slot=value]").textContent = value;
   return node;
+}
+
+// One heavy-turn row in the "surface chat context" detail (fetchSessionContext in app.js). Plain
+// textContent throughout, so tool names/previews from the transcript need no manual HTML escaping.
+export function turnRow(t) {
+  const node = tpl("tpl-turn");
+  node.querySelector("[data-slot=tool]").textContent = (t.tool || "tool") + (t.is_mcp ? " (mcp)" : "");
+  node.querySelector("[data-slot=stats]").textContent = `${fmt(t.approx_tokens)} tok · ${fmt(t.result_chars)} chars`;
+  node.querySelector("[data-slot=preview]").textContent = t.preview || "";
+  return node;
+}
+
+// The generic detail modal's key/value list (portal/telemetry/panels.js's createDetailModal).
+// null entries are dropped so callers can include optional fields inline; an empty/nullish value
+// renders as "—". Plain textContent, so no manual escaping is needed for labels/values.
+export function detailRows(rows) {
+  return rows.filter(Boolean).map(([term, value]) => {
+    const row = tpl("tpl-dtdd-row");
+    row.querySelector("[data-slot=term]").textContent = term;
+    row.querySelector("[data-slot=value]").textContent = value == null || value === "" ? "—" : value;
+    return row;
+  });
 }
 
 export function insightRow(f) {

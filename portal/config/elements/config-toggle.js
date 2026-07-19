@@ -3,7 +3,10 @@
 // owns the POST + re-render) as properties right after creation. Optimistic-disable while the
 // POST is in flight; reverts + shows the error on failure. Status text renders into a sibling
 // .item-status node the caller passes as .statusSlot (the row's own status line, shared with
-// other item feedback — not owned by this element).
+// other item feedback — not owned by this element). Built from tpl-config-toggle
+// (portal/config/index.html) — page-owned, only used from /config.
+import { portalTpl as tpl } from "/portal/shared/api.js";
+
 class ConfigToggleElement extends HTMLElement {
   connectedCallback() {
     if (this._item) this.render();
@@ -32,16 +35,10 @@ class ConfigToggleElement extends HTMLElement {
   }
 
   render() {
-    const label = document.createElement("label");
-    label.className = "switch";
-    const input = document.createElement("input");
-    input.type = "checkbox";
+    const label = tpl("tpl-config-toggle");
+    const input = label.querySelector('[data-slot="input"]');
     input.checked = !!this._item.active;
     input.setAttribute("aria-label", this._item.label);
-    const track = document.createElement("span");
-    track.className = "switch-track";
-    track.appendChild(Object.assign(document.createElement("span"), { className: "switch-knob" }));
-    label.append(input, track);
 
     input.addEventListener("change", async () => {
       const enabled = input.checked;

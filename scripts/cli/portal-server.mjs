@@ -3,6 +3,10 @@ import http from "node:http";
 import path from "node:path";
 import crypto from "node:crypto";
 import { repoRoot } from "./paths.mjs";
+import { send } from "./portal-routes-http.mjs";
+import { handleConfigApi } from "./portal-routes-config.mjs";
+import { handlePlansApi } from "./portal-routes-plans.mjs";
+import { handleTelemetryApi } from "./portal-routes-telemetry.mjs";
 
 // Tiny local-only portal server. Binds to loopback only so telemetry/config data never leaves the
 // machine. Stdlib `http` keeps the install dependency-free, matching the rest of the CLI.
@@ -137,152 +141,6 @@ function handlePortalStatus(req, res, urlPath) {
   return true;
 }
 
-function handleConfigApi(req, res, urlPath, qs, handlers) {
-  const { loadConfig, loadConfigSource, mutatePackage, mutateSkill, mutateBehavior, mutateCommand } = handlers;
-
-  // Mutations are POST-only, origin-checked, token-checked, and JSON-bodied (route() already ran
-  // the origin+token guard). Each writes config then returns the fresh snapshot so the client
-  // re-renders from one response.
-  if (req.method === "POST" && (urlPath === "/api/config/packages" || urlPath === "/api/config/skills")) {
-    readJsonBody(req, async (body, err) => {
-      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
-      const { id, enabled } = body || {};
-      if (typeof id !== "string" || typeof enabled !== "boolean") {
-        return send(res, 400, "application/json", JSON.stringify({ error: "expected { id: string, enabled: boolean }" }));
-      }
-      const mutate = urlPath === "/api/config/packages" ? mutatePackage : mutateSkill;
-      const result = await mutate(id, enabled); // mutatePackage is async (service components)
-      const status = result.ok ? 200 : 400;
-      send(res, status, "application/json", JSON.stringify({ ...result, config: loadConfig() }));
-    });
-    return true;
-  }
-
-  // Flat model: either a named behavior (by manifest id) or an arbitrary command (by token
-  // array) moves to a bucket. "default" reverts to the manifest's own default for that item.
-  // Global only — no profile, no scope; see permissions-render.mjs / config-mutate.mjs.
-  if (req.method === "POST" && urlPath === "/api/config/permissions") {
-    readJsonBody(req, (body, err) => {
-      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
-      const { behaviorId, tokens, bucket } = body || {};
-      const validBucket = bucket === "default" || ["deny", "ask", "allow"].includes(bucket);
-      if (!validBucket || (typeof behaviorId !== "string" && !Array.isArray(tokens))) {
-        return send(res, 400, "application/json", JSON.stringify({
-          error: "expected { behaviorId: string, bucket } or { tokens: string[], bucket } — bucket one of deny|ask|allow|default",
-        }));
-      }
-      const result = typeof behaviorId === "string"
-        ? mutateBehavior(behaviorId, bucket)
-        : mutateCommand(tokens, bucket);
-      const status = result.ok ? 200 : 400;
-      send(res, status, "application/json", JSON.stringify({ ...result, config: loadConfig() }));
-    });
-    return true;
-  }
-
-  if (urlPath === "/api/config") {
-    send(res, 200, "application/json", JSON.stringify(loadConfig()));
-    return true;
-  }
-  if (urlPath === "/api/config/source") {
-    // Read-only: returns the full source that defines a tool (skill/command/rules/hooks) for the
-    // /config click-to-inspect popup. loadConfigSource whitelists kind+id against the catalog.
-    const params = new URLSearchParams(qs);
-    const result = loadConfigSource({
-      kind: params.get("kind"),
-      id: params.get("id"),
-      harness: params.get("harness") || "claude",
-    });
-    send(res, result.ok ? 200 : 400, "application/json", JSON.stringify(result));
-    return true;
-  }
-  return false;
-}
-
-function handlePlansApi(req, res, urlPath, qs, handlers) {
-  const { loadPlans, loadPlanDocument, buildPlansPrompt, updatePlanSettings, refreshPlans } = handlers;
-
-  if (urlPath === "/api/plans") {
-    send(res, 200, "application/json", JSON.stringify(loadPlans()));
-    return true;
-  }
-  if (urlPath === "/api/plans/document") {
-    const params = new URLSearchParams(qs);
-    try {
-      send(res, 200, "application/json", JSON.stringify(loadPlanDocument({ key: params.get("key") })));
-    } catch (err) {
-      send(res, 400, "application/json", JSON.stringify({ error: String(err?.message || err) }));
-    }
-    return true;
-  }
-  if (req.method === "POST" && urlPath === "/api/plans/prompt") {
-    readJsonBody(req, (body, err) => {
-      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
-      try {
-        send(res, 200, "application/json", JSON.stringify(buildPlansPrompt(body || {})));
-      } catch (error) {
-        send(res, 400, "application/json", JSON.stringify({ error: String(error?.message || error) }));
-      }
-    });
-    return true;
-  }
-  if (req.method === "POST" && urlPath === "/api/plans/settings") {
-    readJsonBody(req, (body, err) => {
-      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
-      try {
-        send(res, 200, "application/json", JSON.stringify(updatePlanSettings(body || {})));
-      } catch (error) {
-        send(res, 400, "application/json", JSON.stringify({ error: String(error?.message || error) }));
-      }
-    });
-    return true;
-  }
-  if (req.method === "POST" && urlPath === "/api/plans/refresh") {
-    send(res, 200, "application/json", JSON.stringify(refreshPlans()));
-    return true;
-  }
-  return false;
-}
-
-function handleTelemetryApi(req, res, urlPath, qs, handlers) {
-  const { loadAnalysis, loadSession, loadInsightsLlm } = handlers;
-
-  if (urlPath === "/api/insights-llm") {
-    // On-demand LLM synthesis of the deterministic facts. May take seconds (shells to claude -p).
-    send(res, 200, "application/json", JSON.stringify(loadInsightsLlm()));
-    return true;
-  }
-  if (urlPath === "/api/data") {
-    // The client passes ?range=<ms> to scope the WHOLE report (every panel) to a trailing time
-    // window, and an optional &end=<ms epoch> when panning to a fixed window rather than "latest".
-    // ?harness=claude (or codex) scopes all panels to a single harness; omit for all harnesses.
-    const params = new URLSearchParams(qs);
-    const rangeMs = params.has("range") ? Number(params.get("range")) : null;
-    const end = params.has("end") ? Number(params.get("end")) : null;
-    const harness = params.get("harness") || null;
-    const window = Number.isFinite(rangeMs) && rangeMs > 0 ? { rangeMs, end: Number.isFinite(end) ? end : null } : null;
-    send(res, 200, "application/json", JSON.stringify(loadAnalysis(window, harness)));
-    return true;
-  }
-  if (urlPath === "/api/session") {
-    // Bridge a flagged event to its chat: locate the transcript by session id and surface the
-    // heaviest turns + a ready-to-paste analysis prompt. loadSession owns the file I/O (telemetry.mjs)
-    // so the server stays I/O-free, mirroring loadAnalysis.
-    const params = new URLSearchParams(qs);
-    const id = params.get("id");
-    const harness = params.get("harness") || "claude";
-    const finding = params.get("finding") || "abnormal token usage";
-    const repo = params.get("repo") || null;
-    if (!id) {
-      send(res, 400, "application/json", JSON.stringify({ error: "missing id" }));
-      return true;
-    }
-    send(res, 200, "application/json", JSON.stringify(loadSession({ id, harness, finding, repo })));
-    return true;
-  }
-  return false;
-}
-
 function servePortalAsset(urlPath, res) {
   const relative = decodeURIComponent(urlPath.slice("/portal/".length));
   const assetPath = path.resolve(PORTAL_DIR, relative);
@@ -295,23 +153,4 @@ function servePortalAsset(urlPath, res) {
   }
   const type = STATIC_TYPES[path.extname(assetPath)] || "application/octet-stream";
   send(res, 200, type, content);
-}
-
-function readJsonBody(req, cb) {
-  let raw = "";
-  let tooBig = false;
-  req.on("data", (chunk) => {
-    raw += chunk;
-    if (raw.length > 64 * 1024) { tooBig = true; req.destroy(); } // local control payloads are tiny
-  });
-  req.on("end", () => {
-    if (tooBig) return cb(null, new Error("body too large"));
-    try { cb(raw ? JSON.parse(raw) : {}, null); } catch (err) { cb(null, err); }
-  });
-  req.on("error", (err) => cb(null, err));
-}
-
-function send(res, status, type, body) {
-  res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store" });
-  res.end(body);
 }

@@ -161,7 +161,23 @@
         </p>
       </div>
     </dialog>
-    <skill-detail-modal id="skill-modal"></skill-detail-modal>
+    <dialog id="skill-modal" aria-labelledby="skill-modal-title">
+      <div class="modal-head">
+        <span class="modal-title" id="skill-modal-title" data-slot="title"></span>
+        <span class="modal-path" data-slot="path"></span>
+        <button
+          type="button"
+          class="modal-close"
+          data-slot="close"
+          aria-label="Close"
+        >
+          ×
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="markdown" data-slot="content"></div>
+      </div>
+    </dialog>
     <plan-drawer id="drawer" hidden>
       <aside class="drawer-panel">
         <div class="drawer-head">
@@ -227,6 +243,20 @@
     </template>
     <template id="tpl-chip">
       <span class="chip"></span>
+    </template>
+    <template id="tpl-filter-chip">
+      <span class="filter-chip">
+        <span class="filter-chip-label" data-slot="label"></span>
+        <span class="filter-chip-value" data-slot="value"></span>
+        <button
+          type="button"
+          class="filter-chip-remove"
+          data-slot="remove"
+          title="Remove filter"
+        >
+          ×
+        </button>
+      </span>
     </template>
     <template id="tpl-group">
       <section class="group">

@@ -74,6 +74,15 @@ export function portalFillSlots(node, fills) {
   return node;
 }
 
+// Wires "click on the dialog's own backdrop area closes it" — every page-singleton <dialog>
+// controller (createInfoModal, createConfigModal, createDetailModal, createSkillDetailModal)
+// needs this exact listener; centralized here so it's written once.
+export function portalWireBackdropClose(dialogEl, onClose) {
+  dialogEl.addEventListener("click", (event) => {
+    if (event.target === dialogEl) onClose();
+  });
+}
+
 export function portalEl(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {

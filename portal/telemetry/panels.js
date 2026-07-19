@@ -6,7 +6,8 @@
 // primitive) already have their data in hand before calling in, so this controller exposes ONE
 // open() shape rather than several — see docs/plans/portal-telemetry-web-components-plan.md.
 
-import { esc } from "./state.js";
+import { portalWireBackdropClose } from "/portal/shared/api.js";
+import * as tmpl from "./templates.js";
 
 export function createDetailModal() {
   const dialogEl = document.getElementById("telemetry-modal");
@@ -17,9 +18,7 @@ export function createDetailModal() {
   const extraEl = document.getElementById("modalextra");
 
   document.getElementById("modalclose").addEventListener("click", close);
-  dialogEl.addEventListener("click", (event) => {
-    if (event.target === dialogEl) close(); // click landed on the dialog's own backdrop area
-  });
+  portalWireBackdropClose(dialogEl, close);
 
   // Generic key/value popup. rows is an array of [label, value]; null entries are dropped so
   // callers can include optional fields inline. opts.actions = [{label, onClick}] renders
@@ -27,10 +26,7 @@ export function createDetailModal() {
   function open(title, sub, rows, opts) {
     titleEl.textContent = title;
     subEl.textContent = sub || "";
-    bodyEl.innerHTML = rows
-      .filter(Boolean)
-      .map((r) => "<dt>" + esc(r[0]) + "</dt><dd>" + (r[1] == null || r[1] === "" ? "—" : esc(r[1])) + "</dd>")
-      .join("");
+    bodyEl.replaceChildren(...tmpl.detailRows(rows));
     actionsEl.innerHTML = "";
     extraEl.innerHTML = "";
     for (const a of (opts && opts.actions) || []) {

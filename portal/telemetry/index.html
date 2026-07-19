@@ -203,6 +203,21 @@
         </div>
       </div>
     </template>
+    <template id="tpl-turn">
+      <div class="turn">
+        <div class="th">
+          <span class="tool" data-slot="tool"></span>
+          <span data-slot="stats"></span>
+        </div>
+        <div class="prev" data-slot="preview"></div>
+      </div>
+    </template>
+    <template id="tpl-dtdd-row">
+      <div class="dtdd-row">
+        <dt data-slot="term"></dt>
+        <dd data-slot="value"></dd>
+      </div>
+    </template>
     <dialog id="telemetry-modal">
       <button class="closebtn" id="modalclose">×</button>
       <h3 id="modaltitle"></h3>

@@ -7,6 +7,7 @@ import {
   portalHideLoading,
   portalCopyText,
 } from "/portal/shared/api.js";
+import { createSkillDetailModal } from "/portal/shared/skill-detail-modal.js";
 import * as api from "./api.js";
 import * as tmpl from "./templates.js";
 import { createRootsPanel, createInfoModal } from "./panels.js";
@@ -50,6 +51,7 @@ const rootsPanel = createRootsPanel({
   onExpand: () => setFiltersExpanded(false),
 });
 createInfoModal();
+const skillModal = createSkillDetailModal(document.getElementById("skill-modal"));
 
 bindStaticControls();
 load();
@@ -208,7 +210,7 @@ function renderPackageBanner(snapshot) {
     return;
   }
   bannerEl.hidden = false;
-  bannerEl.replaceChildren(tmpl.packageBanner(pkg, enablePackage));
+  bannerEl.replaceChildren(tmpl.packageBanner(pkg, enablePackage, skillModal));
 }
 
 async function enablePackage() {

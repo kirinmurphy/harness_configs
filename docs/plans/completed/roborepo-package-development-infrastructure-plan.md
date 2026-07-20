@@ -1,3 +1,74 @@
+---
+id: roborepo-package-development-infrastructure
+priority: high
+next_action:
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit: 57344b0
+---
+
+## Completion summary
+
+Repo investigation before implementation found most of the plan's target mechanics already
+existed (scaffold, live apply-on-toggle, system/package/generated source split from a prior
+completed plan). Work scoped down to real gaps rather than rebuilding what was already there:
+
+- **Deliverable 1** — `local/skills/roborepo-development/references/package-development.md`
+  added, lazily loaded via a routing line in `SKILL.md`. Documents the manifest schema, all ten
+  resource types' actual validation depth, ownership/conflict behavior including known
+  limitations, source/generated boundaries, default-selection semantics, and the completion
+  checklist. The previously-undocumented `roborepo package *` CLI family (`create`, `list`,
+  `inspect`, `validate`, `enable`, `disable`, `reconcile`, `adopt-live`) is now documented in both
+  this reference and `docs/reference/services/roborepo-cli.md`.
+- **Deliverable 2** — the scaffold (`roborepo package create`) already existed; extended to print
+  the next validate command, accept `--default-enabled=true`, and fixed a real pre-existing bug
+  found while verifying it: in a development checkout it wrote into `<repo-root>/packages/`
+  instead of `globals/packages/` because it never branched on `packageMode` the way
+  `skill-new.mjs` does for skills. Fixed and covered by a new dev-mode regression test.
+- **Deliverable 3** — already true: `enablePackage`/`disablePackage` apply live immediately
+  (permissions, hooks, rules, MCP, commands), and the portal's toggle calls the same functions.
+  Verified the portal never tells users to run `roborepo update` after enable/disable (only the
+  unrelated drift-reconciliation case does). Documented rather than rebuilt.
+- **Deliverable 4** — partially satisfied. Single-owner claims for skill/slash-command/CLI-command
+  names were already enforced. Deeper conflict detection (hook-merge collision by command string
+  with no package-ID provenance, same-name MCP-preset/codex-tool-approval collision across
+  packages) remains a documented, known limitation — not built. Judged out of scope: the backlog
+  doc itself says not to add package-ID-tagged hook provenance "unless a real collision forces
+  it," and no real collision has occurred.
+- **Deliverable 5** — `validatePackageCatalog`/`normalizeResource` extended to shape-check all
+  ten resource types (previously five of them — `permissions`, `codex_tool_approvals`, `mcp`,
+  `plugin`, `service` — had no validation beyond "is this a known type"; `slash-command` didn't
+  check its source file exists). All 17 real packages pass the strengthened validator unchanged.
+- **Deliverable 6** — added `scripts/test/package-lifecycle-check.mjs`, a generic
+  enable/re-enable/disable/re-disable contract run against every catalog package, and wired it
+  plus the pre-existing `package-catalog-check.mjs` into CI (`.github/workflows/ci.yml`), which
+  previously ran neither.
+- **Deliverable 7** — portal metadata (label, description, category, harness compatibility via
+  resource declarations, cost) is fully derived from the manifest already; nothing to build.
+- **Deliverable 8** — completion checklist included in the reference doc.
+- **Deliverable 9** — all 17 real packages (an 18th, `code-intel`, was already-removed stray
+  cruft with no files, confirmed via git history) pass the strengthened validator and the generic
+  lifecycle test with zero per-package fixes needed. No stale pre-migration references found.
+
+**Default-selection provenance** (acceptance criterion "Default selection respects explicit
+enable/disable provenance") was initially found to be a real, unmet gap — no `defaultEnabled`
+field existed and the registry had no default/explicit-enable/explicit-disable distinction. Since
+a default-enabled package is now planned, this was built rather than left as a documented gap:
+`defaultEnabled` added to the manifest schema, a second `disabled` list added to the registry
+alongside the existing `packages` list, and a new `effectiveEnabledIds()` helper (precedence
+explicit-disable > explicit-enable > current defaults) replacing every call site that previously
+read the raw registry directly. Covered by
+`scripts/test/package-default-enabled-check.mjs` (pure precedence computation plus a live CLI
+round-trip). A real bug in the first draft of this logic — explicit-disable not overriding a
+simultaneously-present explicit-enable entry — was caught by that test before landing.
+
+Verification: `npm test` (302/302), `npm run test:packages`, `npm run test:package-lifecycle`
+(17/17), `npm run test:package-default-enabled`, `bash scripts/doctor.sh --quiet` (97/97) all
+pass at `57344b0`. A test-fixture gap in `test-roborepo.sh` (synthetic package-mode fixtures
+missing a manifest file required by unrelated concurrent work) was found and fixed as part of
+reaching a clean full-suite run.
+
 # RoboRepo Package Development Infrastructure — Implementation Plan
 
 ## Purpose

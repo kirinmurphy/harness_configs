@@ -1,5 +1,5 @@
 class PortalInfoIcon extends HTMLElement {
-  static observedAttributes = ["aria-expanded", "aria-haspopup", "aria-label", "title"];
+  static observedAttributes = ["aria-expanded", "aria-haspopup", "aria-label", "disabled", "title"];
 
   connectedCallback() {
     if (!this.button) {
@@ -26,4 +26,4 @@ class PortalInfoIcon extends HTMLElement {
   }
 }
 
-customElements.define("portal-info-icon", PortalInfoIcon);
+if (!customElements.get("portal-info-icon")) customElements.define("portal-info-icon", PortalInfoIcon);

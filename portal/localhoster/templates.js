@@ -1,6 +1,8 @@
 import { portalCopyText, portalEl as el, portalFillSlots as fill, portalTpl as tpl } from "/portal/shared/api.js";
 import { statusText } from "./state.js";
 
+const OTHER_INSTANCES = "Other instances";
+
 export function statusPill(value, label) {
   return fill(tpl("tpl-status-pill"), { value, label });
 }
@@ -33,8 +35,8 @@ export function collapsibleGroup(title, meta, nodes) {
 
 export function instanceCard(project, instance, actions) {
   const node = fill(tpl("tpl-card"), {
-    title: displayName(project.name || instance.app?.name || instance.process.command),
-    subtitle: project.name ? `${project.name} · ${instance.title || "localhost app"}` : instance.title || instance.project?.identity || "unmatched instance",
+    title: instanceTitle(project, instance),
+    subtitle: instanceSubtitle(project, instance),
     status: statusText(instance),
     latency: instance.latencyMs == null ? "unknown" : `${instance.latencyMs}ms`,
     process: `${instance.process.command} (${instance.process.pid})`,
@@ -127,4 +129,14 @@ function wireCardActions(node, project, instance, actions) {
 
 function displayName(value) {
   return String(value || "localhost app").replace(/(^|[-_\s])(\w)/g, (_, prefix, char) => `${prefix === "_" || prefix === "-" ? " " : prefix}${char.toUpperCase()}`);
+}
+
+function instanceTitle(project, instance) {
+  const projectName = project.name === OTHER_INSTANCES ? null : project.name;
+  return displayName(projectName || instance.app?.name || instance.title || instance.process.command);
+}
+
+function instanceSubtitle(project, instance) {
+  if (project.name && project.name !== OTHER_INSTANCES) return `${project.name} · ${instance.title || "localhost app"}`;
+  return `${instance.process.command} · ${instance.title || instance.project?.evidence || "unmatched instance"}`;
 }

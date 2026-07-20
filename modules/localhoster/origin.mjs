@@ -1,0 +1,21 @@
+export function originCandidatesForListener(listener, preference = null) {
+  const hosts = compatibleLoopbackHosts(listener.address);
+  if (preference === "localhost" && hosts.includes("localhost")) {
+    hosts.splice(hosts.indexOf("localhost"), 1);
+    hosts.unshift("localhost");
+  }
+  return hosts.map((host) => ({
+    protocol: "http",
+    host,
+    port: listener.port,
+    origin: host === "::1" ? `http://[::1]:${listener.port}` : `http://${host}:${listener.port}`,
+  }));
+}
+
+function compatibleLoopbackHosts(address) {
+  if (address === "::1") return ["::1", "localhost"];
+  if (address === "127.0.0.1") return ["127.0.0.1", "localhost"];
+  if (address === "localhost") return ["localhost", "127.0.0.1", "::1"];
+  if (address === "*" || address === "0.0.0.0" || address === "::") return ["localhost", "127.0.0.1", "::1"];
+  return [];
+}

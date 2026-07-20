@@ -7,7 +7,9 @@ import path from "node:path";
 import {
   buildLocalhosterSnapshot,
   capabilityForPlatform,
+  discoverListenerRecords,
   discoverInstances,
+  findCurrentInstanceByOpaqueKey,
   isTlsTrustErrorCode,
   loadSettings,
   normalizeGitRemote,
@@ -25,7 +27,9 @@ const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-localhoster-"))
 try {
   assert.equal(capabilityForPlatform("win32").discovery, "unsupported");
   assert.match(capabilityForPlatform("win32").message, /Windows/);
-  assert.deepEqual(capabilityForPlatform("darwin").unavailable, []);
+  assert.equal(capabilityForPlatform("darwin").providers.listeners.state, "supported");
+  assert.equal(capabilityForPlatform("darwin").providers.docker.state, "unsupported");
+  assert.ok(capabilityForPlatform("darwin").unavailable.includes("docker"));
 
   const listeners = parseLsofFieldOutput([
     "p101",
@@ -46,6 +50,16 @@ try {
   assert.equal(listeners[0].bindScope, "loopback");
   assert.equal(listeners[1].bindScope, "wildcard");
   assert.equal(listeners[2].address, "::1");
+  const listenerRecords = await discoverListenerRecords({
+    platform: "darwin",
+    runCommand: async (command, args) => {
+      if (args.includes("-iTCP")) return { stdout: ["p101", "cnode", "n127.0.0.1:5173"].join("\n") };
+      if (args.includes("101")) return { stdout: "n/tmp/manual-app\n" };
+      throw new Error("unexpected command");
+    },
+  });
+  assert.equal(listenerRecords.records.length, 1);
+  assert.equal(listenerRecords.records[0].cwd, "/tmp/manual-app");
 
   assert.equal(normalizeGitRemote("git@github.com:KirinMurphy/Visa_Planner.git"), "git:github.com/KirinMurphy/Visa_Planner");
   assert.equal(normalizeGitRemote("https://token@github.com/kirinmurphy/visa_planner.git?x=1#frag"), "git:github.com/kirinmurphy/visa_planner");
@@ -281,7 +295,14 @@ try {
   assert.equal(associatedSnapshot.generatedAt, "2026-07-18T18:00:00.000Z");
   assert.equal(associatedSnapshot.projects.length, 1);
   assert.equal(associatedSnapshot.projects[0].instances.length, 1);
+  assert.match(associatedSnapshot.projects[0].instances[0].opaqueKey, /^lk_/);
+  assert.equal(
+    findCurrentInstanceByOpaqueKey(associatedSnapshot, associatedSnapshot.projects[0].instances[0].opaqueKey).origin,
+    "http://127.0.0.1:5173",
+  );
+  assert.equal(findCurrentInstanceByOpaqueKey(associatedSnapshot, "lk_missing"), null);
   assert.equal(associatedSnapshot.unmatchedInstances.length, 1);
+  assert.match(associatedSnapshot.unmatchedInstances[0].opaqueKey, /^lk_/);
   assert.equal(associatedSnapshot.projects[0].instances[0].app.links[0].url, "http://127.0.0.1:5173/resume");
   assert.equal(associatedSnapshot.inactiveProjects.length, 0);
   const aliasedDiscovery = structuredClone(discovery);

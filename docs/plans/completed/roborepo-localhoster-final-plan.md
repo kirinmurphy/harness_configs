@@ -1,7 +1,7 @@
 ---
 id: localhoster-final
 priority: high
-next_action: Continue final phase 3 provider split by extracting origin/probe and provider capability aggregation while preserving current CLI/API behavior
+next_action:
 blocked_by: []
 depends_on:
   - localhoster-v1
@@ -70,6 +70,39 @@ contract:
   `modules/localhoster/listeners.mjs`.
 - `modules/localhoster/discovery.mjs` now coordinates listener records, identity resolution, alias
   lookup, HTTP probing, and snapshot-safe instance shaping.
+
+## Scope Revision
+
+On 2026-07-20, the remaining “final iteration” scope was split because Docker/process/Git/history/
+metadata/provider-cadence/UI-drawer work is too large to complete safely in one implementation
+without risking the stable V1/V2 Localhoster contracts. This plan now closes when the final
+foundation is complete and the rest of the original product target is captured in smaller backlog
+plans.
+
+Revised required scope for this plan:
+
+- [x] Preserve V1/V2 CLI, API, settings, portal curation, and snapshot behavior.
+- [x] Finish the provider-split foundation for capabilities, listeners, origin candidates, HTTP
+  probing, identity, aliases, and browser-safe snapshots.
+- [x] Add snapshot-issued opaque instance keys and key-validated `/history` and `/metadata` read
+  endpoints that cannot probe arbitrary URLs, PIDs, commands, or paths.
+- [x] Keep unsupported future providers visible through capability reporting instead of pretending
+  Docker, process metrics, Git, history, or metadata are implemented.
+- [x] Split deferred provider/UI work into specific backlog plans with acceptance criteria.
+- [x] Update docs to describe shipped behavior and deferred limits.
+- [x] Run required final verification.
+
+Deferred scope and rationale:
+
+- Docker/Compose and process metrics move to `localhoster-docker-process-providers`; they require
+  provider fixtures and likely manual Docker validation.
+- Git status, health normalization, and JSONL history move to `localhoster-git-health-history`;
+  they require durable event-shape and retention decisions.
+- Metadata suggestions move to `localhoster-metadata-suggestions`; they require same-origin
+  parsing, body-size, sanitization, and UI suggestion workflows.
+- Expanded portal filters, diagnostics drawer, history/evidence views, compact/detail modes,
+  focus-preserving renders, and manual Docker/Windows/Next validation move to those child plans as
+  data becomes real.
 
 ## Decision Record
 
@@ -601,6 +634,32 @@ Close these during final phase 1 if they naturally share code with V2 migration:
 11. **Document and validate.** Update reference/user docs, CLI docs, README, and run targeted Localhoster, portal smoke, broad RoboRepo, and manual macOS scenario validation before completion.
 
 ## Acceptance Criteria
+
+This document's original full-product acceptance criteria are now distributed across the completed
+foundation scope above plus these follow-up backlog plans:
+
+- `localhoster-docker-process-providers`
+- `localhoster-git-health-history`
+- `localhoster-metadata-suggestions`
+
+The criteria below remain the product target, but completion of this plan means the revised
+foundation scope is complete, the deferred criteria are explicitly tracked, and docs/tests reflect
+current shipped behavior.
+
+Completion evidence recorded on 2026-07-20:
+
+- Provider-split foundation now separates capability, listener, origin, and HTTP probe boundaries.
+- Snapshot-issued opaque keys are emitted for active and unmatched current instances.
+- `/api/localhoster/history?key=<opaque-key>` and `/api/localhoster/metadata?key=<opaque-key>`
+  validate current snapshot keys and return explicit deferred empty results.
+- Follow-up backlog plans now track Docker/process providers, Git/health/history, and metadata
+  suggestions.
+- Documentation describes shipped behavior and current limits.
+- Verification passed:
+  - `node --check` for touched JS files
+  - `npm run test:localhoster`
+  - `git diff --check`
+  - `npm test`
 
 - One project can reliably display and retain separate Web, API, Storybook, Mailpit, or other app identities without depending on their ports.
 - Saved quick links always resolve against the matching app's newest current origin and hostname preference.

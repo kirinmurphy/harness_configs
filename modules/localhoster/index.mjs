@@ -1,5 +1,7 @@
 export {
   capabilityForPlatform,
+} from "./capabilities.mjs";
+export {
   discoverInstances,
 } from "./discovery.mjs";
 export {
@@ -8,15 +10,21 @@ export {
   resolveProjectIdentity,
 } from "./identity.mjs";
 export {
+  defaultRunCommand,
+  discoverListenerRecords,
+} from "./listeners.mjs";
+export {
   parseCwdFieldOutput,
   parseLsofFieldOutput,
-  originCandidatesForListener,
 } from "./lsof.mjs";
+export {
+  originCandidatesForListener,
+} from "./origin.mjs";
 export {
   isTlsTrustErrorCode,
   probeHttpCandidate,
   probeHttpCandidates,
-} from "./probe.mjs";
+} from "./http-probe.mjs";
 export {
   SETTINGS_VERSION,
   defaultSettings,
@@ -30,4 +38,5 @@ export {
 } from "./settings.mjs";
 export {
   buildLocalhosterSnapshot,
+  findCurrentInstanceByOpaqueKey,
 } from "./snapshot.mjs";

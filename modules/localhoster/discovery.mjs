@@ -1,37 +1,13 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { promisify } from "node:util";
-import { parseCwdFieldOutput, parseLsofFieldOutput, originCandidatesForListener } from "./lsof.mjs";
+import { capabilityForPlatform } from "./capabilities.mjs";
 import { resolveProjectIdentity } from "./identity.mjs";
-import { probeHttpCandidate } from "./probe.mjs";
+import { defaultRunCommand, discoverListenerRecords } from "./listeners.mjs";
+import { originCandidatesForListener } from "./origin.mjs";
+import { probeHttpCandidate } from "./http-probe.mjs";
 import { resolveProjectAlias } from "./settings.mjs";
 
-const execFileAsync = promisify(execFile);
-const DISCOVERY_TIMEOUT_MS = 1500;
 const PROBE_CONCURRENCY = 8;
-
-export function capabilityForPlatform(platform = process.platform) {
-  if (platform === "darwin") {
-    return {
-      platform,
-      platformLabel: "macOS",
-      discovery: "supported",
-      available: ["listeners", "processWorkingDirectory", "httpProbe", "projectIdentity"],
-      unavailable: [],
-      message: null,
-    };
-  }
-  const label = platform === "win32" ? "Windows" : platform === "linux" ? "Linux" : platform;
-  return {
-    platform,
-    platformLabel: label,
-    discovery: "unsupported",
-    available: [],
-    unavailable: ["listeners", "processWorkingDirectory", "automaticProjectMatching"],
-    message: `Automatic localhost discovery is not yet supported on ${label}.`,
-  };
-}
 
 export async function discoverInstances(options = {}) {
   const {
@@ -48,24 +24,12 @@ export async function discoverInstances(options = {}) {
     return { capabilities, warnings, instances: [] };
   }
 
-  let listenerOutput;
-  try {
-    listenerOutput = await runCommand("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-F", "pcn"], { timeoutMs: DISCOVERY_TIMEOUT_MS });
-  } catch (err) {
-    warnings.push(`listener discovery failed: ${err.message}`);
-    return { capabilities, warnings, instances: [] };
-  }
-
-  const listeners = parseLsofFieldOutput(listenerOutput.stdout ?? listenerOutput);
-  const cwdByPid = new Map();
+  const listenerProvider = await discoverListenerRecords({ platform, runCommand });
+  warnings.push(...listenerProvider.warnings);
   const pending = [];
   const instances = [];
 
-  for (const listener of listeners) {
-    if (!cwdByPid.has(listener.pid)) {
-      cwdByPid.set(listener.pid, await resolvePidCwd(listener.pid, runCommand, warnings));
-    }
-    const cwd = cwdByPid.get(listener.pid);
+  for (const { listener, cwd } of listenerProvider.records) {
     const identity = cwd
       ? resolveIdentity(cwd, listener.command, options)
       : {
@@ -98,16 +62,6 @@ function appSettingsForIdentity(settings, identity) {
   const project = settings?.projects?.[resolvedIdentity];
   if (!project) return null;
   return project.apps?.web || Object.values(project.apps || {})[0] || null;
-}
-
-async function resolvePidCwd(pid, runCommand, warnings) {
-  try {
-    const result = await runCommand("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-F", "n"], { timeoutMs: DISCOVERY_TIMEOUT_MS });
-    return parseCwdFieldOutput(result.stdout ?? result);
-  } catch (err) {
-    warnings.push(`cwd lookup failed for pid ${pid}: ${err.message}`);
-    return null;
-  }
 }
 
 async function probeCandidatesForInstances(items, probeHttp, warnings, concurrency) {
@@ -188,8 +142,4 @@ function buildMatchSignature(identity, command, cwd, title) {
 
 function safeCommand(value) {
   return String(value || "unknown").replace(/[^\w.-]/g, "_").slice(0, 80);
-}
-
-async function defaultRunCommand(command, args, { timeoutMs } = {}) {
-  return execFileAsync(command, args, { timeout: timeoutMs, encoding: "utf8", maxBuffer: 1024 * 1024 });
 }

@@ -1,7 +1,13 @@
 import { send, readJsonBody } from "./portal-routes-http.mjs";
 
 export function handleLocalhosterApi(req, res, urlPath, qs, handlers) {
-  const { loadLocalhoster, refreshLocalhoster, updateLocalhosterSettings } = handlers;
+  const {
+    loadLocalhoster,
+    refreshLocalhoster,
+    updateLocalhosterSettings,
+    loadLocalhosterHistory,
+    loadLocalhosterMetadata,
+  } = handlers;
 
   if (req.method === "GET" && urlPath === "/api/localhoster") {
     send(res, 200, "application/json", JSON.stringify(loadLocalhoster()));
@@ -12,6 +18,18 @@ export function handleLocalhosterApi(req, res, urlPath, qs, handlers) {
     refreshLocalhoster()
       .then((snapshot) => send(res, 200, "application/json", JSON.stringify(snapshot)))
       .catch((err) => send(res, 500, "application/json", JSON.stringify({ error: String(err?.message || err) })));
+    return true;
+  }
+
+  if (req.method === "GET" && ["/api/localhoster/history", "/api/localhoster/metadata"].includes(urlPath)) {
+    const params = new URLSearchParams(qs);
+    const loader = urlPath.endsWith("/history") ? loadLocalhosterHistory : loadLocalhosterMetadata;
+    if (!loader) {
+      send(res, 501, "application/json", JSON.stringify({ ok: false, error: "localhoster endpoint unavailable" }));
+      return true;
+    }
+    const result = loader(params.get("key") || "");
+    send(res, result.status || (result.ok ? 200 : 400), "application/json", JSON.stringify(result));
     return true;
   }
 

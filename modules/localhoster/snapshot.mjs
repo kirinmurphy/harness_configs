@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { defaultSettings, resolveProjectAlias } from "./settings.mjs";
 
@@ -19,7 +20,7 @@ export function buildLocalhosterSnapshot({
     const provisionalApp = identityCounts.get(instance.project.identity) === 1 && (instance.project.confidence === "high" || instance.project.confidence === "medium");
     const appId = association?.appId || (provisionalApp ? "web" : null);
     if (!appId) {
-      unmatchedInstances.push(instance);
+      unmatchedInstances.push(withOpaqueKey(instance, projectIdentity, null));
       continue;
     }
     const effectiveIdentity = resolveProjectAlias(settings, association?.projectIdentity || projectIdentity);
@@ -31,7 +32,7 @@ export function buildLocalhosterSnapshot({
       continue;
     }
     const project = ensureProject(activeByProject, effectiveIdentity, projectSettings, instance);
-    project.instances.push({
+    project.instances.push(withOpaqueKey({
       ...instance,
       app: {
         id: appId,
@@ -43,7 +44,7 @@ export function buildLocalhosterSnapshot({
         health: appSettings.health || {},
         match: appSettings.match || {},
       },
-    });
+    }, effectiveIdentity, appId));
     seenApps.add(`${effectiveIdentity}#${appId}`);
   }
 
@@ -90,6 +91,17 @@ export function buildLocalhosterSnapshot({
     hiddenCount,
     settings: settingsSummary(settings),
   };
+}
+
+export function findCurrentInstanceByOpaqueKey(snapshot, opaqueKey) {
+  if (!opaqueKey) return null;
+  for (const instance of [
+    ...(snapshot?.projects || []).flatMap((project) => project.instances || []),
+    ...(snapshot?.unmatchedInstances || []),
+  ]) {
+    if (instance.opaqueKey === opaqueKey) return instance;
+  }
+  return null;
 }
 
 function countIdentities(instances) {
@@ -178,4 +190,20 @@ function labelFromId(value) {
 
 function toIso(value) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function withOpaqueKey(instance, projectIdentity, appId) {
+  return {
+    ...instance,
+    opaqueKey: opaqueKeyFor({
+      associationKey: instance.associationKey,
+      projectIdentity,
+      appId,
+      origin: instance.origin,
+    }),
+  };
+}
+
+function opaqueKeyFor(value) {
+  return "lk_" + createHash("sha256").update(JSON.stringify(value)).digest("base64url").slice(0, 22);
 }

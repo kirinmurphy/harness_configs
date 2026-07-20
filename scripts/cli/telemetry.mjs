@@ -13,6 +13,8 @@ import { mutatePackage, setSkillInstalled, setBehaviorBucket, setCommandBucket }
 import { loadPlansSnapshot, loadPlanDocument, buildPlansPrompt, updatePlanSettings, refreshPlans } from "./plans.mjs";
 import {
   loadLocalhosterSnapshot,
+  loadLocalhosterHistory,
+  loadLocalhosterMetadata,
   refreshLocalhosterSnapshot,
   updateLocalhosterSettings,
   setLocalhosterPortalInfo,
@@ -411,6 +413,8 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     loadLocalhoster: () => loadLocalhosterSnapshot(),
     refreshLocalhoster: () => refreshLocalhosterSnapshot(),
     updateLocalhosterSettings: (params) => updateLocalhosterSettings(params),
+    loadLocalhosterHistory: (key) => loadLocalhosterHistory(key),
+    loadLocalhosterMetadata: (key) => loadLocalhosterMetadata(key),
     mutatePackage: (id, enabled) => mutatePackage(id, enabled),
     mutateSkill: (id, enabled) => setSkillInstalled(id, enabled),
     mutateBehavior: (behaviorId, bucket) => setBehaviorBucket(behaviorId, bucket),

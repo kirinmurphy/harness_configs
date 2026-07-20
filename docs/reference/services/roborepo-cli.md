@@ -30,8 +30,8 @@ The `/plans` page scans configured roots for `docs/plans/**/*.md`. See
 [Plan Docs Walkthrough](../../guides/plan-docs.md) and
 [Plans Portal Technical Reference](plans-portal.md).
 
-The `/localhoster` page discovers local HTTP apps on macOS and keeps machine-local saved links under
-the RoboRepo state root. See [Localhoster](localhoster.md).
+The `/localhoster` page discovers local HTTP apps on macOS, keeps machine-local saved links under
+the RoboRepo state root, and reports per-provider capability limits. See [Localhoster](localhoster.md).
 
 ## Indexing
 

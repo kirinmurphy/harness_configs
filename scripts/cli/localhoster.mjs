@@ -4,6 +4,7 @@ import {
   capabilityForPlatform,
   defaultSettings,
   discoverInstances,
+  findCurrentInstanceByOpaqueKey,
   loadSettings,
   updateSettings,
 } from "../../modules/localhoster/index.mjs";
@@ -12,6 +13,7 @@ const FRESHNESS_MS = 8000;
 
 let lastSnapshot = null;
 let inFlightRefresh = null;
+let refreshGeneration = 0;
 let portalInfo = null;
 
 export function loadLocalhosterSnapshot() {
@@ -28,26 +30,29 @@ export function loadLocalhosterSnapshot() {
 export async function refreshLocalhosterSnapshot() {
   if (inFlightRefresh) return inFlightRefresh;
   const startedAt = new Date().toISOString();
+  const generation = refreshGeneration + 1;
+  refreshGeneration = generation;
   inFlightRefresh = (async () => {
     try {
       const settings = loadSettings({ stateRoot });
       const discovery = await discoverInstances({ settings });
+      if (generation !== refreshGeneration && lastSnapshot) return withRefreshState(lastSnapshot);
       const portal = portalInstance();
       if (portal) {
         discovery.instances = discovery.instances.filter((instance) => !isPortalDuplicate(instance, portal));
         discovery.instances.unshift(portal);
       }
-      lastSnapshot = buildSnapshot({ discovery, settings, refresh: { state: "idle", startedAt: null, error: null } });
+      lastSnapshot = buildSnapshot({ discovery, settings, refresh: { state: "idle", startedAt: null, error: null, generation } });
       return lastSnapshot;
     } catch (err) {
       const error = String(err?.message || err);
       if (lastSnapshot) {
-        lastSnapshot = markLocalhosterRefreshFailed(lastSnapshot, { startedAt, error });
+        lastSnapshot = markLocalhosterRefreshFailed(lastSnapshot, { startedAt, error, generation });
         return lastSnapshot;
       }
       lastSnapshot = buildSnapshot({
         discovery: { ...emptyDiscovery(), warnings: [error] },
-        refresh: { state: "failed", startedAt, error },
+        refresh: { state: "failed", startedAt, error, generation },
       });
       return lastSnapshot;
     } finally {
@@ -55,6 +60,30 @@ export async function refreshLocalhosterSnapshot() {
     }
   })();
   return inFlightRefresh;
+}
+
+export function loadLocalhosterHistory(key) {
+  const instance = findCurrentInstanceByOpaqueKey(loadLocalhosterSnapshot(), key);
+  if (!instance) return { ok: false, status: 404, error: "unknown localhoster key" };
+  return {
+    ok: true,
+    key,
+    app: instance.app ? { id: instance.app.id, name: instance.app.name } : null,
+    events: [],
+    deferred: "History JSONL is split into the localhoster-git-health-history backlog plan.",
+  };
+}
+
+export function loadLocalhosterMetadata(key) {
+  const instance = findCurrentInstanceByOpaqueKey(loadLocalhosterSnapshot(), key);
+  if (!instance) return { ok: false, status: 404, error: "unknown localhoster key" };
+  return {
+    ok: true,
+    key,
+    origin: instance.origin,
+    suggestions: [],
+    deferred: "Metadata suggestions are split into the localhoster-metadata-suggestions backlog plan.",
+  };
 }
 
 export function updateLocalhosterSettings(input) {
@@ -88,10 +117,10 @@ export function setLocalhosterPortalInfo(info) {
   }
 }
 
-export function markLocalhosterRefreshFailed(snapshot, { startedAt, error }) {
+export function markLocalhosterRefreshFailed(snapshot, { startedAt, error, generation = snapshot.refresh?.generation || null }) {
   return {
     ...snapshot,
-    refresh: { state: "failed", startedAt, error },
+    refresh: { state: "failed", startedAt, error, generation },
     warnings: [...(snapshot.warnings || []), error],
   };
 }

@@ -91,10 +91,15 @@ function render(snapshot) {
 
 function renderCapability(snapshot) {
   const cap = snapshot.capabilities;
-  refs.capability.hidden = cap.discovery === "supported";
+  const unavailableProviders = Object.values(cap.providers || {})
+    .filter((provider) => provider.state !== "supported")
+    .map((provider) => provider.name);
+  refs.capability.hidden = cap.discovery === "supported" && unavailableProviders.length === 0;
   refs.capability.replaceChildren();
   if (cap.discovery !== "supported") {
     refs.capability.append(tmpl.noticeWithDoc(`${cap.message} Saved projects and links remain available, but RoboRepo cannot currently detect their active ports.`));
+  } else if (unavailableProviders.length) {
+    refs.capability.append(tmpl.noticeWithDoc(`Some Localhoster providers are not active yet: ${unavailableProviders.join(", ")}.`));
   }
 }
 

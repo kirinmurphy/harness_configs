@@ -39,7 +39,7 @@ Use the CLI to update items and configuration in your global setup so they work 
 | `roborepo skill native [--full]` | Show native Claude/Codex plugin entrypoints; `--full` prints native help output inline.              |
 | `roborepo serve`                 | Open the local web portal at `http://127.0.0.1:4317/config`; use `--detach` to keep it running in the background. |
 | `roborepo serve` + `/plans`      | Browse local `docs/plans/**/*.md` files and copy plan context or `/plan-docs` workflow prompts.     |
-| `roborepo localhoster [--json] [--open]` | List active localhost HTTP apps, save route shortcuts, or open the `/localhoster` portal page.      |
+| `roborepo localhoster [--json] [--open]` | List active localhost HTTP apps, save route shortcuts, report capability limits, or open `/localhoster`. |
 | `roborepo telemetry enable` / `disable` | Turn token-usage capture on or off. `telemetry status` shows capture state; `telemetry purge --all --backup` resets capture, backing up first. |
 | `roborepo doctor`                | Health-check the install and report what is linked, missing, or drifted.                             |
 

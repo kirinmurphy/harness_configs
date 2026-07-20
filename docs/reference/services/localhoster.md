@@ -18,8 +18,8 @@ roborepo localhoster --open
 
 ## Discovery
 
-V1 supports automatic discovery on macOS. Other platforms return an explicit capability state so the
-page can say discovery is unsupported instead of implying that no apps are running.
+Automatic discovery currently supports macOS. Other platforms return an explicit capability state
+so the page can say discovery is unsupported instead of implying that no apps are running.
 
 On macOS, RoboRepo:
 
@@ -36,6 +36,19 @@ listener sets cannot stall the portal.
 
 The portal process is represented as built-in identity `roborepo:portal` and is never probed
 recursively.
+
+Discovery is split across provider boundaries:
+
+- `capabilities.mjs` reports aggregate platform support plus per-provider states.
+- `listeners.mjs` owns macOS listener and working-directory collection.
+- `origin.mjs` owns loopback-compatible origin candidates and hostname preference ordering.
+- `http-probe.mjs` is the public HTTP probe boundary; `probe.mjs` remains the bounded probe
+  implementation.
+- `discovery.mjs` coordinates provider records, identity, aliases, probing, and browser-safe
+  instance shaping.
+
+Docker, process metrics, Git status, persisted history, and metadata suggestions are listed as
+provider capabilities but marked unsupported until their smaller follow-up plans implement them.
 
 ## Settings
 
@@ -71,6 +84,10 @@ normalization, identity alias checks, and field normalizers live in
 Read-only:
 
 - `GET /api/localhoster` returns the cached/current snapshot.
+- `GET /api/localhoster/history?key=<opaque-key>` accepts only a key emitted by the current
+  snapshot. It currently returns an empty, explicitly deferred event list.
+- `GET /api/localhoster/metadata?key=<opaque-key>` accepts only a key emitted by the current
+  snapshot. It currently returns no suggestions until metadata discovery ships.
 
 Mutating routes are POST-only and inherit the portal's loopback origin check and mutation-token
 check:
@@ -105,9 +122,13 @@ Listeners bound to wildcard or non-loopback interfaces stay visible with a warni
 platforms keep saved settings available while clearly saying automatic discovery is unavailable.
 The unsupported-platform notice links back to this document.
 
-## V1 Limits
+## Current Limits
 
 The current V2 foundation stores and resolves confirmed aliases and exposes a manual alias
 confirmation workflow in the portal. It does not yet auto-suggest path-to-Git alias candidates.
 Future final-phase work will surface those prompts when discovery evidence says a `path:<realpath>`
 project and a Git remote identity are likely the same project.
+
+The final Localhoster foundation does not yet collect Docker/Compose labels, process CPU/memory,
+Git branch/dirty state, persisted JSONL history, or metadata route suggestions. Those pieces are
+tracked in smaller backlog plans so shipped behavior stays honest and testable.

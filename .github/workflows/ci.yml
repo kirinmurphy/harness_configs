@@ -27,3 +27,8 @@ jobs:
 
       - name: test suite
         run: bash scripts/test/test-roborepo.sh --quiet
+
+      - name: package catalog + lifecycle checks
+        run: |
+          npm run --silent test:packages
+          npm run --silent test:package-lifecycle

@@ -21,6 +21,13 @@ firewalled to this repo — it loads only when an agent works inside this repo.
 **This file does NOT restate the docs.** The docs are the source of truth; this skill is a map
 to them plus the judgment that isn't written down. Read the doc, then apply the gotchas below.
 
+## Package development
+
+When creating, changing, installing, removing, or reviewing a RoboRepo package (anything under
+`globals/packages/<id>/`, or the `roborepo package *` CLI family), load
+`references/package-development.md` before editing. Don't restate it here — it owns manifest
+schema, resource-type validation depth, apply/reconcile behavior, and the completion checklist.
+
 ## Which doc answers which question
 
 | Question | Doc |
@@ -124,6 +131,10 @@ Subcommands, grouped by category:
 - `enable <package-id>` / `disable <package-id>` / `onboard` / `presets` — package and preset
   feature toggles. Package mode separates immutable app files, portable workspace resources, and
   machine-local state; do not collapse those roots.
+- `package create|list|inspect|validate|enable|disable|reconcile|adopt-live` (`cli/packages.mjs`)
+  — full package lifecycle surface; `enable`/`disable` top-level are aliases for `package
+  enable`/`disable`. See `references/package-development.md` for details on each subcommand.
+  `enable`/`disable` already apply live immediately — no `roborepo update` needed afterward.
 - `setup` / `apply` / `workspace` / `version` — package-mode setup and root inspection tools.
 - `serve` / `web` / `telemetry ...` — local portal and telemetry capture/reporting. `web` is
   `serve --detach` with browser-open behavior.

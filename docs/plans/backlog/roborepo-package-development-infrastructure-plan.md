@@ -140,7 +140,7 @@ generated/
   codex/
 ```
 
-If migration is incomplete, document the real current paths and link to the structural migration plan. Do not tell package developers to invent new intermediate locations.
+All existing packages must be migrated to this layout as part of this plan (see Deliverable 9). Do not tell package developers to invent new intermediate locations, and do not document a transitional/legacy path alongside the canonical one.
 
 ### Configuration merge classes
 
@@ -425,6 +425,37 @@ End the package-development reference with a compact checklist:
 [ ] Ran repository-required validation
 ```
 
+## Deliverable 9: Migrate existing packages and validate completion
+
+Every existing package must conform to the new format before this plan is considered done. No transitional or dual-format state is acceptable as an end state.
+
+### Migration scope
+
+For each existing package:
+
+- Move/rewrite it into the canonical structure defined in Deliverable 1 (source vs. generated boundaries, manifest schema, category/default-selection metadata, merge-class declarations).
+- Bring its manifest up to the current schema, including token-cost and capability metadata.
+- Bring its tests up to the generic test contract in Deliverable 6.
+- Add or correct portal metadata per Deliverable 7.
+- Remove any legacy structure, fields, or paths the new format supersedes. Do not keep old and new forms side by side "for compatibility."
+
+### Completion and validation step
+
+After migrating all packages, run a repository-wide pass that proves the migration is total and correct:
+
+1. Run the canonical package validation entry point (Deliverable 5) against every package and confirm all pass.
+2. Run the generic lifecycle test contract (Deliverable 6) against every package.
+3. Grep/search the repository for any remaining references to pre-migration paths, fields, or structure; confirm none remain outside historical docs/changelogs.
+4. Confirm the apply pipeline (Deliverable 3) correctly enables, disables, upgrades, and uninstalls each migrated package.
+5. Confirm the portal renders correct metadata for every migrated package.
+6. Record the migration as complete only after all of the above pass with no exceptions.
+
+Exit criteria:
+
+- Zero packages remain in the pre-migration format.
+- Zero code paths branch on "old format vs. new format."
+- Full validation and test suite passes for every package.
+
 ## Implementation sequence
 
 ### Phase 1: Inspect and document current behavior
@@ -480,6 +511,18 @@ Exit criteria:
 
 - The forthcoming `usage-statusline` package plan can reference these tools instead of repeating them.
 
+### Phase 6: Migrate existing packages and validate
+
+1. Migrate every existing package to the new format (Deliverable 9).
+2. Remove superseded legacy structure/fields/paths.
+3. Run canonical validation and the generic test contract against every package.
+4. Confirm apply pipeline and portal behave correctly for every migrated package.
+
+Exit criteria:
+
+- All existing packages conform to the new format with no dual-format state remaining.
+- Full validation and test suite passes for every package.
+
 ## Acceptance criteria
 
 - `roborepo-development` lazily loads canonical package-development guidance.
@@ -493,6 +536,7 @@ Exit criteria:
 - Unmanaged configuration is preserved or surfaced as an explicit conflict.
 - CLI and portal use the same apply pipeline.
 - Generic package lifecycle tests are reusable by later packages.
+- Every existing package has been migrated to the new format; no package remains in the pre-migration format and no code branches on old-vs-new format.
 
 ## Handoff to usage-statusline
 
@@ -505,4 +549,5 @@ The status-line implementation should not proceed until:
 3. Default-enabled selection preserves explicit disable state.
 4. Enable/disable automatically applies configuration.
 5. Singleton conflict behavior is defined.
+6. All existing packages have been migrated to the new format and pass validation.
 

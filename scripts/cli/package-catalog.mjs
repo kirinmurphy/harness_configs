@@ -268,7 +268,27 @@ function normalizeResource(resource, { pkgId, root, index }) {
     if (!isSlug(next.id || next.name)) throw new Error(`${pkgId}: slash-command needs slug id/name`);
     next.name = String(next.name || next.id).replace(/^\//, "");
     next.source = validateInsideSource(root, next.source, `${pkgId}:/${next.name}`);
+    if (!fs.existsSync(path.join(root, next.source))) throw new Error(`${pkgId}:/${next.name} source missing: ${next.source}`);
     validateHarnesses(next.harnesses, `${pkgId}:/${next.name}`);
+  } else if (next.type === "permissions") {
+    if (!Array.isArray(next.allow) || next.allow.length === 0) throw new Error(`${pkgId}: permissions resource needs non-empty allow array`);
+    if (!next.allow.every((entry) => typeof entry === "string" && entry.trim() !== "")) {
+      throw new Error(`${pkgId}: permissions.allow entries must be non-empty strings`);
+    }
+  } else if (next.type === "codex_tool_approvals") {
+    if (typeof next.server !== "string" || next.server.trim() === "") throw new Error(`${pkgId}: codex_tool_approvals needs server`);
+    if (!next.approvals || typeof next.approvals !== "object" || Array.isArray(next.approvals) || Object.keys(next.approvals).length === 0) {
+      throw new Error(`${pkgId}: codex_tool_approvals needs non-empty approvals map`);
+    }
+  } else if (next.type === "mcp") {
+    if (typeof next.preset !== "string" || next.preset.trim() === "") throw new Error(`${pkgId}: mcp resource needs preset`);
+  } else if (next.type === "plugin") {
+    if (typeof next.id !== "string" || next.id.trim() === "") throw new Error(`${pkgId}: plugin resource needs id`);
+    if (!next.marketplace || typeof next.marketplace.name !== "string" || !next.marketplace.source) {
+      throw new Error(`${pkgId}: plugin resource needs marketplace.name and marketplace.source`);
+    }
+  } else if (next.type === "service") {
+    if (typeof next.id !== "string" || next.id.trim() === "") throw new Error(`${pkgId}: service resource needs id`);
   } else if (next.type === "rules" || next.type === "hooks") {
     next.source = validateInsideSource(root, next.source, `${pkgId}:${next.type}`);
     if (!fs.existsSync(path.join(root, next.source))) throw new Error(`${pkgId}:${next.type} source missing: ${next.source}`);

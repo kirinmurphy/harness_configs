@@ -18,6 +18,21 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 | `roborepo rules [--check]` | Renders generated Claude/Codex global instruction files, or verifies them with `--check`.                                                                        |
 | `roborepo config root inspect` | Read-only report of each harness root config (`~/.claude/settings.json`, `~/.codex/config.toml`): baseline vs. active file and its drift state — `in sync`, `drifted` (edited since roborepo's last write), `staged update pending`, or untracked. |
 
+## Packages
+
+|                                            |                                                                                                                      |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `roborepo package create <id> [--kind=empty\|auto-skill\|skill-command\|standalone-command] [--description=...]` | Scaffolds a new package under `globals/packages/<id>/` (dev checkout) or the workspace packages dir (package mode). Refuses to overwrite an existing package. |
+| `roborepo package list`                    | Lists every package with live enabled/disabled status, category, and label.                                          |
+| `roborepo package inspect <id>`            | Prints the full manifest for one package.                                                                             |
+| `roborepo package validate [id]`           | Validates one package or the whole catalog against the current manifest schema.                                      |
+| `roborepo enable <id>` / `roborepo package enable <id>` | Enables a package and applies it live immediately — permissions, hooks, rules, MCP, and commands install without a separate `roborepo update`. |
+| `roborepo disable <id>` / `roborepo package disable <id>` | Disables a package and removes its owned contributions live immediately.                                             |
+| `roborepo package reconcile`               | Re-applies every currently-enabled package and drops any enabled-but-unknown stale entries — the full-reconciliation entry point. |
+| `roborepo package adopt-live [--dry-run]`  | Detects externally-installed package behavior and marks it enabled in the registry without reinstalling it.          |
+
+See [Package Development](../../../local/skills/roborepo-development/references/package-development.md) for manifest schema, resource-type validation depth, and the package completion checklist.
+
 ## Local Portal
 
 | | |

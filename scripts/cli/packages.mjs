@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { claudeJsonPath, repoRoot, rootConfigActive, harnessHome, workspacePackagesDir, initializeWorkspace } from "./paths.mjs";
+import { claudeJsonPath, repoRoot, rootConfigActive, harnessHome, workspacePackagesDir, packageMode, initializeWorkspace } from "./paths.mjs";
 import { setPackageEnabled, renderHomeRules, readEnabledPackagesRegistry } from "./rules-render.mjs";
-import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog } from "./package-catalog.mjs";
+import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog, BUILT_IN_PACKAGES_DIR } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 import { buildPackageLiveState } from "./package-probes.mjs";
 import { removeCodexMcp } from "./mcp-codex.mjs";
@@ -47,8 +47,12 @@ export function packageCommand(args = []) {
 
 function createPackage(rest) {
   const opts = parseCreateArgs(rest);
-  initializeWorkspace();
-  const packageDir = path.join(workspacePackagesDir, opts.id);
+  // Mirrors skill-new.mjs: package mode scaffolds into the portable workspace; a development
+  // checkout scaffolds directly into the real shared source (globals/packages/), matching where
+  // `roborepo package validate`/the built-in catalog actually reads from.
+  const packagesDir = packageMode ? workspacePackagesDir : BUILT_IN_PACKAGES_DIR;
+  if (packageMode) initializeWorkspace();
+  const packageDir = path.join(packagesDir, opts.id);
   const configPath = path.join(packageDir, "package.config.json");
   if (fs.existsSync(configPath)) throw new Error(`package already exists: ${opts.id}`);
   const config = packageTemplate(opts);
@@ -66,6 +70,7 @@ function createPackage(rest) {
   }
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
   console.log(`created package: ${configPath}`);
+  console.log(`next: roborepo package validate ${opts.id}`);
 }
 
 function parseCreateArgs(rest) {

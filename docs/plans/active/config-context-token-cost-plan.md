@@ -1,4 +1,58 @@
+---
+id: config-context-token-cost
+priority: medium
+next_action: Manually verify the portal UI (both themes, narrow width, package toggle), then review completion
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Config Page Context and Token Cost Plan
+
+## Implementation Status
+
+- [x] `scripts/cli/context-cost.mjs` — estimator (`ceil(chars/4)`, `estimated-v1`), thresholds constant, collectors, aggregation, stat-signature cache (same-object cache hits keep the portal `snapshotChanged` skip working)
+- [x] Snapshot wiring — `snapshot.contextCost`, `section.contextCost` rollups, `item.contextCost` in `packagePresentationItem`; permissions section labeled `not-prompt-context`
+- [x] Portal — `tpl-context-summary` first panel, Generated Files cost chips (Rules counts, Config `Not prompt context`, Hooks `Conditional`), section header rollups, muted per-item cost badges in `<config-item>`
+- [x] Tests — `scripts/test/context-cost-check.mjs` (11 checks incl. 7999/8000/20000/20001 boundaries, reconciliation, cache invalidation) + `npm run test:context-cost`; `/api/config` contextCost asserts in `test-roborepo.sh`
+- [x] Docs — "Harness Context estimates" section in `docs/reference/services/config-control-panel.md`
+- [ ] Manual portal verification (themes, narrow width, toggle-updates-totals)
+
+Implementation decisions of note:
+
+- Skill discovery cost = frontmatter `name: description`, counted startup only when the
+  package is enabled AND the skill is installed for that harness (`basis:
+  "skill-discovery-metadata"` — labeled estimate of harness startup metadata).
+- Skill-backed slash command discovery folds into the skill's discovery entry; the wrapper body
+  counts on-demand (via `loadSlashCommandPlan()` in-memory content), so package on-demand =
+  SKILL.md + wrapper with no double counting.
+- Per-item display numbers are the max across harnesses with a `harnessesDiffer` flag.
+- Threshold sanity check against this machine's real config: Claude startup ~2.5k, Codex ~2.5k
+  → both `low`; thresholds (8k/20k) leave sensible headroom for heavier package sets.
+
+Post-review UI revisions (user decisions, superseding this plan's original UI spec):
+
+- The "On-demand installed" harness column and the section rollups' "· on demand ~X" segment
+  were removed — a sum over skill bodies that never load together is noise. Section rollups
+  show `Enabled startup ~X (· +~Y if all enabled)` only.
+- Per-package single-invocation cost is instead rated on a dedicated skill-size scale
+  (`ON_DEMAND_LEVEL_THRESHOLDS`, low < 1k / medium 1k–3k / high > 3k) with a colored chip on
+  the item row for medium (warn) and high (danger) only; low renders no chip.
+- Active rollups honor install state per harness (`enabled && installed`), so section sums
+  reconcile exactly with `breakdown.packageRulesTokens + skillDiscoveryTokens`.
+- The startup chip tooltip now reveals the formula: rendered rules (core baseline + package
+  rules) + discovery metadata.
+- The "Harness Context" panel was replaced by a one-row "Tokens used in config" bar using a
+  new shared `<token-chip>` web component (`portal/shared/token-chip.js` + base.css styles):
+  solid level-colored background, ⓘ icon, hover/click tooltip with a contributing-amounts
+  table (System rules / Package rule snippets / Skill discovery descriptions / Total). The
+  same chip renders on the Generated Files rules cells and in the source-inspect popup header
+  (rules → rendered-rules cost; skills/commands → single-invocation cost).
+- Chip styling switched from border+transparent to solid background with contrasting ink
+  (`--chip-ink`, `--chip-muted-bg/-ink` palette vars, both themes).
+- Dark-mode readability: text that used the `--off` fill shade (modal path, behavior default,
+  panel footnote, source-empty, clickable underline) now uses `--dim`.
 
 ## Goal
 

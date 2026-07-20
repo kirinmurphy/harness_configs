@@ -41,6 +41,15 @@
   --row-hover: #1c2230;
   --modal-shadow: rgba(0, 0, 0, 0.6);
   --backdrop: rgba(0, 0, 0, 0.6);
+  /* ink for text sitting ON a solid level-colored chip. level bg colors are deliberately darker
+   * than --ok/--warn (which are tuned for text-on-transparent) so white chip text stays
+   * readable at normal contrast. */
+  --chip-ink: #ffffff;
+  --chip-muted-bg: #2d333b;
+  --chip-muted-ink: #e6edf3;
+  --chip-low-bg: #285e34;
+  --chip-medium-bg: #8a6414;
+  --chip-high-bg: #a32f28;
 
   /* Fixed type scale — every font-size in the portal maps to one of these instead of a bare px
    * value, so sizing stays consistent across pages and can be re-tuned in one place. */
@@ -85,6 +94,12 @@
   --row-hover: #eaeef2;
   --modal-shadow: rgba(31, 35, 40, 0.15);
   --backdrop: rgba(31, 35, 40, 0.4);
+  --chip-ink: #ffffff;
+  --chip-muted-bg: #d0d7de;
+  --chip-muted-ink: #1f2328;
+  --chip-low-bg: #1a6b30;
+  --chip-medium-bg: #8a5a00;
+  --chip-high-bg: #a3272f;
 }
 * {
   box-sizing: border-box;
@@ -304,6 +319,118 @@ dd {
   margin: 0;
   overflow-wrap: anywhere;
 }
+/* <token-chip> — shared token-cost chip (portal/shared/token-chip.js). Solid level-colored
+ * background with contrasting ink; muted variant when no level. The ⓘ icon and hover/click
+ * tooltip (with optional breakdown table) are part of the component. */
+.token-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-2xs);
+  line-height: 1.4;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--chip-muted-bg);
+  color: var(--chip-muted-ink);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.token-chip.level-low {
+  background: var(--chip-low-bg);
+  color: var(--chip-ink);
+}
+.token-chip.level-medium {
+  background: var(--chip-medium-bg);
+  color: var(--chip-ink);
+}
+.token-chip.level-high {
+  background: var(--chip-high-bg);
+  color: var(--chip-ink);
+}
+.token-chip[role="button"] {
+  cursor: pointer;
+}
+.chip-info {
+  font-size: var(--text-2xs);
+  opacity: 0.85;
+  line-height: 1;
+}
+.chip-tip {
+  /* fixed, not absolute: positioned in JS from the chip's live viewport rect so the tooltip
+   * escapes any ancestor's overflow:hidden (e.g. the Generated Files grid's corner clip). */
+  position: fixed;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 240px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--tooltip-bg);
+  color: var(--ink);
+  font-size: var(--text-2xs);
+  box-shadow: 0 10px 24px var(--tooltip-shadow);
+  white-space: normal;
+  cursor: default;
+}
+.chip-tip-head {
+  font-weight: 600;
+}
+.chip-tip-note {
+  color: var(--dim);
+}
+.chip-tip-table {
+  display: grid;
+  grid-template-columns: 1fr max-content;
+  gap: 2px 14px;
+}
+.chip-tip-cell.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.chip-tip-cell.total {
+  border-top: 1px solid var(--line);
+  padding-top: 3px;
+  font-weight: 600;
+}
+.chip-tip-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+  color: var(--dim);
+}
+.chip-tip-legend-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chip-tip-legend-line.current {
+  color: var(--ink);
+  font-weight: 600;
+}
+.chip-tip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.chip-tip-dot.dot-low {
+  background: var(--ok);
+}
+.chip-tip-dot.dot-medium {
+  background: var(--warn);
+}
+.chip-tip-dot.dot-high {
+  background: var(--danger);
+}
+.chip-tip-foot {
+  color: var(--dim);
+  font-size: 11px;
+}
 /* Shared modal chrome — used by /config's #config-modal and /plans' #skill-modal. Each dialog's
  * own box styling (size, background, backdrop) stays in that page's own styles.css keyed off its
  * id; only the reusable head/title/path/close/body classes live here. */
@@ -321,7 +448,9 @@ dd {
 }
 .modal-path {
   font-size: var(--text-2xs);
-  color: var(--off);
+  /* --dim, not --off: --off is a fill shade (dots, switch tracks) and is unreadable as dark-mode
+   * text */
+  color: var(--dim);
 }
 .modal-close {
   margin-left: auto;

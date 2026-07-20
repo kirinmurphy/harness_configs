@@ -28,6 +28,7 @@ import {
   readSkillSource,
 } from "./config-source-lookup.mjs";
 import { renderCommandSourceHtml } from "./config-source-render.mjs";
+import { buildContextCost } from "./context-cost.mjs";
 
 const PRESETS_PATH = path.join(repoRoot, "manifests", "platform", "presets.json");
 const CLAUDE_SETTINGS = rootConfigActive.claude;
@@ -160,6 +161,14 @@ export function readConfigSnapshot() {
       },
     },
   };
+  // Token-cost estimates need the full catalog objects (rule sources, sourceFile), which the
+  // presentation `packages` list strips — so this is computed here from availablePackages, not
+  // rebuilt from the snapshot. Cached by stat signature, so polling stays cheap.
+  snapshot.contextCost = buildContextCost({
+    catalog: availablePackages,
+    enabledIds: packages.filter((pkg) => pkg.enabled).map((pkg) => pkg.id),
+    tools,
+  });
   // Computed once here so terminal and web render from the identical view (no client-side fork).
   snapshot.behaviorView = buildBehaviorView(snapshot);
   return snapshot;
@@ -175,10 +184,11 @@ export function buildBehaviorView(snap) {
   const categories = readPackageCategories();
   const byCategory = new Map(categories.map((category) => [category.id, { ...category, items: [] }]));
   const toolByPackage = new Map((snap.tools || []).map((tool) => [tool.packageId, tool]));
+  const packageCosts = snap.contextCost?.packages || {};
   for (const item of snap.packages) {
     const section = byCategory.get(item.presentation?.category);
     if (!section) continue;
-    section.items.push(packagePresentationItem(item, toolByPackage.get(item.id)));
+    section.items.push(packagePresentationItem(item, toolByPackage.get(item.id), packageCosts[item.id] || null));
   }
 
   const sections = categories
@@ -188,6 +198,7 @@ export function buildBehaviorView(snap) {
       category: section.label,
       categoryId: section.id,
       items: section.items.sort((a, b) => a.order - b.order || a.label.localeCompare(b.label)),
+      contextCost: sectionContextCost(section.items),
     }));
 
   return [
@@ -195,6 +206,8 @@ export function buildBehaviorView(snap) {
     {
       category: "Permissions",
       kind: "permissions",
+      // Permission entries are config syntax, not prompt text — never given a token number.
+      contextCost: { label: "not-prompt-context" },
       // Flat model: every behavior (named — pinned, shown first — or arbitrary, user-added) is
       // independently deny/ask/allow. No separate profile bundle or project scope; global only.
       // `perms` (snap.permissions, from config-mutate.mjs effectivePermissions()) already merges
@@ -237,7 +250,27 @@ export function buildBehaviorView(snap) {
   ];
 }
 
-function packagePresentationItem(item, tool) {
+// Active rollups only count enabled items; potential totals let the UI show what enabling the
+// rest would add without mixing disabled cost into the primary number.
+function sectionContextCost(items) {
+  const totals = {
+    activeStartupTokens: 0,
+    activeOnDemandTokens: 0,
+    potentialStartupTokens: 0,
+    potentialOnDemandTokens: 0,
+  };
+  for (const item of items) {
+    const cost = item.contextCost;
+    if (!cost) continue;
+    totals.activeStartupTokens += cost.activeStartupTokens || 0;
+    totals.activeOnDemandTokens += cost.activeOnDemandTokens || 0;
+    totals.potentialStartupTokens += cost.startupTokens || 0;
+    totals.potentialOnDemandTokens += cost.onDemandTokens || 0;
+  }
+  return totals;
+}
+
+function packagePresentationItem(item, tool, contextCost = null) {
   const command = tool?.command || null;
   const resources = item.resources || item.components || [];
   const inspect = command
@@ -267,6 +300,7 @@ function packagePresentationItem(item, tool) {
     ],
     resources,
     inspect,
+    contextCost,
     hint: item.id === "telemetry" && item.enabled ? "roborepo serve" : null,
   };
 }
@@ -289,7 +323,7 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
   if (kind === "command") {
     const cmd = packageSlashCommands().find((c) => c.name === id);
     if (!cmd) return fail(`unknown command: ${id}`);
-    const abs = path.join(repoRoot, "globals", harnessSafe, "commands", `${id}.md`);
+    const abs = path.join(repoRoot, "generated", "packages", cmd.packageId, harnessSafe, "commands", `${id}.md`);
     return readSourceFile(abs, `/${id} (${harnessSafe})`);
   }
 
@@ -300,7 +334,7 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
     if (!cmd) return fail(`unknown command: ${id}`);
     if (!cmd.skill || !packageSkillIds().has(cmd.skill)) return fail(`unknown skill for command: ${id}`);
 
-    const commandAbs = path.join(repoRoot, "globals", harnessSafe, "commands", `${id}.md`);
+    const commandAbs = path.join(repoRoot, "generated", "packages", cmd.packageId, harnessSafe, "commands", `${id}.md`);
     const command = readSourceFile(commandAbs, `/${id} (${harnessSafe})`);
     if (!command.ok) return command;
     const inventorySource = skillInventorySource(cmd.skill);

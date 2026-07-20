@@ -13,13 +13,14 @@ import { portalSetUpdatedAt, portalHideLoading } from "/portal/shared/api.js";
 import * as api from "./api.js";
 import * as tmpl from "./templates.js";
 import { createConfigModal } from "./panels.js";
-import { snapshotChanged } from "./state.js";
+import { snapshotChanged, inspectChipSpecs } from "./state.js";
 
 const modal = createConfigModal();
 
-function openSourceModal(inspect) {
+function openSourceModal(inspect, itemCost = null) {
   const rules = lastSnapshot?.globals?.rules || {};
-  return modal.openSource(inspect, { rules, onDefaultClick: modal.openSnapshot });
+  const chips = inspectChipSpecs(inspect, itemCost, lastSnapshot);
+  return modal.openSource(inspect, { rules, onDefaultClick: modal.openSnapshot, chips });
 }
 
 // POST a bucket change for either a named behavior (behaviorId) or an arbitrary command
@@ -48,16 +49,17 @@ function renderPermissionsSection(section) {
   return tmpl.permissionsSection(section, { onApplyBucket: applyBucket });
 }
 
-function renderStandardSection(section) {
+function renderStandardSection(section, contextCost) {
   return tmpl.standardSection(section, {
     onInspectClick: openSourceModal,
     onToggle: handleToggle,
+    contextCost,
   });
 }
 
-function renderSection(section) {
+function renderSection(section, contextCost) {
   if (section.kind === "permissions") return renderPermissionsSection(section);
-  return renderStandardSection(section);
+  return renderStandardSection(section, contextCost);
 }
 
 function render(snap) {
@@ -65,8 +67,11 @@ function render(snap) {
   // Section model comes straight from the server snapshot (buildBehaviorView), no client fork.
   const view = snap.behaviorView || [];
   main.replaceChildren(
+    // Harness Context summary first; tmpl.contextSummary returns null on snapshots that
+    // predate contextCost (rolling upgrade), so it drops out cleanly.
+    ...[tmpl.contextSummary(snap)].filter(Boolean),
     tmpl.configFiles(snap, { onInspectClick: openSourceModal }),
-    ...view.map((section) => renderSection(section)).filter(Boolean),
+    ...view.map((section) => renderSection(section, snap.contextCost)).filter(Boolean),
   );
 }
 

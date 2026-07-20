@@ -719,6 +719,12 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
   done
   assert "config: portal server starts on an allocated port" \
     bash -c "test -n '${cfg_port}' && curl -s 'http://127.0.0.1:${cfg_port}/api/config' >/dev/null"
+  # Token-cost estimates ride the config snapshot: per-harness startup totals, a low/medium/high
+  # rating, and per-package rollups (see scripts/cli/context-cost.mjs).
+  assert "config: snapshot carries contextCost harness estimates" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/config' > '${cfg_home}/config-snapshot.json' && node -e \"const j=require('${cfg_home}/config-snapshot.json');const h=j.contextCost&&j.contextCost.harnesses;process.exit(h&&Number.isFinite(h.claude.startupTokens)&&Number.isFinite(h.codex.startupTokens)&&['low','medium','high'].includes(h.claude.level)&&j.contextCost.method==='estimated-v1'&&j.contextCost.packages?0:1)\""
+  assert "config: behaviorView sections carry contextCost rollups" \
+    bash -c "node -e \"const j=require('${cfg_home}/config-snapshot.json');const secs=j.behaviorView.filter(s=>s.kind!=='permissions');const perms=j.behaviorView.find(s=>s.kind==='permissions');process.exit(secs.length&&secs.every(s=>s.contextCost&&Number.isFinite(s.contextCost.activeStartupTokens))&&perms.contextCost.label==='not-prompt-context'?0:1)\""
   assert "config: portal status identifies current app" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/portal/status' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.appRoot==='${repo_root}'&&String(j.portalDir).endsWith('/portal')&&Number.isInteger(j.pid)&&j.pages.some(p=>p.id==='localhoster'&&p.path==='/localhoster')?0:1)})\""
   assert "config: serve reuses an existing current portal" \
@@ -732,6 +738,8 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
     -d "{\"id\":\"${cfg_skill}\",\"enabled\":true}" > "${cfg_home}/post-skill.json"
   assert "config: POST /api/config/skills installs and returns snapshot" \
     bash -c "node -e \"const j=require('${cfg_home}/post-skill.json');process.exit(j.ok&&j.config&&Array.isArray(j.config.tools)?0:1)\" && test -d '${cfg_home}/.claude/skills/${cfg_skill}' && test -e '${cfg_home}/.claude/skills/${cfg_skill}/.roborepo-managed'"
+  assert "config: post-mutation snapshot still carries contextCost" \
+    bash -c "node -e \"const j=require('${cfg_home}/post-skill.json');process.exit(j.config&&j.config.contextCost&&j.config.contextCost.harnesses?0:1)\""
   assert "config: POST with bad body returns 400" \
     bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"id\":123}')\" = 400 ]"
   assert "config: POST without portal token returns 403" \

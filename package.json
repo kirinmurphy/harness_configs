@@ -29,6 +29,7 @@
   ],
   "scripts": {
     "test": "scripts/test/test-roborepo.sh --quiet",
+    "test:context-cost": "node scripts/test/context-cost-check.mjs",
     "test:localhoster": "node scripts/test/localhoster-check.mjs",
     "test:packages": "node scripts/test/package-catalog-check.mjs",
     "test:plans": "node scripts/test/plan-docs-check.mjs",

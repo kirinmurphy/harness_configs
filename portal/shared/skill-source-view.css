@@ -45,7 +45,8 @@
 }
 .source-empty {
   margin: 0;
-  color: var(--off);
+  /* --dim, not --off: --off is a fill shade and unreadable as dark-mode text */
+  color: var(--dim);
 }
 /* Reference files: a visually distinct zone (own background tone) from the main skill body above
  * it, so it's unambiguous while scrolling whether you're still in the skill's own content or in

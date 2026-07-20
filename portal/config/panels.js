@@ -12,15 +12,20 @@ export function createConfigModal() {
   const dialogEl = document.getElementById("config-modal");
   const titleEl = document.getElementById("modal-title");
   const pathEl = document.getElementById("modal-path");
+  const costRowEl = document.getElementById("modal-cost-row");
   const contentEl = document.getElementById("modal-content");
   const footerEl = document.getElementById("modal-footer");
 
   document.getElementById("modal-close").addEventListener("click", close);
   portalWireBackdropClose(dialogEl, close);
 
-  function setHeader(title, pathText) {
+  // `chips` is an array of { label, spec } — a dedicated row below the path, one labeled chip
+  // per moment a cost applies ("Startup:", "When loaded:"), never mixed into the title line.
+  function setHeader(title, pathText, chips = []) {
     titleEl.textContent = title || "";
     pathEl.textContent = pathText || "";
+    costRowEl.replaceChildren(...chips.map((entry) => tmpl.labeledTokenChip(entry)));
+    costRowEl.hidden = chips.length === 0;
   }
 
   function setContent(data) {
@@ -50,7 +55,7 @@ export function createConfigModal() {
   }
 
   // fetch-then-show: the source-inspect entry point (inspect-click, config-files grid click).
-  async function openSource(inspect, { rules, onDefaultClick }) {
+  async function openSource(inspect, { rules, onDefaultClick, chips = [] }) {
     setHeader(inspect.label || inspect.id, "loading…");
     contentEl.innerHTML = "";
     setFooter(null);
@@ -62,7 +67,7 @@ export function createConfigModal() {
         contentEl.textContent = "error: " + (data.error || "failed to load");
         return;
       }
-      setHeader(data.title || inspect.label, data.path || "");
+      setHeader(data.title || inspect.label, data.path || "", chips);
       setContent(data);
       if (inspect.kind === "live-rules") {
         setFooter(tmpl.modalDefaults(rules, onDefaultClick));

@@ -123,6 +123,40 @@ one response.
 | `POST /api/config/skills` | `{ id, enabled }` | link/unlink a skill |
 | `POST /api/config/permissions` | `{ behaviorId, bucket }` or `{ tokens, bucket }` | set a named behavior or arbitrary command to `deny`, `ask`, `allow`, or `default` |
 
+### Harness Context estimates
+
+The snapshot carries `contextCost` (computed by `scripts/cli/context-cost.mjs`): per-harness
+token estimates for the configuration itself, rendered as a one-row "Tokens used in config"
+bar at the top of the page (one `<token-chip>` per harness, colored by level, with a
+contributing-amounts tooltip), plus per-section rollups, per-package cost badges, matching
+chips on the Generated Files rules cells, and a chip in the source-inspect popup header.
+`<token-chip>` is a shared web component (`portal/shared/token-chip.js`, styles in
+`base.css`) so every cost chip renders and behaves identically.
+
+Two cost classes are tracked and never mixed:
+
+- **Startup** — text included automatically at chat start: the rendered rules payload
+  (`CLAUDE.md` / `AGENTS.md` managed block) plus installed skill/command discovery metadata
+  (frontmatter name and description). The authoritative startup rules number is measured from
+  the full rendered output, not by summing source fragments; the remainder over package
+  fragments is attributed to `core-baseline`.
+- **On-demand** — text loaded only when invoked: full `SKILL.md` bodies and generated slash
+  command wrappers. Deliberately never summed in the UI (skill bodies don't load together, so
+  a machine-wide or section-wide sum is noise). Instead each package's single-invocation cost
+  is rated on its own skill-size scale (`ON_DEMAND_LEVEL_THRESHOLDS`: low < 1k, medium 1k–3k,
+  high > 3k) and only medium/high sizes render a colored per-item chip; low-cost skills show
+  no chip.
+
+Config/settings syntax, hook scripts, and MCP schemas never receive token numbers — they are
+labeled `Not prompt context`, `conditional`, and `runtime-dependent` respectively. Disabled
+packages keep a measured *potential* cost but contribute nothing to active totals.
+
+All counts are estimates (`~4 characters per token`, `method: "estimated-v1"`). The
+low/medium/high rating uses the exported `CONTEXT_LEVEL_THRESHOLDS` constant (low < 8k,
+medium 8k–20k, high > 20k tokens) — a roborepo product heuristic for reusable startup
+instructions, not a model context limit. Results are cached by a stat signature over every
+input file plus enabled/install state, so the 10-second portal poll does not re-read sources.
+
 ### Permission scope
 
 Permissions are global machine state. Roborepo no longer has a per-project permission profile layer.
@@ -173,6 +207,8 @@ behavior or command.
 - `scripts/cli/config-live-rules.mjs` — live CLAUDE.md/AGENTS.md reading.
 - `scripts/cli/config-cli-print.mjs` — terminal-only `roborepo config` output.
 - `scripts/cli/skill-inventory.mjs` — shared read-only skill inventory for the CLI and portal.
+- `scripts/cli/context-cost.mjs` — token-cost estimator, collectors, and stat-signature cache
+  behind the snapshot's `contextCost`.
 - `scripts/cli/package-probes.mjs` — read-only package live-state reconciliation.
 - `scripts/cli/config-mutate.mjs` — the shared mutate primitives.
 - `scripts/cli/packages.mjs` — `enablePackage` / `disablePackage` and package dependency

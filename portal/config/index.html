@@ -6,15 +6,30 @@
     <main id="main"></main>
     <dialog id="config-modal" aria-labelledby="modal-title">
       <div class="modal-head">
-        <span class="modal-title" id="modal-title"></span>
+        <div class="modal-head-main">
+          <span class="modal-title" id="modal-title"></span>
+          <button class="modal-close" id="modal-close">✕</button>
+        </div>
         <span class="modal-path" id="modal-path"></span>
-        <button class="modal-close" id="modal-close">✕</button>
       </div>
+      <div class="modal-cost-row" id="modal-cost-row" hidden></div>
       <div class="modal-body">
         <div class="markdown" id="modal-content"></div>
       </div>
       <div class="modal-footer" id="modal-footer" hidden></div>
     </dialog>
+    <template id="tpl-context-summary">
+      <div class="context-bar">
+        <span class="context-bar-item"
+          ><strong>Claude:</strong>
+          <token-chip data-context-startup="claude"></token-chip
+        ></span>
+        <span class="context-bar-item"
+          ><strong>Codex:</strong>
+          <token-chip data-context-startup="codex"></token-chip
+        ></span>
+      </div>
+    </template>
     <template id="tpl-config-files">
       <section class="panel wide">
         <div class="panel-head"><h2>Generated Files</h2></div>
@@ -39,6 +54,7 @@
               >
                 CLAUDE.md
               </button>
+              <token-chip data-cost="rules-claude"></token-chip>
             </div>
             <div class="harness-provider" role="cell">
               <button
@@ -50,6 +66,7 @@
               >
                 AGENTS.md
               </button>
+              <token-chip data-cost="rules-codex"></token-chip>
             </div>
           </div>
           <div class="config-grid-row" role="row">
@@ -66,7 +83,11 @@
               >
                 settings.json
               </button>
-              <span class="drift-chip" data-drift-harness="claude" hidden></span>
+              <span
+                class="drift-chip"
+                data-drift-harness="claude"
+                hidden
+              ></span>
             </div>
             <div class="harness-provider" role="cell">
               <button
@@ -202,7 +223,29 @@
         <div class="item-body">
           <div class="item-row">
             <span class="item-label" data-slot="label"></span>
-            <a class="item-link-icon" data-slot="link-icon" target="_blank" rel="noopener noreferrer" hidden>↗</a>
+            <a
+              class="item-link-icon"
+              data-slot="link-icon"
+              target="_blank"
+              rel="noopener noreferrer"
+              hidden
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path
+                  d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
+                />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </a>
             <span data-slot="badges"></span>
           </div>
           <div class="item-desc" data-slot="description"></div>
@@ -230,16 +273,22 @@
       <div class="behavior-row">
         <div class="behavior-head">
           <span class="behavior-label" data-slot="label"></span>
-          <span class="codex-note" data-slot="codex-only" hidden>Codex only</span>
+          <span class="codex-note" data-slot="codex-only" hidden
+            >Codex only</span
+          >
           <span data-slot="bucket-control"></span>
-          <span class="override-badge" data-slot="override-badge" hidden>⚡ custom</span>
-          <button type="button" class="reset-link" data-slot="reset" hidden>reset</button>
+          <span class="override-badge" data-slot="override-badge" hidden
+            >⚡ custom</span
+          >
+          <button type="button" class="reset-link" data-slot="reset" hidden>
+            reset
+          </button>
         </div>
         <div class="behavior-desc" data-slot="description" hidden></div>
         <div class="behavior-default" data-slot="default-bucket" hidden></div>
         <div class="codex-note" data-slot="no-codex-ask" hidden>
-          Codex has no per-command ask — runs without a prompt there unless another setting forces
-          approval.
+          Codex has no per-command ask — runs without a prompt there unless
+          another setting forces approval.
         </div>
         <div class="item-err" data-slot="err"></div>
       </div>
@@ -267,8 +316,15 @@
       <div class="arbitrary-item">
         <span class="arbitrary-label" data-slot="label"></span>
         <span data-slot="bucket-control"></span>
-        <button type="button" class="reset-link" data-slot="reset" hidden></button>
-        <span class="codex-note" data-slot="no-codex-ask" hidden>no per-command ask on Codex</span>
+        <button
+          type="button"
+          class="reset-link"
+          data-slot="reset"
+          hidden
+        ></button>
+        <span class="codex-note" data-slot="no-codex-ask" hidden
+          >no per-command ask on Codex</span
+        >
         <span class="item-err" data-slot="err"></span>
       </div>
     </template>

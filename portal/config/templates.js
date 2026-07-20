@@ -3,7 +3,41 @@
 // writes app state directly, and nothing here imports the modal — app.js wires callbacks in.
 
 import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
-import { SECTION_TEMPLATE_ID, resolveDriftChip } from "./state.js";
+import {
+  SECTION_TEMPLATE_ID,
+  resolveDriftChip,
+  harnessChipSpec,
+  rulesChipSpec,
+} from "./state.js";
+
+// Applies a chip spec ({ tokens, level, detail, breakdown, legend }) to a <token-chip> element;
+// hides the element when there is no spec (e.g. old snapshot without contextCost).
+export function applyTokenChip(chipEl, spec) {
+  if (!chipEl) return;
+  if (!spec) {
+    chipEl.hidden = true;
+    return;
+  }
+  chipEl.hidden = false;
+  chipEl.tokens = spec.tokens;
+  chipEl.level = spec.level ?? null;
+  chipEl.detail = spec.detail || null;
+  chipEl.breakdown = spec.breakdown || [];
+  chipEl.legend = spec.legend || null;
+}
+
+// Builds a "Label: [chip]" pair for the popup cost row / row-level warning chips.
+export function labeledTokenChip({ label, spec }) {
+  const wrap = document.createElement("span");
+  wrap.className = "cost-row-item";
+  const labelEl = document.createElement("span");
+  labelEl.className = "cost-row-label";
+  labelEl.textContent = label + ":";
+  const chip = document.createElement("token-chip");
+  applyTokenChip(chip, spec);
+  wrap.append(labelEl, chip);
+  return wrap;
+}
 
 export function modalDefaults(rules, onDefaultClick) {
   const defaults = tpl("tpl-modal-defaults");
@@ -149,20 +183,35 @@ function configItemElement(item, actions) {
   return node;
 }
 
-export function standardSection(section, { onInspectClick, onToggle }) {
+export function standardSection(section, { onInspectClick, onToggle, contextCost }) {
   const templateId = SECTION_TEMPLATE_ID[section.category];
   if (!templateId) return null;
   const panel = tpl(templateId);
   panel.classList.toggle("wide", !!section.wide);
 
   panel.querySelector('[data-slot="items"]').replaceChildren(
-    ...section.items.map((item) => configItemElement(item, { onInspect: onInspectClick, onToggle })),
+    ...section.items.map((item) => configItemElement(item, { onInspect: onInspectClick, onToggle, contextCost })),
   );
   return panel;
 }
 
+// One-row summary bar: per-harness startup token chips with a contributing-amounts tooltip.
+// One chip per harness — a chat runs in one harness, so no combined total is shown.
+export function contextSummary(snap) {
+  const cost = snap.contextCost;
+  if (!cost) return null;
+  const bar = tpl("tpl-context-summary");
+  for (const chip of bar.querySelectorAll("[data-context-startup]")) {
+    applyTokenChip(chip, harnessChipSpec(cost, chip.dataset.contextStartup));
+  }
+  return bar;
+}
+
 export function configFiles(snap, { onInspectClick }) {
   const panel = tpl("tpl-config-files");
+  for (const chip of panel.querySelectorAll("[data-cost^=\"rules-\"]")) {
+    applyTokenChip(chip, rulesChipSpec(snap.contextCost, chip.dataset.cost.slice("rules-".length)));
+  }
   for (const btn of panel.querySelectorAll("[data-config-kind]")) {
     const kind = btn.dataset.configKind;
     const id = btn.dataset.configId;

@@ -101,6 +101,43 @@ main {
   border-color: var(--badge-cmd-line);
   background: var(--badge-cmd-bg);
 }
+/* token-cost estimates: all numeric cost display goes through the shared <token-chip>
+ * component (portal/shared/token-chip.js, styled in base.css) — no page-local chip variant. */
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* one-row "Tokens used in config" summary bar */
+.context-bar {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  font-size: var(--text-xs);
+  color: var(--dim);
+}
+.context-bar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.context-bar-item strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+/* "Label: [chip]" pair used in the popup cost row and (via rowCostChip) inline in item rows */
+.cost-row-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cost-row-label {
+  color: var(--dim);
+  font-size: var(--text-2xs);
+}
 /* root-config drift chip (beside settings.json / config.toml) */
 .drift-chip {
   display: inline-block;
@@ -197,7 +234,8 @@ main {
   margin-top: 3px;
 }
 .behavior-default {
-  color: var(--off);
+  /* --dim, not --off: --off is a fill shade and unreadable as dark-mode text */
+  color: var(--dim);
   font-size: var(--text-2xs);
   margin-top: 2px;
 }
@@ -351,17 +389,23 @@ main {
 }
 .panel-footnote {
   font-size: var(--text-2xs);
-  color: var(--off);
+  color: var(--dim);
   margin: 10px 0 0;
   border-top: 1px solid var(--line);
   padding-top: 8px;
 }
-/* inline external-link icon on an item's label row (replaces the old raw-URL text-link list) */
+/* inline external-link icon on an item's label row (replaces the old raw-URL text-link list):
+ * the standard arrow-out-of-a-box SVG, stroked with currentColor so hover recolors it */
 .item-link-icon {
   color: var(--dim);
   text-decoration: none;
-  font-size: var(--text-xl);
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+.item-link-icon svg {
+  width: 15px;
+  height: 15px;
+  display: block;
 }
 .item-link-icon:hover {
   color: var(--accent);
@@ -369,7 +413,7 @@ main {
 /* clickable (inspectable) item label */
 .item-label.clickable {
   cursor: pointer;
-  text-decoration: underline dotted var(--off);
+  text-decoration: underline dotted var(--dim);
   text-underline-offset: 3px;
 }
 .item-label.clickable:hover {
@@ -401,6 +445,12 @@ main {
 .config-grid-row > div {
   padding: 10px 12px;
   border-left: 1px solid var(--line);
+}
+.harness-provider {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 .config-grid-head > div:first-child,
 .config-grid-row > div:first-child {
@@ -604,6 +654,33 @@ dialog#config-modal {
 dialog#config-modal[open] {
   display: flex;
   flex-direction: column;
+}
+/* Config modal header: "title [token chip]" on the first line, file path underneath. The shared
+ * .modal-head base (base.css) is a single flex row for other pages' modals. */
+dialog#config-modal .modal-head {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+.modal-head-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.modal-head-main .modal-close {
+  margin-left: auto;
+}
+/* dedicated full-width cost row: sits below the title/path in a distinct band, separate from
+ * the title line entirely. Holds one or more "Label: [chip]" pairs (Startup / When loaded). */
+.modal-cost-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 8px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
 }
 dialog#config-modal::backdrop {
   background: var(--backdrop);

@@ -4,12 +4,24 @@
 // tpl-config-item template, owns conditional listener wiring (inspect-click, toggle-swap)
 // internally, embeds <config-toggle> in its toggle slot when the item is mutable.
 import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
+import { applyTokenChip } from "../templates.js";
+import { contextCostChipSpecs } from "../state.js";
 
+// tpl-badge's root element IS the data-slot="text" node, and portalFillSlots only matches
+// descendants — so this sets textContent directly instead of going through fill().
 function badge(text) {
-  const isCmd = text.startsWith("/");
-  const node = fill(tpl("tpl-badge"), { text });
-  node.classList.add(isCmd ? "badge-cmd" : "badge-skill");
+  const node = tpl("tpl-badge");
+  node.textContent = text;
+  node.classList.add(text.startsWith("/") ? "badge-cmd" : "badge-skill");
   return node;
+}
+
+// Row-level token-cost chip. Real <token-chip> (not a plain badge) so it carries the same
+// hover/click tooltip and legend as every other cost chip on the page.
+function rowCostChip(spec) {
+  const chip = document.createElement("token-chip");
+  applyTokenChip(chip, spec);
+  return chip;
 }
 
 class ConfigItemElement extends HTMLElement {
@@ -35,7 +47,7 @@ class ConfigItemElement extends HTMLElement {
 
   render() {
     const item = this._item;
-    const { onInspect, onToggle } = this._actions;
+    const { onInspect, onToggle, contextCost } = this._actions;
     const row = fill(tpl("tpl-config-item"), {
       description: item.description,
       hint: item.hint,
@@ -52,7 +64,8 @@ class ConfigItemElement extends HTMLElement {
     labelEl.textContent = item.label;
     if (item.inspect) {
       labelEl.title = "view source";
-      labelEl.addEventListener("click", () => onInspect(item.inspect));
+      // Pass the item's cost along so the source popup can show its token chip.
+      labelEl.addEventListener("click", () => onInspect(item.inspect, item.contextCost));
     }
 
     // Info URL (GitHub / docs / PyPI): a single inline icon on the label row, opening the FIRST
@@ -70,6 +83,7 @@ class ConfigItemElement extends HTMLElement {
 
     row.querySelector('[data-slot="badges"]').replaceChildren(
       ...(item.badges || []).map((b) => badge(b)),
+      ...contextCostChipSpecs(item, contextCost).map(({ spec }) => rowCostChip(spec)),
     );
 
     const statusEl = row.querySelector('[data-slot="status"]');

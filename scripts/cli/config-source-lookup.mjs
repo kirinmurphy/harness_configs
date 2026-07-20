@@ -18,10 +18,10 @@ export function packageSlashCommands() {
     for (const resource of pkg.resources || []) {
       if (resource.type === "skill") {
         for (const entrypoint of resource.entrypoints || []) {
-          if (entrypoint.type === "slash-command") commands.push({ name: entrypoint.name, skill: resource.id });
+          if (entrypoint.type === "slash-command") commands.push({ name: entrypoint.name, skill: resource.id, packageId: pkg.id });
         }
       } else if (resource.type === "slash-command") {
-        commands.push({ name: resource.name, source: path.join(pkg.sourceRoot, resource.source) });
+        commands.push({ name: resource.name, source: path.join(pkg.sourceRoot, resource.source), packageId: pkg.id });
       }
     }
   }

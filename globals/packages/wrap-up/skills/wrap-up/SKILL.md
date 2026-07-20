@@ -68,8 +68,25 @@ say so explicitly rather than guessing from the working tree.
 ### 3. Check for stray or uncommitted state
 
 Before committing, run `git status` (never `-uall`) and diff its output against the
-enumerable edit set from step 1. Anything in `git status` that is NOT in that set is stray —
-flag it, don't touch it:
+enumerable edit set from step 1.
+
+First, stage the files this conversation actually edited or created, plus any documentation
+updates from step 2, by explicit path. This defines the candidate session commit.
+
+After those files are staged, inspect all remaining modified, deleted, staged, and untracked
+paths in `git status`:
+
+- If a remaining code or documentation change was not touched in this session but is directly
+  related to the candidate session commit, include it in the commit. Stage it by explicit path
+  and say why it belongs with the session work.
+- If a remaining path is unrelated to the candidate session commit, leave it unstaged and
+  classify it by likely commit domain. Use concrete domains from the files and diffs, such as
+  "config portal token-chip UI", "context-cost CLI", or "plan docs".
+- If relatedness is ambiguous, ask before staging it. Do not guess from path names alone when
+  the diff could belong to a different task.
+
+Unrelated or ambiguous leftovers are still stray work. Flag them; don't silently include or
+silently discard them:
 
 - Untracked files that look like real work product, not scratch/build output.
 - Modified/staged files this conversation did not edit — including pre-existing uncommitted
@@ -77,13 +94,16 @@ flag it, don't touch it:
   or safe to include.
 - Existing stashes.
 
-Surface these; don't silently include or silently discard them. If something is
-ambiguous, ask before staging it.
+Determine how many commits worth of unrelated code remain outstanding. Finish the normal
+wrap-up deliverables, then ask whether the user wants those leftovers committed too. The
+question must articulate the proposed commit domain(s). If multiple proposed commits remain,
+offer exactly these choices: commit the separate commits, commit them all together, or do
+nothing and wait for instruction.
 
 ### 4. Commit
 
-- Stage exactly the enumerable set from step 1 (plus any doc updates from step 2), by name.
-  Never blanket `git add -A`/`git add .`, and never stage a file flagged as stray in step 3.
+- Commit exactly the staged candidate set from steps 1-3. Never blanket `git add -A`/`git add .`,
+  and never stage a file flagged as unrelated stray work in step 3.
 - Commit message: standard git conventions (see root `CLAUDE.md` commit guidance, not
   caveman mode) — summarize the *why* pulled from the session's own goal, not just a
   diff restatement. If the session covered multiple unrelated changes, say so and

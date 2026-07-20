@@ -635,6 +635,14 @@ assert "config: Claude legacy import block migrates to inline rules" \
 bash -c "${cfg_env} node '${cli}' enable telemetry >/dev/null 2>&1" || true
 assert "config: enable service package flips telemetry state" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const p=s.packages.find(x=>x.id==='telemetry');process.exit(s.telemetry.enabled&&p?.enabled&&p?.desired&&p?.status==='enabled'?0:1)})\""
+# Administratively-off service: the telemetry PACKAGE stays enabled (desired) but its capture state
+# is turned off (state file present, enabled:false). This must read as "configured" — installed, the
+# service is just not running — NOT "partial", which would look like a broken install. Re-enable the
+# package, then force the service state off directly and check the status folds to "configured".
+bash -c "${cfg_env} node '${cli}' enable telemetry >/dev/null 2>&1" || true
+printf '{"enabled":false,"updatedAt":"x"}\n' > "${cfg_home}/.roborepo/telemetry/state.json"
+assert "config: enabled package with capture off reports configured, not partial" \
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const p=s.packages.find(x=>x.id==='telemetry');const svc=p?.componentStatus?.find(x=>x.type==='service');process.exit(p?.desired===true&&p?.status==='configured'&&svc?.state==='inactive'?0:1)})\""
 bash -c "${cfg_env} node '${cli}' disable telemetry >/dev/null 2>&1" || true
 assert "config: disable service package clears telemetry state" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(!s.telemetry.enabled&&!s.packages.find(p=>p.id==='telemetry')?.enabled?0:1)})\""

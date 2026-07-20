@@ -301,7 +301,7 @@ function packagePresentationItem(item, tool, contextCost = null) {
     resources,
     inspect,
     contextCost,
-    hint: item.id === "telemetry" && item.enabled ? "roborepo serve" : null,
+    hint: item.id === "telemetry" && (item.enabled || item.status === "configured") ? "roborepo serve" : null,
   };
 }
 

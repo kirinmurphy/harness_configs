@@ -7,12 +7,25 @@ import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js
 import { applyTokenChip } from "../templates.js";
 import { contextCostChipSpecs } from "../state.js";
 
+// Package status strings surfaced as badges (config.mjs packagePresentationItem). "partial" and
+// "pending" mean something needs attention; "configured" means fully installed with a service that
+// is simply turned off (not broken) — it must NOT share the warning styling that "partial" gets, or
+// an administratively-off telemetry service looks like a failed install.
+const STATUS_BADGE_CLASS = {
+  partial: "badge-warn",
+  pending: "badge-warn",
+  configured: "badge-info",
+  external: "badge-info",
+  inactive: "badge-info",
+};
+
 // tpl-badge's root element IS the data-slot="text" node, and portalFillSlots only matches
 // descendants — so this sets textContent directly instead of going through fill().
 function badge(text) {
   const node = tpl("tpl-badge");
   node.textContent = text;
-  node.classList.add(text.startsWith("/") ? "badge-cmd" : "badge-skill");
+  const statusClass = STATUS_BADGE_CLASS[text];
+  node.classList.add(statusClass || (text.startsWith("/") ? "badge-cmd" : "badge-skill"));
   return node;
 }
 

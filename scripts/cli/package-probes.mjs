@@ -39,22 +39,27 @@ function targetHarnesses(component) {
   return [component.harness];
 }
 
-function foldComponentState({ desired, observed, blocked = false }) {
+function foldComponentState({ desired, observed, blocked = false, inactive = false }) {
   if (blocked) return "blocked";
+  // "inactive" = desired and correctly installed, but a runtime service the user has deliberately
+  // turned off (e.g. telemetry capture disabled). This is NOT a broken install, so it must fold to
+  // its own state rather than "missing" — otherwise an administratively-off service looks identical
+  // to a genuinely absent one and the package reads as "partial" (see packageStatus).
+  if (desired && inactive) return "inactive";
   if (desired && observed) return "present";
   if (desired && !observed) return "missing";
   if (!desired && observed) return "external";
   return "absent";
 }
 
-function componentResult(component, { desired, observed, owner = "unknown", detail = null, blocked = false }) {
+function componentResult(component, { desired, observed, owner = "unknown", detail = null, blocked = false, inactive = false }) {
   return {
     type: component.type,
     id: component.id || component.name || component.preset || component.source || null,
     desired,
     observed,
     owner: observed ? owner : null,
-    state: foldComponentState({ desired, observed, blocked }),
+    state: foldComponentState({ desired, observed, blocked, inactive }),
     detail,
   };
 }
@@ -166,12 +171,23 @@ function probeMcp(component, desired, settings) {
 }
 
 function probeService(component, desired, telemetryState) {
-  const observed = component.id === "telemetry" ? telemetryState?.enabled === true : false;
+  const isTelemetry = component.id === "telemetry";
+  const observed = isTelemetry ? telemetryState?.enabled === true : false;
+  // A telemetry service that is desired and has a state file but reads enabled:false is
+  // administratively OFF, not broken — the user simply hasn't started capture. Report it as
+  // "inactive" (an actionable, non-alarming state) rather than folding it into "missing", which
+  // would drag the package status down to "partial" and read like a failed install.
+  const inactive = isTelemetry && desired && !observed && telemetryState != null;
   return componentResult(component, {
     desired,
     observed,
+    inactive,
     owner: observed ? "roborepo" : null,
-    detail: observed ? "service state enabled" : "service state disabled or missing",
+    detail: observed
+      ? "service state enabled"
+      : inactive
+        ? "service installed but capture is turned off (roborepo serve to start)"
+        : "service state missing",
   });
 }
 
@@ -241,9 +257,16 @@ function dependencyComponents(pkg, packageStatusById) {
 
 function packageStatus({ desired, components }) {
   if (desired) {
-    return components.some((component) => component.state === "missing" || component.state === "blocked")
-      ? "partial"
-      : "enabled";
+    if (components.some((component) => component.state === "missing" || component.state === "blocked")) {
+      return "partial";
+    }
+    // A fully-installed package whose only not-"present" component is an administratively-off
+    // service reads as "configured" — everything is in place, the service just isn't running.
+    // This keeps a deliberate off state visually distinct from a broken install ("partial").
+    if (components.some((component) => component.state === "inactive")) {
+      return "configured";
+    }
+    return "enabled";
   }
   return components.some((component) => component.state === "external") ? "external" : "disabled";
 }

@@ -88,8 +88,11 @@ package catalog, skill resources, the permission manifest, and roborepo state fi
 `GET /api/config` returns it; both the web view and the terminal flow render from it.
 
 Package rows include `status`, `desired`, and `componentStatus` so the panel can distinguish
-enabled, disabled, partial, external, and blocked package state without treating every observed
-component as an enabled package.
+enabled, configured, disabled, partial, external, and blocked package state without treating every
+observed component as an enabled package. `configured` is a fully-installed package whose only
+not-`present` component is a runtime service the user has deliberately turned off (component state
+`inactive`, e.g. telemetry capture disabled) — distinct from `partial`, which means an install is
+genuinely incomplete.
 
 Skill rows include a native-aware `inventory` object from `scripts/cli/skill-inventory.mjs`.
 The skill source popup uses that same inventory, so it can show ownership, managed cache state,

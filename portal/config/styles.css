@@ -101,6 +101,19 @@ main {
   border-color: var(--badge-cmd-line);
   background: var(--badge-cmd-bg);
 }
+/* Status badges: "partial"/"pending" warn that something needs attention; "configured"/
+ * "external"/"inactive" are informational (installed-but-off, adopted-live) and must read calm so a
+ * deliberately-off service is not mistaken for a broken install. */
+.badge-warn {
+  color: var(--warn);
+  border-color: var(--warn);
+  background: transparent;
+}
+.badge-info {
+  color: var(--dim);
+  border-color: var(--dim);
+  background: transparent;
+}
 /* token-cost estimates: all numeric cost display goes through the shared <token-chip>
  * component (portal/shared/token-chip.js, styled in base.css) — no page-local chip variant. */
 .panel-head {

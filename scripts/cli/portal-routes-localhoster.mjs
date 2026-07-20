@@ -19,6 +19,7 @@ export function handleLocalhosterApi(req, res, urlPath, qs, handlers) {
     "/api/localhoster/links",
     "/api/localhoster/association",
     "/api/localhoster/project",
+    "/api/localhoster/alias",
   ].includes(urlPath)) {
     readJsonBody(req, (body, err) => {
       if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));

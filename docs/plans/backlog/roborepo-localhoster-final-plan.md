@@ -1,7 +1,7 @@
 ---
 id: localhoster-final
 priority: high
-next_action: Start final phase 1: V2 settings migration, aliases, and reversible project/app edits
+next_action: Run and record manual macOS validation, then continue final phase 3 provider split
 blocked_by: []
 depends_on:
   - localhoster-v1
@@ -38,7 +38,20 @@ V1 is completed in `docs/plans/completed/roborepo-localhoster-v1-plan.md`. Compl
 - wildcard-bound listeners produced the expected network-exposure warning.
 - the Localhoster reference document was served by the portal.
 
-Final phase 1 is ready to start with the V1 identity/settings/snapshot contracts as its base.
+Final phase 1 has started with the V1 identity/settings/snapshot contracts as its base.
+
+Implemented in phase 1 so far:
+
+- Settings schema version 2 migration with a one-time V1 backup, defaults, strict validation, and
+  idempotent fixture coverage.
+- Confirmed alias storage with cycle prevention and snapshot/discovery alias resolution.
+- Project/app favorite and hidden fields, health config, match hints, snapshot metadata,
+  hidden-count reporting, and compatibility with the existing `project`, `links`, and
+  `association` mutations.
+- Portal workflows for manual alias confirmation, project/app favorite and hidden toggles,
+  hidden-item restore, reversible association removal, and app health/match hint editing.
+- `modules/localhoster/settings.mjs` was narrowed to persistence and mutation orchestration; strict
+  schema validation and normalizers now live in `modules/localhoster/settings-schema.mjs`.
 
 ## Decision Record
 
@@ -431,7 +444,8 @@ Retain V1 endpoints and add narrowly scoped mutations:
 | `/api/localhoster/refresh` | POST | Force all available discovery providers |
 | `/api/localhoster/links` | POST | Add, update, remove, or reorder a quick link |
 | `/api/localhoster/association` | POST | Create or remove a project/app association |
-| `/api/localhoster/project` | POST | Update project/app names, preferences, favorites, or aliases |
+| `/api/localhoster/project` | POST | Update project/app names, preferences, favorites, health paths, match hints, or visibility |
+| `/api/localhoster/alias` | POST | Create or remove a confirmed project identity alias |
 | `/api/localhoster/history?key=<key>` | GET | Bounded recent events for a server-issued app key |
 | `/api/localhoster/metadata?key=<key>` | GET | Safe conventional metadata and route suggestions |
 
@@ -442,7 +456,7 @@ Use server-issued opaque keys for current instances. Never let the browser reque
 Mutation compatibility decisions:
 
 - Keep the current V1 "replace full app links array" domain primitive, but expose true UI operations for add, edit, delete, and reorder. Each operation should read current links, construct the new full ordered array, and call the same settings mutation until there is a proven need for per-link patch semantics.
-- Keep `project` mutation as the endpoint for both project and app editing, but make payload shape explicit: project name/favorite/hidden/aliases are project fields; app name/origin preference/health/match hints are app fields.
+- Keep `project` mutation as the endpoint for both project and app editing, but make payload shape explicit: project name/favorite/hidden are project fields; app name/origin preference/health/match hints are app fields.
 - Keep `association` mutation reversible. Association deletion must not delete saved project/app settings or quick links.
 - Add read-only `history` and `metadata` endpoints only after opaque current-instance keys exist in the snapshot.
 
@@ -551,8 +565,8 @@ Finish these items before final feature implementation starts:
 
 Close these during final phase 1 if they naturally share code with V2 migration:
 
-- [ ] Alias migration confirmation UI and cycle-safe alias storage.
-- [ ] Reversible association and hidden-instance settings view.
+- [x] Alias migration confirmation UI. Cycle-safe alias storage is implemented.
+- [x] Reversible association and hidden-instance settings view.
 
 ## Implementation Sequence
 

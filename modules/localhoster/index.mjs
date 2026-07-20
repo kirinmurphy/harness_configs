@@ -22,6 +22,7 @@ export {
   defaultSettings,
   loadSettings,
   normalizeRoutePath,
+  resolveProjectAlias,
   settingsPathFor,
   updateSettings,
   validateSettings,

@@ -12,6 +12,7 @@
             <input id="search" type="search" placeholder="project, app, port, route" />
           </label>
           <button id="refresh" type="button">Refresh</button>
+          <button id="settings" type="button">Settings</button>
           <span class="refresh-state" id="refresh-state" aria-live="polite"></span>
         </div>
       </section>
@@ -71,12 +72,71 @@
               <option value="::1">::1</option>
             </select>
           </label>
+          <div class="toggle-row">
+            <label><input id="app-project-favorite" type="checkbox" /> Project favorite</label>
+            <label><input id="app-project-hidden" type="checkbox" /> Hide project</label>
+            <label><input id="app-favorite" type="checkbox" /> App favorite</label>
+            <label><input id="app-hidden" type="checkbox" /> Hide app</label>
+          </div>
+          <label>
+            Health path
+            <input id="app-health-path" placeholder="/health" />
+          </label>
+          <label>
+            Accepted statuses
+            <input id="app-health-statuses" placeholder="200,204" />
+          </label>
+          <label>
+            Match process hints
+            <input id="app-match-process" placeholder="node,vite" />
+          </label>
+          <label>
+            Match title hints
+            <input id="app-match-title" placeholder="Project title" />
+          </label>
+          <label>
+            Match path hints
+            <input id="app-match-path" placeholder="apps/web,packages/api" />
+          </label>
           <div class="item-err" id="app-error"></div>
         </div>
         <div class="modal-actions">
+          <button type="button" id="app-remove-association">Remove association</button>
           <button type="submit">Save project/app</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="alias-dialog" aria-labelledby="alias-dialog-title">
+      <form method="dialog" id="alias-form">
+        <div class="modal-head">
+          <h2 id="alias-dialog-title">Confirm alias</h2>
+          <button type="button" class="modal-close" data-close aria-label="Close">x</button>
+        </div>
+        <div class="modal-body">
+          <label>
+            Alias from
+            <input id="alias-from" required />
+          </label>
+          <label>
+            Alias to
+            <input id="alias-to" required />
+          </label>
+          <label class="check-line"><input id="alias-confirmed" type="checkbox" required /> Confirm same project</label>
+          <div class="item-err" id="alias-error"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="submit">Save alias</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="settings-dialog" aria-labelledby="settings-dialog-title">
+      <div class="modal-head">
+        <h2 id="settings-dialog-title">Localhoster settings</h2>
+        <button type="button" class="modal-close" data-close aria-label="Close">x</button>
+      </div>
+      <div class="modal-body settings-body" id="settings-body"></div>
     </dialog>
 
     <template id="tpl-status-pill">
@@ -132,6 +192,9 @@
               <button type="button" data-action="copy">Copy URL</button>
               <button type="button" data-action="open">Open</button>
               <button type="button" data-action="associate">Change association</button>
+              <button type="button" data-action="alias">Confirm alias</button>
+              <button type="button" data-action="favorite">Toggle favorite</button>
+              <button type="button" data-action="hide">Hide</button>
             </div>
           </div>
         </div>
@@ -161,6 +224,21 @@
           <button type="button" data-action="down" aria-label="Move link down">Down</button>
           <button type="button" data-action="remove" aria-label="Remove link">Remove</button>
         </div>
+      </div>
+    </template>
+    <template id="tpl-settings-section">
+      <section class="settings-section">
+        <h3 data-slot="title"></h3>
+        <div data-slot="rows"></div>
+      </section>
+    </template>
+    <template id="tpl-settings-row">
+      <div class="settings-row">
+        <div>
+          <strong data-slot="title"></strong>
+          <span data-slot="meta"></span>
+        </div>
+        <button type="button" data-slot="action"></button>
       </div>
     </template>
     <script type="module" src="/portal/shared/info-icon.js"></script>

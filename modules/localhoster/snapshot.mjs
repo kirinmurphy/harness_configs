@@ -1,5 +1,5 @@
 import path from "node:path";
-import { defaultSettings } from "./settings.mjs";
+import { defaultSettings, resolveProjectAlias } from "./settings.mjs";
 
 export function buildLocalhosterSnapshot({
   discovery,
@@ -10,28 +10,38 @@ export function buildLocalhosterSnapshot({
   const activeByProject = new Map();
   const unmatchedInstances = [];
   const seenApps = new Set();
+  let hiddenCount = 0;
   const identityCounts = countIdentities(discovery.instances || []);
 
   for (const instance of discovery.instances || []) {
-    const projectIdentity = instance.project.identity;
+    const projectIdentity = resolveProjectAlias(settings, instance.project.identity);
     const association = settings.associations[instance.associationKey];
-    const provisionalApp = identityCounts.get(projectIdentity) === 1 && (instance.project.confidence === "high" || instance.project.confidence === "medium");
+    const provisionalApp = identityCounts.get(instance.project.identity) === 1 && (instance.project.confidence === "high" || instance.project.confidence === "medium");
     const appId = association?.appId || (provisionalApp ? "web" : null);
     if (!appId) {
       unmatchedInstances.push(instance);
       continue;
     }
-    const effectiveIdentity = association?.projectIdentity || projectIdentity;
+    const effectiveIdentity = resolveProjectAlias(settings, association?.projectIdentity || projectIdentity);
     const projectSettings = settings.projects[effectiveIdentity] || { apps: {} };
     const appSettings = projectSettings.apps?.[appId] || {};
+    if (projectSettings.hidden || appSettings.hidden) {
+      hiddenCount += 1;
+      seenApps.add(`${effectiveIdentity}#${appId}`);
+      continue;
+    }
     const project = ensureProject(activeByProject, effectiveIdentity, projectSettings, instance);
     project.instances.push({
       ...instance,
       app: {
         id: appId,
         name: appSettings.name || labelFromId(appId),
+        favorite: appSettings.favorite === true,
+        hidden: appSettings.hidden === true,
         links: (appSettings.links || []).map((link) => ({ ...link, url: instance.origin ? `${instance.origin}${link.path}` : link.path })),
         originPreference: appSettings.originPreference || "localhost",
+        health: appSettings.health || {},
+        match: appSettings.match || {},
       },
     });
     seenApps.add(`${effectiveIdentity}#${appId}`);
@@ -39,19 +49,32 @@ export function buildLocalhosterSnapshot({
 
   const inactiveProjects = [];
   for (const [identity, project] of Object.entries(settings.projects || {})) {
+    if (project.hidden) {
+      hiddenCount += Object.keys(project.apps || {}).length;
+      continue;
+    }
     for (const [appId, app] of Object.entries(project.apps || {})) {
-      if (!seenApps.has(`${identity}#${appId}`)) {
-        inactiveProjects.push({
-          identity,
-          name: project.name || inferredName(identity),
-          app: {
-            id: appId,
-            name: app.name || labelFromId(appId),
-            links: app.links || [],
-            originPreference: app.originPreference || "localhost",
-          },
-        });
+      if (seenApps.has(`${identity}#${appId}`)) continue;
+      if (app.hidden) {
+        hiddenCount += 1;
+        continue;
       }
+      inactiveProjects.push({
+        identity,
+        name: project.name || inferredName(identity),
+        favorite: project.favorite === true || app.favorite === true,
+        hidden: false,
+        app: {
+          id: appId,
+          name: app.name || labelFromId(appId),
+          favorite: app.favorite === true,
+          hidden: false,
+          links: app.links || [],
+          originPreference: app.originPreference || "localhost",
+          health: app.health || {},
+          match: app.match || {},
+        },
+      });
     }
   }
 
@@ -63,7 +86,9 @@ export function buildLocalhosterSnapshot({
     warnings: discovery.warnings || [],
     projects: [...activeByProject.values()].sort(compareProjects).map(sortProject),
     unmatchedInstances: unmatchedInstances.sort(compareInstances),
-    inactiveProjects: inactiveProjects.sort((a, b) => a.name.localeCompare(b.name)),
+    inactiveProjects: inactiveProjects.sort(compareProjects),
+    hiddenCount,
+    settings: settingsSummary(settings),
   };
 }
 
@@ -82,6 +107,8 @@ function ensureProject(map, identity, settings, instance) {
     map.set(identity, {
       identity,
       name: settings.name || inferredName(identity, instance.project.projectRoot),
+      favorite: settings.favorite === true,
+      hidden: settings.hidden === true,
       identityKind: instance.project.identityKind,
       confidence: instance.project.confidence,
       evidence: instance.project.evidence,
@@ -91,12 +118,46 @@ function ensureProject(map, identity, settings, instance) {
   return map.get(identity);
 }
 
+function settingsSummary(settings) {
+  const hidden = [];
+  for (const [identity, project] of Object.entries(settings.projects || {})) {
+    const projectName = project.name || inferredName(identity);
+    if (project.hidden) {
+      hidden.push({ kind: "project", identity, name: projectName, favorite: project.favorite === true });
+    }
+    for (const [appId, app] of Object.entries(project.apps || {})) {
+      if (!app.hidden) continue;
+      hidden.push({
+        kind: "app",
+        identity,
+        name: projectName,
+        favorite: project.favorite === true || app.favorite === true,
+        app: {
+          id: appId,
+          name: app.name || labelFromId(appId),
+          favorite: app.favorite === true,
+          links: app.links || [],
+          originPreference: app.originPreference || "localhost",
+          health: app.health || {},
+          match: app.match || {},
+        },
+      });
+    }
+  }
+  return {
+    aliases: Object.entries(settings.aliases || {}).map(([from, to]) => ({ from, to })),
+    associations: Object.entries(settings.associations || {}).map(([key, association]) => ({ key, ...association })),
+    hidden,
+  };
+}
+
 function sortProject(project) {
   project.instances = project.instances.sort(compareInstances);
   return project;
 }
 
 function compareProjects(a, b) {
+  if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
   return a.name.localeCompare(b.name) || a.identity.localeCompare(b.identity);
 }
 

@@ -1,21 +1,48 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import {
+  DEFAULT_PREFERENCES,
+  LEGACY_SETTINGS_VERSION,
+  SETTINGS_VERSION,
+  assertAliasGraph,
+  defaultSettings,
+  labelFromId,
+  normalizeHealth,
+  normalizeMatch,
+  normalizeRoutePath,
+  resolveProjectAlias,
+  safeBoolean,
+  safeId,
+  safeIdentity,
+  safeLabel,
+  slugify,
+  validateLegacySettings,
+  validateSettings,
+} from "./settings-schema.mjs";
 
-export const SETTINGS_VERSION = 1;
+export {
+  SETTINGS_VERSION,
+  defaultSettings,
+  normalizeRoutePath,
+  resolveProjectAlias,
+  validateSettings,
+};
 
 export function settingsPathFor(stateRoot) {
   return path.join(stateRoot, "localhoster", "settings.json");
 }
 
-export function defaultSettings() {
-  return { version: SETTINGS_VERSION, revision: 1, projects: {}, associations: {} };
-}
-
 export function loadSettings({ stateRoot, fsApi = fs } = {}) {
   const filePath = settingsPathFor(stateRoot);
   try {
-    return validateSettings(JSON.parse(fsApi.readFileSync(filePath, "utf8")));
+    const parsed = JSON.parse(fsApi.readFileSync(filePath, "utf8"));
+    const migrated = migrateSettings(parsed);
+    if (parsed.version !== SETTINGS_VERSION) {
+      backupSettingsFile(filePath, parsed.version, fsApi);
+      writeSettings({ stateRoot, settings: migrated, fsApi });
+    }
+    return validateSettings(migrated);
   } catch (err) {
     if (err && err.code === "ENOENT") return defaultSettings();
     if (err instanceof SyntaxError) throw new Error("localhoster settings contain malformed JSON");
@@ -49,54 +76,26 @@ export function updateSettings({ stateRoot, input, fsApi = fs } = {}) {
   return next;
 }
 
-export function normalizeRoutePath(value) {
-  if (typeof value !== "string" || /[\u0000-\u001f\u007f]/.test(value)) {
-    throw new Error("link path must be a local path or loopback URL");
-  }
-  if (value.startsWith("//")) throw new Error("protocol-relative URLs are not allowed");
-  if (value.startsWith("/")) return value;
-  let url;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error("link path must begin with /");
-  }
-  if (url.username || url.password) throw new Error("credentials are not allowed in link URLs");
-  if (!["http:", "https:"].includes(url.protocol) || !isLoopbackHost(url.hostname)) {
-    throw new Error("link URL host must be loopback");
-  }
-  return `${url.pathname || "/"}${url.search}${url.hash}`;
-}
-
-export function validateSettings(settings) {
-  if (!settings || typeof settings !== "object" || Array.isArray(settings)) throw new Error("settings must be an object");
-  const keys = Object.keys(settings).sort();
-  const allowed = ["associations", "projects", "revision", "version"];
-  for (const key of keys) {
-    if (!allowed.includes(key)) throw new Error(`unknown localhoster settings field: ${key}`);
-  }
-  if (settings.version !== SETTINGS_VERSION) throw new Error(`unsupported localhoster settings version: ${settings.version}`);
-  if (!Number.isInteger(settings.revision) || settings.revision < 1) throw new Error("settings revision must be a positive integer");
-  validateProjects(settings.projects);
-  if (!settings.associations || typeof settings.associations !== "object" || Array.isArray(settings.associations)) {
-    throw new Error("settings associations must be an object");
-  }
-  return settings;
-}
-
 function applyMutation(settings, input) {
   if (input.type === "project") return mutateProject(settings, input);
   if (input.type === "links") return mutateLinks(settings, input);
   if (input.type === "association") return mutateAssociation(settings, input);
+  if (input.type === "alias") return mutateAlias(settings, input);
   throw new Error("unknown localhoster settings mutation");
 }
 
 function mutateProject(settings, input) {
   const project = ensureProject(settings, input.projectIdentity);
   if (input.name != null) project.name = safeLabel(input.name, "project name");
+  if (input.favorite != null) project.favorite = safeBoolean(input.favorite, "project favorite");
+  if (input.hidden != null) project.hidden = safeBoolean(input.hidden, "project hidden");
   if (input.appId) {
     const app = ensureApp(project, input.appId);
     if (input.appName != null) app.name = safeLabel(input.appName, "app name");
+    if (input.appFavorite != null) app.favorite = safeBoolean(input.appFavorite, "app favorite");
+    if (input.appHidden != null) app.hidden = safeBoolean(input.appHidden, "app hidden");
+    if (input.health != null) app.health = normalizeHealth(input.health);
+    if (input.match != null) app.match = normalizeMatch(input.match);
     if (input.originPreference != null) {
       if (!["localhost", "127.0.0.1", "::1"].includes(input.originPreference)) throw new Error("invalid origin preference");
       app.originPreference = input.originPreference;
@@ -129,70 +128,139 @@ function mutateAssociation(settings, input) {
   };
 }
 
-function validateProjects(projects) {
-  if (!projects || typeof projects !== "object" || Array.isArray(projects)) throw new Error("settings projects must be an object");
-  for (const [identity, project] of Object.entries(projects)) {
-    safeIdentity(identity);
-    if (!project || typeof project !== "object" || Array.isArray(project)) throw new Error("settings project must be an object");
-    if (project.name != null) safeLabel(project.name, "project name");
-    if (!project.apps || typeof project.apps !== "object" || Array.isArray(project.apps)) throw new Error("settings project apps must be an object");
-    for (const [appId, app] of Object.entries(project.apps)) validateApp(appId, app);
+function mutateAlias(settings, input) {
+  const from = safeIdentity(input.from);
+  if (input.remove) {
+    delete settings.aliases[from];
+    return;
+  }
+  if (input.confirmed !== true) throw new Error("alias mutation requires confirmation");
+  const to = safeIdentity(input.to);
+  if (from === to) throw new Error("alias cannot point to itself");
+  const nextAliases = { ...settings.aliases, [from]: to };
+  assertAliasGraph(nextAliases);
+  mergeAliasedProject(settings, from, to);
+  repointAssociations(settings, from, to);
+  settings.aliases[from] = to;
+}
+
+function migrateSettings(settings) {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) throw new Error("settings must be an object");
+  if (settings.version === SETTINGS_VERSION) return validateSettings(settings);
+  if (settings.version !== LEGACY_SETTINGS_VERSION) throw new Error(`unsupported localhoster settings version: ${settings.version}`);
+  validateLegacySettings(settings);
+  return validateSettings({
+    version: SETTINGS_VERSION,
+    revision: settings.revision,
+    projects: Object.fromEntries(Object.entries(settings.projects).map(([identity, project]) => [identity, migrateProject(project)])),
+    associations: { ...settings.associations },
+    aliases: {},
+    preferences: { ...DEFAULT_PREFERENCES },
+  });
+}
+
+function migrateProject(project) {
+  return {
+    ...project,
+    favorite: project.favorite === true,
+    hidden: project.hidden === true,
+    apps: Object.fromEntries(Object.entries(project.apps).map(([appId, app]) => [appId, migrateApp(app)])),
+  };
+}
+
+function migrateApp(app) {
+  return {
+    ...app,
+    favorite: app.favorite === true,
+    hidden: app.hidden === true,
+  };
+}
+
+function backupSettingsFile(filePath, version, fsApi) {
+  const backupPath = path.join(path.dirname(filePath), `settings.v${version}.backup.json`);
+  if (fsApi.existsSync?.(backupPath)) return;
+  fsApi.copyFileSync(filePath, backupPath);
+}
+
+function mergeAliasedProject(settings, from, to) {
+  const source = settings.projects[from];
+  if (!source) return;
+  const target = settings.projects[to];
+  if (!target) {
+    settings.projects[to] = source;
+    delete settings.projects[from];
+    return;
+  }
+  mergeProjectSettings(target, source);
+  delete settings.projects[from];
+}
+
+function mergeProjectSettings(target, source) {
+  target.name ||= source.name;
+  target.favorite = target.favorite === true || source.favorite === true;
+  target.hidden = target.hidden === true || source.hidden === true;
+  target.apps ||= {};
+  for (const [appId, sourceApp] of Object.entries(source.apps || {})) {
+    if (!target.apps[appId]) {
+      target.apps[appId] = sourceApp;
+      continue;
+    }
+    mergeAppSettings(target.apps[appId], sourceApp, appId);
   }
 }
 
-function validateApp(appId, app) {
-  safeId(appId);
-  if (!app || typeof app !== "object" || Array.isArray(app)) throw new Error("settings app must be an object");
-  if (app.name != null) safeLabel(app.name, "app name");
-  if (app.originPreference != null && !["localhost", "127.0.0.1", "::1"].includes(app.originPreference)) throw new Error("invalid origin preference");
-  if (!Array.isArray(app.links)) throw new Error("settings app links must be an array");
-  const seen = new Set();
-  for (const link of app.links) {
-    const id = safeId(link.id);
-    if (seen.has(id)) throw new Error(`duplicate link id: ${id}`);
-    seen.add(id);
-    safeLabel(link.label, "link label");
-    normalizeRoutePath(link.path);
+function mergeAppSettings(target, source, appId) {
+  target.name ||= source.name;
+  target.favorite = target.favorite === true || source.favorite === true;
+  target.hidden = target.hidden === true || source.hidden === true;
+  target.originPreference ||= source.originPreference;
+  target.health = mergeOptionalObject(target.health, source.health, `app ${appId} health`);
+  target.match = mergeOptionalObject(target.match, source.match, `app ${appId} match`);
+  target.links = mergeLinks(target.links || [], source.links || [], appId);
+}
+
+function mergeOptionalObject(target, source, label) {
+  if (target == null) return source == null ? undefined : structuredClone(source);
+  if (source == null) return target;
+  if (JSON.stringify(target) !== JSON.stringify(source)) throw new Error(`alias merge conflict for ${label}`);
+  return target;
+}
+
+function mergeLinks(targetLinks, sourceLinks, appId) {
+  const links = [...targetLinks];
+  const byId = new Map(links.map((link) => [link.id, link]));
+  for (const link of sourceLinks) {
+    const existing = byId.get(link.id);
+    if (!existing) {
+      links.push(link);
+      byId.set(link.id, link);
+      continue;
+    }
+    if (existing.label !== link.label || existing.path !== link.path) throw new Error(`alias merge link id collision for ${appId}: ${link.id}`);
+  }
+  return links;
+}
+
+function repointAssociations(settings, from, to) {
+  for (const association of Object.values(settings.associations)) {
+    if (association.projectIdentity === from) association.projectIdentity = to;
   }
 }
 
 function ensureProject(settings, identity) {
   const key = safeIdentity(identity);
-  settings.projects[key] ||= { apps: {} };
+  settings.projects[key] ||= { favorite: false, hidden: false, apps: {} };
   settings.projects[key].apps ||= {};
+  settings.projects[key].favorite ||= false;
+  settings.projects[key].hidden ||= false;
   return settings.projects[key];
 }
 
 function ensureApp(project, appId) {
   const key = safeId(appId);
-  project.apps[key] ||= { name: labelFromId(key), originPreference: "localhost", links: [] };
+  project.apps[key] ||= { name: labelFromId(key), favorite: false, hidden: false, originPreference: "localhost", links: [] };
   project.apps[key].links ||= [];
+  project.apps[key].favorite ||= false;
+  project.apps[key].hidden ||= false;
   return project.apps[key];
-}
-
-function safeIdentity(value) {
-  if (typeof value !== "string" || !/^(git|path|process|roborepo):/.test(value)) throw new Error("invalid project identity");
-  return value;
-}
-
-function safeId(value) {
-  if (typeof value !== "string" || !/^[a-z0-9][a-z0-9._-]{0,79}$/i.test(value)) throw new Error("invalid id");
-  return value;
-}
-
-function safeLabel(value, label) {
-  if (typeof value !== "string" || !value.trim() || /[\u0000-\u001f\u007f]/.test(value)) throw new Error(`${label} is invalid`);
-  return value.trim().slice(0, 80);
-}
-
-function slugify(value) {
-  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
-}
-
-function labelFromId(value) {
-  return value.replace(/[-_]+/g, " ").replace(/\b\w/g, (s) => s.toUpperCase());
-}
-
-function isLoopbackHost(hostname) {
-  return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname);
 }

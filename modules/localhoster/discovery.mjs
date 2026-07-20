@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { parseCwdFieldOutput, parseLsofFieldOutput, originCandidatesForListener } from "./lsof.mjs";
 import { resolveProjectIdentity } from "./identity.mjs";
 import { probeHttpCandidate } from "./probe.mjs";
+import { resolveProjectAlias } from "./settings.mjs";
 
 const execFileAsync = promisify(execFile);
 const DISCOVERY_TIMEOUT_MS = 1500;
@@ -93,7 +94,8 @@ export async function discoverInstances(options = {}) {
 }
 
 function appSettingsForIdentity(settings, identity) {
-  const project = settings?.projects?.[identity];
+  const resolvedIdentity = settings ? resolveProjectAlias(settings, identity) : identity;
+  const project = settings?.projects?.[resolvedIdentity];
   if (!project) return null;
   return project.apps?.web || Object.values(project.apps || {})[0] || null;
 }

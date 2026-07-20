@@ -97,6 +97,20 @@ export function linkEmpty() {
   return el("p", { class: "no-links", "data-empty": "true" }, "No saved links. Add a row to create one.");
 }
 
+export function settingsSection(title, rows) {
+  const node = fill(tpl("tpl-settings-section"), { title });
+  const container = node.querySelector("[data-slot=rows]");
+  if (rows.length) container.append(...rows);
+  else container.append(el("p", { class: "no-links" }, "None"));
+  return node;
+}
+
+export function settingsRow(title, meta, label, onClick) {
+  const node = fill(tpl("tpl-settings-row"), { title, meta, action: label });
+  node.querySelector("[data-slot=action]").addEventListener("click", onClick);
+  return node;
+}
+
 function wireCardActions(node, project, instance, actions) {
   const trigger = node.querySelector("[data-action=menu]");
   const menu = node.querySelector("[data-menu]");
@@ -123,6 +137,18 @@ function wireCardActions(node, project, instance, actions) {
   node.querySelector("[data-action=associate]").addEventListener("click", () => {
     actions.onCloseMenus();
     actions.onAssociate(project, instance);
+  });
+  node.querySelector("[data-action=alias]").addEventListener("click", () => {
+    actions.onCloseMenus();
+    actions.onAlias(project, instance);
+  });
+  node.querySelector("[data-action=favorite]").addEventListener("click", () => {
+    actions.onCloseMenus();
+    actions.onToggleFavorite(project, instance);
+  });
+  node.querySelector("[data-action=hide]").addEventListener("click", () => {
+    actions.onCloseMenus();
+    actions.onHide(project, instance);
   });
   menu.addEventListener("click", (event) => event.stopPropagation());
 }

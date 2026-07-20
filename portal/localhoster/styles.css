@@ -10,7 +10,7 @@ main {
 }
 .status-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border: 1px solid var(--line);
   background: var(--panel);
 }
@@ -270,6 +270,23 @@ dialog::backdrop {
   color: var(--dim);
   font-size: var(--text-xs);
 }
+.toggle-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.toggle-row label,
+.check-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--dim);
+  font-size: var(--text-xs);
+}
+.toggle-row input,
+.check-line input {
+  width: auto;
+}
 .modal-close {
   line-height: 1;
 }
@@ -290,12 +307,55 @@ dialog::backdrop {
   gap: 6px;
   flex-wrap: wrap;
 }
+.settings-body {
+  min-width: min(620px, calc(100vw - 64px));
+}
+.settings-section {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.settings-section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.settings-section h3 {
+  margin: 0;
+  font-size: var(--text-md);
+}
+.settings-section [data-slot="rows"] {
+  display: grid;
+  gap: 6px;
+}
+.settings-row {
+  border: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+}
+.settings-row strong,
+.settings-row span {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.settings-row span {
+  color: var(--dim);
+  font-size: var(--text-xs);
+}
 @media (max-width: 720px) {
   .status-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(1, minmax(0, 1fr));
   }
-  .status-pill:nth-child(2) {
+  .status-pill {
     border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .status-pill:last-child {
+    border-bottom: 0;
   }
   .toolbar-actions,
   .card-head {
@@ -309,6 +369,10 @@ dialog::backdrop {
     right: 0;
   }
   .link-row {
+    grid-template-columns: 1fr;
+  }
+  .toggle-row,
+  .settings-row {
     grid-template-columns: 1fr;
   }
   .link-row-actions button {

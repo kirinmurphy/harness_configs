@@ -77,7 +77,43 @@ try {
   assert.equal(isTlsTrustErrorCode("ECONNREFUSED"), false);
 
   const stateRoot = path.join(tempRoot, "state");
-  assert.deepEqual(loadSettings({ stateRoot }), { version: 1, revision: 1, projects: {}, associations: {} });
+  assert.deepEqual(loadSettings({ stateRoot }), {
+    version: 2,
+    revision: 1,
+    projects: {},
+    associations: {},
+    aliases: {},
+    preferences: { showNonHttp: false, historyRetentionDays: 14 },
+  });
+  const legacyStateRoot = path.join(tempRoot, "legacy-state");
+  fs.mkdirSync(path.dirname(settingsPathFor(legacyStateRoot)), { recursive: true });
+  fs.writeFileSync(settingsPathFor(legacyStateRoot), `${JSON.stringify({
+    version: 1,
+    revision: 7,
+    projects: {
+      "git:github.com/kirinmurphy/legacy": {
+        name: "Legacy",
+        apps: {
+          web: {
+            name: "Web",
+            originPreference: "localhost",
+            links: [{ id: "home", label: "Home", path: "/" }],
+          },
+        },
+      },
+    },
+    associations: { alegacy: { projectIdentity: "git:github.com/kirinmurphy/legacy", appId: "web" } },
+  })}\n`);
+  const migrated = loadSettings({ stateRoot: legacyStateRoot });
+  assert.equal(migrated.version, 2);
+  assert.equal(migrated.revision, 7);
+  assert.equal(migrated.projects["git:github.com/kirinmurphy/legacy"].favorite, false);
+  assert.equal(migrated.projects["git:github.com/kirinmurphy/legacy"].hidden, false);
+  assert.equal(migrated.projects["git:github.com/kirinmurphy/legacy"].apps.web.favorite, false);
+  assert.equal(migrated.projects["git:github.com/kirinmurphy/legacy"].apps.web.hidden, false);
+  assert.deepEqual(migrated.aliases, {});
+  assert.ok(fs.existsSync(path.join(legacyStateRoot, "localhoster", "settings.v1.backup.json")));
+  assert.equal(loadSettings({ stateRoot: legacyStateRoot }).revision, 7);
   const updated = updateSettings({
     stateRoot,
     input: {
@@ -115,18 +151,64 @@ try {
       type: "project",
       projectIdentity: "git:github.com/kirinmurphy/visa_planner",
       name: "Visa Planner Local",
+      favorite: true,
       appId: "web",
       appName: "Frontend",
+      appFavorite: true,
+      health: { path: "http://localhost:5173/health", acceptedStatuses: [200, 204] },
+      match: { process: ["node"], title: ["Visa Planner"] },
       originPreference: "127.0.0.1",
     },
   });
   assert.equal(renamed.projects["git:github.com/kirinmurphy/visa_planner"].name, "Visa Planner Local");
+  assert.equal(renamed.projects["git:github.com/kirinmurphy/visa_planner"].favorite, true);
   assert.equal(renamed.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.name, "Frontend");
+  assert.equal(renamed.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.favorite, true);
+  assert.equal(renamed.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.health.path, "/health");
+  assert.deepEqual(renamed.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.match.title, ["Visa Planner"]);
   assert.equal(renamed.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.originPreference, "127.0.0.1");
   assert.ok(fs.existsSync(settingsPathFor(stateRoot)));
   assert.throws(() => updateSettings({ stateRoot, input: { revision: 1, type: "project", projectIdentity: "git:github.com/x/y", name: "Y" } }), /revision conflict/);
-  assert.throws(() => validateSettings({ version: 1, revision: 1, projects: {}, associations: {}, future: true }), /unknown/);
-  assert.throws(() => validateSettings({ version: 1, revision: 1, projects: { "git:github.com/x/y": { apps: { web: { links: [{ id: "x", label: "X", path: "/x" }, { id: "x", label: "X2", path: "/x2" }] } } } }, associations: {} }), /duplicate/);
+  assert.throws(() => validateSettings({ version: 2, revision: 1, projects: {}, associations: {}, aliases: {}, preferences: { showNonHttp: false, historyRetentionDays: 14 }, future: true }), /unknown/);
+  assert.throws(() => validateSettings({ version: 2, revision: 1, projects: { "git:github.com/x/y": { apps: { web: { links: [{ id: "x", label: "X", path: "/x" }, { id: "x", label: "X2", path: "/x2" }] } } } }, associations: {}, aliases: {}, preferences: { showNonHttp: false, historyRetentionDays: 14 } }), /duplicate/);
+  const aliased = updateSettings({
+    stateRoot,
+    input: {
+      revision: 4,
+      type: "alias",
+      from: "path:/tmp/visa_planner",
+      to: "git:github.com/kirinmurphy/visa_planner",
+      confirmed: true,
+    },
+  });
+  assert.equal(aliased.aliases["path:/tmp/visa_planner"], "git:github.com/kirinmurphy/visa_planner");
+  assert.throws(() => updateSettings({ stateRoot, input: { revision: 5, type: "alias", from: "git:github.com/kirinmurphy/visa_planner", to: "path:/tmp/visa_planner", confirmed: true } }), /cycles/);
+  const associationRemoved = updateSettings({ stateRoot, input: { revision: 5, type: "association", associationKey: "alegacy", remove: true } });
+  assert.equal(associationRemoved.associations.alegacy, undefined);
+  assert.equal(associationRemoved.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.links.length, 2);
+  const aliasMergeStateRoot = path.join(tempRoot, "alias-merge-state");
+  const pathSettings = updateSettings({
+    stateRoot: aliasMergeStateRoot,
+    input: {
+      revision: 1,
+      type: "links",
+      projectIdentity: "path:/tmp/alias-project",
+      appId: "web",
+      links: [{ id: "old-home", label: "Old Home", path: "/old" }],
+    },
+  });
+  const mergedAlias = updateSettings({
+    stateRoot: aliasMergeStateRoot,
+    input: {
+      revision: pathSettings.revision,
+      type: "alias",
+      from: "path:/tmp/alias-project",
+      to: "git:github.com/kirinmurphy/alias-project",
+      confirmed: true,
+    },
+  });
+  assert.equal(mergedAlias.projects["path:/tmp/alias-project"], undefined);
+  assert.equal(mergedAlias.projects["git:github.com/kirinmurphy/alias-project"].apps.web.links[0].path, "/old");
 
   const calls = [];
   const runCommand = async (command, args) => {
@@ -184,7 +266,7 @@ try {
   const associated = updateSettings({
     stateRoot,
     input: {
-      revision: 4,
+      revision: 6,
       type: "association",
       associationKey: discovery.instances[0].associationKey,
       projectIdentity: "git:github.com/kirinmurphy/visa_planner",
@@ -202,6 +284,40 @@ try {
   assert.equal(associatedSnapshot.unmatchedInstances.length, 1);
   assert.equal(associatedSnapshot.projects[0].instances[0].app.links[0].url, "http://127.0.0.1:5173/resume");
   assert.equal(associatedSnapshot.inactiveProjects.length, 0);
+  const aliasedDiscovery = structuredClone(discovery);
+  aliasedDiscovery.instances[0].project.identity = "path:/tmp/visa_planner";
+  const aliasSnapshot = buildLocalhosterSnapshot({
+    discovery: aliasedDiscovery,
+    settings: associated,
+    now: new Date("2026-07-18T18:00:00.000Z"),
+  });
+  assert.equal(aliasSnapshot.projects[0].identity, "git:github.com/kirinmurphy/visa_planner");
+  const hiddenSettings = structuredClone(associated);
+  hiddenSettings.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.hidden = true;
+  const hiddenSnapshot = buildLocalhosterSnapshot({
+    discovery,
+    settings: hiddenSettings,
+    now: new Date("2026-07-18T18:00:00.000Z"),
+  });
+  assert.equal(hiddenSnapshot.projects.length, 0);
+  assert.equal(hiddenSnapshot.hiddenCount, 1);
+  assert.equal(hiddenSnapshot.settings.hidden.length, 1);
+  assert.equal(hiddenSnapshot.settings.hidden[0].identity, "git:github.com/kirinmurphy/visa_planner");
+  assert.equal(hiddenSnapshot.settings.hidden[0].app.id, "web");
+  assert.equal(hiddenSnapshot.settings.associations.find((item) => item.key === discovery.instances[0].associationKey).appId, "web");
+  assert.equal(hiddenSnapshot.settings.aliases[0].from, "path:/tmp/visa_planner");
+
+  const restoredHidden = updateSettings({
+    stateRoot,
+    input: {
+      revision: associated.revision,
+      type: "project",
+      projectIdentity: "git:github.com/kirinmurphy/visa_planner",
+      appId: "web",
+      appHidden: false,
+    },
+  });
+  assert.equal(restoredHidden.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.hidden, false);
 
   const restartBefore = await discoverInstances({
     platform: "darwin",
@@ -215,7 +331,7 @@ try {
   const restarted = updateSettings({
     stateRoot,
     input: {
-      revision: 5,
+      revision: restoredHidden.revision,
       type: "association",
       associationKey: restartBefore.instances[0].associationKey,
       projectIdentity: "git:github.com/kirinmurphy/visa_planner",
@@ -245,6 +361,8 @@ try {
   assert.equal(restartSnapshot.projects.length, 1);
   assert.equal(restartSnapshot.projects[0].instances[0].origin, "http://127.0.0.1:62345");
   assert.equal(restartSnapshot.projects[0].instances[0].app.links[0].url, "http://127.0.0.1:62345/resume");
+  assert.deepEqual(restartSnapshot.projects[0].instances[0].app.health.acceptedStatuses, [200, 204]);
+  assert.deepEqual(restartSnapshot.projects[0].instances[0].app.match.process, ["node"]);
   assert.equal(restartSnapshot.unmatchedInstances.length, 1);
   assert.equal(restartSnapshot.inactiveProjects.length, 0);
 

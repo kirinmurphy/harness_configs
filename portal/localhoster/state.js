@@ -7,6 +7,8 @@ export function snapshotHash(snapshot) {
     projects: snapshot.projects,
     unmatched: snapshot.unmatchedInstances,
     inactive: snapshot.inactiveProjects,
+    hidden: snapshot.hiddenCount || 0,
+    settings: snapshot.settings,
   });
 }
 
@@ -33,6 +35,7 @@ export function snapshotCounts(snapshot) {
     projects: snapshot.projects.length,
     unmatched: snapshot.unmatchedInstances.length,
     inactive: snapshot.inactiveProjects.length,
+    hidden: snapshot.hiddenCount || 0,
   };
 }
 
@@ -43,11 +46,36 @@ export function statusText(instance) {
 }
 
 export function currentLinks(snapshot, projectIdentity, appId) {
+  const app = currentAppSettings(snapshot, projectIdentity, appId);
+  return app?.links?.map(({ id, label, path }) => ({ id, label, path })) || [];
+}
+
+export function currentProjectSettings(snapshot, projectIdentity) {
+  const project = snapshot.projects.find((item) => item.identity === projectIdentity);
+  if (project) return project;
+  const inactive = snapshot.inactiveProjects.find((item) => item.identity === projectIdentity);
+  if (inactive) return inactive;
+  const hidden = snapshot.settings?.hidden?.find((item) => item.identity === projectIdentity);
+  return hidden || null;
+}
+
+export function currentAppSettings(snapshot, projectIdentity, appId) {
   const project = snapshot.projects.find((item) => item.identity === projectIdentity);
   const app = project?.instances.find((instance) => instance.app?.id === appId)?.app;
-  if (app) return app.links.map(({ id, label, path }) => ({ id, label, path }));
+  if (app) return app;
   const inactive = snapshot.inactiveProjects.find((item) => item.identity === projectIdentity && item.app?.id === appId);
-  return inactive?.app?.links || [];
+  if (inactive?.app) return inactive.app;
+  const hidden = snapshot.settings?.hidden?.find((item) => item.identity === projectIdentity && item.app?.id === appId);
+  return hidden?.app || null;
+}
+
+export function csvList(value) {
+  if (!Array.isArray(value)) return "";
+  return value.join(", ");
+}
+
+export function parseCsvList(value) {
+  return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 function matchesInstance(project, instance, needle) {

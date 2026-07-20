@@ -12,6 +12,21 @@ export async function probeHttpCandidate(candidate, options = {}) {
   return probeOrigin(httpsOrigin, { timeoutMs, protocol: "https" });
 }
 
+export async function probeHttpCandidates(candidates, options = {}) {
+  const concurrency = options.concurrency || 8;
+  const results = [];
+  let next = 0;
+  async function worker() {
+    for (;;) {
+      const index = next++;
+      if (index >= candidates.length) return;
+      results[index] = await probeHttpCandidate(candidates[index], options);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, candidates.length) }, worker));
+  return results;
+}
+
 async function probeOrigin(origin, { timeoutMs, protocol } = {}) {
   const url = new URL(origin);
   const client = url.protocol === "https:" ? https : http;

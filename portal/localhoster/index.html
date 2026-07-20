@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  {{HEAD}}
+  <body>
+    {{CHROME}}
+    <main>
+      <section class="localhoster-toolbar">
+        <div class="status-strip" id="status-strip"></div>
+        <div class="toolbar-actions">
+          <label class="search-field" for="search">
+            <span>Search</span>
+            <input id="search" type="search" placeholder="project, app, port, route" />
+          </label>
+          <button id="refresh" type="button">Refresh</button>
+          <span class="refresh-state" id="refresh-state" aria-live="polite"></span>
+        </div>
+      </section>
+      <section id="capability" class="notice" hidden></section>
+      <section id="warnings" class="notice warn" hidden></section>
+      <section id="content" class="localhoster-content"></section>
+    </main>
+
+    <dialog id="link-dialog" aria-labelledby="link-dialog-title">
+      <form method="dialog" id="link-form">
+        <div class="modal-head">
+          <h2 id="link-dialog-title">Edit links</h2>
+          <button type="button" class="modal-close" data-close aria-label="Close">x</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="link-project" />
+          <input type="hidden" id="link-app" />
+          <label>
+            Label
+            <input id="link-label" required maxlength="80" />
+          </label>
+          <label>
+            Path or loopback URL
+            <input id="link-path" required placeholder="/admin" />
+          </label>
+          <div class="item-err" id="link-error"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="submit">Save link</button>
+          <button type="button" id="link-remove">Remove last</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="app-dialog" aria-labelledby="app-dialog-title">
+      <form method="dialog" id="app-form">
+        <div class="modal-head">
+          <h2 id="app-dialog-title">App association</h2>
+          <button type="button" class="modal-close" data-close aria-label="Close">x</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="app-association" />
+          <label>
+            Project identity
+            <input id="app-project" required />
+          </label>
+          <label>
+            App id
+            <input id="app-id" required pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,79}" placeholder="web" />
+          </label>
+          <label>
+            App name
+            <input id="app-name" required maxlength="80" placeholder="Web" />
+          </label>
+          <label>
+            Preferred host
+            <select id="app-origin">
+              <option value="localhost">localhost</option>
+              <option value="127.0.0.1">127.0.0.1</option>
+              <option value="::1">::1</option>
+            </select>
+          </label>
+          <div class="item-err" id="app-error"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="submit">Save association</button>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="tpl-status-pill">
+      <div class="status-pill">
+        <strong data-slot="value"></strong>
+        <span data-slot="label"></span>
+      </div>
+    </template>
+    <template id="tpl-group">
+      <section class="instance-group">
+        <header>
+          <h2 data-slot="title"></h2>
+          <span data-slot="meta"></span>
+        </header>
+        <div class="instance-grid" data-slot="items"></div>
+      </section>
+    </template>
+    <template id="tpl-card">
+      <article class="instance-card">
+        <div class="card-head">
+          <div>
+            <h3 data-slot="title"></h3>
+            <p data-slot="subtitle"></p>
+          </div>
+          <span class="status-badge" data-slot="status"></span>
+        </div>
+        <div class="origin-row">
+          <a data-slot="origin" target="_blank" rel="noreferrer"></a>
+          <span data-slot="latency"></span>
+        </div>
+        <dl class="meta-list">
+          <div><dt>Process</dt><dd data-slot="process"></dd></div>
+          <div><dt>Identity</dt><dd data-slot="identity"></dd></div>
+          <div><dt>Bind</dt><dd data-slot="bind"></dd></div>
+        </dl>
+        <p class="network-warning" data-slot="warning" hidden></p>
+        <div class="quick-links" data-slot="links"></div>
+        <div class="card-actions">
+          <button type="button" data-action="link">Add link</button>
+          <button type="button" data-action="edit">Edit links</button>
+          <button type="button" data-action="copy">Copy URL</button>
+          <button type="button" data-action="open">Open</button>
+          <button type="button" data-action="associate">Change association</button>
+        </div>
+      </article>
+    </template>
+    <template id="tpl-empty">
+      <section class="empty-state">
+        <h2 data-slot="title"></h2>
+        <p data-slot="body"></p>
+      </section>
+    </template>
+    <script type="module" src="/portal/shared/theme.js"></script>
+    <script type="module" src="/portal/localhoster/app.js"></script>
+  </body>
+</html>

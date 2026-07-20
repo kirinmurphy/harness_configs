@@ -1,7 +1,7 @@
 ---
 id: localhoster-v1
 priority: high
-next_action: Implement the discovery module and its fixture-based tests
+next_action: Finish V1 polish gaps: complete link editing/project rename UX, alias migration, refresh-state coverage, unsupported-doc link, and manual macOS validation
 blocked_by: []
 depends_on: []
 related:
@@ -16,6 +16,31 @@ reviewed_commit:
 Add a **Localhoster** page to RoboRepo's existing loopback portal. It automatically discovers active HTTP applications on macOS, associates each application with a stable local project identity, and lets the user save project-specific jump links such as `/resume` or `/admin`.
 
 The first iteration intentionally does not require configuration inside project repositories. Runtime discovery supplies the current port; machine-local RoboRepo settings supply curated names and routes. When an app restarts on another port, saved routes follow it because they are attached to the project identity rather than the port.
+
+## Review Status
+
+Reviewed after implementation work in this session. The plan is **not ready to move to completed** yet.
+
+Implemented and verified:
+
+- [x] Core macOS discovery pipeline with injectable `lsof` and HTTP probe fixtures.
+- [x] Stable project identity resolution for Git remotes, Git worktrees, path identities, and low-confidence process identities.
+- [x] Versioned machine-local settings with atomic writes and optimistic revision checks.
+- [x] Strict link path normalization that rejects credentials, protocol-relative URLs, non-loopback hosts, and malformed paths.
+- [x] Snapshot grouping for active identified projects, unmatched instances, and inactive saved projects.
+- [x] Portal route module, `/localhoster` page registration, CLI command, docs, and smoke tests.
+- [x] `npm run test:localhoster` and `npm test` passed.
+
+Open items before completion:
+
+- [ ] Expand link management from "add link/remove last link" to true edit/update/remove/reorder of individual saved links.
+- [ ] Add project friendly-name editing, not just app renaming and association changes.
+- [ ] Add explicit documentation link in the unsupported/limited capability notice.
+- [ ] Implement or deliberately defer path-to-Git alias migration after user confirmation; current schema has no alias merge flow.
+- [ ] Add first-class stale/refreshing/failed UI coverage, including failed refresh retaining the last successful snapshot in portal smoke or fixture tests.
+- [ ] Add or document bounded probe concurrency behavior in the active discovery pipeline; current command/probe flow is mostly sequential.
+- [ ] Add fixture coverage for self-signed HTTPS classification, oversized response bodies, same-origin redirects, external redirect rejection, and network-exposure warning rendering.
+- [ ] Run a manual macOS test with multiple real Node/Vite apps on changing ports and record the result.
 
 ## Goals
 

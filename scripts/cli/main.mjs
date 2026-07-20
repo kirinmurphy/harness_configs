@@ -168,6 +168,11 @@ async function dispatch(args) {
       return serveCommand([sub, ...rest].filter(Boolean));
     }
 
+    case "localhoster": {
+      const { localhosterCommand } = await import("./localhoster.mjs");
+      return localhosterCommand([sub, ...rest].filter(Boolean));
+    }
+
     case "enable":
       return enablePackage(sub === undefined ? rest : [sub, ...rest]);
 

@@ -720,7 +720,7 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
   assert "config: portal server starts on an allocated port" \
     bash -c "test -n '${cfg_port}' && curl -s 'http://127.0.0.1:${cfg_port}/api/config' >/dev/null"
   assert "config: portal status identifies current app" \
-    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/portal/status' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.appRoot==='${repo_root}'&&String(j.portalDir).endsWith('/portal')&&Number.isInteger(j.pid)?0:1)})\""
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/portal/status' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.appRoot==='${repo_root}'&&String(j.portalDir).endsWith('/portal')&&Number.isInteger(j.pid)&&j.pages.some(p=>p.id==='localhoster'&&p.path==='/localhoster')?0:1)})\""
   assert "config: serve reuses an existing current portal" \
     bash -c "${cfg_env} node '${cli}' serve --no-open --port '${cfg_port}' >'${cfg_home}/portal-reuse.log' 2>&1 && grep -q 'already running' '${cfg_home}/portal-reuse.log'"
   cfg_token="$(curl -s "http://127.0.0.1:${cfg_port}/config" | sed -n 's/.*name="roborepo-portal-token" content="\([^"]*\)".*/\1/p' | head -1)"
@@ -740,11 +740,28 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
     bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/skills' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"id\":\"zzz\",\"enabled\":true}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok===false?0:1)})\""
   assert "config: GET /config still served" \
     bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:${cfg_port}/config')\" = 200 ]"
+  assert "localhoster: GET /localhoster served with token" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/localhoster' | grep -q 'roborepo-portal-token'"
+  assert "localhoster: GET snapshot works without token" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/localhoster' >'${cfg_home}/localhoster-get.json' && node -e \"const j=require('${cfg_home}/localhoster-get.json');process.exit(j.capabilities&&Array.isArray(j.projects)&&Array.isArray(j.unmatchedInstances)?0:1)\""
+  assert "localhoster: refresh rejects missing token" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/localhoster/refresh' -H 'Content-Type: application/json' -d '{}')\" = 403 ]"
+  assert "localhoster: mutation rejects cross-origin request" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/localhoster/project' -H 'Origin: http://example.com' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{}')\" = 403 ]"
+  cfg_lh_rev="$(node -e "const j=require('${cfg_home}/localhoster-get.json');process.stdout.write(String(j.settingsRevision))")"
+  curl -s -X POST "http://127.0.0.1:${cfg_port}/api/localhoster/project" -H 'Content-Type: application/json' -H "X-Roborepo-Portal-Token: ${cfg_token}" \
+    -d "{\"revision\":${cfg_lh_rev},\"projectIdentity\":\"roborepo:portal\",\"appId\":\"web\",\"appName\":\"Portal\",\"originPreference\":\"localhost\"}" > "${cfg_home}/localhoster-project.json"
+  assert "localhoster: valid project mutation returns fresh snapshot" \
+    bash -c "node -e \"const j=require('${cfg_home}/localhoster-project.json');process.exit(j.ok&&j.localhoster?.settingsRevision===${cfg_lh_rev}+1?0:1)\""
+  assert "localhoster: Windows capability shape is explicit" \
+    bash -c "node -e \"import('${repo_root}/modules/localhoster/index.mjs').then(m=>{const c=m.capabilityForPlatform('win32');process.exit(c.discovery==='unsupported'&&/Windows/.test(c.message)?0:1)})\""
   # The /config page JS must parse — a syntax error there crashes the whole dashboard at load (no
   # panels render) and is invisible to HTTP-status checks. Guards the template-literal trap (a literal
   # newline inside a JS string, etc.).
   assert "config: served /config dashboard JS parses" \
     bash -c "dashjs=\"${cfg_home}/dash.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/config/app.js' > \"\${dashjs}\" && node --check \"\${dashjs}\""
+  assert "localhoster: served dashboard JS parses" \
+    bash -c "dashjs=\"${cfg_home}/localhoster.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/localhoster/app.js' > \"\${dashjs}\" && node --check \"\${dashjs}\""
 else
   [[ "${quiet}" -eq 0 ]] && echo "skip: config portal HTTP tests (loopback bind unavailable)"
 fi

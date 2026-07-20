@@ -14,6 +14,7 @@ export {
 } from "./lsof.mjs";
 export {
   probeHttpCandidate,
+  probeHttpCandidates,
 } from "./probe.mjs";
 export {
   SETTINGS_VERSION,

@@ -11,6 +11,12 @@ import { startPortalServer } from "./portal-server.mjs";
 import { readConfigSnapshot, loadConfigSource } from "./config.mjs";
 import { mutatePackage, setSkillInstalled, setBehaviorBucket, setCommandBucket } from "./config-mutate.mjs";
 import { loadPlansSnapshot, loadPlanDocument, buildPlansPrompt, updatePlanSettings, refreshPlans } from "./plans.mjs";
+import {
+  loadLocalhosterSnapshot,
+  refreshLocalhosterSnapshot,
+  updateLocalhosterSettings,
+  setLocalhosterPortalInfo,
+} from "./localhoster.mjs";
 import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
 import { mergeHooksInto } from "./hook-composition.mjs";
@@ -335,13 +341,13 @@ function telemetryExport(args) {
   console.log(JSON.stringify(readSpoolEvents(), null, 2));
 }
 
-export async function serveCommand(args, { allowPortFallback = false } = {}) {
+export async function serveCommand(args, { allowPortFallback = false, openPath = "" } = {}) {
   const options = parseServeArgs(args);
   if (options.detach) {
     const port = await startDetachedPortal(options.port, { allowPortFallback, portExplicit: options.portExplicit });
     const detachedPortalUrl = `http://127.0.0.1:${port}`;
     console.log(`roborepo portal: ${detachedPortalUrl}  (detached · use: roborepo telemetry stop)`);
-    if (options.open) openLocalUrl(detachedPortalUrl);
+    if (options.open) openLocalUrl(`${detachedPortalUrl}${openPath}`);
     return;
   }
   const resolved = await resolvePortalPort(options.port, {
@@ -353,7 +359,7 @@ export async function serveCommand(args, { allowPortFallback = false } = {}) {
     const existingUrl = `http://127.0.0.1:${resolved.port}`;
     writePid(resolved.pid);
     console.log(`roborepo portal already running: ${existingUrl}`);
-    if (options.open) openLocalUrl(existingUrl);
+    if (options.open) openLocalUrl(`${existingUrl}${openPath}`);
     return;
   }
   options.port = resolved.port;
@@ -397,11 +403,17 @@ export async function serveCommand(args, { allowPortFallback = false } = {}) {
     buildPlansPrompt: (params) => buildPlansPrompt(params),
     updatePlanSettings: (params) => updatePlanSettings(params),
     refreshPlans: () => refreshPlans(),
+    loadLocalhoster: () => loadLocalhosterSnapshot(),
+    refreshLocalhoster: () => refreshLocalhosterSnapshot(),
+    updateLocalhosterSettings: (params) => updateLocalhosterSettings(params),
     mutatePackage: (id, enabled) => mutatePackage(id, enabled),
     mutateSkill: (id, enabled) => setSkillInstalled(id, enabled),
     mutateBehavior: (behaviorId, bucket) => setBehaviorBucket(behaviorId, bucket),
     mutateCommand: (tokens, bucket) => setCommandBucket(tokens, bucket),
-    onListening: options.open ? (actualPort) => openLocalUrl(portalUrl(actualPort)) : null,
+    onListening: (actualPort) => {
+      setLocalhosterPortalInfo({ port: actualPort });
+      if (options.open) openLocalUrl(`${portalUrl(actualPort)}${openPath}`);
+    },
   });
 }
 

@@ -22,12 +22,16 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 
 | | |
 | --- | --- |
-| `roborepo serve` | Starts the local portal. `/config` manages packages/permissions, `/plans` browses plan docs, and `/telemetry` shows token usage when telemetry has data. |
+| `roborepo serve` | Starts the local portal. `/config` manages packages/permissions, `/plans` browses plan docs, `/localhoster` lists local web apps, and `/telemetry` shows token usage when telemetry has data. |
 | `roborepo web` | Starts the same portal detached and opens it in the browser. |
+| `roborepo localhoster [--json] [--open]` | Lists active localhost HTTP apps, prints the portal snapshot as JSON, or opens `/localhoster`. |
 
 The `/plans` page scans configured roots for `docs/plans/**/*.md`. See
 [Plan Docs Walkthrough](../../guides/plan-docs.md) and
 [Plans Portal Technical Reference](plans-portal.md).
+
+The `/localhoster` page discovers local HTTP apps on macOS and keeps machine-local saved links under
+the RoboRepo state root. See [Localhoster](localhoster.md).
 
 ## Indexing
 

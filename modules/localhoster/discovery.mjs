@@ -37,6 +37,7 @@ export async function discoverInstances(options = {}) {
     runCommand = defaultRunCommand,
     probeHttp = probeHttpCandidate,
     resolveIdentity = resolveProjectIdentity,
+    settings = null,
   } = options;
   const capabilities = capabilityForPlatform(platform);
   const warnings = [];
@@ -70,13 +71,20 @@ export async function discoverInstances(options = {}) {
         projectRoot: null,
         evidence: "missing process working directory",
       };
-    const candidates = originCandidatesForListener(listener);
+    const appSettings = appSettingsForIdentity(settings, identity.identity);
+    const candidates = originCandidatesForListener(listener, appSettings?.originPreference);
     const probe = probeHttp ? await probeFirstHttp(candidates, probeHttp, warnings) : null;
     if (probeHttp && !probe) continue;
     instances.push(toInstance(listener, identity, candidates, probe, cwd));
   }
 
   return { capabilities, warnings, instances };
+}
+
+function appSettingsForIdentity(settings, identity) {
+  const project = settings?.projects?.[identity];
+  if (!project) return null;
+  return project.apps?.web || Object.values(project.apps || {})[0] || null;
 }
 
 async function resolvePidCwd(pid, runCommand, warnings) {

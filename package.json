@@ -21,6 +21,7 @@
     "shell/",
     "README.md",
     "docs/reference/services/roborepo.md",
+    "docs/reference/services/localhoster.md",
     "docs/reference/services/architecture.md",
     "docs/guides/plan-docs.md",
     "docs/reference/services/plans-portal.md",
@@ -28,6 +29,7 @@
   ],
   "scripts": {
     "test": "scripts/test/test-roborepo.sh --quiet",
+    "test:localhoster": "node scripts/test/localhoster-check.mjs",
     "test:packages": "node scripts/test/package-catalog-check.mjs",
     "test:plans": "node scripts/test/plan-docs-check.mjs",
     "pack:dry-run": "npm pack --dry-run",

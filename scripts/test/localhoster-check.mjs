@@ -132,10 +132,31 @@ try {
     now: new Date("2026-07-18T18:00:00.000Z"),
   });
   assert.equal(snapshot.generatedAt, "2026-07-18T18:00:00.000Z");
-  assert.equal(snapshot.projects.length, 1);
-  assert.equal(snapshot.projects[0].instances.length, 2);
-  assert.equal(snapshot.projects[0].instances[0].app.links[0].url, "http://127.0.0.1:5173/admin");
-  assert.equal(snapshot.inactiveProjects.length, 0);
+  assert.equal(snapshot.projects.length, 0);
+  assert.equal(snapshot.unmatchedInstances.length, 2);
+  assert.equal(snapshot.inactiveProjects.length, 1);
+
+  const associated = updateSettings({
+    stateRoot,
+    input: {
+      revision: 2,
+      type: "association",
+      associationKey: discovery.instances[0].associationKey,
+      projectIdentity: "git:github.com/kirinmurphy/visa_planner",
+      appId: "web",
+    },
+  });
+  const associatedSnapshot = buildLocalhosterSnapshot({
+    discovery,
+    settings: associated,
+    now: new Date("2026-07-18T18:00:00.000Z"),
+  });
+  assert.equal(associatedSnapshot.generatedAt, "2026-07-18T18:00:00.000Z");
+  assert.equal(associatedSnapshot.projects.length, 1);
+  assert.equal(associatedSnapshot.projects[0].instances.length, 1);
+  assert.equal(associatedSnapshot.unmatchedInstances.length, 1);
+  assert.equal(associatedSnapshot.projects[0].instances[0].app.links[0].url, "http://127.0.0.1:5173/admin");
+  assert.equal(associatedSnapshot.inactiveProjects.length, 0);
 
   const lowConfidenceSnapshot = buildLocalhosterSnapshot({
     discovery: {

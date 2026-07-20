@@ -10,11 +10,13 @@ export function buildLocalhosterSnapshot({
   const activeByProject = new Map();
   const unmatchedInstances = [];
   const seenApps = new Set();
+  const identityCounts = countIdentities(discovery.instances || []);
 
   for (const instance of discovery.instances || []) {
     const projectIdentity = instance.project.identity;
     const association = settings.associations[instance.associationKey];
-    const appId = association?.appId || (instance.project.confidence === "high" || instance.project.confidence === "medium" ? "web" : null);
+    const provisionalApp = identityCounts.get(projectIdentity) === 1 && (instance.project.confidence === "high" || instance.project.confidence === "medium");
+    const appId = association?.appId || (provisionalApp ? "web" : null);
     if (!appId) {
       unmatchedInstances.push(instance);
       continue;
@@ -63,6 +65,16 @@ export function buildLocalhosterSnapshot({
     unmatchedInstances: unmatchedInstances.sort(compareInstances),
     inactiveProjects: inactiveProjects.sort((a, b) => a.name.localeCompare(b.name)),
   };
+}
+
+function countIdentities(instances) {
+  const counts = new Map();
+  for (const instance of instances) {
+    const identity = instance.project?.identity;
+    if (!identity) continue;
+    counts.set(identity, (counts.get(identity) || 0) + 1);
+  }
+  return counts;
 }
 
 function ensureProject(map, identity, settings, instance) {

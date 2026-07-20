@@ -3,7 +3,7 @@
 ## Purpose
 
 The portal is the local `roborepo serve` web UI: Config (`/`, alias `/config`), Plans (`/plans`),
-and Telemetry (`/telemetry`). It is static HTML/CSS/browser JavaScript served by a loopback-only
+Localhoster (`/localhoster`), and Telemetry (`/telemetry`). It is static HTML/CSS/browser JavaScript served by a loopback-only
 Node HTTP server — no build step, no framework, no bundler. This doc covers the shared
 architecture (page manifest, browser API helpers, server route dispatch) that every page relies
 on. Page-specific behavior lives in `docs/reference/services/config-control-panel.md` and
@@ -19,6 +19,7 @@ portal/
     api.js       — shared fetch/token/clipboard/DOM helpers (ES module)
   config/{index.html,styles.css,app.js}
   plans/{index.html,styles.css,app.js}
+  localhoster/{index.html,styles.css,app.js,api.js,state.js,templates.js}
   telemetry/{index.html,styles.css,app.js}
 scripts/cli/portal-server.mjs   — the server: page manifest, route dispatch, static assets
 ```
@@ -107,6 +108,9 @@ imports:
   `/api/config/packages`, `/api/config/skills`, `/api/config/permissions`
 - `portal-routes-plans.mjs` → `handlePlansApi` — `/api/plans`, `/api/plans/document`,
   `/api/plans/prompt`, `/api/plans/settings`, `/api/plans/refresh`
+- `portal-routes-localhoster.mjs` → `handleLocalhosterApi` — `/api/localhoster`,
+  `/api/localhoster/refresh`, `/api/localhoster/links`, `/api/localhoster/association`,
+  `/api/localhoster/project`
 - `handlePortalPage` (in `portal-server.mjs`) — serves a page's `index.html` (with the injected
   manifest + token)
 - `handlePortalAsset` (in `portal-server.mjs`) — static files under `/portal/`
@@ -140,7 +144,7 @@ Telemetry's "turn on telemetry" button, which previously POSTed without the toke
 - `npm test` (`scripts/test/test-roborepo.sh`) — starts the portal server, asserts
   `/api/portal/status`, token exposure, mutating POST success/400/403 responses, and that each
   served `app.js` parses (`node --check`).
-- `roborepo serve` — click through Config → Plans → Telemetry, confirm nav highlighting, and
+- `roborepo serve` — click through Config → Plans → Localhoster → Telemetry, confirm nav highlighting, and
   exercise each page's mutations (Config toggles, Plans refresh/discovery-root edits, Telemetry
   "turn on telemetry").
 - `node --input-type=module --check < portal/<page>/app.js` for a quick module-syntax check on a

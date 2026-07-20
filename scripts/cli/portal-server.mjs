@@ -6,6 +6,7 @@ import { repoRoot } from "./paths.mjs";
 import { send } from "./portal-routes-http.mjs";
 import { handleConfigApi } from "./portal-routes-config.mjs";
 import { handlePlansApi } from "./portal-routes-plans.mjs";
+import { handleLocalhosterApi } from "./portal-routes-localhoster.mjs";
 import { handleTelemetryApi } from "./portal-routes-telemetry.mjs";
 
 // Tiny local-only portal server. Binds to loopback only so telemetry/config data never leaves the
@@ -28,6 +29,7 @@ const STATIC_TYPES = {
 export const PAGES = [
   { path: "/", id: "config", title: "Config", dir: "config", default: true },
   { path: "/plans", id: "plans", title: "Plans", dir: "plans" },
+  { path: "/localhoster", id: "localhoster", title: "Localhoster", dir: "localhoster" },
   { path: "/telemetry", id: "telemetry", title: "Telemetry", dir: "telemetry" },
 ];
 const PAGE_BY_PATH = new Map(PAGES.flatMap((p) => (
@@ -75,6 +77,7 @@ export function startPortalServer(handlers) {
       } catch {}
     }
     console.log(`roborepo portal:     http://${LOOPBACK}:${actualPort}`);
+    console.log(`localhoster:         http://${LOOPBACK}:${actualPort}/localhoster`);
     console.log(`telemetry dashboard: http://${LOOPBACK}:${actualPort}/telemetry`);
     console.log("(Ctrl-C to stop)");
     handlers.onListening?.(actualPort);
@@ -116,6 +119,7 @@ function route(req, res, handlers, mutationToken) {
 
   if (handleConfigApi(req, res, urlPath, qs, handlers)) return;
   if (handlePlansApi(req, res, urlPath, qs, handlers)) return;
+  if (handleLocalhosterApi(req, res, urlPath, qs, handlers)) return;
   if (handlePortalPage(req, res, urlPath, mutationToken)) return;
   if (handlePortalAsset(req, res, urlPath)) return;
   if (handlePortalStatus(req, res, urlPath)) return;

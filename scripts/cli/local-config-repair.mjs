@@ -90,10 +90,19 @@ function buildHarnessPlan(harness) {
     const repaired = normalizeGeneratedMarkers(mergeRootConfig(harness, backupMerged, activeText));
     if (repaired === activeText) continue;
     const backupIssues = issues.slice();
-    if (repaired !== activeNormalized) {
-      backupIssues.push(`recover local-only settings from ${backup.path}`);
+    const keyDiff = diffConfigKeys(harness, activeNormalized, repaired);
+    const hasRealDiff = keyDiff.added.length > 0 || keyDiff.changed.length > 0;
+    if (hasRealDiff) {
+      backupIssues.push(summarizeKeyDiff(backup.path, keyDiff));
+    } else {
+      backupIssues.push(
+        `no setting content differs from ${backup.path} — only formatting/ordering changes (safe no-op)`,
+      );
     }
-    return repairPlan(harness, activePath, repaired, backupIssues);
+    const plan = repairPlan(harness, activePath, repaired, backupIssues);
+    plan.keyDiff = keyDiff;
+    plan.why = hasRealDiff ? describeWhyNow(backup, baselinePath, activePath) : null;
+    return plan;
   }
 
   if (activeNormalized !== activeText) {
@@ -104,6 +113,114 @@ function buildHarnessPlan(harness) {
 
 function repairPlan(harness, activePath, repaired, issues) {
   return { harness, label: HARNESS_LABEL[harness] || harness, activePath, repaired, issues };
+}
+
+// Structural diff (parsed keys, not raw text) so hook/section reordering that mergeRootConfig
+// re-serializes differently from the active file doesn't get reported as a real setting change.
+function diffConfigKeys(harness, activeText, repairedText) {
+  return harness === "codex"
+    ? diffTomlKeys(activeText, repairedText)
+    : diffJsonKeys(activeText, repairedText);
+}
+
+function flattenObject(value, prefix = "", out = new Map()) {
+  if (Array.isArray(value)) {
+    // Hook/permission arrays commonly get re-serialized in a different order by the merge
+    // (block splitting, generated-rule regen) without any actual entry being added or removed.
+    // Compare as an order-independent set so reordering never reads as a real setting change.
+    out.set(prefix, new Set(value.map((entry) => JSON.stringify(entry))));
+    return out;
+  }
+  if (value && typeof value === "object") {
+    for (const [key, child] of Object.entries(value)) {
+      flattenObject(child, prefix ? `${prefix}.${key}` : key, out);
+    }
+    return out;
+  }
+  out.set(prefix, value);
+  return out;
+}
+
+function diffJsonKeys(activeText, repairedText) {
+  let active = {};
+  let repaired = {};
+  try { active = JSON.parse(activeText || "{}"); } catch {}
+  try { repaired = JSON.parse(repairedText || "{}"); } catch {}
+  const activeFlat = flattenObject(active);
+  const repairedFlat = flattenObject(repaired);
+  return compareFlatMaps(activeFlat, repairedFlat);
+}
+
+function diffTomlKeys(activeText, repairedText) {
+  const activeFlat = flattenToml(activeText);
+  const repairedFlat = flattenToml(repairedText);
+  return compareFlatMaps(activeFlat, repairedFlat);
+}
+
+function flattenToml(text) {
+  const out = new Map();
+  let section = "";
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const header = tomlHeader(line);
+    if (header) {
+      section = header;
+      continue;
+    }
+    const match = line.match(/^\s*([A-Za-z0-9_.-]+|"[^"]+"|'[^']+')\s*=\s*(.*)$/);
+    if (!match) continue;
+    out.set(`${section} ${match[1]}`, match[2].trim());
+  }
+  return out;
+}
+
+function tomlHeader(line) {
+  return /^\[[^\]]+\]$/.test(line.trim()) ? line.trim() : null;
+}
+
+function compareFlatMaps(activeFlat, repairedFlat) {
+  const added = [];
+  const changed = [];
+  for (const [key, repairedValue] of repairedFlat) {
+    if (!activeFlat.has(key)) {
+      added.push({ key, value: repairedValue });
+      continue;
+    }
+    const activeValue = activeFlat.get(key);
+    if (repairedValue instanceof Set && activeValue instanceof Set) {
+      // Order-independent: only entries truly absent from the active array count as additions.
+      // A reordered-but-identical array (same entries, different position) reports nothing here.
+      for (const entry of repairedValue) {
+        if (!activeValue.has(entry)) added.push({ key, value: JSON.parse(entry) });
+      }
+      continue;
+    }
+    if (JSON.stringify(activeValue) !== JSON.stringify(repairedValue)) {
+      changed.push({ key, from: activeValue, to: repairedValue });
+    }
+  }
+  return { added, changed };
+}
+
+function summarizeKeyDiff(backupPath, keyDiff) {
+  const kind = keyDiff.changed.length ? "additive + overwrite" : "additive only";
+  return `recover local-only settings from ${backupPath} [${kind}]`;
+}
+
+function describeWhyNow(backup, baselinePath, activePath) {
+  try {
+    const backupMtime = backup.mtimeMs;
+    const baselineMtime = fs.statSync(baselinePath).mtimeMs;
+    const activeMtime = fs.statSync(activePath).mtimeMs;
+    if (backupMtime < baselineMtime) {
+      return "reason: this backup predates the current generated baseline, so it diverges from what the latest roborepo update produces";
+    }
+    if (backupMtime < activeMtime) {
+      return "reason: the active config has been modified since this backup was taken";
+    }
+    return "reason: active config and backup diverge with no clear ordering — compare both by hand before applying";
+  } catch {
+    return "reason: unable to determine timing between backup and active config";
+  }
 }
 
 function backupCandidates(harness, activePath) {
@@ -154,8 +271,32 @@ function printPlan(plans, mode) {
   for (const plan of plans) {
     console.log(`  ${plan.label}: ${plan.activePath}`);
     for (const issue of plan.issues) console.log(`    - ${issue}`);
+    if (plan.keyDiff) printKeyDiffDetail(plan.keyDiff);
+    if (plan.why) console.log(`    ${plan.why}`);
     if (mode !== "apply") console.log("    would write repaired local config");
   }
+}
+
+function printKeyDiffDetail(keyDiff) {
+  if (keyDiff.added.length) {
+    console.log("    would add (missing in active, present in backup):");
+    for (const entry of keyDiff.added.slice(0, 8)) {
+      console.log(`      + ${entry.key} = ${formatValue(entry.value)}`);
+    }
+    if (keyDiff.added.length > 8) console.log(`      ... (+${keyDiff.added.length - 8} more)`);
+  }
+  if (keyDiff.changed.length) {
+    console.log("    would overwrite (active value differs from backup):");
+    for (const entry of keyDiff.changed.slice(0, 8)) {
+      console.log(`      ~ ${entry.key}: ${formatValue(entry.from)} -> ${formatValue(entry.to)}`);
+    }
+    if (keyDiff.changed.length > 8) console.log(`      ... (+${keyDiff.changed.length - 8} more)`);
+  }
+}
+
+function formatValue(value) {
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return text.length > 80 ? `${text.slice(0, 77)}...` : text;
 }
 
 function applyPlans(plans) {

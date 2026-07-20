@@ -202,8 +202,8 @@ starter_for_root_config() {
   local home_abs="$1"
   local base; base="$(basename "${home_abs}")"
   case "${base}" in
-    settings.json) echo "${repo_root}/globals/claude/settings.starter.json" ;;
-    config.toml)   echo "${repo_root}/globals/codex/config.starter.toml" ;;
+    settings.json) echo "${repo_root}/globals/harnesses/claude/settings.starter.json" ;;
+    config.toml)   echo "${repo_root}/globals/harnesses/codex/config.starter.toml" ;;
     *)             echo "" ;;
   esac
 }
@@ -591,23 +591,24 @@ is_roborepo_skill_link() {
   local target
   [[ -L "${link}" ]] || return 1
   target="$(readlink "${link}")"
-  # Current or recorded-prior checkout
+  # Current or recorded-prior checkout. globals/agents/skills is the pre-migration path (kept here
+  # so uninstall can still reclaim links from an install predating the system/package/generated split).
   case "${target}" in
-    "${repo_root}"/globals/agents/skills/*) return 0 ;;
+    "${repo_root}"/globals/system/skills/*|"${repo_root}"/globals/agents/skills/*) return 0 ;;
   esac
   if [[ -n "${recorded_repo}" ]]; then
     case "${target}" in
-      "${recorded_repo}"/globals/agents/skills/*) return 0 ;;
+      "${recorded_repo}"/globals/system/skills/*|"${recorded_repo}"/globals/agents/skills/*) return 0 ;;
     esac
   fi
   case "${target}" in
     */.roborepo/skills/*) return 0 ;;
   esac
-  # Dangling link that points into globals/agents/skills/ or ~/.roborepo/skills/ of any
-  # roborepo checkout / install.
+  # Dangling link that points into globals/system/skills/, the legacy globals/agents/skills/, or
+  # ~/.roborepo/skills/ of any roborepo checkout / install.
   if [[ ! -e "${link}" ]]; then
     case "${target}" in
-      */globals/agents/skills/*|*/.roborepo/skills/*) return 0 ;;
+      */globals/system/skills/*|*/globals/agents/skills/*|*/.roborepo/skills/*) return 0 ;;
     esac
   fi
   return 1

@@ -8,8 +8,8 @@ import { loadPackageCatalog } from "./package-catalog.mjs";
 
 // Rule fragment source directories per harness, in render order.
 const RULE_DIRS = {
-  claude: ["globals/rules/shared", "globals/rules/claude"],
-  codex: ["globals/rules/shared", "globals/rules/codex"],
+  claude: ["globals/system/rules/shared", "globals/system/rules/claude"],
+  codex: ["globals/system/rules/shared", "globals/system/rules/codex"],
 };
 
 const HOME_RULES = {
@@ -81,7 +81,7 @@ function renderContent(harness, enabledIds) {
   // Header matches render-rules.sh so the format is recognizable.
   parts.push(RENDER_HEADER);
   parts.push("");
-  parts.push("Generated from `globals/rules/shared/` and harness-specific `globals/rules/<harness>/` fragments.");
+  parts.push("Generated from `globals/system/rules/shared/` and harness-specific `globals/system/rules/<harness>/` fragments.");
   parts.push("Enabled packages are appended. Run `roborepo update` to refresh.");
   parts.push("");
 
@@ -129,15 +129,15 @@ export function renderRulesPreview(harness, enabledIds = readEnabledPackagesRegi
   return renderContent(harness, enabledIds);
 }
 
-// Just the harness-agnostic shared fragments (globals/rules/shared), no harness-specific rules or
+// Just the harness-agnostic shared fragments (globals/system/rules/shared), no harness-specific rules or
 // package rules — the "Globals" section shows this as the baseline every harness gets.
 export function renderSharedRulesPreview() {
-  return readFragmentDir("globals/rules/shared");
+  return readFragmentDir("globals/system/rules/shared");
 }
 
-// Just one harness's harness-specific fragments (globals/rules/<harness>), excluding shared.
+// Just one harness's harness-specific fragments (globals/system/rules/<harness>), excluding shared.
 export function renderHarnessRulesPreview(harness) {
-  const dirs = { claude: "globals/rules/claude", codex: "globals/rules/codex" };
+  const dirs = { claude: "globals/system/rules/claude", codex: "globals/system/rules/codex" };
   return dirs[harness] ? readFragmentDir(dirs[harness]) : "";
 }
 

@@ -17,15 +17,15 @@ the matching step in [the teaching doc](harnesses-explained.md).
 
 | Element | What it is | Source | Maintain with |
 | --- | --- | --- | --- |
-| Global rules | The always-on instruction file each harness reads at startup. | Claude: `globals/claude/CLAUDE.md` (generated)<br>Codex: `globals/codex/AGENTS.md` (generated) | `roborepo rules [--check]` |
-| Skills | On-demand capability/instruction bundles the agent loads when relevant. | Package-owned `globals/packages/<package>/skills/<name>/SKILL.md`, plus system `globals/agents/skills/roborepo-support/SKILL.md` — materialized into `~/.roborepo/skills/<name>` and linked from harness skill dirs | `roborepo skill new`, `roborepo skill adopt <name>`, `roborepo skill inspect <name>`, `roborepo skill sync-global` |
-| Slash commands | Named workflows the user starts explicitly (`/case-study`, etc.). | Claude: `globals/claude/commands/` (generated)<br>Codex: `globals/codex/commands/` (generated) | `roborepo skill render-commands [--check]` |
+| Global rules | The always-on instruction file each harness reads at startup. | Claude: `generated/claude/CLAUDE.md` (generated)<br>Codex: `generated/codex/AGENTS.md` (generated) | `roborepo rules [--check]` |
+| Skills | On-demand capability/instruction bundles the agent loads when relevant. | Package-owned `globals/packages/<package>/skills/<name>/SKILL.md`, plus system `globals/system/skills/roborepo-support/SKILL.md` — materialized into `~/.roborepo/skills/<name>` and linked from harness skill dirs | `roborepo skill new`, `roborepo skill adopt <name>`, `roborepo skill inspect <name>`, `roborepo skill sync-global` |
+| Slash commands | Named workflows the user starts explicitly (`/case-study`, etc.). | Package-scoped, generated: `generated/packages/<package>/claude/commands/` and `generated/packages/<package>/codex/commands/`, composed live only for enabled packages | `roborepo skill render-commands [--check]` |
 | Install bundles | Named groups of install-time file operations applied at install/update. Internal to the install pipeline — not a user-facing verb. | `manifests/platform/presets.json` | `roborepo update` (applies them); `roborepo bundle …` is an internal verb called by `scripts/install/main.sh` |
-| Hooks | Scripts the harness runs on lifecycle/tool events. | Claude: `globals/claude/hooks/*.mjs` + `settings.json` wiring<br>Codex: `globals/codex/hooks.json` | edit source, then `roborepo update` |
-| MCP servers | External tool servers (jcodemunch, jdocmunch, …) registered with both harnesses. | Claude: native live store<br>Codex: active `~/.codex/config.toml` | `roborepo mcp add <name-or-url>` |
+| Hooks | Scripts the harness runs on lifecycle/tool events. | System hooks: `globals/system/hooks/claude/*.mjs` + `settings.json` wiring, `globals/system/hooks/codex/*.mjs` + `hooks.json`. Package-owned hooks (e.g. Caveman/JDocMunch Codex `SessionStart`, telemetry capture, JCodeMunch's Bash blocker) live under `globals/packages/<package>/hooks*` and are composed in only when that package is enabled | edit source, then `roborepo update` |
+| MCP servers | External tool servers (jcodemunch, jdocmunch, …) registered with both harnesses. | Claude: native live store<br>Codex: active `~/.codex/config.toml`, fully owned by each package's `mcp`/`codex_tool_approvals` components | `roborepo mcp add <name-or-url>` |
 | Permissions | Allowed, denied, and ask-before-run behavior for commands, tools, and network defaults. | Claude: `settings.json` `permissions.*`<br>Codex: `config.toml` + `rules/default.rules` + runtime ask hook | `roborepo permissions [--check]` |
-| Telemetry | Local capture + analysis of sessions, tools, MCP, and token usage; spike detection + cause attribution + dashboard; backup/reset. | Claude/Codex hooks feed `~/.roborepo/telemetry` | `roborepo telemetry enable\|disable\|status\|report\|serve\|backup\|purge` |
-| Root config | Mutable, machine-local settings (model, trust, hook approvals). | Claude: `globals/claude/settings.json` (baseline)<br>Codex: `globals/codex/config.toml` (baseline) | `roborepo update` (export/merge) |
+| Telemetry | Local capture + analysis of sessions, tools, MCP, and token usage; spike detection + cause attribution + dashboard; backup/reset. | Package-owned hooks (`globals/packages/telemetry/hooks-{claude,codex}.json`) feed `~/.roborepo/telemetry` | `roborepo telemetry enable\|disable\|status\|report\|serve\|backup\|purge` |
+| Root config | Mutable, machine-local settings (model, trust, hook approvals). | Claude: `generated/claude/settings.json` (baseline)<br>Codex: `generated/codex/config.toml` (baseline) | `roborepo update` (export/merge) |
 
 The rest of this doc takes each element in turn: what it does, how parity works, and what you do
 to change it. For what survives an install/update per element — backups, drift, staged candidates —
@@ -38,18 +38,18 @@ verification discipline, temp-file hygiene. (The inline chat-note behaviors — 
 impact awareness, skill visibility — moved out of base rules into default-on Chat-Time Output rules
 packages; see [rules-parity-and-layering.md](rules-parity-and-layering.md).)
 
-**Parity model:** generated from shared fragments under `globals/rules/shared/`, plus harness-only
-fragments under `globals/rules/claude/` and `globals/rules/codex/`. You never edit `CLAUDE.md` or
+**Parity model:** generated from shared fragments under `globals/system/rules/shared/`, plus harness-only
+fragments under `globals/system/rules/claude/` and `globals/system/rules/codex/`. You never edit `CLAUDE.md` or
 `AGENTS.md` directly — they carry a generated-file header. (Why a generator: [explained.md Step 2](harnesses-explained.md#step-2--bridging-a-cosmetic-gap-global-rules).)
 
-**To change behavior in both harnesses:** edit a fragment in `globals/rules/shared/`, then render:
+**To change behavior in both harnesses:** edit a fragment in `globals/system/rules/shared/`, then render:
 
 ```sh
-roborepo rules          # render globals/claude/CLAUDE.md and globals/codex/AGENTS.md
+roborepo rules          # render generated/claude/CLAUDE.md and generated/codex/AGENTS.md
 roborepo rules --check  # verify no drift (also run by roborepo doctor)
 ```
 
-For Claude-only or Codex-only behavior, edit `globals/rules/claude/` or `globals/rules/codex/`
+For Claude-only or Codex-only behavior, edit `globals/system/rules/claude/` or `globals/system/rules/codex/`
 instead. Keep fragments compact — expanded workflow guidance belongs in a skill. Full model and
 override-layering rules: [Rules Parity and Layering](rules-parity-and-layering.md).
 
@@ -60,7 +60,7 @@ override-layering rules: [Rules Parity and Layering](rules-parity-and-layering.m
 
 **Parity model:** package-owned skills are sourced from
 `globals/packages/<package>/skills/<name>/SKILL.md`; the required base support skill is sourced from
-`globals/agents/skills/roborepo-support/SKILL.md`. The installer materializes each enabled shared
+`globals/system/skills/roborepo-support/SKILL.md`. The installer materializes each enabled shared
 skill into `~/.roborepo/skills/<name>` and links each harness's native dir to that machine-local
 cache entry. Roborepo owns only the skill names it manages;
 native-installed skills (via native harness tools or `skill-installer`) at unrecognized names are
@@ -95,9 +95,11 @@ written continuously at runtime. roborepo does not manage, sync, or carry memory
 **What they do:** named workflows the user starts on purpose (`/case-study`, `/frontend-design`,
 `/plan-docs`, `/tighten`).
 
-**Parity model:** authored once as package `slash-command` resources, stamped into both
-`globals/claude/commands/` and `globals/codex/commands/`. Files in those dirs are generated. (Why
-just a stamped copy: [explained.md Step 1](harnesses-explained.md#step-1--when-they-already-agree-slash-commands).)
+**Parity model:** authored once as package `slash-command` resources, stamped into per-package
+generated dirs (`generated/packages/<package>/claude/commands/` and
+`generated/packages/<package>/codex/commands/`). Only enabled packages' commands are composed into
+the live `~/.claude/commands` / `~/.codex/commands` directories. Files in the generated dirs are
+generated. (Why just a stamped copy: [explained.md Step 1](harnesses-explained.md#step-1--when-they-already-agree-slash-commands).)
 
 **To add or change a command:** edit the owning package's `package.config.json`, then:
 
@@ -114,14 +116,17 @@ do not hand-edit the manifest.
 **What they do:** scripts the harness runs on lifecycle or tool events — caveman activation on
 startup, broad-read nudges, noisy-Bash trimming, the write guard.
 
-**Parity model:** no shared generator — a behavior wanted on both sides is authored twice. Claude
-hooks are `.mjs` scripts under `globals/claude/hooks/` wired through `settings.json`; Codex hooks
-are declared in `globals/codex/hooks.json`. Telemetry capture uses the same hook layer when it is
+**Parity model:** no shared generator — a behavior wanted on both sides is authored twice. Mandatory
+system hooks are `.mjs` scripts under `globals/system/hooks/claude/` wired through `settings.json`,
+and `globals/system/hooks/codex/` wired through `hooks.json`. Package-owned hooks (Caveman's and
+JDocMunch's Codex `SessionStart` hooks, telemetry's capture hooks, JCodeMunch's Bash blocker) are
+authored under their owning package and composed into live hook config only when that package is
+enabled. Telemetry capture uses the same hook-composition layer when it is
 enabled, writing token-usage and context records into `~/.roborepo/telemetry`. (Why parity stops here:
 [explained.md Step 6](harnesses-explained.md#step-6--when-automation-gives-up-hooks).)
 
 **To change a hook:** edit the script and/or the wiring (`settings.json` for Claude, `hooks.json`
-for Codex), then re-apply:
+for Codex, or the owning package's hook resource), then re-apply:
 
 ```sh
 roborepo update   # picks up hook and root-config changes on this machine
@@ -158,7 +163,7 @@ such as sandboxing, approval policy, and Codex network access.
 **Parity model:** authored once in `manifests/inventory/agent-permissions.json`, rendered into each harness's
 native shape — Claude's `permissions.allow`/`permissions.deny`/`permissions.ask` in
 `settings.json`, and Codex's `config.toml` session defaults + `rules/default.rules` command policy.
-Codex's static rules cannot express per-command `ask`, so `globals/codex/hooks/permission-check.mjs`
+Codex's static rules cannot express per-command `ask`, so `globals/system/hooks/codex/permission-check.mjs`
 supplies that runtime decision from the same manifest. (Why one source, two output shapes:
 [explained.md Step 3](harnesses-explained.md#step-3--bridging-a-structural-gap-permissions).)
 
@@ -177,7 +182,7 @@ keeps a portable baseline and the installer exports it only when doing so does n
 drift.
 
 **Parity model:** no auto-parity by design — this is the layer where per-machine divergence is
-allowed. The repo baselines (`globals/claude/settings.json`, `globals/codex/config.toml`) receive
+allowed. The repo baselines (`generated/claude/settings.json`, `generated/codex/config.toml`) receive
 generated permission and hook/package defaults; local edits are protected by root-config drift
 detection and the `keep` / `overwrite` / `abort` collision policy. (Why parity isn't the goal here:
 [explained.md Step 7](harnesses-explained.md#step-7--when-parity-isnt-the-goal-root-config).)

@@ -337,8 +337,8 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
 
   if (kind === "harness-hooks") {
     const abs = harnessSafe === "codex"
-      ? path.join(repoRoot, "globals", "codex", "hooks.json")
-      : path.join(repoRoot, "globals", "claude", "settings.json");
+      ? path.join(repoRoot, "generated", "codex", "hooks.json")
+      : path.join(repoRoot, "generated", "claude", "settings.json");
     const source = readSourceFile(abs, `${harnessSafe === "codex" ? "Codex" : "Claude"} hooks`);
     if (!source.ok) return source;
     if (harnessSafe === "codex") {

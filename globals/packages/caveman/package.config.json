@@ -30,6 +30,11 @@
           "repo": "JuliusBrussee/caveman"
         }
       }
+    },
+    {
+      "type": "hooks",
+      "source": "hooks-codex.json",
+      "harness": "codex"
     }
   ]
 }

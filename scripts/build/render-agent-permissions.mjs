@@ -11,17 +11,17 @@ import {
   renderClaudeSettings,
 } from "../cli/permissions-render.mjs";
 
-// Build entrypoint: renders the manifest's default behaviors into the repo SOURCE config
-// (globals/). The reusable render core lives in scripts/cli/permissions-render.mjs so the CLI stays
-// self-contained; the config controls render the same logic into a consumer's LIVE home config.
-// `roborepo permissions` and doctor --check run this script. Repo source never carries personal
-// overrides — it always renders the manifest's own default buckets, unmodified.
+// Build entrypoint: renders the manifest's default behaviors into the committed generated system
+// candidate (generated/). The reusable render core lives in scripts/cli/permissions-render.mjs so
+// the CLI stays self-contained; the config controls render the same logic into a consumer's LIVE
+// home config. `roborepo permissions` and doctor --check run this script. The generated candidate
+// never carries personal overrides — it always renders the manifest's own default buckets, unmodified.
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
-const codexConfigPath = path.join(repoRoot, "globals", "codex", "config.toml");
-const codexRulesPath = path.join(repoRoot, "globals", "codex", "rules", "default.rules");
-const claudeSettingsPath = path.join(repoRoot, "globals", "claude", "settings.json");
+const codexConfigPath = path.join(repoRoot, "generated", "codex", "config.toml");
+const codexRulesPath = path.join(repoRoot, "generated", "codex", "rules", "default.rules");
+const claudeSettingsPath = path.join(repoRoot, "generated", "claude", "settings.json");
 
 let check = false;
 for (let i = 2; i < process.argv.length; i += 1) {
@@ -54,9 +54,9 @@ function checkOrWrite(target, rendered, label) {
 
 let ok = true;
 try {
-  ok = checkOrWrite(codexConfigPath, renderCodexConfig(fs.readFileSync(codexConfigPath, "utf8"), behaviors, arbitraryCommands, codexConfigPath), "globals/codex/config.toml") && ok;
-  ok = checkOrWrite(codexRulesPath, renderCodexRules(manifest), "globals/codex/rules/default.rules") && ok;
-  ok = checkOrWrite(claudeSettingsPath, renderClaudeSettings(fs.readFileSync(claudeSettingsPath, "utf8"), manifest), "globals/claude/settings.json") && ok;
+  ok = checkOrWrite(codexConfigPath, renderCodexConfig(fs.readFileSync(codexConfigPath, "utf8"), behaviors, arbitraryCommands, codexConfigPath), "generated/codex/config.toml") && ok;
+  ok = checkOrWrite(codexRulesPath, renderCodexRules(manifest), "generated/codex/rules/default.rules") && ok;
+  ok = checkOrWrite(claudeSettingsPath, renderClaudeSettings(fs.readFileSync(claudeSettingsPath, "utf8"), manifest), "generated/claude/settings.json") && ok;
 } catch (error) {
   console.error(error?.message || String(error));
   process.exit(1);

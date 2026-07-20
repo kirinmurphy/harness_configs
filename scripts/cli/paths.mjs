@@ -54,7 +54,7 @@ export const workspaceRoot =
 
 // Backward-compatible names for modules that still operate on release/built-in files.
 export const repoRoot = appRoot;
-export const sharedSkillsDir = path.join(appRoot, "globals", "agents", "skills");
+export const sharedSkillsDir = path.join(appRoot, "globals", "system", "skills");
 export const workspaceSkillsDir = path.join(workspaceRoot, "skills");
 export const workspaceCommandsDir = path.join(workspaceRoot, "commands");
 export const workspaceMcpServersPath = path.join(workspaceRoot, "mcp", "servers.json");
@@ -128,8 +128,8 @@ export const harnessHome = {
 };
 // Root config baseline paths (the repo-tracked templates for mutable harness config).
 export const rootConfigBaseline = {
-  claude: path.join(appRoot, "globals", "claude", "settings.json"),
-  codex: path.join(appRoot, "globals", "codex", "config.toml"),
+  claude: path.join(appRoot, "generated", "claude", "settings.json"),
+  codex: path.join(appRoot, "generated", "codex", "config.toml"),
 };
 // Root config active paths (what the harness actually reads).
 export const rootConfigActive = {
@@ -138,3 +138,6 @@ export const rootConfigActive = {
 };
 // Claude's per-user MCP live store (~/.claude.json), distinct from ~/.claude/settings.json.
 export const claudeJsonPath = path.join(os.homedir(), ".claude.json");
+// Codex hooks live in a dedicated file, not inside config.toml — single source of truth for the
+// live path (previously re-derived independently in package-probes.mjs, config.mjs, telemetry.mjs).
+export const codexHooksPath = path.join(harnessHome.codex, "hooks.json");

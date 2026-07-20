@@ -265,10 +265,12 @@ The `telemetry` bundle is selected from the same workflow. When enabled, the har
 to `~/.roborepo/telemetry/spool/<harness>.jsonl`. Everything stays local — no record ever leaves the
 machine, and the dashboard binds to `127.0.0.1` only.
 
-**Opt-in by design.** A fresh install deploys the capture hooks but does NOT enable capture — the
-hooks no-op until `roborepo telemetry enable` writes `~/.roborepo/telemetry/state.json {enabled:true}`.
-This is deliberate: an always-on spool grows with every session, so capture is something the user
-turns on and off explicitly. To keep an enabled spool bounded, each `<harness>.jsonl` is size-capped
+**Opt-in by design.** The capture hooks are package-owned (`globals/packages/telemetry/hooks-{claude,codex}.json`)
+and are installed only when the `telemetry` package is enabled; enabling the package does not by
+itself turn capture on — the hooks no-op until `roborepo telemetry enable` writes
+`~/.roborepo/telemetry/state.json {enabled:true}`. This is deliberate: an always-on spool grows with
+every session, so capture is something the user turns on and off explicitly. To keep an enabled spool
+bounded, each `<harness>.jsonl` is size-capped
 (~25 MB): when exceeded, the oldest records are dropped and the newest ~70% kept (records are
 chronological), so the file can't fill the disk.
 
@@ -384,8 +386,8 @@ The renderer writes Claude and Codex native output from the same manifest:
 
 | Harness | Rendered output |
 | --- | --- |
-| Claude | `permissions.allow`, `permissions.deny`, and `permissions.ask` in `globals/claude/settings.json` |
-| Codex | `approval_policy`, `sandbox_mode`, `network_access` in `globals/codex/config.toml`, plus shell prefix rules in `globals/codex/rules/default.rules` |
+| Claude | `permissions.allow`, `permissions.deny`, and `permissions.ask` in `generated/claude/settings.json` |
+| Codex | `approval_policy`, `sandbox_mode`, `network_access` in `generated/codex/config.toml`, plus shell prefix rules in `generated/codex/rules/default.rules` |
 
 Existing `~/.claude/settings.json` and `~/.codex/config.toml` are active local root config files, so
 rendered baseline changes affect an already installed machine only after `roborepo update` and the

@@ -45,7 +45,8 @@
     {
       "type": "hooks",
       "source": "hooks-claude.json",
-      "harness": "claude"
+      "harness": "claude",
+      "scripts": ["hooks/block-source-exploration.mjs"]
     },
     {
       "type": "permissions",
@@ -65,7 +66,22 @@
       "type": "codex_tool_approvals",
       "server": "jcodemunch",
       "approvals": {
-        "register_edit": "auto"
+        "register_edit": "auto",
+        "resolve_repo": "approve",
+        "search_text": "approve",
+        "get_file_outline": "approve",
+        "get_file_content": "auto",
+        "find_references": "auto",
+        "index_file": "approve",
+        "search_symbols": "approve",
+        "get_context_bundle": "approve",
+        "get_symbol_source": "approve",
+        "get_repo_outline": "auto",
+        "get_file_tree": "auto",
+        "index_folder": "approve",
+        "plan_turn": "auto",
+        "get_ranked_context": "approve",
+        "list_repos": "approve"
       }
     }
   ]

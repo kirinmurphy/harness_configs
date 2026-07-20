@@ -479,7 +479,7 @@ function Get-PresentManifestRows {
 # a native skill and is left untouched.
 function Copy-GlobalSkills {
   param($HomeDir, [string[]]$AllowedNames = @())
-  $srcDir = Join-Path $repoRoot "globals\agents\skills"
+  $srcDir = Join-Path $repoRoot "globals\system\skills"
   $skillsHome = Join-Path $HomeDir "skills"
   $cacheHome = Join-Path $env:USERPROFILE ".roborepo\skills"
 

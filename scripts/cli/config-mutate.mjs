@@ -13,7 +13,7 @@ import { commandOverridesPath, roborepoSkillsDir } from "./state-paths.mjs";
 // calling process.exit, so the HTTP server can surface failures without dying. The terminal path
 // reuses the same primitives and prints the message.
 
-const SHARED_SKILLS_DIR = path.join(repoRoot, "globals", "agents", "skills");
+const SHARED_SKILLS_DIR = path.join(repoRoot, "globals", "system", "skills");
 // Machine-local skill cache. Harness skill dirs point at these copies; the cache is the thing that
 // survives across harness presence/absence and gives us one shared install source per machine.
 const ROBOREPO_SKILLS_DIR = roborepoSkillsDir;

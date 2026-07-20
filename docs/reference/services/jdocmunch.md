@@ -43,19 +43,19 @@ roborepo index docs docs/   # index a specific docs folder
 roborepo index docs         # indexes the current dir
 ```
 
-### Claude hooks (`globals/claude/settings.json`)
+### Claude hooks (`globals/packages/jdocmunch/hooks-claude.json`)
 
 **SessionStart** — checks for `docs/.jdm-indexed` in the current repo. If `docs/` exists but marker is absent, injects a reminder to run `roborepo index docs docs/`. If marker is present, confirms docs are indexed and ready.
 
 **PreToolUse: Read** — soft nudge extended to mention jdocmunch for documentation files alongside jcodemunch for code.
 
-### Codex hooks (`globals/codex/hooks.json`)
+### Codex hooks (`globals/packages/jdocmunch/hooks-codex.json`)
 
-**SessionStart** — same per-repo marker check as Claude. Prints status to session output.
+**SessionStart** — same per-repo marker check as Claude. Package-owned: composed into Codex hook config only when `jdocmunch` is enabled.
 
 ### Generated global rules
 
-Generated `globals/claude/CLAUDE.md` and `globals/codex/AGENTS.md` include a Doc Exploration section:
+Generated `generated/claude/CLAUDE.md` and `generated/codex/AGENTS.md` include a Doc Exploration section:
 - prefer `search_sections`, `get_toc`, `get_section` over reading full doc files
 - call `list_repos` at session start to see what's indexed
 - use `index_local` to index a new docs folder

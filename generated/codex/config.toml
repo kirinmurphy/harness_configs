@@ -1,0 +1,25 @@
+model = "gpt-5.5"
+model_reasoning_effort = "medium"
+# BEGIN GENERATED AGENT PERMISSIONS
+# Source: manifests/inventory/agent-permissions.json
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = false
+# END GENERATED AGENT PERMISSIONS
+
+[notice.model_migrations]
+"gpt-5.2-codex" = "gpt-5.3-codex"
+"gpt-5.3-codex" = "gpt-5.4"
+
+[plugins."github@openai-curated"]
+enabled = true
+
+[features]
+js_repl = true
+prevent_idle_sleep = true
+hooks = true
+
+[tui.model_availability_nux]
+"gpt-5.5" = 4

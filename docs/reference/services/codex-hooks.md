@@ -1,6 +1,10 @@
 # Codex Hooks
 
-Configured in `globals/codex/hooks.json`.
+System hooks are configured in `globals/system/hooks/codex/` and wired through the generated
+`generated/codex/hooks.json`. Package-owned hooks (Caveman and JDocMunch's `SessionStart` hooks,
+telemetry's capture hooks) are authored under their owning package
+(`globals/packages/<package>/hooks-codex.json`) and composed into the live Codex hook config only
+when that package is enabled.
 
 Hooks are organized below in two parts: **Part 1** covers behaviors Codex shares
 in intent with Claude (the same goal, achieved with Codex's own mechanism), and
@@ -27,7 +31,9 @@ Prints caveman mode activation instructions to stdout: drop
 articles/filler/pleasantries/hedging, use fragments, keep responses terse. Code,
 commits, and security output stays normal. The user can say "stop caveman" or
 "normal mode" to deactivate. (On Claude the same outcome comes from the `caveman`
-plugin instead of a hook.)
+plugin instead of a hook.) Package-owned: authored at
+`globals/packages/caveman/hooks-codex.json` and composed into the live Codex hook
+config only when `caveman` is enabled — disabling the package removes this hook.
 
 ### jdocmunch index check — SessionStart (startup|resume)
 
@@ -37,8 +43,9 @@ Checks for the `docs/.jdm-indexed` marker in the current repo. If `docs/` exists
 but the marker is absent, prints a reminder to run `roborepo index docs docs/`.
 If the marker is present, confirms docs are indexed. This is duplicated
 near-identically on Claude — only the output protocol differs (plain text here,
-JSON `systemMessage` on Claude). The command is package-owned; enable `jdocmunch`
-first if the CLI reports that no owning package is enabled.
+JSON `systemMessage` on Claude). Package-owned: authored at
+`globals/packages/jdocmunch/hooks-codex.json` and composed into the live Codex
+hook config only when `jdocmunch` is enabled.
 
 ### Telemetry capture — SessionStart / PreToolUse / PostToolUse / UserPromptSubmit / Stop
 
@@ -49,6 +56,9 @@ transcript, cumulative + per-capture token usage, tool/MCP attribution, tool-res
 sizes (for spike attribution — sizes only, never content), and session counts —
 enough to analyze token spikes and what caused them over time. See the
 [roborepo service doc](roborepo.md) for the record schema and the dashboard.
+Package-owned: authored at `globals/packages/telemetry/hooks-codex.json` and
+composed into the live Codex hook config only when telemetry is enabled —
+disabling telemetry removes these hooks.
 
 ---
 
@@ -57,7 +67,7 @@ enough to analyze token spikes and what caused them over time. See the
 ### Shell-output minimization — PreToolUse (shell tools)
 
 Codex **does** minimize shell output via a PreToolUse hook, parallel to Claude's
-`minimize-bash-output.mjs`. `globals/codex/hooks/minimize-bash-output.mjs` acts on
+`minimize-bash-output.mjs`. `globals/system/hooks/codex/minimize-bash-output.mjs` acts on
 Codex's shell tool (`exec_command` / `shell` / `local_shell`): it appends
 `2>&1 | tail -n 120` to noisy build/lint/typecheck commands, forces
 `tsc --pretty false`, and denies `--watch`/`--verbose`/`--debug` flags. Codex
@@ -74,14 +84,14 @@ already ran).
 
 Unlike Claude, Codex does not block `Grep`/`Glob` or guard writes via tool hooks —
 jcodemunch enforcement in Codex relies on rules in
-`globals/codex/rules/default.rules` and the generated `globals/codex/AGENTS.md`.
+`generated/codex/rules/default.rules` and the generated `generated/codex/AGENTS.md`.
 See [jcodemunch.md](jcodemunch.md) for full details. (Porting the
 source-exploration nudge to a Codex hook is a possible future parity step; the
 shell-output minimization above is the first PreToolUse enforcement hook on Codex.)
 
 ### Real per-command ask — PreToolUse (shell tools)
 
-`globals/codex/hooks/permission-check.mjs` re-implements the manifest's command
+`globals/system/hooks/codex/permission-check.mjs` re-implements the manifest's command
 matching at runtime and emits a genuine `permissionDecision: "ask"` for any shell
 command that resolves to the `ask` bucket — closing the gap `renderCodexRules`
 otherwise leaves (a `prefix_rule` can only be `forbidden`/`allow`; an ask-bucket
@@ -106,7 +116,7 @@ literal-prefix on whitespace-tokenized command text, mirroring Claude's
 `approval_policy` and any other `PreToolUse` hook unchanged — this hook only
 adds a decision for the subset it can confidently classify, never removes one.
 
-`globals/codex/rules/default.rules`' deny/allow entries stay in place alongside
+`generated/codex/rules/default.rules`' deny/allow entries stay in place alongside
 this hook, deliberately: the rules are a sandbox-level guarantee that survives
 even if a hook fails to load or errors, while the hook adds the ask tier
 `prefix_rule` cannot express. Neither replaces the other.
@@ -151,29 +161,29 @@ Edit behaviors and arbitrary commands via the web portal (`roborepo web`) — th
 place per-command overrides are editable; `roborepo onboard`'s Permissions step offers
 the 5 named behaviors as a direct toggle, `roborepo config status` is read-only.
 
-The renderer writes the generated permission block in `globals/codex/config.toml`
+The renderer writes the generated permission block in `generated/codex/config.toml`
 (`approval_policy`, `sandbox_mode`, `network_access` — derived from the `write-files`
 and `go-online` behaviors, and from whether anything is `ask`), the generated shell
-prefix rules in `globals/codex/rules/default.rules`, and Claude
-`permissions.allow` / `permissions.deny` / `permissions.ask` in `globals/claude/settings.json`.
+prefix rules in `generated/codex/rules/default.rules`, and Claude
+`permissions.allow` / `permissions.deny` / `permissions.ask` in `generated/claude/settings.json`.
 
 A `deny`/`allow` behavior or arbitrary command maps straight to Codex
 `prefix_rule(... decision="forbidden"|"allow")` and Claude's deny/allow arrays. An
 `ask`-bucket entry gets no `prefix_rule` (that mechanism is binary) — instead
-`globals/codex/hooks/permission-check.mjs` (below) supplies a real per-command
+`globals/system/hooks/codex/permission-check.mjs` (below) supplies a real per-command
 `ask` decision at runtime, and `approval_policy` is set to `on-request` as a
 fallback for anything the hook doesn't classify. On Claude the same entry lands
 directly in `permissions.ask`.
 
 `~/.codex/rules` is installed as a **managed copy** (`manifests/platform/manifest.tsv`,
 `kind = managed_copy`), NOT a symlink — a live file that starts as a copy of
-`globals/codex/rules/` but can diverge from it (e.g. the Codex CLI itself appends
+`generated/codex/rules/` but can diverge from it (e.g. the Codex CLI itself appends
 "always allow this command" rules here when a user approves a prompt in a live session).
 Once diverged, `roborepo update` does not silently overwrite it — reinstall only
 overwrites on an explicit "overwrite" collision choice, so a diverged live file persists
 indefinitely with no automated drift check today. Treat the live file as
 possibly-stale relative to repo intent; `roborepo doctor`/`verify` only check repo-source
-render drift (manifest vs. `globals/codex/rules/default.rules`), not live-machine drift.
+render drift (manifest vs. `generated/codex/rules/default.rules`), not live-machine drift.
 
 `~/.codex/config.toml` is similar: it is an active local root config file, not a
 symlink, and can diverge the same way. Existing machines need the root config merge/export

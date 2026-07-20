@@ -21,7 +21,7 @@ Shared skills live in:
 
 ```text
 globals/packages/<package>/skills/<name>/
-globals/agents/skills/roborepo-support/
+globals/system/skills/roborepo-support/
 ```
 
 Install copies only `roborepo-support` by default. Optional skills are copied by onboarding or package toggles. Each roborepo-owned skill copy contains:
@@ -37,8 +37,8 @@ That marker is the ownership signal for refresh, prune, uninstall, and native-sk
 Tracked baselines are still rendered in the repo:
 
 ```text
-globals/claude/CLAUDE.md
-globals/codex/AGENTS.md
+generated/claude/CLAUDE.md
+generated/codex/AGENTS.md
 ```
 
 Home files are rendered separately:
@@ -50,7 +50,7 @@ Home files are rendered separately:
 
 Home rendering uses:
 
-- base fragments from `globals/rules/shared/` plus harness-specific fragments
+- base fragments from `globals/system/rules/shared/` plus harness-specific fragments
 - enabled package IDs from `~/.roborepo/enabled-packages.json`
 - package rule fragments from `globals/packages/<package>/rules.md`
 

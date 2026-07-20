@@ -2,8 +2,5 @@
 # Columns: home_root<TAB>home_sub<TAB>regex<TAB>label
 # home_root tokens match manifests/manifest.tsv: claude | codex.
 codex	config.toml	^[[:space:]]*hooks[[:space:]]*=[[:space:]]*true[[:space:]]*$	Codex hooks feature enabled
-codex	hooks.json	CAVEMAN MODE ACTIVE	Codex caveman startup hook configured
 codex	AGENTS.md	Use caveman full by default	Codex AGENTS caveman default configured
-codex	config.toml	^\[mcp_servers\.jcodemunch\]$	Codex jcodemunch MCP configured
-codex	config.toml	^[[:space:]]*args[[:space:]]*=[[:space:]]*\["jcodemunch-mcp"\][[:space:]]*$	Codex jcodemunch MCP args configured
 codex	AGENTS.md	Verified: <command> -> <pass\|fail\|blocked>	Codex verification receipt configured

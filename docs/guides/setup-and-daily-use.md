@@ -88,9 +88,9 @@ roborepo permissions
 roborepo permissions --check
 ```
 
-The renderer updates the generated permission block in `globals/codex/config.toml`, the shell prefix
-rules in `globals/codex/rules/default.rules`, and Claude `permissions.allow` / `permissions.deny` /
-`permissions.ask` in `globals/claude/settings.json`. Existing `~/.codex/config.toml` and
+The renderer updates the generated permission block in `generated/codex/config.toml`, the shell prefix
+rules in `generated/codex/rules/default.rules`, and Claude `permissions.allow` / `permissions.deny` /
+`permissions.ask` in `generated/claude/settings.json`. Existing `~/.codex/config.toml` and
 `~/.claude/settings.json` files are local root config, so run `roborepo update` and follow the root
 config merge/export flow before a newly rendered baseline affects an already set up machine.
 
@@ -176,14 +176,14 @@ If local Claude/Codex settings were damaged by an older update, use
 
 Global instruction files are generated tracked outputs:
 
-- `globals/claude/CLAUDE.md`
-- `globals/codex/AGENTS.md`
+- `generated/claude/CLAUDE.md`
+- `generated/codex/AGENTS.md`
 
 Edit source fragments instead:
 
-- `globals/rules/shared/` for behavior shared by Claude and Codex
-- `globals/rules/claude/` for Claude-only behavior
-- `globals/rules/codex/` for Codex-only behavior
+- `globals/system/rules/shared/` for behavior shared by Claude and Codex
+- `globals/system/rules/claude/` for Claude-only behavior
+- `globals/system/rules/codex/` for Codex-only behavior
 
 Then render and check:
 
@@ -194,7 +194,7 @@ Then render and check:
 
 ### Check harness health
 
-Something feels off — commands missing, config not loading, hooks not firing. Run this to verify key files, JSON/TOML config, helpers, and dependencies. The skill checks are derived from `globals/agents/skills/`, so adding a skill needs no edit here.
+Something feels off — commands missing, config not loading, hooks not firing. Run this to verify key files, JSON/TOML config, helpers, and dependencies. The skill checks are derived from `globals/system/skills/` and `globals/packages/*/skills/`, so adding a skill needs no edit here.
 
 ```sh
 roborepo doctor        # (dispatches to scripts/doctor.sh)

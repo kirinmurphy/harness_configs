@@ -10,7 +10,7 @@ For the user-facing walkthrough, start with [../../guides/install-workflows.md](
 
 - **Managed copy**: a roborepo-owned home path copied from `globals/` or `manifests/`. Examples include commands, hooks, markers, and Codex rules.
 - **Rendered rules**: `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`, generated from base rule fragments plus the enabled-package registry.
-- **Root config baseline**: `globals/claude/settings.json` or `globals/codex/config.toml`. These are portable templates for mutable harness config.
+- **Root config baseline**: `generated/claude/settings.json` or `generated/codex/config.toml`. These are portable templates for mutable harness config.
 - **User-owned config**: an existing regular file or non-roborepo symlink in a harness home.
 - **Collision**: the installer finds a local path that differs from the repo source it would copy.
 

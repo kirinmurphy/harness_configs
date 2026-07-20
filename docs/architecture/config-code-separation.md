@@ -13,7 +13,7 @@ behavior: parsing, validation, prompting, linking, copying, pruning, and reporti
 | **reader** | A small parser that turns config files into script-friendly rows or objects. Bash uses `scripts/lib/manifests-data.sh`; PowerShell parses the manifest in `install-windows.ps1`. |
 | **consumer** | A script that reads config and performs behavior, such as install, verify, doctor, or sync. |
 | **authored source** | Human-maintained repo content under `globals/`, such as rules, skills, hooks, commands, and baseline harness config. |
-| **generated output** | Files rendered from authored source, such as `globals/claude/CLAUDE.md` and `globals/codex/AGENTS.md`. |
+| **generated output** | Files rendered from authored source into `generated/`, such as `generated/claude/CLAUDE.md` and `generated/codex/AGENTS.md`. |
 
 ## Current Boundary
 
@@ -22,7 +22,7 @@ behavior: parsing, validation, prompting, linking, copying, pruning, and reporti
 | Managed home paths | `manifests/platform/manifest.tsv` | `install/main.sh`, `install-claude.sh`, `install-codex.sh`, `install-windows.ps1`, `verify-install.sh`, `doctor.sh` |
 | Required repo files | `manifests/platform/source-files.tsv` | `doctor.sh` |
 | Agent permission behaviors | `manifests/inventory/agent-permissions.json` | `scripts/build/render-agent-permissions.mjs`, `install/main.sh`, `doctor.sh` |
-| Agent rules | `globals/rules/{shared,claude,codex}/` | `scripts/build/render-rules.sh` |
+| Agent rules | `globals/system/rules/{shared,claude,codex}/` | `scripts/build/render-rules.sh` |
 | Rule render targets | `manifests/platform/rule-targets.tsv` | `scripts/build/render-rules.sh` |
 | CLI menu/usage catalog | `manifests/platform/cli-commands.json` | `scripts/cli/main.mjs` |
 | MCP presets | `manifests/inventory/mcp-presets.json` | `scripts/cli/mcp.mjs` |
@@ -30,8 +30,8 @@ behavior: parsing, validation, prompting, linking, copying, pruning, and reporti
 | Verify content assertions | `manifests/platform/verify-content.tsv` | `verify-install.sh` |
 | Shell snippet installs | `manifests/platform/shell-snippets.tsv` | `install-shell-snippets.sh` |
 | Merge prompts | `manifests/platform/prompts/*.md` | `install-lib.sh` |
-| Global harness config | `globals/claude/`, `globals/codex/`, `globals/agents/` | Installers, verify, doctor, write guard |
-| Shared skills | package-owned `globals/packages/*/skills/` plus system `globals/agents/skills/` | `scripts/build/link-global-skills.sh`, `roborepo skill sync-global`, `roborepo skill export-to-project` |
+| Global harness config | `globals/harnesses/`, `generated/claude/`, `generated/codex/` | Installers, verify, doctor, write guard |
+| Shared skills | package-owned `globals/packages/*/skills/` plus system `globals/system/skills/` | `scripts/build/link-global-skills.sh`, `roborepo skill sync-global`, `roborepo skill export-to-project` |
 | Repo-local skills | `local/skills/` | `scripts/build/link-skills.sh`, doctor checks |
 | CLI implementation | command modules under `scripts/cli/` | `scripts/cli/main.mjs` dispatch |
 
@@ -44,9 +44,9 @@ flowchart TD
     sourceFiles["manifests/platform/source-files.tsv"]
     agentPerms["manifests/inventory/agent-permissions.json"]
     catalogs["globals/packages/*/package.config.json + manifests/inventory/package-categories.json + manifests/platform (plumbing)"]
-    rules["globals/rules/..."]
-    skills["globals/packages/*/skills/ + globals/agents/skills/"]
-    baselines["globals/claude + globals/codex"]
+    rules["globals/system/rules/..."]
+    skills["globals/packages/*/skills/ + globals/system/skills/"]
+    baselines["generated/claude + generated/codex"]
   end
 
   subgraph readers["Readers"]
@@ -141,7 +141,7 @@ sequenceDiagram
 | Candidate | Current location | Possible config file | Why it may help | Keep in code |
 | --- | --- | --- | --- | --- |
 | Windows-only installer details | `scripts/install/install-windows.ps1` | Existing manifests, plus small Windows-specific catalog if needed | More parity with POSIX install readers. | PowerShell filesystem behavior and Windows path handling. |
-| Long hook command bodies | `globals/claude/settings.json`, `globals/codex/hooks.json` | `manifests/platform/hooks/*.sh` or `globals/*/hooks/` scripts | Easier testing and quoting than embedded shell strings. | Hook registration shape and harness-specific event wiring. |
+| Long hook command bodies | `generated/claude/settings.json`, `generated/codex/hooks.json` | `manifests/platform/hooks/*.sh` or `globals/system/hooks/<harness>/` scripts | Easier testing and quoting than embedded shell strings. | Hook registration shape and harness-specific event wiring. |
 | Non-root conflict prompt text | `scripts/install/main.sh` | `manifests/platform/prompts/non-root-conflict.md` | Keeps all user-facing merge guidance together. | Conflict detection and abort behavior. |
 
 ## What Should Stay Code

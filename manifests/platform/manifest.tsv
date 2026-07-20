@@ -29,10 +29,12 @@
 #                  (renderHomeRules / reclaim_rendered_rules_target)
 #
 # harness	kind	src_rel	home_sub	home_root	flags
-claude	root_config	globals/claude/settings.json	settings.json	claude	-
+claude	root_config	generated/claude/settings.json	settings.json	claude	-
 claude	rendered_rules	-	CLAUDE.md	claude	-
-claude	managed_copy	globals/claude/MANAGED_BY_ROBOREPO.md	MANAGED_BY_ROBOREPO.md	claude	nodoctor
-claude	managed_copy	globals/claude/commands	commands	claude	nodoctor
+claude	managed_copy	globals/harnesses/claude/MANAGED_BY_ROBOREPO.md	MANAGED_BY_ROBOREPO.md	claude	nodoctor
+# commands/ is no longer a manifest row: it is composed at install/update time from only the
+# enabled packages' generated/packages/<pkg>/claude/commands wrappers (link_package_commands in
+# install-lib.sh), not copied as one static repo-wide directory. See Phase 7 of the ownership plan.
 claude	managed_copy	globals/claude/hooks	hooks	claude	-
 claude	cleanup	-	MANAGED_BY_HARNESS_CONFIGS.md	claude	-
 claude	cleanup	-	plugins/known_marketplaces.json	claude	-
@@ -44,13 +46,14 @@ claude	cleanup	-	plugins/installed_plugins.json	claude	-
 claude	cleanup	-	skills	claude	-
 # ^^^ migration: removes any old dir-level ~/.claude/skills -> globals/claude/skills symlink.
 # skills/ is now managed per-skill by the installer's enumerate-step, not as a dir-level link.
-codex	root_config	globals/codex/config.toml	config.toml	codex	-
+codex	root_config	generated/codex/config.toml	config.toml	codex	-
 codex	rendered_rules	-	AGENTS.md	codex	-
-codex	managed_copy	globals/codex/commands	commands	codex	nodoctor
-codex	managed_copy	globals/codex/MANAGED_BY_ROBOREPO.md	MANAGED_BY_ROBOREPO.md	codex	nodoctor
-codex	managed_copy	globals/codex/hooks.json	hooks.json	codex	-
-codex	managed_copy	globals/codex/hooks	hooks	codex	-
-codex	managed_copy	globals/codex/rules	rules	codex	-
+# commands/ is no longer a manifest row: it is composed at install/update time from only the
+# enabled packages' generated/packages/<pkg>/codex/commands wrappers (link_package_commands in
+# install-lib.sh), not copied as one static repo-wide directory. See Phase 7 of the ownership plan.
+codex	managed_copy	globals/harnesses/codex/MANAGED_BY_ROBOREPO.md	MANAGED_BY_ROBOREPO.md	codex	nodoctor
+codex	managed_copy	generated/codex/hooks.json	hooks.json	codex	-
+codex	managed_copy	generated/codex/rules	rules	codex	-
 codex	cleanup	-	MANAGED_BY_HARNESS_CONFIGS.md	codex	-
 codex	cleanup	-	skills	codex	-
 # ^^^ migration: removes any old dir-level ~/.codex/skills -> repo symlink (pre-native-alignment era).

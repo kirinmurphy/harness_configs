@@ -11,9 +11,9 @@ set -euo pipefail
 #   not symlinked to global and have no path into the export tool — the separation is structural.
 #
 # SHARED layer (global, per-harness native dirs):
-#   globals/agents/skills/<name>  ->  ~/.claude/skills/<name>  AND  ~/.codex/skills/<name>
+#   globals/system/skills/<name>  ->  ~/.claude/skills/<name>  AND  ~/.codex/skills/<name>
 #   The install scripts (install-claude.sh, install-codex.sh) handle shared skill linking at
-#   install time by enumerating globals/agents/skills/* and linking per-skill into each harness's
+#   install time by enumerating globals/system/skills/* and linking per-skill into each harness's
 #   native dir. This build script does NOT manage shared skill links — they are a runtime install
 #   concern, not a build/repo-structure concern. See install-lib.sh:link_global_skills.
 #

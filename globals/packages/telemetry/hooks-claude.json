@@ -1,0 +1,17 @@
+{
+  "SessionStart": [
+    { "matcher": "", "hooks": [{ "type": "command", "command": "roborepo telemetry capture --harness claude --event SessionStart" }] }
+  ],
+  "PreToolUse": [
+    { "matcher": "", "hooks": [{ "type": "command", "command": "roborepo telemetry capture --harness claude --event PreToolUse" }] }
+  ],
+  "PostToolUse": [
+    { "matcher": "", "hooks": [{ "type": "command", "command": "roborepo telemetry capture --harness claude --event PostToolUse" }] }
+  ],
+  "UserPromptSubmit": [
+    { "matcher": "", "hooks": [{ "type": "command", "command": "roborepo telemetry capture --harness claude --event UserPromptSubmit" }] }
+  ],
+  "Stop": [
+    { "matcher": "", "hooks": [{ "type": "command", "command": "roborepo telemetry capture --harness claude --event Stop" }] }
+  ]
+}

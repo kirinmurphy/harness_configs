@@ -29,8 +29,8 @@
     {
       "id": "commands",
       "label": "Slash commands",
-      "description": "Global slash command wrappers.",
-      "rows": ["claude:commands", "codex:commands"]
+      "description": "Slash command wrappers are now composed per-package at enable/disable time, not installed as one bundle. Kept as a no-op selectable for backward compatibility with existing onboarding selections.",
+      "rows": []
     },
     {
       "id": "telemetry",

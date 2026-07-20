@@ -12,6 +12,16 @@
     {
       "type": "service",
       "id": "telemetry"
+    },
+    {
+      "type": "hooks",
+      "source": "hooks-claude.json",
+      "harness": "claude"
+    },
+    {
+      "type": "hooks",
+      "source": "hooks-codex.json",
+      "harness": "codex"
     }
   ]
 }

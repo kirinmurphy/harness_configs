@@ -46,7 +46,7 @@ export function watchCode(rest) {
 
   // Write the pidfile the Claude SessionStart hook reads to detect a live watcher:
   //   /tmp/jcmwatch-<md5(target)>.pid  containing "<pid> <process-start-time>".
-  // The hash is keyed on the absolute target dir, matching globals/claude/settings.json.
+  // The hash is keyed on the absolute target dir, matching generated/claude/settings.json.
   const hash = createHash("md5").update(target).digest("hex").slice(0, 32);
   const pidfile = path.join(os.tmpdir(), `jcmwatch-${hash}.pid`);
   const started = startTimeForPid(process.pid);

@@ -2,11 +2,11 @@
 
 ## Purpose
 
-Claude and Codex should share the same global behavior defaults without hand-maintaining equivalent rule text in `globals/claude/CLAUDE.md` and `globals/codex/AGENTS.md`. The system also needs clear priority rules so global defaults do not accidentally override user-owned or repo-local context.
+Claude and Codex should share the same global behavior defaults without hand-maintaining equivalent rule text in `generated/claude/CLAUDE.md` and `generated/codex/AGENTS.md`. The system also needs clear priority rules so global defaults do not accidentally override user-owned or repo-local context.
 
 ## Current Behavior
 
-- `globals/claude/CLAUDE.md` and `globals/codex/AGENTS.md` are generated tracked files.
+- `generated/claude/CLAUDE.md` and `generated/codex/AGENTS.md` are generated tracked files.
 - Both files express the same core behavior through shared fragments: skill loading, verification, and temp-file hygiene.
 - Live Claude home rules are inline: `~/.claude/CLAUDE.md` contains the full Claude render inside a managed block.
 - Live Codex home rules are inline: `~/.codex/AGENTS.md` contains the full Codex render inside a managed block.
@@ -26,7 +26,7 @@ Use shared source fragments for common behavior and render the harness-specific 
 Source layout:
 
 ```text
-globals/rules/
+globals/system/rules/
   shared/
     05-skill-loading.md
     20-verification.md
@@ -43,8 +43,8 @@ globals/packages/
 Tracked generated baseline snapshots:
 
 ```text
-globals/claude/CLAUDE.md
-globals/codex/AGENTS.md
+generated/claude/CLAUDE.md
+generated/codex/AGENTS.md
 ```
 
 Live generated outputs:

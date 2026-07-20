@@ -1,0 +1,13 @@
+{
+  "SessionStart": [
+    {
+      "matcher": "startup|resume",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "if [ -d \"$(pwd)/docs\" ]; then if [ -f \"$(pwd)/docs/.jdm-indexed\" ]; then echo 'jdocmunch: docs indexed. Use search_sections, get_toc, get_section for doc exploration.'; else echo 'jdocmunch: docs/ exists but not indexed. Run: roborepo index docs docs/'; fi; fi"
+        }
+      ]
+    }
+  ]
+}

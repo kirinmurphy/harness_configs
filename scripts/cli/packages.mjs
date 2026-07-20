@@ -1,13 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { claudeJsonPath, repoRoot, rootConfigActive, workspacePackagesDir, initializeWorkspace } from "./paths.mjs";
+import { claudeJsonPath, repoRoot, rootConfigActive, harnessHome, workspacePackagesDir, initializeWorkspace } from "./paths.mjs";
 import { setPackageEnabled, renderHomeRules, readEnabledPackagesRegistry } from "./rules-render.mjs";
 import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 import { buildPackageLiveState } from "./package-probes.mjs";
 import { removeCodexMcp } from "./mcp-codex.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
+import { hookFilePath, mergeHooksInto, unmergeHooksFrom, installHookScripts, removeHookScripts } from "./hook-composition.mjs";
+import { installPackageCommands, removePackageCommands } from "./slash-commands.mjs";
+import { SLASH_COMMAND_HARNESS_NAMES } from "./skill-command-config.mjs";
 
 export const USER_CLAUDE_SETTINGS = rootConfigActive.claude;
 export const USER_CODEX_CONFIG = rootConfigActive.codex;
@@ -202,28 +205,6 @@ function mergePermissions(settingsPath, allow) {
   console.log(`wired: ${toAdd.length} permissions → ${settingsPath}`);
 }
 
-function mergeHooks(settingsPath, hooksFragment) {
-  const settings = readSettings(settingsPath);
-  const hooks = settings.hooks || {};
-  let added = 0;
-  for (const [event, entries] of Object.entries(hooksFragment)) {
-    const existing = hooks[event] || [];
-    for (const entry of entries) {
-      const cmd = entry.hooks?.[0]?.command;
-      const alreadyPresent = cmd && existing.some((e) => (e.hooks || []).some((h) => h.command === cmd));
-      if (!alreadyPresent) { existing.push(entry); added++; }
-    }
-    hooks[event] = existing;
-  }
-  if (added > 0) {
-    settings.hooks = hooks;
-    writeSettings(settingsPath, settings);
-    console.log(`wired: ${added} hook entries → ${settingsPath}`);
-  } else {
-    console.log(`ok: hooks already present → ${settingsPath}`);
-  }
-}
-
 function tomlTableKey(key) {
   return /^[A-Za-z0-9_-]+$/.test(key) ? key : JSON.stringify(key);
 }
@@ -388,10 +369,15 @@ export async function enablePackage(rest, _seen = new Set()) {
         break;
       case "hooks": {
         const hooksPath = path.join(repoRoot, component.source);
-        if (dryRun) { console.log(`  [dry-run] merge hooks from ${component.source}`); break; }
+        if (dryRun) {
+          console.log(`  [dry-run] merge hooks from ${component.source} (${component.harness})`);
+          if (component.scripts?.length) installHookScripts(component.harness, component.scripts, repoRoot, { dryRun: true });
+          break;
+        }
         const hooksFragment = JSON.parse(fs.readFileSync(hooksPath, "utf8"));
-        const settingsPath = component.harness === "claude" ? USER_CLAUDE_SETTINGS : null;
-        if (settingsPath) mergeHooks(settingsPath, hooksFragment);
+        const targetPath = hookFilePath(component.harness, { claudeSettingsPath: USER_CLAUDE_SETTINGS });
+        if (targetPath) mergeHooksInto(component.harness, targetPath, hooksFragment);
+        if (component.scripts?.length) installHookScripts(component.harness, component.scripts, repoRoot);
         break;
       }
       case "plugin":
@@ -403,8 +389,17 @@ export async function enablePackage(rest, _seen = new Set()) {
         servicePromises.push(setService(component.id, true));
         break;
       case "skill":
-        if (dryRun) { console.log(`  [dry-run] install skill ${component.id}`); break; }
+        if (dryRun) {
+          console.log(`  [dry-run] install skill ${component.id}`);
+          for (const harnessName of SLASH_COMMAND_HARNESS_NAMES) {
+            installPackageCommands(pkg, harnessHome[harnessName], harnessName, { dryRun: true });
+          }
+          break;
+        }
         servicePromises.push(setSkillComponent(component.id, true));
+        for (const harnessName of SLASH_COMMAND_HARNESS_NAMES) {
+          installPackageCommands(pkg, harnessHome[harnessName], harnessName);
+        }
         break;
       default:
         console.log(`  skip: unknown component type: ${component.type}`);
@@ -489,31 +484,6 @@ function unmergePermissions(settingsPath, allow) {
   writeSettings(settingsPath, settings);
   console.log(`removed: ${existing.length - next.length} permissions ← ${settingsPath}`);
 }
-
-function unmergeHooks(settingsPath, hooksFragment) {
-  const settings = readSettings(settingsPath);
-  const hooks = settings.hooks || {};
-  let removed = 0;
-  for (const [event, entries] of Object.entries(hooksFragment)) {
-    const cmds = new Set(entries.map((e) => e.hooks?.[0]?.command).filter(Boolean));
-    const existing = hooks[event] || [];
-    const next = existing.filter((e) => {
-      const cmd = e.hooks?.[0]?.command;
-      if (cmd && cmds.has(cmd)) { removed++; return false; }
-      return true;
-    });
-    if (next.length) hooks[event] = next;
-    else delete hooks[event];
-  }
-  if (removed > 0) {
-    settings.hooks = hooks;
-    writeSettings(settingsPath, settings);
-    console.log(`removed: ${removed} hook entries ← ${settingsPath}`);
-  } else {
-    console.log(`ok: hooks already absent ← ${settingsPath}`);
-  }
-}
-
 
 function pruneClaudeMcpStore(serverName) {
   let data;
@@ -609,9 +579,15 @@ export async function disablePackage(rest) {
         if (dryRun) { console.log(`  [dry-run] deregister command ${component.name}`); }
         break;
       case "hooks": {
-        if (dryRun) { console.log(`  [dry-run] remove hooks from ${component.source}`); break; }
+        if (dryRun) {
+          console.log(`  [dry-run] remove hooks from ${component.source} (${component.harness})`);
+          if (component.scripts?.length) removeHookScripts(component.harness, component.scripts, repoRoot, { dryRun: true });
+          break;
+        }
         const hooksFragment = JSON.parse(fs.readFileSync(path.join(repoRoot, component.source), "utf8"));
-        if (component.harness === "claude") unmergeHooks(USER_CLAUDE_SETTINGS, hooksFragment);
+        const targetPath = hookFilePath(component.harness, { claudeSettingsPath: USER_CLAUDE_SETTINGS });
+        if (targetPath) unmergeHooksFrom(component.harness, targetPath, hooksFragment);
+        if (component.scripts?.length) removeHookScripts(component.harness, component.scripts, repoRoot);
         break;
       }
       case "plugin":
@@ -623,8 +599,17 @@ export async function disablePackage(rest) {
         servicePromises.push(setService(component.id, false));
         break;
       case "skill":
-        if (dryRun) { console.log(`  [dry-run] remove skill ${component.id}`); break; }
+        if (dryRun) {
+          console.log(`  [dry-run] remove skill ${component.id}`);
+          for (const harnessName of SLASH_COMMAND_HARNESS_NAMES) {
+            removePackageCommands(pkg, harnessHome[harnessName], harnessName, { dryRun: true });
+          }
+          break;
+        }
         servicePromises.push(setSkillComponent(component.id, false));
+        for (const harnessName of SLASH_COMMAND_HARNESS_NAMES) {
+          removePackageCommands(pkg, harnessHome[harnessName], harnessName);
+        }
         break;
       default:
         console.log(`  skip: unknown component type: ${component.type}`);

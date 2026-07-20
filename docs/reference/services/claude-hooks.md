@@ -1,6 +1,10 @@
 # Claude Hooks
 
-Configured in `globals/claude/settings.json` under `"hooks"`.
+System hooks are configured in `globals/system/hooks/claude/`, wired through the generated
+`generated/claude/settings.json` under `"hooks"`. Package-owned hooks (JDocMunch's index check,
+telemetry's capture hooks, JCodeMunch's Grep/Glob and Bash blockers) are authored under their
+owning package (e.g. `globals/packages/<package>/hooks-claude.json`) and composed into the live
+Claude hook config only when that package is enabled.
 
 Hooks are organized below in two parts: **Part 1** covers behaviors Claude shares
 in intent with Codex (the same goal, achieved with Claude's own mechanism), and
@@ -33,8 +37,9 @@ Checks for the `docs/.jdm-indexed` marker in the current repo. If `docs/` exists
 but the marker is absent, injects a reminder to run `roborepo index docs docs/`.
 If the marker is present, confirms docs are indexed. The marker is written by
 `roborepo index docs` after a successful run and is excluded from git via the
-global gitignore. That command is package-owned; enable `jdocmunch` first if the
-CLI reports that no owning package is enabled.
+global gitignore. Package-owned: authored at
+`globals/packages/jdocmunch/hooks-claude.json` and composed into the live Claude
+hook config only when `jdocmunch` is enabled.
 
 This is the one hook duplicated near-identically on both harnesses — only the
 output protocol differs (JSON `systemMessage` here, plain text on Codex).
@@ -48,6 +53,9 @@ transcript, cumulative + per-capture token usage, tool/MCP attribution, tool-res
 sizes (for spike attribution — sizes only, never content), and session counts —
 enough to analyze token spikes and what caused them over time. See the
 [roborepo service doc](roborepo.md) for the record schema and the dashboard.
+Package-owned: authored at `globals/packages/telemetry/hooks-claude.json` and
+composed into the live Claude hook config only when telemetry is enabled —
+disabling telemetry removes these hooks.
 
 ---
 
@@ -70,7 +78,9 @@ Also reminds the model to use jcodemunch tools (`resolve_repo`, `search_symbols`
 etc.) for code exploration instead of `Grep`/`Read`. (Codex has no equivalent
 session hook; it relies on its rules file.) The `index code` and `watch code`
 commands are package-owned; enable `jcodemunch` first if the CLI reports that no
-owning package is enabled.
+owning package is enabled. This hook is authored at
+`globals/packages/jcodemunch/hooks-claude.json` and composed into the live
+Claude hook config only when `jcodemunch` is enabled.
 
 ### Block Grep/Glob — PreToolUse: Grep|Glob
 
@@ -79,7 +89,9 @@ owning package is enabled.
 Hard-blocks the call with `"continue": false`. The stop reason instructs the model
 to retry using jcodemunch (`search_symbols`, `get_file_outline`, `find_references`,
 `get_context_bundle`). Treated as a redirect, not an error — the model should
-immediately retry via jcodemunch. These tools do not exist on Codex.
+immediately retry via jcodemunch. These tools do not exist on Codex. Package-owned:
+authored at `globals/packages/jcodemunch/hooks-claude.json`, composed into the
+live Claude hook config only when `jcodemunch` is enabled.
 
 ### Block Bash source-exploration — PreToolUse: Bash
 
@@ -87,7 +99,9 @@ immediately retry via jcodemunch. These tools do not exist on Codex.
 
 `block-source-exploration.mjs` closes the route-around left by the Grep/Glob tool
 block: the agent can otherwise shell out (`grep src/...`, `cat file.ts`,
-`find . -name '*.ts'`) to read source without touching jcodemunch.
+`find . -name '*.ts'`) to read source without touching jcodemunch. Package-owned:
+the script lives at `globals/packages/jcodemunch/hooks/block-source-exploration.mjs`
+and is wired only when `jcodemunch` is enabled.
 
 It **denies** a command only when **all** hold, and **allows** everything else:
 

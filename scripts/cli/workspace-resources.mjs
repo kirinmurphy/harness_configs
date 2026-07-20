@@ -360,7 +360,7 @@ function validateMcpServer(server, file) {
 }
 
 function builtInSkillSource(name) {
-  const systemSkill = path.join(appRoot, "globals", "agents", "skills", name);
+  const systemSkill = path.join(appRoot, "globals", "system", "skills", name);
   if (fs.existsSync(systemSkill)) return systemSkill;
   const packagesRoot = path.join(appRoot, "globals", "packages");
   let entries;

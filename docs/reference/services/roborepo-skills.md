@@ -25,7 +25,7 @@ management, plugin enable/disable state, updates, validation, or one-session plu
 
 Package-owned shared skills are authored at
 `globals/packages/<package>/skills/<name>/`. The required base support skill remains a system
-skill at `globals/agents/skills/roborepo-support/`. The global install materializes each enabled
+skill at `globals/system/skills/roborepo-support/`. The global install materializes each enabled
 shared skill into `~/.roborepo/skills/<name>` with a `.roborepo-managed` marker, then links
 installed harness views to that cache entry:
 
@@ -46,7 +46,7 @@ This never touches global `~/.claude` or `~/.codex`.
 The report distinguishes:
 
 - roborepo-managed source at `globals/packages/<package>/skills/<name>` or the system
-  `globals/agents/skills/roborepo-support`
+  `globals/system/skills/roborepo-support`
 - managed cache entries under `~/.roborepo/skills/<name>` carrying `.roborepo-managed`
 - native or unmanaged real directories under `~/.claude/skills/<name>` or
   `~/.codex/skills/<name>`

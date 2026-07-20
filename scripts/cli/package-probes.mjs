@@ -100,11 +100,16 @@ function probeHooks(component, desired, settings) {
       }
     }
   }
+  const scripts = component.scripts || [];
+  const scriptsPresent = scripts.every((relPath) =>
+    fs.existsSync(path.join(os.homedir(), `.${component.harness}`, "hooks", path.basename(relPath))));
   return componentResult(component, {
     desired,
-    observed: expected > 0 && found === expected,
+    observed: expected > 0 && found === expected && scriptsPresent,
     owner: desired ? "roborepo" : "external",
-    detail: `${found}/${expected} hook command(s) present`,
+    detail: scripts.length && !scriptsPresent
+      ? `${found}/${expected} hook command(s) present, script file(s) missing`
+      : `${found}/${expected} hook command(s) present`,
   });
 }
 
@@ -170,15 +175,51 @@ function probeService(component, desired, telemetryState) {
   });
 }
 
-function probeSkill(component, desired) {
+// Slash-command entrypoints this skill resource declares, keyed by harness — needed here because
+// componentResource() strips entrypoints down to { type, id } for the generic component list, so
+// the probe must read them from the package's raw (pre-normalization) resources instead.
+function skillCommandNamesByHarness(pkg, skillId) {
+  const byHarness = { claude: [], codex: [] };
+  const resource = (pkg?.resources || []).find((r) => r.type === "skill" && r.id === skillId);
+  for (const entrypoint of resource?.entrypoints || []) {
+    if (entrypoint.type !== "slash-command") continue;
+    for (const harness of entrypoint.harnesses || []) {
+      if (byHarness[harness]) byHarness[harness].push(entrypoint.name);
+    }
+  }
+  return byHarness;
+}
+
+function probeSkill(component, desired, pkg) {
   const cachePath = path.join(roborepoSkillsDir, component.id);
   const observed = fs.existsSync(cachePath);
   const managed = fs.existsSync(path.join(cachePath, ".roborepo-managed"));
+
+  // Command-wrapper presence is a separate signal from cache presence: it must not change whether
+  // this component reads as "external" (cache-only adopt-live detection depends on that), only
+  // whether a DESIRED, cache-present skill is flagged as inconsistent (blocked) when its command
+  // wrapper — a real file the enable path installs alongside the cache — has gone missing.
+  const commandsByHarness = skillCommandNamesByHarness(pkg, component.id);
+  const commandChecks = [];
+  for (const [harness, names] of Object.entries(commandsByHarness)) {
+    for (const name of names) {
+      const wrapperPath = path.join(os.homedir(), `.${harness}`, "commands", `${name}.md`);
+      commandChecks.push(fs.existsSync(wrapperPath));
+    }
+  }
+  const allCommandsPresent = commandChecks.length === 0 || commandChecks.every(Boolean);
+  const commandsMissing = observed && desired && !allCommandsPresent;
+
   return componentResult(component, {
     desired,
     observed,
+    blocked: commandsMissing,
     owner: managed ? "roborepo" : observed ? "external" : null,
-    detail: observed ? `cache ${managed ? "managed" : "unmanaged"}: ${cachePath}` : "skill cache missing",
+    detail: !observed
+      ? "skill cache missing"
+      : commandsMissing
+        ? `cache ${managed ? "managed" : "unmanaged"}: ${cachePath}; command wrapper(s) missing`
+        : `cache ${managed ? "managed" : "unmanaged"}: ${cachePath}`,
   });
 }
 
@@ -228,7 +269,7 @@ export function buildPackageLiveState(packages) {
       else if (component.type === "plugin") components.push(probePlugin(component, componentDesired, settings));
       else if (component.type === "mcp") components.push(probeMcp(component, componentDesired, settings));
       else if (component.type === "service") components.push(probeService(component, componentDesired, telemetryState));
-      else if (component.type === "skill") components.push(probeSkill(component, componentDesired));
+      else if (component.type === "skill") components.push(probeSkill(component, componentDesired, pkg));
       else components.push(componentResult(component, { desired: componentDesired, observed: false, detail: "unknown component type", blocked: componentDesired }));
     }
 

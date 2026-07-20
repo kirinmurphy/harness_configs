@@ -208,7 +208,7 @@ check_roborepo_on_path() {
 
 # The "what is a skill folder" rule is implemented twice — list_source_skills (skill-lib.sh)
 # and listSourceSkills (skill-lib.mjs). Parity is the whole point of this repo, so verify the
-# two agree on globals/agents/skills/ rather than letting them drift silently.
+# two agree on globals/system/skills/ rather than letting them drift silently.
 check_skill_lib_parity() {
   if ! command -v node >/dev/null 2>&1; then
     ok "node unavailable; skipped skill-lib parity check"
@@ -217,16 +217,16 @@ check_skill_lib_parity() {
   local bash_out node_out
   bash_out="$(
     source "${repo_root}/scripts/build/skill-lib.sh"
-    list_source_skills "${repo_root}/globals/agents/skills" | sort
+    list_source_skills "${repo_root}/globals/system/skills" | sort
   )"
   node_out="$(node -e '
     const [mod, dir] = process.argv.slice(1);
     import(mod).then((m) => console.log(m.listSourceSkills(dir).sort().join("\n")));
-  ' "${repo_root}/scripts/cli/skill-lib.mjs" "${repo_root}/globals/agents/skills" 2>/dev/null)"
+  ' "${repo_root}/scripts/cli/skill-lib.mjs" "${repo_root}/globals/system/skills" 2>/dev/null)"
   if [[ "${bash_out}" == "${node_out}" ]]; then
-    ok "skill-lib.sh and skill-lib.mjs agree on globals/agents/skills/"
+    ok "skill-lib.sh and skill-lib.mjs agree on globals/system/skills/"
   else
-    fail "skill-lib parity: bash and node disagree on globals/agents/skills/ (diff below)"
+    fail "skill-lib parity: bash and node disagree on globals/system/skills/ (diff below)"
     diff <(echo "${bash_out}") <(echo "${node_out}") >&2 || true
   fi
 }
@@ -337,7 +337,7 @@ done
 # Derive the shared-skill list from package skill resources plus system support skills so this
 # never goes stale. The installer fans each skill into ~/.roborepo/skills/<n> and symlinks each
 # present harness view there.
-for skill_src in "${repo_root}"/globals/packages/*/skills/*/SKILL.md "${repo_root}"/globals/agents/skills/roborepo-support/SKILL.md; do
+for skill_src in "${repo_root}"/globals/packages/*/skills/*/SKILL.md "${repo_root}"/globals/system/skills/roborepo-support/SKILL.md; do
   [[ -e "${skill_src}" ]] || continue
   skill_name="$(basename "$(dirname "${skill_src}")")"
   check_file "${skill_src#${repo_root}/}"
@@ -355,9 +355,9 @@ done
 check_skill_lib_parity
 check_package_command_catalog
 check_manifest_sources
-check_json "globals/codex/hooks.json"
-check_json "globals/claude/settings.json"
-check_toml "globals/codex/config.toml"
+check_json "generated/codex/hooks.json"
+check_json "generated/claude/settings.json"
+check_toml "generated/codex/config.toml"
 
 if command -v uvx >/dev/null 2>&1; then
   ok "uvx available"
@@ -366,9 +366,9 @@ else
 fi
 
 if command -v node >/dev/null 2>&1; then
-  node "${repo_root}/scripts/build/normalize-claude-settings.mjs" --check "${repo_root}/globals/claude/settings.json" >/dev/null \
-    && ok "globals/claude/settings.json hook schema valid" \
-    || fail "globals/claude/settings.json hook schema invalid"
+  node "${repo_root}/scripts/build/normalize-claude-settings.mjs" --check "${repo_root}/generated/claude/settings.json" >/dev/null \
+    && ok "generated/claude/settings.json hook schema valid" \
+    || fail "generated/claude/settings.json hook schema invalid"
 else
   ok "node unavailable; skipped Claude hook schema check"
 fi
@@ -404,8 +404,8 @@ if [[ "${check_installed}" -eq 1 ]]; then
   installed_has_claude=0; installed_has_codex=0
   harness_present claude && installed_has_claude=1
   harness_present codex  && installed_has_codex=1
-  [[ "${installed_has_claude}" -eq 1 ]] && check_managed_skill "globals/agents/skills/roborepo-support" "${HOME}/.claude/skills/roborepo-support"
-  [[ "${installed_has_codex}"  -eq 1 ]] && check_managed_skill "globals/agents/skills/roborepo-support" "${HOME}/.codex/skills/roborepo-support"
+  [[ "${installed_has_claude}" -eq 1 ]] && check_managed_skill "globals/system/skills/roborepo-support" "${HOME}/.claude/skills/roborepo-support"
+  [[ "${installed_has_codex}"  -eq 1 ]] && check_managed_skill "globals/system/skills/roborepo-support" "${HOME}/.codex/skills/roborepo-support"
   # Drift report: unmanaged skills in native dirs (real dirs without our managed marker).
   drift_count=0
   for skills_home in "${HOME}/.claude/skills" "${HOME}/.codex/skills"; do

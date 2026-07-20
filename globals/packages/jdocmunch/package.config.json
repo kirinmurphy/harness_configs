@@ -35,6 +35,33 @@
       "type": "hooks",
       "source": "hooks-claude.json",
       "harness": "claude"
+    },
+    {
+      "type": "hooks",
+      "source": "hooks-codex.json",
+      "harness": "codex"
+    },
+    {
+      "type": "codex_tool_approvals",
+      "server": "jdocmunch",
+      "approvals": {
+        "index_local": "approve",
+        "index_repo": "approve",
+        "delete_index": "approve",
+        "list_repos": "auto",
+        "get_toc": "approve",
+        "get_toc_tree": "auto",
+        "get_document_outline": "auto",
+        "search_sections": "approve",
+        "get_section": "approve",
+        "get_sections": "approve",
+        "get_section_context": "approve",
+        "get_broken_links": "auto",
+        "get_doc_coverage": "auto",
+        "doc_list_repos": "approve",
+        "list_repo_groups": "approve",
+        "list_docs": "approve"
+      }
     }
   ]
 }

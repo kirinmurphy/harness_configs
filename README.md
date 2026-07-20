@@ -139,13 +139,19 @@ session-start nudge and leans on its rules file for the rest. Full breakdown:
 
 ## Maintaining the Harnesses
 
-Harness source lives under `globals/`, with the data that drives the build/install scripts under
-`manifests/`:
+Harness source lives under `globals/`, generated installation candidates under `generated/`, and the
+data that drives the build/install scripts under `manifests/`:
 
-- `globals/packages/*/skills/` — package-owned shared skill source, global and exportable
-- `globals/agents/skills/` — system skill source that is global/exportable but not package-owned
-- `globals/claude/` — Claude global rules, hooks, commands, settings baseline, and skill links
-- `globals/codex/` — Codex global rules, hooks, settings baseline, and managed markers
+- `globals/packages/<id>/` — complete authored implementation of one configurable, user-selectable
+  behavior (rules, hooks, skills, MCP config, permissions, commands) across both harnesses
+- `globals/system/` — mandatory, always-installed authored source with no enable/disable state:
+  `globals/system/rules/`, `globals/system/skills/roborepo-support`, `globals/system/hooks/<harness>/`
+- `globals/harnesses/` — native per-harness templates (managed markers, starter config) with no
+  optional-package behavior baked in
+- `generated/claude/`, `generated/codex/` — derived, installation-ready system candidates (settings,
+  rules render, hooks baseline); never edited directly, regenerated from system source + templates
+- `generated/packages/<id>/<harness>/commands/` — per-package generated slash-command wrappers,
+  composed into the live harness commands dir only when that package is enabled
 - `manifests/inventory/` — shared inventory that remains central: MCP presets, package categories,
   trigger fixtures, and agent permission behavior buckets
 - `manifests/platform/` — install/verify/render plumbing: the `.tsv` path tables, content checks,

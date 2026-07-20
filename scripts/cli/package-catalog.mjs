@@ -273,6 +273,14 @@ function normalizeResource(resource, { pkgId, root, index }) {
     next.source = validateInsideSource(root, next.source, `${pkgId}:${next.type}`);
     if (!fs.existsSync(path.join(root, next.source))) throw new Error(`${pkgId}:${next.type} source missing: ${next.source}`);
     validateHarness(next.harness, `${pkgId}:${next.type}`, true);
+    if (next.type === "hooks" && next.scripts !== undefined) {
+      if (!Array.isArray(next.scripts)) throw new Error(`${pkgId}:hooks scripts must be an array`);
+      next.scripts = next.scripts.map((script) => {
+        const rel = validateInsideSource(root, script, `${pkgId}:hooks script`);
+        if (!fs.existsSync(path.join(root, rel))) throw new Error(`${pkgId}:hooks script missing: ${rel}`);
+        return rel;
+      });
+    }
   } else if (next.type === "cli-command") {
     if (!isCommandName(next.name)) throw new Error(`${pkgId}: CLI command resource needs name`);
   }
@@ -294,10 +302,15 @@ function componentResource(resource, root) {
   if (resource.type === "slash-command") return null;
   if (resource.type === "skill") return { type: "skill", id: resource.id };
   if (resource.source) {
-    return {
+    const rewritten = {
       ...resource,
       source: path.relative(repoRoot, path.join(root, resource.source)).split(path.sep).join("/"),
     };
+    if (Array.isArray(resource.scripts)) {
+      rewritten.scripts = resource.scripts.map((script) =>
+        path.relative(repoRoot, path.join(root, script)).split(path.sep).join("/"));
+    }
+    return rewritten;
   }
   return resource;
 }

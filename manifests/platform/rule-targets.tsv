@@ -1,4 +1,4 @@
 # Generated rule targets for scripts/build/render-rules.sh.
 # Columns: target<TAB>source_dirs_csv
-globals/claude/CLAUDE.md	globals/rules/shared,globals/rules/claude
-globals/codex/AGENTS.md	globals/rules/shared,globals/rules/codex
+generated/claude/CLAUDE.md	globals/system/rules/shared,globals/system/rules/claude
+generated/codex/AGENTS.md	globals/system/rules/shared,globals/system/rules/codex

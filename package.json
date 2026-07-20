@@ -9,6 +9,7 @@
   "files": [
     "bin/",
     "globals/",
+    "generated/",
     "manifests/",
     "scripts/build/",
     "scripts/cli/",

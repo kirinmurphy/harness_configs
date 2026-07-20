@@ -188,8 +188,8 @@ test_onboarding_wizard_toggles_and_applies() {
   home_dir="$(make_home)"
   local claude_settings_backup
   claude_settings_backup="$(mktemp "${home_dir}/claude-settings.XXXXXX")"
-  cp "$repo_root/globals/claude/settings.json" "$claude_settings_backup"
-  trap 'cp "$claude_settings_backup" "$repo_root/globals/claude/settings.json" 2>/dev/null || true' RETURN
+  cp "$repo_root/generated/claude/settings.json" "$claude_settings_backup"
+  trap 'cp "$claude_settings_backup" "$repo_root/generated/claude/settings.json" 2>/dev/null || true' RETURN
   # Core-install (headless) first so the wizard has a real config to build its steps from.
   HOME="$home_dir" "$repo_root/scripts/install/main.sh" < /dev/null >/dev/null 2>&1
 
@@ -210,7 +210,7 @@ EOF
   assert_file_not_contains "$home_dir/wiz.out" "failed:" "wizard toggle applies without error"
   assert_file_contains "$home_dir/wiz.out" "Onboarding complete" "wizard finishes cleanly"
   trap - RETURN
-  cp "$claude_settings_backup" "$repo_root/globals/claude/settings.json"
+  cp "$claude_settings_backup" "$repo_root/generated/claude/settings.json"
 }
 
 test_overwrite_policy_preserves_existing_root_configs() {
@@ -231,8 +231,8 @@ test_existing_root_symlinks_convert_to_local_copies() {
   local home_dir
   home_dir="$(make_home)"
 
-  ln -s "$repo_root/globals/claude/settings.json" "$home_dir/.claude/settings.json"
-  ln -s "$repo_root/globals/codex/config.toml" "$home_dir/.codex/config.toml"
+  ln -s "$repo_root/generated/claude/settings.json" "$home_dir/.claude/settings.json"
+  ln -s "$repo_root/generated/codex/config.toml" "$home_dir/.codex/config.toml"
 
   HOME="$home_dir" "$repo_root/scripts/install/install-claude.sh" >"$home_dir/claude.out"
   HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" >"$home_dir/codex.out"
@@ -240,7 +240,7 @@ test_existing_root_symlinks_convert_to_local_copies() {
   assert_file_contains "$home_dir/claude.out" "converted from repo symlink" "managed Claude root config symlinks are converted"
   assert_file_contains "$home_dir/codex.out" "converted from repo symlink" "managed Codex root config symlinks are converted"
   assert_regular_file_contains "$home_dir/.claude/settings.json" "permissions" "converted Claude config is local file"
-  assert_regular_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "converted Codex config is local file"
+  assert_regular_file_contains "$home_dir/.codex/config.toml" "approval_policy" "converted Codex config is local file"
 }
 
 test_direct_harness_installers_export_root_configs() {
@@ -251,10 +251,10 @@ test_direct_harness_installers_export_root_configs() {
   HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" >"$home_dir/codex.out"
 
   assert_regular_file_contains "$home_dir/.claude/settings.json" "permissions" "direct Claude installer copies root config as local file"
-  assert_regular_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "direct Codex installer copies root config as local file"
+  assert_regular_file_contains "$home_dir/.codex/config.toml" "approval_policy" "direct Codex installer copies root config as local file"
   assert_not_symlink "$home_dir/.claude/CLAUDE.md" "direct Claude installer copies read-mostly assets (not symlinks)"
   assert_not_symlink "$home_dir/.codex/AGENTS.md" "direct Codex installer copies read-mostly assets (not symlinks)"
-  assert_managed_skill "$home_dir" "$home_dir/.codex/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "direct Codex installer links base support skill through ~/.roborepo/skills"
+  assert_managed_skill "$home_dir" "$home_dir/.codex/skills/roborepo-support" "$repo_root/globals/system/skills/roborepo-support" "direct Codex installer links base support skill through ~/.roborepo/skills"
   assert_absent "$home_dir/.codex/skills/case-study" "direct Codex installer does not copy optional skills by default"
 }
 
@@ -262,8 +262,8 @@ test_direct_harness_installers_convert_root_symlinks() {
   local home_dir
   home_dir="$(make_home)"
 
-  ln -s "$repo_root/globals/claude/settings.json" "$home_dir/.claude/settings.json"
-  ln -s "$repo_root/globals/codex/config.toml" "$home_dir/.codex/config.toml"
+  ln -s "$repo_root/generated/claude/settings.json" "$home_dir/.claude/settings.json"
+  ln -s "$repo_root/generated/codex/config.toml" "$home_dir/.codex/config.toml"
 
   HOME="$home_dir" "$repo_root/scripts/install/install-claude.sh" >"$home_dir/claude.out"
   HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" >"$home_dir/codex.out"
@@ -293,7 +293,7 @@ test_old_repo_managed_symlinks_are_migrated() {
   run_harness_install_args "$home_dir" "$home_dir/out" --on-conflict overwrite
 
   assert_regular_file_contains "$home_dir/.claude/settings.json" "permissions" "old Claude root config symlink converts to local file"
-  assert_regular_file_contains "$home_dir/.codex/config.toml" "mcp_servers.jcodemunch" "old Codex root config symlink converts to local file"
+  assert_regular_file_contains "$home_dir/.codex/config.toml" "approval_policy" "old Codex root config symlink converts to local file"
   assert_not_symlink "$home_dir/.claude/CLAUDE.md" "old Claude asset symlink migrated to managed copy"
   assert_not_symlink "$home_dir/.claude/hooks" "old Claude hooks symlink migrated to managed copy"
   assert_not_symlink "$home_dir/.codex/AGENTS.md" "old Codex AGENTS symlink migrated to managed copy"
@@ -302,8 +302,8 @@ test_old_repo_managed_symlinks_are_migrated() {
   # Old dir-level ~/.claude/skills symlink is cleaned up by the migration cleanup row.
   # Old ~/.agents/skills and transitional ~/.codex/skills dir-level symlinks are no longer managed.
   # After install, ~/.codex/skills/ and ~/.claude/skills/ point at the machine-local cache.
-  assert_managed_skill "$home_dir" "$home_dir/.codex/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "old machine migrated: base Codex support skill cache link created"
-  assert_managed_skill "$home_dir" "$home_dir/.claude/skills/roborepo-support" "$repo_root/globals/agents/skills/roborepo-support" "old machine migrated: base Claude support skill cache link created"
+  assert_managed_skill "$home_dir" "$home_dir/.codex/skills/roborepo-support" "$repo_root/globals/system/skills/roborepo-support" "old machine migrated: base Codex support skill cache link created"
+  assert_managed_skill "$home_dir" "$home_dir/.claude/skills/roborepo-support" "$repo_root/globals/system/skills/roborepo-support" "old machine migrated: base Claude support skill cache link created"
   assert_absent "$home_dir/.codex/skills/case-study" "old machine migrated: optional Codex skill not copied by default"
   assert_absent "$home_dir/.claude/skills/case-study" "old machine migrated: optional Claude skill not copied by default"
 }
@@ -336,8 +336,8 @@ test_verify_install_requires_active_root_configs() {
     || fail "verify-install accepts copied active root configs" "$home_dir/verify-pass.out"
 
   rm "$home_dir/.claude/settings.json" "$home_dir/.codex/config.toml"
-  ln -s "$repo_root/globals/claude/settings.json" "$home_dir/.claude/settings.json"
-  ln -s "$repo_root/globals/codex/config.toml" "$home_dir/.codex/config.toml"
+  ln -s "$repo_root/generated/claude/settings.json" "$home_dir/.claude/settings.json"
+  ln -s "$repo_root/generated/codex/config.toml" "$home_dir/.codex/config.toml"
 
   if PATH="$home_dir/.local/bin:$PATH" HOME="$home_dir" "$repo_root/scripts/verify-install.sh" --quiet >"$home_dir/verify-fail.out" 2>&1; then
     fail "verify-install rejects stale root config symlinks" "$home_dir/verify-fail.out"
@@ -388,7 +388,7 @@ test_main_install_merges_root_configs_without_review_prompt() {
   grep -qF '[projects."/tmp/user-project"]' "$home_dir/.codex/config.toml" \
     && pass "main install preserves user Codex project trust" \
     || fail "main install preserves user Codex project trust" "$home_dir/out"
-  assert_regular_file_contains "$home_dir/.codex/config.toml" "\\[mcp_servers\\.jcodemunch\\]" "main install adds repo Codex MCP config"
+  assert_regular_file_contains "$home_dir/.codex/config.toml" "approval_policy" "main install adds repo Codex baseline config"
 
   ROBOREPO_PRESETS_ONBOARD=skip run_expect_install_args "$home_dir" "$home_dir/second.out" --on-conflict overwrite
   grep -qF '[projects."/tmp/user-project"]' "$home_dir/.codex/config.toml" \
@@ -402,7 +402,7 @@ test_repair_local_config_recovers_backup_only_codex_settings() {
   home_dir="$(make_home)"
   ts="20260716-202503"
 
-  cp "$repo_root/globals/codex/config.toml" "$home_dir/.codex/config.toml"
+  cp "$repo_root/generated/codex/config.toml" "$home_dir/.codex/config.toml"
   {
     printf '\n'
     printf '[mcp_servers.jcodemunch.tools.register_edit]\n'
@@ -601,12 +601,12 @@ test_uninstall_reclaims_real_dir_link_remnant() {
   local home_dir
   home_dir="$(make_home)"
 
-  # Simulate a legacy/materialized link: a REAL ~/.codex/hooks dir holding roborepo's own content
+  # Simulate a legacy/materialized link: a REAL ~/.codex/rules dir holding roborepo's own content
   # (the bug we found — uninstall's symlink-only pass used to skip it).
-  cp -R "$repo_root/globals/codex/hooks" "$home_dir/.codex/hooks"
+  cp -R "$repo_root/generated/codex/rules" "$home_dir/.codex/rules"
   HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" >"$home_dir/uninstall.out"
 
-  [[ ! -e "$home_dir/.codex/hooks" ]] \
+  [[ ! -e "$home_dir/.codex/rules" ]] \
     && pass "uninstall reclaims a real-dir roborepo copy left at a link path" \
     || fail "uninstall reclaims a real-dir roborepo copy left at a link path" "$home_dir/uninstall.out"
 }
@@ -890,8 +890,10 @@ test_windows_installer_root_preflight_order() {
   assert_file_contains "$windows_script" 'Invoke-ManifestRows "Codex" @\("codex"\)' "Windows installer applies Codex manifest rows"
   assert_file_contains "$windows_script" 'if \(-not \$adoptRootConfig\[\$row.Harness\]\)' "Windows installer skips adopted root config from manifest"
   assert_file_not_contains "$windows_script" 'Link-Item "globals/codex/AGENTS.md"' "Windows installer does not hand-list Codex AGENTS link"
+  assert_file_not_contains "$windows_script" 'Link-Item "generated/codex/AGENTS.md"' "Windows installer does not hand-list generated Codex AGENTS link"
   assert_file_not_contains "$windows_script" 'Link-Item "globals/agents/skills"[[:space:]]+\(Join-Path \$agentsHome "skills"\)' "Windows installer does not hand-list canonical Codex skills link"
   assert_file_not_contains "$windows_script" 'Link-Item "globals/agents/skills"[[:space:]]+\(Join-Path \$codexHome "skills"\)' "Windows installer does not link ~/.codex/skills (Codex owns it)"
+  assert_file_not_contains "$windows_script" 'Link-Item "globals/system/skills"[[:space:]]+\(Join-Path \$codexHome "skills"\)' "Windows installer does not link ~/.codex/skills to the new system skills path (Codex owns it)"
   assert_file_not_contains "$windows_script" 'Link-Item "globals/codex/skills"' "Windows installer does not reference removed globals/codex/skills source"
 }
 
@@ -951,9 +953,9 @@ test_write_guard_root_config_message() {
   skill_out="$home_dir/skill-guard.out"
 
   printf '{"tool_input":{"file_path":"%s/.codex/config.toml"}}\n' "$home_dir" \
-    | HOME="$home_dir" node "$repo_root/globals/claude/hooks/roborepo-write-guard.mjs" >"$root_out"
+    | HOME="$home_dir" node "$repo_root/globals/system/hooks/claude/roborepo-write-guard.mjs" >"$root_out"
   printf '{"tool_input":{"file_path":"%s/.claude/skills/new-skill/SKILL.md"}}\n' "$home_dir" \
-    | HOME="$home_dir" node "$repo_root/globals/claude/hooks/roborepo-write-guard.mjs" >"$skill_out"
+    | HOME="$home_dir" node "$repo_root/globals/system/hooks/claude/roborepo-write-guard.mjs" >"$skill_out"
 
   assert_file_contains "$root_out" "mutable active root config" "write guard identifies root config as local"
   assert_file_contains "$root_out" "not a repo symlink" "write guard does not call root config a symlink"

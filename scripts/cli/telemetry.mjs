@@ -13,6 +13,7 @@ import { mutatePackage, setSkillInstalled, setBehaviorBucket, setCommandBucket }
 import { loadPlansSnapshot, loadPlanDocument, buildPlansPrompt, updatePlanSettings, refreshPlans } from "./plans.mjs";
 import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
+import { mergeHooksInto } from "./hook-composition.mjs";
 
 export async function telemetryCommand(rest) {
   const [sub, ...args] = rest;
@@ -77,8 +78,6 @@ function telemetryInstall(args) {
   console.log("upgrade to full suite: re-run the roborepo install script");
 }
 
-const CAPTURE_EVENTS = ["SessionStart", "PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"];
-
 function wireBinSymlink() {
   const target = path.join(os.homedir(), ".local", "bin", "roborepo");
   const source = path.join(repoRoot, "bin", "roborepo");
@@ -102,31 +101,13 @@ function wireBinSymlink() {
   console.log(`link: ${target} -> ${source}`);
 }
 
-// Merge only the telemetry capture hooks into a harness settings file (settings.json or hooks.json).
-// Idempotent: skips events whose capture command is already present. Does not touch other hooks.
+// Thin wrapper over the canonical cross-harness hook composer (hook-composition.mjs), so the
+// standalone `roborepo telemetry install` path and the package-driven `enable telemetry` path
+// share one hook definition and one merge implementation — never two independently-maintained copies.
 function wireCaptureHooks(settingsPath, harness) {
-  let settings = {};
-  try { settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")); } catch {}
-  const hooks = settings.hooks || {};
-  let added = 0;
-  for (const event of CAPTURE_EVENTS) {
-    const cmd = `roborepo telemetry capture --harness ${harness} --event ${event}`;
-    const entries = hooks[event] || [];
-    const exists = entries.some((e) => (e.hooks || []).some((h) => h.command === cmd));
-    if (!exists) {
-      entries.push({ matcher: "", hooks: [{ type: "command", command: cmd }] });
-      hooks[event] = entries;
-      added++;
-    }
-  }
-  if (added > 0) {
-    settings.hooks = hooks;
-    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-    console.log(`wired: ${added} capture hooks → ${settingsPath}`);
-  } else {
-    console.log(`ok: capture hooks already present → ${settingsPath}`);
-  }
+  const fragmentPath = path.join(repoRoot, "globals", "packages", "telemetry", `hooks-${harness}.json`);
+  const fragment = JSON.parse(fs.readFileSync(fragmentPath, "utf8"));
+  mergeHooksInto(harness, settingsPath, fragment);
 }
 
 function telemetryStop(args) {
@@ -160,9 +141,11 @@ async function telemetryDisable(args) {
   console.log("telemetry: disabled");
 }
 
-// Programmatic capture toggle, shared by the CLI verbs and the config controls. Flips capture state
-// and wires/unwires the capture hooks (via the telemetry bundle) without starting/stopping the
-// portal server — the dashboard toggle is about capture, not the server. Returns { ok, message }.
+// Programmatic capture-state toggle, shared by the CLI verbs and the config controls. Only flips the
+// service's own enabled flag/selection state — hook install/removal is a separate `hooks` component
+// on the telemetry package, handled by the generic enable/disable switch in packages.mjs. Does not
+// start/stop the portal server — the dashboard toggle is about capture, not the server. Returns
+// { ok, message }.
 export function setTelemetryEnabled(enabled) {
   try {
     ensureTelemetryDirs();

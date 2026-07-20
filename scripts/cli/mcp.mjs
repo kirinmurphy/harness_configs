@@ -125,7 +125,7 @@ export function mcpAdd(rest) {
   if (opts.dryRun) {
     if (opts.target !== "only-codex") console.log(display);
     if (opts.target !== "only-codex" && opts.updateClaudePermission) {
-      console.log(`would add permission: mcp__${spec.name} -> globals/claude/settings.json`);
+      console.log(`would add permission: mcp__${spec.name} -> generated/claude/settings.json`);
     }
     if (opts.target !== "only-claude") ensureCodexMcp(spec, { dryRun: true });
     return;

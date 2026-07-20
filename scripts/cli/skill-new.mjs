@@ -114,8 +114,8 @@ function preflightSkillNew(opts) {
       assertPathMissing(path.join(skillRoot(), opts.name));
     }
     if (opts.kind === "standalone") {
-      assertPathAvailable(path.join(repoRoot, "globals", "claude", "commands", `${opts.command}.md`));
-      assertPathAvailable(path.join(repoRoot, "globals", "codex", "commands", `${opts.command}.md`));
+      assertPathAvailable(path.join(repoRoot, "generated", "claude", "commands", `${opts.command}.md`));
+      assertPathAvailable(path.join(repoRoot, "generated", "codex", "commands", `${opts.command}.md`));
       assertPathAvailable(path.join(workspaceCommandsDir, `${opts.command}.md`));
     }
     return;

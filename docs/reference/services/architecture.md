@@ -5,18 +5,18 @@
 ```mermaid
 flowchart LR
   repo["roborepo"]
-  codexRepo["globals/codex/"]
-  claudeRepo["globals/claude/"]
+  codexGen["generated/codex/"]
+  claudeGen["generated/claude/"]
   codexHome["~/.codex"]
   claudeHome["~/.claude"]
   codexRuntime["Codex runtime state<br/>auth, logs, history, sqlite, cache, sessions"]
   claudeRuntime["Claude runtime state<br/>local settings, logs, history, cache, sessions, todos"]
 
-  repo --> codexRepo
-  repo --> claudeRepo
+  repo --> codexGen
+  repo --> claudeGen
 
-  codexRepo -. copy/render plus root config export .-> codexHome
-  claudeRepo -. copy/render plus root config export .-> claudeHome
+  codexGen -. copy/render plus root config export .-> codexHome
+  claudeGen -. copy/render plus root config export .-> claudeHome
 
   codexRuntime --- codexHome
   claudeRuntime --- claudeHome
@@ -41,23 +41,23 @@ enabled skills through a machine-local cache, and preserving mutable root config
 point back to the checkout, except for the `roborepo` command symlink under `~/.local/bin` and
 per-skill links from each harness into `~/.roborepo/skills/<name>`.
 
-Codex (`~/.codex/` from `globals/codex/`, plus enabled skill links into `~/.codex/skills/`):
+Codex (`~/.codex/` from `generated/codex/` plus `globals/harnesses/codex/`, plus enabled skill links
+into `~/.codex/skills/` and enabled package command output from `generated/packages/<package>/codex/commands/`):
 
 - `AGENTS.md` rendered from base fragments plus enabled package fragments
 - `config.toml` exported as a local active file
-- `hooks.json`
+- `hooks.json` composed from system hooks plus enabled package hook resources
 - `MANAGED_BY_ROBOREPO.md`
-- `commands/`
+- `commands/` composed from enabled packages only
 - `rules/`
 - `skills/<name>` links to `~/.roborepo/skills/<name>` for each enabled shared skill
 
-Claude (`~/.claude/` from `globals/claude/`):
+Claude (`~/.claude/` from `generated/claude/` plus `globals/harnesses/claude/`):
 
 - `CLAUDE.md` rendered from base fragments plus enabled package fragments
-- `settings.json` exported as a local active file
+- `settings.json` exported as a local active file, with hooks composed from system hooks plus enabled package hook resources
 - `MANAGED_BY_ROBOREPO.md`
-- `commands/`
-- `hooks/`
+- `commands/` composed from enabled packages only
 - `skills/<name>` links to `~/.roborepo/skills/<name>` for each enabled shared skill
 
 ## Install Workflow Filesystem Shapes
@@ -102,10 +102,10 @@ Implication: updates become active only after `roborepo update`, package enable/
 Repo files are portable baselines. Active global files are local copies or existing user-owned files.
 
 ```text
-<repo>/globals/codex/config.toml                # repo baseline
+<repo>/generated/codex/config.toml              # repo baseline
 ~/.codex/config.toml                    # active local file
 
-<repo>/globals/claude/settings.json             # repo baseline
+<repo>/generated/claude/settings.json           # repo baseline
 ~/.claude/settings.json                 # active local file
 ```
 
@@ -113,9 +113,9 @@ Implication: runtime trust, hook approvals, local profiles, and machine-specific
 
 Agent permission defaults are authored in `manifests/inventory/agent-permissions.json` and rendered by `scripts/build/render-agent-permissions.mjs`.
 
-- `globals/codex/config.toml` receives generated session defaults such as `sandbox_mode`, `approval_policy`, and workspace network access.
-- `globals/codex/rules/default.rules` receives generated shell command prefix policy such as allowed local commands and denied Git remote commands.
-- `globals/claude/settings.json` receives generated `permissions.allow`, `permissions.deny`, and `permissions.ask` arrays from the same behavior and command buckets.
+- `generated/codex/config.toml` receives generated session defaults such as `sandbox_mode`, `approval_policy`, and workspace network access.
+- `generated/codex/rules/default.rules` receives generated shell command prefix policy such as allowed local commands and denied Git remote commands.
+- `generated/claude/settings.json` receives generated `permissions.allow`, `permissions.deny`, and `permissions.ask` arrays from the same behavior and command buckets.
 
 Because `~/.codex/rules` and root config are copied, repo edits require `roborepo update` or the relevant renderer before they affect an existing machine.
 
@@ -166,10 +166,10 @@ Implication: user keeps current behavior, but must merge wanted repo defaults fr
 User-owned config remains active until the selected install mode or collision policy completes. The installer prints a merge prompt that points at both local and repo paths after actions that create backups or staged defaults.
 
 ```text
-<repo>/globals/codex/config.toml                # repo candidate
+<repo>/generated/codex/config.toml              # repo candidate
 ~/.codex/config.toml                    # existing local version, active
 
-<repo>/globals/claude/settings.json             # repo candidate
+<repo>/generated/claude/settings.json           # repo candidate
 ~/.claude/settings.json                 # existing local version, active
 ```
 
@@ -195,7 +195,7 @@ backup, and uninstall behavior.
 
 Package-owned shared skills are sourced from `globals/packages/<package>/skills/<name>/` (each a
 folder with a `SKILL.md`). The required base support skill remains a system skill at
-`globals/agents/skills/roborepo-support/`. Roborepo materializes those skills into a
+`globals/system/skills/roborepo-support/`. Roborepo materializes those skills into a
 machine-local cache at `~/.roborepo/skills/<name>` and then symlinks each installed harness view to
 that cache entry:
 
@@ -215,7 +215,7 @@ checks that source dirs exist in the repo.
 There are two distinct, firewalled skill layers:
 
 - **Shared** — package-owned `globals/packages/<package>/skills/<name>/` plus the required system
-  `globals/agents/skills/roborepo-support/`. Materialized into `~/.roborepo/skills/<name>` and
+  `globals/system/skills/roborepo-support/`. Materialized into `~/.roborepo/skills/<name>` and
   symlinked from each installed harness's native skills dir at install/update time; global on both
   harnesses and exportable to other repos when package-owned. Advisory coding skills any repo may
   receive.

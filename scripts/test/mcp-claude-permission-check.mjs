@@ -2,7 +2,7 @@
 // ensureClaudeMcpPermission must write the grant to the ACTIVE Claude settings
 // (~/.claude/settings.json) — the file the harness reads — and record its drift hash, never the
 // repo baseline template. Regression guard for the package-mode leak where the permission was
-// written into appRoot/globals/claude/settings.json (release/tracked files).
+// written into appRoot/generated/claude/settings.json (release/tracked files).
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";

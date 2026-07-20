@@ -172,10 +172,10 @@ Slash command exposure lives on package `slash-command` resources:
 - `globals/packages/<package>/package.config.json`
 - workspace `packages/<package>/package.config.json`
 
-The renderer writes harness-specific command files:
+The renderer writes harness-specific command files, per package:
 
-- `globals/claude/commands/*.md`
-- `globals/codex/commands/*.md`
+- `generated/packages/<packageId>/claude/commands/*.md`
+- `generated/packages/<packageId>/codex/commands/*.md`
 
 Generated files should not be edited directly. Edit the package config or the shared source file,
 then run:
@@ -204,7 +204,7 @@ generated command files together.
 
 Package-owned skills live at `globals/packages/<package>/skills/<name>/SKILL.md` in version control.
 The required base support skill remains a system skill at
-`globals/agents/skills/roborepo-support/SKILL.md`.
+`globals/system/skills/roborepo-support/SKILL.md`.
 At install/update time, enabled shared skills are materialized into
 `~/.roborepo/skills/<name>` and each harness's native skills dir symlinks to that cache entry:
 `~/.claude/skills/<name>` and `~/.codex/skills/<name>`. Roborepo-owned cache entries carry a

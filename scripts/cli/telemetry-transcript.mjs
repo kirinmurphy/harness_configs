@@ -190,7 +190,7 @@ function safeLen(value) {
 // bare (foo). Claude always prefixes, but Codex transcripts often drop the prefix, so a bare name
 // like "search_symbols" or "get_file_content" would otherwise be misattributed to a native group.
 // This table maps the known jcodemunch/jdocmunch tool names so attribution is correct for both
-// harnesses. Sourced from globals/codex/config.toml MCP tool declarations.
+// harnesses. Sourced from generated/codex/config.toml MCP tool declarations.
 const BARE_MCP_TOOLS = {
   jcodemunch: new Set([
     "resolve_repo", "search_text", "search_symbols", "find_references", "get_file_content",

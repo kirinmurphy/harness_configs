@@ -943,8 +943,8 @@ link_global_skills() {
 
 list_global_skill_sources() {
   local skill_dir name rel
-  if [[ -f "${repo_root}/globals/agents/skills/roborepo-support/SKILL.md" ]]; then
-    printf 'roborepo-support\tglobals/agents/skills/roborepo-support\n'
+  if [[ -f "${repo_root}/globals/system/skills/roborepo-support/SKILL.md" ]]; then
+    printf 'roborepo-support\tglobals/system/skills/roborepo-support\n'
   fi
   for skill_dir in "${repo_root}"/globals/packages/*/skills/*; do
     [[ -d "${skill_dir}" && -f "${skill_dir}/SKILL.md" ]] || continue

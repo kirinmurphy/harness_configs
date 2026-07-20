@@ -27,8 +27,9 @@ Roborepo currently provides these skill-management flows:
 
 - `roborepo skill new` scaffolds a shared skill or command, registers manifests, renders
   command wrappers, and fans out managed links.
-- `roborepo skill adopt <name>` imports an unmanaged home skill into
-  `globals/agents/skills/<name>`.
+- `roborepo skill adopt <name>` imports an unmanaged home skill into a new package at
+  `globals/packages/<name>/skills/<name>` (development checkout) or the workspace skills dir
+  (package mode).
 - `roborepo skill export-to-project` copies shared skills into a target repo and creates a
   shareable zip.
 - `roborepo skill link-project` links repo-local skills into harness locations.
@@ -39,8 +40,10 @@ Roborepo currently provides these skill-management flows:
 - The `/config` portal shows enabled skills and uses the same inventory model for skill source
   inspection.
 
-The shared source of truth is `globals/agents/skills/<name>/`. Install/update materializes
-enabled skills into `~/.roborepo/skills/<name>` and links harness views to that managed cache.
+The shared source of truth is `globals/system/skills/<name>/` for the mandatory base skill
+(roborepo-support) and `globals/packages/<pkg>/skills/<name>/` for every package-owned skill.
+Install/update materializes enabled skills into `~/.roborepo/skills/<name>` and links harness views
+to that managed cache.
 
 Native tools provide broader capability than roborepo currently exposes:
 

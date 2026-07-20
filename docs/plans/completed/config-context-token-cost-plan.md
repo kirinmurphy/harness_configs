@@ -1,14 +1,26 @@
 ---
 id: config-context-token-cost
 priority: medium
-next_action: Manually verify the portal UI (both themes, narrow width, package toggle), then review completion
+next_action:
 blocked_by: []
 depends_on: []
 related: []
-reviewed_commit:
+reviewed_commit: 1213b58bbdeaf52b59424b2741d49d524411a538
 ---
 
 # Config Page Context and Token Cost Plan
+
+## Completion Summary
+
+All implementation and automated-test success criteria are met as of commit `1213b58`.
+Manual visual QA (light/dark theme, narrow viewport, live toggle-updates-totals) was skipped by
+explicit user decision rather than performed — the reviewing session had no screenshot or
+browser-automation tool available. Confidence instead rests on: `test:context-cost` (13/13
+checks, boundary/reconciliation/cache cases included), `test-roborepo.sh` `/api/config`
+contextCost assertions, and a live `GET /api/config` fetch against the running portal confirming
+the documented data shape (method, thresholds, per-harness breakdown, components) is populated
+correctly. If a rendering regression exists (CSS, badge layout, toggle wiring), it would not be
+caught by this evidence — flag for a follow-up visual pass if UI bugs are reported later.
 
 ## Implementation Status
 
@@ -17,7 +29,12 @@ reviewed_commit:
 - [x] Portal — `tpl-context-summary` first panel, Generated Files cost chips (Rules counts, Config `Not prompt context`, Hooks `Conditional`), section header rollups, muted per-item cost badges in `<config-item>`
 - [x] Tests — `scripts/test/context-cost-check.mjs` (11 checks incl. 7999/8000/20000/20001 boundaries, reconciliation, cache invalidation) + `npm run test:context-cost`; `/api/config` contextCost asserts in `test-roborepo.sh`
 - [x] Docs — "Harness Context estimates" section in `docs/reference/services/config-control-panel.md`
-- [ ] Manual portal verification (themes, narrow width, toggle-updates-totals)
+- [x] Manual portal verification — skipped by user decision; no screenshot/browser-QA tool
+  available in the reviewing session. Verified instead at the API/data level: portal server
+  running, `GET /api/config` returns populated `contextCost` (method, thresholds, per-harness
+  breakdown, components) matching this plan's data model; full `test:context-cost` suite (13
+  checks) passes against commit 1213b58. Visual rendering (themes, narrow width, live
+  toggle-updates-totals) was not eyeballed in a browser.
 
 Implementation decisions of note:
 

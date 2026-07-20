@@ -1,7 +1,7 @@
 ---
 id: localhoster-final
 priority: high
-next_action: Run and record manual macOS validation, then continue final phase 3 provider split
+next_action: Continue final phase 3 provider split by extracting origin/probe and provider capability aggregation while preserving current CLI/API behavior
 blocked_by: []
 depends_on:
   - localhoster-v1
@@ -52,6 +52,24 @@ Implemented in phase 1 so far:
   hidden-item restore, reversible association removal, and app health/match hint editing.
 - `modules/localhoster/settings.mjs` was narrowed to persistence and mutation orchestration; strict
   schema validation and normalizers now live in `modules/localhoster/settings-schema.mjs`.
+
+Manual macOS validation for the V1 gate was recorded on 2026-07-20 with an isolated state root and
+a temporary Git monorepo running two real Vite apps. Web and API were discovered through real
+macOS listener discovery, manually associated to separate app IDs, given saved links, restarted
+from ports `55173`/`55174` to `56173`/`56174`, and confirmed to resolve saved links against the
+new origins:
+
+- `web`: `http://127.0.0.1:56173/`
+- `api`: `http://127.0.0.1:56174/health`
+
+Final phase 3 provider split has started without changing the public `discoverInstances()`
+contract:
+
+- Platform capability reporting moved to `modules/localhoster/capabilities.mjs`.
+- macOS `lsof` listener and process-working-directory collection moved to
+  `modules/localhoster/listeners.mjs`.
+- `modules/localhoster/discovery.mjs` now coordinates listener records, identity resolution, alias
+  lookup, HTTP probing, and snapshot-safe instance shaping.
 
 ## Decision Record
 
@@ -561,7 +579,7 @@ Finish these items before final feature implementation starts:
 - [x] Add stale, refreshing, and failed-refresh coverage, including failed refresh retaining the last successful snapshot and showing its generated timestamp.
 - [x] Make probe concurrency bounded and documented in `modules/localhoster/discovery.mjs` / `modules/localhoster/probe.mjs`.
 - [x] Add fixture coverage for self-signed HTTPS classification, oversized response bodies, same-origin redirects, external redirect rejection, and network-exposure warning rendering.
-- [ ] Run and record manual macOS validation with multiple real Node/Vite apps on changing ports.
+- [x] Run and record manual macOS validation with multiple real Node/Vite apps on changing ports.
 
 Close these during final phase 1 if they naturally share code with V2 migration:
 

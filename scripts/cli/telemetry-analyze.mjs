@@ -13,6 +13,12 @@ const SPIKE_SIGMA = 2;
 // flagging trivially small events in very quiet sessions.
 const MIN_SPIKE_THRESHOLD = 50_000;
 
+const LARGE_DOCUMENT_READ_CHARS = 20000;
+const REPEATED_DOCUMENT_READ_COUNT = 2;
+const MIXED_CODE_LOOKUP_NATIVE_READS = 4;
+const DOC_EXTS = new Set([".md", ".mdx", ".rst", ".txt"]);
+const SOURCE_EXTS = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".json", ".css", ".scss", ".sh", ".py", ".rb", ".go", ".rs", ".java", ".kt", ".swift", ".php", ".cs", ".cpp", ".c", ".h", ".hpp", ".toml", ".yaml", ".yml"]);
+
 export function analyzeTelemetry(events) {
   const captures = events.filter(hasTokens);
   const sessions = rollupSessions(captures);
@@ -61,6 +67,7 @@ export function analyzeTelemetry(events) {
     // user sees "doing X blows up my tokens" rather than a wall of per-capture numbers.
     spike_causes: rollupCauses(spikeCaptures),
     usage_windows: usageWindows(captures),
+    codex_provider_rate_limits: latestCodexRateLimits(captures),
     // Per-capture series for the timeline chart. Carries the context the dashboard tooltip needs
     // (tool, event, cause, sizes, duration) so hover can explain a bar without a second request.
     timeline: captures
@@ -93,6 +100,8 @@ export function analyzeTelemetry(events) {
     package_cost: packageCost(captures),
     regression: regression(captures),
     loops: detectLoops(captures, sessionsById),
+    data_quality_warnings: dataQualityWarnings(events),
+    read_warnings: readWarnings(events, sessionsById),
   };
   // Ranked plain-English conclusions derived from the facts above — the "what this means" headline.
   report.insights = deriveInsights(report);
@@ -504,6 +513,134 @@ function topBy(events, keyFor) {
     counts.set(key, current);
   }
   return [...counts.values()].sort((a, b) => b.tokens - a.tokens || b.captures - a.captures);
+}
+
+function dataQualityWarnings(events) {
+  const warnings = [];
+  const byHarness = new Map();
+  for (const event of events) {
+    const harness = event.harness || "unknown";
+    const cur = byHarness.get(harness) || { events: 0, tokenRecords: 0, nonzeroTokenRecords: 0, unsupported: 0 };
+    cur.events += 1;
+    if (hasTokens(event)) {
+      cur.tokenRecords += 1;
+      if ((event.tokens?.total || 0) > 0) cur.nonzeroTokenRecords += 1;
+    }
+    if (event.details?.unsupported_usage_seen) cur.unsupported += 1;
+    byHarness.set(harness, cur);
+  }
+  for (const [harness, cur] of byHarness) {
+    if (cur.events > 0 && cur.nonzeroTokenRecords === 0) {
+      warnings.push({
+        type: "missing_token_data",
+        harness,
+        events: cur.events,
+        token_records: cur.tokenRecords,
+        hint: "events exist but no nonzero token records were parsed",
+      });
+    }
+    if (cur.unsupported > 0) {
+      warnings.push({
+        type: "unsupported_usage_schema",
+        harness,
+        events: cur.unsupported,
+        hint: "transcript usage records were present but not in a supported schema",
+      });
+    }
+  }
+  return warnings;
+}
+
+function latestCodexRateLimits(captures) {
+  const event = [...captures]
+    .reverse()
+    .find((capture) => capture.harness === "codex" && capture.details?.codex_rate_limits);
+  return event?.details?.codex_rate_limits || null;
+}
+
+function readWarnings(events, sessionsById) {
+  const warnings = [];
+  const byDoc = new Map();
+  const bySession = new Map();
+  for (const event of events) {
+    const id = event.session_id || "unknown";
+    if (!bySession.has(id)) bySession.set(id, []);
+    bySession.get(id).push(event);
+    const result = event.last_result;
+    const fileHash = event.tool?.file_path_hash;
+    const ext = event.tool?.file_ext;
+    if (event.event === "PostToolUse" && result?.chars >= LARGE_DOCUMENT_READ_CHARS && DOC_EXTS.has(ext)) {
+      warnings.push(readWarningRow("large_document_read", event, sessionsById, {
+        file_ext: ext,
+        file_path_hash: fileHash,
+        read_count: 1,
+        result_chars: result.chars,
+        approx_tokens: approxTokens(result.chars),
+        hint: "large document read; use jdocmunch section lookup when available",
+      }));
+    }
+    if (event.event === "PostToolUse" && fileHash && DOC_EXTS.has(ext)) {
+      const key = `${id}:${fileHash}`;
+      const cur = byDoc.get(key) || { event, count: 0, chars: 0 };
+      cur.count += 1;
+      cur.chars += result?.chars || 0;
+      byDoc.set(key, cur);
+    }
+  }
+  for (const cur of byDoc.values()) {
+    if (cur.count >= REPEATED_DOCUMENT_READ_COUNT && cur.chars >= LARGE_DOCUMENT_READ_CHARS) {
+      warnings.push(readWarningRow("repeated_document_read", cur.event, sessionsById, {
+        file_ext: cur.event.tool?.file_ext,
+        file_path_hash: cur.event.tool?.file_path_hash,
+        read_count: cur.count,
+        result_chars: cur.chars,
+        approx_tokens: approxTokens(cur.chars),
+        hint: "same document read repeatedly; reuse anchors or use jdocmunch section lookup",
+      }));
+    }
+  }
+  for (const [id, sessionEvents] of bySession) {
+    const repeatedDocs = warnings.filter((warning) => warning.session_id === id && warning.type === "repeated_document_read").length;
+    const jdocCalls = sessionEvents.filter((event) => mcpServerOf(event.last_result?.tool || event.tool?.name) === "jdocmunch").length;
+    if (repeatedDocs > 0 && jdocCalls === 0) {
+      warnings.push(readWarningRow("stale_doc_lookup", sessionEvents[0], sessionsById, {
+        read_count: repeatedDocs,
+        jdocmunch_calls: jdocCalls,
+        hint: "docs were read repeatedly with no jdocmunch calls observed",
+      }));
+    }
+    const jcodeCalls = sessionEvents.filter((event) => mcpServerOf(event.last_result?.tool || event.tool?.name) === "jcodemunch").length;
+    const nativeSourceReads = sessionEvents.filter((event) => isNativeSourceRead(event)).length;
+    if (jcodeCalls > 0 && nativeSourceReads >= MIXED_CODE_LOOKUP_NATIVE_READS) {
+      warnings.push(readWarningRow("mixed_code_lookup", sessionEvents[0], sessionsById, {
+        read_count: nativeSourceReads,
+        jcodemunch_calls: jcodeCalls,
+        hint: "jcodemunch was used but many native source reads still occurred",
+      }));
+    }
+  }
+  return warnings.filter(Boolean).sort((a, b) => (b.result_chars || 0) - (a.result_chars || 0));
+}
+
+function readWarningRow(type, event, sessionsById, extra) {
+  const sessionId = event.session_id || "unknown";
+  return {
+    type,
+    session_id: sessionId,
+    session_short_id: sessionId.slice(0, 8),
+    harness: event.harness || null,
+    repo: event.repo?.label || "unknown",
+    ts: event.ts,
+    context: sessionContext(sessionId, sessionsById),
+    ...extra,
+  };
+}
+
+function isNativeSourceRead(event) {
+  const toolName = event.tool?.name || event.last_result?.tool;
+  if (toolName !== "Read" && toolName !== "Grep" && toolName !== "Glob" && toolName !== "Bash") return false;
+  if (SOURCE_EXTS.has(event.tool?.file_ext)) return true;
+  return toolName === "Bash" && (event.tool?.command_chars || 0) > 0 && (event.last_result?.chars || 0) > 0;
 }
 
 function hasTokens(event) {

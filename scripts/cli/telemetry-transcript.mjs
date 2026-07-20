@@ -23,6 +23,11 @@ function emptyCounters() {
   return {
     byteOffset: 0,
     tokens: { input: 0, output: 0, cache_creation: 0, cache_read: 0 },
+    totalTokensOverride: null,
+    tokenSchemaSeen: false,
+    unsupportedUsageSeen: false,
+    codexRateLimits: null,
+    codexReasoningOutputTokens: 0,
     toolCounts: {},
     mcpServers: {},
     assistantTurns: 0,
@@ -97,13 +102,23 @@ export function transcriptStats(transcriptPath, { sessionId, collectorDir } = {}
       continue; // Skip partial/corrupt lines; a half-written tail must not break capture.
     }
     const message = entry.message;
+    const codexResult = applyCodexEntry(counters, entry);
+    if (codexResult?.last_result) {
+      lastResult = codexResult.last_result;
+      if (!counters.biggestResult || codexResult.last_result.chars > counters.biggestResult.chars) {
+        counters.biggestResult = codexResult.last_result;
+      }
+    }
     if (!message) continue;
 
     if (entry.type === "assistant") {
       counters.assistantTurns += 1;
       if (message.model) counters.model = message.model;
-      addUsage(counters.tokens, message.usage);
-      if (message.usage) counters.maxOutputTokens = Math.max(counters.maxOutputTokens, message.usage.output_tokens || 0);
+      if (message.usage) {
+        counters.tokenSchemaSeen = true;
+        addUsage(counters.tokens, message.usage);
+        counters.maxOutputTokens = Math.max(counters.maxOutputTokens, message.usage.output_tokens || 0);
+      }
       for (const block of Array.isArray(message.content) ? message.content : []) {
         if (block.type !== "tool_use" || typeof block.name !== "string") continue;
         counters.toolCalls += 1;
@@ -134,7 +149,8 @@ export function transcriptStats(transcriptPath, { sessionId, collectorDir } = {}
   counters.byteOffset = newOffset;
   saveCursor(collectorDir, sessionId, counters);
 
-  const tokens = { ...counters.tokens, total: counters.tokens.input + counters.tokens.output + counters.tokens.cache_creation + counters.tokens.cache_read };
+  const computedTotal = counters.tokens.input + counters.tokens.output + counters.tokens.cache_creation + counters.tokens.cache_read;
+  const tokens = { ...counters.tokens, total: counters.totalTokensOverride ?? computedTotal };
   return {
     model: counters.model,
     tokens,
@@ -144,6 +160,12 @@ export function transcriptStats(transcriptPath, { sessionId, collectorDir } = {}
     mcp_calls: counters.mcpCalls,
     tools: { ...counters.toolCounts },
     mcp_servers: { ...counters.mcpServers },
+    details: {
+      token_schema_seen: counters.tokenSchemaSeen,
+      unsupported_usage_seen: counters.unsupportedUsageSeen,
+      codex_reasoning_output_tokens: counters.codexReasoningOutputTokens,
+      codex_rate_limits: counters.codexRateLimits,
+    },
     // Freshest result this call saw (likely driver of this capture's delta); null when this call's
     // chunk had no new tool_result (e.g. two hook fires between one tool's use and its result).
     last_result: lastResult,
@@ -155,6 +177,11 @@ function hydrateCounters(cursor) {
   return {
     byteOffset: cursor.byteOffset || 0,
     tokens: { input: 0, output: 0, cache_creation: 0, cache_read: 0, ...cursor.tokens },
+    totalTokensOverride: typeof cursor.totalTokensOverride === "number" ? cursor.totalTokensOverride : null,
+    tokenSchemaSeen: cursor.tokenSchemaSeen === true,
+    unsupportedUsageSeen: cursor.unsupportedUsageSeen === true,
+    codexRateLimits: cursor.codexRateLimits || null,
+    codexReasoningOutputTokens: cursor.codexReasoningOutputTokens || 0,
     toolCounts: { ...cursor.toolCounts },
     mcpServers: { ...cursor.mcpServers },
     assistantTurns: cursor.assistantTurns || 0,
@@ -176,6 +203,83 @@ function resultChars(content) {
     return content.reduce((sum, block) => sum + (typeof block?.text === "string" ? block.text.length : safeLen(block)), 0);
   }
   return safeLen(content);
+}
+
+function applyCodexEntry(counters, entry) {
+  if (entry.type !== "event_msg" && entry.type !== "response_item") return null;
+  const payload = entry.payload || {};
+  if (entry.type === "event_msg" && entry.name === "token_count") {
+    const info = payload.info || {};
+    const usage = info.total_token_usage || {};
+    const total = numberOrNull(usage.total_tokens);
+    if (total !== null) {
+      counters.tokenSchemaSeen = true;
+      counters.totalTokensOverride = total;
+      const input = numberOrNull(usage.input_tokens) || 0;
+      const cached = numberOrNull(usage.cached_input_tokens) || 0;
+      counters.tokens.input = Math.max(0, input - cached);
+      counters.tokens.cache_read = cached;
+      counters.tokens.output = numberOrNull(usage.output_tokens) || 0;
+      counters.tokens.cache_creation = numberOrNull(usage.cache_creation_input_tokens) || 0;
+      counters.codexReasoningOutputTokens = numberOrNull(usage.reasoning_output_tokens) || counters.codexReasoningOutputTokens;
+      counters.maxOutputTokens = Math.max(counters.maxOutputTokens, counters.tokens.output);
+    } else {
+      counters.unsupportedUsageSeen = true;
+    }
+    if (payload.rate_limits) counters.codexRateLimits = privacySafeRateLimits(payload.rate_limits);
+    return null;
+  }
+
+  if (entry.type === "event_msg" && entry.name === "mcp_tool_call_end") {
+    recordCodexToolCall(counters, payload.tool_name || payload.name || payload.tool);
+    return null;
+  }
+
+  if (entry.type !== "response_item") return null;
+  const item = payload.type ? payload : entry.item || {};
+  if (item.type === "function_call") {
+    recordCodexToolCall(counters, item.name || item.tool_name);
+    if (typeof item.call_id === "string") counters.pendingToolNameById[item.call_id] = item.name || item.tool_name;
+    if (typeof item.id === "string") counters.pendingToolNameById[item.id] = item.name || item.tool_name;
+    return null;
+  }
+  if (item.type === "function_call_output") {
+    const tool = counters.pendingToolNameById[item.call_id] || counters.pendingToolNameById[item.id] || null;
+    delete counters.pendingToolNameById[item.call_id];
+    delete counters.pendingToolNameById[item.id];
+    return { last_result: { tool, chars: resultChars(item.output), is_error: item.is_error === true } };
+  }
+  return null;
+}
+
+function recordCodexToolCall(counters, toolName) {
+  if (typeof toolName !== "string" || !toolName) return;
+  counters.toolCalls += 1;
+  bump(counters.toolCounts, toolName);
+  const server = mcpServerOf(toolName);
+  if (server) {
+    counters.mcpCalls += 1;
+    bump(counters.mcpServers, server);
+  }
+}
+
+function numberOrNull(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function privacySafeRateLimits(rateLimits) {
+  if (!Array.isArray(rateLimits)) return rateLimits && typeof rateLimits === "object" ? privacySafeRateLimit(rateLimits) : null;
+  return rateLimits.map(privacySafeRateLimit).filter(Boolean);
+}
+
+function privacySafeRateLimit(limit) {
+  if (!limit || typeof limit !== "object") return null;
+  return {
+    name: typeof limit.name === "string" ? limit.name : null,
+    used_percent: numberOrNull(limit.used_percent),
+    window_minutes: numberOrNull(limit.window_minutes),
+    resets_at: typeof limit.resets_at === "string" ? limit.resets_at : null,
+  };
 }
 
 function safeLen(value) {

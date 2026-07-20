@@ -81,6 +81,20 @@
           the chat</span
         >
       </h2>
+      <section class="panel" id="qualitypanel" style="display: none">
+        <h2>data quality warnings</h2>
+        <div id="qualitywarnings"></div>
+        <div class="legend">
+          capture records exist, but some usage data could not be parsed or trusted
+        </div>
+      </section>
+      <section class="panel" id="readwarningpanel" style="display: none">
+        <h2>read warnings</h2>
+        <div id="readwarnings"></div>
+        <div class="legend">
+          repeated or large reads are advisory signals · click to inspect the session
+        </div>
+      </section>
       <section class="panel" id="loopspanel" style="display: none">
         <h2>⚠ loops detected</h2>
         <div id="loops"></div>

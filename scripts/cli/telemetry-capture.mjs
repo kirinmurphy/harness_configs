@@ -55,6 +55,7 @@ export function telemetryCaptureCommand(args) {
           max_output_tokens: stats.max_output_tokens,
         }
       : null,
+    details: stats ? stats.details : null,
     // Likely driver of this capture's delta (freshest tool result to enter context) and the
     // heaviest result seen all session. Sizes/tool names only — no result content is stored.
     last_result: stats ? stats.last_result : null,

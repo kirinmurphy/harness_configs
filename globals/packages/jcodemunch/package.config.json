@@ -49,6 +49,11 @@
       "scripts": ["hooks/block-source-exploration.mjs"]
     },
     {
+      "type": "hooks",
+      "source": "hooks-codex.json",
+      "harness": "codex"
+    },
+    {
       "type": "permissions",
       "allow": [
         "mcp__jcodemunch__resolve_repo",

@@ -55,7 +55,16 @@ function renderMeta(data) {
     tmpl.statItem("sessions", fmt(data.sessions.length)),
     tmpl.statItem("spike rate", spikeRate + "%" + (spikeCount ? " (" + fmt(spikeCount) + ")" : "")),
     tmpl.statItem("scope", scope),
+    ...(data.codex_provider_rate_limits ? [tmpl.statItem("Codex provider limit", codexRateLimitLabel(data.codex_provider_rate_limits))] : []),
   );
+}
+
+function codexRateLimitLabel(rateLimits) {
+  const rows = Array.isArray(rateLimits) ? rateLimits : [rateLimits];
+  const row = rows.find((limit) => typeof limit?.used_percent === "number") || rows[0];
+  if (!row) return "reported";
+  const used = typeof row.used_percent === "number" ? row.used_percent + "% used" : "reported";
+  return (row.name ? row.name + " · " : "") + used;
 }
 
 function redrawChart() {
@@ -116,6 +125,8 @@ async function load(force, opts) {
   renders.renderPackageCost(data.package_cost);
   renders.renderRegression(data.regression);
   renders.renderLoops(data.loops);
+  renders.renderDataQualityWarnings(data.data_quality_warnings);
+  renders.renderReadWarnings(data.read_warnings);
   allSessions = data.sessions || [];
   renders.renderSessions(data.sessions);
   renders.renderSpikes(data.spikes);

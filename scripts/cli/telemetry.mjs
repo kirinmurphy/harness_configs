@@ -187,6 +187,9 @@ function telemetryReport(args) {
   const report = analyzeTelemetry(events);
   // Headline first: the deterministic "what this means" conclusions, before any raw table.
   printInsights(report.insights);
+  printDataQualityWarnings(report.data_quality_warnings);
+  printReadWarnings(report.read_warnings);
+  printCodexProviderRateLimits(report.codex_provider_rate_limits);
   if (deep) printDeepRead(report);
   console.log(`\nevents: ${report.event_count}  (with token data: ${report.capture_count})`);
   printTop("repos", countBy(events, (event) => event.repo?.label ?? "unknown"));
@@ -218,6 +221,37 @@ function printUsageWindows(windows) {
   console.log("\nrecent token usage (local estimate, not server rate limit):");
   console.log(`  last 5h:  ~${fmt(windows.five_hour).padStart(12)} tok`);
   console.log(`  last 7d:  ~${fmt(windows.seven_day).padStart(12)} tok`);
+}
+
+function printDataQualityWarnings(warnings) {
+  if (!warnings || warnings.length === 0) return;
+  console.log("\ndata quality warnings:");
+  for (const warning of warnings.slice(0, 8)) {
+    console.log(`  ${warning.harness || "unknown"} ${warning.type}: ${warning.hint} (${warning.events} events)`);
+  }
+}
+
+function printReadWarnings(warnings) {
+  if (!warnings || warnings.length === 0) return;
+  console.log("\nread warnings:");
+  for (const warning of warnings.slice(0, 8)) {
+    const size = warning.approx_tokens ? ` ~${fmt(warning.approx_tokens)} tok` : "";
+    const file = warning.file_ext ? ` ${warning.file_ext}/${warning.file_path_hash || "unknown"}` : "";
+    console.log(`  ${warning.type} ${warning.repo}/${warning.session_short_id}${file}${size}: ${warning.hint}`);
+  }
+}
+
+function printCodexProviderRateLimits(rateLimits) {
+  if (!rateLimits) return;
+  const rows = Array.isArray(rateLimits) ? rateLimits : [rateLimits];
+  if (rows.length === 0) return;
+  console.log("\nCodex provider rate limits (provider-reported, not local estimate):");
+  for (const row of rows.slice(0, 4)) {
+    const label = row.name || "limit";
+    const used = typeof row.used_percent === "number" ? `${row.used_percent}% used` : "usage unknown";
+    const window = typeof row.window_minutes === "number" ? `, ${row.window_minutes}m window` : "";
+    console.log(`  ${label}: ${used}${window}`);
+  }
 }
 
 // The actionable headline: each token spike grouped by the pattern that drove it, with the change to

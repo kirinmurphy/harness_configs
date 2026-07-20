@@ -5,7 +5,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "if [ -d \"$(pwd)/docs\" ]; then if [ -f \"$(pwd)/docs/.jdm-indexed\" ]; then echo 'jdocmunch: docs indexed. Use search_sections, get_toc, get_section for doc exploration.'; else echo 'jdocmunch: docs/ exists but not indexed. Run: roborepo index docs docs/'; fi; fi"
+          "command": "if [ -d \"$(pwd)/docs\" ]; then if [ -f \"$(pwd)/docs/.jdm-indexed\" ]; then echo 'jdocmunch: docs indexed. Use search_sections, get_toc, get_section for doc exploration. Reuse anchors/facts after reading a doc once; do not reread full docs unless changed or necessary.'; else echo 'jdocmunch: docs/ exists but not indexed. Run: roborepo index docs docs/ before broad doc exploration when practical.'; fi; fi"
         }
       ]
     }

@@ -175,6 +175,61 @@ export function createRenders(modals) {
     })));
   }
 
+  function renderDataQualityWarnings(rows) {
+    const panel = document.getElementById("qualitypanel");
+    if (!rows || !rows.length) { panel.style.display = "none"; return; }
+    panel.style.display = "";
+    const data = rows.slice(0, 10);
+    tmpl.table("qualitywarnings", ["harness", "warning", "events", "hint"], data.map((w) => [
+      w.harness || "unknown",
+      w.type,
+      { num: w.events || 0, cls: "spike" },
+      w.hint || "inspect telemetry capture",
+    ]), data.map((w) => () => openModal(
+      "data quality · " + w.type,
+      (w.harness || "unknown") + " · " + (w.events || 0) + " events",
+      [
+        ["harness", w.harness || "unknown"],
+        ["warning", w.type],
+        ["events", w.events || 0],
+        ["token records", w.token_records ?? "—"],
+        ["hint", w.hint || "inspect telemetry capture"],
+      ],
+    )));
+  }
+
+  function renderReadWarnings(rows) {
+    const panel = document.getElementById("readwarningpanel");
+    if (!rows || !rows.length) { panel.style.display = "none"; return; }
+    panel.style.display = "";
+    const data = rows.slice(0, 10);
+    tmpl.table("readwarnings", ["session", "warning", "reads", "approx tokens"], data.map((w) => [
+      w.context?.title ? clip(w.context.title, 34) : w.repo + "/" + (w.session_short_id || short(w.session_id)),
+      w.type,
+      { num: w.read_count || 0 },
+      { num: w.approx_tokens ? fmt(w.approx_tokens) : "—", cls: w.approx_tokens ? "spike" : "" },
+    ]), data.map((w) => () => flaggedEventModal({
+      title: "read warning · " + w.type,
+      sub: w.repo + (w.harness ? " · " + w.harness : ""),
+      rows: [
+        ["warning", w.type],
+        ["repo", w.repo],
+        ["session", w.session_id],
+        ["file extension", w.file_ext || "—"],
+        ["file path hash", w.file_path_hash || "—"],
+        ["reads", w.read_count || 0],
+        ["result chars", w.result_chars ? fmt(w.result_chars) : "—"],
+        ["approx tokens", w.approx_tokens ? fmt(w.approx_tokens) : "—"],
+        ["hint", w.hint],
+      ],
+      sessionId: w.session_id,
+      harness: w.harness || w.context?.harness,
+      repo: w.repo,
+      finding: w.type + " in " + w.repo,
+      context: w.context,
+    })));
+  }
+
   function renderComparison(c) {
     tmpl.table("comparison", ["cohort", "n", "avg Δ", "avg tools", "mcp rate"], [
       ["spike", { num: c.spike.count }, { num: fmt(c.spike.avg_delta) }, { num: c.spike.avg_tool_calls }, { num: c.spike.mcp_rate }],
@@ -185,6 +240,6 @@ export function createRenders(modals) {
   return {
     renderCauses, renderSessions, renderSpikes, renderContrib, renderInsights,
     renderGroupCost, renderToolCost, renderAnatomy, renderPackageCost,
-    renderRegression, renderLoops, renderComparison,
+    renderRegression, renderLoops, renderDataQualityWarnings, renderReadWarnings, renderComparison,
   };
 }

@@ -89,19 +89,17 @@ function buildHarnessPlan(harness) {
     const backupMerged = mergeRootConfig(harness, baselineText, backupText);
     const repaired = normalizeGeneratedMarkers(mergeRootConfig(harness, backupMerged, activeText));
     if (repaired === activeText) continue;
-    const backupIssues = issues.slice();
     const keyDiff = diffConfigKeys(harness, activeNormalized, repaired);
     const hasRealDiff = keyDiff.added.length > 0 || keyDiff.changed.length > 0;
-    if (hasRealDiff) {
-      backupIssues.push(summarizeKeyDiff(backup.path, keyDiff));
-    } else {
-      backupIssues.push(
-        `no setting content differs from ${backup.path} — only formatting/ordering changes (safe no-op)`,
-      );
-    }
+    // No recoverable setting differs — mergeRootConfig only reserialized in a different
+    // key/section order. Not actionable; do not surface a repair plan for a safe no-op.
+    // (A duplicated-marker issue is handled by the marker-only path below.)
+    if (!hasRealDiff) break;
+    const backupIssues = issues.slice();
+    backupIssues.push(summarizeKeyDiff(backup.path, keyDiff));
     const plan = repairPlan(harness, activePath, repaired, backupIssues);
     plan.keyDiff = keyDiff;
-    plan.why = hasRealDiff ? describeWhyNow(backup, baselinePath, activePath) : null;
+    plan.why = describeWhyNow(backup, baselinePath, activePath);
     return plan;
   }
 

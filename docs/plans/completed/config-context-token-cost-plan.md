@@ -70,6 +70,13 @@ Post-review UI revisions (user decisions, superseding this plan's original UI sp
   (`--chip-ink`, `--chip-muted-bg/-ink` palette vars, both themes).
 - Dark-mode readability: text that used the `--off` fill shade (modal path, behavior default,
   panel footnote, source-empty, clickable underline) now uses `--dim`.
+- Later warning-panel follow-up: the top context bar moved into the agent files table as a
+  `Usage` row, low/green rules-file chips were suppressed, medium/high warnings render above the
+  table sorted by severity and percent-of-high-threshold, and skill discovery warnings include an
+  info tooltip explaining aggregate vs. individually large discovery descriptions.
+- Thresholds now live in `manifests/platform/context-cost-thresholds.json` with separate scales
+  for startup payloads, rendered rules, rule fragments, skill discovery metadata (same threshold
+  values as Chat-Time Output snippets), and on-demand skill/command loads.
 
 ## Goal
 

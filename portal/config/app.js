@@ -67,9 +67,7 @@ function render(snap) {
   // Section model comes straight from the server snapshot (buildBehaviorView), no client fork.
   const view = snap.behaviorView || [];
   main.replaceChildren(
-    // Harness Context summary first; tmpl.contextSummary returns null on snapshots that
-    // predate contextCost (rolling upgrade), so it drops out cleanly.
-    ...[tmpl.contextSummary(snap)].filter(Boolean),
+    ...[tmpl.contextWarnings(snap)].filter(Boolean),
     tmpl.configFiles(snap, { onInspectClick: openSourceModal }),
     ...view.map((section) => renderSection(section, snap.contextCost)).filter(Boolean),
   );

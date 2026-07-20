@@ -13,14 +13,17 @@ import { loadSlashCommandPlan } from "./slash-commands.mjs";
 
 export const ESTIMATOR = { method: "estimated-v1", version: 1, charsPerToken: 4 };
 
-// Product heuristic for rating a startup payload, not a model context limit.
-// low < mediumAt; medium = mediumAt..highAbove inclusive; high > highAbove.
-export const CONTEXT_LEVEL_THRESHOLDS = { mediumAt: 8000, highAbove: 20000 };
+const THRESHOLDS_FILE = path.join(repoRoot, "manifests", "platform", "context-cost-thresholds.json");
+export const CONTEXT_COST_THRESHOLDS = JSON.parse(fs.readFileSync(THRESHOLDS_FILE, "utf8"));
 
-// Separate, much smaller scale for one package's on-demand cost (its skill body plus command
-// wrapper — what a single invocation actually loads). The startup scale would rate every
-// individual skill "low" and say nothing.
-export const ON_DEMAND_LEVEL_THRESHOLDS = { mediumAt: 1000, highAbove: 3000 };
+// Product heuristics, not model context limits. low < mediumAt; medium =
+// mediumAt..highAbove inclusive; high > highAbove. Thresholds live in a manifest so product
+// tuning does not require code edits.
+export const CONTEXT_LEVEL_THRESHOLDS = CONTEXT_COST_THRESHOLDS.startupPayload;
+export const RENDERED_RULES_LEVEL_THRESHOLDS = CONTEXT_COST_THRESHOLDS.renderedRules;
+export const RULE_FRAGMENT_LEVEL_THRESHOLDS = CONTEXT_COST_THRESHOLDS.ruleFragment;
+export const SKILL_DISCOVERY_LEVEL_THRESHOLDS = CONTEXT_COST_THRESHOLDS.skillDiscovery;
+export const ON_DEMAND_LEVEL_THRESHOLDS = CONTEXT_COST_THRESHOLDS.onDemand;
 
 const HARNESSES = ["claude", "codex"];
 
@@ -44,6 +47,24 @@ export function classifyStartupLevel(tokens) {
 export function classifyOnDemandLevel(tokens) {
   if (tokens < ON_DEMAND_LEVEL_THRESHOLDS.mediumAt) return "low";
   if (tokens > ON_DEMAND_LEVEL_THRESHOLDS.highAbove) return "high";
+  return "medium";
+}
+
+export function classifyRenderedRulesLevel(tokens) {
+  if (tokens < RENDERED_RULES_LEVEL_THRESHOLDS.mediumAt) return "low";
+  if (tokens > RENDERED_RULES_LEVEL_THRESHOLDS.highAbove) return "high";
+  return "medium";
+}
+
+export function classifyRuleFragmentLevel(tokens) {
+  if (tokens < RULE_FRAGMENT_LEVEL_THRESHOLDS.mediumAt) return "low";
+  if (tokens > RULE_FRAGMENT_LEVEL_THRESHOLDS.highAbove) return "high";
+  return "medium";
+}
+
+export function classifySkillDiscoveryLevel(tokens) {
+  if (tokens < SKILL_DISCOVERY_LEVEL_THRESHOLDS.mediumAt) return "low";
+  if (tokens > SKILL_DISCOVERY_LEVEL_THRESHOLDS.highAbove) return "high";
   return "medium";
 }
 
@@ -251,9 +272,11 @@ function harnessCost(harness, { catalog, enabledIds, tools, deps, plan }) {
     onDemandTokens,
     breakdown: {
       rulesTokens,
+      rulesLevel: classifyRenderedRulesLevel(rulesTokens),
       coreBaselineTokens,
       packageRulesTokens,
       skillDiscoveryTokens,
+      skillDiscoveryLevel: classifySkillDiscoveryLevel(skillDiscoveryTokens),
       reconciliationDelta,
     },
     components,
@@ -266,18 +289,41 @@ function aggregatePackages(catalog, enabledIds, harnesses) {
     const perHarness = {};
     for (const harness of HARNESSES) {
       const own = harnesses[harness].components.filter((c) => c.packageId === pkg.id);
+      const rulesTokens = own
+        .filter((c) => c.sourceType === "rules")
+        .reduce((total, c) => total + (c.tokens || 0), 0);
+      const discoveryTokens = own
+        .filter((c) => c.basis === "skill-discovery-metadata" || c.basis === "command-discovery-metadata")
+        .reduce((total, c) => total + (c.tokens || 0), 0);
+      const activeDiscoveryTokens = own
+        .filter((c) => c.basis === "skill-discovery-metadata" || c.basis === "command-discovery-metadata")
+        .filter((c) => c.active)
+        .reduce((total, c) => total + (c.tokens || 0), 0);
       perHarness[harness] = {
         startupTokens: sumTokens(own, "startup"),
+        rulesTokens,
+        discoveryTokens,
+        activeDiscoveryTokens,
         onDemandTokens: sumTokens(own, "on-demand"),
         activeStartupTokens: sumTokens(own, "startup", { activeOnly: true }),
         activeOnDemandTokens: sumTokens(own, "on-demand", { activeOnly: true }),
       };
     }
     const startupTokens = Math.max(...HARNESSES.map((h) => perHarness[h].startupTokens));
+    const rulesTokens = Math.max(...HARNESSES.map((h) => perHarness[h].rulesTokens));
+    const discoveryTokens = Math.max(...HARNESSES.map((h) => perHarness[h].discoveryTokens));
+    const activeDiscoveryTokens = Math.max(...HARNESSES.map((h) => perHarness[h].activeDiscoveryTokens));
     const onDemandTokens = Math.max(...HARNESSES.map((h) => perHarness[h].onDemandTokens));
     packages[pkg.id] = {
+      label: pkg.label || pkg.id,
       startupTokens,
       startupLevel: classifyStartupLevel(startupTokens),
+      rulesTokens,
+      rulesLevel: classifyRuleFragmentLevel(rulesTokens),
+      discoveryTokens,
+      discoveryLevel: classifySkillDiscoveryLevel(discoveryTokens),
+      activeDiscoveryTokens,
+      activeDiscoveryLevel: classifySkillDiscoveryLevel(activeDiscoveryTokens),
       onDemandTokens,
       onDemandLevel: classifyOnDemandLevel(onDemandTokens),
       // Active totals honor each component's own active flag (enabled AND, for skills,
@@ -316,6 +362,7 @@ function statSig(absPath, deps) {
 
 function buildSignature({ catalog, enabledIds, tools, deps }) {
   const parts = [`v${ESTIMATOR.version}`, [...enabledIds].sort().join(",")];
+  parts.push(statSig(THRESHOLDS_FILE, deps));
   for (const dir of new Set(Object.values(SYSTEM_RULE_DIRS).flat())) {
     const absDir = path.join(deps.repoRoot, dir);
     for (const file of deps.listDir(absDir).filter((f) => f.endsWith(".md"))) {
@@ -354,6 +401,10 @@ export function buildContextCost({ catalog, enabledIds, tools, deps = defaultDep
     method: ESTIMATOR.method,
     estimatorVersion: ESTIMATOR.version,
     thresholds: { ...CONTEXT_LEVEL_THRESHOLDS },
+    startupThresholds: { ...CONTEXT_LEVEL_THRESHOLDS },
+    renderedRulesThresholds: { ...RENDERED_RULES_LEVEL_THRESHOLDS },
+    ruleFragmentThresholds: { ...RULE_FRAGMENT_LEVEL_THRESHOLDS },
+    skillDiscoveryThresholds: { ...SKILL_DISCOVERY_LEVEL_THRESHOLDS },
     onDemandThresholds: { ...ON_DEMAND_LEVEL_THRESHOLDS },
     harnesses,
     packages: aggregatePackages(catalog, enabledIds, harnesses),

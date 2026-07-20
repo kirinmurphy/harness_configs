@@ -349,6 +349,7 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
       ok: true,
       title: `/${id} + ${cmd.skill}`,
       path: `${command.path} + ${skill.path}`,
+      paths: [command.path, skill.path],
       content: [
         `# /${id} (${harnessSafe})`,
         command.content.trimEnd(),

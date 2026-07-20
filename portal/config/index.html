@@ -18,26 +18,31 @@
       </div>
       <div class="modal-footer" id="modal-footer" hidden></div>
     </dialog>
-    <template id="tpl-context-summary">
-      <div class="context-bar">
-        <span class="context-bar-item"
-          ><strong>Claude:</strong>
-          <token-chip data-context-startup="claude"></token-chip
-        ></span>
-        <span class="context-bar-item"
-          ><strong>Codex:</strong>
-          <token-chip data-context-startup="codex"></token-chip
-        ></span>
-      </div>
+    <template id="tpl-context-warnings">
+      <section class="token-warnings" aria-live="polite">
+        <p class="token-warnings-title" data-slot="title"></p>
+        <div class="token-warning-list" data-slot="items"></div>
+      </section>
     </template>
     <template id="tpl-config-files">
       <section class="panel wide">
-        <div class="panel-head"><h2>Generated Files</h2></div>
         <div class="config-grid" role="table" aria-label="Agent files">
           <div class="config-grid-head" role="row">
             <div role="columnheader"></div>
             <div role="columnheader">Claude</div>
             <div role="columnheader">Codex</div>
+          </div>
+          <div class="config-grid-row" role="row">
+            <div class="config-type" role="cell">
+              <strong>Usage</strong>
+              <span>Startup context loaded automatically.</span>
+            </div>
+            <div class="harness-provider" role="cell">
+              <token-chip data-context-startup="claude"></token-chip>
+            </div>
+            <div class="harness-provider" role="cell">
+              <token-chip data-context-startup="codex"></token-chip>
+            </div>
           </div>
           <div class="config-grid-row" role="row">
             <div class="config-type" role="cell">

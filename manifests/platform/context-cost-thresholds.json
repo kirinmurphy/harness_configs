@@ -1,0 +1,22 @@
+{
+  "startupPayload": {
+    "mediumAt": 8000,
+    "highAbove": 20000
+  },
+  "renderedRules": {
+    "mediumAt": 8000,
+    "highAbove": 20000
+  },
+  "ruleFragment": {
+    "mediumAt": 400,
+    "highAbove": 1200
+  },
+  "skillDiscovery": {
+    "mediumAt": 400,
+    "highAbove": 1200
+  },
+  "onDemand": {
+    "mediumAt": 1000,
+    "highAbove": 3000
+  }
+}

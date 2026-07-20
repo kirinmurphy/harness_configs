@@ -64,7 +64,7 @@ export function harnessChipSpec(contextCost, harnessId) {
       { label: "Package rule snippets", tokens: b.packageRulesTokens || 0 },
       { label: "Skill discovery descriptions", tokens: discovery },
     ],
-    legend: contextCost.thresholds,
+    legend: contextCost.startupThresholds || contextCost.thresholds,
   };
 }
 
@@ -74,12 +74,126 @@ export function rulesChipSpec(contextCost, harnessId) {
   const harness = contextCost?.harnesses?.[harnessId];
   if (!harness) return null;
   const rulesTokens = harness.breakdown?.rulesTokens ?? harness.startupTokens;
+  const legend = contextCost.renderedRulesThresholds || contextCost.thresholds;
   return {
     tokens: rulesTokens,
-    level: levelFor(rulesTokens, contextCost.thresholds),
+    level: harness.breakdown?.rulesLevel || levelFor(rulesTokens, legend),
     detail: "Rendered rules, loaded at chat start.",
-    legend: contextCost.thresholds,
+    legend,
   };
+}
+
+function warningRatio(spec) {
+  const highAbove = spec?.legend?.highAbove;
+  if (!Number.isFinite(spec?.tokens) || !Number.isFinite(highAbove) || highAbove <= 0) return 0;
+  return spec.tokens / highAbove;
+}
+
+function warningEntry(label, spec, extra = {}) {
+  if (!spec || !["medium", "high"].includes(spec.level)) return null;
+  return { label, spec, ratio: warningRatio(spec), ...extra };
+}
+
+function splitWarningLabel(label) {
+  const match = String(label).match(/^(.+?)(\s+\(.+\))$/);
+  return match ? { name: match[1], suffix: match[2] } : { name: String(label), suffix: "" };
+}
+
+function discoveryWarning(contextCost) {
+  const legend = contextCost?.skillDiscoveryThresholds || contextCost?.thresholds;
+  const rows = Object.entries(contextCost?.harnesses || {}).map(([harness, cost]) => ({
+    harness,
+    tokens: cost.breakdown?.skillDiscoveryTokens || 0,
+  }));
+  const max = rows.reduce((best, row) => (row.tokens > best.tokens ? row : best), { harness: "", tokens: 0 });
+  const spec = {
+    tokens: max.tokens,
+    level: levelFor(max.tokens, legend),
+    detail: "Total skill discovery descriptions loaded at chat start while enabled.",
+    breakdown: rows.map((row) => ({
+      label: row.harness === "codex" ? "Codex" : "Claude",
+      tokens: row.tokens,
+    })),
+    legend,
+  };
+  return warningEntry("Skill Discovery Descriptions (in total)", spec, {
+    info: discoveryWarningInfo(contextCost),
+  });
+}
+
+function discoveryWarningInfo(contextCost) {
+  const itemWarnings = skillDiscoveryItemWarnings(contextCost);
+  if (itemWarnings.length) {
+    return "Total of all enabled skill discovery descriptions. Individual large entries: "
+      + itemWarnings.map((item) => `${item.label} (${formatTokens(item.tokens)})`).join(", ")
+      + ".";
+  }
+  return "Total of all enabled skill discovery descriptions. No single discovery description is large on its own; the warning comes from the combined total.";
+}
+
+function skillDiscoveryItemWarnings(contextCost) {
+  const legend = contextCost?.skillDiscoveryThresholds || contextCost?.thresholds;
+  const byPackage = contextCost?.packages || {};
+  return Object.entries(byPackage)
+    .map(([id, cost]) => ({
+      label: cost.label || id,
+      tokens: cost.activeDiscoveryTokens || 0,
+      level: cost.activeDiscoveryLevel || levelFor(cost.activeDiscoveryTokens || 0, legend),
+      ratio: warningRatio({ tokens: cost.activeDiscoveryTokens || 0, legend }),
+    }))
+    .filter((item) => ["medium", "high"].includes(item.level))
+    .sort((a, b) => (b.level === "high") - (a.level === "high") || b.ratio - a.ratio || a.label.localeCompare(b.label));
+}
+
+function itemWarningEntry(item, contextCost) {
+  const cost = item.contextCost;
+  if (!cost) return null;
+  const isCommand = item.inspect?.kind === "command-skill";
+  if (cost.onDemandTokens > 0 && cost.onDemandLevel && cost.onDemandLevel !== "low") {
+    return warningEntry(item.label + (isCommand ? " (when run)" : " (when loaded)"), {
+      tokens: cost.onDemandTokens,
+      level: cost.onDemandLevel || null,
+      detail: isCommand ? "Loaded when the command runs." : "Loaded when the skill is invoked.",
+      legend: contextCost.onDemandThresholds,
+    });
+  }
+  if (cost.rulesTokens > 0 && cost.rulesLevel && cost.rulesLevel !== "low") {
+    return warningEntry(item.label + " (rules snippet)", {
+      tokens: cost.rulesTokens,
+      level: cost.rulesLevel || null,
+      detail: "Rule snippet included in rendered rules while enabled.",
+      legend: contextCost.ruleFragmentThresholds || contextCost.thresholds,
+    });
+  }
+  if (cost.discoveryTokens > 0 && cost.discoveryLevel && cost.discoveryLevel !== "low") {
+    return warningEntry(item.label + " (discovery)", {
+      tokens: cost.discoveryTokens,
+      level: cost.discoveryLevel || null,
+      detail: "Discovery metadata, loaded at chat start while enabled.",
+      legend: contextCost.skillDiscoveryThresholds || contextCost.thresholds,
+    });
+  }
+  return null;
+}
+
+function compareWarningEntries(a, b) {
+  const levelDelta = (b.spec.level === "high") - (a.spec.level === "high");
+  if (levelDelta) return levelDelta;
+  return b.ratio - a.ratio || a.label.localeCompare(b.label);
+}
+
+export function tokenWarningEntries(snap) {
+  const contextCost = snap?.contextCost;
+  if (!contextCost) return [];
+  const entries = [
+    warningEntry("CLAUDE.md", rulesChipSpec(contextCost, "claude")),
+    warningEntry("AGENTS.md", rulesChipSpec(contextCost, "codex")),
+    discoveryWarning(contextCost),
+    ...(snap.behaviorView || [])
+      .flatMap((section) => section.items || [])
+      .map((item) => itemWarningEntry(item, contextCost)),
+  ].filter(Boolean);
+  return entries.map((entry) => ({ ...entry, ...splitWarningLabel(entry.label) })).sort(compareWarningEntries);
 }
 
 // Labeled chip specs for the source-inspect modal's dedicated cost row: what does the thing
@@ -103,9 +217,9 @@ export function inspectChipSpecs(inspect, itemCost, snap) {
         label: "Startup",
         spec: {
           tokens: itemCost.startupTokens,
-          level: levelFor(itemCost.startupTokens, contextCost.thresholds),
+          level: levelFor(itemCost.startupTokens, contextCost.skillDiscoveryThresholds || contextCost.thresholds),
           detail: "Discovery metadata, loaded at chat start while enabled.",
-          legend: contextCost.thresholds,
+          legend: contextCost.skillDiscoveryThresholds || contextCost.thresholds,
         },
       });
     }
@@ -129,9 +243,9 @@ export function inspectChipSpecs(inspect, itemCost, snap) {
       label: "Startup",
       spec: {
         tokens: itemCost.startupTokens,
-        level: levelFor(itemCost.startupTokens, contextCost.thresholds),
-        detail: "Included at chat start while enabled.",
-        legend: contextCost.thresholds,
+        level: itemCost.rulesLevel || levelFor(itemCost.startupTokens, contextCost.ruleFragmentThresholds || contextCost.thresholds),
+        detail: "Rule snippet included in rendered rules while enabled.",
+        legend: contextCost.ruleFragmentThresholds || contextCost.thresholds,
       },
     }];
   }
@@ -158,14 +272,24 @@ export function contextCostChipSpecs(item, contextCost) {
         legend: contextCost.onDemandThresholds,
       },
     });
-  } else if (cost.startupTokens > 0 && cost.startupLevel && cost.startupLevel !== "low") {
+  } else if (cost.rulesTokens > 0 && cost.rulesLevel && cost.rulesLevel !== "low") {
     chips.push({
       label: "Startup",
       spec: {
-        tokens: cost.startupTokens,
-        level: cost.startupLevel,
-        detail: "Included at chat start while enabled." + differNote,
-        legend: contextCost.thresholds,
+        tokens: cost.rulesTokens,
+        level: cost.rulesLevel,
+        detail: "Rule snippet included in rendered rules while enabled." + differNote,
+        legend: contextCost.ruleFragmentThresholds || contextCost.thresholds,
+      },
+    });
+  } else if (cost.discoveryTokens > 0 && cost.discoveryLevel && cost.discoveryLevel !== "low") {
+    chips.push({
+      label: "Startup",
+      spec: {
+        tokens: cost.discoveryTokens,
+        level: cost.discoveryLevel,
+        detail: "Discovery metadata, loaded at chat start while enabled." + differNote,
+        legend: contextCost.skillDiscoveryThresholds || contextCost.thresholds,
       },
     });
   }

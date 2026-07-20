@@ -19,11 +19,27 @@ export function createConfigModal() {
   document.getElementById("modal-close").addEventListener("click", close);
   portalWireBackdropClose(dialogEl, close);
 
+  function setPaths(pathText) {
+    const paths = Array.isArray(pathText)
+      ? pathText
+      : String(pathText || "").split(" + ");
+    pathEl.replaceChildren(
+      ...paths
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .map((p) => {
+          const row = document.createElement("span");
+          row.textContent = p;
+          return row;
+        }),
+    );
+  }
+
   // `chips` is an array of { label, spec } — a dedicated row below the path, one labeled chip
   // per moment a cost applies ("Startup:", "When loaded:"), never mixed into the title line.
   function setHeader(title, pathText, chips = []) {
     titleEl.textContent = title || "";
-    pathEl.textContent = pathText || "";
+    setPaths(pathText);
     costRowEl.replaceChildren(...chips.map((entry) => tmpl.labeledTokenChip(entry)));
     costRowEl.hidden = chips.length === 0;
   }
@@ -67,7 +83,7 @@ export function createConfigModal() {
         contentEl.textContent = "error: " + (data.error || "failed to load");
         return;
       }
-      setHeader(data.title || inspect.label, data.path || "", chips);
+      setHeader(data.title || inspect.label, data.paths || data.path || "", chips);
       setContent(data);
       if (inspect.kind === "live-rules") {
         setFooter(tmpl.modalDefaults(rules, onDefaultClick));

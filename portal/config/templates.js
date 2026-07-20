@@ -8,6 +8,7 @@ import {
   resolveDriftChip,
   harnessChipSpec,
   rulesChipSpec,
+  tokenWarningEntries,
 } from "./state.js";
 
 // Applies a chip spec ({ tokens, level, detail, breakdown, legend }) to a <token-chip> element;
@@ -26,6 +27,14 @@ export function applyTokenChip(chipEl, spec) {
   chipEl.legend = spec.legend || null;
 }
 
+function applyWarningTokenChip(chipEl, spec) {
+  if (!spec || !["medium", "high"].includes(spec.level)) {
+    applyTokenChip(chipEl, null);
+    return;
+  }
+  applyTokenChip(chipEl, spec);
+}
+
 // Builds a "Label: [chip]" pair for the popup cost row / row-level warning chips.
 export function labeledTokenChip({ label, spec }) {
   const wrap = document.createElement("span");
@@ -37,6 +46,57 @@ export function labeledTokenChip({ label, spec }) {
   applyTokenChip(chip, spec);
   wrap.append(labelEl, chip);
   return wrap;
+}
+
+function warningInfoIcon(info) {
+  const wrap = document.createElement("span");
+  wrap.className = "token-warning-info";
+  wrap.tabIndex = 0;
+  wrap.setAttribute("role", "button");
+  wrap.setAttribute("aria-label", "Skill discovery description details");
+  wrap.setAttribute("aria-expanded", "false");
+  wrap.textContent = "ⓘ";
+
+  const tip = document.createElement("span");
+  tip.className = "token-warning-tip";
+  tip.hidden = true;
+  tip.textContent = info;
+  wrap.append(tip);
+
+  const show = () => {
+    tip.hidden = false;
+    wrap.setAttribute("aria-expanded", "true");
+  };
+  const hide = () => {
+    tip.hidden = true;
+    wrap.setAttribute("aria-expanded", "false");
+  };
+  wrap.addEventListener("mouseenter", show);
+  wrap.addEventListener("mouseleave", hide);
+  wrap.addEventListener("focus", show);
+  wrap.addEventListener("blur", hide);
+  wrap.addEventListener("click", () => (tip.hidden ? show() : hide()));
+  wrap.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hide();
+  });
+  return wrap;
+}
+
+function tokenWarningItem({ name, suffix, spec, info }) {
+  const row = document.createElement("div");
+  row.className = "token-warning-item";
+  const labelEl = document.createElement("span");
+  labelEl.className = "token-warning-label";
+  const nameEl = document.createElement("strong");
+  nameEl.textContent = name;
+  labelEl.append(nameEl);
+  if (suffix) labelEl.append(document.createTextNode(suffix));
+  labelEl.append(":");
+  if (info) labelEl.append(warningInfoIcon(info));
+  const chip = document.createElement("token-chip");
+  applyTokenChip(chip, spec);
+  row.append(labelEl, chip);
+  return row;
 }
 
 export function modalDefaults(rules, onDefaultClick) {
@@ -195,22 +255,25 @@ export function standardSection(section, { onInspectClick, onToggle, contextCost
   return panel;
 }
 
-// One-row summary bar: per-harness startup token chips with a contributing-amounts tooltip.
-// One chip per harness — a chat runs in one harness, so no combined total is shown.
-export function contextSummary(snap) {
-  const cost = snap.contextCost;
-  if (!cost) return null;
-  const bar = tpl("tpl-context-summary");
-  for (const chip of bar.querySelectorAll("[data-context-startup]")) {
-    applyTokenChip(chip, harnessChipSpec(cost, chip.dataset.contextStartup));
-  }
-  return bar;
+export function contextWarnings(snap) {
+  const entries = tokenWarningEntries(snap);
+  if (!entries.length) return null;
+  const panel = tpl("tpl-context-warnings");
+  const hasHigh = entries.some((entry) => entry.spec.level === "high");
+  panel.querySelector('[data-slot="title"]').textContent = hasHigh
+    ? "The following elements have a high token use:"
+    : "The following elements have elevated token use:";
+  panel.querySelector('[data-slot="items"]').replaceChildren(...entries.map(tokenWarningItem));
+  return panel;
 }
 
 export function configFiles(snap, { onInspectClick }) {
   const panel = tpl("tpl-config-files");
+  for (const chip of panel.querySelectorAll("[data-context-startup]")) {
+    applyTokenChip(chip, harnessChipSpec(snap.contextCost, chip.dataset.contextStartup));
+  }
   for (const chip of panel.querySelectorAll("[data-cost^=\"rules-\"]")) {
-    applyTokenChip(chip, rulesChipSpec(snap.contextCost, chip.dataset.cost.slice("rules-".length)));
+    applyWarningTokenChip(chip, rulesChipSpec(snap.contextCost, chip.dataset.cost.slice("rules-".length)));
   }
   for (const btn of panel.querySelectorAll("[data-config-kind]")) {
     const kind = btn.dataset.configKind;

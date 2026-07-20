@@ -5,10 +5,15 @@
 import assert from "node:assert/strict";
 import {
   ESTIMATOR,
+  CONTEXT_COST_THRESHOLDS,
   CONTEXT_LEVEL_THRESHOLDS,
+  RULE_FRAGMENT_LEVEL_THRESHOLDS,
+  SKILL_DISCOVERY_LEVEL_THRESHOLDS,
   ON_DEMAND_LEVEL_THRESHOLDS,
   estimateTokens,
   classifyStartupLevel,
+  classifyRuleFragmentLevel,
+  classifySkillDiscoveryLevel,
   classifyOnDemandLevel,
   buildContextCost,
   invalidateContextCostCache,
@@ -77,7 +82,7 @@ function makeFixture() {
   };
 
   const catalog = [
-    { id: "alpha", sourceFile: `${REPO}/pkgs/alpha/package.config.json`, components: [{ type: "rules", harness: "both", source: "pkgs/alpha/rules.md" }], resources: [{ type: "rules" }] },
+    { id: "alpha", label: "Alpha", sourceFile: `${REPO}/pkgs/alpha/package.config.json`, components: [{ type: "rules", harness: "both", source: "pkgs/alpha/rules.md" }], resources: [{ type: "rules" }] },
     { id: "beta", sourceFile: `${REPO}/pkgs/beta/package.config.json`, components: [{ type: "rules", harness: "codex", source: "pkgs/beta/rules.md" }], resources: [{ type: "rules" }] },
     { id: "gamma", sourceFile: `${REPO}/pkgs/gamma/package.config.json`, components: [{ type: "skill", id: "gamma" }], resources: [{ type: "skill", id: "gamma" }] },
     { id: "solo", sourceFile: `${REPO}/pkgs/solo/package.config.json`, components: [], resources: [{ type: "slash-command", name: "solo" }] },
@@ -124,6 +129,25 @@ check("levels: boundaries at 7999/8000/20000/20001", () => {
   assert.equal(classifyStartupLevel(20001), "high");
   assert.equal(CONTEXT_LEVEL_THRESHOLDS.mediumAt, 8000);
   assert.equal(CONTEXT_LEVEL_THRESHOLDS.highAbove, 20000);
+  assert.equal(CONTEXT_COST_THRESHOLDS.startupPayload.mediumAt, 8000);
+});
+
+check("rule fragment levels: separate small-snippet scale", () => {
+  assert.equal(classifyRuleFragmentLevel(399), "low");
+  assert.equal(classifyRuleFragmentLevel(400), "medium");
+  assert.equal(classifyRuleFragmentLevel(1200), "medium");
+  assert.equal(classifyRuleFragmentLevel(1201), "high");
+  assert.equal(RULE_FRAGMENT_LEVEL_THRESHOLDS.mediumAt, 400);
+  assert.equal(RULE_FRAGMENT_LEVEL_THRESHOLDS.highAbove, 1200);
+});
+
+check("skill discovery levels: separate metadata scale", () => {
+  assert.equal(classifySkillDiscoveryLevel(399), "low");
+  assert.equal(classifySkillDiscoveryLevel(400), "medium");
+  assert.equal(classifySkillDiscoveryLevel(1200), "medium");
+  assert.equal(classifySkillDiscoveryLevel(1201), "high");
+  assert.equal(SKILL_DISCOVERY_LEVEL_THRESHOLDS.mediumAt, RULE_FRAGMENT_LEVEL_THRESHOLDS.mediumAt);
+  assert.equal(SKILL_DISCOVERY_LEVEL_THRESHOLDS.highAbove, RULE_FRAGMENT_LEVEL_THRESHOLDS.highAbove);
 });
 
 check("on-demand levels: skill-size scale boundaries at 999/1000/3000/3001", () => {
@@ -174,6 +198,9 @@ check("no double counting: each rules fragment appears once in components", () =
   assert.equal(alphaFragments.length, 1);
   const cores = result.harnesses.claude.components.filter((c) => c.sourceType === "core");
   assert.equal(cores.length, 1);
+  assert.equal(result.packages.alpha.label, "Alpha");
+  assert.equal(result.packages.alpha.rulesTokens, result.packages.alpha.startupTokens);
+  assert.equal(result.packages.alpha.rulesLevel, classifyRuleFragmentLevel(result.packages.alpha.rulesTokens));
 });
 
 check("harness divergence: codex-only rules raise codex totals only", () => {
@@ -206,6 +233,20 @@ check("skills: discovery is startup, full body is on-demand, install gates activ
   assert.ok(result.harnesses.claude.breakdown.skillDiscoveryTokens > 0);
   // per-package on-demand rating uses the skill-size scale
   assert.equal(result.packages.gamma.onDemandLevel, classifyOnDemandLevel(result.packages.gamma.onDemandTokens));
+  assert.equal(result.packages.gamma.discoveryLevel, classifySkillDiscoveryLevel(result.packages.gamma.discoveryTokens));
+  assert.equal(result.packages.gamma.activeDiscoveryTokens, result.packages.gamma.perHarness.claude.activeDiscoveryTokens);
+  assert.equal(result.packages.gamma.activeDiscoveryLevel, classifySkillDiscoveryLevel(result.packages.gamma.activeDiscoveryTokens));
+});
+
+check("snapshot exposes separate threshold families", () => {
+  invalidateContextCostCache();
+  const fixture = makeFixture();
+  const result = build(fixture, ["alpha", "gamma"]);
+  assert.deepEqual(result.startupThresholds, CONTEXT_COST_THRESHOLDS.startupPayload);
+  assert.deepEqual(result.renderedRulesThresholds, CONTEXT_COST_THRESHOLDS.renderedRules);
+  assert.deepEqual(result.ruleFragmentThresholds, CONTEXT_COST_THRESHOLDS.ruleFragment);
+  assert.deepEqual(result.skillDiscoveryThresholds, CONTEXT_COST_THRESHOLDS.skillDiscovery);
+  assert.deepEqual(result.onDemandThresholds, CONTEXT_COST_THRESHOLDS.onDemand);
 });
 
 check("active rollups honor install state, not just enabled state", () => {

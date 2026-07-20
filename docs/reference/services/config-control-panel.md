@@ -129,10 +129,10 @@ one response.
 ### Harness Context estimates
 
 The snapshot carries `contextCost` (computed by `scripts/cli/context-cost.mjs`): per-harness
-token estimates for the configuration itself, rendered as a one-row "Tokens used in config"
-bar at the top of the page (one `<token-chip>` per harness, colored by level, with a
-contributing-amounts tooltip), plus per-section rollups, per-package cost badges, matching
-chips on the Generated Files rules cells, and a chip in the source-inspect popup header.
+token estimates for the configuration itself, rendered as a `Usage` row in the agent files
+grid (one `<token-chip>` per harness, colored by level, with a contributing-amounts tooltip),
+plus warning summaries, per-package cost badges, matching chips on the rules-file cells when
+rules are medium/high, and chips in the source-inspect popup header.
 `<token-chip>` is a shared web component (`portal/shared/token-chip.js`, styles in
 `base.css`) so every cost chip renders and behaves identically.
 
@@ -154,11 +154,20 @@ Config/settings syntax, hook scripts, and MCP schemas never receive token number
 labeled `Not prompt context`, `conditional`, and `runtime-dependent` respectively. Disabled
 packages keep a measured *potential* cost but contribute nothing to active totals.
 
+The warning panel appears above the agent files grid only when medium/high items exist. It sorts
+high items first, then by each item's percent of its own high threshold. Warning labels bold only
+the item name; parenthetical qualifiers such as `(when loaded)` stay plain. The aggregate
+`Skill Discovery Descriptions (in total)` warning includes an info tooltip that explains the
+number is the active total of skill description metadata and distinguishes individual large
+contributors from many small descriptions adding up.
+
 All counts are estimates (`~4 characters per token`, `method: "estimated-v1"`). The
-low/medium/high rating uses the exported `CONTEXT_LEVEL_THRESHOLDS` constant (low < 8k,
-medium 8k–20k, high > 20k tokens) — a roborepo product heuristic for reusable startup
-instructions, not a model context limit. Results are cached by a stat signature over every
-input file plus enabled/install state, so the 10-second portal poll does not re-read sources.
+low/medium/high rating uses threshold families from
+`manifests/platform/context-cost-thresholds.json`: full startup payloads and rendered rules use
+the large startup scale; package rule snippets and skill discovery metadata use the smaller
+Chat-Time Output/snippet scale; single skill/command invocations use the on-demand skill-size
+scale. Results are cached by a stat signature over every input file plus enabled/install state,
+so the 10-second portal poll does not re-read sources.
 
 ### Permission scope
 

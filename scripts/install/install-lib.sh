@@ -643,6 +643,14 @@ export_user_config() {
   local merge_tmp=""
 
   if [[ "${dry_run}" -eq 1 ]]; then
+    # A real pre-existing local file is a collision the preview must name — and, for Claude,
+    # surface whether it even parses (a malformed settings.json can't be safely merged). Root
+    # configs route through this function rather than install_copy_item, so the JSON/collision
+    # diagnostics that path prints have to be emitted here too or dry-run goes silent on them.
+    if [[ -e "${home_path}" && ! -L "${home_path}" ]]; then
+      echo "collision: ${home_path}"
+      describe_user_config "${harness}" "${home_path}"
+    fi
     say merge "${home_path} <- ${src}"
     return 0
   fi
@@ -650,6 +658,53 @@ export_user_config() {
   if [[ ! -e "${merge_helper}" ]]; then
     echo "missing merge helper: ${merge_helper}" >&2
     return 1
+  fi
+
+  # Honor --on-conflict abort for root configs too. A genuine collision is a real local file the
+  # user already had (not absent, not one of roborepo's own repo symlinks). The layered-merge path
+  # is otherwise non-destructive, but the documented abort contract is "stop before writing
+  # anything" (docs/reference/internal/config-collision-handling.md, root-config-layered-inheritance),
+  # so we bail before mutating instead of silently merging.
+  if [[ "${ROBOREPO_ON_CONFLICT:-}" == "abort" && -e "${home_path}" && ! -L "${home_path}" ]]; then
+    echo "abort: install canceled by user" >&2
+    exit 1
+  fi
+
+  # Drift-aware collision routing (docs/plans/completed/root-config-layered-inheritance.md, and
+  # config-collision-handling.md): a *drifted* root config is one the user hand-edited after
+  # roborepo's last write (sidecar hash mismatch). For a fresh adopt ("unwritten") or a
+  # roborepo-clean file, the non-destructive merge below is correct and policy-agnostic. But once a
+  # file has genuinely drifted, the merge must NOT silently fold the baseline into the user's edits
+  # and — critically — must not record a fresh "clean" write that hides the drift on the next run.
+  #   keep      -> leave home_path exactly as the user has it; stage the repo candidate as a
+  #                *_update_TIMESTAMP sibling; do not merge, do not record a write (drift stays visible).
+  #   overwrite -> back the drifted file up to *_original_TIMESTAMP, then merge/write the baseline
+  #                (user allow/deny/profiles are still preserved by the merge; the backup is the
+  #                honest record of what was replaced). Falls through to the merge below.
+  local backup_drifted=0
+  if [[ -f "${home_path}" && ! -L "${home_path}" ]]; then
+    local drift_status
+    drift_status="$(root_config_drift_status "${harness}" "${home_path}")"
+    if [[ "${drift_status}" == "drifted" ]]; then
+      case "${ROBOREPO_ON_CONFLICT:-}" in
+        keep)
+          stage_update_item "${repo_rel}" "${home_path}"
+          say ok "${home_path} ${RR_DIM}(drifted local root config kept; candidate staged as *_update_*)${RR_RESET}"
+          return 0
+          ;;
+        overwrite)
+          backup_drifted=1
+          ;;
+      esac
+    fi
+  fi
+
+  if [[ "${backup_drifted}" -eq 1 ]]; then
+    local original_path
+    original_path="$(timestamped_path "${home_path}" original)"
+    mkdir -p "$(dirname "${original_path}")"
+    cp "${home_path}" "${original_path}"
+    say backup "${home_path} -> ${original_path}"
   fi
 
   if [[ -L "${home_path}" ]]; then

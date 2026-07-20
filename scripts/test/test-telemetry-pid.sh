@@ -64,20 +64,25 @@ assert "stop: server process exited" pid_gone "${new_pid}"
 output=$(node "${cli}" telemetry stop 2>&1 || true)
 assert "stop with no server: exits cleanly" str_contains "${output}" "no server"
 
-# --- detached start fails if an unrelated foreground server already owns the port ---
+# --- detached start refuses an explicit port owned by a FOREIGN (non-roborepo) process ---
+# A healthy roborepo portal on the port is adopted (reuse), not a conflict; the real guarantee
+# is that a foreign/unhealthy listener on an explicitly requested port is refused without
+# clobbering it or leaving a stale PID behind. Occupy the port with a bare 404 server so
+# probePortal() classifies it as non-current.
 conflict_port=14318
-node "${cli}" serve --no-open --port "${conflict_port}" > "${work}/foreground.log" 2>&1 &
-foreground_pid=$!
+node -e "require('http').createServer((_,res)=>{res.statusCode=404;res.end('nope')}).listen(${conflict_port},'127.0.0.1')" &
+foreign_pid=$!
 for _ in $(seq 1 25); do
-  curl -s "http://127.0.0.1:${conflict_port}/api/config" >/dev/null 2>&1 && break
+  curl -s "http://127.0.0.1:${conflict_port}/" >/dev/null 2>&1 && break
   sleep 0.2
 done
 echo "9999999" > "${pidfile}"
 conflict_output=$(node "${cli}" serve --detach --no-open --port "${conflict_port}" 2>&1 || true)
-assert "detached start conflict: reports not ready" str_contains "${conflict_output}" "portal server"
-assert "detached start conflict: stale PID cleared" test ! -f "${pidfile}"
-kill "${foreground_pid}" 2>/dev/null || true
-wait "${foreground_pid}" 2>/dev/null || true
+assert "foreign-occupied explicit port: refused with actionable message" \
+  str_contains "${conflict_output}" "stop it or pass --port"
+assert "foreign-occupied explicit port: stale PID cleared, port left untouched" test ! -f "${pidfile}"
+kill "${foreign_pid}" 2>/dev/null || true
+wait "${foreign_pid}" 2>/dev/null || true
 
 echo ""
 echo "results: ${pass} passed, ${fail} failed"

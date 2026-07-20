@@ -496,7 +496,10 @@ test_adopt_keep_preserves_root_configs() {
   run_harness_install_args "$home_dir" "$home_dir/out" --on-conflict keep
 
   [[ ! -L "$home_dir/.claude/settings.json" ]] && pass "keep leaves Claude config as regular file" || fail "keep leaves Claude config as regular file"
-  grep -qF '"model": "opus"' "$home_dir/.claude/settings.json" \
+  # NB: a top-level "model" key is deliberately stripped from Claude settings on merge (harness
+  # parity — roborepo must not pin a global model; see root-config-merge.mjs and
+  # root-config-merge-check.mjs). Assert on a user key the merge is meant to keep instead.
+  grep -qF 'Bash(foo)' "$home_dir/.claude/settings.json" \
     && pass "keep preserves Claude config content" \
     || fail "keep preserves Claude config content" "$home_dir/out"
   [[ ! -L "$home_dir/.codex/config.toml" ]] && pass "keep leaves Codex config as regular file" || fail "keep leaves Codex config as regular file"

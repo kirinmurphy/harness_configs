@@ -362,6 +362,11 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     if (options.open) openLocalUrl(`${existingUrl}${openPath}`);
     return;
   }
+  // Not reusing: any previously tracked portal (foreground or detached, on any port — including a
+  // prior `--port 0` instance that resolvePortalPort never probes) is about to be superseded by
+  // this one, so stop it first instead of leaving it running alongside the new instance.
+  killExistingServer();
+  writePid(process.pid);
   options.port = resolved.port;
   const portalUrl = (port) => `http://127.0.0.1:${port}`;
   // Clean up the PID file when the server exits cleanly (SIGTERM from stop or OS shutdown).

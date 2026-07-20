@@ -60,13 +60,12 @@ function render(snapshot) {
   renderWarnings(snapshot);
   const groups = [];
   if (snapshot.projects.length) {
-    for (const project of snapshot.projects) {
-      groups.push(tmpl.group(project.name, `${project.instances.length} active`, project.instances.map((instance) => tmpl.instanceCard(project, instance, cardActions()))));
-    }
+    const activeNodes = snapshot.projects.flatMap((project) => project.instances.map((instance) => tmpl.instanceCard(project, instance, cardActions())));
+    groups.push(tmpl.group("Active apps", `${activeNodes.length} running`, activeNodes));
   }
   if (snapshot.unmatchedInstances.length) {
     const nodes = snapshot.unmatchedInstances.map((instance) => tmpl.instanceCard({ name: "Other instances", identity: instance.project?.identity }, instance, cardActions()));
-    groups.push(tmpl.group("Other instances", `${nodes.length} needs association`, nodes));
+    groups.push(tmpl.collapsibleGroup("Other instances", `${nodes.length} hidden/noisy listeners`, nodes));
   }
   if (snapshot.inactiveProjects.length) {
     groups.push(tmpl.group("Inactive saved projects", `${snapshot.inactiveProjects.length} saved`, snapshot.inactiveProjects.map((project) => tmpl.inactiveCard(project, cardActions()))));
@@ -100,7 +99,13 @@ function renderWarnings(snapshot) {
 }
 
 function cardActions() {
-  return { onAddLink: openAddLinkDialog, onEditLinks: openLinkDialog, onAssociate: openAppDialog };
+  return {
+    onAddLink: openAddLinkDialog,
+    onEditLinks: openLinkDialog,
+    onAssociate: openAppDialog,
+    onToggleMenu: toggleActionMenu,
+    onCloseMenus: closeActionMenus,
+  };
 }
 
 function openAddLinkDialog(project, instance) {
@@ -131,6 +136,10 @@ function openAppDialog(project, instance) {
 refs.refresh.addEventListener("click", () => load({ force: true }));
 refs.search.addEventListener("input", () => {
   if (lastSnapshot) applySnapshot(lastSnapshot);
+});
+document.addEventListener("click", closeActionMenus);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeActionMenus();
 });
 refs.linkForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -186,6 +195,22 @@ async function mutateDialog(dialog, errorId, mutate) {
     dialog.close();
   } catch (err) {
     document.getElementById(errorId).textContent = err.message;
+  }
+}
+
+function toggleActionMenu(card) {
+  const menu = card.querySelector("[data-menu]");
+  const trigger = card.querySelector("[data-action=menu]");
+  const willOpen = menu.hidden;
+  closeActionMenus();
+  menu.hidden = !willOpen;
+  trigger.setAttribute("aria-expanded", willOpen ? "true" : "false");
+}
+
+function closeActionMenus() {
+  for (const menu of refs.content.querySelectorAll("[data-menu]")) {
+    menu.hidden = true;
+    menu.closest(".instance-card")?.querySelector("[data-action=menu]")?.setAttribute("aria-expanded", "false");
   }
 }
 

@@ -95,15 +95,11 @@
               <label for="root-input" id="root-form-label"
                 >Look for all /docs/plans folders in:</label
               >
-              <button
-                type="button"
-                class="info-icon"
+              <portal-info-icon
                 id="info-icon"
                 aria-haspopup="dialog"
                 aria-expanded="false"
-              >
-                i
-              </button>
+              ></portal-info-icon>
             </div>
             <div class="root-form-row">
               <input
@@ -289,6 +285,7 @@
         <dd data-slot="value"></dd>
       </div>
     </template>
+    <script src="/portal/shared/info-icon.js" type="module"></script>
     <script src="/portal/plans/elements/index.js" type="module"></script>
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/plans/app.js" type="module"></script>

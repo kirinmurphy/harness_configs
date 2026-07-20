@@ -25,12 +25,18 @@ export function group(title, meta, nodes) {
   return node;
 }
 
+export function collapsibleGroup(title, meta, nodes) {
+  const node = fill(tpl("tpl-collapsible-group"), { title, meta });
+  node.querySelector("[data-slot=items]").append(...nodes);
+  return node;
+}
+
 export function instanceCard(project, instance, actions) {
   const node = fill(tpl("tpl-card"), {
-    title: instance.app?.name || project.name || instance.process.command,
+    title: displayName(project.name || instance.app?.name || instance.process.command),
     subtitle: project.name ? `${project.name} · ${instance.title || "localhost app"}` : instance.title || instance.project?.identity || "unmatched instance",
     status: statusText(instance),
-    latency: instance.latencyMs == null ? "" : `${instance.latencyMs}ms`,
+    latency: instance.latencyMs == null ? "unknown" : `${instance.latencyMs}ms`,
     process: `${instance.process.command} (${instance.process.pid})`,
     identity: `${instance.project?.evidence || project.evidence || "runtime"} · ${instance.project?.confidence || project.confidence || "low"}`,
     bind: `${instance.bind.address}:${instance.bind.port}`,
@@ -60,10 +66,10 @@ export function instanceCard(project, instance, actions) {
 
 export function inactiveCard(project, actions) {
   const node = fill(tpl("tpl-card"), {
-    title: project.app.name,
+    title: displayName(project.name || project.app.name),
     subtitle: `${project.name} · inactive`,
     status: "Inactive",
-    latency: "",
+    latency: "not running",
     process: "not running",
     identity: project.identity,
     bind: "no active listener",
@@ -90,11 +96,35 @@ export function linkEmpty() {
 }
 
 function wireCardActions(node, project, instance, actions) {
-  node.querySelector("[data-action=link]").addEventListener("click", () => actions.onAddLink(project, instance));
-  node.querySelector("[data-action=edit]").addEventListener("click", () => actions.onEditLinks(project, instance));
-  node.querySelector("[data-action=copy]").addEventListener("click", () => portalCopyText(instance.origin || ""));
+  const trigger = node.querySelector("[data-action=menu]");
+  const menu = node.querySelector("[data-menu]");
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    actions.onToggleMenu(node);
+  });
+  node.querySelector("[data-action=link]").addEventListener("click", () => {
+    actions.onCloseMenus();
+    actions.onAddLink(project, instance);
+  });
+  node.querySelector("[data-action=edit]").addEventListener("click", () => {
+    actions.onCloseMenus();
+    actions.onEditLinks(project, instance);
+  });
+  node.querySelector("[data-action=copy]").addEventListener("click", () => {
+    actions.onCloseMenus();
+    portalCopyText(instance.origin || "");
+  });
   node.querySelector("[data-action=open]").addEventListener("click", () => {
+    actions.onCloseMenus();
     if (instance.origin) window.open(instance.origin, "_blank", "noopener,noreferrer");
   });
-  node.querySelector("[data-action=associate]").addEventListener("click", () => actions.onAssociate(project, instance));
+  node.querySelector("[data-action=associate]").addEventListener("click", () => {
+    actions.onCloseMenus();
+    actions.onAssociate(project, instance);
+  });
+  menu.addEventListener("click", (event) => event.stopPropagation());
+}
+
+function displayName(value) {
+  return String(value || "localhost app").replace(/(^|[-_\s])(\w)/g, (_, prefix, char) => `${prefix === "_" || prefix === "-" ? " " : prefix}${char.toUpperCase()}`);
 }

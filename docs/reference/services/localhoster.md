@@ -30,6 +30,10 @@ On macOS, RoboRepo:
 - falls back to `path:<realpath>` or low-confidence `process:<cwd>:<command>`
 - probes only loopback-compatible origins and excludes non-HTTP listeners from the default snapshot
 
+HTTP probes are bounded to 8 active instance probes at a time. Each instance still tries its
+compatible host candidates in order so hostname preference remains deterministic while large local
+listener sets cannot stall the portal.
+
 The portal process is represented as built-in identity `roborepo:portal` and is never probed
 recursively.
 
@@ -69,3 +73,10 @@ from loopback, bound body size and timeouts, and treat titles/favicons as untrus
 
 Listeners bound to wildcard or non-loopback interfaces stay visible with a warning. Unsupported
 platforms keep saved settings available while clearly saying automatic discovery is unavailable.
+The unsupported-platform notice links back to this document.
+
+## V1 Limits
+
+V1 does not merge project aliases. If a `path:<realpath>` project later gains a Git remote, saved
+links remain under the old identity until the final V2 alias workflow asks for confirmation and
+performs a cycle-safe merge.

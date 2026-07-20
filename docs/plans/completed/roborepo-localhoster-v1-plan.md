@@ -1,7 +1,7 @@
 ---
 id: localhoster-v1
 priority: high
-next_action: Finish V1 polish gaps: complete link editing/project rename UX, alias migration, refresh-state coverage, unsupported-doc link, and manual macOS validation
+next_action:
 blocked_by: []
 depends_on: []
 related:
@@ -19,7 +19,7 @@ The first iteration intentionally does not require configuration inside project 
 
 ## Review Status
 
-Reviewed after implementation work in this session. The plan is **not ready to move to completed** yet.
+Reviewed after implementation work and macOS validation on 2026-07-20. The plan is **complete**.
 
 Implemented and verified:
 
@@ -30,17 +30,25 @@ Implemented and verified:
 - [x] Snapshot grouping for active identified projects, unmatched instances, and inactive saved projects.
 - [x] Portal route module, `/localhoster` page registration, CLI command, docs, and smoke tests.
 - [x] `npm run test:localhoster` and `npm test` passed.
+- [x] Link management supports individual edit/update/remove/reorder through the existing ordered links mutation.
+- [x] Project friendly-name editing is separate from app naming and association changes.
+- [x] Unsupported discovery notice links to the Localhoster docs served by the portal.
+- [x] Path-to-Git alias migration is deliberately deferred to the final V2 alias workflow, where confirmation and cycle-safe storage exist.
+- [x] Stale/refreshing/failed UI paths retain the last successful snapshot; failed-refresh retention has fixture coverage.
+- [x] Active discovery uses documented bounded probe concurrency.
+- [x] HTTP/TLS/redirect/body/network fixture coverage was expanded for TLS trust-error classification, oversized bodies, same-origin redirects, external redirects, and network-exposure warning rendering.
+- [x] Saved Git-backed project/app associations now use stable project, relative working directory, and command evidence by default, so title changes during a restart do not strand saved links on the old port. Duplicate same-signature listeners are still title-disambiguated to avoid arbitrary attachment.
+- [x] Restart regression coverage proves a saved Git-backed app returns active on a new port and quick links rebuild against the new origin while a sibling same-repository app remains unmatched until associated.
 
-Open items before completion:
+Completion evidence:
 
-- [ ] Expand link management from "add link/remove last link" to true edit/update/remove/reorder of individual saved links.
-- [ ] Add project friendly-name editing, not just app renaming and association changes.
-- [ ] Add explicit documentation link in the unsupported/limited capability notice.
-- [ ] Implement or deliberately defer path-to-Git alias migration after user confirmation; current schema has no alias merge flow.
-- [ ] Add first-class stale/refreshing/failed UI coverage, including failed refresh retaining the last successful snapshot in portal smoke or fixture tests.
-- [ ] Add or document bounded probe concurrency behavior in the active discovery pipeline; current command/probe flow is mostly sequential.
-- [ ] Add fixture coverage for self-signed HTTPS classification, oversized response bodies, same-origin redirects, external redirect rejection, and network-exposure warning rendering.
-- [ ] Run a manual macOS test with multiple real Node/Vite apps on changing ports and record the result.
+- 2026-07-20 macOS manual validation was rerun with isolated `ROBOREPO_STATE_ROOT`, temp Git-backed Node apps, and the real portal API.
+- Passed: multiple real Node apps were discovered, project friendly-name mutation worked, app name/origin mutation worked, link add/edit/delete/reorder worked through `/api/localhoster/links`, a wildcard-bound app produced `bind.scope: "wildcard"` with `bind.warning: "Listener is exposed beyond loopback."`, `/docs/reference/services/localhoster.md` was served by the portal, and cached refresh state remained `idle`/`refreshing` on ordinary polling.
+- Passed: after stopping and restarting a saved Git-backed app on a new port, explicit `/api/localhoster/refresh` returned the project as active and rebuilt the saved `resume` quick link against the new origin.
+- Not exercised manually: the unsupported-platform docs link, because the unsupported notice is browser-rendered and no unsupported-platform fixture was active in the macOS portal run.
+- Verified: `npm run test:localhoster`, `npm test`, and `git diff --check` passed.
+
+No open V1 acceptance items remain.
 
 ## Goals
 

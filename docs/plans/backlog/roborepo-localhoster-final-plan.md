@@ -1,9 +1,8 @@
 ---
 id: localhoster-final
-priority: medium
-next_action: Complete and validate localhoster-v1 before implementing this plan
-blocked_by:
-  - localhoster-v1
+priority: high
+next_action: Start final phase 1: V2 settings migration, aliases, and reversible project/app edits
+blocked_by: []
 depends_on:
   - localhoster-v1
 related: []
@@ -17,6 +16,59 @@ reviewed_commit:
 Evolve the first Localhoster iteration into RoboRepo's complete local application index: a durable catalog of projects, app roles, and current instances; curated navigation; operational health; process and Git context; Docker-aware identity; availability history; and useful diagnostics.
 
 The final iteration retains the core V1 rule: project repositories require no RoboRepo-specific file. Automatic evidence identifies projects, app roles, and instances; machine-local settings hold curated names, associations, health paths, and jump links. Optional repository metadata may enrich results, but it is never required and never outranks an explicit local override.
+
+This plan builds on the current V1 interfaces instead of replacing them:
+
+- `modules/localhoster/discovery.mjs` already discovers macOS listeners, resolves project identity, probes HTTP, and returns browser-safe instances. Final work should split this module into providers while preserving the `discoverInstances()` contract until callers migrate.
+- `modules/localhoster/settings.mjs` already owns strict versioned settings, atomic writes, optimistic revisions, and `project`/`links`/`association` mutations. Final work should migrate this to schema version 2 and add narrow mutation types rather than exposing arbitrary settings writes.
+- `modules/localhoster/snapshot.mjs` already composes active projects, unmatched instances, inactive saved projects, and route URLs from settings plus current origins. Final work should extend this snapshot with provider capabilities, health, history summaries, conflicts, and opaque keys.
+- `scripts/cli/localhoster.mjs` already owns the cached snapshot manager, shared in-flight refresh, portal self-registration, CLI output, and `loadLocalhosterSnapshot()` / `refreshLocalhosterSnapshot()` / `updateLocalhosterSettings()`. Final work should keep this as the bridge and move richer coordination into `modules/localhoster/snapshot.mjs` or a new coordinator module.
+- `scripts/cli/portal-routes-localhoster.mjs` already dispatches the V1 API namespace. Final work should add endpoints through this dispatcher without moving filesystem, process, Docker, Git, or probe logic into `portal-server.mjs`.
+- `portal/localhoster/{app.js,state.js,templates.js,api.js,styles.css}` already follows the portal page pattern. Final work should deepen the same page with real edit/reorder controls, filters, detail drawer, health/history panels, and capability notices rather than adding a separate dashboard.
+
+## Current State
+
+V1 is completed in `docs/plans/completed/roborepo-localhoster-v1-plan.md`. Completion evidence includes:
+
+- `npm run test:localhoster`, `npm test`, and `git diff --check` passed.
+- macOS manual validation on 2026-07-20 used isolated `ROBOREPO_STATE_ROOT`, temp Git-backed Node apps, and the real portal API.
+- multiple real Node apps were discovered.
+- project friendly-name mutation, app name/origin mutation, and quick-link add/edit/delete/reorder worked through the portal API.
+- saved Git-backed links followed a restarted app to a new port and rebuilt against the new origin.
+- wildcard-bound listeners produced the expected network-exposure warning.
+- the Localhoster reference document was served by the portal.
+
+Final phase 1 is ready to start with the V1 identity/settings/snapshot contracts as its base.
+
+## Decision Record
+
+Decisions made now because reversal cost is low or the current architecture already points one way:
+
+- **Keep one Localhoster page and API namespace.** Extend `/localhoster` and `/api/localhoster`; do not create a second final dashboard.
+- **Retain machine-local settings as source of user intent.** No project repo config is required; optional metadata only suggests improvements.
+- **Migrate settings in place to version 2.** Preserve V1 project/app/link IDs, create a backup before first migration, and keep event history outside settings in `events.jsonl`.
+- **Use narrow mutation endpoints.** Continue explicit `links`, `association`, and `project` mutations; add history and metadata reads. Do not accept arbitrary nested settings patches.
+- **Split discovery into composable providers.** Keep macOS `lsof` as the first listener provider, then add Docker, Git, process metrics, and metadata providers behind capability reports.
+- **Use transparent scoring, not opaque learning.** App matching can score evidence, but stored overrides and conflicts must remain inspectable and reversible.
+- **Persist transitions, not samples.** History records first seen, origin change, health transition, network exposure change, duplicate instance change, and inactive transition. CPU, memory, PID, and raw probe samples stay current-only.
+- **Make metadata suggestions opt-in.** Manifest, sitemap, robots, and OpenAPI paths can suggest quick links; curated links remain authoritative.
+- **Keep Windows unsupported until a real adapter meets the same fixture contract.** Windows messaging must be explicit and cannot collapse into an empty state.
+- **Gate expensive work by cadence and demand.** Listener refresh stays fast; Git, Docker, process metrics, health, and metadata use separate cadences or detail-drawer/on-demand loading.
+
+Tradeoffs evaluated:
+
+- **Provider split before final UI vs. patch UI first:** provider split first wins because Docker/process/Git/history all need capability and stale-result plumbing. UI-only work would hard-code assumptions that final providers immediately break.
+- **Schema V2 early vs. after feature work:** V2 early wins because aliases, favorites, hidden state, health paths, match hints, and preferences need one migration surface. Delaying migration multiplies compatibility branches.
+- **History JSONL vs. embedding history in settings:** JSONL wins because settings need atomic replacement and revision conflicts, while events are append-only and compacted. This avoids settings rewrites on every health transition.
+- **Port as weak evidence vs. durable app key:** weak evidence only wins. Ports are useful for display and conflict hints but too volatile for saved identity.
+- **Automatic alias merge vs. confirmation:** confirmation wins. A path identity gaining a Git remote is common, but silent merge can combine unrelated projects with permanent settings loss.
+- **Metadata every refresh vs. on-demand/infrequent:** on-demand/infrequent wins. Metadata fetches raise latency, auth, body-size, and privacy risk without being necessary for core discovery.
+
+Open decisions that remain because they have real consequence:
+
+- **Windows adapter scope:** whether final ships with unsupported Windows only or a limited `win32` listener adapter. Grave consequence: support claim requires fixture parity, timeout behavior, and manual validation.
+- **Maximum history retention defaults:** proposed default is 14 days plus a file-size cap, but exact cap should be set when event shape is implemented and fixture size is known.
+- **UI density default:** compact vs. detailed default card mode can wait until final data exists; store preference locally either way.
 
 ## Goals
 
@@ -387,6 +439,13 @@ Use explicit mutation payloads rather than accepting arbitrary nested settings. 
 
 Use server-issued opaque keys for current instances. Never let the browser request a probe by arbitrary URL, inspect an arbitrary PID, execute a command, or read an arbitrary path.
 
+Mutation compatibility decisions:
+
+- Keep the current V1 "replace full app links array" domain primitive, but expose true UI operations for add, edit, delete, and reorder. Each operation should read current links, construct the new full ordered array, and call the same settings mutation until there is a proven need for per-link patch semantics.
+- Keep `project` mutation as the endpoint for both project and app editing, but make payload shape explicit: project name/favorite/hidden/aliases are project fields; app name/origin preference/health/match hints are app fields.
+- Keep `association` mutation reversible. Association deletion must not delete saved project/app settings or quick links.
+- Add read-only `history` and `metadata` endpoints only after opaque current-instance keys exist in the snapshot.
+
 ## Performance and Resilience
 
 - Run independent providers concurrently with per-provider timeouts.
@@ -477,19 +536,37 @@ Expand `scripts/test/localhoster-check.mjs` and split fixtures by provider when 
 - Include troubleshooting for hostname-sensitive apps, self-signed HTTPS, Docker Desktop, identity conflicts, stale snapshots, and platform limitations.
 - Document settings schema versions and recovery from a corrupt settings/history file.
 
+## V1 Completion Gate
+
+Finish these items before final feature implementation starts:
+
+- [x] Replace the current "add link/remove last link" dialog with true individual quick-link edit, delete, and reorder controls backed by the existing `/api/localhoster/links` mutation.
+- [x] Add project friendly-name editing through `/api/localhoster/project`; keep app renaming in the same workflow but show project and app names as separate fields.
+- [x] Add the unsupported/limited capability documentation link to the portal notice and cover it in a portal fixture.
+- [x] Implement alias migration from `path:<realpath>` to `git:<remote>` only after explicit confirmation, or record a deliberate defer decision in this plan and V1 review status.
+- [x] Add stale, refreshing, and failed-refresh coverage, including failed refresh retaining the last successful snapshot and showing its generated timestamp.
+- [x] Make probe concurrency bounded and documented in `modules/localhoster/discovery.mjs` / `modules/localhoster/probe.mjs`.
+- [x] Add fixture coverage for self-signed HTTPS classification, oversized response bodies, same-origin redirects, external redirect rejection, and network-exposure warning rendering.
+- [ ] Run and record manual macOS validation with multiple real Node/Vite apps on changing ports.
+
+Close these during final phase 1 if they naturally share code with V2 migration:
+
+- [ ] Alias migration confirmation UI and cycle-safe alias storage.
+- [ ] Reversible association and hidden-instance settings view.
+
 ## Implementation Sequence
 
-1. Extend the V1 project/app/instance data model with final fields, identity aliases, and reversible associations.
-2. Add provider interfaces and split the V1 discovery module by responsibility.
-3. Implement Docker/Compose enrichment and merge it with listener observations.
-4. Add process metrics and Git context with caching and timeouts.
-5. Add health states, transition rules, and bounded event history.
-6. Add conventional HTTP metadata and route suggestions without recursive crawling.
-7. Expand the Localhoster page with filters, favorites, detailed app cards, and the evidence/history drawer.
-8. Add targeted mutation endpoints for links and associations.
-9. Complete security, redaction, failure, migration, and performance tests.
-10. Update reference/user documentation and run broad validation.
-11. Perform the full manual macOS scenario matrix before declaring the feature complete.
+1. **Complete the V1 gate.** Finish the V1 gaps listed above, update `docs/reference/services/localhoster.md`, and keep `localhoster-v1` backlog until manual macOS validation is recorded.
+2. **Add schema V2 and aliases.** Migrate settings in place with backup, defaults, fixture tests, alias storage, favorite/hidden flags, health config, match hints, and preferences. Keep V1 mutation compatibility.
+3. **Split provider architecture.** Extract listener, origin, probe, identity, capability, snapshot, and settings responsibilities while preserving current CLI/API behavior.
+4. **Add refresh coordinator semantics.** Add provider cadences, stale provider retention, superseded-generation aborts, bounded concurrency, progress, and partial warnings.
+5. **Add Docker and process providers.** Merge Docker/Compose endpoint evidence with `lsof`, add process metrics on slower/detail cadence, and keep absence/permission failures as capability notes.
+6. **Add Git provider.** Cache branch, short commit, dirty state, detached HEAD, and local ahead/behind when available without network fetches.
+7. **Add health and history.** Normalize health states, add transition debounce, append JSONL events, tolerate malformed final line, and compact by age and size.
+8. **Add metadata suggestions.** Fetch manifest, favicon, robots/sitemap, and OpenAPI only under documented same-origin and size limits. Present suggestions as "Add as quick link".
+9. **Expand portal workflows.** Add filters, favorites, hidden/unmatched settings, project/app menus, evidence/history drawer, diagnostics copy, compact/detail modes, and accessible focus-preserving renders.
+10. **Finalize API surface.** Add `/history` and `/metadata`, tighten opaque-key validation, and cover all mutation security boundaries.
+11. **Document and validate.** Update reference/user docs, CLI docs, README, and run targeted Localhoster, portal smoke, broad RoboRepo, and manual macOS scenario validation before completion.
 
 ## Acceptance Criteria
 

@@ -29,9 +29,7 @@ main {
 .status-pill span,
 .refresh-state,
 .instance-group header span,
-.card-head p,
-.origin-row span,
-.meta-list,
+.card-subtitle,
 .no-links {
   color: var(--dim);
   font-size: var(--text-xs);
@@ -88,12 +86,19 @@ button:hover {
   display: grid;
   gap: 14px;
 }
-.instance-group header {
+.instance-group header,
+.collapsed-group summary {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   border-bottom: 1px solid var(--line);
   padding-bottom: 5px;
+}
+.collapsed-group summary {
+  cursor: pointer;
+}
+.collapsed-group .instance-grid {
+  margin-top: 12px;
 }
 .instance-group h2,
 .instance-card h3 {
@@ -102,19 +107,16 @@ button:hover {
 }
 .instance-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 .instance-card {
   border: 1px solid var(--line);
   background: var(--panel);
-  padding: 12px;
+  padding: 10px 12px;
   display: grid;
-  gap: 10px;
+  gap: 4px;
 }
 .card-head,
-.origin-row,
-.card-actions,
 .quick-links {
   display: flex;
   align-items: center;
@@ -123,8 +125,28 @@ button:hover {
 }
 .card-head {
   justify-content: space-between;
+  align-items: start;
+  gap: 12px;
 }
-.status-badge,
+.card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.card-title h3 {
+  font-size: var(--text-md);
+}
+.card-title a {
+  color: var(--accent);
+}
+.title-separator {
+  color: var(--dim);
+}
+.card-subtitle {
+  margin: 0;
+}
 .quick-link {
   border: 1px solid var(--line);
   border-radius: 3px;
@@ -132,27 +154,83 @@ button:hover {
   font-size: var(--text-2xs);
   text-decoration: none;
 }
-.origin-row a,
 .quick-link {
   color: var(--accent);
 }
-.meta-list {
-  display: grid;
-  gap: 4px;
-  margin: 0;
+.info-wrap,
+.action-menu {
+  position: relative;
 }
-.meta-list div {
+.menu-trigger {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+.card-title portal-info-icon .info-icon {
+  width: 15px;
+  height: 15px;
+}
+.info-tooltip,
+.menu-panel {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 240px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  box-shadow: 0 14px 40px var(--modal-shadow);
+}
+.info-tooltip {
+  display: none;
+  padding: 10px;
+  color: var(--desc-dim);
+  font-size: var(--text-xs);
+}
+.info-wrap:focus-within .info-tooltip,
+.info-wrap:hover .info-tooltip {
   display: grid;
-  grid-template-columns: 82px 1fr;
+  gap: 6px;
+}
+.info-tooltip > span {
+  display: grid;
+  grid-template-columns: 70px 1fr;
   gap: 8px;
 }
-.meta-list dt,
-.meta-list dd {
-  margin: 0;
+.info-tooltip strong {
+  color: var(--dim);
+  font-weight: 600;
 }
-.network-warning {
+.info-tooltip [data-slot="warning"] {
+  grid-template-columns: 1fr;
   color: var(--warn);
-  margin: 0;
+}
+.menu-trigger {
+  gap: 2px;
+}
+.menu-trigger span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.menu-panel {
+  display: grid;
+  padding: 4px;
+}
+.menu-panel[hidden] {
+  display: none;
+}
+.menu-panel button {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  white-space: nowrap;
+}
+.menu-panel button:hover {
+  background: var(--panel);
 }
 .empty-state {
   border: 1px dashed var(--line);
@@ -220,12 +298,15 @@ dialog::backdrop {
     border-right: 0;
   }
   .toolbar-actions,
-  .card-actions {
+  .card-head {
     align-items: stretch;
   }
-  .toolbar-actions button,
-  .card-actions button {
+  .toolbar-actions button {
     flex: 1;
+  }
+  .menu-panel {
+    left: auto;
+    right: 0;
   }
   .link-row {
     grid-template-columns: 1fr;

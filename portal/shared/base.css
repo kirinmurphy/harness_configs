@@ -186,6 +186,31 @@ nav a.active {
   color: var(--ink);
   border-color: var(--line);
 }
+portal-info-icon {
+  display: inline-flex;
+}
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--dim);
+  background: none;
+  color: var(--dim);
+  font-size: var(--text-2xs);
+  font-style: italic;
+  line-height: 1;
+  cursor: pointer;
+}
+.info-icon:hover,
+.info-icon:focus-visible {
+  color: var(--ink);
+  border-color: var(--ink);
+  background: none;
+}
 /* Loading state: shown until each page's first data fetch resolves, then hidden for the rest of
  * that page's life (subsequent polls never bring it back). Occupies a fixed-height block in normal
  * flow rather than a full-viewport overlay, so the sticky header and footer stay visible while the

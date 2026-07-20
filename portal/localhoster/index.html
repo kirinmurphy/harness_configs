@@ -94,33 +94,49 @@
         <div class="instance-grid" data-slot="items"></div>
       </section>
     </template>
+    <template id="tpl-collapsible-group">
+      <details class="instance-group collapsed-group">
+        <summary>
+          <span data-slot="title"></span>
+          <span data-slot="meta"></span>
+        </summary>
+        <div class="instance-grid" data-slot="items"></div>
+      </details>
+    </template>
     <template id="tpl-card">
       <article class="instance-card">
         <div class="card-head">
-          <div>
+          <div class="card-title">
             <h3 data-slot="title"></h3>
-            <p data-slot="subtitle"></p>
+            <span class="title-separator">-</span>
+            <a data-slot="origin" target="_blank" rel="noreferrer"></a>
+            <span class="info-wrap">
+              <portal-info-icon aria-label="Show instance details"></portal-info-icon>
+              <span class="info-tooltip" role="tooltip">
+                <span><strong>Health</strong><span data-slot="status"></span></span>
+                <span><strong>Latency</strong><span data-slot="latency"></span></span>
+                <span><strong>Process</strong><span data-slot="process"></span></span>
+                <span><strong>Identity</strong><span data-slot="identity"></span></span>
+                <span><strong>Bind</strong><span data-slot="bind"></span></span>
+                <span data-slot="warning" hidden></span>
+              </span>
+            </span>
           </div>
-          <span class="status-badge" data-slot="status"></span>
+          <div class="action-menu">
+            <button type="button" class="menu-trigger" data-action="menu" aria-label="Actions" aria-expanded="false">
+              <span></span><span></span><span></span>
+            </button>
+            <div class="menu-panel" data-menu hidden>
+              <button type="button" data-action="link">Add link</button>
+              <button type="button" data-action="edit">Edit links</button>
+              <button type="button" data-action="copy">Copy URL</button>
+              <button type="button" data-action="open">Open</button>
+              <button type="button" data-action="associate">Change association</button>
+            </div>
+          </div>
         </div>
-        <div class="origin-row">
-          <a data-slot="origin" target="_blank" rel="noreferrer"></a>
-          <span data-slot="latency"></span>
-        </div>
-        <dl class="meta-list">
-          <div><dt>Process</dt><dd data-slot="process"></dd></div>
-          <div><dt>Identity</dt><dd data-slot="identity"></dd></div>
-          <div><dt>Bind</dt><dd data-slot="bind"></dd></div>
-        </dl>
-        <p class="network-warning" data-slot="warning" hidden></p>
-        <div class="quick-links" data-slot="links"></div>
-        <div class="card-actions">
-          <button type="button" data-action="link">Add link</button>
-          <button type="button" data-action="edit">Edit links</button>
-          <button type="button" data-action="copy">Copy URL</button>
-          <button type="button" data-action="open">Open</button>
-          <button type="button" data-action="associate">Change association</button>
-        </div>
+        <p class="card-subtitle" data-slot="subtitle"></p>
+        <div class="quick-links" data-slot="links" hidden></div>
       </article>
     </template>
     <template id="tpl-empty">
@@ -147,6 +163,7 @@
         </div>
       </div>
     </template>
+    <script type="module" src="/portal/shared/info-icon.js"></script>
     <script type="module" src="/portal/shared/theme.js"></script>
     <script type="module" src="/portal/localhoster/app.js"></script>
   </body>

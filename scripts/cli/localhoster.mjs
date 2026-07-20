@@ -33,7 +33,10 @@ export async function refreshLocalhosterSnapshot() {
       const settings = loadSettings({ stateRoot });
       const discovery = await discoverInstances({ settings });
       const portal = portalInstance();
-      if (portal) discovery.instances.unshift(portal);
+      if (portal) {
+        discovery.instances = discovery.instances.filter((instance) => !isPortalDuplicate(instance, portal));
+        discovery.instances.unshift(portal);
+      }
       lastSnapshot = buildSnapshot({ discovery, settings, refresh: { state: "idle", startedAt: null, error: null } });
       return lastSnapshot;
     } catch (err) {
@@ -190,6 +193,10 @@ function portalInstance() {
     process: { pid: process.pid, command: "roborepo" },
     project: { identity: "roborepo:portal", identityKind: "roborepo", confidence: "high", projectRoot: null, evidence: "built-in portal" },
   };
+}
+
+function isPortalDuplicate(instance, portal) {
+  return instance.process?.pid === portal.process.pid && instance.bind?.port === portal.bind.port;
 }
 
 function statusLabel(instance) {

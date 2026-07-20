@@ -284,27 +284,6 @@ button:disabled {
 #root-input {
   flex: 1;
 }
-.info-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 15px;
-  height: 15px;
-  padding: 0;
-  border-radius: 50%;
-  border: 1px solid var(--dim);
-  background: none;
-  color: var(--dim);
-  font-size: var(--text-2xs);
-  font-style: italic;
-  line-height: 1;
-  cursor: pointer;
-}
-.info-icon:hover {
-  color: var(--ink);
-  border-color: var(--ink);
-  background: none;
-}
 dialog#info-modal {
   width: min(560px, 100%);
   max-height: 85vh;

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { claudeJsonPath, repoRoot, rootConfigActive, harnessHome, workspacePackagesDir, packageMode, initializeWorkspace } from "./paths.mjs";
-import { setPackageEnabled, renderHomeRules, readEnabledPackagesRegistry } from "./rules-render.mjs";
+import { setPackageEnabled, renderHomeRules, effectiveEnabledIds } from "./rules-render.mjs";
 import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog, BUILT_IN_PACKAGES_DIR } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 import { buildPackageLiveState } from "./package-probes.mjs";
@@ -88,7 +88,7 @@ function parseCreateArgs(rest) {
   }
   const id = positional[0] || flags.get("id") || flags.get("name");
   if (!/^[a-z0-9][a-z0-9-]*$/.test(String(id || ""))) {
-    console.error("usage: roborepo package create <id> [--kind=empty|auto-skill|skill-command|standalone-command] [--description=<text>]");
+    console.error("usage: roborepo package create <id> [--kind=empty|auto-skill|skill-command|standalone-command] [--description=<text>] [--default-enabled=true]");
     process.exit(2);
   }
   return {
@@ -96,6 +96,7 @@ function parseCreateArgs(rest) {
     kind: flags.get("kind") || "empty",
     description: flags.get("description") || `Custom package ${id}`,
     command: flags.get("command") || id,
+    defaultEnabled: flags.get("default-enabled") === "true",
   };
 }
 
@@ -109,6 +110,7 @@ function packageTemplate(opts) {
     presentation: { category: opts.kind.includes("command") ? "commands" : "code-conventions", order: 100 },
     resources: [],
   };
+  if (opts.defaultEnabled) base.defaultEnabled = true;
   if (opts.kind === "auto-skill") {
     base.resources.push({ type: "skill", id: opts.id, source: `skills/${opts.id}`, invocation: "auto", risk: "low" });
   } else if (opts.kind === "skill-command") {
@@ -321,7 +323,7 @@ export async function enablePackage(rest, _seen = new Set()) {
   if (_seen.has(pkg.id)) return; // already handled in this enable pass (cycle / shared dependency)
   _seen.add(pkg.id);
 
-  const enabledIds = readEnabledPackagesRegistry().packages || [];
+  const enabledIds = effectiveEnabledIds(catalog);
   const ownership = validatePackageCommandOwnership(pkg, { catalog, enabledIds });
   if (!ownership.ok) {
     console.error(ownership.message);
@@ -424,12 +426,12 @@ export async function enablePackage(rest, _seen = new Set()) {
 
 export async function reconcileEnabledPackages(rest = []) {
   const dryRun = rest.includes("--dry-run");
-  const enabledIds = readEnabledPackagesRegistry().packages || [];
+  const catalog = loadPackageCatalog({ includeUnavailable: true });
+  const enabledIds = effectiveEnabledIds(catalog);
   if (enabledIds.length === 0) {
     console.log("reconcile: no enabled packages");
     return;
   }
-  const catalog = loadPackageCatalog({ includeUnavailable: true });
   const known = new Set(catalog.map((pkg) => pkg.id));
   const stale = [];
   for (const id of enabledIds) {
@@ -448,8 +450,9 @@ export async function reconcileEnabledPackages(rest = []) {
 export function adoptLivePackages({ dryRun = false } = {}) {
   const catalog = loadPackageCatalog({ includeUnavailable: true });
   const liveState = buildPackageLiveState(catalog);
-  const registry = readEnabledPackagesRegistry();
-  const alreadyEnabled = new Set(registry.packages || []);
+  // Effective, not raw registry: a default-enabled package is already known-desired and should
+  // never be offered for adoption even if its live state happens to look external.
+  const alreadyEnabled = new Set(effectiveEnabledIds(catalog));
   const adopters = [];
 
   for (const pkg of catalog) {
@@ -624,7 +627,7 @@ export async function disablePackage(rest) {
 }
 
 function enabledDependents(pkgId, catalog) {
-  const enabled = new Set(readEnabledPackagesRegistry().packages || []);
+  const enabled = new Set(effectiveEnabledIds(catalog));
   const direct = catalog
     .filter((pkg) => enabled.has(pkg.id) && (pkg.requires || []).includes(pkgId))
     .map((pkg) => pkg.id);

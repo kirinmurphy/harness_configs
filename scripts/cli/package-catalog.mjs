@@ -221,11 +221,15 @@ function normalizePackage(pkg, { file, root, origin }) {
   if (typeof pkg.description !== "string" || pkg.description.trim() === "") throw new Error(`${pkg.id}: description is required`);
   const lifecycle = pkg.lifecycle || "optional";
   if (!PACKAGE_LIFECYCLES.has(lifecycle)) throw new Error(`${pkg.id}: unknown lifecycle: ${lifecycle}`);
+  if (pkg.defaultEnabled !== undefined && typeof pkg.defaultEnabled !== "boolean") {
+    throw new Error(`${pkg.id}: defaultEnabled must be a boolean`);
+  }
   const presentation = normalizePresentation(pkg);
   const resources = normalizeResources(pkg.resources, { pkgId: pkg.id, file, root });
   return {
     ...pkg,
     lifecycle,
+    defaultEnabled: pkg.defaultEnabled === true,
     presentation,
     requires: Array.isArray(pkg.requires) ? [...pkg.requires] : [],
     resources,

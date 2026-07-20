@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 import { roborepoSkillsDir, telemetryDir } from "./state-paths.mjs";
-import { readEnabledPackagesRegistry } from "./rules-render.mjs";
+import { effectiveEnabledIds } from "./rules-render.mjs";
 
 const CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
 const CODEX_CONFIG = path.join(os.homedir(), ".codex", "config.toml");
@@ -272,14 +272,14 @@ function packageStatus({ desired, components }) {
 }
 
 export function buildPackageLiveState(packages) {
-  const registry = readEnabledPackagesRegistry();
+  const enabledIds = new Set(effectiveEnabledIds(packages));
   const settings = readJson(CLAUDE_SETTINGS, {});
   const telemetryState = readJson(path.join(telemetryDir, "state.json"), null);
   const byId = new Map();
   const out = [];
 
   for (const pkg of packages) {
-    const baseDesired = registry.packages.includes(pkg.id);
+    const baseDesired = enabledIds.has(pkg.id);
     const components = [];
 
     for (const component of pkg.components || []) {

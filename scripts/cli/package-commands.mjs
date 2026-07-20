@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadPackageCatalog } from "./package-catalog.mjs";
-import { readEnabledPackagesRegistry } from "./rules-render.mjs";
+import { effectiveEnabledIds } from "./rules-render.mjs";
 
 function commandComponents(pkg) {
   return (pkg.components || []).filter((component) => component.type === "command");
@@ -93,7 +93,7 @@ export function packageCommandNames(pkg) {
   return [...new Set(names)];
 }
 
-export function validatePackageCommandOwnership(pkg, { catalog = loadPackageCatalog({ includeUnavailable: true }), enabledIds = readEnabledPackagesRegistry().packages } = {}) {
+export function validatePackageCommandOwnership(pkg, { catalog = loadPackageCatalog({ includeUnavailable: true }), enabledIds = effectiveEnabledIds(catalog) } = {}) {
   const byId = packageById(catalog);
   const closure = collectClosure(pkg, byId);
   const closureIds = new Set(closure.map((item) => item.id));
@@ -128,7 +128,7 @@ export function validatePackageCommandOwnership(pkg, { catalog = loadPackageCata
 }
 
 export function resolveEnabledCommand(commandName, { catalog = loadPackageCatalog({ includeUnavailable: true }) } = {}) {
-  const enabledIds = new Set(readEnabledPackagesRegistry().packages || []);
+  const enabledIds = new Set(effectiveEnabledIds(catalog));
   const matches = [];
   for (const pkg of catalog) {
     if (!enabledIds.has(pkg.id)) continue;

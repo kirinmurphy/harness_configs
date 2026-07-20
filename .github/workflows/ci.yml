@@ -32,3 +32,4 @@ jobs:
         run: |
           npm run --silent test:packages
           npm run --silent test:package-lifecycle
+          npm run --silent test:package-default-enabled

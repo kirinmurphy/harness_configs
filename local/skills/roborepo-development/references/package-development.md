@@ -28,6 +28,7 @@ Enforced by `normalizePackage`/`normalizeResource` in `scripts/cli/package-catal
 | `label` | yes | non-empty display name |
 | `description` | yes | non-empty; shown in portal |
 | `lifecycle` | no (defaults `optional`) | `optional` or `system` (`PACKAGE_LIFECYCLES`) |
+| `defaultEnabled` | no (defaults `false`) | boolean; see Default-selection semantics below |
 | `presentation.category` | yes | must exist in `manifests/inventory/package-categories.json` (currently: `token-optimization`, `commands`, `code-conventions`, `chat-time-output`, `integrations`) |
 | `presentation.order` | no (defaults `0`) | numeric, controls sort within category |
 | `requires` | no | array of package IDs; cycle-checked, missing-dep-checked |
@@ -108,18 +109,45 @@ generated/
 Do not invent an intermediate location. Authored package source lives under `globals/packages/`;
 everything under `generated/` is derived and gets overwritten — never hand-edit it.
 
-## Default-selection semantics (current state — narrower than it may sound)
+## Default-selection semantics
 
-Every existing package declares `lifecycle: "optional"`; **none currently default to enabled**,
-and there is no `defaultEnabled`/`enabledByDefault` field in the schema at all. The
-enabled-packages registry (`readEnabledPackagesRegistry`/`setPackageEnabled` in
-`scripts/cli/rules-render.mjs`) is a flat list of currently-enabled IDs with **no provenance
-tracking** (no `default | explicit-enable | explicit-disable` distinction) — because nothing
-defaults on today, that distinction has no live consequence yet.
+A package opts into default-enabled by setting `defaultEnabled: true` in `package.config.json`
+(validated as a boolean by `normalizePackage`; absent/`false` is the default, matching every
+package that predates this field). Scaffold with `roborepo package create <id> --default-enabled=true`.
 
-If a future package needs default-enabled behavior, provenance tracking (so updating defaults
-doesn't silently re-enable something a user explicitly turned off) becomes a real requirement at
-that point — not before. Don't build it speculatively.
+The enabled-packages registry (`scripts/cli/rules-render.mjs`) tracks two lists, not one:
+
+```json
+{ "packages": ["explicit-enable ids"], "disabled": ["explicit-disable ids"] }
+```
+
+`effectiveEnabledIds(catalog, registry)` is the single source of truth for "is this package
+actually active" — explicit-enable OR (`defaultEnabled` AND NOT explicit-disable), with
+explicit-disable winning over everything else:
+
+```text
+explicit-disable > explicit-enable > current defaults
+```
+
+`setPackageEnabled(id, true)` clears any prior explicit-disable for that id; `setPackageEnabled(id,
+false)` clears any prior explicit-enable and records an explicit-disable — recorded
+unconditionally (even for a package that isn't default-enabled today), so a package that later
+becomes default-enabled doesn't silently re-enable itself for someone who already turned it off.
+
+Every call site that needs to know what's actually live — `buildPackageLiveState` (portal/CLI
+status), `renderHomeRules`/`checkHomeRules`/`renderedRulesMatches` (rules rendering and drift
+checks), `validatePackageCommandOwnership`/`resolveEnabledCommand` (command conflict/dispatch),
+`reconcileEnabledPackages`, `enabledDependents` — reads through `effectiveEnabledIds`, not the raw
+registry. The one deliberate exception is `adoptLivePackages`'s "is this already known" check,
+which also now uses `effectiveEnabledIds` (a default-enabled package should never be offered for
+adoption). If you add a new call site that needs to know package on/off state, use
+`effectiveEnabledIds` — reading `registry.packages` directly will silently miss default-enabled
+packages.
+
+Test coverage: `scripts/test/package-default-enabled-check.mjs`
+(`npm run test:package-default-enabled`) — pure precedence computation plus a live CLI round-trip
+proving a default-enabled package's rules render with zero `enable` calls, and that one explicit
+disable survives being still-default-enabled in the catalog.
 
 ## Token-cost: computed, not declared
 
@@ -150,7 +178,7 @@ accurate `package.config.json` automatically renders a complete portal card.
 
 | Command | What it does |
 | --- | --- |
-| `roborepo package create <id> [--kind=empty\|auto-skill\|skill-command\|standalone-command] [--description=...] [--command=...]` | Scaffolds a new package into `globals/packages/<id>/` (dev checkout) or the user workspace packages dir (package mode). Refuses to overwrite an existing package. Prints the created path. |
+| `roborepo package create <id> [--kind=empty\|auto-skill\|skill-command\|standalone-command] [--description=...] [--command=...] [--default-enabled=true]` | Scaffolds a new package into `globals/packages/<id>/` (dev checkout) or the user workspace packages dir (package mode). Refuses to overwrite an existing package. Prints the created path. |
 | `roborepo package list` | Lists all packages with live enabled/disabled status, category, label. |
 | `roborepo package inspect <id>` | Prints full manifest JSON for one package. |
 | `roborepo package validate [id]` | Runs `validatePackageCatalog`; scope to one package or the whole catalog. |
@@ -195,6 +223,8 @@ last write) — a legitimate, distinct reconciliation case, not a gap in the ena
   enable/disable, and asserts Codex-side hook/config ownership.
 - `scripts/test/context-cost-check.mjs` (`npm run test:context-cost`) — token-cost estimator
   correctness, independent of any one package.
+- `scripts/test/package-default-enabled-check.mjs` (`npm run test:package-default-enabled`) —
+  default-selection provenance precedence, independent of any one package.
 - `scripts/test/test-roborepo.sh` — broad CLI smoke test; covers package/workspace paths.
 
 Minimum test bar for a new or changed package: it must load cleanly through
@@ -217,6 +247,9 @@ lifecycle-check exists — see Deliverable 5 in the source plan).
     rendered rules, or MCP config as applicable) both appears and cleanly disappears
 [ ] Portal renders label/description/category/cost correctly (no manual portal file to edit)
 [ ] Did NOT add a static token-cost field — cost is computed
+[ ] If defaultEnabled: true, confirmed explicit disable survives being still-default-enabled
+    (see scripts/test/package-default-enabled-check.mjs)
 [ ] Ran `npm test` (or the narrowest relevant subset — package-catalog-check, context-cost-check,
-    system-package-ownership-characterization-check) before calling it done
+    package-default-enabled-check, system-package-ownership-characterization-check) before calling
+    it done
 ```

@@ -33,6 +33,7 @@
     "test:localhoster": "node scripts/test/localhoster-check.mjs",
     "test:packages": "node scripts/test/package-catalog-check.mjs",
     "test:package-lifecycle": "node scripts/test/package-lifecycle-check.mjs",
+    "test:package-default-enabled": "node scripts/test/package-default-enabled-check.mjs",
     "test:plans": "node scripts/test/plan-docs-check.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "pack:smoke": "npm pack"

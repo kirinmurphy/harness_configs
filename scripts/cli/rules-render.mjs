@@ -26,33 +26,62 @@ const LEGACY_ROBOREPO_RULES_FILE = path.join(roborepoStateDir, "rules", "generat
 
 // --------------------------------------------------------------------------- registry
 
-// Returns { exists: boolean, packages: string[] }. `exists` distinguishes "no registry yet"
-// (pre-Phase-3, fall back to text scan in config.mjs) from "registry exists but empty".
+// Returns { exists: boolean, packages: string[], disabled: string[] }. `packages` is the explicit-
+// enable list; `disabled` is the explicit-disable list (only meaningful for default-enabled
+// packages, since an explicit disable of a non-default package is just absence from `packages`).
+// `exists` distinguishes "no registry yet" (pre-Phase-3, fall back to text scan in config.mjs) from
+// "registry exists but empty".
 export function readEnabledPackagesRegistry() {
   try {
     const data = JSON.parse(fs.readFileSync(enabledPackagesPath, "utf8"));
-    return { exists: true, packages: Array.isArray(data.packages) ? data.packages : [] };
+    return {
+      exists: true,
+      packages: Array.isArray(data.packages) ? data.packages : [],
+      disabled: Array.isArray(data.disabled) ? data.disabled : [],
+    };
   } catch {
-    return { exists: false, packages: [] };
+    return { exists: false, packages: [], disabled: [] };
   }
 }
 
-function writeRegistry(ids) {
+function writeRegistry(ids, disabledIds) {
   fs.mkdirSync(path.dirname(enabledPackagesPath), { recursive: true });
   fs.writeFileSync(enabledPackagesPath, JSON.stringify(
-    { packages: [...new Set(ids)], updatedAt: new Date().toISOString() },
+    { packages: [...new Set(ids)], disabled: [...new Set(disabledIds)], updatedAt: new Date().toISOString() },
     null, 2,
   ) + "\n");
 }
 
 // Add or remove a package ID from the enabled-packages registry, then return the updated list.
+// Explicit-disable precedence: enabling clears any prior explicit-disable; disabling clears any
+// prior explicit-enable and records an explicit-disable (load-bearing only for default-enabled
+// packages — see effectiveEnabledIds — but recorded unconditionally so a package that later
+// becomes default-enabled doesn't silently re-enable itself for someone who turned it off).
 export function setPackageEnabled(id, enabled) {
-  const { packages } = readEnabledPackagesRegistry();
+  const { packages, disabled } = readEnabledPackagesRegistry();
   const next = enabled
     ? [...new Set([...packages, id])]
     : packages.filter((x) => x !== id);
-  writeRegistry(next);
+  const nextDisabled = enabled
+    ? disabled.filter((x) => x !== id)
+    : [...new Set([...disabled, id])];
+  writeRegistry(next, nextDisabled);
   return next;
+}
+
+// Effective enabled-ID set for a catalog: explicit-enable OR (default-enabled AND NOT explicit-
+// disable). This is the "should this package's behavior be live" answer — use it anywhere that
+// needs to know what's actually active (rendering, probing, ownership/conflict checks,
+// reconciliation). Precedence: explicit-disable > explicit-enable > current defaults.
+export function effectiveEnabledIds(catalog, registry = readEnabledPackagesRegistry()) {
+  const explicit = new Set(registry.packages || []);
+  const explicitOff = new Set(registry.disabled || []);
+  const out = new Set();
+  for (const id of explicit) if (!explicitOff.has(id)) out.add(id);
+  for (const pkg of catalog) {
+    if (pkg.defaultEnabled && !explicitOff.has(pkg.id)) out.add(pkg.id);
+  }
+  return [...out];
 }
 
 // --------------------------------------------------------------------------- render
@@ -125,7 +154,7 @@ function readFragmentDir(dir) {
 }
 
 // Full rendered home-rules text for one harness (shared + harness fragments + enabled package rules).
-export function renderRulesPreview(harness, enabledIds = readEnabledPackagesRegistry().packages) {
+export function renderRulesPreview(harness, enabledIds = effectiveEnabledIds(loadPackageCatalog())) {
   return renderContent(harness, enabledIds);
 }
 
@@ -141,8 +170,9 @@ export function renderHarnessRulesPreview(harness) {
   return dirs[harness] ? readFragmentDir(dirs[harness]) : "";
 }
 
-export function renderEnabledPackageRulesPreview(enabledIds = readEnabledPackagesRegistry().packages) {
+export function renderEnabledPackageRulesPreview(enabledIds) {
   const catalog = loadPackageCatalog();
+  if (enabledIds === undefined) enabledIds = effectiveEnabledIds(catalog);
   const parts = [];
   for (const pkg of catalog) {
     if (!enabledIds.includes(pkg.id)) continue;
@@ -309,8 +339,8 @@ function removeManagedBlocks(filePath, names, dryRun) {
 // Skips harnesses whose home dir does not exist (harness not installed on this machine).
 export function renderHomeRules({ dryRun = false, harness: targetHarness } = {}) {
   const registry = readEnabledPackagesRegistry();
-  if (!registry.exists && !dryRun) writeRegistry([]);
-  const enabledIds = registry.packages;
+  if (!registry.exists && !dryRun) writeRegistry([], []);
+  const enabledIds = effectiveEnabledIds(loadPackageCatalog(), registry);
   const harnesses = targetHarness ? [targetHarness] : Object.keys(HOME_RULES);
 
   for (const harness of harnesses) {
@@ -357,7 +387,7 @@ export function removeHomeRules({ dryRun = false, harness: targetHarness } = {})
 // Check whether present home rules files match the current render (base + enabled registry).
 // Returns true if all present harnesses are current. Prints ok/fail lines to stdout/stderr.
 export function checkHomeRules({ quiet = false } = {}) {
-  const { packages: enabledIds } = readEnabledPackagesRegistry();
+  const enabledIds = effectiveEnabledIds(loadPackageCatalog());
   let ok = true;
   for (const [harness, homeFile] of Object.entries(HOME_RULES)) {
     if (!fs.existsSync(path.dirname(homeFile))) continue;
@@ -393,7 +423,7 @@ export function checkHomeRules({ quiet = false } = {}) {
 
 export function renderedRulesMatches(harness, filePath) {
   try {
-    const { packages: enabledIds } = readEnabledPackagesRegistry();
+    const enabledIds = effectiveEnabledIds(loadPackageCatalog());
     const expected = renderContent(harness, enabledIds);
     const actual = fs.readFileSync(filePath, "utf8");
     return actual.includes(blockText(CODE_STYLE_BLOCK, expected).trimEnd());

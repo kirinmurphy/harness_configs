@@ -1,14 +1,45 @@
 ---
 id: config-partial-status-and-command-wrapper-install
 priority: medium
-next_action: Decide whether command wrappers should install to ~/.claude/commands and ~/.codex/commands on enable, or whether probeSkill should stop checking that location
+next_action:
 blocked_by: []
 depends_on: []
 related: [config-context-token-cost]
-reviewed_commit:
+reviewed_commit: 0083710
 ---
 
 # Config Partial Status and Command-Wrapper Install Gap
+
+## Resolution
+
+Both problems resolved (commit `0083710`).
+
+**Problem 1 (command-wrapper probe) — no code change needed.** Investigation found the probe path
+(`~/.<harness>/commands/<name>.md`, `package-probes.mjs:206`) and the live-install path
+(`installPackageCommands` → `liveDir: "commands"`, `slash-commands.mjs`) already agree, using
+identical `${name}.md` naming (`commandTarget`). The `loadConfigSource` popup path reads the
+`generated/packages/<pkg>/<harness>/commands/<name>.md` repo *source* — a deliberately different
+path serving display, not the live-install status check. The original "every skill-command package
+reports partial" symptom was a **stale install**: the packages were enabled before their wrappers
+were rendered/installed, and a later `roborepo update` populated `~/.claude/commands` and
+`~/.codex/commands`. Live-verified all five (`case-study-pack`, `frontend-design`, `plan-docs`,
+`tighten`, `wrap-up`) now report `enabled` with the wrappers present in both harness dirs. No probe
+path bug remained.
+
+**Problem 2 (telemetry status) — fixed.** A desired service with a present state file reading
+`enabled:false` (capture administratively off) now folds to component state `inactive` and package
+status `configured` instead of `missing`/`partial`. A *missing* state file still reports
+`partial` (never set up). Portal badges are class-mapped so `configured` reads calm (`badge-info`)
+rather than sharing the `partial` warning styling (`badge-warn`). The telemetry `roborepo serve`
+hint now also shows in the `configured` state. Covered by a new `test-roborepo.sh` assertion
+(302 passed, 0 failed) and documented in `config-control-panel.md`.
+
+## Follow-up (not blocking)
+
+`probeSkill` still folds a *genuinely* missing command wrapper (skill cache present, wrapper gone)
+to `blocked`→`partial` with a detail message but offers no self-heal or actionable hint. Low
+priority — only reachable if an enable runs before render, which `roborepo update` repairs. Left as
+a possible future hardening.
 
 ## Summary
 

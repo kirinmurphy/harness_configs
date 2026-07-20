@@ -39,11 +39,7 @@ export async function refreshLocalhosterSnapshot() {
     } catch (err) {
       const error = String(err?.message || err);
       if (lastSnapshot) {
-        lastSnapshot = {
-          ...lastSnapshot,
-          refresh: { state: "failed", startedAt, error },
-          warnings: [...(lastSnapshot.warnings || []), error],
-        };
+        lastSnapshot = markLocalhosterRefreshFailed(lastSnapshot, { startedAt, error });
         return lastSnapshot;
       }
       lastSnapshot = buildSnapshot({
@@ -87,6 +83,14 @@ export function setLocalhosterPortalInfo(info) {
       lastSnapshot = buildSnapshot({ discovery, settings: loadSettings({ stateRoot }) });
     }
   }
+}
+
+export function markLocalhosterRefreshFailed(snapshot, { startedAt, error }) {
+  return {
+    ...snapshot,
+    refresh: { state: "failed", startedAt, error },
+    warnings: [...(snapshot.warnings || []), error],
+  };
 }
 
 export async function localhosterCommand(args) {

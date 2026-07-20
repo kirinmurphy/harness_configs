@@ -13,6 +13,8 @@ const refs = {
   content: document.getElementById("content"),
   linkDialog: document.getElementById("link-dialog"),
   linkForm: document.getElementById("link-form"),
+  linkList: document.getElementById("link-list"),
+  linkAdd: document.getElementById("link-add"),
   appDialog: document.getElementById("app-dialog"),
   appForm: document.getElementById("app-form"),
 };
@@ -51,6 +53,8 @@ function render(snapshot) {
     tmpl.statusPill(counts.unmatched, "unmatched"),
     tmpl.statusPill(counts.inactive, "inactive saved"),
   );
+  refs.refresh.disabled = snapshot.refresh?.state === "refreshing";
+  refs.refresh.setAttribute("aria-busy", snapshot.refresh?.state === "refreshing" ? "true" : "false");
   refs.refreshState.textContent = snapshot.refresh?.state === "refreshing" ? "Refreshing..." : refreshLabel(snapshot);
   renderCapability(snapshot);
   renderWarnings(snapshot);
@@ -84,7 +88,7 @@ function renderCapability(snapshot) {
   refs.capability.hidden = cap.discovery === "supported";
   refs.capability.replaceChildren();
   if (cap.discovery !== "supported") {
-    refs.capability.append(tmpl.notice(`${cap.message} Saved projects and links remain available, but RoboRepo cannot currently detect their active ports.`));
+    refs.capability.append(tmpl.noticeWithDoc(`${cap.message} Saved projects and links remain available, but RoboRepo cannot currently detect their active ports.`));
   }
 }
 
@@ -96,22 +100,27 @@ function renderWarnings(snapshot) {
 }
 
 function cardActions() {
-  return { onEditLinks: openLinkDialog, onAssociate: openAppDialog };
+  return { onAddLink: openAddLinkDialog, onEditLinks: openLinkDialog, onAssociate: openAppDialog };
 }
 
-function openLinkDialog(project, instance) {
+function openAddLinkDialog(project, instance) {
+  openLinkDialog(project, instance, { addBlank: true });
+}
+
+function openLinkDialog(project, instance, { addBlank = false } = {}) {
   const appId = instance.app?.id || "web";
   document.getElementById("link-project").value = project.identity || instance.project?.identity;
   document.getElementById("link-app").value = appId;
-  document.getElementById("link-label").value = "";
-  document.getElementById("link-path").value = "";
   document.getElementById("link-error").textContent = "";
+  const links = state.currentLinks(lastSnapshot, project.identity || instance.project?.identity, appId);
+  renderLinkRows(addBlank ? [...links, { label: "", path: "" }] : links);
   refs.linkDialog.showModal();
 }
 
 function openAppDialog(project, instance) {
   document.getElementById("app-association").value = instance.associationKey || "";
   document.getElementById("app-project").value = project.identity || instance.project?.identity || "";
+  document.getElementById("app-project-name").value = project.name === "Other instances" ? "" : project.name || "";
   document.getElementById("app-id").value = instance.app?.id || "web";
   document.getElementById("app-name").value = instance.app?.name || "Web";
   document.getElementById("app-origin").value = instance.app?.originPreference || "localhost";
@@ -127,32 +136,31 @@ refs.linkForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const projectIdentity = document.getElementById("link-project").value;
   const appId = document.getElementById("link-app").value;
-  const existing = state.currentLinks(lastSnapshot, projectIdentity, appId);
-  const label = document.getElementById("link-label").value;
-  const path = document.getElementById("link-path").value;
   await mutateDialog(refs.linkDialog, "link-error", () => api.updateLinks({
     revision: lastSnapshot.settingsRevision,
     projectIdentity,
     appId,
-    links: [...existing, { label, path }],
+    links: serializeLinkRows(),
   }));
 });
-document.getElementById("link-remove").addEventListener("click", async () => {
-  const projectIdentity = document.getElementById("link-project").value;
-  const appId = document.getElementById("link-app").value;
-  const links = state.currentLinks(lastSnapshot, projectIdentity, appId).slice(0, -1);
-  await mutateDialog(refs.linkDialog, "link-error", () => api.updateLinks({ revision: lastSnapshot.settingsRevision, projectIdentity, appId, links }));
-});
+refs.linkAdd.addEventListener("click", () => addLinkRow({ label: "", path: "" }));
 refs.appForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const projectIdentity = document.getElementById("app-project").value;
   const appId = document.getElementById("app-id").value;
   await mutateDialog(refs.appDialog, "app-error", async () => {
     const assoc = document.getElementById("app-association").value;
-    if (assoc) await api.updateAssociation({ revision: lastSnapshot.settingsRevision, associationKey: assoc, projectIdentity, appId });
+    let revision = lastSnapshot.settingsRevision;
+    if (assoc) {
+      const associationResult = await api.updateAssociation({ revision, associationKey: assoc, projectIdentity, appId });
+      lastSnapshot = associationResult.localhoster || associationResult;
+      revision = lastSnapshot.settingsRevision;
+    }
+    const name = document.getElementById("app-project-name").value.trim();
     return api.updateProject({
-      revision: lastSnapshot.settingsRevision + (assoc ? 1 : 0),
+      revision,
       projectIdentity,
+      ...(name ? { name } : {}),
       appId,
       appName: document.getElementById("app-name").value,
       originPreference: document.getElementById("app-origin").value,
@@ -179,6 +187,43 @@ async function mutateDialog(dialog, errorId, mutate) {
   } catch (err) {
     document.getElementById(errorId).textContent = err.message;
   }
+}
+
+function renderLinkRows(links) {
+  refs.linkList.replaceChildren();
+  for (const link of links) addLinkRow(link);
+  if (!links.length) refs.linkList.append(tmpl.linkEmpty());
+}
+
+function addLinkRow(link) {
+  refs.linkList.querySelector("[data-empty]")?.remove();
+  const row = tmpl.linkRow(link);
+  row.querySelector("[data-action=remove]").addEventListener("click", () => {
+    row.remove();
+    if (!refs.linkList.querySelector(".link-row")) refs.linkList.append(tmpl.linkEmpty());
+  });
+  row.querySelector("[data-action=up]").addEventListener("click", () => moveLinkRow(row, -1));
+  row.querySelector("[data-action=down]").addEventListener("click", () => moveLinkRow(row, 1));
+  refs.linkList.append(row);
+  return row;
+}
+
+function moveLinkRow(row, direction) {
+  const sibling = direction < 0 ? row.previousElementSibling : row.nextElementSibling;
+  if (!sibling || sibling.hasAttribute("data-empty")) return;
+  if (direction < 0) refs.linkList.insertBefore(row, sibling);
+  else refs.linkList.insertBefore(sibling, row);
+}
+
+function serializeLinkRows() {
+  return [...refs.linkList.querySelectorAll(".link-row")].map((row) => {
+    const id = row.querySelector("[data-field=id]").value;
+    return {
+      ...(id ? { id } : {}),
+      label: row.querySelector("[data-field=label]").value,
+      path: row.querySelector("[data-field=path]").value,
+    };
+  });
 }
 
 function showError(message) {

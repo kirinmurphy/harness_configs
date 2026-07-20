@@ -13,6 +13,12 @@ export function notice(text) {
   return el("p", {}, text);
 }
 
+export function noticeWithDoc(text) {
+  const node = el("p", {}, text, " ");
+  node.append(el("a", { href: "/docs/reference/services/localhoster.md", target: "_blank", rel: "noreferrer" }, "Localhoster docs"));
+  return node;
+}
+
 export function group(title, meta, nodes) {
   const node = fill(tpl("tpl-group"), { title, meta });
   node.querySelector("[data-slot=items]").append(...nodes);
@@ -71,8 +77,20 @@ export function inactiveCard(project, actions) {
   return node;
 }
 
+export function linkRow(link = {}) {
+  const node = tpl("tpl-link-row");
+  node.querySelector("[data-field=id]").value = link.id || "";
+  node.querySelector("[data-field=label]").value = link.label || "";
+  node.querySelector("[data-field=path]").value = link.path || "";
+  return node;
+}
+
+export function linkEmpty() {
+  return el("p", { class: "no-links", "data-empty": "true" }, "No saved links. Add a row to create one.");
+}
+
 function wireCardActions(node, project, instance, actions) {
-  node.querySelector("[data-action=link]").addEventListener("click", () => actions.onEditLinks(project, instance));
+  node.querySelector("[data-action=link]").addEventListener("click", () => actions.onAddLink(project, instance));
   node.querySelector("[data-action=edit]").addEventListener("click", () => actions.onEditLinks(project, instance));
   node.querySelector("[data-action=copy]").addEventListener("click", () => portalCopyText(instance.origin || ""));
   node.querySelector("[data-action=open]").addEventListener("click", () => {

@@ -8,6 +8,7 @@ import {
   buildLocalhosterSnapshot,
   capabilityForPlatform,
   discoverInstances,
+  isTlsTrustErrorCode,
   loadSettings,
   normalizeGitRemote,
   normalizeRoutePath,
@@ -18,6 +19,7 @@ import {
   updateSettings,
   validateSettings,
 } from "../../modules/localhoster/index.mjs";
+import { markLocalhosterRefreshFailed } from "../cli/localhoster.mjs";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-localhoster-"));
 try {
@@ -71,6 +73,8 @@ try {
   assert.throws(() => normalizeRoutePath("https://example.com/admin"), /loopback/);
   assert.throws(() => normalizeRoutePath("//example.com/admin"), /protocol-relative/);
   assert.throws(() => normalizeRoutePath("http://u:p@localhost/admin"), /credentials/);
+  assert.equal(isTlsTrustErrorCode("DEPTH_ZERO_SELF_SIGNED_CERT"), true);
+  assert.equal(isTlsTrustErrorCode("ECONNREFUSED"), false);
 
   const stateRoot = path.join(tempRoot, "state");
   assert.deepEqual(loadSettings({ stateRoot }), { version: 1, revision: 1, projects: {}, associations: {} });
@@ -86,6 +90,39 @@ try {
   });
   assert.equal(updated.revision, 2);
   assert.equal(updated.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.links[0].path, "/admin");
+  const reordered = updateSettings({
+    stateRoot,
+    input: {
+      revision: 2,
+      type: "links",
+      projectIdentity: "git:github.com/kirinmurphy/visa_planner",
+      appId: "web",
+      links: [
+        { id: "resume", label: "Resume", path: "/resume" },
+        { id: "admin", label: "Admin area", path: "/admin?tab=users" },
+      ],
+    },
+  });
+  assert.equal(reordered.revision, 3);
+  assert.deepEqual(
+    reordered.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.links.map((link) => [link.id, link.label, link.path]),
+    [["resume", "Resume", "/resume"], ["admin", "Admin area", "/admin?tab=users"]],
+  );
+  const renamed = updateSettings({
+    stateRoot,
+    input: {
+      revision: 3,
+      type: "project",
+      projectIdentity: "git:github.com/kirinmurphy/visa_planner",
+      name: "Visa Planner Local",
+      appId: "web",
+      appName: "Frontend",
+      originPreference: "127.0.0.1",
+    },
+  });
+  assert.equal(renamed.projects["git:github.com/kirinmurphy/visa_planner"].name, "Visa Planner Local");
+  assert.equal(renamed.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.name, "Frontend");
+  assert.equal(renamed.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.originPreference, "127.0.0.1");
   assert.ok(fs.existsSync(settingsPathFor(stateRoot)));
   assert.throws(() => updateSettings({ stateRoot, input: { revision: 1, type: "project", projectIdentity: "git:github.com/x/y", name: "Y" } }), /revision conflict/);
   assert.throws(() => validateSettings({ version: 1, revision: 1, projects: {}, associations: {}, future: true }), /unknown/);
@@ -128,18 +165,26 @@ try {
 
   const snapshot = buildLocalhosterSnapshot({
     discovery,
-    settings: updated,
+    settings: renamed,
     now: new Date("2026-07-18T18:00:00.000Z"),
   });
   assert.equal(snapshot.generatedAt, "2026-07-18T18:00:00.000Z");
   assert.equal(snapshot.projects.length, 0);
   assert.equal(snapshot.unmatchedInstances.length, 2);
   assert.equal(snapshot.inactiveProjects.length, 1);
+  const failedSnapshot = markLocalhosterRefreshFailed(snapshot, {
+    startedAt: "2026-07-18T18:01:00.000Z",
+    error: "scan failed",
+  });
+  assert.equal(failedSnapshot.generatedAt, snapshot.generatedAt);
+  assert.equal(failedSnapshot.refresh.state, "failed");
+  assert.equal(failedSnapshot.refresh.error, "scan failed");
+  assert.equal(failedSnapshot.unmatchedInstances.length, snapshot.unmatchedInstances.length);
 
   const associated = updateSettings({
     stateRoot,
     input: {
-      revision: 2,
+      revision: 4,
       type: "association",
       associationKey: discovery.instances[0].associationKey,
       projectIdentity: "git:github.com/kirinmurphy/visa_planner",
@@ -155,8 +200,53 @@ try {
   assert.equal(associatedSnapshot.projects.length, 1);
   assert.equal(associatedSnapshot.projects[0].instances.length, 1);
   assert.equal(associatedSnapshot.unmatchedInstances.length, 1);
-  assert.equal(associatedSnapshot.projects[0].instances[0].app.links[0].url, "http://127.0.0.1:5173/admin");
+  assert.equal(associatedSnapshot.projects[0].instances[0].app.links[0].url, "http://127.0.0.1:5173/resume");
   assert.equal(associatedSnapshot.inactiveProjects.length, 0);
+
+  const restartBefore = await discoverInstances({
+    platform: "darwin",
+    runCommand: async (command, args) => {
+      if (args.includes("-iTCP")) return { stdout: ["p701", "cnode", "n127.0.0.1:5173"].join("\n") };
+      if (args.includes("701")) return { stdout: `n${appDir}\n` };
+      throw new Error("unexpected command");
+    },
+    probeHttp: async (candidate) => ({ http: true, status: 200, latencyMs: 6, protocol: "http", title: `Web ${candidate.port}` }),
+  });
+  const restarted = updateSettings({
+    stateRoot,
+    input: {
+      revision: 5,
+      type: "association",
+      associationKey: restartBefore.instances[0].associationKey,
+      projectIdentity: "git:github.com/kirinmurphy/visa_planner",
+      appId: "web",
+    },
+  });
+  const apiDir = path.join(repo, "apps", "api");
+  fs.mkdirSync(apiDir, { recursive: true });
+  const restartAfter = await discoverInstances({
+    platform: "darwin",
+    runCommand: async (command, args) => {
+      if (args.includes("-iTCP")) {
+        return { stdout: ["p801", "cnode", "n127.0.0.1:62345", "p802", "cnode", "n127.0.0.1:62346"].join("\n") };
+      }
+      if (args.includes("801")) return { stdout: `n${appDir}\n` };
+      if (args.includes("802")) return { stdout: `n${apiDir}\n` };
+      throw new Error("unexpected command");
+    },
+    probeHttp: async (candidate) => ({ http: true, status: 200, latencyMs: 7, protocol: "http", title: candidate.port === 62345 ? "Web 62345" : "API" }),
+  });
+  assert.equal(restartAfter.instances.find((instance) => instance.bind.port === 62345).associationKey, restartBefore.instances[0].associationKey);
+  const restartSnapshot = buildLocalhosterSnapshot({
+    discovery: restartAfter,
+    settings: restarted,
+    now: new Date("2026-07-18T18:02:00.000Z"),
+  });
+  assert.equal(restartSnapshot.projects.length, 1);
+  assert.equal(restartSnapshot.projects[0].instances[0].origin, "http://127.0.0.1:62345");
+  assert.equal(restartSnapshot.projects[0].instances[0].app.links[0].url, "http://127.0.0.1:62345/resume");
+  assert.equal(restartSnapshot.unmatchedInstances.length, 1);
+  assert.equal(restartSnapshot.inactiveProjects.length, 0);
 
   const lowConfidenceSnapshot = buildLocalhosterSnapshot({
     discovery: {
@@ -175,15 +265,49 @@ try {
         project: { identity: "process:/tmp:node", identityKind: "process", confidence: "low", evidence: "process working directory" },
       }],
     },
-    settings: updated,
+    settings: associated,
   });
   assert.equal(lowConfidenceSnapshot.unmatchedInstances.length, 1);
   assert.equal(lowConfidenceSnapshot.inactiveProjects.length, 1);
+
+  let activeProbes = 0;
+  let maxActiveProbes = 0;
+  const manyListeners = Array.from({ length: 12 }, (_, index) => [
+    `p${500 + index}`,
+    "cnode",
+    `n127.0.0.1:${7000 + index}`,
+  ]).flat().join("\n");
+  await discoverInstances({
+    platform: "darwin",
+    runCommand: async (command, args) => {
+      if (args.includes("-iTCP")) return { stdout: manyListeners };
+      return { stdout: `n${appDir}\n` };
+    },
+    probeConcurrency: 4,
+    probeHttp: async () => {
+      activeProbes += 1;
+      maxActiveProbes = Math.max(maxActiveProbes, activeProbes);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      activeProbes -= 1;
+      return { http: true, status: 200, latencyMs: 5, protocol: "http", title: "Concurrent" };
+    },
+  });
+  assert.equal(maxActiveProbes, 4);
 
   const server = http.createServer((req, res) => {
     if (req.url === "/external") {
       res.writeHead(302, { Location: "https://example.com/out" });
       res.end();
+      return;
+    }
+    if (req.url === "/same") {
+      res.writeHead(302, { Location: "/login" });
+      res.end();
+      return;
+    }
+    if (req.url === "/huge") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`${"x".repeat(70 * 1024)}<title>Too Late</title>`);
       return;
     }
     res.writeHead(200, { "Content-Type": "text/html" });
@@ -199,6 +323,11 @@ try {
     assert.equal(probe.favicon, `http://127.0.0.1:${port}/favicon.ico`);
     const redirect = await probeHttpCandidate({ origin: `http://127.0.0.1:${port}/external` });
     assert.equal(redirect.redirectExternal, true);
+    const sameOriginRedirect = await probeHttpCandidate({ origin: `http://127.0.0.1:${port}/same` });
+    assert.equal(sameOriginRedirect.redirectExternal, false);
+    assert.equal(sameOriginRedirect.redirect, `http://127.0.0.1:${port}/login`);
+    const huge = await probeHttpCandidate({ origin: `http://127.0.0.1:${port}/huge` });
+    assert.equal(huge.title, null);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

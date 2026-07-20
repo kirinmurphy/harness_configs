@@ -121,7 +121,11 @@ function looksLikeTlsError(code, message) {
 }
 
 function isTlsTrustError(err) {
-  return ["DEPTH_ZERO_SELF_SIGNED_CERT", "SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_VERIFY_LEAF_SIGNATURE"].includes(err.code);
+  return isTlsTrustErrorCode(err.code);
+}
+
+export function isTlsTrustErrorCode(code) {
+  return ["DEPTH_ZERO_SELF_SIGNED_CERT", "SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_VERIFY_LEAF_SIGNATURE"].includes(code);
 }
 
 function decodeHtml(value) {

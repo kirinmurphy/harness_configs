@@ -13,6 +13,7 @@ export {
   originCandidatesForListener,
 } from "./lsof.mjs";
 export {
+  isTlsTrustErrorCode,
   probeHttpCandidate,
   probeHttpCandidates,
 } from "./probe.mjs";

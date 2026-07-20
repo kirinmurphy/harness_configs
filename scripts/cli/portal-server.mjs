@@ -17,6 +17,7 @@ const STATIC_TYPES = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".html": "text/html; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8",
 };
 
 // Single source of truth for portal HTML pages. To add a page: (1) add an entry here, (2) create
@@ -122,6 +123,7 @@ function route(req, res, handlers, mutationToken) {
   if (handleLocalhosterApi(req, res, urlPath, qs, handlers)) return;
   if (handlePortalPage(req, res, urlPath, mutationToken)) return;
   if (handlePortalAsset(req, res, urlPath)) return;
+  if (handleDocsAsset(req, res, urlPath)) return;
   if (handlePortalStatus(req, res, urlPath)) return;
   if (handleTelemetryApi(req, res, urlPath, qs, handlers)) return;
   send(res, 404, "text/plain", "not found");
@@ -137,6 +139,12 @@ function handlePortalPage(req, res, urlPath, mutationToken) {
 function handlePortalAsset(req, res, urlPath) {
   if (!urlPath.startsWith("/portal/")) return false;
   servePortalAsset(urlPath, res);
+  return true;
+}
+
+function handleDocsAsset(req, res, urlPath) {
+  if (!urlPath.startsWith("/docs/")) return false;
+  serveDocsAsset(urlPath, res);
   return true;
 }
 
@@ -163,5 +171,20 @@ function servePortalAsset(urlPath, res) {
     return send(res, 404, "text/plain", "not found");
   }
   const type = STATIC_TYPES[path.extname(assetPath)] || "application/octet-stream";
+  send(res, 200, type, content);
+}
+
+function serveDocsAsset(urlPath, res) {
+  const relative = decodeURIComponent(urlPath.slice("/".length));
+  const docsRoot = path.join(repoRoot, "docs");
+  const assetPath = path.resolve(repoRoot, relative);
+  if (!assetPath.startsWith(docsRoot + path.sep)) return send(res, 404, "text/plain", "not found");
+  let content;
+  try {
+    content = fs.readFileSync(assetPath);
+  } catch {
+    return send(res, 404, "text/plain", "not found");
+  }
+  const type = STATIC_TYPES[path.extname(assetPath)] || "text/plain; charset=utf-8";
   send(res, 200, type, content);
 }

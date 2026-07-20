@@ -8,6 +8,7 @@ import { probeHttpCandidate } from "./probe.mjs";
 
 const execFileAsync = promisify(execFile);
 const DISCOVERY_TIMEOUT_MS = 1500;
+const PROBE_CONCURRENCY = 8;
 
 export function capabilityForPlatform(platform = process.platform) {
   if (platform === "darwin") {
@@ -36,6 +37,7 @@ export async function discoverInstances(options = {}) {
     platform = process.platform,
     runCommand = defaultRunCommand,
     probeHttp = probeHttpCandidate,
+    probeConcurrency = PROBE_CONCURRENCY,
     resolveIdentity = resolveProjectIdentity,
     settings = null,
   } = options;
@@ -55,6 +57,7 @@ export async function discoverInstances(options = {}) {
 
   const listeners = parseLsofFieldOutput(listenerOutput.stdout ?? listenerOutput);
   const cwdByPid = new Map();
+  const pending = [];
   const instances = [];
 
   for (const listener of listeners) {
@@ -73,10 +76,18 @@ export async function discoverInstances(options = {}) {
       };
     const appSettings = appSettingsForIdentity(settings, identity.identity);
     const candidates = originCandidatesForListener(listener, appSettings?.originPreference);
-    const probe = probeHttp ? await probeFirstHttp(candidates, probeHttp, warnings) : null;
-    if (probeHttp && !probe) continue;
-    instances.push(toInstance(listener, identity, candidates, probe, cwd));
+    pending.push({ listener, identity, candidates, cwd });
   }
+
+  const probes = probeHttp
+    ? await probeCandidatesForInstances(pending, probeHttp, warnings, probeConcurrency)
+    : new Map();
+  for (const item of pending) {
+    const probe = probeHttp ? probes.get(item) : null;
+    if (probeHttp && !probe) continue;
+    instances.push(toInstance(item.listener, item.identity, item.candidates, probe, item.cwd));
+  }
+  disambiguateAssociationKeys(instances);
 
   return { capabilities, warnings, instances };
 }
@@ -97,16 +108,29 @@ async function resolvePidCwd(pid, runCommand, warnings) {
   }
 }
 
-async function probeFirstHttp(candidates, probeHttp, warnings) {
-  for (const candidate of candidates) {
-    try {
-      const result = await probeHttp(candidate);
-      if (result?.http === true) return { ...result, origin: candidate.origin };
-    } catch (err) {
-      warnings.push(`probe failed for ${candidate.origin}: ${err.message}`);
+async function probeCandidatesForInstances(items, probeHttp, warnings, concurrency) {
+  const results = new Map();
+  let next = 0;
+  async function worker() {
+    for (;;) {
+      const index = next++;
+      if (index >= items.length) return;
+      const item = items[index];
+      for (const candidate of item.candidates) {
+        try {
+          const result = await probeHttp(candidate);
+          if (result?.http === true) {
+            results.set(item, { ...result, origin: candidate.origin });
+            break;
+          }
+        } catch (err) {
+          warnings.push(`probe failed for ${candidate.origin}: ${err.message}`);
+        }
+      }
     }
   }
-  return null;
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, worker));
+  return results;
 }
 
 function toInstance(listener, identity, candidates, probe, cwd) {
@@ -133,6 +157,18 @@ function toInstance(listener, identity, candidates, probe, cwd) {
   };
 }
 
+function disambiguateAssociationKeys(instances) {
+  const counts = new Map();
+  for (const instance of instances) {
+    const key = instance.matchSignature.key;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  for (const instance of instances) {
+    if (counts.get(instance.matchSignature.key) <= 1) continue;
+    instance.associationKey = instance.matchSignature.titleKey;
+  }
+}
+
 function buildMatchSignature(identity, command, cwd, title) {
   const relativeCwd = identity.projectRoot && cwd
     ? path.relative(identity.projectRoot, cwd) || "."
@@ -141,10 +177,11 @@ function buildMatchSignature(identity, command, cwd, title) {
     projectIdentity: identity.identity,
     relativeCwd,
     command: safeCommand(command),
-    title: title ? String(title).slice(0, 120) : null,
   };
   const key = "a" + createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 24);
-  return { key, ...parts };
+  const safeTitle = title ? String(title).slice(0, 120) : null;
+  const titleKey = "a" + createHash("sha256").update(JSON.stringify({ ...parts, title: safeTitle })).digest("hex").slice(0, 24);
+  return { key, titleKey, ...parts, title: safeTitle };
 }
 
 function safeCommand(value) {

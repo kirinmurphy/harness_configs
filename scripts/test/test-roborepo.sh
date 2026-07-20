@@ -742,6 +742,10 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
     bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:${cfg_port}/config')\" = 200 ]"
   assert "localhoster: GET /localhoster served with token" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/localhoster' | grep -q 'roborepo-portal-token'"
+  assert "localhoster: notice template includes docs link target" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/portal/localhoster/templates.js' | grep -q '/docs/reference/services/localhoster.md'"
+  assert "localhoster: docs markdown route is served" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/docs/reference/services/localhoster.md' | grep -q '^# Localhoster'"
   assert "localhoster: GET snapshot works without token" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/localhoster' >'${cfg_home}/localhoster-get.json' && node -e \"const j=require('${cfg_home}/localhoster-get.json');process.exit(j.capabilities&&Array.isArray(j.projects)&&Array.isArray(j.unmatchedInstances)?0:1)\""
   assert "localhoster: refresh rejects missing token" \
@@ -750,7 +754,7 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
     bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/localhoster/project' -H 'Origin: http://example.com' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{}')\" = 403 ]"
   cfg_lh_rev="$(node -e "const j=require('${cfg_home}/localhoster-get.json');process.stdout.write(String(j.settingsRevision))")"
   curl -s -X POST "http://127.0.0.1:${cfg_port}/api/localhoster/project" -H 'Content-Type: application/json' -H "X-Roborepo-Portal-Token: ${cfg_token}" \
-    -d "{\"revision\":${cfg_lh_rev},\"projectIdentity\":\"roborepo:portal\",\"appId\":\"web\",\"appName\":\"Portal\",\"originPreference\":\"localhost\"}" > "${cfg_home}/localhoster-project.json"
+    -d "{\"revision\":${cfg_lh_rev},\"projectIdentity\":\"roborepo:portal\",\"name\":\"RoboRepo\",\"appId\":\"web\",\"appName\":\"Portal\",\"originPreference\":\"localhost\"}" > "${cfg_home}/localhoster-project.json"
   assert "localhoster: valid project mutation returns fresh snapshot" \
     bash -c "node -e \"const j=require('${cfg_home}/localhoster-project.json');process.exit(j.ok&&j.localhoster?.settingsRevision===${cfg_lh_rev}+1?0:1)\""
   assert "localhoster: Windows capability shape is explicit" \

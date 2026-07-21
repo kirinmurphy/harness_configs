@@ -398,10 +398,7 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     if (options.open) openLocalUrl(`${existingUrl}${openPath}`);
     return;
   }
-  // Not reusing: any previously tracked portal (foreground or detached, on any port — including a
-  // prior `--port 0` instance that resolvePortalPort never probes) is about to be superseded by
-  // this one, so stop it first instead of leaving it running alongside the new instance.
-  killExistingServer();
+  await killExistingServer();
   writePid(process.pid);
   options.port = resolved.port;
   const portalUrl = (port) => `http://127.0.0.1:${port}`;
@@ -708,14 +705,22 @@ function clearPid() {
   try { fs.rmSync(legacyTelemetryPidPath, { force: true }); } catch {}
 }
 
-// Kill any existing detached server (stale or live). Clears the PID file unconditionally.
-function killExistingServer() {
+// Kill any existing detached server (stale or live) and wait for it to actually exit before
+// returning. Clears the PID file unconditionally. Waiting matters: a caller that immediately
+// tries to bind the same port right after this resolves would otherwise race the killed
+// process's own teardown (SIGTERM handling + socket close isn't instant) — a transient bind
+// failure right after signalling would read as "port occupied by something else" and fall back
+// to a random port, permanently orphaning the process we just tried to kill instead of waiting
+// the extra tens of milliseconds for it to actually die.
+async function killExistingServer() {
   const pid = readPid();
-  if (pid == null) return;
-  if (isProcessRunning(pid)) {
-    try { process.kill(pid, "SIGTERM"); } catch {}
-  }
   clearPid();
+  if (pid == null || !isProcessRunning(pid)) return;
+  try { process.kill(pid, "SIGTERM"); } catch { return; }
+  const deadline = Date.now() + 2000;
+  while (isProcessRunning(pid) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
 }
 
 // Kill the running server. Returns true if a live process was found and signalled.
@@ -728,7 +733,7 @@ function stopServer() {
 }
 
 async function startDetachedPortal(port, { allowPortFallback = false, portExplicit = false } = {}) {
-  killExistingServer();
+  await killExistingServer();
   const resolved = await resolvePortalPort(port, { allowPortFallback, portExplicit, warn: true });
   if (resolved.reuse) {
     writePid(resolved.pid);

@@ -26,10 +26,10 @@ const PORTAL_PAGES = window.ROBOREPO_PORTAL.pages;
     document.body.append(tpl("tpl-portal-footer"));
   }
   if (!document.querySelector(".page-loading")) {
-    // Inserted right after the header (not prepended on body) so the loading block sits in
-    // normal flow below the sticky header, not on top of it — the header/footer chrome stays
-    // visible while this occupies its own allocated space.
-    document.querySelector(".portal-header").insertAdjacentElement("afterend", tpl("tpl-page-loading"));
+    // Prepended inside <main> (not the header) so it scrims over that page's own static shell
+    // (position: absolute; inset: 0, see base.css) rather than sitting in normal flow — the
+    // sticky header/footer stay visible and the shell underneath shows through while it's up.
+    document.querySelector("main").prepend(tpl("tpl-page-loading"));
   }
   const nav = document.getElementById("nav");
   if (!nav) return;

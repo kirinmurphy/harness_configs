@@ -226,16 +226,26 @@ portal-info-icon {
   border-color: var(--ink);
   background: none;
 }
+/* Every page's <main> ships its static, non-data-dependent chrome (toolbars, filter controls,
+ * section titles/table skeletons) directly in HTML — only the slots that need fetched data start
+ * empty. .page-loading is a scrim over that shell, not a replacement for it, so the page's real
+ * structure is visible under the spinner instead of a blank hole. New pages should follow the same
+ * shape: static shell in <main>, data-only slots left empty for JS to fill. */
+main {
+  position: relative;
+}
 /* Loading state: shown until each page's first data fetch resolves, then hidden for the rest of
- * that page's life (subsequent polls never bring it back). Occupies a fixed-height block in normal
- * flow rather than a full-viewport overlay, so the sticky header and footer stay visible while the
- * page's own content loads underneath. */
+ * that page's life (subsequent polls never bring it back). Absolutely positioned to cover <main>
+ * (theme.js inserts it as <main>'s first child) so the sticky header/footer stay visible and the
+ * static shell underneath shows through as a scrim, not a blank gap. */
 .page-loading {
-  height: 60vh;
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  z-index: 5;
 }
 .page-loading.hidden {
   display: none;

@@ -39,6 +39,8 @@
     "test:telemetry": "node scripts/test/telemetry-correctness-check.mjs",
     "test:telemetry-schemas": "node scripts/test/telemetry-schemas-check.mjs",
     "test:telemetry-marker-cli": "node scripts/test/telemetry-marker-cli-check.mjs",
+    "test:telemetry-classify": "node scripts/test/telemetry-classify-check.mjs",
+    "test:telemetry-capture-v3": "node scripts/test/telemetry-capture-v3-check.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "pack:smoke": "npm pack"
   },

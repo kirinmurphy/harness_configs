@@ -32,7 +32,10 @@ export function validateCaptureV3(record) {
 
   if (record.capture_id != null && !isValidId(record.capture_id, "cap")) throw new Error(`invalid capture_id: ${record.capture_id}`);
   if (record.call_id != null && typeof record.call_id !== "string") throw new Error("capture call_id must be a string");
-  if (record.config_snapshot_id != null && !isValidId(record.config_snapshot_id, "cfg")) {
+  // Snapshot IDs are content-addressed hashes (snapshot-schema.mjs computeSnapshotId), 24 hex
+  // chars — not the generic 16-hex generateId() shape isValidId(..., "cfg") checks for. Same fix
+  // as marker-schema.mjs's config_snapshot_id (see Phase 2 notes in the plan doc).
+  if (record.config_snapshot_id != null && !/^cfg_[a-f0-9]{24}$/.test(record.config_snapshot_id)) {
     throw new Error(`invalid capture config_snapshot_id: ${record.config_snapshot_id}`);
   }
   if (record.operation != null) validateOperation(record.operation);
@@ -42,7 +45,7 @@ export function validateCaptureV3(record) {
 
 function validateOperation(operation) {
   if (typeof operation !== "object" || Array.isArray(operation)) throw new Error("capture operation must be an object");
-  validateObjectKeys(operation, ["category", "runner", "scope", "target", "signature", "failure_signature", "exit_status"], "capture operation");
+  validateObjectKeys(operation, ["category", "runner", "scope", "target", "signature", "failure_signature", "exit_status", "classifier_version"], "capture operation");
   if (!OPERATION_CATEGORIES.has(operation.category)) throw new Error(`unknown operation category: ${operation.category}`);
   if (operation.runner != null && typeof operation.runner !== "string") throw new Error("operation runner must be a string");
   if (operation.scope != null && !OPERATION_SCOPES.has(operation.scope)) throw new Error(`unknown operation scope: ${operation.scope}`);
@@ -51,6 +54,11 @@ function validateOperation(operation) {
   if (operation.failure_signature != null && typeof operation.failure_signature !== "string") throw new Error("operation failure_signature must be a string");
   if (operation.exit_status != null && !OPERATION_EXIT_STATUSES.has(operation.exit_status)) {
     throw new Error(`unknown operation exit_status: ${operation.exit_status}`);
+  }
+  // Plan requirement: "store a rule/version identifier with the classification so historical data
+  // remains interpretable after classifier changes" — see telemetry-classify.mjs CLASSIFIER_VERSION.
+  if (operation.classifier_version != null && !Number.isInteger(operation.classifier_version)) {
+    throw new Error("operation classifier_version must be an integer");
   }
 }
 

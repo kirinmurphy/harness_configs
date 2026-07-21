@@ -1,7 +1,7 @@
 ---
 id: roborepo-telemetry-events-experiments
 priority: high
-next_action: "Phase 3 — capture v3 (capture/call IDs, call-aware duration pairing, config snapshot references, semantic command classification)"
+next_action: "Phase 4 — phases, intervening work, tasks, and outcomes (explicit/inferred phase tagging, edit/diff/failure-signature tracking, task category/scale inference, outcome markers)"
 blocked_by: []
 depends_on: []
 related: []
@@ -91,6 +91,24 @@ Shared domain functions live in `scripts/cli/telemetry-markers.mjs` (`createMark
 Added a manual-invocation `telemetry-marker` skill (`globals/packages/telemetry/skills/telemetry-marker/SKILL.md`) with a slash-command entrypoint, wired into `globals/packages/telemetry/package.config.json`. After editing package.config.json or the skill, regenerate `generated/packages/telemetry/*/commands/telemetry-marker.md` via `node scripts/build/render-slash-commands.mjs` and refresh `docs/reference/internal/skill-invocation-audit.md` via `roborepo skill audit` — both are checked by `test-roborepo.sh` and were the source of spurious full-suite failures during this phase (stale generated output, not actual regressions).
 
 Tests: `scripts/test/telemetry-marker-cli-check.mjs` (new, wired as `test:telemetry-marker-cli` + a `test-roborepo.sh` assertion) drives the real CLI process end-to-end (mark creation, validation errors, full experiment start/status/end/re-end-rejected lifecycle, export completeness) rather than only unit-testing the domain functions — this is what caught the config_snapshot_id bug above.
+
+## Phase 3 notes (capture v3 and operation classification)
+
+Recorded 2026-07-21, ahead of Phase 4.
+
+`telemetry-capture.mjs` now writes `SCHEMA_VERSION = 3` records (was 2) with `capture_id`, `call_id`, `config_snapshot_id`, `operation`, and `phase` (always `null` for now — Phase 4 fills it) added on top of every existing v2 field. Schema-v2 read compatibility holds: `readSpoolEvents()`/`analyzeTelemetry()` never gate on `.schema` and work structurally, so mixed v2/v3 spools already analyze correctly (unchanged from before this phase).
+
+**Call-aware duration pairing** (the actual reason Phase 3 exists — plan limitation #10): `toolDuration()` now keys its start/stop cursor by `call_id` instead of `session_id` alone, so two tool calls overlapping in time within one session no longer clobber each other's start stamp. `resolveCallId()` in `telemetry-capture.mjs` prefers a harness-provided id (`tool_use_id`/`toolUseId`/`call_id`/`callId` on hook stdin) and falls back to a derived id (`derivedCallId()`) keyed by session+tool+an incrementing per-session-per-tool counter file when the harness doesn't supply one. Verified directly for both paths in `telemetry-capture-v3-check.mjs` (concurrent-calls fixture + derived-id-without-harness-id fixture) — this is the fix the plan doc's exit criteria calls "concurrent call fixtures do not overwrite duration cursors."
+
+**Config snapshot references, built cheaply:** the hot capture path still does not import `config.mjs` at module load time — `resolveConfigSnapshotId()` only `await import()`s `config.mjs`/`snapshot-schema.mjs`/`workspace.mjs`/`persistence.mjs` on the `SessionStart` event, builds+dedupes the snapshot once, and caches its id in a `telemetryCollectorDir` file keyed by session. Every later event in that session reads the cached id back with a plain `fs.readFileSync`, paying nothing extra. `telemetryCaptureCommand` is now `async` (both call sites in `main.mjs`/`telemetry.mjs` already `await`/`return` it from an async function, so this was a safe, non-breaking signature change).
+
+**Semantic command classification** lives in a new pure module, `scripts/cli/telemetry-classify.mjs` (`classifyCommand`, `CLASSIFIER_VERSION`, `failureSignature`), with zero fs/config dependencies so it's cheap enough to import unconditionally into the hot capture path. `telemetry-capture.mjs` classifies a Bash tool's raw command inline (local variable only, never attached to any object that gets persisted) and stores only the classifier's output (category/runner/scope/target/signature-hash/classifier_version) — never the raw command text; covered by `testRawCommandNeverPersisted` in the capture-v3 test and `testNeverStoresRawCommand` in the classifier unit test. This repo's own `package.json` scripts (`npm test` → full suite via `test-roborepo.sh`, `npm run test:xxx` → targeted single files) served as the canonical full-vs-targeted fixture for the classifier's test rules.
+
+**Two schema bugs fixed this phase** (both pre-existing from Phase 1, same root cause as the Phase 2 marker fix): `capture-schema-v3.mjs`'s `validateCaptureV3` checked `config_snapshot_id` against the generic 16-hex `isValidId(..., "cfg")` shape instead of the real 24-hex content-hash format snapshots use — fixed to `/^cfg_[a-f0-9]{24}$/`, matching the marker-schema.mjs fix from Phase 2. Also added `classifier_version` to `validateOperation`'s `ALLOWED_FIELDS` — the plan text requires storing a classifier version with every classification (rule #6 in "Classification rules") but the original v3 schema's operation allowlist omitted the field entirely, which would have rejected every real classified operation.
+
+**Deferred to later phases, deliberately not attempted here:** phase inference (Phase 4), failure-signature capture from actual tool output (Phase 4 — `failureSignature()` exists and is unit-tested but nothing calls it yet; wiring it needs a privacy-safe bounded-output source from PostToolUse, which is Phase 4 territory per "capture exit/failure signatures where harness data permits"), snapshot mutation mid-session when config changes (plan's snapshot-schema section mentions per-turn model override; out of scope for capture v3 specifically), and any analyzer/portal consumption of the new `operation`/`call_id`/`config_snapshot_id` fields (Phase 5+ — `telemetry-analyze.mjs` is untouched this phase).
+
+Tests: `scripts/test/telemetry-classify-check.mjs` (pure classifier, no CLI) and `scripts/test/telemetry-capture-v3-check.mjs` (real CLI process, following the same `spawnSync` + sandboxed `HOME`/`ROBOREPO_STATE_DIR` pattern as `telemetry-marker-cli-check.mjs`), both wired into `package.json` (`test:telemetry-classify`, `test:telemetry-capture-v3`) and `test-roborepo.sh`.
 
 ## Current behavior that must be preserved
 

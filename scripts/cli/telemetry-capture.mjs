@@ -4,14 +4,19 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { telemetryCollectorDir, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
 import { mcpServerOf, transcriptStats } from "./telemetry-transcript.mjs";
+import { classifyCommand } from "./telemetry-classify.mjs";
+import { generateCaptureId } from "./telemetry-schemas/capture-schema-v3.mjs";
 
 // Minimal-import capture path, split out of telemetry.mjs so the hot hook (fires on every
 // PreToolUse/PostToolUse) doesn't pay to load portal-server/config/presets/telemetry-analyze/
 // telemetry-insights just to append one JSONL line. Keep this file's import graph small.
+// telemetry-classify.mjs is a pure, dependency-free module (no fs/config imports) so it stays
+// cheap enough to import here unconditionally; the config-snapshot builder is NOT imported here —
+// see resolveConfigSnapshotId() below, which dynamic-imports config.mjs only on SessionStart.
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
-export function telemetryCaptureCommand(args) {
+export async function telemetryCaptureCommand(args) {
   const options = parseCaptureArgs(args);
   const state = readTelemetryState();
   if (state.enabled !== true) return;
@@ -28,8 +33,16 @@ export function telemetryCaptureCommand(args) {
   const stats = transcriptStats(transcriptPath, { sessionId, collectorDir: telemetryCollectorDir });
   const event = options.event || input.hook_event_name || input.hookEventName || "unknown";
   const tool = toolMetadata(input);
+  // Raw command text never leaves this function scope — classifyCommand() only returns a
+  // category/runner/scope/signature-hash, never the command itself, matching the same
+  // hash-don't-store discipline as command_hash above.
+  const rawCommand = typeof (input.tool_input || input.toolInput || {}).command === "string" ? (input.tool_input || input.toolInput).command : null;
+  const operation = rawCommand ? classifyCommand(rawCommand) : null;
+  const callId = resolveCallId(input, sessionId, tool.name, event);
   const record = {
     schema: SCHEMA_VERSION,
+    capture_id: generateCaptureId(),
+    call_id: callId,
     ts: new Date().toISOString(),
     harness: options.harness,
     event,
@@ -40,9 +53,14 @@ export function telemetryCaptureCommand(args) {
     cwd_name: path.basename(cwd),
     repo: repoMetadata(cwd),
     tool,
-    // Wall-clock tool latency: PreToolUse stamps a start cursor, PostToolUse reads it back. Null for
-    // non-tool events or an unmatched pair. Helps spot slow tools independent of token cost.
-    duration_ms: toolDuration(event, sessionId, tool.name),
+    // Wall-clock tool latency: PreToolUse stamps a start cursor keyed by call_id, PostToolUse reads
+    // it back by the same call_id. Null for non-tool events or an unmatched pair. call_id (rather
+    // than session alone) keeps concurrent/nested tool calls in the same session from clobbering
+    // each other's cursor.
+    duration_ms: toolDuration(event, callId),
+    config_snapshot_id: await resolveConfigSnapshotId(event, sessionId, options.harness, stats),
+    operation,
+    phase: null, // Phase 4 work: explicit/inferred phase tagging.
     prompt: promptMetadata(input),
     tokens: stats ? stats.tokens : null,
     delta_tokens: stats ? deltaTokens(sessionId, stats.tokens.total) : null,
@@ -212,16 +230,20 @@ function deltaTokens(sessionId, cumulativeTotal) {
   return Math.max(0, cumulativeTotal - previous);
 }
 
-// Wall-clock latency of a single tool call. PreToolUse writes a start stamp into a per-session
-// cursor; PostToolUse reads and clears it, returning the elapsed ms. Best-effort: a missing start
-// (hook race, restart) yields null rather than a bogus duration. Cursor keyed by session so
-// concurrent sessions do not collide.
-function toolDuration(event, sessionId, toolName) {
-  if (!sessionId) return null;
-  const cursorPath = path.join(telemetryCollectorDir, `tool-${hash(sessionId)}.json`);
+// Wall-clock latency of a single tool call. PreToolUse writes a start stamp into a cursor keyed by
+// call_id; PostToolUse reads and clears it by the same call_id, returning the elapsed ms.
+// Best-effort: a missing start (hook race, restart) yields null rather than a bogus duration.
+//
+// Keyed by call_id (not session alone) so nested/concurrent tool calls within one session cannot
+// clobber each other's cursor — this was limitation #10 in the plan doc and the reason Phase 3
+// exists: the old session-only cursor meant a second tool starting before the first one's
+// PostToolUse fired would silently overwrite the first call's start stamp.
+function toolDuration(event, callId) {
+  if (!callId) return null;
+  const cursorPath = path.join(telemetryCollectorDir, `tool-${hash(callId)}.json`);
   if (event === "PreToolUse") {
     try {
-      fs.writeFileSync(cursorPath, JSON.stringify({ start: Date.now(), tool: toolName }));
+      fs.writeFileSync(cursorPath, JSON.stringify({ start: Date.now() }));
     } catch {
       // Best-effort; a failed write just means the matching PostToolUse reports null.
     }
@@ -238,6 +260,91 @@ function toolDuration(event, sessionId, toolName) {
     return typeof start === "number" ? Math.max(0, Date.now() - start) : null;
   }
   return null;
+}
+
+// Prefer a harness-provided tool-use id (Claude: tool_use_id on PostToolUse payloads; Codex
+// transcripts key tool calls by call_id — see Phase 0 notes in the plan doc). When the harness
+// doesn't supply one on this hook's stdin (observed to happen on PreToolUse for some harness
+// versions, or when a harness omits it entirely), derive a best-effort id from session, tool name,
+// and an incrementing per-session-per-tool cursor, exactly as the plan's capture-v3 section
+// specifies. Two back-to-back calls to the *same* tool in the *same* session without a harness id
+// would otherwise collide; the cursor makes each one unique.
+function resolveCallId(input, sessionId, toolName, event) {
+  const harnessId = input.tool_use_id || input.toolUseId || input.call_id || input.callId || null;
+  if (typeof harnessId === "string" && harnessId) return harnessId;
+  if (!sessionId || !toolName) return null;
+  return derivedCallId(sessionId, toolName, event);
+}
+
+// Best-effort derived id: session+tool share a small counter file so repeated calls to the same
+// tool in the same session get distinct ids. PreToolUse advances the counter and stamps it;
+// PostToolUse reads the same counter value back without advancing, so a Pre/Post pair for the same
+// invocation agrees on one id (matching how toolDuration() expects Pre to write and Post to read
+// the same cursor key).
+function derivedCallId(sessionId, toolName, event) {
+  const counterPath = path.join(telemetryCollectorDir, `callseq-${hash(`${sessionId}:${toolName}`)}.json`);
+  let counter = 0;
+  try {
+    counter = JSON.parse(fs.readFileSync(counterPath, "utf8")).counter || 0;
+  } catch {
+    counter = 0;
+  }
+  if (event === "PreToolUse") {
+    counter += 1;
+    try {
+      fs.writeFileSync(counterPath, JSON.stringify({ counter }));
+    } catch {
+      // Best-effort; worst case PostToolUse derives the same stale counter value, still unique
+      // enough to avoid colliding with a *different* tool's cursor.
+    }
+  }
+  return `derived_${hash(`${sessionId}:${toolName}:${counter}`)}`;
+}
+
+// Effective-configuration snapshot for this session. Built once on SessionStart (dynamic-importing
+// config.mjs's heavier readConfigSnapshot()/buildEffectiveSnapshot() only for that one event, per
+// the plan's "keep the hot capture import graph small" constraint) and cached in the session
+// cursor dir; every later event in the same session reads the cached id back for free. Best-effort
+// throughout — a session with no cached snapshot (e.g. telemetry enabled mid-session, or a
+// telemetry-only install where config.mjs's dependencies aren't installed) reports null rather than
+// failing the capture.
+async function resolveConfigSnapshotId(event, sessionId, harness, stats) {
+  if (!sessionId) return null;
+  const cachePath = path.join(telemetryCollectorDir, `snapshot-${hash(sessionId)}.json`);
+  if (event === "SessionStart") {
+    try {
+      const snapshotId = await buildAndCacheSnapshot(harness, stats?.model ?? null);
+      if (snapshotId) fs.writeFileSync(cachePath, JSON.stringify({ snapshot_id: snapshotId }));
+      return snapshotId;
+    } catch {
+      return null;
+    }
+  }
+  try {
+    return JSON.parse(fs.readFileSync(cachePath, "utf8")).snapshot_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Dynamic import (not a top-level one) is the whole point here: config.mjs pulls in
+// package-catalog/skill-inventory/rules-render/etc., which is exactly the import weight the hot
+// PreToolUse/PostToolUse path must not pay. Only SessionStart (once per session) takes it.
+async function buildAndCacheSnapshot(harness, model) {
+  const [{ readConfigSnapshot }, { buildEffectiveSnapshot }, { readPackageVersion }, { writeSnapshot }] = await Promise.all([
+    import("./config.mjs"),
+    import("./telemetry-schemas/snapshot-schema.mjs"),
+    import("./workspace.mjs"),
+    import("./telemetry-schemas/persistence.mjs"),
+  ]);
+  const configSnapshot = readConfigSnapshot();
+  const snapshot = buildEffectiveSnapshot(configSnapshot, {
+    harness,
+    model,
+    roborepoVersion: readPackageVersion(),
+  });
+  writeSnapshot(snapshot);
+  return snapshot.snapshot_id;
 }
 
 function git(cwd, args) {

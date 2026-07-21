@@ -849,8 +849,10 @@ echo "{\"session_id\":\"sess-x\",\"cwd\":\"${repo_root}\",\"transcript_path\":\"
   | env "${tele_env[@]}" node "${cli}" telemetry capture --harness claude --event Stop
 assert "telemetry capture: records token totals from transcript" \
   bash -c "grep -q '\"total\":67800' '${tele_home}/.roborepo/telemetry/spool/claude.jsonl'"
-assert "telemetry capture: marks mcp tool metadata" \
-  bash -c "grep -q '\"schema\":2' '${tele_home}/.roborepo/telemetry/spool/claude.jsonl'"
+# Phase 3: capture now writes schema 3 (capture_id/call_id/config_snapshot_id/operation/phase
+# added; schema-v2 records elsewhere in the spool remain readable — see the "legacy" assertion below).
+assert "telemetry capture: writes schema v3 records" \
+  bash -c "grep -q '\"schema\":3' '${tele_home}/.roborepo/telemetry/spool/claude.jsonl'"
 # Spike attribution: capture sizes the tool result that most recently entered context (last_result)
 # and the heaviest result of the session (biggest_result), tying a spike back to what caused it.
 assert "telemetry capture: records last tool result for spike attribution" \
@@ -1431,6 +1433,16 @@ assert "telemetry: marker/snapshot/experiment schemas validate and persist corre
 # and `telemetry experiment start|end|status` through the real CLI process.
 assert "telemetry: mark and experiment CLI commands work end to end" \
   node "${repo_root}/scripts/test/telemetry-marker-cli-check.mjs"
+
+# Phase 3 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: pure semantic
+# command classification (test/lint/build/... + runner/scope for tests).
+assert "telemetry: semantic command classification" \
+  node "${repo_root}/scripts/test/telemetry-classify-check.mjs"
+
+# Phase 3: capture v3 (capture_id/call_id/config_snapshot_id/operation) through the real capture
+# hot path, including the call-aware duration pairing fix for concurrent/nested tool calls.
+assert "telemetry: capture v3 fields and call-aware duration pairing" \
+  node "${repo_root}/scripts/test/telemetry-capture-v3-check.mjs"
 
 # ---------------------------------------------------------------------------
 echo ""

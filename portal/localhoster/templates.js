@@ -3,10 +3,6 @@ import { statusText } from "./state.js";
 
 const OTHER_INSTANCES = "Other instances";
 
-export function statusPill(value, label) {
-  return fill(tpl("tpl-status-pill"), { value, label });
-}
-
 export function emptyState(title, body) {
   return fill(tpl("tpl-empty"), { title, body });
 }
@@ -15,28 +11,32 @@ export function notice(text) {
   return el("p", {}, text);
 }
 
-export function noticeWithDoc(text) {
-  const node = el("p", {}, text, " ");
-  node.append(el("a", { href: "/docs/reference/services/localhoster.md", target: "_blank", rel: "noreferrer" }, "Localhoster docs"));
+export function group(title, headerEnd, nodes) {
+  const node = fill(tpl("tpl-group"), { title });
+  const headerEndSlot = node.querySelector("[data-slot=meta]");
+  if (headerEnd instanceof Node) headerEndSlot.append(headerEnd);
+  else if (headerEnd != null) headerEndSlot.textContent = headerEnd;
+  node.querySelector("[data-slot=items]").append(...nodes);
   return node;
 }
 
-export function group(title, meta, nodes) {
-  const node = fill(tpl("tpl-group"), { title, meta });
-  node.querySelector("[data-slot=items]").append(...nodes);
-  return node;
+export function toolbarActions() {
+  return tpl("tpl-toolbar-actions");
 }
 
 export function collapsibleGroup(title, meta, nodes) {
-  const node = fill(tpl("tpl-collapsible-group"), { title, meta });
+  const node = fill(tpl("tpl-collapsible-group"), { meta, "expanded-title": title });
   node.querySelector("[data-slot=items]").append(...nodes);
+  node.querySelector("[data-action=collapse]").addEventListener("click", (event) => {
+    event.preventDefault();
+    node.open = false;
+  });
   return node;
 }
 
 export function instanceCard(project, instance, actions) {
   const node = fill(tpl("tpl-card"), {
     title: instanceTitle(project, instance),
-    subtitle: instanceSubtitle(project, instance),
     status: statusText(instance),
     latency: instance.latencyMs == null ? "unknown" : `${instance.latencyMs}ms`,
     process: `${instance.process.command} (${instance.process.pid})`,
@@ -68,8 +68,7 @@ export function instanceCard(project, instance, actions) {
 
 export function inactiveCard(project, actions) {
   const node = fill(tpl("tpl-card"), {
-    title: displayName(project.name || project.app.name),
-    subtitle: `${project.name} · inactive`,
+    title: project.name || project.app.name || "localhost app",
     status: "Inactive",
     latency: "not running",
     process: "not running",
@@ -153,16 +152,7 @@ function wireCardActions(node, project, instance, actions) {
   menu.addEventListener("click", (event) => event.stopPropagation());
 }
 
-function displayName(value) {
-  return String(value || "localhost app").replace(/(^|[-_\s])(\w)/g, (_, prefix, char) => `${prefix === "_" || prefix === "-" ? " " : prefix}${char.toUpperCase()}`);
-}
-
 function instanceTitle(project, instance) {
   const projectName = project.name === OTHER_INSTANCES ? null : project.name;
-  return displayName(projectName || instance.app?.name || instance.title || instance.process.command);
-}
-
-function instanceSubtitle(project, instance) {
-  if (project.name && project.name !== OTHER_INSTANCES) return `${project.name} · ${instance.title || "localhost app"}`;
-  return `${instance.process.command} · ${instance.title || instance.project?.evidence || "unmatched instance"}`;
+  return projectName || instance.app?.name || instance.title || instance.process.command;
 }

@@ -159,6 +159,11 @@ button:hover {
   font-size: var(--text-2xs);
   color: var(--warn);
 }
+.card-notice {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--warn);
+}
 .card-head,
 .quick-links {
   display: flex;

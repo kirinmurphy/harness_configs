@@ -56,6 +56,11 @@ export function instanceCard(project, instance, actions) {
     warning.hidden = false;
     warning.textContent = instance.bind.warning;
   }
+  const duplicateNotice = node.querySelector("[data-slot=duplicate-notice]");
+  if (instance.duplicatePorts?.length > 1) {
+    duplicateNotice.hidden = false;
+    duplicateNotice.textContent = `It looks like this project is running on multiple ports: ${instance.duplicatePorts.join(", ")}. You may have a leftover process to stop.`;
+  }
   const links = node.querySelector("[data-slot=links]");
   for (const link of instance.app?.links || []) {
     const a = el("a", { href: link.url, target: "_blank", rel: "noreferrer", class: "quick-link" }, link.label);

@@ -4,8 +4,10 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { telemetryCollectorDir, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
 import { mcpServerOf, transcriptStats } from "./telemetry-transcript.mjs";
-import { classifyCommand } from "./telemetry-classify.mjs";
+import { classifyCommand, failureSignature } from "./telemetry-classify.mjs";
 import { generateCaptureId } from "./telemetry-schemas/capture-schema-v3.mjs";
+import { inferPhase } from "./telemetry-phase-infer.mjs";
+import { categorizeFile } from "./telemetry-task-infer.mjs";
 
 // Minimal-import capture path, split out of telemetry.mjs so the hot hook (fires on every
 // PreToolUse/PostToolUse) doesn't pay to load portal-server/config/presets/telemetry-analyze/
@@ -37,8 +39,21 @@ export async function telemetryCaptureCommand(args) {
   // category/runner/scope/signature-hash, never the command itself, matching the same
   // hash-don't-store discipline as command_hash above.
   const rawCommand = typeof (input.tool_input || input.toolInput || {}).command === "string" ? (input.tool_input || input.toolInput).command : null;
-  const operation = rawCommand ? classifyCommand(rawCommand) : null;
+  let operation = rawCommand ? classifyCommand(rawCommand) : null;
+  // Exit status/failure signature are only knowable once the tool result is back (PostToolUse), and
+  // only for Bash-classified operations — a passing/failing test's transcript result is this
+  // operation's outcome. stats.last_result is transcript-derived and best-effort: a PostToolUse whose
+  // transcript chunk hasn't caught up yet (rare, but possible under fast successive hooks) leaves
+  // exit_status/failure_signature null rather than guessing.
+  if (operation && event === "PostToolUse" && stats?.last_result && stats.last_result.tool === tool.name) {
+    operation = {
+      ...operation,
+      exit_status: stats.last_result.is_error ? "fail" : "pass",
+      failure_signature: stats.last_result.is_error ? failureSignature(stats.last_result_failure_text) : null,
+    };
+  }
   const callId = resolveCallId(input, sessionId, tool.name, event);
+  const activity = updateSessionActivity(sessionId, event, tool, operation, cwd);
   const record = {
     schema: SCHEMA_VERSION,
     capture_id: generateCaptureId(),
@@ -60,7 +75,13 @@ export async function telemetryCaptureCommand(args) {
     duration_ms: toolDuration(event, callId),
     config_snapshot_id: await resolveConfigSnapshotId(event, sessionId, options.harness, stats),
     operation,
-    phase: null, // Phase 4 work: explicit/inferred phase tagging.
+    // Explicit phase markers (`telemetry mark --type phase`) are read at analysis time (Phase 5+) and
+    // take precedence from their timestamp forward — this capture-time field is always the inferred
+    // reading from this session's accumulated activity signals, never a lookup against markers (that
+    // would require importing marker persistence into the hot path, which the plan's performance
+    // constraints rule out).
+    phase: activity ? inferPhase(activity.phaseSignals) : null,
+    intervening: activity ? activity.intervening : null,
     prompt: promptMetadata(input),
     tokens: stats ? stats.tokens : null,
     delta_tokens: stats ? deltaTokens(sessionId, stats.tokens.total) : null,
@@ -155,6 +176,155 @@ function repoMetadata(cwd) {
     // Short SHA correlates a spike to the code state it happened on; safe to keep in the clear.
     sha: sha || null,
   };
+}
+
+// Tool names whose PostToolUse counts as an "edit completed" for phase inference and intervening-work
+// tracking (plan: "whether a write/edit tool completed"). Kept to the tools that mutate repo files —
+// Read/Grep/Glob-shaped tools are discovery signals, not edits.
+const EDIT_TOOL_NAMES = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+const READ_TOOL_NAMES = new Set(["Read", "Grep", "Glob", "WebFetch", "WebSearch"]);
+
+function sessionActivityPath(sessionId) {
+  return path.join(telemetryCollectorDir, `activity-${hash(sessionId)}.json`);
+}
+
+function emptySessionActivity() {
+  return {
+    editCount: 0,
+    readCount: 0,
+    testFailureStreak: 0,
+    editSinceLastFailure: false,
+    broadCheckRan: false,
+    finalizationSignals: false,
+    changedFileCategories: [],
+    changedFileCount: 0,
+    lastDiffFingerprint: null,
+    targetedTestRanSinceLastFull: false,
+    lastFailureSignature: null,
+  };
+}
+
+// Session-scoped activity state, read-modify-written on every PostToolUse (the point at which we
+// know a tool actually completed, and — for test operations — whether it passed or failed). Feeds
+// both phase inference (telemetry-phase-infer.mjs) and the per-capture `intervening` field (plan:
+// "Intervening-work analysis"). Best-effort throughout: a cursor read/write failure degrades to an
+// empty/stale activity view rather than failing the capture.
+function updateSessionActivity(sessionId, event, tool, operation, cwd) {
+  if (!sessionId) return null;
+  const cursorPath = sessionActivityPath(sessionId);
+  let activity = emptySessionActivity();
+  try {
+    activity = { ...activity, ...JSON.parse(fs.readFileSync(cursorPath, "utf8")) };
+  } catch {
+    // First activity this session, or a corrupt/missing cursor — start fresh.
+  }
+
+  if (event === "PostToolUse") {
+    const isEdit = EDIT_TOOL_NAMES.has(tool.name);
+    const isRead = READ_TOOL_NAMES.has(tool.name);
+    const fileTouched = isEdit && tool.file_ext != null;
+
+    if (isEdit) {
+      activity.editCount += 1;
+      activity.editSinceLastFailure = activity.testFailureStreak > 0 ? true : activity.editSinceLastFailure;
+    }
+    if (isRead) activity.readCount += 1;
+    if (fileTouched) {
+      const category = categorizeFile(tool.file_ext);
+      activity.changedFileCategories = dedupe([...activity.changedFileCategories, category]);
+      activity.changedFileCount += 1;
+    }
+
+    if (operation) {
+      const isTestLike = operation.category === "test" || operation.category === "lint" || operation.category === "typecheck";
+      if (isTestLike) {
+        if (operation.exit_status === "fail") {
+          const changed = operation.failure_signature && operation.failure_signature !== activity.lastFailureSignature;
+          activity.testFailureStreak += 1;
+          activity.lastFailureSignature = operation.failure_signature ?? activity.lastFailureSignature;
+          activity._failureSignatureChanged = Boolean(changed);
+        } else if (operation.exit_status === "pass") {
+          activity.testFailureStreak = 0;
+          activity.editSinceLastFailure = false;
+          activity._failureSignatureChanged = false;
+        } else {
+          activity._failureSignatureChanged = false;
+        }
+        if (operation.scope === "full") {
+          activity.broadCheckRan = true;
+          activity._targetedSinceLastFull = activity.targetedTestRanSinceLastFull;
+          activity.targetedTestRanSinceLastFull = false;
+        } else if (operation.scope === "targeted" || operation.scope === "affected") {
+          activity.targetedTestRanSinceLastFull = true;
+          activity._targetedSinceLastFull = true;
+        } else {
+          activity._targetedSinceLastFull = activity.targetedTestRanSinceLastFull;
+        }
+      } else {
+        activity._targetedSinceLastFull = activity.targetedTestRanSinceLastFull;
+        activity._failureSignatureChanged = false;
+      }
+      if (operation.category === "git" || /\bcommit\b/.test(operation.signature || "")) {
+        activity.finalizationSignals = true;
+      }
+    } else {
+      activity._targetedSinceLastFull = activity.targetedTestRanSinceLastFull;
+      activity._failureSignatureChanged = false;
+    }
+  } else {
+    activity._targetedSinceLastFull = activity.targetedTestRanSinceLastFull;
+    activity._failureSignatureChanged = false;
+  }
+
+  const diffFingerprint = gitDiffFingerprint(cwd);
+  const diffChanged = diffFingerprint != null && diffFingerprint !== activity.lastDiffFingerprint;
+  const editSinceLastTest = activity.editCount > 0 && (activity.testFailureStreak > 0 || diffChanged);
+  const priorDiffFingerprint = activity.lastDiffFingerprint;
+  activity.lastDiffFingerprint = diffFingerprint ?? activity.lastDiffFingerprint;
+
+  const intervening = {
+    edit_since_last_test: editSinceLastTest,
+    changed_file_count: activity.changedFileCount,
+    changed_file_categories: activity.changedFileCategories,
+    diff_fingerprint: diffFingerprint,
+    diff_fingerprint_changed: priorDiffFingerprint != null && diffFingerprint != null ? diffFingerprint !== priorDiffFingerprint : false,
+    targeted_test_ran_since_last_full: activity._targetedSinceLastFull ?? activity.targetedTestRanSinceLastFull,
+    failure_signature_changed: activity._failureSignatureChanged ?? false,
+  };
+
+  const phaseSignals = {
+    editCount: activity.editCount,
+    readCount: activity.readCount,
+    lastTestOperation: operation && event === "PostToolUse" ? operation : null,
+    testFailureStreak: activity.testFailureStreak,
+    editSinceLastFailure: activity.editSinceLastFailure,
+    broadCheckRan: activity.broadCheckRan,
+    finalizationSignals: activity.finalizationSignals,
+  };
+
+  try {
+    fs.mkdirSync(telemetryCollectorDir, { recursive: true });
+    const { _failureSignatureChanged, _targetedSinceLastFull, ...persisted } = activity;
+    fs.writeFileSync(cursorPath, JSON.stringify(persisted));
+  } catch {
+    // Best-effort; a failed write just means the next call rebuilds from an empty/stale cursor.
+  }
+
+  return { intervening, phaseSignals };
+}
+
+function dedupe(values) {
+  return [...new Set(values)];
+}
+
+// Content-addressed fingerprint of the working tree's current diff shape — a hash, never the diff
+// text itself (plan: "whether Git diff fingerprint changed"). `git diff --stat` names/sizes changed
+// files without their content, which is enough to detect "something changed" without persisting any
+// source text. Returns null (not thrown) when cwd isn't a git repo or git is unavailable.
+function gitDiffFingerprint(cwd) {
+  const diffStat = git(cwd, ["diff", "--stat", "HEAD"]);
+  if (!diffStat) return null;
+  return hash(diffStat);
 }
 
 function toolMetadata(input) {

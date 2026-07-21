@@ -1444,6 +1444,18 @@ assert "telemetry: semantic command classification" \
 assert "telemetry: capture v3 fields and call-aware duration pairing" \
   node "${repo_root}/scripts/test/telemetry-capture-v3-check.mjs"
 
+# Phase 4 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: explainable phase
+# inference and task category/scale inference, pure modules with no fs/session dependency.
+assert "telemetry: phase inference rules" \
+  node "${repo_root}/scripts/test/telemetry-phase-infer-check.mjs"
+assert "telemetry: task category/scale inference" \
+  node "${repo_root}/scripts/test/telemetry-task-infer-check.mjs"
+
+# Phase 4: inferred phase tagging, intervening-work signals (edit/diff/failure-signature
+# transitions), and failure-signature capture wired into the real capture hot path.
+assert "telemetry: phase 4 capture-time phase and intervening-work signals" \
+  node "${repo_root}/scripts/test/telemetry-phase4-integration-check.mjs"
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"

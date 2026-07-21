@@ -52,6 +52,23 @@ function testMarkerValidation() {
   const phase = { ...base, marker_id: generateMarkerId(), type: "phase", phase: "debugging" };
   assert.deepEqual(validateMarker(phase), phase);
   assert.throws(() => validateMarker({ ...base, type: "phase" }), /requires a non-empty phase/);
+
+  // Phase 4: task_category/task_scale, outcome-marker-only.
+  const outcomeWithTask = {
+    ...outcome,
+    marker_id: generateMarkerId(),
+    task_category: "bug-fix",
+    task_category_source: "explicit",
+    task_scale: { files_touched: 3, directories_touched: 1, insertions: 40, deletions: 12, cross_cutting: false, surface: "code" },
+  };
+  assert.deepEqual(validateMarker(outcomeWithTask), outcomeWithTask);
+  assert.throws(() => validateMarker({ ...base, task_category: "bug-fix", task_category_source: "explicit" }), /only valid on outcome markers/);
+  assert.throws(() => validateMarker({ ...outcome, marker_id: generateMarkerId(), task_category: "bogus", task_category_source: "explicit" }), /unknown marker task_category/);
+  assert.throws(() => validateMarker({ ...outcome, marker_id: generateMarkerId(), task_category: "bug-fix" }), /requires a valid task_category_source/);
+  assert.throws(
+    () => validateMarker({ ...outcome, marker_id: generateMarkerId(), task_category: "bug-fix", task_category_source: "explicit", task_scale: { files_touched: -1 } }),
+    /non-negative integer/,
+  );
 }
 
 function testSnapshotContentAddressing() {
@@ -107,7 +124,16 @@ function testCaptureV3Compat() {
     capture_id: generateId("cap"),
     call_id: "toolu_abc123",
     operation: { category: "test", scope: "targeted", exit_status: "pass" },
-    phase: { name: "debugging", source: "inferred", confidence: 0.8 },
+    phase: { name: "debugging", source: "inferred", confidence: 0.8, classifier_version: 1 },
+    intervening: {
+      edit_since_last_test: true,
+      changed_file_count: 2,
+      changed_file_categories: ["code", "doc"],
+      diff_fingerprint: "abc123",
+      diff_fingerprint_changed: true,
+      targeted_test_ran_since_last_full: false,
+      failure_signature_changed: true,
+    },
   };
   assert.deepEqual(validateCaptureV3(v3Record), v3Record);
   assert.throws(
@@ -115,6 +141,14 @@ function testCaptureV3Compat() {
     /unknown operation category/,
   );
   assert.throws(() => validateCaptureV3({ ...v2Record, schema: 4 }), /unsupported capture schema version/);
+  assert.throws(
+    () => validateCaptureV3({ ...v3Record, intervening: { ...v3Record.intervening, changed_file_count: "two" } }),
+    /changed_file_count must be an integer/,
+  );
+  assert.throws(
+    () => validateCaptureV3({ ...v3Record, intervening: { ...v3Record.intervening, unknown_field: 1 } }),
+    /unknown capture intervening field/,
+  );
 }
 
 // Persistence functions import state-paths.mjs, whose stateRoot is a top-level const resolved from

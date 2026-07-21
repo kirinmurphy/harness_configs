@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { readConfigSnapshot } from "./config.mjs";
 import { readPackageVersion } from "./workspace.mjs";
-import { generateMarkerId, MARKER_TYPES, OUTCOME_STATUSES, EXPECTED_DIRECTIONS } from "./telemetry-schemas/marker-schema.mjs";
+import { generateMarkerId, MARKER_TYPES, OUTCOME_STATUSES, EXPECTED_DIRECTIONS, TASK_CATEGORIES } from "./telemetry-schemas/marker-schema.mjs";
 import { buildEffectiveSnapshot } from "./telemetry-schemas/snapshot-schema.mjs";
 import { generateExperimentId, COMPARISON_MODES } from "./telemetry-schemas/experiment-schema.mjs";
+import { inferTaskScale } from "./telemetry-task-infer.mjs";
 import {
   appendMarker, readMarkers, writeSnapshot, writeExperiment, readExperiment, readExperiments,
 } from "./telemetry-schemas/persistence.mjs";
@@ -69,15 +70,39 @@ export function createMarker(fields, { cwd = process.cwd() } = {}) {
     session_id: fields.session_id ?? null,
     phase: fields.phase ?? null,
     status: fields.status ?? null,
+    ...taskFields(fields),
   };
   return appendMarker(marker);
+}
+
+// Task category/scale are explicit-only when set through the CLI (see telemetry.mjs's
+// --task-category and friends) — task_category_source is always "explicit" here.
+// telemetry-task-infer.mjs's inferTaskCategory() is for future analysis-time (Phase 5+) inference
+// over accumulated session signals, not something this marker-creation path calls itself.
+function taskFields(fields) {
+  if (fields.task_category == null) return {};
+  const hasScaleInput = fields.files_touched != null || fields.directories_touched != null
+    || fields.insertions != null || fields.deletions != null;
+  return {
+    task_category: fields.task_category,
+    task_category_source: "explicit",
+    task_scale: hasScaleInput
+      ? inferTaskScale({
+          filesTouched: fields.files_touched ?? 0,
+          directoriesTouched: fields.directories_touched ?? 0,
+          insertions: fields.insertions ?? null,
+          deletions: fields.deletions ?? null,
+          changedFileCategories: [],
+        })
+      : null,
+  };
 }
 
 export function listMarkers() {
   return readMarkers();
 }
 
-export { MARKER_TYPES, OUTCOME_STATUSES, EXPECTED_DIRECTIONS, COMPARISON_MODES };
+export { MARKER_TYPES, OUTCOME_STATUSES, EXPECTED_DIRECTIONS, COMPARISON_MODES, TASK_CATEGORIES };
 
 // Creates an experiment definition plus its start marker in one step, per the plan's CLI design
 // ("start creates both the experiment definition and its marker").

@@ -41,6 +41,9 @@
     "test:telemetry-marker-cli": "node scripts/test/telemetry-marker-cli-check.mjs",
     "test:telemetry-classify": "node scripts/test/telemetry-classify-check.mjs",
     "test:telemetry-capture-v3": "node scripts/test/telemetry-capture-v3-check.mjs",
+    "test:telemetry-phase-infer": "node scripts/test/telemetry-phase-infer-check.mjs",
+    "test:telemetry-task-infer": "node scripts/test/telemetry-task-infer-check.mjs",
+    "test:telemetry-phase4-integration": "node scripts/test/telemetry-phase4-integration-check.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "pack:smoke": "npm pack"
   },

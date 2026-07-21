@@ -93,6 +93,7 @@ export function transcriptStats(transcriptPath, { sessionId, collectorDir } = {}
   const newOffset = lastNewline === -1 ? startOffset : startOffset + Buffer.byteLength(parseable, "utf8") + 1;
 
   let lastResult = null;
+  let lastResultFailureText = null;
   for (const line of parseable.split("\n")) {
     if (!line.trim()) continue;
     let entry;
@@ -105,6 +106,7 @@ export function transcriptStats(transcriptPath, { sessionId, collectorDir } = {}
     const codexResult = applyCodexEntry(counters, entry);
     if (codexResult?.last_result) {
       lastResult = codexResult.last_result;
+      if (codexResult.last_result.is_error) lastResultFailureText = codexResult.failure_text ?? null;
       if (!counters.biggestResult || codexResult.last_result.chars > counters.biggestResult.chars) {
         counters.biggestResult = codexResult.last_result;
       }
@@ -139,8 +141,14 @@ export function transcriptStats(transcriptPath, { sessionId, collectorDir } = {}
         if (block.type !== "tool_result") continue;
         const tool = counters.pendingToolNameById[block.tool_use_id] ?? null;
         delete counters.pendingToolNameById[block.tool_use_id];
-        const result = { tool, chars: resultChars(block.content), is_error: block.is_error === true };
+        const isError = block.is_error === true;
+        const result = { tool, chars: resultChars(block.content), is_error: isError };
         lastResult = result;
+        // Bounded failure text lives only on the return value, never on `result`/`lastResult` (which
+        // get persisted to the spool as last_result/biggest_result) — capture.mjs must hash this
+        // immediately and never store it. Only computed on the error path since success text is
+        // never needed for a failure signature.
+        if (isError) lastResultFailureText = resultText(block.content);
         if (!counters.biggestResult || result.chars > counters.biggestResult.chars) counters.biggestResult = result;
       }
     }
@@ -170,6 +178,9 @@ export function transcriptStats(transcriptPath, { sessionId, collectorDir } = {}
     // chunk had no new tool_result (e.g. two hook fires between one tool's use and its result).
     last_result: lastResult,
     biggest_result: counters.biggestResult,
+    // Bounded, transient-only failure text for telemetry-capture.mjs to hash into
+    // operation.failure_signature — never persisted itself and never part of last_result/biggest_result.
+    last_result_failure_text: lastResultFailureText,
   };
 }
 
@@ -203,6 +214,22 @@ function resultChars(content) {
     return content.reduce((sum, block) => sum + (typeof block?.text === "string" ? block.text.length : safeLen(block)), 0);
   }
   return safeLen(content);
+}
+
+// Bounded text for the failure-signature hash only (telemetry-classify.mjs's failureSignature()
+// itself truncates to 2000 chars and hashes; this cap just avoids building a huge intermediate
+// string first). Callers must hash this immediately and never persist it — see the is_error branches
+// above, which set this only transiently before returning it up to telemetry-capture.mjs.
+const FAILURE_TEXT_CAP = 4000;
+function resultText(content) {
+  if (typeof content === "string") return content.slice(0, FAILURE_TEXT_CAP);
+  if (Array.isArray(content)) {
+    return content
+      .map((block) => (typeof block?.text === "string" ? block.text : ""))
+      .join(" ")
+      .slice(0, FAILURE_TEXT_CAP);
+  }
+  return "";
 }
 
 function applyCodexEntry(counters, entry) {
@@ -247,7 +274,11 @@ function applyCodexEntry(counters, entry) {
     const tool = counters.pendingToolNameById[item.call_id] || counters.pendingToolNameById[item.id] || null;
     delete counters.pendingToolNameById[item.call_id];
     delete counters.pendingToolNameById[item.id];
-    return { last_result: { tool, chars: resultChars(item.output), is_error: item.is_error === true } };
+    const isError = item.is_error === true;
+    return {
+      last_result: { tool, chars: resultChars(item.output), is_error: isError },
+      failure_text: isError ? resultText(item.output) : null,
+    };
   }
   return null;
 }

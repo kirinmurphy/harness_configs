@@ -10,7 +10,7 @@ import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { readMarkers, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
 import {
   createMarker, startExperiment, endExperiment, experimentStatus,
-  MARKER_TYPES, OUTCOME_STATUSES, EXPECTED_DIRECTIONS,
+  MARKER_TYPES, OUTCOME_STATUSES, EXPECTED_DIRECTIONS, TASK_CATEGORIES,
 } from "./telemetry-markers.mjs";
 import { startPortalServer } from "./portal-server.mjs";
 import { readConfigSnapshot, loadConfigSource } from "./config.mjs";
@@ -72,7 +72,8 @@ export async function telemetryCommand(rest) {
 
 const MARK_USAGE = "usage: roborepo telemetry mark --type <type> --title <title> [--description <text>] "
   + "[--package <id>]... [--skill <id>]... [--tag <tag>]... [--metric <id>] [--expect increase|decrease|no-change] "
-  + "[--session <id>] [--phase <phase>] [--status <status>] [--supersedes <marker-id>]";
+  + "[--session <id>] [--phase <phase>] [--status <status>] [--supersedes <marker-id>] "
+  + "[--task-category <id>] [--files-touched <n>] [--directories-touched <n>] [--insertions <n>] [--deletions <n>]";
 
 function parseMarkArgs(args) {
   const options = { packages: [], skills: [], tags: [] };
@@ -91,6 +92,15 @@ function parseMarkArgs(args) {
       case "--phase": options.phase = args[++i]; break;
       case "--status": options.status = args[++i]; break;
       case "--supersedes": options.supersedes = args[++i]; break;
+      // Task category/scale are explicit-only through the CLI — a human or scripted caller stating
+      // "this was a bug-fix touching 3 files" is task_category_source: "explicit" by construction.
+      // Inferred task classification (telemetry-task-infer.mjs) is a Phase 5+ analysis-time concern,
+      // not something this command computes itself.
+      case "--task-category": options.task_category = args[++i]; break;
+      case "--files-touched": options.files_touched = Number(args[++i]); break;
+      case "--directories-touched": options.directories_touched = Number(args[++i]); break;
+      case "--insertions": options.insertions = Number(args[++i]); break;
+      case "--deletions": options.deletions = Number(args[++i]); break;
       default:
         console.error(`unknown argument: ${arg}`);
         console.error(MARK_USAGE);
@@ -124,6 +134,14 @@ function telemetryMark(args) {
     console.error("phase markers require --phase");
     process.exit(2);
   }
+  if (options.task_category != null && !TASK_CATEGORIES.has(options.task_category)) {
+    console.error(`--task-category must be one of: ${[...TASK_CATEGORIES].join(", ")}`);
+    process.exit(2);
+  }
+  if (options.task_category != null && options.type !== "outcome") {
+    console.error("--task-category is only valid on outcome markers (--type outcome)");
+    process.exit(2);
+  }
   let marker;
   try {
     marker = createMarker(options);
@@ -137,6 +155,12 @@ function telemetryMark(args) {
   console.log(`  title: ${marker.title}`);
   console.log(`  repo: ${marker.repo ?? "unknown"}  branch: ${marker.branch ?? "unknown"}  sha: ${marker.sha ?? "unknown"}`);
   console.log(`  snapshot: ${marker.config_snapshot_id ?? "unavailable"}`);
+  if (marker.task_category) {
+    console.log(`  task_category: ${marker.task_category} (${marker.task_category_source})`);
+  }
+  if (marker.task_scale) {
+    console.log(`  task_scale: files=${marker.task_scale.files_touched ?? "?"} dirs=${marker.task_scale.directories_touched ?? "?"} +${marker.task_scale.insertions ?? "?"}/-${marker.task_scale.deletions ?? "?"} cross_cutting=${marker.task_scale.cross_cutting}`);
+  }
 }
 
 // --------------------------------------------------------------------------- experiments

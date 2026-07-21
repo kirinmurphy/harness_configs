@@ -6,12 +6,21 @@ export const MARKER_SCHEMA_VERSION = 1;
 export const MARKER_TYPES = new Set(["change", "phase", "outcome", "experiment-start", "experiment-end", "note"]);
 export const OUTCOME_STATUSES = new Set(["successful", "partial", "failed", "abandoned", "unknown"]);
 export const EXPECTED_DIRECTIONS = new Set(["increase", "decrease", "no-change"]);
+export const TASK_CATEGORIES = new Set([
+  "documentation", "ui", "bug-fix", "feature", "refactor", "build-tooling",
+  "dependency-configuration", "investigation", "unknown",
+]);
+export const TASK_CATEGORY_SOURCES = new Set(["explicit", "inferred"]);
 
 const ALLOWED_FIELDS = [
   "schema", "marker_id", "ts", "type", "title", "description", "repo", "branch", "sha",
   "config_snapshot_id", "packages", "skills", "tags", "metric", "expected_direction",
   "supersedes", "session_id", "phase", "status",
+  "task_category", "task_category_source", "task_scale",
 ];
+
+const TASK_SCALE_FIELDS = ["files_touched", "directories_touched", "insertions", "deletions", "cross_cutting", "surface"];
+const TASK_SCALE_SURFACES = new Set(["code", "configuration", "documentation", "generated", "mixed", "unknown"]);
 
 export function generateMarkerId() {
   return generateId("mark");
@@ -57,5 +66,35 @@ export function validateMarker(marker) {
   } else if (marker.phase != null) {
     throw new Error("marker phase is only valid on phase markers");
   }
+  if (marker.task_category != null || marker.task_category_source != null || marker.task_scale != null) {
+    if (marker.type !== "outcome") throw new Error("marker task_category/task_scale are only valid on outcome markers");
+  }
+  if (marker.task_category != null) {
+    if (!TASK_CATEGORIES.has(marker.task_category)) throw new Error(`unknown marker task_category: ${marker.task_category}`);
+    if (!TASK_CATEGORY_SOURCES.has(marker.task_category_source)) {
+      throw new Error(`marker task_category requires a valid task_category_source, got: ${marker.task_category_source}`);
+    }
+  } else if (marker.task_category_source != null) {
+    throw new Error("marker task_category_source requires task_category");
+  }
+  if (marker.task_scale != null) validateTaskScale(marker.task_scale);
   return marker;
+}
+
+// Explainable scope dimensions for a completed task (plan: "Task scale"). Never guessed beyond what
+// git/changed-file signals directly support — unknown fields stay null rather than being estimated.
+function validateTaskScale(scale) {
+  if (typeof scale !== "object" || Array.isArray(scale)) throw new Error("marker task_scale must be an object");
+  validateObjectKeys(scale, TASK_SCALE_FIELDS, "marker task_scale");
+  for (const field of ["files_touched", "directories_touched", "insertions", "deletions"]) {
+    if (scale[field] != null && (!Number.isInteger(scale[field]) || scale[field] < 0)) {
+      throw new Error(`marker task_scale.${field} must be a non-negative integer`);
+    }
+  }
+  if (scale.cross_cutting != null && typeof scale.cross_cutting !== "boolean") {
+    throw new Error("marker task_scale.cross_cutting must be a boolean");
+  }
+  if (scale.surface != null && !TASK_SCALE_SURFACES.has(scale.surface)) {
+    throw new Error(`unknown marker task_scale.surface: ${scale.surface}`);
+  }
 }

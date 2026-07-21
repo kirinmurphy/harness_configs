@@ -10,6 +10,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-telemetry-correctnes
 
 try {
   testClaudeTranscript();
+  testClaudeTranscriptFailureText();
   testCodexTranscript();
   testAnalyzerWarnings();
   console.log("telemetry correctness checks passed");
@@ -47,6 +48,30 @@ function testClaudeTranscript() {
   assert.equal(stats.tool_calls, 1);
   assert.equal(stats.last_result.tool, "Read");
   assert.equal(stats.last_result.chars, 120);
+  assert.equal(stats.last_result.is_error, false);
+  // Phase 4: a successful result must never populate the bounded failure-text field — only the
+  // is_error branch does, and only telemetry-capture.mjs's failureSignature() call consumes it.
+  assert.equal(stats.last_result_failure_text, null);
+}
+
+function testClaudeTranscriptFailureText() {
+  const file = path.join(tmp, "claude-failure.jsonl");
+  writeJsonl(file, [
+    {
+      type: "assistant",
+      message: { model: "claude-test", content: [{ type: "tool_use", id: "t2", name: "Bash" }] },
+    },
+    {
+      type: "user",
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "t2", content: "AssertionError: expected 1 to equal 2", is_error: true }],
+      },
+    },
+  ]);
+
+  const stats = transcriptStats(file, { sessionId: "claude-failure-session", collectorDir: tmp });
+  assert.equal(stats.last_result.is_error, true);
+  assert.equal(stats.last_result_failure_text, "AssertionError: expected 1 to equal 2");
 }
 
 function testCodexTranscript() {

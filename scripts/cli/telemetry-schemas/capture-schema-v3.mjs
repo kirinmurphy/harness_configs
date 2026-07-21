@@ -13,7 +13,7 @@ export const OPERATION_EXIT_STATUSES = new Set(["pass", "fail", "blocked", "unkn
 export const PHASE_NAMES = new Set(["discovery", "implementation", "debugging", "verification", "finalization", "unknown"]);
 export const PHASE_SOURCES = new Set(["explicit", "inferred"]);
 
-const V3_ONLY_FIELDS = ["capture_id", "call_id", "config_snapshot_id", "operation", "phase"];
+const V3_ONLY_FIELDS = ["capture_id", "call_id", "config_snapshot_id", "operation", "phase", "intervening"];
 
 export function generateCaptureId() {
   return generateId("cap");
@@ -40,6 +40,7 @@ export function validateCaptureV3(record) {
   }
   if (record.operation != null) validateOperation(record.operation);
   if (record.phase != null) validatePhase(record.phase);
+  if (record.intervening != null) validateIntervening(record.intervening);
   return record;
 }
 
@@ -64,11 +65,51 @@ function validateOperation(operation) {
 
 function validatePhase(phase) {
   if (typeof phase !== "object" || Array.isArray(phase)) throw new Error("capture phase must be an object");
-  validateObjectKeys(phase, ["name", "source", "confidence"], "capture phase");
+  validateObjectKeys(phase, ["name", "source", "confidence", "classifier_version"], "capture phase");
   if (!PHASE_NAMES.has(phase.name)) throw new Error(`unknown phase name: ${phase.name}`);
   if (!PHASE_SOURCES.has(phase.source)) throw new Error(`unknown phase source: ${phase.source}`);
   if (typeof phase.confidence !== "number" || phase.confidence < 0 || phase.confidence > 1) {
     throw new Error("phase confidence must be a number between 0 and 1");
+  }
+  if (phase.classifier_version != null && !Number.isInteger(phase.classifier_version)) {
+    throw new Error("phase classifier_version must be an integer");
+  }
+}
+
+const INTERVENING_FIELDS = [
+  "edit_since_last_test", "changed_file_count", "changed_file_categories",
+  "diff_fingerprint", "diff_fingerprint_changed", "targeted_test_ran_since_last_full",
+  "failure_signature_changed",
+];
+
+// Privacy-safe "what happened since the last equivalent test run" signals (plan: "Intervening-work
+// analysis"). Booleans/counts/category labels only — no file paths, no diff content. diff_fingerprint
+// is itself a hash (see telemetry-capture.mjs diffFingerprint()), not a real Git diff.
+function validateIntervening(intervening) {
+  if (typeof intervening !== "object" || Array.isArray(intervening)) throw new Error("capture intervening must be an object");
+  validateObjectKeys(intervening, INTERVENING_FIELDS, "capture intervening");
+  if (intervening.edit_since_last_test != null && typeof intervening.edit_since_last_test !== "boolean") {
+    throw new Error("intervening edit_since_last_test must be a boolean");
+  }
+  if (intervening.changed_file_count != null && !Number.isInteger(intervening.changed_file_count)) {
+    throw new Error("intervening changed_file_count must be an integer");
+  }
+  if (intervening.changed_file_categories != null) {
+    if (!Array.isArray(intervening.changed_file_categories) || !intervening.changed_file_categories.every((c) => typeof c === "string")) {
+      throw new Error("intervening changed_file_categories must be an array of strings");
+    }
+  }
+  if (intervening.diff_fingerprint != null && typeof intervening.diff_fingerprint !== "string") {
+    throw new Error("intervening diff_fingerprint must be a string");
+  }
+  if (intervening.diff_fingerprint_changed != null && typeof intervening.diff_fingerprint_changed !== "boolean") {
+    throw new Error("intervening diff_fingerprint_changed must be a boolean");
+  }
+  if (intervening.targeted_test_ran_since_last_full != null && typeof intervening.targeted_test_ran_since_last_full !== "boolean") {
+    throw new Error("intervening targeted_test_ran_since_last_full must be a boolean");
+  }
+  if (intervening.failure_signature_changed != null && typeof intervening.failure_signature_changed !== "boolean") {
+    throw new Error("intervening failure_signature_changed must be a boolean");
   }
 }
 

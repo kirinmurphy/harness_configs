@@ -125,7 +125,14 @@ deliverable of a "wrap up."
 - Produce a short status summary (for the chat, not the pasted prompt): what shipped
   this session, what's still open.
 
-**The paste-ready prompt.** Give the next chat enough standalone context to pick up
+**Skip the handoff prompt when there's nothing to hand off.** If the scan finds no open
+work — no tasks left in a plan doc, no deferred questions, no unstarted follow-ups —
+state that the session is fully closed and stop there. Do not generate the paste-ready
+prompt block (or its header/footer rule) in this case; a handoff prompt implies there is
+a next task to run, and producing one anyway invents work that doesn't exist.
+
+**The paste-ready prompt.** Only produced when step 5's scan found real open work. Give
+the next chat enough standalone context to pick up
 cold: repo + branch, what's next, and any constraint the user stated. Then apply these
 filters to what you include:
 

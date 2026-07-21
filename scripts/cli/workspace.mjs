@@ -18,7 +18,7 @@ function workspacePointerPath() {
   return path.join(stateRoot, WORKSPACE_POINTER);
 }
 
-function readPackageVersion() {
+export function readPackageVersion() {
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(appRoot, "package.json"), "utf8"));
     return pkg.version || "0.0.0";

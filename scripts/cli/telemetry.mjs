@@ -8,6 +8,10 @@ import { repoRoot } from "./paths.mjs";
 import { portalPidPath, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { readMarkers, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
+import {
+  createMarker, startExperiment, endExperiment, experimentStatus,
+  MARKER_TYPES, OUTCOME_STATUSES, EXPECTED_DIRECTIONS,
+} from "./telemetry-markers.mjs";
 import { startPortalServer } from "./portal-server.mjs";
 import { readConfigSnapshot, loadConfigSource } from "./config.mjs";
 import { mutatePackage, setSkillInstalled, setBehaviorBucket, setCommandBucket } from "./config-mutate.mjs";
@@ -45,6 +49,10 @@ export async function telemetryCommand(rest) {
       return telemetryPurge(args);
     case "backup":
       return telemetryBackup(args);
+    case "mark":
+      return telemetryMark(args);
+    case "experiment":
+      return telemetryExperiment(args);
     // The hot hook path (fires every PreToolUse/PostToolUse) bypasses this module entirely via
     // main.mjs's dynamic import of telemetry-capture.mjs. This case only serves callers that go
     // through telemetryCommand directly (tests, telemetry-only install's wired hook command still
@@ -54,9 +62,200 @@ export async function telemetryCommand(rest) {
       return telemetryCaptureCommand(args);
     }
     default:
-      console.error("usage: roborepo telemetry install|stop|enable|disable|status|report|export|backup|purge");
+      console.error("usage: roborepo telemetry install|stop|enable|disable|status|report|export|backup|purge|mark|experiment");
       console.error("portal: roborepo serve [--detach] [--no-open] [--port <n>]");
       process.exit(2);
+  }
+}
+
+// --------------------------------------------------------------------------- markers
+
+const MARK_USAGE = "usage: roborepo telemetry mark --type <type> --title <title> [--description <text>] "
+  + "[--package <id>]... [--skill <id>]... [--tag <tag>]... [--metric <id>] [--expect increase|decrease|no-change] "
+  + "[--session <id>] [--phase <phase>] [--status <status>] [--supersedes <marker-id>]";
+
+function parseMarkArgs(args) {
+  const options = { packages: [], skills: [], tags: [] };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    switch (arg) {
+      case "--type": options.type = args[++i]; break;
+      case "--title": options.title = args[++i]; break;
+      case "--description": options.description = args[++i]; break;
+      case "--package": options.packages.push(args[++i]); break;
+      case "--skill": options.skills.push(args[++i]); break;
+      case "--tag": options.tags.push(args[++i]); break;
+      case "--metric": options.metric = args[++i]; break;
+      case "--expect": options.expected_direction = args[++i]; break;
+      case "--session": options.session_id = args[++i]; break;
+      case "--phase": options.phase = args[++i]; break;
+      case "--status": options.status = args[++i]; break;
+      case "--supersedes": options.supersedes = args[++i]; break;
+      default:
+        console.error(`unknown argument: ${arg}`);
+        console.error(MARK_USAGE);
+        process.exit(2);
+    }
+  }
+  return options;
+}
+
+function telemetryMark(args) {
+  const options = parseMarkArgs(args);
+  if (!options.type || !MARKER_TYPES.has(options.type)) {
+    console.error(`--type is required and must be one of: ${[...MARKER_TYPES].join(", ")}`);
+    console.error(MARK_USAGE);
+    process.exit(2);
+  }
+  if (!options.title || !options.title.trim()) {
+    console.error("--title is required");
+    console.error(MARK_USAGE);
+    process.exit(2);
+  }
+  if (options.expected_direction && !EXPECTED_DIRECTIONS.has(options.expected_direction)) {
+    console.error(`--expect must be one of: ${[...EXPECTED_DIRECTIONS].join(", ")}`);
+    process.exit(2);
+  }
+  if (options.type === "outcome" && (!options.status || !OUTCOME_STATUSES.has(options.status))) {
+    console.error(`outcome markers require --status to be one of: ${[...OUTCOME_STATUSES].join(", ")}`);
+    process.exit(2);
+  }
+  if (options.type === "phase" && !options.phase) {
+    console.error("phase markers require --phase");
+    process.exit(2);
+  }
+  let marker;
+  try {
+    marker = createMarker(options);
+  } catch (err) {
+    console.error(`failed to create marker: ${err.message}`);
+    process.exit(1);
+  }
+  console.log(`marker: ${marker.marker_id}`);
+  console.log(`  ts: ${marker.ts}`);
+  console.log(`  type: ${marker.type}`);
+  console.log(`  title: ${marker.title}`);
+  console.log(`  repo: ${marker.repo ?? "unknown"}  branch: ${marker.branch ?? "unknown"}  sha: ${marker.sha ?? "unknown"}`);
+  console.log(`  snapshot: ${marker.config_snapshot_id ?? "unavailable"}`);
+}
+
+// --------------------------------------------------------------------------- experiments
+
+const EXPERIMENT_USAGE = "usage: roborepo telemetry experiment start --title <title> --metric <id> "
+  + "--expect increase|decrease|no-change [--guardrail <id>]... [--task-category <id>]... "
+  + "[--minimum-sessions <n>] [--comparison previous-equivalent-window|midpoint]\n"
+  + "       roborepo telemetry experiment end <experiment-id>\n"
+  + "       roborepo telemetry experiment status [<experiment-id>]";
+
+function parseExperimentStartArgs(args) {
+  const options = { guardrails: [], task_categories: [] };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    switch (arg) {
+      case "--title": options.title = args[++i]; break;
+      case "--metric": options.metric = args[++i]; break;
+      case "--expect": options.expected_direction = args[++i]; break;
+      case "--guardrail": options.guardrails.push(args[++i]); break;
+      case "--task-category": options.task_categories.push(args[++i]); break;
+      case "--minimum-sessions": options.minimum_sessions_per_cohort = Number(args[++i]); break;
+      case "--comparison": options.comparison = args[++i]; break;
+      default:
+        console.error(`unknown argument: ${arg}`);
+        console.error(EXPERIMENT_USAGE);
+        process.exit(2);
+    }
+  }
+  return options;
+}
+
+function telemetryExperiment(args) {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "start":
+      return telemetryExperimentStart(rest);
+    case "end":
+      return telemetryExperimentEnd(rest);
+    case "status":
+      return telemetryExperimentStatus(rest);
+    default:
+      console.error(EXPERIMENT_USAGE);
+      process.exit(2);
+  }
+}
+
+function telemetryExperimentStart(args) {
+  const options = parseExperimentStartArgs(args);
+  if (!options.title || !options.title.trim()) {
+    console.error("--title is required");
+    console.error(EXPERIMENT_USAGE);
+    process.exit(2);
+  }
+  if (!options.metric || !options.metric.trim()) {
+    console.error("--metric is required");
+    console.error(EXPERIMENT_USAGE);
+    process.exit(2);
+  }
+  if (!options.expected_direction || !EXPECTED_DIRECTIONS.has(options.expected_direction)) {
+    console.error(`--expect is required and must be one of: ${[...EXPECTED_DIRECTIONS].join(", ")}`);
+    process.exit(2);
+  }
+  if (options.minimum_sessions_per_cohort != null && (!Number.isInteger(options.minimum_sessions_per_cohort) || options.minimum_sessions_per_cohort < 1)) {
+    console.error("--minimum-sessions must be a positive integer");
+    process.exit(2);
+  }
+  let result;
+  try {
+    result = startExperiment(options);
+  } catch (err) {
+    console.error(`failed to start experiment: ${err.message}`);
+    process.exit(1);
+  }
+  console.log(`experiment: ${result.experiment.experiment_id}`);
+  console.log(`  title: ${result.experiment.title}`);
+  console.log(`  start marker: ${result.startMarker.marker_id}`);
+  console.log(`  primary metric: ${result.experiment.primary_metric} (expect ${result.experiment.expected_direction})`);
+}
+
+function telemetryExperimentEnd(args) {
+  const [experimentId, ...rest] = args;
+  rejectArgs(rest);
+  if (!experimentId) {
+    console.error(EXPERIMENT_USAGE);
+    process.exit(2);
+  }
+  let result;
+  try {
+    result = endExperiment(experimentId);
+  } catch (err) {
+    console.error(`failed to end experiment: ${err.message}`);
+    process.exit(1);
+  }
+  console.log(`experiment ended: ${result.experiment.experiment_id}`);
+  console.log(`  end marker: ${result.endMarker.marker_id}`);
+}
+
+function telemetryExperimentStatus(args) {
+  const [experimentId, ...rest] = args;
+  rejectArgs(rest);
+  let statuses;
+  try {
+    statuses = experimentStatus(experimentId || null);
+  } catch (err) {
+    console.error(`failed to read experiment status: ${err.message}`);
+    process.exit(1);
+  }
+  if (statuses.length === 0) {
+    console.log("no experiments found.");
+    return;
+  }
+  for (const status of statuses) {
+    console.log(`experiment: ${status.experiment_id}  [${status.state}]`);
+    console.log(`  title: ${status.title}`);
+    console.log(`  metric: ${status.primary_metric} (expect ${status.expected_direction})`);
+    console.log(`  started: ${status.started_at ?? "unknown"}${status.ended_at ? `  ended: ${status.ended_at}` : ""}`);
+    if (status.guardrails.length) console.log(`  guardrails: ${status.guardrails.join(", ")}`);
+    console.log(`  ready: ${status.ready}`);
+    for (const warning of status.data_quality_warnings) console.log(`  warning: ${warning}`);
   }
 }
 

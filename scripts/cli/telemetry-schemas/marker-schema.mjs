@@ -31,7 +31,9 @@ export function validateMarker(marker) {
   if (marker.repo != null && typeof marker.repo !== "string") throw new Error("marker repo must be a string");
   if (marker.branch != null && typeof marker.branch !== "string") throw new Error("marker branch must be a string");
   if (marker.sha != null && typeof marker.sha !== "string") throw new Error("marker sha must be a string");
-  if (marker.config_snapshot_id != null && !isValidId(marker.config_snapshot_id, "cfg")) {
+  // Snapshot IDs are content-addressed hashes (see snapshot-schema.mjs computeSnapshotId), not
+  // generic generateId() ids — 24 hex chars, not 16 — so they need their own format check.
+  if (marker.config_snapshot_id != null && !/^cfg_[a-f0-9]{24}$/.test(marker.config_snapshot_id)) {
     throw new Error(`invalid marker config_snapshot_id: ${marker.config_snapshot_id}`);
   }
   validateStringArray(marker.packages, "marker packages");

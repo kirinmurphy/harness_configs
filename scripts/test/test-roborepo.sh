@@ -1427,6 +1427,11 @@ assert "telemetry: transcript stats and analyzer warnings are correct" \
 assert "telemetry: marker/snapshot/experiment schemas validate and persist correctly" \
   node "${repo_root}/scripts/test/telemetry-schemas-check.mjs"
 
+# Phase 2 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: `telemetry mark`
+# and `telemetry experiment start|end|status` through the real CLI process.
+assert "telemetry: mark and experiment CLI commands work end to end" \
+  node "${repo_root}/scripts/test/telemetry-marker-cli-check.mjs"
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"

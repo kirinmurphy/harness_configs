@@ -22,6 +22,21 @@
       "type": "hooks",
       "source": "hooks-codex.json",
       "harness": "codex"
+    },
+    {
+      "type": "skill",
+      "id": "telemetry-marker",
+      "source": "skills/telemetry-marker",
+      "invocation": "manual",
+      "risk": "low",
+      "entrypoints": [
+        {
+          "type": "slash-command",
+          "name": "telemetry-marker",
+          "description": "Record a telemetry marker or manage an experiment.",
+          "harnesses": ["claude", "codex"]
+        }
+      ]
     }
   ]
 }

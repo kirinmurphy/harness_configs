@@ -1,7 +1,7 @@
 ---
 id: roborepo-telemetry-events-experiments
 priority: high
-next_action: "Phase 0 — use jcodemunch to map current telemetry/config flows; capture schema-v2 fixtures for Claude and Codex"
+next_action: "Phase 3 — capture v3 (capture/call IDs, call-aware duration pairing, config snapshot references, semantic command classification)"
 blocked_by: []
 depends_on: []
 related: []
@@ -77,6 +77,20 @@ Spool: one JSONL per harness at `telemetrySpoolDir/<harness>.jsonl` (paths in `s
 **Schema/validator precedent for Phase 1:** `modules/localhoster/settings-schema.mjs` (`SETTINGS_VERSION` constant, `validateSettings()` entry point, decomposed `validateX()` field helpers, `validateObjectKeys()` strict allowlisting, throw-based errors) and `scripts/cli/package-catalog.mjs` (`validatePackageCatalog()`, `SUPPORTED_SCHEMA` gate, accumulate-all-errors-then-throw). No zod/ajv/joi in the repo — new marker/snapshot/experiment/capture-v3 schemas should follow this same hand-rolled shape.
 
 No `fixtures/` directory exists for telemetry; sample data today is inline literals inside `telemetry-correctness-check.mjs` (`writeJsonl`, `baseEvent`, `tool` helpers) and `test-roborepo.sh`. Phase 1's new schema tests should follow the same inline-fixture style for consistency.
+
+## Phase 2 notes (CLI markers and experiments)
+
+Recorded 2026-07-21, ahead of Phase 3.
+
+Shared domain functions live in `scripts/cli/telemetry-markers.mjs` (`createMarker`, `listMarkers`, `startExperiment`, `endExperiment`, `experimentStatus`), separate from `telemetry.mjs`'s CLI parsing/printing (`telemetryMark`, `telemetryExperiment*`) — Phase 6/7 portal marker/experiment endpoints should import from `telemetry-markers.mjs`, not duplicate this logic. `createMarker` always resolves repo/branch/sha via its own local `git()`/`resolveGitIdentity()` (not `telemetry-capture.mjs`'s private `repoMetadata()`, which isn't exported) and always builds+dedupes a best-effort config snapshot via `resolveConfigSnapshotId()`. `readPackageVersion` in `workspace.mjs` was exported (was module-private) so the snapshot builder can stamp `roborepo_version`.
+
+**Bug fixed this phase:** `marker-schema.mjs`'s `validateMarker` checked `config_snapshot_id` with `isValidId(value, "cfg")`, which enforces the generic 16-hex `generateId()` shape — but `computeSnapshotId()` (snapshot-schema.mjs) produces a 24-hex content hash. Every marker with a real resolved snapshot failed validation until fixed to check `/^cfg_[a-f0-9]{24}$/` directly. Covered by a regression assertion in `telemetry-marker-cli-check.mjs`.
+
+**`experimentStatus` is intentionally thin:** cohort sizing, sample counts, and a "ready" verdict need the Phase 5 metrics/cohort engine (none of that exists yet). Status today reports only what's derivable from the experiment record + marker timeline (lifecycle state, definition, elapsed time) and always returns `ready: false` with a `data_quality_warnings` entry noting cohort sizing isn't implemented. Do not backfill fake readiness logic before Phase 5's cohort model lands — replace this stub then.
+
+Added a manual-invocation `telemetry-marker` skill (`globals/packages/telemetry/skills/telemetry-marker/SKILL.md`) with a slash-command entrypoint, wired into `globals/packages/telemetry/package.config.json`. After editing package.config.json or the skill, regenerate `generated/packages/telemetry/*/commands/telemetry-marker.md` via `node scripts/build/render-slash-commands.mjs` and refresh `docs/reference/internal/skill-invocation-audit.md` via `roborepo skill audit` — both are checked by `test-roborepo.sh` and were the source of spurious full-suite failures during this phase (stale generated output, not actual regressions).
+
+Tests: `scripts/test/telemetry-marker-cli-check.mjs` (new, wired as `test:telemetry-marker-cli` + a `test-roborepo.sh` assertion) drives the real CLI process end-to-end (mark creation, validation errors, full experiment start/status/end/re-end-rejected lifecycle, export completeness) rather than only unit-testing the domain functions — this is what caught the config_snapshot_id bug above.
 
 ## Current behavior that must be preserved
 

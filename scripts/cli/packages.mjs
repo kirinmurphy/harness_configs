@@ -9,6 +9,7 @@ import { buildPackageLiveState } from "./package-probes.mjs";
 import { removeCodexMcp } from "./mcp-codex.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
 import { hookFilePath, mergeHooksInto, unmergeHooksFrom, installHookScripts, removeHookScripts } from "./hook-composition.mjs";
+import { installRuntimeAsset, mergeHarnessConfig, removeRuntimeAsset, unmergeHarnessConfig } from "./package-harness-config.mjs";
 import { installPackageCommands, removePackageCommands } from "./slash-commands.mjs";
 import { SLASH_COMMAND_HARNESS_NAMES } from "./skill-command-config.mjs";
 
@@ -395,6 +396,18 @@ export async function enablePackage(rest, _seen = new Set()) {
         if (dryRun) { console.log(`  [dry-run] enable service ${component.id}`); break; }
         servicePromises.push(setService(component.id, true));
         break;
+      case "runtime-asset":
+        installRuntimeAsset(pkg, component, { dryRun });
+        break;
+      case "harness-config":
+        if (dryRun) { console.log(`  [dry-run] merge harness config ${component.source} (${component.harness})`); break; }
+        mergeHarnessConfig(pkg, component, {
+          claudeSettingsPath: USER_CLAUDE_SETTINGS,
+          codexConfigPath: USER_CODEX_CONFIG,
+          readSettings,
+          writeSettings,
+        });
+        break;
       case "skill":
         if (dryRun) {
           console.log(`  [dry-run] install skill ${component.id}`);
@@ -605,6 +618,18 @@ export async function disablePackage(rest) {
       case "service":
         if (dryRun) { console.log(`  [dry-run] disable service ${component.id}`); break; }
         servicePromises.push(setService(component.id, false));
+        break;
+      case "harness-config":
+        if (dryRun) { console.log(`  [dry-run] remove harness config ${component.source} (${component.harness})`); break; }
+        unmergeHarnessConfig(pkg, component, {
+          claudeSettingsPath: USER_CLAUDE_SETTINGS,
+          codexConfigPath: USER_CODEX_CONFIG,
+          readSettings,
+          writeSettings,
+        });
+        break;
+      case "runtime-asset":
+        removeRuntimeAsset(pkg, component, { dryRun });
         break;
       case "skill":
         if (dryRun) {

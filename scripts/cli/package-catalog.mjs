@@ -22,6 +22,8 @@ const RESOURCE_TYPES = new Set([
   "plugin",
   "service",
   "cli-command",
+  "harness-config",
+  "runtime-asset",
 ]);
 const HARNESSES = new Set(["claude", "codex"]);
 const SKILL_INVOCATIONS = new Set(["auto", "manual"]);
@@ -293,6 +295,16 @@ function normalizeResource(resource, { pkgId, root, index }) {
     }
   } else if (next.type === "service") {
     if (typeof next.id !== "string" || next.id.trim() === "") throw new Error(`${pkgId}: service resource needs id`);
+  } else if (next.type === "harness-config") {
+    next.source = validateInsideSource(root, next.source, `${pkgId}:harness-config`);
+    if (!fs.existsSync(path.join(root, next.source))) throw new Error(`${pkgId}:harness-config source missing: ${next.source}`);
+    validateHarness(next.harness, `${pkgId}:harness-config`);
+  } else if (next.type === "runtime-asset") {
+    next.source = validateInsideSource(root, next.source, `${pkgId}:runtime-asset`);
+    if (!fs.existsSync(path.join(root, next.source))) throw new Error(`${pkgId}:runtime-asset source missing: ${next.source}`);
+    if (next.target !== undefined && !isSafeRelativeTarget(next.target)) {
+      throw new Error(`${pkgId}:runtime-asset target must be a relative path`);
+    }
   } else if (next.type === "rules" || next.type === "hooks") {
     next.source = validateInsideSource(root, next.source, `${pkgId}:${next.type}`);
     if (!fs.existsSync(path.join(root, next.source))) throw new Error(`${pkgId}:${next.type} source missing: ${next.source}`);
@@ -408,4 +420,10 @@ function isSlug(value) {
 
 function isCommandName(value) {
   return typeof value === "string" && value.trim() !== "" && value.split(/\s+/).every(isSlug);
+}
+
+function isSafeRelativeTarget(value) {
+  if (typeof value !== "string" || value.trim() === "") return false;
+  const normalized = path.normalize(value);
+  return normalized !== "." && !normalized.startsWith("..") && !path.isAbsolute(normalized);
 }

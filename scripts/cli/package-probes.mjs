@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 import { roborepoSkillsDir, telemetryDir } from "./state-paths.mjs";
+import { codexStatusLineIncludes, readHarnessConfig, runtimeAssetDestination } from "./package-harness-config.mjs";
 import { effectiveEnabledIds } from "./rules-render.mjs";
 
 const CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
@@ -191,6 +192,42 @@ function probeService(component, desired, telemetryState) {
   });
 }
 
+function probeRuntimeAsset(component, desired, pkg) {
+  const dest = runtimeAssetDestination(pkg, component);
+  const observed = fs.existsSync(dest);
+  return componentResult(component, {
+    desired,
+    observed,
+    owner: observed ? "roborepo" : null,
+    detail: observed ? `runtime asset present: ${dest}` : `runtime asset missing: ${dest}`,
+  });
+}
+
+function probeHarnessConfig(component, desired, settings, pkg) {
+  const config = readHarnessConfig(component, pkg);
+  if (component.harness === "claude") {
+    const observed = JSON.stringify(settings.statusLine || null) === JSON.stringify(config.statusLine || null);
+    return componentResult(component, {
+      desired,
+      observed,
+      owner: observed ? "roborepo" : settings.statusLine ? "external" : null,
+      detail: observed ? "Claude statusLine matches package config" : settings.statusLine ? "Claude statusLine is unmanaged" : "Claude statusLine missing",
+    });
+  }
+  if (component.harness === "codex") {
+    const configText = readText(CODEX_CONFIG, "");
+    const desiredItems = config.tui?.status_line || [];
+    const observed = desiredItems.every((item) => codexStatusLineIncludes(configText, item));
+    return componentResult(component, {
+      desired,
+      observed,
+      owner: observed ? "roborepo" : null,
+      detail: observed ? "Codex status_line contains package fields" : "Codex status_line missing package fields",
+    });
+  }
+  return componentResult(component, { desired, observed: false, detail: "unknown harness-config harness", blocked: desired });
+}
+
 // Slash-command entrypoints this skill resource declares, keyed by harness — needed here because
 // componentResource() strips entrypoints down to { type, id } for the generic component list, so
 // the probe must read them from the package's raw (pre-normalization) resources instead.
@@ -292,6 +329,8 @@ export function buildPackageLiveState(packages) {
       else if (component.type === "plugin") components.push(probePlugin(component, componentDesired, settings));
       else if (component.type === "mcp") components.push(probeMcp(component, componentDesired, settings));
       else if (component.type === "service") components.push(probeService(component, componentDesired, telemetryState));
+      else if (component.type === "runtime-asset") components.push(probeRuntimeAsset(component, componentDesired, pkg));
+      else if (component.type === "harness-config") components.push(probeHarnessConfig(component, componentDesired, settings, pkg));
       else if (component.type === "skill") components.push(probeSkill(component, componentDesired, pkg));
       else components.push(componentResult(component, { desired: componentDesired, observed: false, detail: "unknown component type", blocked: componentDesired }));
     }

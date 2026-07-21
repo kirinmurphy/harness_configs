@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "usage-statusline",
+  "label": "Usage Statusline",
+  "description": "Shows context and rate-limit usage in supported harness footers without model calls.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "token-optimization",
+    "order": 5
+  },
+  "resources": [
+    {
+      "type": "runtime-asset",
+      "source": "scripts/claude-statusline.mjs"
+    },
+    {
+      "type": "harness-config",
+      "source": "claude/statusline.json",
+      "harness": "claude"
+    },
+    {
+      "type": "harness-config",
+      "source": "codex/status-line.json",
+      "harness": "codex"
+    }
+  ],
+  "defaultEnabled": true
+}

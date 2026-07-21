@@ -7,6 +7,7 @@ import { markTelemetrySelected } from "./presets.mjs";
 import { repoRoot } from "./paths.mjs";
 import { portalPidPath, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
+import { readMarkers, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
 import { startPortalServer } from "./portal-server.mjs";
 import { readConfigSnapshot, loadConfigSource } from "./config.mjs";
 import { mutatePackage, setSkillInstalled, setBehaviorBucket, setCommandBucket } from "./config-mutate.mjs";
@@ -374,7 +375,12 @@ function printComparison(comparison) {
 
 function telemetryExport(args) {
   rejectSupportedReportArgs(args);
-  console.log(JSON.stringify(readSpoolEvents(), null, 2));
+  console.log(JSON.stringify({
+    captures: readSpoolEvents(),
+    markers: readMarkers(),
+    snapshots: readSnapshots(),
+    experiments: readExperiments(),
+  }, null, 2));
 }
 
 export async function serveCommand(args, { allowPortFallback = false, openPath = "" } = {}) {

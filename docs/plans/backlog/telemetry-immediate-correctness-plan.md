@@ -43,7 +43,7 @@ Recent raw Codex transcript inspection showed:
 - Codex used jcodemunch often, but also performed many read/search shell commands.
 
 This plan is intentionally narrower than the broader
-`docs/plans/backlog/roborepo-telemetry-events-experiments-plan.md`. It should ship first.
+`docs/plans/active/roborepo-telemetry-events-experiments-plan.md`. It should ship first.
 
 ## Goals
 

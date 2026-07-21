@@ -34,6 +34,10 @@ export const telemetryDir = path.join(roborepoStateDir, "telemetry");
 export const telemetryDbPath = path.join(telemetryDir, "telemetry.sqlite");
 export const telemetrySpoolDir = path.join(telemetryDir, "spool");
 export const telemetryCollectorDir = path.join(telemetryDir, "collector");
+export const telemetryEventsDir = path.join(telemetryDir, "events");
+export const telemetryMarkersPath = path.join(telemetryEventsDir, "markers.jsonl");
+export const telemetrySnapshotsDir = path.join(telemetryDir, "snapshots");
+export const telemetryExperimentsDir = path.join(telemetryDir, "experiments");
 // Backups live OUTSIDE telemetryDir so `purge --all` (which removes telemetryDir) can't delete the
 // snapshot it just took.
 export const telemetryBackupDir = path.join(roborepoStateDir, "telemetry-backups");

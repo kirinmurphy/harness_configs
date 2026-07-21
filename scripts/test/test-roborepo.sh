@@ -1418,6 +1418,15 @@ assert "ownership refactor: every confirmed leakage case stays fixed" \
 assert "ownership refactor: cross-harness hook composition round-trips" \
   node "${repo_root}/scripts/test/hook-composition-check.mjs"
 
+# Telemetry transcript parsing (Claude/Codex field shapes) and analyzer warning detection.
+assert "telemetry: transcript stats and analyzer warnings are correct" \
+  node "${repo_root}/scripts/test/telemetry-correctness-check.mjs"
+
+# Phase 1 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: marker/snapshot/
+# experiment/capture-v3 schema validation plus append-only persistence round-trips.
+assert "telemetry: marker/snapshot/experiment schemas validate and persist correctly" \
+  node "${repo_root}/scripts/test/telemetry-schemas-check.mjs"
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"

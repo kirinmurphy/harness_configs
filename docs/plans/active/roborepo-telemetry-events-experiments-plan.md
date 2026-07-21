@@ -1,3 +1,13 @@
+---
+id: roborepo-telemetry-events-experiments
+priority: high
+next_action: "Phase 0 — use jcodemunch to map current telemetry/config flows; capture schema-v2 fixtures for Claude and Codex"
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Telemetry Events, Experiments, and Actionable Analysis
 
 ## Status
@@ -44,6 +54,29 @@ jcodemunch has two separate roles in this feature:
 - **Measured MCP package:** its calls, durations, result sizes, and correlations continue to appear in telemetry like any other MCP package.
 
 Do not hard-code analysis around jcodemunch. MCP identification must remain server-generic, with the existing bare-name compatibility behavior retained where required by current Codex transcripts.
+
+## Phase 0 notes (grounding and characterization)
+
+Recorded 2026-07-21, ahead of Phase 1 implementation, from an Explore pass over the worktree.
+
+**Schema-v2 capture record** (`scripts/cli/telemetry-capture.mjs:31-63`, `SCHEMA_VERSION = 2` at line 12): `schema, ts, harness, event, session_id, cwd_hash, cwd_name, repo{label, git_root_hash, remote_hash, branch, sha}, tool{name, is_mcp, mcp_server, mcp_tool, command_hash, command_chars, command_lines, file_ext, file_path_hash}, duration_ms, prompt{chars, hash, preview}, tokens{input, output, cache_creation, cache_read, total}, delta_tokens, session{model, assistant_turns, tool_calls, mcp_calls, max_output_tokens}, details{token_schema_seen, unsupported_usage_seen, codex_reasoning_output_tokens, codex_rate_limits}, last_result, biggest_result`.
+
+Spool: one JSONL per harness at `telemetrySpoolDir/<harness>.jsonl` (paths in `scripts/cli/state-paths.mjs`), capped at 25MB via `capSpool()` (keeps newest ~70%, `telemetry-capture.mjs:70-91`). Duration/delta-token pairing currently uses a **per-session cursor keyed only by `hash(sessionId)`** in `telemetryCollectorDir` — this is the known "single cursor overwritten by nested/concurrent calls" gap (limitation #10 above). Phase 1 adds the `call_id` field to the schema only; switching pairing logic to use it is Phase 3 work, out of scope here.
+
+**Claude vs. Codex field differences** — fully handled today in `scripts/cli/telemetry-transcript.mjs`, cite rather than rediscover:
+- Claude: `{type: "assistant"|"user", message: {usage, content[]}}`, tool calls keyed by `tool_use_id`, `tokens.total` computed as the sum of four sub-fields (line ~152).
+- Codex: `{type: "event_msg"|"response_item"}`, tool calls keyed by `call_id`, `token_count` events carry a pre-totaled `total_tokens` override (`applyCodexEntry`, lines 208-253) rather than a sum — the two harnesses' totals are not guaranteed to come from the same arithmetic.
+- MCP tool names: Claude always prefixes `mcp__<server>__<tool>`; Codex sometimes logs bare names, requiring the `BARE_MCP_TOOLS` lookup (lines 298-312) and `mcpServerOf()` (316-323).
+- Only Codex has `codex_rate_limits` (provider-reported, privacy-scrubbed via `privacySafeRateLimits()`).
+- Transcript file location differs: Claude at `~/.claude/projects/<encoded-cwd>/<session_id>.jsonl`; Codex under `~/.codex/sessions/` dated tree, matched by session-id substring (`telemetry-transcript-locate.mjs:22-29`).
+
+**`readConfigSnapshot` gaps** (`scripts/cli/config.mjs:46-175`) relative to what Phase 1's configuration-snapshot schema needs: exposes `globals.settings.hooks` as **counts only** (not full hook command strings), no MCP server registration detail, no parsed Codex `config.toml` structure. Phase 1's snapshot builder must treat `readConfigSnapshot` as a partial data source and fill these three gaps itself (best-effort/`null` where not derivable), not assume it already returns the full effective-configuration shape the plan describes.
+
+**Existing test coverage gap (fixed this phase):** `scripts/test/telemetry-correctness-check.mjs` existed but was not wired into `package.json` or `test-roborepo.sh`, unlike every sibling `*-check.mjs`. Added `"test:telemetry"` npm script and an `assert` line in `test-roborepo.sh` (after the hook-composition check) so it now runs in CI. Verified passing via `npm run test:telemetry`.
+
+**Schema/validator precedent for Phase 1:** `modules/localhoster/settings-schema.mjs` (`SETTINGS_VERSION` constant, `validateSettings()` entry point, decomposed `validateX()` field helpers, `validateObjectKeys()` strict allowlisting, throw-based errors) and `scripts/cli/package-catalog.mjs` (`validatePackageCatalog()`, `SUPPORTED_SCHEMA` gate, accumulate-all-errors-then-throw). No zod/ajv/joi in the repo — new marker/snapshot/experiment/capture-v3 schemas should follow this same hand-rolled shape.
+
+No `fixtures/` directory exists for telemetry; sample data today is inline literals inside `telemetry-correctness-check.mjs` (`writeJsonl`, `baseEvent`, `tool` helpers) and `test-roborepo.sh`. Phase 1's new schema tests should follow the same inline-fixture style for consistency.
 
 ## Current behavior that must be preserved
 

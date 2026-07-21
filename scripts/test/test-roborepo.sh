@@ -1456,6 +1456,18 @@ assert "telemetry: task category/scale inference" \
 assert "telemetry: phase 4 capture-time phase and intervening-work signals" \
   node "${repo_root}/scripts/test/telemetry-phase4-integration-check.mjs"
 
+# Phase 5 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: the declarative
+# metrics registry, normalized cohort filtering, marker-relative comparisons, and package telemetry
+# policy evaluation — all pure modules, no fs/config dependency.
+assert "telemetry: metrics registry formulas" \
+  node "${repo_root}/scripts/test/telemetry-metrics-check.mjs"
+assert "telemetry: normalized cohort filtering" \
+  node "${repo_root}/scripts/test/telemetry-cohort-check.mjs"
+assert "telemetry: marker-relative comparisons and confidence gates" \
+  node "${repo_root}/scripts/test/telemetry-compare-check.mjs"
+assert "telemetry: package telemetry policy validation and evaluation" \
+  node "${repo_root}/scripts/test/telemetry-policy-check.mjs"
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"

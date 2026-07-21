@@ -1,6 +1,9 @@
+import fs from "node:fs";
+import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { readConfigSnapshot } from "./config.mjs";
 import { readPackageVersion } from "./workspace.mjs";
+import { telemetrySpoolDir } from "./state-paths.mjs";
 import { generateMarkerId, MARKER_TYPES, OUTCOME_STATUSES, EXPECTED_DIRECTIONS, TASK_CATEGORIES } from "./telemetry-schemas/marker-schema.mjs";
 import { buildEffectiveSnapshot } from "./telemetry-schemas/snapshot-schema.mjs";
 import { generateExperimentId, COMPARISON_MODES } from "./telemetry-schemas/experiment-schema.mjs";
@@ -8,6 +11,8 @@ import { inferTaskScale } from "./telemetry-task-infer.mjs";
 import {
   appendMarker, readMarkers, writeSnapshot, writeExperiment, readExperiment, readExperiments,
 } from "./telemetry-schemas/persistence.mjs";
+import { compareAcrossMarker } from "./telemetry-compare.mjs";
+import { filterSessionsByTaskCategory } from "./telemetry-cohort.mjs";
 
 // Shared marker/experiment domain functions, used by both the CLI (telemetry.mjs) and — in later
 // phases — the portal's marker/experiment endpoints. Keeps repo/branch/sha resolution, snapshot
@@ -151,18 +156,51 @@ export function endExperiment(experimentId, { cwd = process.cwd() } = {}) {
   return { experiment, endMarker };
 }
 
-// Cohort sizing/readiness is Phase 5 work (metrics registry + cohort filtering do not exist yet).
-// For now, status reports what is knowable from the experiment record and marker timeline alone:
-// lifecycle state, definition, and elapsed time — not sample counts or a provisional winner.
+// Reads every harness spool file, tolerating partial/corrupt lines exactly like telemetry.mjs's
+// readSpoolEvents() (which this duplicates rather than imports — telemetry.mjs is the CLI-parsing/
+// printing layer and importing it back here would invert the module's dependency direction; the
+// handful of lines are cheap to keep in sync and the read logic is trivial).
+function readSpoolEventsForStatus() {
+  const events = [];
+  let files = [];
+  try {
+    files = fs.readdirSync(telemetrySpoolDir).filter((file) => file.endsWith(".jsonl"));
+  } catch {
+    return events;
+  }
+  for (const file of files) {
+    const fullPath = path.join(telemetrySpoolDir, file);
+    for (const line of fs.readFileSync(fullPath, "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        events.push(JSON.parse(line));
+      } catch {
+        // Ignore partial/corrupt lines.
+      }
+    }
+  }
+  return events;
+}
+
+// Cohort sizing/readiness (Phase 5): resolves the experiment's start marker, splits sessions into
+// before/after cohorts via the same marker-relative comparison engine the portal and CLI report use
+// (telemetry-compare.mjs), and reports whether the eligibility threshold is met — not merely a
+// lifecycle summary. `ready` means: primary_metric is computable for both cohorts, both cohorts meet
+// eligibility.minimum_sessions_per_cohort, and no serious data-quality issue was flagged. This never
+// reports a provisional winner — only whether there is enough data to trust one, per the plan's
+// "Status must show cohort size, eligibility, data-quality warnings, and whether the result is
+// ready — not merely a provisional winner."
 export function experimentStatus(experimentId) {
   const experiments = experimentId ? [readExperiment(experimentId)].filter(Boolean) : readExperiments();
   if (experimentId && experiments.length === 0) throw new Error(`unknown experiment: ${experimentId}`);
-  const markersById = new Map(readMarkers().map((m) => [m.marker_id, m]));
+  const allMarkers = readMarkers();
+  const markersById = new Map(allMarkers.map((m) => [m.marker_id, m]));
+  const events = readSpoolEventsForStatus();
 
   return experiments.map((experiment) => {
     const startMarker = markersById.get(experiment.start_marker_id) ?? null;
     const endMarker = experiment.end_marker_id ? markersById.get(experiment.end_marker_id) ?? null : null;
-    return {
+    const base = {
       experiment_id: experiment.experiment_id,
       title: experiment.title,
       state: endMarker ? "ended" : "running",
@@ -173,8 +211,36 @@ export function experimentStatus(experimentId) {
       comparison: experiment.comparison,
       started_at: startMarker?.ts ?? null,
       ended_at: endMarker?.ts ?? null,
-      ready: false,
-      data_quality_warnings: ["cohort sizing not yet implemented (Phase 5)"],
+    };
+
+    if (!startMarker) {
+      return { ...base, ready: false, cohorts: null, data_quality_warnings: ["experiment's start marker is missing"] };
+    }
+
+    let eligibleCaptures = events;
+    if (experiment.eligibility?.task_categories?.length) {
+      eligibleCaptures = filterSessionsByTaskCategory(events, experiment.eligibility.task_categories, allMarkers);
+    }
+
+    let comparison;
+    try {
+      comparison = compareAcrossMarker(eligibleCaptures, startMarker, experiment.primary_metric, {
+        markers: allMarkers,
+        minimumSessionsPerCohort: experiment.eligibility?.minimum_sessions_per_cohort ?? 10,
+        equalize: experiment.comparison === "midpoint" ? "equal-duration" : "equal-session-count",
+      });
+    } catch (err) {
+      return { ...base, ready: false, cohorts: null, data_quality_warnings: [`could not evaluate primary metric: ${err.message}`] };
+    }
+
+    const ready = comparison.confidence === "strong signal" || comparison.confidence === "emerging pattern";
+    return {
+      ...base,
+      ready,
+      cohorts: { before: comparison.before, after: comparison.after },
+      effect_size: comparison.effect_size,
+      confidence: comparison.confidence,
+      data_quality_warnings: comparison.data_quality_issues,
     };
   });
 }

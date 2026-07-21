@@ -279,6 +279,10 @@ function telemetryExperimentStatus(args) {
     console.log(`  started: ${status.started_at ?? "unknown"}${status.ended_at ? `  ended: ${status.ended_at}` : ""}`);
     if (status.guardrails.length) console.log(`  guardrails: ${status.guardrails.join(", ")}`);
     console.log(`  ready: ${status.ready}`);
+    if (status.cohorts) {
+      console.log(`  cohorts: before=${status.cohorts.before.sessions} sessions (${formatMetricValue(status.cohorts.before.value)}), after=${status.cohorts.after.sessions} sessions (${formatMetricValue(status.cohorts.after.value)})`);
+      console.log(`  effect size: ${status.effect_size == null ? "unknown" : status.effect_size}  confidence: ${status.confidence}`);
+    }
     for (const warning of status.data_quality_warnings) console.log(`  warning: ${warning}`);
   }
 }
@@ -587,6 +591,14 @@ function printTokenContributors(label, rows) {
   for (const row of rows.slice(0, 8)) {
     console.log(`  ${String(row.key).padEnd(24)} ${fmt(row.tokens).padStart(10)} tok  (${row.captures})`);
   }
+}
+
+// Terse metric-value formatter for the experiment status printout. Mirrors telemetry-compare.mjs's
+// internal formatMetricValue (kept local here since the CLI print layer doesn't import compare.mjs's
+// private helpers) — used only for human-readable output, never fed back into a comparison.
+function formatMetricValue(value) {
+  if (value == null) return "unknown";
+  return String(Math.round(value * 100) / 100);
 }
 
 function printComparison(comparison) {

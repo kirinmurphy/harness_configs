@@ -1,3 +1,13 @@
+---
+id: roborepo-telemetry-events-experiments
+priority: high
+next_action: "Phase 0 — use jcodemunch to map current telemetry/config flows; capture schema-v2 fixtures for Claude and Codex"
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Telemetry Events, Experiments, and Actionable Analysis
 
 ## Status

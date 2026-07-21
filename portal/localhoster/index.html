@@ -9,11 +9,19 @@
         <div class="toolbar-actions">
           <label class="search-field" for="search">
             <span>Search</span>
-            <input id="search" type="search" placeholder="project, app, port, route" />
+            <input
+              id="search"
+              type="search"
+              placeholder="project, app, port, route"
+            />
           </label>
           <button id="refresh" type="button">Refresh</button>
           <button id="settings" type="button">Settings</button>
-          <span class="refresh-state" id="refresh-state" aria-live="polite"></span>
+          <span
+            class="refresh-state"
+            id="refresh-state"
+            aria-live="polite"
+          ></span>
         </div>
       </section>
       <section id="capability" class="notice" hidden></section>
@@ -25,7 +33,14 @@
       <form method="dialog" id="link-form">
         <div class="modal-head">
           <h2 id="link-dialog-title">Edit links</h2>
-          <button type="button" class="modal-close" data-close aria-label="Close">x</button>
+          <button
+            type="button"
+            class="modal-close"
+            data-close
+            aria-label="Close"
+          >
+            x
+          </button>
         </div>
         <div class="modal-body">
           <input type="hidden" id="link-project" />
@@ -44,7 +59,14 @@
       <form method="dialog" id="app-form">
         <div class="modal-head">
           <h2 id="app-dialog-title">App association</h2>
-          <button type="button" class="modal-close" data-close aria-label="Close">x</button>
+          <button
+            type="button"
+            class="modal-close"
+            data-close
+            aria-label="Close"
+          >
+            x
+          </button>
         </div>
         <div class="modal-body">
           <input type="hidden" id="app-association" />
@@ -54,11 +76,20 @@
           </label>
           <label>
             Project name
-            <input id="app-project-name" maxlength="80" placeholder="Project name" />
+            <input
+              id="app-project-name"
+              maxlength="80"
+              placeholder="Project name"
+            />
           </label>
           <label>
             App id
-            <input id="app-id" required pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,79}" placeholder="web" />
+            <input
+              id="app-id"
+              required
+              pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,79}"
+              placeholder="web"
+            />
           </label>
           <label>
             App name
@@ -73,9 +104,17 @@
             </select>
           </label>
           <div class="toggle-row">
-            <label><input id="app-project-favorite" type="checkbox" /> Project favorite</label>
-            <label><input id="app-project-hidden" type="checkbox" /> Hide project</label>
-            <label><input id="app-favorite" type="checkbox" /> App favorite</label>
+            <label
+              ><input id="app-project-favorite" type="checkbox" /> Project
+              favorite</label
+            >
+            <label
+              ><input id="app-project-hidden" type="checkbox" /> Hide
+              project</label
+            >
+            <label
+              ><input id="app-favorite" type="checkbox" /> App favorite</label
+            >
             <label><input id="app-hidden" type="checkbox" /> Hide app</label>
           </div>
           <label>
@@ -101,7 +140,9 @@
           <div class="item-err" id="app-error"></div>
         </div>
         <div class="modal-actions">
-          <button type="button" id="app-remove-association">Remove association</button>
+          <button type="button" id="app-remove-association">
+            Remove association
+          </button>
           <button type="submit">Save project/app</button>
         </div>
       </form>
@@ -111,7 +152,14 @@
       <form method="dialog" id="alias-form">
         <div class="modal-head">
           <h2 id="alias-dialog-title">Confirm alias</h2>
-          <button type="button" class="modal-close" data-close aria-label="Close">x</button>
+          <button
+            type="button"
+            class="modal-close"
+            data-close
+            aria-label="Close"
+          >
+            x
+          </button>
         </div>
         <div class="modal-body">
           <label>
@@ -122,7 +170,10 @@
             Alias to
             <input id="alias-to" required />
           </label>
-          <label class="check-line"><input id="alias-confirmed" type="checkbox" required /> Confirm same project</label>
+          <label class="check-line"
+            ><input id="alias-confirmed" type="checkbox" required /> Confirm
+            same project</label
+          >
           <div class="item-err" id="alias-error"></div>
         </div>
         <div class="modal-actions">
@@ -133,8 +184,10 @@
 
     <dialog id="settings-dialog" aria-labelledby="settings-dialog-title">
       <div class="modal-head">
-        <h2 id="settings-dialog-title">Localhoster settings</h2>
-        <button type="button" class="modal-close" data-close aria-label="Close">x</button>
+        <h2 id="settings-dialog-title">Localhost settings</h2>
+        <button type="button" class="modal-close" data-close aria-label="Close">
+          x
+        </button>
       </div>
       <div class="modal-body settings-body" id="settings-body"></div>
     </dialog>
@@ -171,19 +224,35 @@
             <span class="title-separator">-</span>
             <a data-slot="origin" target="_blank" rel="noreferrer"></a>
             <span class="info-wrap">
-              <portal-info-icon aria-label="Show instance details"></portal-info-icon>
+              <portal-info-icon
+                aria-label="Show instance details"
+              ></portal-info-icon>
               <span class="info-tooltip" role="tooltip">
-                <span><strong>Health</strong><span data-slot="status"></span></span>
-                <span><strong>Latency</strong><span data-slot="latency"></span></span>
-                <span><strong>Process</strong><span data-slot="process"></span></span>
-                <span><strong>Identity</strong><span data-slot="identity"></span></span>
+                <span
+                  ><strong>Health</strong><span data-slot="status"></span
+                ></span>
+                <span
+                  ><strong>Latency</strong><span data-slot="latency"></span
+                ></span>
+                <span
+                  ><strong>Process</strong><span data-slot="process"></span
+                ></span>
+                <span
+                  ><strong>Identity</strong><span data-slot="identity"></span
+                ></span>
                 <span><strong>Bind</strong><span data-slot="bind"></span></span>
                 <span data-slot="warning" hidden></span>
               </span>
             </span>
           </div>
           <div class="action-menu">
-            <button type="button" class="menu-trigger" data-action="menu" aria-label="Actions" aria-expanded="false">
+            <button
+              type="button"
+              class="menu-trigger"
+              data-action="menu"
+              aria-label="Actions"
+              aria-expanded="false"
+            >
               <span></span><span></span><span></span>
             </button>
             <div class="menu-panel" data-menu hidden>
@@ -191,9 +260,13 @@
               <button type="button" data-action="edit">Edit links</button>
               <button type="button" data-action="copy">Copy URL</button>
               <button type="button" data-action="open">Open</button>
-              <button type="button" data-action="associate">Change association</button>
+              <button type="button" data-action="associate">
+                Change association
+              </button>
               <button type="button" data-action="alias">Confirm alias</button>
-              <button type="button" data-action="favorite">Toggle favorite</button>
+              <button type="button" data-action="favorite">
+                Toggle favorite
+              </button>
               <button type="button" data-action="hide">Hide</button>
             </div>
           </div>
@@ -220,9 +293,15 @@
           <input data-field="path" required placeholder="/admin" />
         </label>
         <div class="link-row-actions">
-          <button type="button" data-action="up" aria-label="Move link up">Up</button>
-          <button type="button" data-action="down" aria-label="Move link down">Down</button>
-          <button type="button" data-action="remove" aria-label="Remove link">Remove</button>
+          <button type="button" data-action="up" aria-label="Move link up">
+            Up
+          </button>
+          <button type="button" data-action="down" aria-label="Move link down">
+            Down
+          </button>
+          <button type="button" data-action="remove" aria-label="Remove link">
+            Remove
+          </button>
         </div>
       </div>
     </template>

@@ -228,24 +228,37 @@ portal-info-icon {
 }
 /* Every page's <main> ships its static, non-data-dependent chrome (toolbars, filter controls,
  * section titles/table skeletons) directly in HTML — only the slots that need fetched data start
- * empty. .page-loading is a scrim over that shell, not a replacement for it, so the page's real
- * structure is visible under the spinner instead of a blank hole. New pages should follow the same
- * shape: static shell in <main>, data-only slots left empty for JS to fill. */
+ * empty. New pages should follow the same shape: static shell in <main>, data-only slots left
+ * empty for JS to fill. */
 main {
   position: relative;
 }
-/* Loading state: shown until each page's first data fetch resolves, then hidden for the rest of
- * that page's life (subsequent polls never bring it back). Absolutely positioned to cover <main>
- * (theme.js inserts it as <main>'s first child) so the sticky header/footer stay visible and the
- * static shell underneath shows through as a scrim, not a blank gap. */
+/* Loading state: real markup in the initial HTML response (see {{LOADING}} in
+ * scripts/cli/portal-server.mjs), not cloned in by JS — that keeps it visible from the very first
+ * paint instead of flashing in after the page's static shell already rendered. Shown until each
+ * page's first data fetch resolves, then hidden for the rest of that page's life (subsequent polls
+ * never bring it back). Absolutely positioned to fully cover <main> (it's <main>'s first child) so
+ * the sticky header/footer stay visible while the unhydrated shell underneath is fully hidden —
+ * opaque, not a translucent scrim, so nothing pre-hydration is visible through it.
+ *
+ * The overlay covers ALL of <main>, which on a data-heavy page (telemetry) is several screens
+ * tall. Centering the spinner in that tall box would push it below the fold, so the centering
+ * wrapper is `position: sticky` and one viewport tall: it rides the viewport and keeps the spinner
+ * in the visible band no matter how tall <main> is. */
 .page-loading {
   position: absolute;
   inset: 0;
+  background: var(--bg);
+  z-index: 5;
+}
+.page-loading-center {
+  position: sticky;
+  top: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--bg) 85%, transparent);
-  z-index: 5;
+  /* One viewport tall, but never taller than <main> itself, so short pages don't gain scroll. */
+  height: min(100vh, 100%);
 }
 .page-loading.hidden {
   display: none;

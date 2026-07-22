@@ -6,9 +6,12 @@
 // The no-flash theme *init* is NOT here: it must run before first paint, so it stays as a tiny
 // inline <script> in each page's <head>. This file only handles the interactive toggle + nav.
 //
-// The header/footer/loading-overlay/nav-link markup is cloned from <template>s injected via the
-// {{CHROME}} marker (portal/shared/chrome-partial.html, rendered server-side in
+// The header/footer/nav-link markup is cloned from <template>s injected via the {{CHROME}}
+// marker (portal/shared/chrome-partial.html, rendered server-side in
 // scripts/cli/portal-server.mjs) — one source of truth instead of duplicating markup per page.
+// The loading overlay is NOT here: it's real markup in the initial HTML (see {{LOADING}} in
+// portal-server.mjs) so it's visible on first paint instead of flashing in after this module
+// script runs.
 import { portalTpl as tpl } from "/portal/shared/api.js";
 
 if (!window.ROBOREPO_PORTAL) {
@@ -24,12 +27,6 @@ const PORTAL_PAGES = window.ROBOREPO_PORTAL.pages;
   }
   if (!document.querySelector(".portal-footer")) {
     document.body.append(tpl("tpl-portal-footer"));
-  }
-  if (!document.querySelector(".page-loading")) {
-    // Prepended inside <main> (not the header) so it scrims over that page's own static shell
-    // (position: absolute; inset: 0, see base.css) rather than sitting in normal flow — the
-    // sticky header/footer stay visible and the shell underneath shows through while it's up.
-    document.querySelector("main").prepend(tpl("tpl-page-loading"));
   }
   const nav = document.getElementById("nav");
   if (!nav) return;

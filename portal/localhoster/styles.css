@@ -141,15 +141,18 @@ button:hover {
 }
 .instance-grid {
   display: grid;
-  gap: 8px;
 }
 .instance-card {
-  border: 1px solid var(--line);
   background: var(--panel);
   padding: 10px 12px;
   display: grid;
   gap: 4px;
 }
+
+.instance-card:not(:last-of-type) {
+  border-bottom: 1px solid var(--line);
+}
+
 .instance-card.is-offline {
   opacity: 0.5;
 }

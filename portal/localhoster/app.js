@@ -88,7 +88,7 @@ function render(snapshot, { reconcile }) {
     {
       id: "active",
       kind: "group",
-      title: "Active apps",
+      title: "Localhosting",
       headerEnd: toolbarActionsNode,
       // Refresh/Settings live in this header, so it must always render even with zero active
       // apps — otherwise those controls would vanish along with the empty-state fallback.

@@ -503,6 +503,23 @@ main {
   align-items: flex-start;
   gap: 6px;
 }
+
+#usage-per-harness .harness-provider {
+  position: relative;
+}
+
+#usage-per-harness .harness-provider .token-chip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 0;
+}
+
 .config-grid-head > div:first-child,
 .config-grid-row > div:first-child {
   border-left: none;

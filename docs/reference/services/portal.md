@@ -124,6 +124,39 @@ Adding a new API domain means adding one more `portal-routes-<domain>.mjs` file 
 + dispatch line in `route()` — each domain's API surface stays in its own file instead of growing
 a shared one.
 
+## Telemetry Analysis Performance Model
+
+The portal server is single-threaded (Node stdlib `http`), so any expensive synchronous work on a
+request blocks every other request while it runs. The telemetry analysis (~35k events / 31MB spool
+→ ~780ms of read + parse + analyze + serialize) used to run on the `/api/data` request path, which
+is what made navigating between portal pages feel unresponsive while telemetry was capturing. Three
+layers keep that work off the request path (all in `scripts/cli/telemetry.mjs`, main-thread — no
+worker):
+
+1. **Incremental spool store** (`readSpoolEventsCached` + `syncSpoolFile`, `_spoolStore`). The spool
+   is append-only, so instead of re-reading + re-parsing the whole file each request, parsed events
+   are held in memory per file with a byte cursor; each sync reads only newly-appended bytes. A
+   partial trailing line (a capture mid-write) is carried, not parsed, until its newline lands. The
+   one shrink case is `capSpool` (telemetry-capture.mjs rewrites a file smaller past ~25MB) — the
+   store detects `size < offset` and rebuilds that file. Steady-state read drops from ~450-590ms to
+   ~1.3ms. The two live-server readers (`cachedAnalysisJson`, `loadInsightsLlm`) use this; the one-shot
+   CLI paths (`telemetry report`/`export`) keep the plain full-read `readSpoolEvents`. The incremental
+   byte-tail primitive (offset advance, partial-line hold, shrink/rotate detection) lives in
+   `scripts/cli/jsonl-tail.mjs` (`readAppendedLines`), shared with the transcript reader.
+2. **Serialized-JSON memoization** (`cachedAnalysisEntry`, `_analysisCache`). The serialized report
+   JSON is cached per `spoolSignature | window | harness` (the report object is discarded once
+   stringified — only the route consumes it, as a string). The ~10MB default response is not
+   re-`JSON.stringify`'d per request — the route sends the cached string via `loadAnalysisJson`.
+3. **Debounced background refresh** (`startAnalysisRefresh` / `tickAnalysisRefresh`). A timer polls
+   the cheap `spoolSignature`; when it changes it debounces (2s poll / 12s quiet / 60s max-wait) and
+   recomputes the **default view** (`window=null, harness=null` — what page loads and the 5s poll
+   request) once, keeping it warm. Windowed/panned/harness-filtered requests stay on-demand (cached
+   after first compute). The timer is stopped on SIGTERM alongside PID cleanup.
+
+Net: the default `/api/data` is served in ~0.4ms warm; the ~180-270ms analyze runs at most once per
+debounce window, between requests, never inside one. The dashboard may lag a new capture by up to
+the debounce interval — acceptable, and surfaced by the existing "updated" timestamp.
+
 ## Mutation-Token Contract
 
 The server binds to loopback only (`127.0.0.1`), but a browser page can still attempt a

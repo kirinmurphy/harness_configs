@@ -12,12 +12,19 @@ export function buildLocalhosterSnapshot({
   const unmatchedInstances = [];
   const seenApps = new Set();
   let hiddenCount = 0;
-  const identityCounts = countIdentities(discovery.instances || []);
+  const shapeGroups = groupByIdentityShape(discovery.instances || []);
 
   for (const instance of discovery.instances || []) {
     const projectIdentity = resolveProjectAlias(settings, instance.project.identity);
     const association = settings.associations[instance.associationKey];
-    const provisionalApp = identityCounts.get(instance.project.identity) === 1 && (instance.project.confidence === "high" || instance.project.confidence === "medium");
+    // A single distinct "shape" (same title + cwd) under this identity is treated as one app slot
+    // even if it has multiple listeners — those extra listeners are near-certainly redundant
+    // processes (e.g. two different static-file-server tools pointed at the same directory), not
+    // separate services. Two or more genuinely different shapes under one identity still can't be
+    // auto-assigned, since there's no reliable way to guess which one is "the" app.
+    const shapeKey = instanceShapeKey(instance);
+    const group = shapeGroups.get(instance.project.identity);
+    const provisionalApp = group?.shapes.size === 1 && (instance.project.confidence === "high" || instance.project.confidence === "medium");
     const appId = association?.appId || (provisionalApp ? "web" : null);
     if (!appId) {
       unmatchedInstances.push(withOpaqueKey(instance, projectIdentity, null));
@@ -31,9 +38,14 @@ export function buildLocalhosterSnapshot({
       seenApps.add(`${effectiveIdentity}#${appId}`);
       continue;
     }
+    const duplicates = group?.byShape.get(shapeKey) || [];
+    // Only the first same-shape instance we encounter becomes the visible card; later duplicates
+    // stay out of the rendered list but still contribute their port to duplicatePorts below.
+    if (duplicates[0] !== instance) continue;
     const project = ensureProject(activeByProject, effectiveIdentity, projectSettings, instance);
     project.instances.push(withOpaqueKey({
       ...instance,
+      duplicatePorts: duplicates.length > 1 ? duplicates.map((dup) => dup.bind.port) : [],
       app: {
         id: appId,
         name: appSettings.name || labelFromId(appId),
@@ -104,14 +116,30 @@ export function findCurrentInstanceByOpaqueKey(snapshot, opaqueKey) {
   return null;
 }
 
-function countIdentities(instances) {
-  const counts = new Map();
+// Groups instances by project identity, then by "shape" (same page title + same relative cwd)
+// within that identity. Two instances with the same shape are treated as duplicate listeners for
+// one app, not two different apps — see the auto-promotion comment above for why that matters.
+function groupByIdentityShape(instances) {
+  const groups = new Map();
   for (const instance of instances) {
     const identity = instance.project?.identity;
     if (!identity) continue;
-    counts.set(identity, (counts.get(identity) || 0) + 1);
+    if (!groups.has(identity)) groups.set(identity, { shapes: new Set(), byShape: new Map() });
+    const group = groups.get(identity);
+    const shapeKey = instanceShapeKey(instance);
+    group.shapes.add(shapeKey);
+    if (!group.byShape.has(shapeKey)) group.byShape.set(shapeKey, []);
+    group.byShape.get(shapeKey).push(instance);
   }
-  return counts;
+  return groups;
+}
+
+// No title means there's nothing reliable to compare, so an untitled instance never counts as a
+// duplicate of anything else — each gets its own unique key instead of silently grouping under a
+// shared blank title.
+function instanceShapeKey(instance) {
+  if (!instance.title) return `untitled:${instance.key}`;
+  return `${instance.title}::${instance.matchSignature?.relativeCwd ?? ""}`;
 }
 
 function ensureProject(map, identity, settings, instance) {

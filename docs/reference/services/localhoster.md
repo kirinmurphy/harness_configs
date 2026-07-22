@@ -37,6 +37,15 @@ listener sets cannot stall the portal.
 The portal process is represented as built-in identity `roborepo:portal` and is never probed
 recursively.
 
+A project identity with exactly one distinct listener "shape" (same page title and relative
+working directory) auto-promotes to Active apps at high/medium identity confidence, even if that
+shape has multiple listeners — those extra listeners are treated as redundant processes serving
+the same app (e.g. two different static-file-server tools pointed at the same directory) rather
+than separate apps, and the card shows a notice naming the extra ports. A project identity with
+two or more genuinely different shapes (different titles) still cannot be auto-assigned, since
+there is no reliable way to guess which one is "the" app; those stay in Other instances until
+manually associated.
+
 Discovery is split across provider boundaries:
 
 - `capabilities.mjs` reports aggregate platform support plus per-provider states.

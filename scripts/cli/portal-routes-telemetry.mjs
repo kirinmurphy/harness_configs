@@ -1,13 +1,14 @@
 // /api/data, /api/session, /api/insights-llm, /api/telemetry/analysis, and the marker/experiment
 // endpoints — the Telemetry page's full API surface. Returns true once it has written a response,
 // false if the URL/method didn't match (portal-server.mjs's route() tries the next domain).
-// handlers is the object startPortalServer() was given (loadAnalysis, loadSession, loadInsightsLlm,
-// plus the Phase 5/6 marker/experiment/analysis handlers, all from telemetry.mjs's wiring).
+// handlers is the object startPortalServer() was given (loadAnalysisJson, loadSession,
+// loadInsightsLlm, plus the Phase 5/6 marker/experiment/analysis handlers, all from telemetry.mjs's
+// wiring).
 import { send, readJsonBody } from "./portal-routes-http.mjs";
 
 export function handleTelemetryApi(req, res, urlPath, qs, handlers) {
   const {
-    loadAnalysis, loadSession, loadInsightsLlm,
+    loadAnalysisJson, loadSession, loadInsightsLlm,
     loadMarkers, createMarkerFromRequest,
     loadExperiments, createExperimentFromRequest, endExperimentFromRequest,
     loadTelemetryAnalysis,
@@ -32,7 +33,10 @@ export function handleTelemetryApi(req, res, urlPath, qs, handlers) {
     const repo = params.get("repo") || null;
     const markerId = params.get("marker_id") || null;
     const window = Number.isFinite(rangeMs) && rangeMs > 0 ? { rangeMs, end: Number.isFinite(end) ? end : null } : null;
-    send(res, 200, "application/json", JSON.stringify(loadAnalysis(window, harness, { model, repo, markerId })));
+    // loadAnalysisJson returns the already-serialized report (cached per signature+window+harness+
+    // cohort — see telemetry.mjs's cachedAnalysisEntry), so the ~10MB default view is not
+    // re-stringified on every request — just written through.
+    send(res, 200, "application/json", loadAnalysisJson(window, harness, { model, repo, markerId }));
     return true;
   }
   if (urlPath === "/api/session") {

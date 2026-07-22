@@ -894,6 +894,15 @@ assert "telemetry report: shows token sections when token data exists" \
   bash -c "env ${tele_env[*]} node '${cli}' telemetry report | grep -q 'token spikes'"
 assert "telemetry report: legacy metadata-only records still report" \
   bash -c "printf '%s\n' '{\"ts\":\"2026-06-10T01:00:00Z\",\"harness\":\"claude\",\"event\":\"Stop\",\"repo\":{\"label\":\"legacy\"},\"tool\":{\"name\":\"Read\"}}' >> '${tele_home}/.roborepo/telemetry/spool/claude.jsonl' && env ${tele_env[*]} node '${cli}' telemetry report | grep -q 'legacy'"
+# Server-read performance guardrails (docs/plans/active/telemetry-analysis-io-performance.md): the
+# shared incremental byte-tail reader and the spool store's equality with a full re-read. These are
+# self-contained (own temp dirs), so they need no tele_env.
+assert "telemetry perf: incremental byte-tail reader (readAppendedLines) edge cases" \
+  node "${repo_root}/scripts/test/jsonl-tail-check.mjs"
+assert "telemetry perf: incremental spool store equals a full re-read" \
+  node "${repo_root}/scripts/test/telemetry-spool-store-check.mjs"
+assert "telemetry perf: analyzer output unchanged (report correctness)" \
+  node "${repo_root}/scripts/test/telemetry-correctness-check.mjs"
 assert "serve: top-level alias rejects invalid port" \
   bash -c "! env ${tele_env[*]} node '${cli}' serve --port 0 >/dev/null 2>&1"
 assert "telemetry start: removed" \

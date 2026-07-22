@@ -5,7 +5,7 @@ import net from "node:net";
 import { spawnSync, spawn } from "node:child_process";
 import { markTelemetrySelected } from "./presets.mjs";
 import { repoRoot } from "./paths.mjs";
-import { portalPidPath, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
+import { portalPidPath, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { readMarkers, readSnapshot, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
 import {
@@ -15,6 +15,7 @@ import {
 import { isKnownMetric, listMetrics, computeMetric } from "./telemetry-metrics.mjs";
 import { normalizeCohortFilter, applyCohortFilter } from "./telemetry-cohort.mjs";
 import { compareAcrossMarker, describeMarkerComparison } from "./telemetry-compare.mjs";
+import { readAppendedLines } from "./jsonl-tail.mjs";
 import { startPortalServer } from "./portal-server.mjs";
 import { readConfigSnapshot, loadConfigSource } from "./config.mjs";
 import { mutatePackage, setSkillInstalled, setBehaviorBucket, setCommandBucket } from "./config-mutate.mjs";
@@ -695,61 +696,32 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     if (options.open) openLocalUrl(`${existingUrl}${openPath}`);
     return;
   }
-  // Not reusing: any previously tracked portal (foreground or detached, on any port — including a
-  // prior `--port 0` instance that resolvePortalPort never probes) is about to be superseded by
-  // this one, so stop it first instead of leaving it running alongside the new instance.
-  killExistingServer();
+  await killExistingServer();
   writePid(process.pid);
   options.port = resolved.port;
   const portalUrl = (port) => `http://127.0.0.1:${port}`;
-  // Clean up the PID file when the server exits cleanly (SIGTERM from stop or OS shutdown).
-  process.on("SIGTERM", () => { clearPid(); process.exit(0); });
+  // Clean up the PID file (and stop the refresh timer) when the server exits cleanly (SIGTERM from
+  // stop or OS shutdown).
+  process.on("SIGTERM", () => { stopAnalysisRefresh(); clearPid(); process.exit(0); });
   if (readTelemetryState().enabled !== true) {
     console.log("telemetry is disabled; serving whatever is already in the spool.");
   }
-  // The server re-reads the spool on each request so a running dashboard reflects live captures.
-  // A `window` ({ rangeMs, end }) scopes the whole report to a trailing time slice before analysis,
-  // so every panel — not just the chart — reflects the dashboard's time filter. loadSession bridges
-  // a flagged event to its chat transcript (file I/O lives here, not in the server).
+  // Keep the default-view report warm in the background (debounced on spool changes) so page loads
+  // and the 5s poll read a ready result instead of computing the ~250ms analyze on the request path.
+  startAnalysisRefresh();
+  // The server reads the spool through an incremental in-memory store (readSpoolEventsCached), so a
+  // running dashboard reflects live captures without re-parsing the whole file each request. A
+  // `window` ({ rangeMs, end }) scopes the whole report to a trailing time slice before analysis, so
+  // every panel — not just the chart — reflects the dashboard's time filter. loadSession bridges a
+  // flagged event to its chat transcript (file I/O lives here, not in the server).
   startPortalServer({
     port: options.port,
     // Phase 6 additions (model/repo/markerId) layer a normalized cohort filter on top of the
-    // existing time/harness window; see telemetry-analyze.mjs's analyzeTelemetry() options and
-    // telemetry-cohort.mjs for the shared filter shape the CLI report will eventually reuse too.
-    loadAnalysis: (window, harness, extra = {}) => {
-      const { model = null, repo = null, markerId = null } = extra;
-      const allEvents = readSpoolEvents();
-      const markers = readMarkers();
-      // Expose every dimension present in the FULL spool (before any filter), so the dashboard can
-      // always render a complete filter list even when a narrower cohort is currently selected.
-      const availableHarnesses = [...new Set(allEvents.map((e) => e.harness).filter(Boolean))].sort();
-      const availableModels = [...new Set(allEvents.map((e) => e.session?.model).filter(Boolean))].sort();
-      const availableRepos = [...new Set(allEvents.map((e) => e.repo?.label).filter(Boolean))].sort();
-      const events = harness ? allEvents.filter((e) => e.harness === harness) : allEvents;
-      const windowed = filterByWindow(events, window);
-      const cohortFilter = (model || repo) ? { models: model ? [model] : [], repos: repo ? [repo] : [] } : null;
-      const report = analyzeTelemetry(windowed, { cohortFilter, markers, markerId, compareMetric: "tokens.total" });
-      // Backfill session titles from transcripts: the transcript always has the first user message
-      // (turn 1), whereas the spool only captures prompts when hooks fired — so new sessions or
-      // sessions started before telemetry was enabled may have no spool title or a mid-chat title.
-      // Cap at top 20 sessions to bound latency; results are cached so 5s polls don't re-read files.
-      for (const s of report.sessions.slice(0, 20)) {
-        const t = cachedTranscriptTitle(s.session_id, s.harness || harness || "claude");
-        if (t) s.title = t;
-      }
-      report.available_harnesses = availableHarnesses;
-      report.available_models = availableModels;
-      report.available_repos = availableRepos;
-      // Metric ids from the shared registry (plan: "available ... metric" dimension) so the
-      // Analysis explorer's metric select never hand-maintains its own list.
-      report.available_metrics = listMetrics().map((m) => m.id);
-      // Window-scoped markers for the chart overlay (plan: "The server supplies window-scoped
-      // markers"). Uses the same filterByWindow the events themselves went through.
-      report.markers = filterByWindow(markers, window);
-      report.experiments = readExperiments();
-      report.deepread_cli = findDeepReadCli();
-      return report;
-    },
+    // existing time/harness window; folded into cachedAnalysisJson's cache key (see
+    // cachedAnalysisEntry above) so cohort-filtered views stay cached the same way the default
+    // view is. See telemetry-analyze.mjs's analyzeTelemetry() options and telemetry-cohort.mjs for
+    // the shared filter shape the CLI report will eventually reuse too.
+    loadAnalysisJson: (window, harness, extra = {}) => cachedAnalysisJson(window, harness, extra),
     loadSession: (req) => loadSessionDetail({ ...req, spoolContext: sessionSpoolContext(req.id, readMarkers()) }),
     loadInsightsLlm: () => loadInsightsLlm(),
     loadMarkers: () => readMarkers(),
@@ -852,7 +824,63 @@ function telemetryStatePath() {
   return `${telemetryDir}/state.json`;
 }
 
-function readSpoolEvents() {
+// Cheap change-detector for the spool: newest mtime + total size + file count across all .jsonl
+// files. Captures append (mtime + size grow) and file add/remove (count changes), so it flips
+// whenever a new telemetry event lands. Used to memoize loadAnalysis — the 5s dashboard poll and
+// every page nav would otherwise re-read the whole spool and re-run the (~1.5s) analysis on data
+// that hasn't changed, blocking the single-threaded server for other pages' requests meanwhile.
+function spoolSignature() {
+  let files = [];
+  try {
+    files = fs.readdirSync(telemetrySpoolDir).filter((file) => file.endsWith(".jsonl"));
+  } catch {
+    return "none";
+  }
+  let maxMtime = 0;
+  let totalSize = 0;
+  for (const file of files) {
+    try {
+      const stat = fs.statSync(path.join(telemetrySpoolDir, file));
+      if (stat.mtimeMs > maxMtime) maxMtime = stat.mtimeMs;
+      totalSize += stat.size;
+    } catch {
+      // File vanished between readdir and stat; ignore — the next tick re-signs the spool.
+    }
+  }
+  // Cached reports embed markers and experiments (chart overlay, cohort/marker-relative
+  // comparisons, the recent-markers list) alongside spool-derived data, so a marker/experiment
+  // mutation must also invalidate the cache even though it never touches the spool directory
+  // itself — otherwise a marker or experiment created through the portal would not appear in
+  // /api/data until the next unrelated capture landed.
+  let markersStamp = "0:0";
+  try {
+    const stat = fs.statSync(telemetryMarkersPath);
+    markersStamp = `${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    // No markers file yet; stable "0:0" until one is created.
+  }
+  // Experiments are one file per experiment_id (mutable in place — status/end_marker_id update),
+  // so the signature is a count+max-mtime over the directory rather than a single file stamp.
+  let experimentsStamp = "0:0";
+  try {
+    const experimentFiles = fs.readdirSync(telemetryExperimentsDir).filter((file) => file.endsWith(".json"));
+    let maxExpMtime = 0;
+    for (const file of experimentFiles) {
+      const stat = fs.statSync(path.join(telemetryExperimentsDir, file));
+      if (stat.mtimeMs > maxExpMtime) maxExpMtime = stat.mtimeMs;
+    }
+    experimentsStamp = `${experimentFiles.length}:${maxExpMtime}`;
+  } catch {
+    // No experiments dir yet; stable "0:0" until one is created.
+  }
+  return `${files.length}:${maxMtime}:${totalSize}|${markersStamp}|${experimentsStamp}`;
+}
+
+// Plain full-read of the whole spool. Used by the one-shot CLI paths (`telemetry report`/`export`)
+// where a resident store buys nothing — the process reads once and exits. The long-lived server
+// uses readSpoolEventsCached() instead. Kept as the reference implementation the incremental store
+// is tested against for equality.
+export function readSpoolEvents() {
   const events = [];
   let files = [];
   try {
@@ -874,6 +902,92 @@ function readSpoolEvents() {
   return events;
 }
 
+// Incremental spool store for the long-lived server. The spool is append-only (each capture is one
+// `appendFileSync` of a newline-terminated line), so re-reading + re-parsing the whole 30MB+ file on
+// every 5s poll and every page nav is pure waste — the dominant cost of the old request path. This
+// keeps parsed events in memory per file and, on each sync, reads only the bytes appended since last
+// time via readAppendedLines(). Nothing changed -> a few stat() calls; a few new events -> parse
+// only those lines. The incremental byte-tail read (offset advance, partial-line hold, shrink/rotate
+// detection) lives in jsonl-tail.mjs, shared with the transcript reader.
+//
+// Server-only: a single process owns this. The writer is a separate short-lived capture process, so
+// the server never sees a torn write beyond a possible partial trailing line at EOF, which
+// readAppendedLines holds back (an unterminated final line is not parsed until its newline lands).
+const _spoolStore = new Map(); // filename -> { offset, events: object[] }
+// Memoized flat concatenation of every file's events, returned as-is when nothing changed since the
+// last sync. Without this, the common no-op call (the 5s poll / 2s refresh tick on an unchanged
+// spool) would still spread ~35k events into a fresh array every time — the residual steady-state
+// cost. `_spoolDirty` is set whenever a file is appended, added, or evicted, so the flat array is
+// rebuilt only then.
+let _spoolFlat = [];
+let _spoolDirty = true;
+
+export function readSpoolEventsCached() {
+  let files;
+  try {
+    files = fs.readdirSync(telemetrySpoolDir).filter((file) => file.endsWith(".jsonl"));
+  } catch {
+    // Spool dir gone/unreadable — nothing to serve. Clear state and return an empty result.
+    _spoolStore.clear();
+    _spoolFlat = [];
+    _spoolDirty = false;
+    return _spoolFlat;
+  }
+  const present = new Set(files);
+  // Drop store entries for files that vanished (e.g. a purge) so their events don't linger.
+  for (const name of [..._spoolStore.keys()]) {
+    if (!present.has(name)) { _spoolStore.delete(name); _spoolDirty = true; }
+  }
+  for (const file of files) syncSpoolFile(file);
+  if (_spoolDirty) {
+    _spoolFlat = [];
+    for (const file of files) {
+      const entry = _spoolStore.get(file);
+      if (entry) _spoolFlat.push(...entry.events);
+    }
+    _spoolDirty = false;
+  }
+  return _spoolFlat;
+}
+
+// Bring one file's in-memory entry up to date via readAppendedLines(). Sets _spoolDirty when it
+// actually parses new events, or when the file was added/rebuilt.
+function syncSpoolFile(file) {
+  let entry = _spoolStore.get(file);
+  if (!entry) {
+    entry = { offset: 0, events: [] };
+    _spoolStore.set(file, entry);
+    _spoolDirty = true;
+  }
+  const { lines, nextOffset, rebuilt, ok } = readAppendedLines(
+    path.join(telemetrySpoolDir, file),
+    entry.offset,
+  );
+  if (!ok) return; // missing/unreadable; retried on the next sync (readdir still listed it)
+  if (rebuilt) {
+    // The file shrank/rotated (capSpool trim) — offset was past EOF, the read restarted from 0, so
+    // discard the events accumulated from the pre-trim bytes before re-appending the current ones.
+    entry.events = [];
+    _spoolDirty = true;
+  }
+  for (const line of lines) {
+    try {
+      entry.events.push(JSON.parse(line));
+      _spoolDirty = true;
+    } catch {
+      // Ignore corrupt lines, matching readSpoolEvents().
+    }
+  }
+  entry.offset = nextOffset;
+}
+
+// Test hook: clear the store so a bench/test can measure a cold prime or force a rebuild.
+export function _resetSpoolStoreForTests() {
+  _spoolStore.clear();
+  _spoolFlat = [];
+  _spoolDirty = true;
+}
+
 // Restrict events to a trailing time window before analysis so the dashboard's time filter scopes
 // the entire report. `end` (epoch ms) pins the window's right edge for panning; null follows the
 // latest event. Null window returns everything unchanged. Events lacking a parseable ts are dropped
@@ -889,6 +1003,149 @@ function filterByWindow(events, window) {
     const ms = Date.parse(event.ts);
     return Number.isFinite(ms) && ms >= start && ms <= end;
   });
+}
+
+// Analysis cache: the dashboard's 5s poll and every cross-page nav call loadAnalysis, which re-reads
+// the whole spool and runs the full (~1.5s) report. That work only changes when a new capture lands,
+// so memoize the computed report per (spool signature + window + harness). On unchanged data the
+// server answers in microseconds instead of blocking its single event loop for seconds — which is
+// what made nav to other pages feel unresponsive while a poll was in flight. Bounded at 32 entries
+// (a handful of range/harness combinations) so it can't grow without limit.
+// Each entry stores the SERIALIZED JSON, not the report object. The default-view response is ~10MB,
+// so JSON.stringify alone is ~100ms — re-serializing an unchanged report on every request (the route
+// used to `JSON.stringify(loadAnalysis(...))` each time) was the remaining floor after the analyze
+// cost was cached. Caching the string lets the hot /api/data path skip both analyze and stringify;
+// the route sends it directly. Only the route consumes this, and it needs a string, so the report
+// object is discarded once stringified rather than retained as dead memory.
+const _analysisCache = new Map();
+const ANALYSIS_CACHE_MAX = 32;
+// Phase 6 additions (model/repo/markerId) layer a normalized cohort filter on top of the existing
+// time/harness window; folded into the cache key so a cohort-filtered view gets its own cached
+// entry instead of colliding with (or evicting) the unfiltered default view.
+function analysisKey(window, harness, { model = null, repo = null, markerId = null } = {}) {
+  return `${spoolSignature()}|${window ? `${window.rangeMs}:${window.end ?? ""}` : "all"}|${harness || "all"}|${model || "all"}|${repo || "all"}|${markerId || "none"}`;
+}
+
+// Returns the cache entry { json } for the given view, computing (and caching) it on a miss.
+function cachedAnalysisEntry(window, harness, extra = {}) {
+  const { model = null, repo = null, markerId = null } = extra;
+  const key = analysisKey(window, harness, { model, repo, markerId });
+  const hit = _analysisCache.get(key);
+  if (hit) return hit;
+  const allEvents = readSpoolEventsCached();
+  const markers = readMarkers();
+  // Expose every dimension present in the FULL spool (before any filter), so the dashboard can
+  // always render a complete filter list even when a narrower cohort is currently selected.
+  const availableHarnesses = [...new Set(allEvents.map((e) => e.harness).filter(Boolean))].sort();
+  const availableModels = [...new Set(allEvents.map((e) => e.session?.model).filter(Boolean))].sort();
+  const availableRepos = [...new Set(allEvents.map((e) => e.repo?.label).filter(Boolean))].sort();
+  const events = harness ? allEvents.filter((e) => e.harness === harness) : allEvents;
+  const windowed = filterByWindow(events, window);
+  const cohortFilter = (model || repo) ? { models: model ? [model] : [], repos: repo ? [repo] : [] } : null;
+  const report = analyzeTelemetry(windowed, { cohortFilter, markers, markerId, compareMetric: "tokens.total" });
+  // Backfill session titles from transcripts: the transcript always has the first user message
+  // (turn 1), whereas the spool only captures prompts when hooks fired — so new sessions or
+  // sessions started before telemetry was enabled may have no spool title or a mid-chat title.
+  // Cap at top 20 sessions to bound latency; titles are separately cached so 5s polls don't re-read.
+  for (const s of report.sessions.slice(0, 20)) {
+    const t = cachedTranscriptTitle(s.session_id, s.harness || harness || "claude");
+    if (t) s.title = t;
+  }
+  report.available_harnesses = availableHarnesses;
+  report.available_models = availableModels;
+  report.available_repos = availableRepos;
+  // Metric ids from the shared registry (plan: "available ... metric" dimension) so the Analysis
+  // explorer's metric select never hand-maintains its own list.
+  report.available_metrics = listMetrics().map((m) => m.id);
+  // Window-scoped markers for the chart overlay (plan: "The server supplies window-scoped
+  // markers"). Uses the same filterByWindow the events themselves went through.
+  report.markers = filterByWindow(markers, window);
+  report.experiments = readExperiments();
+  report.deepread_cli = findDeepReadCli();
+  // Cache the serialized JSON, not the report object: the only consumer is the /api/data route,
+  // which sends the string, so retaining the ~10MB object per entry would be dead memory. The report
+  // object is discarded once stringified.
+  const entry = { json: JSON.stringify(report) };
+  // Prune the oldest entry once over the cap. Signature changes mint fresh keys on every new
+  // capture, so stale-signature entries accumulate otherwise; Map preserves insertion order.
+  if (_analysisCache.size >= ANALYSIS_CACHE_MAX) {
+    _analysisCache.delete(_analysisCache.keys().next().value);
+  }
+  _analysisCache.set(key, entry);
+  return entry;
+}
+
+// Serialized report JSON for the hot /api/data path, memoized per signature+window+harness+cohort.
+function cachedAnalysisJson(window, harness, extra = {}) {
+  return cachedAnalysisEntry(window, harness, extra).json;
+}
+
+// Tier 2 — debounced default-view refresh. cachedAnalysisJson() still computes synchronously on a
+// cache miss, but for the DEFAULT view (window=null, harness=null — what every page load and the 5s poll
+// request) we keep the result warm PROACTIVELY on a background timer, so the request path reads a
+// ready report instead of triggering the ~250ms analyze+stringify itself. That work is what still
+// blocked the single-threaded server on the first request after each new capture.
+//
+// The timer polls the cheap spoolSignature(); when it changes it debounces (waits for a quiet gap,
+// with a max-wait cap so a continuous capture stream still refreshes) and then recomputes the
+// default view once. Windowed/panned/harness-filtered requests are user-initiated and stay
+// on-demand (a brief spinner there is fine; precomputing every combination is infeasible).
+//
+// It's a setInterval/setTimeout — a timer on the existing thread, not a worker. The recompute still
+// briefly occupies the event loop (~250ms), but now at most once per debounce window and between
+// requests, rather than inside a request on every change.
+const ANALYSIS_POLL_MS = 2000; // how often the timer checks the cheap signature
+const ANALYSIS_DEBOUNCE_MS = 12000; // wait for this much quiet after the last change before recomputing
+const ANALYSIS_MAX_WAIT_MS = 60000; // ...but never defer a refresh longer than this under a steady stream
+let _refreshTimer = null;
+// pendingSince doubles as the "is a change pending?" flag (0 = none) and the max-wait anchor;
+// lastSeenAt is the last tick a change was observed, for the quiet-gap debounce.
+const _refreshState = { lastSig: null, pendingSince: 0, lastSeenAt: 0 };
+
+function refreshDefaultView() {
+  // Populates _analysisCache under the current signature's default key so the request path is warm.
+  try {
+    cachedAnalysisEntry(null, null);
+  } catch {
+    // A transient read/analyze failure must not kill the refresh loop; the next tick retries.
+  }
+}
+
+function tickAnalysisRefresh() {
+  const sig = spoolSignature();
+  const now = Date.now();
+  if (sig !== _refreshState.lastSig) {
+    // A change: (re)arm the debounce window. pendingSince anchors the max-wait; lastSeenAt the gap.
+    _refreshState.lastSig = sig;
+    if (!_refreshState.pendingSince) _refreshState.pendingSince = now;
+    _refreshState.lastSeenAt = now;
+    return;
+  }
+  // Stable this tick. If a change is pending, recompute once it's been quiet long enough OR the
+  // max-wait cap has elapsed since the change was first seen.
+  if (_refreshState.pendingSince) {
+    const quietFor = now - _refreshState.lastSeenAt;
+    const waitedFor = now - _refreshState.pendingSince;
+    if (quietFor >= ANALYSIS_DEBOUNCE_MS || waitedFor >= ANALYSIS_MAX_WAIT_MS) {
+      _refreshState.pendingSince = 0;
+      refreshDefaultView();
+    }
+  }
+}
+
+// Start the background refresh loop for the running server. Primes the default view once up front so
+// the very first page load is warm, then keeps it fresh on the debounced timer. `unref()` so the
+// timer never keeps the process alive on its own.
+function startAnalysisRefresh() {
+  refreshDefaultView();
+  _refreshState.lastSig = spoolSignature();
+  _refreshTimer = setInterval(tickAnalysisRefresh, ANALYSIS_POLL_MS);
+  _refreshTimer.unref?.();
+}
+
+function stopAnalysisRefresh() {
+  if (_refreshTimer) clearInterval(_refreshTimer);
+  _refreshTimer = null;
 }
 
 // Title cache: transcripts are append-only so the first user message never changes. Cache by id so
@@ -1032,10 +1289,10 @@ function runDeepRead(report) {
   return text ? { ok: true, text, cli } : { ok: false, note: `${cli} returned no output`, cli };
 }
 
-// Server closure: deeper-read on demand from the dashboard. Re-reads the spool so it reflects live
-// captures, mirroring loadAnalysis.
+// Server closure: deeper-read on demand from the dashboard. Reads the spool through the incremental
+// store so it reflects live captures without re-parsing the whole file, mirroring loadAnalysis.
 function loadInsightsLlm() {
-  return runDeepRead(analyzeTelemetry(readSpoolEvents()));
+  return runDeepRead(analyzeTelemetry(readSpoolEventsCached()));
 }
 
 // --- Phase 6: portal marker/experiment/analysis request handlers ------------------------------
@@ -1226,14 +1483,22 @@ function clearPid() {
   try { fs.rmSync(legacyTelemetryPidPath, { force: true }); } catch {}
 }
 
-// Kill any existing detached server (stale or live). Clears the PID file unconditionally.
-function killExistingServer() {
+// Kill any existing detached server (stale or live) and wait for it to actually exit before
+// returning. Clears the PID file unconditionally. Waiting matters: a caller that immediately
+// tries to bind the same port right after this resolves would otherwise race the killed
+// process's own teardown (SIGTERM handling + socket close isn't instant) — a transient bind
+// failure right after signalling would read as "port occupied by something else" and fall back
+// to a random port, permanently orphaning the process we just tried to kill instead of waiting
+// the extra tens of milliseconds for it to actually die.
+async function killExistingServer() {
   const pid = readPid();
-  if (pid == null) return;
-  if (isProcessRunning(pid)) {
-    try { process.kill(pid, "SIGTERM"); } catch {}
-  }
   clearPid();
+  if (pid == null || !isProcessRunning(pid)) return;
+  try { process.kill(pid, "SIGTERM"); } catch { return; }
+  const deadline = Date.now() + 2000;
+  while (isProcessRunning(pid) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
 }
 
 // Kill the running server. Returns true if a live process was found and signalled.
@@ -1246,7 +1511,7 @@ function stopServer() {
 }
 
 async function startDetachedPortal(port, { allowPortFallback = false, portExplicit = false } = {}) {
-  killExistingServer();
+  await killExistingServer();
   const resolved = await resolvePortalPort(port, { allowPortFallback, portExplicit, warn: true });
   if (resolved.reuse) {
     writePid(resolved.pid);

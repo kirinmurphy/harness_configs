@@ -3,7 +3,55 @@
   {{HEAD}}
   <body>
     {{CHROME}}
-    <main id="main"></main>
+    <main id="main">
+      {{LOADING}}
+      <!-- Static shell shown until the first snapshot loads (see .page-loading in base.css). Mirrors
+       tpl-config-files below so the loading scrim sits over real structure instead of a blank page.
+       app.js's render() replaceChildren()s this away on first successful load(); the dynamic
+       behaviorView sections that follow it are genuinely server-computed and have no static
+       equivalent, so they simply aren't in this pre-hydration shell. -->
+      <section class="panel wide">
+        <div class="config-grid" role="table" aria-label="Agent files">
+          <div class="config-grid-head" role="row">
+            <div role="columnheader"></div>
+            <div role="columnheader">Claude</div>
+            <div role="columnheader">Codex</div>
+          </div>
+          <div class="config-grid-row" role="row">
+            <div class="config-type" role="cell">
+              <strong>Usage</strong>
+              <span>Startup context loaded automatically.</span>
+            </div>
+            <div class="harness-provider" role="cell"></div>
+            <div class="harness-provider" role="cell"></div>
+          </div>
+          <div class="config-grid-row" role="row">
+            <div class="config-type" role="cell">
+              <strong>Rules</strong>
+              <span>Global context for every session.</span>
+            </div>
+            <div class="harness-provider" role="cell">CLAUDE.md</div>
+            <div class="harness-provider" role="cell">AGENTS.md</div>
+          </div>
+          <div class="config-grid-row" role="row">
+            <div class="config-type" role="cell">
+              <strong>Config</strong>
+              <span>Settings, permissions, and runtime defaults.</span>
+            </div>
+            <div class="harness-provider" role="cell">settings.json</div>
+            <div class="harness-provider" role="cell">config.toml</div>
+          </div>
+          <div class="config-grid-row" role="row">
+            <div class="config-type" role="cell">
+              <strong>Hooks</strong>
+              <span>Automation triggered by lifecycle or tool events.</span>
+            </div>
+            <div class="harness-provider" role="cell">settings.json</div>
+            <div class="harness-provider" role="cell">hooks.json</div>
+          </div>
+        </div>
+      </section>
+    </main>
     <dialog id="config-modal" aria-labelledby="modal-title">
       <div class="modal-head">
         <div class="modal-head-main">
@@ -32,7 +80,7 @@
             <div role="columnheader">Claude</div>
             <div role="columnheader">Codex</div>
           </div>
-          <div class="config-grid-row" role="row">
+          <div id="usage-per-harness" class="config-grid-row" role="row">
             <div class="config-type" role="cell">
               <strong>Usage</strong>
               <span>Startup context loaded automatically.</span>

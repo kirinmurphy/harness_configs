@@ -4,48 +4,16 @@ main {
   display: grid;
   gap: 16px;
 }
-.localhoster-toolbar {
-  display: grid;
-  gap: 12px;
-}
-.status-strip {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  border: 1px solid var(--line);
-  background: var(--panel);
-}
-.status-pill {
-  padding: 12px;
-  border-right: 1px solid var(--line);
-}
-.status-pill:last-child {
-  border-right: 0;
-}
-.status-pill strong {
-  display: block;
-  font-size: var(--text-xl);
-  line-height: 1;
-}
-.status-pill span,
-.refresh-state,
 .instance-group header span,
-.card-subtitle,
 .no-links {
   color: var(--dim);
   font-size: var(--text-xs);
 }
 .toolbar-actions {
   display: flex;
-  align-items: end;
+  align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-.search-field {
-  display: grid;
-  gap: 4px;
-  min-width: min(420px, 100%);
-  color: var(--dim);
-  font-size: var(--text-xs);
 }
 input,
 select,
@@ -71,6 +39,20 @@ button {
 button:hover {
   border-color: var(--accent);
 }
+.icon-button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+.icon-button [hidden] {
+  display: none;
+}
+.icon-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
 .notice {
   border: 1px solid var(--line);
   background: var(--panel);
@@ -86,35 +68,104 @@ button:hover {
   display: grid;
   gap: 14px;
 }
-.instance-group header,
-.collapsed-group summary {
+.instance-group header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 5px;
+  padding-bottom: 2px;
 }
-.collapsed-group summary {
-  cursor: pointer;
-}
-.collapsed-group .instance-grid {
-  margin-top: 12px;
+.group-header-end {
+  display: flex;
+  align-items: center;
 }
 .instance-group h2,
 .instance-card h3 {
   margin: 0;
   font-size: var(--text-lg);
 }
+.collapsed-group summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  padding-bottom: 2px;
+}
+.collapsed-group summary::-webkit-details-marker {
+  display: none;
+}
+.collapsed-group summary .collapsed-meta {
+  margin-left: auto;
+}
+.collapsed-group summary .chevron {
+  flex: none;
+  transition: transform 0.15s ease;
+}
+.collapsed-group[open] summary {
+  display: none;
+}
+.expanded-head {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 2px;
+}
+.collapsed-group[open] .expanded-head {
+  display: flex;
+}
+.expanded-head h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+.expanded-head .action-link {
+  margin-left: auto;
+}
+/* Inline text action (e.g. "Hide") — underlined like a link but intentionally not accent-colored.
+   Blue/accent is reserved for real navigation (instance origin, quick links); this style is for
+   buttons that change local UI state in place. */
+.action-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--ink);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.action-link:hover {
+  border-color: transparent;
+  color: var(--accent);
+}
+.collapsed-group .instance-grid {
+  margin-top: 12px;
+}
 .instance-grid {
   display: grid;
-  gap: 8px;
 }
 .instance-card {
-  border: 1px solid var(--line);
   background: var(--panel);
   padding: 10px 12px;
   display: grid;
   gap: 4px;
+}
+
+.instance-card:not(:last-of-type) {
+  border-bottom: 1px solid var(--line);
+}
+
+.instance-card.is-offline {
+  opacity: 0.5;
+}
+.instance-card.is-offline::after {
+  content: "Offline";
+  justify-self: start;
+  font-size: var(--text-2xs);
+  color: var(--warn);
+}
+.card-notice {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--warn);
 }
 .card-head,
 .quick-links {
@@ -144,9 +195,6 @@ button:hover {
 .title-separator {
   color: var(--dim);
 }
-.card-subtitle {
-  margin: 0;
-}
 .quick-link {
   border: 1px solid var(--line);
   border-radius: 3px;
@@ -162,9 +210,9 @@ button:hover {
   position: relative;
 }
 .menu-trigger {
-  width: 26px;
-  height: 26px;
-  padding: 0;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
   display: inline-grid;
   place-items: center;
 }
@@ -208,7 +256,7 @@ button:hover {
   color: var(--warn);
 }
 .menu-trigger {
-  gap: 2px;
+  gap: 1px;
 }
 .menu-trigger span {
   width: 3px;
@@ -347,22 +395,8 @@ dialog::backdrop {
   font-size: var(--text-xs);
 }
 @media (max-width: 720px) {
-  .status-strip {
-    grid-template-columns: repeat(1, minmax(0, 1fr));
-  }
-  .status-pill {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-  .status-pill:last-child {
-    border-bottom: 0;
-  }
-  .toolbar-actions,
   .card-head {
     align-items: stretch;
-  }
-  .toolbar-actions button {
-    flex: 1;
   }
   .menu-panel {
     left: auto;

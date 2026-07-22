@@ -3,13 +3,16 @@ import * as api from "./api.js";
 import * as state from "./state.js";
 import * as tmpl from "./templates.js";
 
+// Built once and reused across every render/reconcile — the Active apps header holds this same
+// node for the page's lifetime so refresh/settings listeners and live spinner state never get
+// torn down by a rebuild.
+const toolbarActionsNode = tmpl.toolbarActions();
+
 const refs = {
-  status: document.getElementById("status-strip"),
-  refreshState: document.getElementById("refresh-state"),
-  refresh: document.getElementById("refresh"),
-  settings: document.getElementById("settings"),
-  search: document.getElementById("search"),
-  capability: document.getElementById("capability"),
+  refresh: toolbarActionsNode.querySelector("#refresh"),
+  refreshSpinner: toolbarActionsNode.querySelector(".spinner"),
+  refreshIcon: toolbarActionsNode.querySelector("svg"),
+  settings: toolbarActionsNode.querySelector("#settings"),
   warnings: document.getElementById("warnings"),
   content: document.getElementById("content"),
   linkDialog: document.getElementById("link-dialog"),
@@ -28,86 +31,249 @@ const refs = {
 let lastSnapshot = null;
 let lastHash = null;
 let pollTimer = null;
+// Cards the auto-poll last rendered, by stable key, so a poll can update/add/mark-offline
+// in place instead of tearing down DOM the user may be interacting with (open <details>,
+// open action menu, a link about to be clicked).
+const renderedCards = new Map();
 
+// force: true is a user-clicked refresh, not the silent background poll. A user click is a good
+// moment to clear any cards marked offline by earlier polls — the user just took an action and
+// expects the view to reflect current reality, so a full rebuild (reconcile: false) is fine here
+// even though the background poll must never do that on its own.
 async function load({ force = false } = {}) {
+  if (force) setRefreshing(true);
   try {
-    const snap = force ? await api.refreshLocalhoster() : await api.fetchLocalhoster();
-    applySnapshot(snap);
+    const snap = force
+      ? await api.refreshLocalhoster()
+      : await api.fetchLocalhoster();
+    applySnapshot(snap, { reconcile: !force });
   } catch (err) {
     showError(err.message);
   } finally {
     portalHideLoading();
+    if (force) setRefreshing(false);
   }
 }
 
-function applySnapshot(snapshot) {
+function setRefreshing(refreshing) {
+  refs.refresh.disabled = refreshing;
+  refs.refresh.setAttribute("aria-busy", refreshing ? "true" : "false");
+  refs.refreshSpinner.hidden = !refreshing;
+  refs.refreshIcon.hidden = refreshing;
+}
+
+// `reconcile: true` (background poll) patches existing cards in place and never removes a
+// card that disappeared from the snapshot — it's marked offline instead. User-triggered
+// mutations (hide/favorite/associate/alias/settings) pass reconcile: false (the default) and
+// get an immediate full rebuild, since the user just took an action and expects it reflected
+// right away.
+function applySnapshot(snapshot, { reconcile = false } = {}) {
   lastSnapshot = snapshot;
-  const filtered = state.filterSnapshot(snapshot, refs.search.value);
-  const hash = state.snapshotHash(filtered);
-  if (hash !== lastHash) {
+  const hash = state.snapshotHash(snapshot);
+  // The hash-skip only makes sense for the reconcile path, where "nothing changed" really does
+  // mean nothing to do. A full rebuild (reconcile: false) can be the only thing that clears
+  // offline-marked cards — that's client-only DOM state the server-side hash knows nothing
+  // about — so a full rebuild must always render even when the snapshot itself looks unchanged.
+  if (hash !== lastHash || !reconcile) {
     lastHash = hash;
-    render(filtered);
+    render(snapshot, { reconcile });
   }
   portalSetUpdatedAt(snapshot.generatedAt);
 }
 
-function render(snapshot) {
-  const counts = state.snapshotCounts(snapshot);
-  refs.status.replaceChildren(
-    tmpl.statusPill(counts.active, "active apps"),
-    tmpl.statusPill(counts.projects, "identified projects"),
-    tmpl.statusPill(counts.unmatched, "unmatched"),
-    tmpl.statusPill(counts.inactive, "inactive saved"),
-    tmpl.statusPill(counts.hidden, "hidden"),
-  );
-  refs.refresh.disabled = snapshot.refresh?.state === "refreshing";
-  refs.refresh.setAttribute("aria-busy", snapshot.refresh?.state === "refreshing" ? "true" : "false");
-  refs.refreshState.textContent = snapshot.refresh?.state === "refreshing" ? "Refreshing..." : refreshLabel(snapshot);
-  renderCapability(snapshot);
+function render(snapshot, { reconcile }) {
   renderWarnings(snapshot);
-  const groups = [];
-  if (snapshot.projects.length) {
-    const activeNodes = snapshot.projects.flatMap((project) => project.instances.map((instance) => tmpl.instanceCard(project, instance, cardActions())));
-    groups.push(tmpl.group("Active apps", `${activeNodes.length} running`, activeNodes));
-  }
-  if (snapshot.unmatchedInstances.length) {
-    const nodes = snapshot.unmatchedInstances.map((instance) => tmpl.instanceCard({ name: "Other instances", identity: instance.project?.identity }, instance, cardActions()));
-    groups.push(tmpl.collapsibleGroup("Other instances", `${nodes.length} hidden/noisy listeners`, nodes));
-  }
-  if (snapshot.inactiveProjects.length) {
-    groups.push(tmpl.group("Inactive saved projects", `${snapshot.inactiveProjects.length} saved`, snapshot.inactiveProjects.map((project) => tmpl.inactiveCard(project, cardActions()))));
-  }
-  if (!groups.length) {
-    refs.content.replaceChildren(tmpl.emptyState(
-      snapshot.capabilities.discovery === "supported" ? "No active HTTP apps found" : "Saved projects remain available",
-      snapshot.capabilities.discovery === "supported"
-        ? "Refresh after starting a local development server."
-        : snapshot.capabilities.message,
-    ));
+
+  const sections = [
+    {
+      id: "active",
+      kind: "group",
+      title: "Localhosting",
+      headerEnd: toolbarActionsNode,
+      // Refresh/Settings live in this header, so it must always render even with zero active
+      // apps — otherwise those controls would vanish along with the empty-state fallback.
+      alwaysShow: true,
+      cards: snapshot.projects.flatMap((project) =>
+        project.instances.map((instance) => ({
+          key: instance.associationKey,
+          hash: JSON.stringify(instance) + JSON.stringify(project),
+          build: () => tmpl.instanceCard(project, instance, cardActions()),
+        })),
+      ),
+    },
+    {
+      id: "unmatched",
+      kind: "collapsible",
+      title: "Other instances",
+      meta: (n) => `${n} other hidden/noisy listeners`,
+      cards: snapshot.unmatchedInstances.map((instance) => ({
+        key: instance.associationKey,
+        hash: JSON.stringify(instance),
+        build: () =>
+          tmpl.instanceCard(
+            { name: "Other instances", identity: instance.project?.identity },
+            instance,
+            cardActions(),
+          ),
+      })),
+    },
+    {
+      id: "inactive",
+      kind: "group",
+      title: "Inactive saved projects",
+      meta: (n) => `${n} saved`,
+      cards: snapshot.inactiveProjects.map((project) => ({
+        key: `${project.identity}#${project.app?.id || ""}`,
+        hash: JSON.stringify(project),
+        build: () => tmpl.inactiveCard(project, cardActions()),
+      })),
+    },
+  ];
+
+  if (!reconcile) {
+    renderedCards.clear();
+    const visible = sections.filter(
+      (section) => section.cards.length || section.alwaysShow,
+    );
+    refs.content.replaceChildren(...visible.map(buildSection));
+    if (!sections.some((section) => section.cards.length)) {
+      refs.content.append(emptyStateNode(snapshot));
+    }
     return;
   }
-  refs.content.replaceChildren(...groups);
+
+  reconcileSections(sections, snapshot);
 }
 
-function renderCapability(snapshot) {
-  const cap = snapshot.capabilities;
-  const unavailableProviders = Object.values(cap.providers || {})
-    .filter((provider) => provider.state !== "supported")
-    .map((provider) => provider.name);
-  refs.capability.hidden = cap.discovery === "supported" && unavailableProviders.length === 0;
-  refs.capability.replaceChildren();
-  if (cap.discovery !== "supported") {
-    refs.capability.append(tmpl.noticeWithDoc(`${cap.message} Saved projects and links remain available, but RoboRepo cannot currently detect their active ports.`));
-  } else if (unavailableProviders.length) {
-    refs.capability.append(tmpl.noticeWithDoc(`Some Localhoster providers are not active yet: ${unavailableProviders.join(", ")}.`));
+function emptyStateNode(snapshot) {
+  return tmpl.emptyState(
+    snapshot.capabilities.discovery === "supported"
+      ? "No active HTTP apps found"
+      : "Saved projects remain available",
+    snapshot.capabilities.discovery === "supported"
+      ? "Refresh after starting a local development server."
+      : snapshot.capabilities.message,
+  );
+}
+
+function buildSection(section) {
+  const nodes = section.cards.map(({ key, hash, build }) => {
+    const node = build();
+    renderedCards.set(sectionCardKey(section.id, key), {
+      node,
+      hash,
+      offline: false,
+    });
+    return node;
+  });
+  const groupEl =
+    section.kind === "collapsible"
+      ? tmpl.collapsibleGroup(section.title, section.meta(nodes.length), nodes)
+      : tmpl.group(
+          section.title,
+          section.headerEnd ?? section.meta(nodes.length),
+          nodes,
+        );
+  groupEl.dataset.sectionId = section.id;
+  return groupEl;
+}
+
+function sectionCardKey(sectionId, key) {
+  return `${sectionId}::${key}`;
+}
+
+// Auto-poll reconciliation: updates/adds cards without ever removing one that vanished from
+// the snapshot (marks it offline instead) and never rebuilds a section's group/details element,
+// so open <details>, an open action menu, or a click in flight all survive a background poll.
+function reconcileSections(sections, snapshot) {
+  for (const section of sections) reconcileSection(section);
+  const anyVisible = [...renderedCards.values()].some(
+    (entry) => !entry.offline,
+  );
+  const emptyNode = refs.content.querySelector(".empty-state");
+  if (!anyVisible && !emptyNode) {
+    refs.content.append(emptyStateNode(snapshot));
+  } else if (anyVisible && emptyNode) {
+    emptyNode.remove();
   }
+}
+
+function reconcileSection(section) {
+  const existingGroup = refs.content.querySelector(
+    `[data-section-id="${section.id}"]`,
+  );
+  if (!section.cards.length && !existingGroup && !section.alwaysShow) return;
+  const groupEl = existingGroup || appendSection(section);
+  const grid = groupEl.querySelector(".instance-grid");
+
+  const seenKeys = new Set();
+  let index = 0;
+  for (const { key, hash, build } of section.cards) {
+    const cardKey = sectionCardKey(section.id, key);
+    seenKeys.add(cardKey);
+    const existing = renderedCards.get(cardKey);
+    if (!existing) {
+      const node = build();
+      renderedCards.set(cardKey, { node, hash, offline: false });
+      grid.insertBefore(node, grid.children[index] || null);
+    } else if (
+      (existing.offline || existing.hash !== hash) &&
+      !hasOpenMenu(existing.node)
+    ) {
+      const node = build();
+      existing.node.replaceWith(node);
+      renderedCards.set(cardKey, { node, hash, offline: false });
+    }
+    index += 1;
+  }
+  for (const [cardKey, entry] of renderedCards) {
+    if (
+      !cardKey.startsWith(`${section.id}::`) ||
+      seenKeys.has(cardKey) ||
+      entry.offline
+    )
+      continue;
+    if (hasOpenMenu(entry.node)) continue;
+    markCardOffline(entry.node);
+    entry.offline = true;
+  }
+  if (section.meta) {
+    const visibleCount = grid.querySelectorAll(
+      ".instance-card:not(.is-offline)",
+    ).length;
+    groupEl.querySelector("[data-slot=meta]").textContent =
+      section.meta(visibleCount);
+  }
+}
+
+function hasOpenMenu(node) {
+  const menu = node.querySelector("[data-menu]");
+  return !!menu && !menu.hidden;
+}
+
+function appendSection(section) {
+  const groupEl = buildSection({ ...section, cards: [] });
+  refs.content.append(groupEl);
+  return groupEl;
+}
+
+function markCardOffline(node) {
+  node.classList.add("is-offline");
+  const trigger = node.querySelector("[data-action=menu]");
+  if (trigger) trigger.disabled = true;
+  node.querySelector("[data-menu]")?.setAttribute("hidden", "");
 }
 
 function renderWarnings(snapshot) {
-  refs.warnings.hidden = !snapshot.warnings?.length && snapshot.refresh?.state !== "failed";
+  refs.warnings.hidden =
+    !snapshot.warnings?.length && snapshot.refresh?.state !== "failed";
   refs.warnings.replaceChildren();
-  for (const warning of snapshot.warnings || []) refs.warnings.append(tmpl.notice(warning));
-  if (snapshot.refresh?.state === "failed") refs.warnings.append(tmpl.notice(`Last successful snapshot: ${snapshot.generatedAt}`));
+  for (const warning of snapshot.warnings || [])
+    refs.warnings.append(tmpl.notice(warning));
+  if (snapshot.refresh?.state === "failed")
+    refs.warnings.append(
+      tmpl.notice(`Last successful snapshot: ${snapshot.generatedAt}`),
+    );
 }
 
 function cardActions() {
@@ -129,10 +295,15 @@ function openAddLinkDialog(project, instance) {
 
 function openLinkDialog(project, instance, { addBlank = false } = {}) {
   const appId = instance.app?.id || "web";
-  document.getElementById("link-project").value = project.identity || instance.project?.identity;
+  document.getElementById("link-project").value =
+    project.identity || instance.project?.identity;
   document.getElementById("link-app").value = appId;
   document.getElementById("link-error").textContent = "";
-  const links = state.currentLinks(lastSnapshot, project.identity || instance.project?.identity, appId);
+  const links = state.currentLinks(
+    lastSnapshot,
+    project.identity || instance.project?.identity,
+    appId,
+  );
   renderLinkRows(addBlank ? [...links, { label: "", path: "" }] : links);
   refs.linkDialog.showModal();
 }
@@ -146,29 +317,52 @@ function openAppDialog(project, instance) {
 function fillAppDialog(project, instance) {
   const projectIdentity = project.identity || instance.project?.identity || "";
   const appId = instance.app?.id || "web";
-  const projectSettings = state.currentProjectSettings(lastSnapshot, projectIdentity) || {};
-  const appSettings = state.currentAppSettings(lastSnapshot, projectIdentity, appId) || instance.app || {};
-  document.getElementById("app-association").value = instance.associationKey || "";
+  const projectSettings =
+    state.currentProjectSettings(lastSnapshot, projectIdentity) || {};
+  const appSettings =
+    state.currentAppSettings(lastSnapshot, projectIdentity, appId) ||
+    instance.app ||
+    {};
+  document.getElementById("app-association").value =
+    instance.associationKey || "";
   document.getElementById("app-project").value = projectIdentity;
-  document.getElementById("app-project-name").value = project.name === "Other instances" ? "" : projectSettings.name || project.name || "";
+  document.getElementById("app-project-name").value =
+    project.name === "Other instances"
+      ? ""
+      : projectSettings.name || project.name || "";
   document.getElementById("app-id").value = appId;
   document.getElementById("app-name").value = appSettings.name || "Web";
-  document.getElementById("app-origin").value = appSettings.originPreference || "localhost";
-  document.getElementById("app-project-favorite").checked = projectSettings.favorite === true;
-  document.getElementById("app-project-hidden").checked = projectSettings.hidden === true;
-  document.getElementById("app-favorite").checked = appSettings.favorite === true;
+  document.getElementById("app-origin").value =
+    appSettings.originPreference || "localhost";
+  document.getElementById("app-project-favorite").checked =
+    projectSettings.favorite === true;
+  document.getElementById("app-project-hidden").checked =
+    projectSettings.hidden === true;
+  document.getElementById("app-favorite").checked =
+    appSettings.favorite === true;
   document.getElementById("app-hidden").checked = appSettings.hidden === true;
-  document.getElementById("app-health-path").value = appSettings.health?.path || "";
-  document.getElementById("app-health-statuses").value = state.csvList(appSettings.health?.acceptedStatuses);
-  document.getElementById("app-match-process").value = state.csvList(appSettings.match?.process);
-  document.getElementById("app-match-title").value = state.csvList(appSettings.match?.title);
-  document.getElementById("app-match-path").value = state.csvList(appSettings.match?.path);
+  document.getElementById("app-health-path").value =
+    appSettings.health?.path || "";
+  document.getElementById("app-health-statuses").value = state.csvList(
+    appSettings.health?.acceptedStatuses,
+  );
+  document.getElementById("app-match-process").value = state.csvList(
+    appSettings.match?.process,
+  );
+  document.getElementById("app-match-title").value = state.csvList(
+    appSettings.match?.title,
+  );
+  document.getElementById("app-match-path").value = state.csvList(
+    appSettings.match?.path,
+  );
   refs.appRemoveAssociation.hidden = !instance.associationKey;
 }
 
 function openAliasDialog(project, instance) {
-  document.getElementById("alias-from").value = instance.project?.identity || "";
-  document.getElementById("alias-to").value = project.identity || instance.project?.identity || "";
+  document.getElementById("alias-from").value =
+    instance.project?.identity || "";
+  document.getElementById("alias-to").value =
+    project.identity || instance.project?.identity || "";
   document.getElementById("alias-confirmed").checked = false;
   document.getElementById("alias-error").textContent = "";
   refs.aliasDialog.showModal();
@@ -179,9 +373,6 @@ refs.settings.addEventListener("click", () => {
   renderSettingsDialog();
   refs.settingsDialog.showModal();
 });
-refs.search.addEventListener("input", () => {
-  if (lastSnapshot) applySnapshot(lastSnapshot);
-});
 document.addEventListener("click", closeActionMenus);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeActionMenus();
@@ -190,14 +381,18 @@ refs.linkForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const projectIdentity = document.getElementById("link-project").value;
   const appId = document.getElementById("link-app").value;
-  await mutateDialog(refs.linkDialog, "link-error", () => api.updateLinks({
-    revision: lastSnapshot.settingsRevision,
-    projectIdentity,
-    appId,
-    links: serializeLinkRows(),
-  }));
+  await mutateDialog(refs.linkDialog, "link-error", () =>
+    api.updateLinks({
+      revision: lastSnapshot.settingsRevision,
+      projectIdentity,
+      appId,
+      links: serializeLinkRows(),
+    }),
+  );
 });
-refs.linkAdd.addEventListener("click", () => addLinkRow({ label: "", path: "" }));
+refs.linkAdd.addEventListener("click", () =>
+  addLinkRow({ label: "", path: "" }),
+);
 refs.appForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const projectIdentity = document.getElementById("app-project").value;
@@ -206,7 +401,12 @@ refs.appForm.addEventListener("submit", async (event) => {
     const assoc = document.getElementById("app-association").value;
     let revision = lastSnapshot.settingsRevision;
     if (assoc) {
-      const associationResult = await api.updateAssociation({ revision, associationKey: assoc, projectIdentity, appId });
+      const associationResult = await api.updateAssociation({
+        revision,
+        associationKey: assoc,
+        projectIdentity,
+        appId,
+      });
       lastSnapshot = associationResult.localhoster || associationResult;
       revision = lastSnapshot.settingsRevision;
     }
@@ -230,20 +430,24 @@ refs.appForm.addEventListener("submit", async (event) => {
 refs.appRemoveAssociation.addEventListener("click", async () => {
   const associationKey = document.getElementById("app-association").value;
   if (!associationKey) return;
-  await mutateDialog(refs.appDialog, "app-error", () => api.updateAssociation({
-    revision: lastSnapshot.settingsRevision,
-    associationKey,
-    remove: true,
-  }));
+  await mutateDialog(refs.appDialog, "app-error", () =>
+    api.updateAssociation({
+      revision: lastSnapshot.settingsRevision,
+      associationKey,
+      remove: true,
+    }),
+  );
 });
 refs.aliasForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  await mutateDialog(refs.aliasDialog, "alias-error", () => api.updateAlias({
-    revision: lastSnapshot.settingsRevision,
-    from: document.getElementById("alias-from").value,
-    to: document.getElementById("alias-to").value,
-    confirmed: document.getElementById("alias-confirmed").checked,
-  }));
+  await mutateDialog(refs.aliasDialog, "alias-error", () =>
+    api.updateAlias({
+      revision: lastSnapshot.settingsRevision,
+      from: document.getElementById("alias-from").value,
+      to: document.getElementById("alias-to").value,
+      confirmed: document.getElementById("alias-confirmed").checked,
+    }),
+  );
 });
 for (const close of document.querySelectorAll("[data-close]")) {
   close.addEventListener("click", () => close.closest("dialog").close());
@@ -279,7 +483,10 @@ function toggleActionMenu(card) {
 function closeActionMenus() {
   for (const menu of refs.content.querySelectorAll("[data-menu]")) {
     menu.hidden = true;
-    menu.closest(".instance-card")?.querySelector("[data-action=menu]")?.setAttribute("aria-expanded", "false");
+    menu
+      .closest(".instance-card")
+      ?.querySelector("[data-action=menu]")
+      ?.setAttribute("aria-expanded", "false");
   }
 }
 
@@ -305,11 +512,21 @@ async function hideInstance(project, instance) {
   try {
     let revision = lastSnapshot.settingsRevision;
     if (instance.associationKey && !instance.app?.id) {
-      const associationResult = await api.updateAssociation({ revision, associationKey: instance.associationKey, projectIdentity, appId });
+      const associationResult = await api.updateAssociation({
+        revision,
+        associationKey: instance.associationKey,
+        projectIdentity,
+        appId,
+      });
       lastSnapshot = associationResult.localhoster || associationResult;
       revision = lastSnapshot.settingsRevision;
     }
-    const result = await api.updateProject({ revision, projectIdentity, appId, appHidden: true });
+    const result = await api.updateProject({
+      revision,
+      projectIdentity,
+      appId,
+      appHidden: true,
+    });
     applySnapshot(result.localhoster || result);
   } catch (err) {
     showError(err.message);
@@ -325,46 +542,67 @@ function renderSettingsDialog() {
 }
 
 function hiddenRows() {
-  return (lastSnapshot.settings?.hidden || []).map((item) => tmpl.settingsRow(
-    item.kind === "project" ? item.name : `${item.name} / ${item.app.name}`,
-    item.kind === "project" ? item.identity : `${item.identity}#${item.app.id}`,
-    "Restore",
-    () => restoreHidden(item),
-  ));
+  return (lastSnapshot.settings?.hidden || []).map((item) =>
+    tmpl.settingsRow(
+      item.kind === "project" ? item.name : `${item.name} / ${item.app.name}`,
+      item.kind === "project"
+        ? item.identity
+        : `${item.identity}#${item.app.id}`,
+      "Restore",
+      () => restoreHidden(item),
+    ),
+  );
 }
 
 function associationRows() {
-  return (lastSnapshot.settings?.associations || []).map((item) => tmpl.settingsRow(
-    item.key,
-    `${item.projectIdentity}#${item.appId}`,
-    "Remove",
-    () => removeAssociation(item.key),
-  ));
+  return (lastSnapshot.settings?.associations || []).map((item) =>
+    tmpl.settingsRow(
+      item.key,
+      `${item.projectIdentity}#${item.appId}`,
+      "Remove",
+      () => removeAssociation(item.key),
+    ),
+  );
 }
 
 function aliasRows() {
-  return (lastSnapshot.settings?.aliases || []).map((item) => tmpl.settingsRow(
-    item.from,
-    item.to,
-    "Remove",
-    () => removeAlias(item.from),
-  ));
+  return (lastSnapshot.settings?.aliases || []).map((item) =>
+    tmpl.settingsRow(item.from, item.to, "Remove", () =>
+      removeAlias(item.from),
+    ),
+  );
 }
 
 async function restoreHidden(item) {
-  await mutateSettings(() => api.updateProject({
-    revision: lastSnapshot.settingsRevision,
-    projectIdentity: item.identity,
-    ...(item.kind === "project" ? { hidden: false } : { appId: item.app.id, appHidden: false }),
-  }));
+  await mutateSettings(() =>
+    api.updateProject({
+      revision: lastSnapshot.settingsRevision,
+      projectIdentity: item.identity,
+      ...(item.kind === "project"
+        ? { hidden: false }
+        : { appId: item.app.id, appHidden: false }),
+    }),
+  );
 }
 
 async function removeAssociation(associationKey) {
-  await mutateSettings(() => api.updateAssociation({ revision: lastSnapshot.settingsRevision, associationKey, remove: true }));
+  await mutateSettings(() =>
+    api.updateAssociation({
+      revision: lastSnapshot.settingsRevision,
+      associationKey,
+      remove: true,
+    }),
+  );
 }
 
 async function removeAlias(from) {
-  await mutateSettings(() => api.updateAlias({ revision: lastSnapshot.settingsRevision, from, remove: true }));
+  await mutateSettings(() =>
+    api.updateAlias({
+      revision: lastSnapshot.settingsRevision,
+      from,
+      remove: true,
+    }),
+  );
 }
 
 async function mutateSettings(mutate) {
@@ -388,16 +626,22 @@ function addLinkRow(link) {
   const row = tmpl.linkRow(link);
   row.querySelector("[data-action=remove]").addEventListener("click", () => {
     row.remove();
-    if (!refs.linkList.querySelector(".link-row")) refs.linkList.append(tmpl.linkEmpty());
+    if (!refs.linkList.querySelector(".link-row"))
+      refs.linkList.append(tmpl.linkEmpty());
   });
-  row.querySelector("[data-action=up]").addEventListener("click", () => moveLinkRow(row, -1));
-  row.querySelector("[data-action=down]").addEventListener("click", () => moveLinkRow(row, 1));
+  row
+    .querySelector("[data-action=up]")
+    .addEventListener("click", () => moveLinkRow(row, -1));
+  row
+    .querySelector("[data-action=down]")
+    .addEventListener("click", () => moveLinkRow(row, 1));
   refs.linkList.append(row);
   return row;
 }
 
 function moveLinkRow(row, direction) {
-  const sibling = direction < 0 ? row.previousElementSibling : row.nextElementSibling;
+  const sibling =
+    direction < 0 ? row.previousElementSibling : row.nextElementSibling;
   if (!sibling || sibling.hasAttribute("data-empty")) return;
   if (direction < 0) refs.linkList.insertBefore(row, sibling);
   else refs.linkList.insertBefore(sibling, row);
@@ -416,7 +660,9 @@ function serializeLinkRows() {
 
 function serializeHealth() {
   const path = document.getElementById("app-health-path").value.trim();
-  const acceptedStatuses = state.parseCsvList(document.getElementById("app-health-statuses").value).map((value) => Number(value));
+  const acceptedStatuses = state
+    .parseCsvList(document.getElementById("app-health-statuses").value)
+    .map((value) => Number(value));
   return {
     ...(path ? { path } : {}),
     ...(acceptedStatuses.length ? { acceptedStatuses } : {}),
@@ -425,7 +671,9 @@ function serializeHealth() {
 
 function serializeMatch() {
   return {
-    process: state.parseCsvList(document.getElementById("app-match-process").value),
+    process: state.parseCsvList(
+      document.getElementById("app-match-process").value,
+    ),
     title: state.parseCsvList(document.getElementById("app-match-title").value),
     path: state.parseCsvList(document.getElementById("app-match-path").value),
   };
@@ -434,12 +682,6 @@ function serializeMatch() {
 function showError(message) {
   refs.warnings.hidden = false;
   refs.warnings.replaceChildren(tmpl.notice(message));
-}
-
-function refreshLabel(snapshot) {
-  if (snapshot.refresh?.state === "failed") return "Refresh failed";
-  if (snapshot.refresh?.state === "stale") return "Stale";
-  return "Idle";
 }
 
 load();

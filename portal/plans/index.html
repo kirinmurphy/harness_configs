@@ -270,14 +270,25 @@
     </template>
     <template id="tpl-plan-card">
       <article class="plan-card">
-        <div>
-          <h3 data-slot="title"></h3>
-          <div class="path-line" data-slot="path"></div>
-        </div>
+        <h3><button type="button" class="title-link" data-slot="title-link"></button></h3>
+        <div class="description-line" data-slot="description"></div>
         <div class="chips" data-slot="chips"></div>
-        <div class="next-line" data-slot="next"></div>
-        <div class="meta-line" data-slot="meta"></div>
         <div class="card-actions" data-slot="actions"></div>
+        <div class="status-section" data-slot="status">
+          <div class="status-state-row">
+            <div class="status-state-chips" data-slot="status-chips">
+              <span class="state-badge" data-slot="state-badge"></span>
+            </div>
+            <span class="meta-line" data-slot="meta"></span>
+          </div>
+          <div class="status-implementation" data-slot="implementation">
+            <div class="status-progress-row">
+              <div class="progress-bar"><div class="progress-fill" data-slot="progress-fill"></div></div>
+              <span class="progress-label" data-slot="progress-label"></span>
+            </div>
+            <div class="next-line" data-slot="next"></div>
+          </div>
+        </div>
       </article>
     </template>
     <template id="tpl-dtdd-row">

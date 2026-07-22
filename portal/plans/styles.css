@@ -481,42 +481,32 @@ dialog#skill-modal::backdrop {
   border-radius: 8px;
   padding: 10px 12px;
   display: grid;
-  grid-template-columns: 1fr auto;
-  column-gap: 16px;
   row-gap: 4px;
-  align-items: start;
-}
-.plan-card h3 {
-  grid-column: 1;
-}
-.plan-card .path-line {
-  grid-column: 1;
-}
-.plan-card .chips {
-  grid-column: 2;
-  grid-row: 1 / 3;
-  align-self: center;
-  justify-content: flex-end;
-}
-.plan-card .next-line,
-.plan-card .meta-line {
-  grid-column: 1 / -1;
-}
-.plan-card .card-actions {
-  grid-column: 1 / -1;
 }
 .plan-card h3 {
   margin: 0;
   font-size: var(--text-md);
 }
+.title-link {
+  all: unset;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.title-link:hover {
+  text-decoration: underline;
+}
+.title-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .meta-line,
-.next-line,
-.path-line {
+.description-line {
   color: var(--dim);
   font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
-.next-line {
+.description-line {
   color: var(--ink);
 }
 .chips {
@@ -538,6 +528,83 @@ dialog#skill-modal::backdrop {
 .chip.ok {
   color: var(--ok);
   border-color: var(--ok);
+}
+.plan-card .card-actions {
+  margin-top: 2px;
+}
+.status-section {
+  margin: 6px -12px -10px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--warn-line);
+  border-radius: 0 0 7px 7px;
+  background: color-mix(in srgb, var(--warn) 10%, var(--panel));
+  display: grid;
+  gap: 6px;
+}
+.status-state-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.status-state-chips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.state-badge {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  text-transform: capitalize;
+  color: var(--dim);
+}
+.state-badge.warn {
+  color: var(--warn);
+  border-color: var(--warn-line);
+}
+.state-badge.ok {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.status-state-row .meta-line {
+  font-size: var(--text-2xs);
+}
+.status-implementation {
+  display: grid;
+  gap: 4px;
+}
+.status-implementation[hidden] {
+  display: none;
+}
+.status-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.progress-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--ok);
+  border-radius: 3px;
+}
+.progress-label {
+  font-size: var(--text-2xs);
+  color: var(--dim);
+  white-space: nowrap;
+}
+.status-section .next-line {
+  font-size: var(--text-sm);
+  color: var(--ink);
 }
 .card-actions {
   display: flex;

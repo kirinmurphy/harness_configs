@@ -15,6 +15,8 @@ testApplyFilterByHarnessModelRepo();
 testApplyFilterByOperationAndPhase();
 testApplyFilterByOutcomeRequiresMarkers();
 testApplyFilterByOutcomeIgnoredWithoutMarkers();
+testApplyFilterByTaskCategory();
+testApplyFilterByTaskCategoryIgnoredWithoutMarkers();
 testFilterSessionsByTaskCategory();
 testDescribeCohortFilter();
 testActiveFilterCount();
@@ -90,6 +92,26 @@ function testApplyFilterByOutcomeIgnoredWithoutMarkers() {
   const events = [event({ session_id: "s1" })];
   const filtered = applyCohortFilter(events, normalizeCohortFilter({ outcomes: ["successful"] }));
   assert.equal(filtered.length, 1);
+}
+
+function testApplyFilterByTaskCategory() {
+  // task_categories must be a real per-capture filter through applyCohortFilter() (used by the
+  // portal's cohort-vs-cohort analysis path), not only through the separate
+  // filterSessionsByTaskCategory() helper experimentStatus() calls.
+  const events = [event({ session_id: "s1" }), event({ session_id: "s2" })];
+  const markers = [
+    { type: "outcome", session_id: "s1", task_category: "bug-fix", ts: "2026-01-01T00:00:01Z" },
+    { type: "outcome", session_id: "s2", task_category: "documentation", ts: "2026-01-01T00:00:01Z" },
+  ];
+  const filtered = applyCohortFilter(events, normalizeCohortFilter({ task_categories: ["bug-fix"] }), { markers });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].session_id, "s1");
+}
+
+function testApplyFilterByTaskCategoryIgnoredWithoutMarkers() {
+  const events = [event({ session_id: "s1" })];
+  const filtered = applyCohortFilter(events, normalizeCohortFilter({ task_categories: ["bug-fix"] }));
+  assert.equal(filtered.length, 1, "task_categories filter with no marker data must not exclude everything");
 }
 
 function testFilterSessionsByTaskCategory() {

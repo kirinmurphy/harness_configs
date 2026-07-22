@@ -116,7 +116,9 @@ imports:
 - `handlePortalAsset` (in `portal-server.mjs`) — static files under `/portal/`
 - `handlePortalStatus` (in `portal-server.mjs`) — `/api/portal/status`
 - `portal-routes-telemetry.mjs` → `handleTelemetryApi` — `/api/data`, `/api/session`,
-  `/api/insights-llm`
+  `/api/insights-llm`, `/api/telemetry/markers` (GET/POST), `/api/telemetry/experiments`
+  (GET/POST), `/api/telemetry/experiments/:id/end` (POST), `/api/telemetry/analysis` (POST) — see
+  `docs/reference/services/telemetry.md` for the marker/experiment/analysis domain
 
 Adding a new API domain means adding one more `portal-routes-<domain>.mjs` file and one more import
 + dispatch line in `route()` — each domain's API surface stays in its own file instead of growing

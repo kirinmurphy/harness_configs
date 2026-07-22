@@ -94,10 +94,11 @@ function snapshotLookup() {
 export function applyCohortFilter(captures, filter, { markers = [] } = {}) {
   const f = filter || emptyCohortFilter();
   const lookupSnapshot = snapshotLookup();
-  // An outcomes filter with no marker data to check against degrades to "no restriction" for this
-  // dimension (never inferring an outcome, and never treating "no evidence" as "excluded" either) —
-  // see the doc comment above applyCohortFilter.
+  // An outcomes/task_categories filter with no marker data to check against degrades to "no
+  // restriction" for that dimension (never inferring an outcome or task category, and never treating
+  // "no evidence" as "excluded" either) — see the doc comment above applyCohortFilter.
   const outcomeBySession = f.outcomes.length && markers.length ? outcomeStatusBySession(markers) : null;
+  const taskCategoryBySession = f.task_categories.length && markers.length ? taskCategoryStatusBySession(markers) : null;
 
   return captures.filter((event) => {
     if (f.harnesses.length && !f.harnesses.includes(event.harness)) return false;
@@ -119,6 +120,11 @@ export function applyCohortFilter(captures, filter, { markers = [] } = {}) {
       if (!status || !f.outcomes.includes(status)) return false;
     }
 
+    if (taskCategoryBySession) {
+      const category = taskCategoryBySession.get(event.session_id);
+      if (!category || !f.task_categories.includes(category)) return false;
+    }
+
     return true;
   });
 }
@@ -134,17 +140,27 @@ function outcomeStatusBySession(markers) {
   return new Map([...map.entries()].map(([sessionId, entry]) => [sessionId, entry.status]));
 }
 
-// task_categories filters against outcome markers (task category lives only on outcome markers per
-// Phase 4), so it is applied at the session level rather than per-capture: a session "matches" when
-// its outcome marker's task_category is in the filter list. Kept separate from applyCohortFilter's
-// per-capture pass because it needs the marker timeline, mirroring the outcomes filter above.
-export function filterSessionsByTaskCategory(captures, taskCategories, markers) {
-  if (!taskCategories || !taskCategories.length) return captures;
-  const bySession = new Map();
+// Task category per session, from each session's outcome marker (task category lives only on
+// outcome markers per Phase 4). Last explicit marker wins, mirroring outcomeStatusBySession's
+// tie-break rule.
+function taskCategoryStatusBySession(markers) {
+  const map = new Map();
   for (const marker of markers) {
     if (marker.type !== "outcome" || !marker.session_id || marker.task_category == null) continue;
-    bySession.set(marker.session_id, marker.task_category);
+    const existing = map.get(marker.session_id);
+    if (!existing || marker.ts > existing.ts) map.set(marker.session_id, { category: marker.task_category, ts: marker.ts });
   }
+  return new Map([...map.entries()].map(([sessionId, entry]) => [sessionId, entry.category]));
+}
+
+// task_categories filters against outcome markers, so it is applied at the session level rather than
+// per-capture: a session "matches" when its outcome marker's task_category is in the filter list.
+// Exported separately (in addition to being wired into applyCohortFilter above) because
+// experimentStatus() needs to filter by an experiment's eligibility.task_categories without building
+// a full cohort filter object for just that one dimension.
+export function filterSessionsByTaskCategory(captures, taskCategories, markers) {
+  if (!taskCategories || !taskCategories.length) return captures;
+  const bySession = taskCategoryStatusBySession(markers);
   return captures.filter((event) => taskCategories.includes(bySession.get(event.session_id)));
 }
 

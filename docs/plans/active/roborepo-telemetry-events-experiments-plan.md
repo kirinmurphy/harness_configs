@@ -1,7 +1,7 @@
 ---
 id: roborepo-telemetry-events-experiments
 priority: high
-next_action: "Phase 5 — metrics registry, normalized cohort filtering, and marker-relative comparisons (see Phase 4 notes for the intervening/phase/task fields Phase 5's analyzer must consume)"
+next_action: "Plan complete — all 8 phases implemented, tested (328 passed / 0 failed), and documented; see Phase 8 notes for the recommended-first-experiment validation run and Acceptance Criteria section for the final per-criterion status (all 15 met; no blocked items). One deliberate deferral: no package declares a live telemetry.policies entry yet (Phase 5 notes) — the mechanism is built, validated, and tested, just unused by any real package."
 blocked_by: []
 depends_on: []
 related: []
@@ -127,6 +127,213 @@ Recorded 2026-07-21, ahead of Phase 5. Explicit phase markers (`telemetry mark -
 **Deferred to later phases, deliberately not attempted here:** reconciling explicit phase markers against inferred per-capture phase (Phase 5 — needs the marker-relative comparison / cohort machinery that doesn't exist yet), any derived intervening-work findings like "full-suite runs without an intervening edit" counts or "redundant rerun" rollups (Phase 5's metrics registry — this phase only stores the raw per-capture signals a Phase 5 analyzer would aggregate), outcome *inference* beyond the existing explicit `telemetry mark --type outcome --status ...` (the plan's "never inferring success from Stop alone" rule means a real inference function needs multiple signals — verification pass, retry count, correction count — that don't have a capture-time home yet; deliberately not stubbed here to avoid the same kind of premature-readiness mistake Phase 2 flagged for `experimentStatus`).
 
 Tests: `telemetry-phase-infer-check.mjs` and `telemetry-task-infer-check.mjs` (pure modules, no CLI), `telemetry-phase4-integration-check.mjs` (real CLI process, following the `telemetry-capture-v3-check.mjs` pattern — includes the plan's "redundant rerun with unchanged failure signature" and "edit after failure flips intervening signal" scenarios), plus new assertions added to `telemetry-schemas-check.mjs` (task_category/task_scale marker validation, intervening/phase.classifier_version capture-v3 validation) and `telemetry-correctness-check.mjs` (`last_result_failure_text` transcript-level unit coverage). All wired into `package.json` and `test-roborepo.sh`.
+
+## Phase 5 notes (metrics, cohorts, and findings)
+
+Recorded 2026-07-21, ahead of Phase 6.
+
+**Metrics registry** lives in a new pure module, `scripts/cli/telemetry-metrics.mjs` (`listMetrics`, `getMetric`, `isKnownMetric`, `computeMetric`, plus the shared robust-summary helpers `trimmedMean`/`percentile`/`median`). 26 metrics across the plan's six groups (tokens/time/calls/test/outcome/reliability), each a `{ id, label, unit, direction_good, summary, minimum_sample, compute(captures, extra) }` record. `compute()` always operates on an already-filtered capture array — the registry itself never touches fs/config, matching the classifier/inference module discipline from Phases 3-4. Outcome metrics (`outcome.completion_rate`, `outcome.tokens_per_completed_task`) additionally accept `{ markers }` in their `extra` argument since task/outcome data lives on marker records, not captures; omitting markers returns `null` rather than guessing (never inferring success from absence of data).
+
+**Normalized cohort filter model** lives in `scripts/cli/telemetry-cohort.mjs` (`emptyCohortFilter`, `normalizeCohortFilter`, `applyCohortFilter`, `filterSessionsByTaskCategory`, `describeCohortFilter`, `activeFilterCount`). Matches the plan's cohort JSON shape (`time`/`harnesses`/`models`/`repos`/`packages`/`skills`/`operations`/`phases`/`outcomes`/`task_categories`/`snapshot_ids`). `applyCohortFilter` resolves package/skill exposure by reading the capture's `config_snapshot_id` through `readSnapshot()` (cached per-call via a closure-scoped `Map` so repeated captures sharing a snapshot don't re-read the file). Outcome filtering needs the marker timeline; when a caller filters by `outcomes` but passes no `markers`, the filter degrades to "no restriction on this dimension" rather than excluding every capture — this was a bug caught by `telemetry-cohort-check.mjs`'s `testApplyFilterByOutcomeIgnoredWithoutMarkers` (the initial implementation excluded everything by mistake; fixed in `applyCohortFilter` to gate the outcome-lookup Map construction on `markers.length` too).
+
+**Marker-relative comparison engine and confidence/data-quality gates** live in `scripts/cli/telemetry-compare.mjs`: `splitCohortsByMarker` (excludes sessions spanning the marker timestamp, per the plan's explicit rule), `equalizeCohorts` (`equal-session-count` default / `equal-duration` alternative, trimming the larger cohort's trailing/leading sessions to match), `compareAcrossMarker` (the full pipeline: split → equalize → compute metric per side → confidence label), `buildFinding`/`describeMarkerComparison` (the actionable finding contract assembly — observation/evidence/cohort/sample_size/confidence/data_quality_issues/interpretation/next_action/correlation_only/analysis_filter_state). Confidence labels: `insufficient evidence` (either cohort below `minimumSessionsPerCohort`, default 10, or the metric didn't compute), `data-quality warning` (one session dominates a cohort >40% of its captures, or sessions were excluded for spanning the marker), `emerging pattern` (computable but below `STRONG_SIGNAL_MIN_SESSIONS`=20 per side), `strong signal` (both cohorts ≥20 sessions, no serious data-quality issue). `describeMarkerComparison` never emits causal language — always "correlates with"/"may"/exposure wording, verified by `testDescribeMarkerComparisonCorrelationLanguage`'s explicit `doesNotMatch(/\bcaused\b/i)` assertion.
+
+**Package telemetry policy validation/evaluation** lives in `scripts/cli/telemetry-policy.mjs` (`validateTelemetryPolicies`, `evaluatePolicy`, `evaluatePackagePolicies`, `POLICY_OPERATORS`, `POLICY_SEVERITIES`). Follows `package-catalog.mjs`'s accumulate-errors-then-return style (not throw-on-first, since a catalog-wide pass over many packages wants every package's errors at once) rather than the throw-based style the marker/snapshot/experiment/capture-v3 schemas use — chosen because `validatePackageCatalog` is this policy validator's actual sibling/caller context, not the marker-adjacent schemas. Policy evaluation is pure and advisory-only: `evaluatePolicy` never blocks anything, only returns `satisfied`/`violated`/`insufficient-samples`/`unknown` status. Not yet wired into `package-catalog.mjs`'s `validatePackageCatalog()` or into a live catalog load path — no package in this repo declares `telemetry.policies` yet (the plan's `test-harness` package is flagged as "the first candidate" but adding policies to its `package.config.json` was not required by any Phase 5 exit criterion, and doing so speculatively without a real usage a user asked for felt like scope creep — noted as a clear-but-deferred decision, not a blocker).
+
+**`telemetry-analyze.mjs`'s `analyzeTelemetry()` signature grew a second, fully optional argument**: `analyzeTelemetry(events, { cohortFilter, markers, markerId, compareMetric })`. Every existing call site (`telemetry.mjs`'s `telemetryReport`/`loadInsightsLlm`, `telemetry-correctness-check.mjs`) calls it with the old one-argument form and is unaffected — verified by rerunning `telemetry-correctness-check.mjs` unchanged after this edit. New report fields: `testing_efficiency` (an object of the 10 `test.*` metric ids to computed values, always present), `cohort` (`null` unless `cohortFilter` was passed; otherwise `{ filter, summary, active_filter_count }`), `marker_comparison` (`null` unless `markerId` resolved to a real marker in `markers`; otherwise the full actionable-finding-contract object from `describeMarkerComparison`). `regression` (the existing midpoint calculation) is unchanged in shape but gained two new keys, `exploratory: true` and a `label` string — this is the "labeled exploratory fallback" the plan calls for; `regression()` itself was not touched, only the object wrapping its result in `analyzeTelemetry`.
+
+**`experimentStatus()` in `telemetry-markers.mjs`** (the Phase 2 stub that always returned `ready: false` with a "not yet implemented" warning) now does real work: resolves the experiment's start marker, splits/equalizes cohorts via `compareAcrossMarker` scoped to the experiment's `eligibility.task_categories` (via `filterSessionsByTaskCategory`) and `minimum_sessions_per_cohort`, and reports `ready` (true when confidence is `"strong signal"` or `"emerging pattern"`), `cohorts` (`{before, after}` session counts + metric values), `effect_size`, `confidence`, and `data_quality_warnings` (now the real `compareAcrossMarker` issues list, not a hardcoded string). This required adding a small private spool-reader (`readSpoolEventsForStatus()`) to `telemetry-markers.mjs`, duplicating `telemetry.mjs`'s `readSpoolEvents()` rather than importing it — importing `telemetry.mjs` back into `telemetry-markers.mjs` would create a circular dependency (`telemetry.mjs` already imports `createMarker`/`startExperiment`/etc. from `telemetry-markers.mjs`). The CLI's `telemetry experiment status` printer (`telemetryExperimentStatus` in `telemetry.mjs`) was extended to print the new `cohorts`/`effect_size`/`confidence` fields when present.
+
+**Deferred to later phases, deliberately not attempted here:** wiring `telemetry-policy.mjs`'s evaluation into a live portal/CLI-visible policy-findings surface (plan's "how policy evaluation output surfaces in the CLI report" open question — no package declares policies yet, so there is nothing to surface; the evaluation functions exist and are tested, ready for Phase 8 documentation or a future package to adopt), any UI for the cohort/compare/metrics machinery (Phase 6/7 — this phase is backend-only, `analyzeTelemetry`'s new fields are not yet rendered anywhere in the portal).
+
+**Decision log (noteworthy-but-clear calls, not asked about):**
+- *Cohort filter shape*: matched the plan's JSON example field-for-field rather than inventing a different normalized shape — clear winner, no real alternative considered.
+- *Where package/skill exposure resolves*: inside `applyCohortFilter` itself (reading snapshots on demand) rather than pre-joining snapshot data onto every capture at read time — keeps captures small and avoids a second full-file rewrite pass; the per-call snapshot cache keeps repeated lookups cheap.
+- *Policy validator style (accumulate vs throw)*: chose accumulate-and-return (matching `package-catalog.mjs`) over the throw-based style the marker/snapshot/experiment schemas use, because a catalog-wide policy validation pass over N packages wants every package's errors in one report, same as `validatePackageCatalog`'s existing behavior — a real tradeoff (consistency with sibling schemas vs. consistency with actual caller), resolved in favor of the caller it will actually be validated alongside.
+- *`experimentStatus`'s spool-reading duplication*: chose a small private duplicate of `readSpoolEvents()` in `telemetry-markers.mjs` over importing `telemetry.mjs` (would create a circular import) or extracting a shared spool-reader module (would touch more files than this fix needed) — smallest change that avoids the cycle.
+
+Tests: `telemetry-metrics-check.mjs`, `telemetry-cohort-check.mjs`, `telemetry-compare-check.mjs`, `telemetry-policy-check.mjs` (all pure-module, no CLI process, following the classifier/inference test style), wired into `package.json` (`test:telemetry-metrics`, `test:telemetry-cohort`, `test:telemetry-compare`, `test:telemetry-policy`) and `test-roborepo.sh`. `telemetry-compare-check.mjs`'s fixtures mirror the plan's "Scenario fixture: full-suite debugging loop" shape (used again, expanded, in the Phase 8 recommended-experiment validation). Full suite: 314 passed, 0 failed after this phase (up from the 310 baseline).
+
+## Phase 6 notes (portal global filters and markers)
+
+Recorded 2026-07-21, ahead of Phase 7.
+
+**Portal marker/experiment/analysis endpoints** live in `scripts/cli/portal-routes-telemetry.mjs` (extended, not split into a sibling file — the plan left this open as a design gap and the existing file was small enough that adding six more routes kept it cohesive rather than fragmenting the telemetry route surface across two files): `GET/POST /api/telemetry/markers`, `GET/POST /api/telemetry/experiments`, `POST /api/telemetry/experiments/:id/end`, `POST /api/telemetry/analysis`. All mutation handlers call straight into `telemetry-markers.mjs`'s `createMarker`/`startExperiment`/`endExperiment` — the same functions the CLI calls — via new wrapper functions in `telemetry.mjs` (`createMarkerFromPortalRequest`, `createExperimentFromPortalRequest`, `endExperimentFromPortalRequest`, `loadTelemetryAnalysisRequest`) that only add server-side field validation mirroring the CLI's own `parseMarkArgs`/`parseExperimentStartArgs` checks (a browser POST body skips the CLI's argv parsing entirely, so the validation has to be re-asserted here, but the actual marker/experiment creation logic is not duplicated). `portal-server.mjs`'s generic `route()` dispatcher required no changes — `handleTelemetryApi` already had a single call site there from Phase 0-era wiring.
+
+**`/api/data`** gained `?model=`, `?repo=`, `?marker_id=` query params on top of the existing `?range=`/`&end=`/`?harness=`, all backward compatible (omitting them behaves exactly as before). New response fields: `available_models`, `available_repos`, `available_metrics` (26 ids from the registry, added in this phase specifically so the portal's future metric-select never hardcodes the list — used by Phase 7's Analysis explorer), `markers` (window-scoped via the existing `filterByWindow`, same function that already scoped captures), `experiments` (full `experimentStatus(null)` list, not just ids), `marker_comparison` (populated when `marker_id` resolves). `loadAnalysis`'s signature grew a third options argument (`{ model, repo, markerId }`) threaded into `analyzeTelemetry`'s cohort/marker options from Phase 5 — this is the first real UI consumer of that Phase 5 plumbing.
+
+**Portal frontend**: the plan's file-split (`state.js`/`api.js`/`templates.js`/`renders.js`/`chart.js`/`panels.js`/`modals.js`/`app.js`) was already complete before this phase (per the parent task's briefing) — Phase 6 only extended these existing files, never re-split anything.
+- `state.js` gained the URL-state helpers (`viewToSearchParams`, `viewFromSearchParams`, `syncViewToUrl`, `activeFilterCountFromView`) — all pure functions over `URLSearchParams`/`location`/`history`, independently testable in Node (see Tests below) without a DOM.
+- `app.js`'s `view` object grew `model`/`repo`/`markerId` alongside the existing `rangeMs`/`panEnd`/`harness`, now initialized from `viewFromSearchParams(new URLSearchParams(location.search))` on load and synced back via `syncViewToUrl(view)` on every `load()` call — this is the "bookmarked filters restore correctly" exit criterion.
+- Cohort filter bar (`#cohortfilt` in `index.html`): model/repo `<select>`s populated from `available_models`/`available_repos`, a marker-comparison `<select>` populated from window-scoped `change`/`experiment-start` markers, an active-filter-count summary, and a clear button. Each control's `change` handler sets the corresponding `view` field and calls `load(true, { wipe: true })`, mirroring the existing harness-filter-button pattern exactly.
+- Marker-creation dialog (`#marker-modal`): a plain `<form method="dialog">` (type/title/metric/expected-direction/status fields), opened via a "+ mark change" button in the cohort filter bar, POSTing through `api.createMarker()`. Server-side errors (invalid type, missing title, etc.) render inline via `#markererr` rather than a browser alert.
+- `chart.js` gained marker-overlay drawing: `drawMarkerOverlay()` renders one dashed vertical line + dot per marker (or per cluster) on top of whichever chart mode is active, computed from the SAME `t0`/`span`/`xOf` each mode's own draw function already derives from `points` — so overlay lines always land at the correct x position regardless of mode. Distinct color per marker `type` (`MARKER_STYLES` map). Markers within `MARKER_CLUSTER_PX` (10px) of each other collapse into one cluster dot (plan: "overlapping markers cluster rather than becoming unreadable"); hovering a cluster shows every marker in it via a dedicated `#markertip` tooltip element (kept separate from the existing `#tooltip` so both can never fight over the same DOM node); clicking a cluster opens the first marker's detail via a new `onMarkerClick` callback wired the same way `onBarClick`/`onSessionClick` already are.
+- Marker click → detail: `app.js`'s `openMarkerDetailModal()` uses the existing generic `modal.open()` primitive (same one every other detail view uses) with a "compare across this marker" action (only shown for `change`-type markers) that sets `view.markerId` and reloads — this is how a user goes from "I see this marker" to "show me its before/after comparison" without leaving the chart.
+- Marker-relative comparison rendering: a new `#markercomparisonpanel` section (under "cost analysis", next to the existing exploratory-midpoint-regression panel, which was re-labeled "(exploratory)" in its heading and legend text to make the distinction visible) shows the full actionable-finding-contract fields via `renders.js`'s new `renderMarkerComparison()`.
+
+**Bug caught during manual portal smoke-testing (not by an automated test, worth recording):** none — the endpoint/UI wiring worked on first end-to-end curl test after the cohort-filter outcome bug (caught by the Phase 5 unit test) was already fixed. Every `curl` round-trip against a live `roborepo serve` instance (marker create/list, experiment start/status/end, analysis with and without a marker, unknown-metric rejection, missing-token 403, `/api/data` with `model=`) matched expectations on the first attempt.
+
+**Portal verification approach (per the plan's "no Playwright" decision):** every Phase 6 exit criterion was verified via (a) real HTTP calls against a `roborepo serve` instance — `curl` for status codes/JSON shapes, `node --check` for served JS syntax — both manually during development and as permanent `test-roborepo.sh` assertions, and (b) direct code-level review of the DOM/event-wiring/URL-state functions. The one Phase 6 exit criterion with a genuine automated test: "bookmarked filters restore correctly" is covered by `telemetry-portal-state-check.mjs`, which drives `state.js`'s `viewToSearchParams`/`viewFromSearchParams` directly in Node (they have no DOM dependency — only the `URLSearchParams` global) and asserts an exact round-trip. The other criteria ("all existing panels reflect the same global cohort", "marker display remains usable when clustered") were verified by code review plus the live-server curl checks confirming the server-side cohort filter actually changes `/api/data`'s output, and reading `drawMarkerOverlay`'s clustering logic line-by-line — not executed inside a real browser.
+
+**Decision log (noteworthy-but-clear calls, not asked about):**
+- *Marker/experiment/analysis endpoints in `portal-routes-telemetry.mjs` vs. a new sibling file*: extended the existing file — the plan explicitly left this as an open choice ("your call, not a fork-worthy decision" per the task briefing), and six more route blocks in an already-small file reads more cohesively than a second file that would need to re-import the same handlers destructuring pattern.
+- *Cohort-vs-cohort analysis (no marker) uses a simpler value+sample-size comparison, not the marker-relative confidence/data-quality machinery*: `compareAcrossMarker`'s before/after split and equalization only make sense relative to a single marker timestamp — with two independent cohort filters there is no shared timestamp to split sessions around, so `loadTelemetryAnalysisRequest`'s no-marker branch calls `computeMetric` directly per cohort instead. Both paths still report sample size and both are labeled `correlation_only: true`.
+- *Marker click always opens detail via the existing generic modal, not a dedicated marker-detail component*: consistent with how every other clickable chart element (bars, session chips) already opens via the same `modal.open()` primitive — no new modal type needed.
+
+Tests: `telemetry-portal-state-check.mjs` (pure, drives `state.js`'s URL helpers directly in Node), plus 13 new `test-roborepo.sh` assertions reusing the existing config-portal-test server (loopback HTTP checks: served page includes new markup, served JS parses, marker CRUD round-trip incl. 403-without-token and 400-on-invalid-type, experiment start/status/end round-trip incl. `ready`/`data_quality_warnings` shape, analysis endpoint's unknown-metric 400 and no-marker two-cohort mode). Full suite: 327 passed, 0 failed after this phase.
+
+## Phase 7 notes (action items, testing panel, and explorer)
+
+Recorded 2026-07-21, ahead of Phase 8.
+
+**Actionable finding contract upgrade for deterministic insights**: `telemetry-insights.mjs`'s `deriveInsights()` still returns the original `{severity, headline, detail, metric}` shape every existing consumer (CLI's `printInsights`, `insightsSummary`) reads unchanged, but each finding now also carries `kind` (a stable identifier per rule, e.g. `"dominant_cost"`, `"runaway_loop"`), `sample_size`, and — via a new `attachActionableFields()` pass applied to every finding right before the final `slice(0, 8)` — `confidence` (`"strong signal"` when `sample_size >= STRONG_SIGNAL_MIN_CALLS` (40, = `MIN_CALLS`×2), else `"emerging pattern"`; these deterministic rules never reach `"insufficient evidence"` here because each rule's own firing threshold already gates on enough evidence to fire at all) and `analysis_filter_state` (`{ kind }`, consumed by the portal's "open analysis" button). Each of the six existing rules (`mcp_vs_native`, `spike_tail_risk`, `dominant_cost`, `runaway_loop`, `midpoint_regression`, `heaviest_tool`) also gained a deterministic `next_action` template string specific to that finding shape — never free LLM text, matching the plan's "Optional synthesis may explain those results, but cannot invent metrics, cohorts, confidence, or causal conclusions."
+
+**Portal action-item rows** (`templates.js`'s `insightRow()`) now render `confidence`/`next_action` as extra lines under the existing headline/detail, plus an "open analysis ›" button when `analysis_filter_state` is present — additive DOM appended to the existing `tpl-insight` template, not a template replacement. `app.js`'s click delegation reads the button's `data-filter-state` (JSON) and calls into the Analysis explorer's `openWithFilterState()`.
+
+**Testing-efficiency panel** (`#testeffpanel` in `index.html`, `renders.js`'s `renderTestingEfficiency()`): reads `telemetry-analyze.mjs`'s `testing_efficiency` object (10 `test.*` metric values, wired in Phase 5) and renders a headline sentence leading with the most actionable abnormality (redundant full-suite reruns without an intervening edit) per the plan's "should lead with the most actionable abnormality rather than a comprehensive table," followed by a compact metrics table. Placed directly under the "warnings & abnormalities" section head, per the plan's explicit panel placement. Hidden entirely when the cohort has no test-classified operations (all values null) rather than showing an all-dash table.
+
+**Analysis explorer** (`portal/telemetry/analysis-explorer.js`, new file — the plan named this module explicitly): a collapsed-by-default `<details>` block (`#analysisexplorer`, placed as section ⑦ after the existing raw-breakdowns section) with metric selection (populated from `/api/data`'s `available_metrics`), a mode toggle (marker-relative vs. cohort-A-vs-cohort-B), marker/harness selects for each mode, a "run comparison" button hitting `POST /api/telemetry/analysis` via `api.js`'s `fetchTelemetryAnalysis()`, and a result panel rendering whichever response shape came back (full finding contract for marker-relative, simpler value+sample-size pair for cohort-vs-cohort). `createAnalysisExplorer()` returns `{ refresh, openWithFilterState, setMetrics }` — `refresh()` is called every `load()` tick (mirrors how the cohort filter bar's selects stay current) and `openWithFilterState()` is the "open analysis" entry point every insight/marker-comparison row's button calls, which expands the `<details>`, scrolls it into view, and pre-selects the metric/marker from the finding's `analysis_filter_state`. This satisfies the plan's "'open analysis' reproduces the alert's exact cohort and metric" exit criterion for the two dimensions findings currently carry (metric, marker); a finding's other cohort dimensions (harness/model/repo filters active at the time) are not yet threaded into `analysis_filter_state` — see Deferred below.
+
+**Session detail extension** (plan: "Extend the current session modal with: model history, configuration snapshot, active packages/skills, explicit versus inferred task category and outcome, phase timeline, semantic operation totals, testing-efficiency summary, markers inside or adjacent to the session, data-quality flags"): a new `sessionSpoolContext(sessionId, markers)` in `telemetry.mjs` scans the already-loaded spool for one session's own captures (cheap — filtered from the array already in memory, not a second read) and derives everything the plan's list asks for that's computable from spool + marker data alone: model history (distinct models seen, first-seen order), the session's most recent configuration snapshot (id + packages + skills, read via `readSnapshot()`), a phase timeline (contiguous same-phase runs with start/end timestamps), semantic operation totals (count by `operation.category`), the session's explicit outcome marker if any (status + task_category, explicitly tagged `source: "explicit"` vs. `source: "none"` — there is no task-category *inference* wired to a live caller yet, per the Phase 4 notes' deliberate deferral, so "inferred" never actually appears here today), markers within a 15-minute adjacency window of the session's own capture span, and data-quality flags (missing snapshot, missing model, pre-v3-schema capture count). Wired into `loadSession`'s handler in `serveCommand` (`loadSession: (req) => loadSessionDetail({ ...req, spoolContext: sessionSpoolContext(req.id, readMarkers()) })`) and threaded through `loadSessionDetail`'s return value as `spool_context`, present whether or not the transcript itself was found on disk (so a rotated/missing transcript still shows what the spool knows). `modals.js`'s `fetchSessionContext()` renders these fields as a `spoolContextNodes()` block prepended before the existing heavy-turns/transcript-not-found rendering — testing-efficiency-per-session was intentionally left out of this render pass (the metrics registry's `test.*` formulas operate on multi-session cohorts, not gracefully on a single session's handful of captures; showing them here risked implying false precision) in favor of the operation-totals count, which is the honest single-session equivalent.
+
+**Deferred to later phases, deliberately not attempted here:**
+- Threading a finding's full cohort (harness/model/repo, not just metric/marker) into `analysis_filter_state` so "open analysis" reproduces every dimension, not just metric+marker — the six deterministic insight rules today are global (not scoped to the currently-active cohort filter), so there is no extra cohort information to carry yet; this becomes relevant once a rule fires *within* an active cohort filter, which is a natural Phase 8+/future-work item, not a Phase 7 exit-criterion gap (the exit criterion only requires reproducing "the alert's exact cohort and metric," and today's alerts have no cohort beyond "all data").
+- Per-session testing-efficiency numbers in the session modal (see above) — the registry's formulas are multi-session by design; a future single-session variant would need its own explicitly-labeled formula, not a naive apply-to-one-session call.
+- A live package declaring `telemetry.policies` (Phase 5's policy engine has no real-world caller yet) and a portal surface for policy findings — no exit criterion in Phases 5-7 requires this, and speculatively adding it without a concrete need felt like scope creep (same call as Phase 5's deferral).
+
+**Decision log (noteworthy-but-clear calls, not asked about):**
+- *`attachActionableFields`'s confidence threshold uses `MIN_CALLS`-scale sample sizes, not `telemetry-compare.mjs`'s session-count thresholds*: the six deterministic rules in `telemetry-insights.mjs` operate on calls/spikes/loops, not sessions, so reusing `STRONG_SIGNAL_MIN_SESSIONS` (20 sessions) directly would be a category error — scaled the philosophy (not the exact number) to `MIN_CALLS`×2 (40 calls), matching the existing rule-firing thresholds' own units.
+- *Testing-efficiency panel hides itself entirely rather than showing an all-null/all-dash table*: consistent with how every other panel in this file already degrades (`renderPackageCost`/`renderAnatomy`/etc. all call `emptyPanel()` or hide when there's nothing to show) — no new pattern introduced.
+- *Session modal's spool-context render is prepended, not replacing, the existing heavy-turns section*: preserves the plan's explicit "Retain the current 'surface chat context,' copy-prompt, and transcript-open behavior" requirement byte-for-byte; the new content is purely additive.
+
+Tests: no new pure-module test file this phase (the additions are either DOM-rendering code covered by the existing "no Playwright" verification approach — code review + live-server curl checks confirming `/api/data`'s `insights[].confidence`/`next_action`/`analysis_filter_state` and `testing_efficiency` fields are populated correctly — or thin wiring with no independent logic worth a dedicated fixture). `telemetry-correctness-check.mjs` was rerun to confirm `deriveInsights`'s additive fields don't break existing assertions. Full suite: see Phase 8 notes for the final count after this phase's `test-roborepo.sh` additions.
+
+## Phase 8 notes (documentation, migration, and hardening)
+
+Recorded 2026-07-22, at plan completion.
+
+**Documentation**: added `docs/reference/services/telemetry.md`, a single consolidated reference doc
+(matching this repo's existing per-service-doc convention — see `localhoster.md` covering settings/
+API/security/limits in one file rather than split guides) covering capture, markers, experiments,
+configuration snapshots, the cohort/metrics/comparison model, package telemetry policies, the CLI
+report, the portal (including every new Phase 6/7 UI piece), the full API surface (read and mutating
+routes), privacy/retention, and a schema-version table. Added to `package.json`'s `files` array so it
+ships with the package. Updated `docs/reference/services/portal.md`'s route inventory line for
+`portal-routes-telemetry.mjs` to list the six new marker/experiment/analysis endpoints (it previously
+only listed `/api/data`, `/api/session`, `/api/insights-llm` from the Phase 0-era wiring) and pointed
+it at the new telemetry.md for the domain detail, keeping portal.md itself focused on the shared
+server/route/mutation-token architecture rather than growing a second telemetry section inside it.
+
+**Migration**: no destructive migration exists or was needed. Schema-v2 capture records remain
+readable end to end — `readSpoolEvents()`/`analyzeTelemetry()` never gate on `.schema`, confirmed
+unchanged by the existing `telemetry report: legacy metadata-only records still report` assertion in
+`test-roborepo.sh`, which still passes. Every new capture-v3/marker/snapshot/experiment field is
+additive; every new `analyzeTelemetry()` option is optional with a call-compatible one-argument form
+still supported (verified: `telemetry-correctness-check.mjs`'s existing single-argument calls pass
+unchanged). No existing install requires any manual step to pick up Phases 5-8 — the next capture
+after upgrade starts writing the same schema-v3 shape it already was (Phase 3+), and the new metrics/
+cohort/compare/policy modules activate automatically the first time a marker or cohort filter is used.
+
+**Performance**: ran `analyzeTelemetry()` against a synthetic 40,000-capture spool (approximating the
+~25MB per-harness spool cap's maximum record count) — completed in ~780ms, including cohort-free
+testing-efficiency computation across the full dataset. Well within the plan's "portal response time
+remains acceptable on maximum supported spool sizes" exit criterion; the portal's 5-second poll
+interval has ample headroom. No new hot-path cost was added to `telemetry-capture.mjs` itself in
+Phases 5-8 — all Phase 5-7 work is read-side (CLI report / portal / analysis endpoint), not touching
+the capture hook's import graph or per-event work at all.
+
+**jcodemunch changed-symbol/reference review** (plan's explicit Phase 8 requirement): ran
+`get_changed_symbols(since_sha: 3c3d91b, until_sha: HEAD)` after re-indexing — 188 symbols added, 23
+modified, **0 removed**, across the 26 files touched in Phases 5-7. The 23 modified (not newly added)
+symbols are exactly the shared functions Phases 5-7 deliberately extended: `analyzeTelemetry`,
+`deriveInsights`, `experimentStatus`, `handleTelemetryApi`, `loadSessionDetail`, `serveCommand`,
+`telemetryReport`, `telemetryExperimentStatus` (backend) and `chart`/`load`/`view`/`wipeSections`/
+`createChart`/`createModalOpeners`/`createRenders`/`insightRow` (frontend) — no accidental change to
+any function outside this deliberate list. `find_references` was run before touching each of these
+during implementation (not just retroactively at the end) — e.g. `analyzeTelemetry` (2 references),
+`experimentStatus` (1), `handleTelemetryApi` (1), `createDetailModal`/`createChart`/`createRenders`/
+`createModalOpeners` (1 each) — confirming low blast radius before each edit, consistent with the
+plan's "Use changed-symbol and reference queries before changing shared functions" requirement.
+
+**Bug found and fixed during this review pass:** re-reading `telemetry-cohort.mjs` while writing
+these notes surfaced that `applyCohortFilter()` normalized and documented a `task_categories`
+dimension but never actually applied it — only `describeCohortFilter()`/`activeFilterCount()`
+referenced the field, and the real per-capture filtering only existed in the separate
+`filterSessionsByTaskCategory()` helper `experimentStatus()` calls. This meant the portal's
+`/api/telemetry/analysis` cohort-vs-cohort path (which calls `applyCohortFilter` directly) could not
+actually filter by task category despite the field being documented in the cohort model. Fixed by
+adding a `taskCategoryStatusBySession()` helper (mirroring `outcomeStatusBySession()`'s pattern
+exactly — same never-infer-without-markers degrade-to-no-op rule) and wiring it into
+`applyCohortFilter`'s per-capture pass; `filterSessionsByTaskCategory()` now reuses the same helper
+instead of duplicating the marker-scan logic. Two new assertions
+(`testApplyFilterByTaskCategory`/`testApplyFilterByTaskCategoryIgnoredWithoutMarkers`) added to
+`telemetry-cohort-check.mjs`. This is the one correctness bug this phase's review pass caught — every
+other Phase 5-7 code path checked out on inspection.
+
+**CLI report additions** (closing a gap noticed while writing Phase 8 docs — the plan's "CLI report
+changes" section listed sections that Phases 5-7 built the underlying data for but had not yet wired
+into `telemetryReport()`): added `printRecentMarkers` (newest 5 markers), `printExperimentReadiness`
+(mirrors `telemetry experiment status`'s wording so the two never disagree), and
+`printTestingEfficiency` (same metric registry values the portal's testing-efficiency panel reads) to
+`scripts/cli/telemetry.mjs`. `telemetryReport()` now calls `analyzeTelemetry(events, { markers })`
+instead of the bare one-argument form, so outcome-aware metrics work from the CLI report too. This is
+what makes acceptance criterion 11 ("CLI and portal results agree for the same cohort") actually true
+end to end rather than true only for the portal.
+
+**Recommended first real experiment — demonstration run** (plan's final section, validated not just
+implemented): built a one-off demonstration script (kept outside the repo, in the session's scratch
+directory, since it is a validation run rather than shipped product code) that seeds 24 synthetic
+sessions (12 "before" / 12 "after") matching the plan's exact screenshot scenario per session — a
+build/tooling task, a full-suite failure, four full-suite calls during debugging (three without an
+intervening edit, one targeted reproduction), and a final successful full-suite run in finalization —
+with the "after" cohort's redundant-rerun count reduced from 3 to 1 per session (simulating partial
+guidance effectiveness, not an unrealistically clean 100% fix). Created a real `change` marker (via
+the same field shape `createMarker()` produces) attached to `test-harness`, primary metric
+`test.full_suite_calls_per_debug_phase`, guardrails `outcome.completion_rate`/
+`outcome.verification_pass_rate`, at a timestamp between the two cohorts. Ran the actual
+`analyzeTelemetry()`/`compareAcrossMarker()`/`experimentStatus()` functions (not reimplementations)
+against this data. Results, matching the plan's documented example shape:
+
+> **Observation:** "Full-suite runs per debugging phase changed from 4 to 2 after \"Test-harness
+> guidance v2: no full-suite reruns without an intervening edit\"."
+> **Evidence:** before = 12 sessions (value 4), after = 12 sessions (value 2), effect size −2,
+> relative change −50%, equal-session-count window, zero excluded sessions.
+> **Confidence:** "emerging pattern" (12 sessions per cohort clears the minimum-10 floor but not the
+> strong-signal-20 floor — an honest result, not an artificially inflated one).
+> **Interpretation:** "Sessions after this marker were exposed to test-harness, test-harness; this is
+> a correlation, not a proven cause." (labeled `"labeled_as": "inference"`)
+> **Next action:** "Continue monitoring full-suite runs per debugging phase across the next eligible
+> sessions."
+
+Also verified: `testing_efficiency` computed real values across the dataset (62.5% of tool time spent
+testing, 0.25 targeted-to-full ratio, 2 redundant reruns, 2 unchanged-failure-signature reruns) and
+`experimentStatus()` on an experiment whose start marker was this same historical `change` marker
+reported `ready: true` with the identical before/after cohort values the direct comparison found. The
+CLI report (`roborepo telemetry report`, pointed at this same seeded state directory) printed all
+three new sections — recent markers, experiment readiness, testing efficiency — with matching numbers,
+confirming criterion 11 end to end, not just via unit tests. This validates every link the plan's
+final paragraph names: configuration snapshot (each capture carried a `config_snapshot_id`, distinct
+between the before/after cohorts), event marker, semantic test classification (`operation.category`/
+`scope`/`exit_status`), phase detection (`phase.name: "debugging"`/`"finalization"`), outcome
+guardrails (present on the experiment record), cohort comparison, actionable alert (the full finding
+contract above), and drill-down evidence (`testing_efficiency`'s per-metric breakdown).
+
+**Deferred, deliberately not attempted here:** a `test-harness` package.config.json declaring a real
+`telemetry.policies` entry (Phase 5's policy engine has no live caller; adding one speculatively
+without a concrete need was judged scope creep, consistent with the Phase 5 notes' own deferral of
+this) — the demonstration above used the metric/marker/cohort/experiment path directly, which does
+not require a package to declare a policy.
+
+Tests: no new test file this phase — Phase 8 work is documentation, a jcodemunch review pass, a
+performance smoke check, three CLI report print functions covered indirectly by the existing
+`telemetry report` assertions in `test-roborepo.sh` (which already grep for report output and would
+catch a crash), and the recommended-experiment demonstration (run manually against real domain
+functions, not encoded as a permanent automated test — it is a one-time validation exercise per the
+plan's own framing "use ... as the first production validation," not a regression-test scenario;
+the underlying comparison/metric logic it exercises is already covered by
+`telemetry-compare-check.mjs`'s and `telemetry-metrics-check.mjs`'s fixtures, which mirror this same
+scenario shape). Full suite: 328 passed, 0 failed (unchanged from Phase 7 — no test files were added
+in Phase 8, only doc/CLI-report-wiring changes verified not to regress existing assertions).
 
 ## Current behavior that must be preserved
 

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { readAppendedLines } from "./jsonl-tail.mjs";
 
 // Reads a harness transcript (JSONL) and derives the session-level context that explains token
 // spikes: cumulative token usage, turn/tool counts, and which tools/MCP servers were exercised.
@@ -63,38 +64,20 @@ function saveCursor(collectorDir, sessionId, cursor) {
 
 export function transcriptStats(transcriptPath, { sessionId, collectorDir } = {}) {
   if (typeof transcriptPath !== "string" || !transcriptPath) return null;
-  let fd;
-  let size;
-  try {
-    const stat = fs.statSync(transcriptPath);
-    size = stat.size;
-    fd = fs.openSync(transcriptPath, "r");
-  } catch {
-    return null; // No transcript yet (e.g. SessionStart) or unreadable; capture metadata only.
-  }
 
   const cursor = loadCursor(collectorDir, sessionId);
-  // A shrunk/rotated file (offset now past EOF) can't be resumed — restart from scratch.
-  const startOffset = cursor && cursor.byteOffset <= size ? cursor.byteOffset : 0;
-  const counters = cursor && startOffset > 0 ? hydrateCounters(cursor) : emptyCounters();
-
-  let chunk = "";
-  if (size > startOffset) {
-    const buf = Buffer.alloc(size - startOffset);
-    fs.readSync(fd, buf, 0, buf.length, startOffset);
-    chunk = buf.toString("utf8");
-  }
-  fs.closeSync(fd);
-
-  // Only advance the offset up to the last complete line — a half-written trailing line (the
-  // harness is still streaming it) must be re-read on the next call, not skipped.
-  const lastNewline = chunk.lastIndexOf("\n");
-  const parseable = lastNewline === -1 ? "" : chunk.slice(0, lastNewline);
-  const newOffset = lastNewline === -1 ? startOffset : startOffset + Buffer.byteLength(parseable, "utf8") + 1;
+  // Read only the bytes appended since the cursor's offset (shrink/rotation restarts from 0, flagged
+  // by `rebuilt`; the partial trailing line is held back inside readAppendedLines). Shared with the
+  // spool store's incremental read — see jsonl-tail.mjs.
+  const { lines, nextOffset, rebuilt, ok } = readAppendedLines(
+    transcriptPath,
+    cursor?.byteOffset ?? 0,
+  );
+  if (!ok) return null; // No transcript yet (e.g. SessionStart) or unreadable; capture metadata only.
+  const counters = cursor && !rebuilt && cursor.byteOffset > 0 ? hydrateCounters(cursor) : emptyCounters();
 
   let lastResult = null;
-  for (const line of parseable.split("\n")) {
-    if (!line.trim()) continue;
+  for (const line of lines) {
     let entry;
     try {
       entry = JSON.parse(line);
@@ -146,7 +129,7 @@ export function transcriptStats(transcriptPath, { sessionId, collectorDir } = {}
     }
   }
 
-  counters.byteOffset = newOffset;
+  counters.byteOffset = nextOffset;
   saveCursor(collectorDir, sessionId, counters);
 
   const computedTotal = counters.tokens.input + counters.tokens.output + counters.tokens.cache_creation + counters.tokens.cache_read;

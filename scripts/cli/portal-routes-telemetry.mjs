@@ -1,11 +1,11 @@
 // /api/data, /api/session, /api/insights-llm route handlers — the Telemetry page's API surface.
 // Returns true once it has written a response, false if the URL/method didn't match
 // (portal-server.mjs's route() tries the next domain). handlers is the object startPortalServer()
-// was given (loadAnalysis, loadSession, loadInsightsLlm come from telemetry.mjs's wiring).
+// was given (loadAnalysisJson, loadSession, loadInsightsLlm come from telemetry.mjs's wiring).
 import { send } from "./portal-routes-http.mjs";
 
 export function handleTelemetryApi(req, res, urlPath, qs, handlers) {
-  const { loadAnalysis, loadSession, loadInsightsLlm } = handlers;
+  const { loadAnalysisJson, loadSession, loadInsightsLlm } = handlers;
 
   if (urlPath === "/api/insights-llm") {
     // On-demand LLM synthesis of the deterministic facts. May take seconds (shells to claude -p).
@@ -21,7 +21,9 @@ export function handleTelemetryApi(req, res, urlPath, qs, handlers) {
     const end = params.has("end") ? Number(params.get("end")) : null;
     const harness = params.get("harness") || null;
     const window = Number.isFinite(rangeMs) && rangeMs > 0 ? { rangeMs, end: Number.isFinite(end) ? end : null } : null;
-    send(res, 200, "application/json", JSON.stringify(loadAnalysis(window, harness)));
+    // loadAnalysisJson returns the already-serialized report (cached alongside the object), so the
+    // ~10MB default view is not re-stringified on every request — just written through.
+    send(res, 200, "application/json", loadAnalysisJson(window, harness));
     return true;
   }
   if (urlPath === "/api/session") {

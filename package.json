@@ -22,6 +22,7 @@
     "README.md",
     "docs/reference/services/roborepo.md",
     "docs/reference/services/localhoster.md",
+    "docs/reference/services/telemetry.md",
     "docs/reference/services/architecture.md",
     "docs/guides/plan-docs.md",
     "docs/reference/services/plans-portal.md",
@@ -48,6 +49,7 @@
     "test:telemetry-cohort": "node scripts/test/telemetry-cohort-check.mjs",
     "test:telemetry-compare": "node scripts/test/telemetry-compare-check.mjs",
     "test:telemetry-policy": "node scripts/test/telemetry-policy-check.mjs",
+    "test:telemetry-portal-state": "node scripts/test/telemetry-portal-state-check.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "pack:smoke": "npm pack"
   },

@@ -28,6 +28,7 @@
   .insight.info .dot { background:var(--dim); }
   .insight .body .hl { color:var(--ink); }
   .insight .body .dt { color:var(--dim); font-size:var(--text-2xs); margin-top:2px; }
+  .insight .body .dt.next-action { color:var(--accent); }
   #deepreadout { white-space:pre-wrap; font-size:var(--text-xs); color:var(--ink); }
   .detailsblock { border-top:1px solid var(--line); padding-top:8px; }
   .detailsblock > summary { font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.1em; color:var(--dim); font-weight:700; cursor:pointer; padding:6px 0; list-style:none; }
@@ -100,3 +101,32 @@
   .modalextra .turn .tool { color:var(--accent); }
   .modalextra .turn .prev { color:var(--ink); margin-top:3px; white-space:pre-wrap; word-break:break-word; opacity:.85; }
   .modalextra .note { color:var(--dim); font-size:var(--text-xs); }
+
+  /* Phase 6: global cohort filter bar (model/repo/marker) and the marker-creation dialog. */
+  #cohortfilt select { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:3px 8px; font:inherit; font-size:var(--text-2xs); cursor:pointer; }
+  #cohortfilt select:hover { border-color:var(--accent); }
+  #cohortsummary { color:var(--dim); font-size:var(--text-2xs); }
+  dialog#marker-modal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px 22px; max-width:420px; width:90%; box-shadow:0 12px 48px var(--modal-shadow); }
+  dialog#marker-modal::backdrop { background:var(--backdrop); }
+  dialog#marker-modal h3 { margin:0 0 4px; font-size:var(--text-md); }
+  dialog#marker-modal .sub { color:var(--dim); font-size:var(--text-xs); margin-bottom:14px; }
+  dialog#marker-modal .closebtn { float:right; background:none; border:none; color:var(--dim); font-size:18px; cursor:pointer; line-height:1; }
+  dialog#marker-modal .closebtn:hover { color:var(--ink); }
+  #markerform { display:flex; flex-direction:column; gap:10px; }
+  #markerform label { display:flex; flex-direction:column; gap:3px; font-size:var(--text-2xs); color:var(--dim); }
+  #markerform input, #markerform select { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:5px 8px; font:inherit; font-size:var(--text-xs); }
+  #markerform button[type="submit"] { background:var(--accent); border:none; color:var(--on-accent); font:inherit; font-size:var(--text-xs); font-weight:600; cursor:pointer; padding:6px 14px; border-radius:6px; }
+  #markerform button[type="submit"]:hover { filter:brightness(1.1); }
+
+  /* Marker overlay lines on the timeline canvas (drawn by chart.js in the per-turn-deltas view). */
+  .markertip { position:absolute; pointer-events:none; z-index:5; background:var(--tooltip-bg); border:1px solid var(--accent); border-radius:6px; padding:6px 9px; font-size:var(--text-2xs); line-height:1.5; color:var(--ink); box-shadow:0 4px 16px var(--tooltip-shadow); display:none; max-width:280px; }
+
+  /* Phase 7: marker-relative comparison panel, testing-efficiency panel, and Analysis explorer share
+     this general-purpose headline/body text styling (previously scoped only to .insight rows). */
+  p.hl { color:var(--ink); font-size:var(--text-xs); margin:0 0 6px; }
+  #markercomparison p, #testefficiency ~ p, #explorer-result p { font-size:var(--text-xs); margin:4px 0; }
+  #testeffheadline { font-size:var(--text-xs); margin:0 0 8px; }
+  #analysisexplorer label { display:flex; align-items:center; gap:6px; font-size:var(--text-2xs); color:var(--dim); margin:8px 0; }
+  #analysisexplorer select { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit; font-size:var(--text-xs); }
+  #explorer-metric { min-width:280px; }
+  .open-analysis { display:block; margin-top:6px; }

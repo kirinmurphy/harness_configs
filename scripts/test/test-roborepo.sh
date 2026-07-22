@@ -827,6 +827,36 @@ if [[ -n "${cfg_port:-}" ]]; then
   assert "config: POST package telemetry disable flips snapshot" \
     bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/packages' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"id\":\"telemetry\",\"enabled\":false}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===false?0:1)})\""
 
+  # Phase 6 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: portal marker/
+  # experiment/analysis endpoints. Real HTTP calls against the running loopback server (per the
+  # plan's "no Playwright" decision — verified via API status/JSON-shape checks, not a real browser).
+  assert "telemetry: served page includes cohort filter bar and marker-create dialog" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/telemetry' | grep -q 'id=\"cohortfilt\"' && curl -s 'http://127.0.0.1:${cfg_port}/telemetry' | grep -q 'id=\"marker-modal\"'"
+  assert "telemetry: served dashboard JS parses" \
+    bash -c "telejs=\"${cfg_home}/telemetry-app.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/telemetry/app.js' > \"\${telejs}\" && node --check \"\${telejs}\""
+  assert "telemetry: served chart.js parses" \
+    bash -c "chartjs=\"${cfg_home}/telemetry-chart.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/telemetry/chart.js' > \"\${chartjs}\" && node --check \"\${chartjs}\""
+  assert "telemetry: GET /api/telemetry/markers returns an array (empty spool ok)" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/telemetry/markers' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(Array.isArray(j.markers)?0:1)})\""
+  assert "telemetry: POST /api/telemetry/markers without token returns 403" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/telemetry/markers' -H 'Content-Type: application/json' -d '{\"type\":\"note\",\"title\":\"x\"}')\" = 403 ]"
+  assert "telemetry: POST /api/telemetry/markers creates a marker" \
+    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/telemetry/markers' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"type\":\"change\",\"title\":\"portal marker test\",\"metric\":\"tokens.total\",\"expected_direction\":\"decrease\"}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&/^mark_[a-f0-9]{16}\$/.test(j.marker.marker_id)?0:1)})\""
+  assert "telemetry: POST /api/telemetry/markers rejects invalid type (400)" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/telemetry/markers' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"type\":\"bogus\",\"title\":\"x\"}')\" = 400 ]"
+  assert "telemetry: GET /api/data reflects the created marker in the markers array" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/data' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.markers.some(m=>m.title==='portal marker test')?0:1)})\""
+  assert "telemetry: POST /api/telemetry/experiments starts an experiment" \
+    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/telemetry/experiments' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"title\":\"portal exp test\",\"metric\":\"tokens.total\",\"expected_direction\":\"decrease\"}' > '${cfg_home}/exp-start.json' && node -e \"const j=require('${cfg_home}/exp-start.json');process.exit(j.ok&&/^exp_[a-f0-9]{16}\$/.test(j.experiment.experiment_id)?0:1)\""
+  assert "telemetry: GET /api/telemetry/experiments reports readiness fields" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/telemetry/experiments' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);const e=j.experiments.find(x=>x.title==='portal exp test');process.exit(e&&typeof e.ready==='boolean'&&Array.isArray(e.data_quality_warnings)?0:1)})\""
+  assert "telemetry: POST /api/telemetry/experiments/:id/end ends the experiment" \
+    bash -c "id=\$(node -e \"console.log(require('${cfg_home}/exp-start.json').experiment.experiment_id)\") && curl -s -X POST \"http://127.0.0.1:${cfg_port}/api/telemetry/experiments/\${id}/end\" -H 'X-Roborepo-Portal-Token: ${cfg_token}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.experiment.end_marker_id?0:1)})\""
+  assert "telemetry: POST /api/telemetry/analysis rejects unknown metric (400)" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/telemetry/analysis' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"metric\":\"bogus.metric\"}')\" = 400 ]"
+  assert "telemetry: POST /api/telemetry/analysis with no marker compares two cohorts" \
+    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/telemetry/analysis' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"metric\":\"tokens.total\",\"cohort_a\":{},\"cohort_b\":{}}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.finding.cohort_a&&j.finding.cohort_b?0:1)})\""
+
   kill "${cfg_srv}" 2>/dev/null || true
   cfg_srv=""
 fi
@@ -1467,6 +1497,10 @@ assert "telemetry: marker-relative comparisons and confidence gates" \
   node "${repo_root}/scripts/test/telemetry-compare-check.mjs"
 assert "telemetry: package telemetry policy validation and evaluation" \
   node "${repo_root}/scripts/test/telemetry-policy-check.mjs"
+
+# Phase 6: portal global-filter <-> URL state round-trip (state.js's pure helpers, no DOM needed).
+assert "telemetry: portal global filter URL state round-trips" \
+  node "${repo_root}/scripts/test/telemetry-portal-state-check.mjs"
 
 # ---------------------------------------------------------------------------
 echo ""

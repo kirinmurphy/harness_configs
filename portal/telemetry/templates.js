@@ -43,11 +43,39 @@ export function detailRows(rows) {
   });
 }
 
+// Phase 7 upgrade: each insight now also carries confidence + next_action (the actionable finding
+// contract's remaining two layers on top of headline=observation/detail=evidence), plus an optional
+// "open analysis" affordance when the finding has a reproducible analysis_filter_state (plan: "open
+// analysis" action; "reproduces the alert's exact cohort and metric"). All render as extra lines/
+// button under detail so existing severity/headline/detail consumers (CLI's printInsights,
+// insightsSummary) are unaffected — this is additive DOM, not a template replacement. The button
+// carries its filter state on a dataset attribute (JSON) so app.js's delegated click handler can read
+// it without insightRow needing to import the explorer itself.
 export function insightRow(f) {
   const row = tpl("tpl-insight");
   row.classList.add(f.severity);
   row.querySelector("[data-slot=headline]").textContent = f.headline;
   row.querySelector("[data-slot=detail]").textContent = f.detail;
+  const body = row.querySelector(".body");
+  if (f.confidence) {
+    const conf = document.createElement("div");
+    conf.className = "dt confidence";
+    conf.textContent = "confidence: " + f.confidence;
+    body.appendChild(conf);
+  }
+  if (f.next_action) {
+    const action = document.createElement("div");
+    action.className = "dt next-action";
+    action.textContent = "next: " + f.next_action;
+    body.appendChild(action);
+  }
+  if (f.analysis_filter_state) {
+    const btn = document.createElement("button");
+    btn.className = "linkbtn open-analysis";
+    btn.textContent = "open analysis ›";
+    btn.dataset.filterState = JSON.stringify(f.analysis_filter_state);
+    body.appendChild(btn);
+  }
   return row;
 }
 
@@ -136,6 +164,25 @@ export function sessionCell(headline, sub) {
 // Per-table click handlers, keyed by table id. Set when a render passes a details array; read by
 // the delegated click listener in app.js so rebuilt tables don't leak stale closures.
 export const tableDetails = {};
+
+// --- Phase 6: global cohort filter select options ------------------------------------------------
+// Plain <option> elements built directly (no <template>, since <select> children are trivial and a
+// template adds no value here) — kept in templates.js anyway so app.js never constructs markup
+// itself, matching this file's "template/markup construction only" charter.
+export function selectOption(value, label, selected) {
+  const opt = document.createElement("option");
+  opt.value = value;
+  opt.textContent = label;
+  if (selected) opt.selected = true;
+  return opt;
+}
+
+// One <option> per marker for the marker-comparison select. Markers are timestamped local records,
+// not user HTML — textContent keeps this consistent with the rest of the page's escaping discipline.
+export function markerOption(marker, selected) {
+  const dateLabel = marker.ts ? marker.ts.slice(0, 16).replace("T", " ") : "";
+  return selectOption(marker.marker_id, `${dateLabel} · ${marker.title}`, selected);
+}
 
 // details (optional) is one handler per row; rows that have one get a clickable affordance and
 // open a detail modal on click.

@@ -4,14 +4,17 @@
 // markup construction, canvas drawing, or panel-render logic should live in this file — add a
 // template in templates.js, a draw routine in chart.js, or a render* in renders.js instead.
 
-import { portalSetUpdatedAt, portalHideLoading, portalCopyText } from "/portal/shared/api.js";
+import { portalSetUpdatedAt, portalHideLoading, portalCopyText, portalWireBackdropClose } from "/portal/shared/api.js";
 import * as api from "./api.js";
 import * as tmpl from "./templates.js";
 import { createDetailModal } from "./panels.js";
 import { createModalOpeners } from "./modals.js";
 import { createRenders } from "./renders.js";
 import { createChart } from "./chart.js";
-import { fmt, sessionById as lookupSessionById } from "./state.js";
+import { createAnalysisExplorer } from "./analysis-explorer.js";
+import {
+  fmt, sessionById as lookupSessionById, viewFromSearchParams, syncViewToUrl, activeFilterCountFromView,
+} from "./state.js";
 
 let firstLoad = true;
 let lastVersion = null;
@@ -21,10 +24,17 @@ let allTimeline = [];
 let curThreshold = 0;
 // Most recent session rollups, kept so the cumulative chart's session chips can open full detail.
 let allSessions = [];
-// Global time filter, applied SERVER-SIDE so every panel reflects it. rangeMs = trailing span
-// (null = all data). panEnd = epoch ms at the window's right edge (null = follow latest so live
-// captures keep arriving). Dragging the chart sets panEnd. harness = null means all.
-let view = { rangeMs: null, panEnd: null, harness: null };
+// Most recent window-scoped markers, kept for chart redraws (resize/theme change) without refetching.
+let allMarkers = [];
+// Global cohort filter, applied SERVER-SIDE so every panel reflects it (plan: "Hybrid filtering" —
+// "Global filters define the cohort used by every panel"). rangeMs = trailing span (null = all
+// data). panEnd = epoch ms at the window's right edge (null = follow latest so live captures keep
+// arriving). Dragging the chart sets panEnd. harness/model/repo = null means all. markerId selects a
+// marker-relative comparison shown in the regression panel. Restored from the URL on load and
+// synced back on every change so a filtered view can be bookmarked/copied (plan: "Filters must
+// serialize into the URL so a filtered analysis can be copied, bookmarked, and restored after
+// reload").
+let view = viewFromSearchParams(new URLSearchParams(location.search));
 // Which AI CLI is available for the deeper-read feature (claude / codex / null).
 let deepReadCli = null;
 // Last deeper-read text for the copy button.
@@ -38,8 +48,10 @@ const chart = createChart({
   onBarClick: modals.openCaptureModal,
   onSessionClick: openSessionModal,
   getSessionById: sessionById,
+  onMarkerClick: openMarkerDetailModal,
 });
 chart.setPanHandler(() => load(true));
+const analysisExplorer = createAnalysisExplorer();
 
 function sessionById(id) {
   return lookupSessionById(id, allSessions);
@@ -74,7 +86,7 @@ function redrawChart() {
 // Clear every data panel so stale numbers don't linger while a new window computes. Used on explicit
 // filter changes (range / harness), not on the silent background poll.
 function wipeSections() {
-  for (const id of ["insights", "spikes", "causes", "anatomy", "groupcost", "toolcost", "packagecost", "regression", "loops", "sessions", "tools", "mcp", "comparison"]) {
+  for (const id of ["insights", "spikes", "causes", "anatomy", "groupcost", "toolcost", "packagecost", "regression", "markercomparison", "testefficiency", "loops", "sessions", "tools", "mcp", "comparison"]) {
     const node = document.getElementById(id);
     if (node) node.innerHTML = "";
   }
@@ -95,6 +107,10 @@ async function load(force, opts) {
   if (wipe) { wipeSections(); setLoading(true); }
   let qs = view.rangeMs == null ? "" : "?range=" + view.rangeMs + (view.panEnd == null ? "" : "&end=" + view.panEnd);
   if (view.harness) qs += (qs ? "&" : "?") + "harness=" + encodeURIComponent(view.harness);
+  if (view.model) qs += (qs ? "&" : "?") + "model=" + encodeURIComponent(view.model);
+  if (view.repo) qs += (qs ? "&" : "?") + "repo=" + encodeURIComponent(view.repo);
+  if (view.markerId) qs += (qs ? "&" : "?") + "marker_id=" + encodeURIComponent(view.markerId);
+  syncViewToUrl(view);
   let data;
   try {
     data = await api.fetchAnalysis(qs);
@@ -113,17 +129,25 @@ async function load(force, opts) {
   }
   // Render harness filter only when more than one harness exists in the spool.
   if (data.available_harnesses) updateHarnessFilter(data.available_harnesses);
+  if (data.available_models) updateSelectOptions("modelfilt", data.available_models, view.model);
+  if (data.available_repos) updateSelectOptions("repofilt", data.available_repos, view.repo);
+  updateMarkerFilter(data.markers || [], data.experiments || []);
+  updateCohortSummary(data.cohort);
+  analysisExplorer.refresh({ markers: data.markers || [], metrics: data.available_metrics || [], harnesses: data.available_harnesses || [] });
   renders.renderCauses(data.spike_causes);
   document.body.dataset.threshold = data.spike_threshold || 0;
   allTimeline = data.timeline || [];
+  allMarkers = data.markers || [];
   curThreshold = data.spike_threshold || 0;
-  chart.redraw(allTimeline, curThreshold, data.cumulative_concern || 20_000_000, view);
+  chart.redraw(allTimeline, curThreshold, data.cumulative_concern || 20_000_000, view, allMarkers);
   renders.renderInsights(data.insights);
   renders.renderGroupCost(data.group_cost);
   renders.renderToolCost(data.tool_cost);
   renders.renderAnatomy(data.spike_anatomy);
   renders.renderPackageCost(data.package_cost);
   renders.renderRegression(data.regression);
+  renders.renderMarkerComparison(data.marker_comparison);
+  renders.renderTestingEfficiency(data.testing_efficiency);
   renders.renderLoops(data.loops);
   renders.renderDataQualityWarnings(data.data_quality_warnings);
   renders.renderReadWarnings(data.read_warnings);
@@ -148,6 +172,43 @@ function updateHarnessFilter(harnesses) {
     tmpl.harnessBtn("all", !view.harness),
     ...harnesses.map((h) => tmpl.harnessBtn(h, view.harness === h)),
   );
+}
+
+// Phase 6: model/repo <select> options. Rebuilt only when the option list actually changes so a
+// user's current selection (and the dropdown's open state) isn't disturbed on every 5s poll.
+function updateSelectOptions(selectId, values, selectedValue) {
+  const el = document.getElementById(selectId);
+  const cur = [...el.querySelectorAll("option[value]:not([value=''])")].map((o) => o.value).join(",");
+  if (cur !== values.join(",")) {
+    for (const o of [...el.querySelectorAll("option[value]:not([value=''])")]) o.remove();
+    el.append(...values.map((v) => tmpl.selectOption(v, v, v === selectedValue)));
+  }
+  el.value = selectedValue || "";
+}
+
+// Phase 6: marker-comparison <select>, populated from window-scoped markers of type "change"
+// (change markers are what marker-relative comparisons compare across — plan: "For a selected
+// change marker"). Experiments aren't rendered as separate options; their start marker already
+// appears here as a "change"-adjacent marker type (experiment-start), included for symmetry.
+function updateMarkerFilter(markers, experiments) {
+  const el = document.getElementById("markerfilt");
+  const comparable = markers.filter((m) => m.type === "change" || m.type === "experiment-start");
+  const cur = [...el.querySelectorAll("option[value]:not([value=''])")].map((o) => o.value).join(",");
+  const next = comparable.map((m) => m.marker_id).join(",");
+  if (cur !== next) {
+    for (const o of [...el.querySelectorAll("option[value]:not([value=''])")]) o.remove();
+    el.append(...comparable.map((m) => tmpl.markerOption(m, m.marker_id === view.markerId)));
+  }
+  el.value = view.markerId || "";
+  document.getElementById("openmarkermodal").dataset.experimentCount = experiments.length;
+}
+
+function updateCohortSummary(cohort) {
+  const el = document.getElementById("cohortsummary");
+  const clearBtn = document.getElementById("cohortclear");
+  const activeCount = activeFilterCountFromView(view);
+  el.textContent = activeCount > 0 ? (cohort?.summary || "") + " (" + activeCount + " active)" : "";
+  clearBtn.style.display = activeCount > 0 ? "" : "none";
 }
 
 // Optional LLM synthesis on demand. Hits /api/insights-llm (shells to claude/codex -p server-side).
@@ -191,6 +252,14 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("#deltafilter")) { chart.toggleShowAll(); return; }
   if (e.target.closest("#viewmore-cumulative")) { chart.viewMore("cumulative"); return; }
   if (e.target.closest("#viewmore-bygroup")) { chart.viewMore("bygroup"); return; }
+  // "open analysis" affordance on any insight/finding row — reproduces that finding's exact cohort
+  // and metric in the Analysis explorer (plan: "'open analysis' reproduces the alert's exact cohort
+  // and metric"). filter_state is a JSON-serialized analysis_filter_state from the finding contract.
+  const openAnalysisBtn = e.target.closest(".open-analysis");
+  if (openAnalysisBtn) {
+    try { analysisExplorer.openWithFilterState(JSON.parse(openAnalysisBtn.dataset.filterState || "{}")); } catch {}
+    return;
+  }
   // Harness filter buttons.
   const harnessBtn = e.target.closest("#harnessfilt button[data-harness]");
   if (harnessBtn) {
@@ -235,6 +304,115 @@ document.getElementById("chartmodes").addEventListener("click", (e) => {
   if (!btn) return;
   for (const b of document.querySelectorAll("#chartmodes button")) b.classList.toggle("active", b === btn);
   chart.setMode(btn.dataset.mode);
+});
+
+// Phase 6: global cohort filter bar (model/repo/marker-comparison + clear). Each change refetches
+// every panel scoped to the new cohort, same pattern as the range/harness filters above.
+document.getElementById("modelfilt").addEventListener("change", (e) => {
+  view.model = e.target.value || null;
+  load(true, { wipe: true });
+});
+document.getElementById("repofilt").addEventListener("change", (e) => {
+  view.repo = e.target.value || null;
+  load(true, { wipe: true });
+});
+document.getElementById("markerfilt").addEventListener("change", (e) => {
+  view.markerId = e.target.value || null;
+  load(true, { wipe: true });
+});
+document.getElementById("cohortclear").addEventListener("click", () => {
+  view.model = null;
+  view.repo = null;
+  view.markerId = null;
+  load(true, { wipe: true });
+});
+
+// If the URL restored a range/harness on load, reflect it in the range/harness button active state
+// (the buttons themselves only get their initial "all"/no-harness active class from the static
+// HTML). updateHarnessFilter() already re-derives the harness buttons' active state from view on
+// every load(), so only the static range buttons need a one-time sync here.
+if (view.rangeMs != null) {
+  for (const b of document.querySelectorAll("#ranges button[data-range]")) {
+    b.classList.toggle("active", Number(b.dataset.range) === view.rangeMs);
+  }
+}
+
+// --- Phase 6: create-marker dialog --------------------------------------------------------------
+const markerModal = document.getElementById("marker-modal");
+portalWireBackdropClose(markerModal, closeMarkerModal);
+document.getElementById("markermodalclose").addEventListener("click", closeMarkerModal);
+document.getElementById("markertype").addEventListener("change", (e) => {
+  document.getElementById("markerstatuswrap").style.display = e.target.value === "outcome" ? "" : "none";
+});
+
+function openCreateMarkerModal(prefill) {
+  document.getElementById("markererr").textContent = "";
+  document.getElementById("markertitle").value = prefill?.title || "";
+  document.getElementById("markertype").value = prefill?.type || "change";
+  document.getElementById("markermetric").value = prefill?.metric || "";
+  document.getElementById("markerdirection").value = prefill?.expected_direction || "";
+  document.getElementById("markerstatuswrap").style.display = (prefill?.type || "change") === "outcome" ? "" : "none";
+  if (!markerModal.open) markerModal.showModal();
+}
+
+function closeMarkerModal() {
+  markerModal.close();
+}
+
+document.getElementById("openmarkermodal").addEventListener("click", () => openCreateMarkerModal());
+
+// Chart-click marker detail: the generic key/value popup (same primitive every other detail view
+// uses), not the create form — clicking an existing marker on the timeline shows what it is, not an
+// editable form (plan: "click opens marker detail").
+function openMarkerDetailModal(marker) {
+  modals.openModal(
+    marker.title,
+    marker.type + " · " + marker.ts.slice(0, 19).replace("T", " "),
+    [
+      ["type", marker.type],
+      ["timestamp", marker.ts],
+      ["repo", marker.repo],
+      ["branch", marker.branch],
+      ["sha", marker.sha],
+      marker.packages?.length ? ["packages", marker.packages.join(", ")] : null,
+      marker.skills?.length ? ["skills", marker.skills.join(", ")] : null,
+      marker.metric ? ["metric", marker.metric] : null,
+      marker.expected_direction ? ["expected direction", marker.expected_direction] : null,
+      marker.status ? ["status", marker.status] : null,
+      ["marker id", marker.marker_id],
+    ],
+    marker.type === "change" ? {
+      actions: [{
+        label: "compare across this marker",
+        onClick: () => { view.markerId = marker.marker_id; modal.close(); load(true, { wipe: true }); },
+      }],
+    } : undefined,
+  );
+}
+
+document.getElementById("markerform").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("markererr");
+  errEl.textContent = "";
+  const type = document.getElementById("markertype").value;
+  const title = document.getElementById("markertitle").value.trim();
+  const metric = document.getElementById("markermetric").value.trim();
+  const expected_direction = document.getElementById("markerdirection").value;
+  const status = document.getElementById("markerstatus").value;
+  if (!title) { errEl.textContent = "title is required"; return; }
+  try {
+    await api.createMarker({
+      type,
+      title,
+      metric: metric || null,
+      expected_direction: expected_direction || null,
+      status: type === "outcome" ? status : null,
+    });
+    closeMarkerModal();
+    load(true, { wipe: true });
+  } catch (err) {
+    errEl.textContent = (err && err.message) || String(err);
+  }
 });
 
 // Telemetry on/off state drives the "turn on telemetry" prompt above the chart. Read from /api/config

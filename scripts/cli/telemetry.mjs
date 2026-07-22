@@ -7,11 +7,14 @@ import { markTelemetrySelected } from "./presets.mjs";
 import { repoRoot } from "./paths.mjs";
 import { portalPidPath, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
-import { readMarkers, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
+import { readMarkers, readSnapshot, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
 import {
   createMarker, startExperiment, endExperiment, experimentStatus,
   MARKER_TYPES, OUTCOME_STATUSES, EXPECTED_DIRECTIONS, TASK_CATEGORIES,
 } from "./telemetry-markers.mjs";
+import { isKnownMetric, listMetrics, computeMetric } from "./telemetry-metrics.mjs";
+import { normalizeCohortFilter, applyCohortFilter } from "./telemetry-cohort.mjs";
+import { compareAcrossMarker, describeMarkerComparison } from "./telemetry-compare.mjs";
 import { startPortalServer } from "./portal-server.mjs";
 import { readConfigSnapshot, loadConfigSource } from "./config.mjs";
 import { mutatePackage, setSkillInstalled, setBehaviorBucket, setCommandBucket } from "./config-mutate.mjs";
@@ -412,7 +415,8 @@ function telemetryReport(args) {
     console.log(`Capture enabled: ${state.enabled === true ? "yes" : "no"}`);
     return;
   }
-  const report = analyzeTelemetry(events);
+  const markers = readMarkers();
+  const report = analyzeTelemetry(events, { markers });
   // Headline first: the deterministic "what this means" conclusions, before any raw table.
   printInsights(report.insights);
   printDataQualityWarnings(report.data_quality_warnings);
@@ -422,12 +426,17 @@ function telemetryReport(args) {
   console.log(`\nevents: ${report.event_count}  (with token data: ${report.capture_count})`);
   printTop("repos", countBy(events, (event) => event.repo?.label ?? "unknown"));
   printTop("tools/events", countBy(events, (event) => event.tool?.name ?? event.event ?? "unknown"));
+  // Recent markers (plan CLI report change: "recent markers"). Shown even when there is no token
+  // data yet, since markers can exist independent of capture activity.
+  printRecentMarkers(markers);
+  printExperimentReadiness();
   if (report.capture_count === 0) {
     console.log("\n(no token-bearing records yet — start a session with telemetry enabled to populate spike analysis)");
     return;
   }
   printUsageWindows(report.usage_windows);
   printSpikeCauses(report.spike_causes);
+  printTestingEfficiency(report.testing_efficiency);
   // Conclusions first — the actionable headlines before the raw contributor tables.
   printGroupCost(report.group_cost);
   printToolCost(report.tool_cost);
@@ -440,6 +449,53 @@ function telemetryReport(args) {
   printTokenContributors("token by tool", report.top_tools);
   printTokenContributors("token by MCP server", report.top_mcp);
   printComparison(report.comparison);
+}
+
+// Plan CLI report change: "recent markers" — the latest few, newest first, so a terminal report
+// shows what has been marked without requiring a separate `telemetry mark --list` (which does not
+// exist; export is the only current bulk-read path).
+function printRecentMarkers(markers) {
+  if (!markers.length) return;
+  const recent = [...markers].sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 5);
+  console.log("\nrecent markers:");
+  for (const m of recent) {
+    console.log(`  ${m.ts}  [${m.type}]  ${m.title}${m.metric ? `  (metric: ${m.metric})` : ""}`);
+  }
+}
+
+// Plan CLI report change: "experiment readiness/results" — mirrors telemetryExperimentStatus's
+// printer so the CLI report and `telemetry experiment status` never disagree on wording.
+function printExperimentReadiness() {
+  let statuses;
+  try {
+    statuses = experimentStatus(null);
+  } catch {
+    return;
+  }
+  const running = statuses.filter((s) => s.state === "running");
+  if (!running.length) return;
+  console.log("\nexperiment readiness:");
+  for (const status of running) {
+    const cohortSummary = status.cohorts ? `before=${status.cohorts.before.sessions} after=${status.cohorts.after.sessions}` : "no cohort data";
+    console.log(`  ${status.title}  ready=${status.ready}  ${cohortSummary}${status.confidence ? `  confidence=${status.confidence}` : ""}`);
+  }
+}
+
+// Plan CLI report change: "testing efficiency" section, same metric registry values the portal's
+// testing-efficiency panel reads — CLI and portal must agree for the same cohort (acceptance
+// criterion 11).
+function printTestingEfficiency(summary) {
+  const share = summary["test.share_of_tool_time"];
+  const fullPerSession = summary["test.full_suite_calls_per_session"];
+  const redundant = summary["test.full_suite_without_intervening_edit"];
+  if (share == null && fullPerSession == null && redundant == null) return;
+  console.log("\ntesting efficiency:");
+  if (share != null) console.log(`  testing share of tool time: ${share}%`);
+  if (fullPerSession != null) console.log(`  full-suite runs/session: ${fullPerSession.toFixed(2)}`);
+  if (summary["test.full_suite_calls_per_debug_phase"] != null) console.log(`  full-suite runs/debugging phase: ${summary["test.full_suite_calls_per_debug_phase"].toFixed(2)}`);
+  if (redundant != null) console.log(`  redundant reruns (no intervening edit): ${redundant}`);
+  if (summary["test.full_suite_unchanged_failure_signature"] != null) console.log(`  reruns with unchanged failure signature: ${summary["test.full_suite_unchanged_failure_signature"]}`);
+  if (summary["test.targeted_to_full_ratio"] != null) console.log(`  targeted-to-full ratio: ${summary["test.targeted_to_full_ratio"].toFixed(2)}`);
 }
 
 // Trailing-window consumption is a local estimate from capture deltas — not the real server-side
@@ -657,13 +713,22 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
   // a flagged event to its chat transcript (file I/O lives here, not in the server).
   startPortalServer({
     port: options.port,
-    loadAnalysis: (window, harness) => {
+    // Phase 6 additions (model/repo/markerId) layer a normalized cohort filter on top of the
+    // existing time/harness window; see telemetry-analyze.mjs's analyzeTelemetry() options and
+    // telemetry-cohort.mjs for the shared filter shape the CLI report will eventually reuse too.
+    loadAnalysis: (window, harness, extra = {}) => {
+      const { model = null, repo = null, markerId = null } = extra;
       const allEvents = readSpoolEvents();
-      // Expose all harnesses found in the spool, before any harness filter, so the dashboard can
-      // always render the full filter even when one harness is selected.
+      const markers = readMarkers();
+      // Expose every dimension present in the FULL spool (before any filter), so the dashboard can
+      // always render a complete filter list even when a narrower cohort is currently selected.
       const availableHarnesses = [...new Set(allEvents.map((e) => e.harness).filter(Boolean))].sort();
+      const availableModels = [...new Set(allEvents.map((e) => e.session?.model).filter(Boolean))].sort();
+      const availableRepos = [...new Set(allEvents.map((e) => e.repo?.label).filter(Boolean))].sort();
       const events = harness ? allEvents.filter((e) => e.harness === harness) : allEvents;
-      const report = analyzeTelemetry(filterByWindow(events, window));
+      const windowed = filterByWindow(events, window);
+      const cohortFilter = (model || repo) ? { models: model ? [model] : [], repos: repo ? [repo] : [] } : null;
+      const report = analyzeTelemetry(windowed, { cohortFilter, markers, markerId, compareMetric: "tokens.total" });
       // Backfill session titles from transcripts: the transcript always has the first user message
       // (turn 1), whereas the spool only captures prompts when hooks fired — so new sessions or
       // sessions started before telemetry was enabled may have no spool title or a mid-chat title.
@@ -673,11 +738,26 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
         if (t) s.title = t;
       }
       report.available_harnesses = availableHarnesses;
+      report.available_models = availableModels;
+      report.available_repos = availableRepos;
+      // Metric ids from the shared registry (plan: "available ... metric" dimension) so the
+      // Analysis explorer's metric select never hand-maintains its own list.
+      report.available_metrics = listMetrics().map((m) => m.id);
+      // Window-scoped markers for the chart overlay (plan: "The server supplies window-scoped
+      // markers"). Uses the same filterByWindow the events themselves went through.
+      report.markers = filterByWindow(markers, window);
+      report.experiments = readExperiments();
       report.deepread_cli = findDeepReadCli();
       return report;
     },
-    loadSession: (req) => loadSessionDetail(req),
+    loadSession: (req) => loadSessionDetail({ ...req, spoolContext: sessionSpoolContext(req.id, readMarkers()) }),
     loadInsightsLlm: () => loadInsightsLlm(),
+    loadMarkers: () => readMarkers(),
+    createMarkerFromRequest: (body) => createMarkerFromPortalRequest(body),
+    loadExperiments: () => experimentStatus(null),
+    createExperimentFromRequest: (body) => createExperimentFromPortalRequest(body),
+    endExperimentFromRequest: (experimentId) => endExperimentFromPortalRequest(experimentId),
+    loadTelemetryAnalysis: (body) => loadTelemetryAnalysisRequest(body),
     loadConfig: () => readConfigSnapshot(),
     loadConfigSource: (params) => loadConfigSource(params),
     loadPlans: () => loadPlansSnapshot(),
@@ -822,9 +902,81 @@ function cachedTranscriptTitle(sessionId, harness) {
   return t;
 }
 
+// Phase 7 session-detail extension (plan: "Extend the current session modal with: model history,
+// configuration snapshot, active packages/skills, explicit versus inferred task category and
+// outcome, phase timeline, semantic operation totals, testing-efficiency summary, markers inside or
+// adjacent to the session, data-quality flags"). Scans the already-loaded spool for this session's
+// own captures (cheap: one session's records only, not a re-read) and pulls together everything
+// derivable without touching the transcript. Best-effort throughout — missing data reports as
+// unavailable rather than guessed.
+function sessionSpoolContext(sessionId, markers) {
+  if (!sessionId) return null;
+  const events = readSpoolEvents().filter((e) => e.session_id === sessionId);
+  if (!events.length) return null;
+  const sorted = [...events].sort((a, b) => a.ts.localeCompare(b.ts));
+
+  // Model history: every distinct model seen across this session's captures, in first-seen order.
+  const modelHistory = [...new Set(sorted.map((e) => e.session?.model).filter(Boolean))];
+
+  // Configuration snapshot: the most recent non-null snapshot id (a session may span more than one
+  // if configuration changed mid-session per the snapshot schema's per-turn-override allowance).
+  const snapshotIds = [...new Set(sorted.map((e) => e.config_snapshot_id).filter(Boolean))];
+  const latestSnapshot = snapshotIds.length ? readSnapshot(snapshotIds[snapshotIds.length - 1]) : null;
+
+  // Phase timeline: contiguous runs of the same phase.name, in order, with start/end timestamps.
+  const phaseTimeline = [];
+  for (const e of sorted) {
+    const name = e.phase?.name ?? null;
+    if (name == null) continue;
+    const last = phaseTimeline[phaseTimeline.length - 1];
+    if (last && last.name === name) last.end = e.ts;
+    else phaseTimeline.push({ name, source: e.phase?.source ?? null, start: e.ts, end: e.ts });
+  }
+
+  // Semantic operation totals: count by operation.category.
+  const operationTotals = {};
+  for (const e of sorted) {
+    if (!e.operation?.category) continue;
+    operationTotals[e.operation.category] = (operationTotals[e.operation.category] || 0) + 1;
+  }
+
+  // Explicit outcome/task-category marker for this session, if any (kept distinguishable from any
+  // future inferred value — the plan requires "explicit versus inferred" stay separate, and today
+  // only explicit outcome markers set task_category, per Phase 4 notes).
+  const outcomeMarker = markers.find((m) => m.type === "outcome" && m.session_id === sessionId) ?? null;
+
+  // Markers "inside or adjacent to" the session: any marker whose timestamp falls within the
+  // session's own [first, last] capture window, widened by a small adjacency margin.
+  const ADJACENCY_MS = 15 * 60 * 1000;
+  const sessionStart = Date.parse(sorted[0].ts) - ADJACENCY_MS;
+  const sessionEnd = Date.parse(sorted[sorted.length - 1].ts) + ADJACENCY_MS;
+  const nearbyMarkers = markers.filter((m) => {
+    const ms = Date.parse(m.ts);
+    return Number.isFinite(ms) && ms >= sessionStart && ms <= sessionEnd;
+  });
+
+  // Data-quality flags: same reliability dimensions the metrics registry tracks, scoped to this
+  // session so a modal can show "this session's data is thinner than usual" at a glance.
+  const flags = [];
+  if (!snapshotIds.length) flags.push("no configuration snapshot recorded for this session");
+  if (!modelHistory.length) flags.push("model unknown for every capture in this session");
+  const v3Count = sorted.filter((e) => e.schema === 3).length;
+  if (v3Count < sorted.length) flags.push(`${sorted.length - v3Count} of ${sorted.length} captures predate schema v3 (fewer derived fields)`);
+
+  return {
+    model_history: modelHistory,
+    config_snapshot: latestSnapshot ? { snapshot_id: latestSnapshot.snapshot_id, packages: latestSnapshot.packages, skills: latestSnapshot.skills, harness: latestSnapshot.harness } : null,
+    phase_timeline: phaseTimeline,
+    operation_totals: operationTotals,
+    outcome: outcomeMarker ? { status: outcomeMarker.status, task_category: outcomeMarker.task_category ?? null, task_category_source: outcomeMarker.task_category_source ?? null, source: "explicit" } : { status: "unknown", task_category: null, source: "none" },
+    nearby_markers: nearbyMarkers.map((m) => ({ marker_id: m.marker_id, type: m.type, title: m.title, ts: m.ts })),
+    data_quality_flags: flags,
+  };
+}
+
 // Resolve a flagged event to its chat: find the transcript, surface the heaviest turns, and build a
 // paste-ready analysis prompt. Best-effort — a missing transcript returns found:false, never throws.
-function loadSessionDetail({ id, harness, finding, repo }) {
+function loadSessionDetail({ id, harness, finding, repo, spoolContext = null }) {
   const transcriptPath = locateTranscript(id, harness);
   if (!transcriptPath) {
     return {
@@ -832,6 +984,7 @@ function loadSessionDetail({ id, harness, finding, repo }) {
       session_id: id,
       harness,
       analysis_prompt: buildAnalysisPrompt({ sessionId: id, harness, repo, finding, transcriptPath: null }),
+      spool_context: spoolContext,
     };
   }
   return {
@@ -842,6 +995,7 @@ function loadSessionDetail({ id, harness, finding, repo }) {
     title: transcriptTitle(transcriptPath),
     heavy_turns: extractHeavyTurns(transcriptPath, { limit: 8 }),
     analysis_prompt: buildAnalysisPrompt({ sessionId: id, harness, repo, finding, transcriptPath }),
+    spool_context: spoolContext,
   };
 }
 
@@ -882,6 +1036,129 @@ function runDeepRead(report) {
 // captures, mirroring loadAnalysis.
 function loadInsightsLlm() {
   return runDeepRead(analyzeTelemetry(readSpoolEvents()));
+}
+
+// --- Phase 6: portal marker/experiment/analysis request handlers ------------------------------
+// All three reuse the exact same domain functions the CLI calls (createMarker/startExperiment/
+// endExperiment from telemetry-markers.mjs) — no browser-side rule duplication, per the plan's
+// "Do not duplicate experiment rules in the browser." Server-side validation mirrors the CLI's own
+// argument checks (parseMarkArgs/parseExperimentStartArgs) since a browser POST body skips that path.
+
+// Portal markers omit --session/--phase/--status conveniences the CLI supports via flags the portal
+// doesn't yet render a control for; only the fields the plan's marker-creation UI needs are accepted.
+function createMarkerFromPortalRequest(body) {
+  if (typeof body.type !== "string" || !MARKER_TYPES.has(body.type)) {
+    return { ok: false, error: `type must be one of: ${[...MARKER_TYPES].join(", ")}` };
+  }
+  if (typeof body.title !== "string" || !body.title.trim()) {
+    return { ok: false, error: "title is required" };
+  }
+  if (body.expected_direction != null && !EXPECTED_DIRECTIONS.has(body.expected_direction)) {
+    return { ok: false, error: `expected_direction must be one of: ${[...EXPECTED_DIRECTIONS].join(", ")}` };
+  }
+  if (body.type === "outcome" && !OUTCOME_STATUSES.has(body.status)) {
+    return { ok: false, error: `outcome markers require status to be one of: ${[...OUTCOME_STATUSES].join(", ")}` };
+  }
+  try {
+    const marker = createMarker({
+      type: body.type,
+      title: body.title,
+      description: typeof body.description === "string" ? body.description : null,
+      packages: Array.isArray(body.packages) ? body.packages : [],
+      skills: Array.isArray(body.skills) ? body.skills : [],
+      tags: Array.isArray(body.tags) ? body.tags : [],
+      metric: typeof body.metric === "string" ? body.metric : null,
+      expected_direction: body.expected_direction ?? null,
+      session_id: typeof body.session_id === "string" ? body.session_id : null,
+      phase: body.type === "phase" ? body.phase : null,
+      status: body.type === "outcome" ? body.status : null,
+      supersedes: typeof body.supersedes === "string" ? body.supersedes : null,
+    });
+    return { ok: true, marker };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+function createExperimentFromPortalRequest(body) {
+  if (typeof body.title !== "string" || !body.title.trim()) return { ok: false, error: "title is required" };
+  if (typeof body.metric !== "string" || !body.metric.trim()) return { ok: false, error: "metric is required" };
+  if (!EXPECTED_DIRECTIONS.has(body.expected_direction)) {
+    return { ok: false, error: `expected_direction must be one of: ${[...EXPECTED_DIRECTIONS].join(", ")}` };
+  }
+  try {
+    const result = startExperiment({
+      title: body.title,
+      metric: body.metric,
+      expected_direction: body.expected_direction,
+      guardrails: Array.isArray(body.guardrails) ? body.guardrails : [],
+      task_categories: Array.isArray(body.task_categories) ? body.task_categories : [],
+      minimum_sessions_per_cohort: Number.isInteger(body.minimum_sessions_per_cohort) ? body.minimum_sessions_per_cohort : 10,
+      comparison: body.comparison,
+    });
+    return { ok: true, experiment: result.experiment, startMarker: result.startMarker };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+function endExperimentFromPortalRequest(experimentId) {
+  try {
+    const result = endExperiment(experimentId);
+    return { ok: true, experiment: result.experiment, endMarker: result.endMarker };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+// POST /api/telemetry/analysis: dedicated high-dimensional comparison endpoint for the Analysis
+// explorer (plan: "Add a dedicated endpoint for high-dimensional comparisons rather than inflating
+// /api/data for every explorer interaction"). Body: { cohort_a, cohort_b, metric, marker_id }.
+// Validates known metric ids and cohort filter shapes server-side; never trusts client-supplied
+// formulas or cohort definitions beyond selecting from the shared registry/cohort model.
+function loadTelemetryAnalysisRequest(body) {
+  const metricId = body.metric;
+  if (typeof metricId !== "string" || !isKnownMetric(metricId)) {
+    return { ok: false, error: `metric must be one of the known metric ids (see /api/telemetry/analysis with no metric for the list)`, known_metrics: listMetrics().map((m) => m.id) };
+  }
+  const allEvents = readSpoolEvents();
+  const markers = readMarkers();
+
+  // marker_id (or cohort_a.marker_id) selects the marker-relative path — the plan's preferred
+  // comparison when a change marker exists. Falling back to a bare cohort_a-vs-cohort_b comparison
+  // (two independent cohort filters, no marker) is supported for the explorer's "compare two
+  // arbitrary cohorts" mode, using a simple metric-value-per-cohort comparison rather than the
+  // marker-relative before/after split (which needs a single marker timestamp to split around).
+  const markerId = body.marker_id || body.cohort_a?.marker_id || null;
+  if (markerId) {
+    const marker = markers.find((m) => m.marker_id === markerId);
+    if (!marker) return { ok: false, error: `unknown marker: ${markerId}` };
+    try {
+      const comparison = compareAcrossMarker(allEvents.filter((e) => e.tokens), marker, metricId, {
+        markers,
+        cohortFilter: body.cohort_a || null,
+      });
+      return { ok: true, finding: describeMarkerComparison(comparison, marker) };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  // No marker: compare two independently-filtered cohorts directly (metric value + sample size for
+  // each), without the before/after marker-relative machinery (there is no shared timestamp to split
+  // sessions around). Still surfaces sample size so the explorer can flag thin cohorts the same way.
+  const cohortA = applyCohortFilter(allEvents.filter((e) => e.tokens), normalizeCohortFilter(body.cohort_a), { markers });
+  const cohortB = applyCohortFilter(allEvents.filter((e) => e.tokens), normalizeCohortFilter(body.cohort_b), { markers });
+  const sessionsOf = (captures) => new Set(captures.map((e) => e.session_id).filter(Boolean)).size;
+  return {
+    ok: true,
+    finding: {
+      metric: metricId,
+      cohort_a: { sessions: sessionsOf(cohortA), value: computeMetric(metricId, cohortA, { markers }) },
+      cohort_b: { sessions: sessionsOf(cohortB), value: computeMetric(metricId, cohortB, { markers }) },
+      correlation_only: true,
+    },
+  };
 }
 
 function countBy(events, keyFor) {

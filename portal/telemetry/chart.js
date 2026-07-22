@@ -12,10 +12,11 @@
 import { M, SESSION_COLORS, GROUP_COLORS, tokShort, clockLabel, pointGroup, perSessionSeries, fmt, short, clip } from "./state.js";
 import { legendDeltas, legendCumulativeHead, legendGroupHead, legendSessionItem, legendGroupItem, legendList, tooltipHead, tooltipRow } from "./templates.js";
 
-export function createChart({ onBarClick, onSessionClick, getSessionById }) {
+export function createChart({ onBarClick, onSessionClick, getSessionById, onMarkerClick }) {
   const canvas = document.getElementById("timeline");
   const legend = document.getElementById("chartlegend");
   const tip = document.getElementById("tooltip");
+  const markertip = document.getElementById("markertip");
   const hint = document.getElementById("panhint");
 
   // Canvas can't read CSS variables directly, so we resolve the theme's chrome colors from the
@@ -51,6 +52,26 @@ export function createChart({ onBarClick, onSessionClick, getSessionById }) {
   let curPoints = [];
   let curThreshold = 0;
   let curCumulativeConcern = 20_000_000;
+  // Window-scoped markers (plan: "Overlay marker lines on the existing canvas timeline"), kept the
+  // same way for resize/theme-change redraws. Drawn geometry rebuilt on every draw, same pattern as
+  // chartBars — used for hover/click hit-testing.
+  let curMarkers = [];
+  let markerHitAreas = [];
+  let hoverMarkerIdx = -1;
+
+  // Distinct per-marker-type styling (plan: "distinct style by marker type"). Colors chosen to read
+  // clearly against both the accent/spike series colors and the theme's line/dim palette.
+  const MARKER_STYLES = {
+    change: { color: "#e3b341", label: "change" },
+    "experiment-start": { color: "#3fb950", label: "experiment start" },
+    "experiment-end": { color: "#f85149", label: "experiment end" },
+    phase: { color: "#56d4dd", label: "phase" },
+    outcome: { color: "#bc8cff", label: "outcome" },
+    note: { color: "#8b949e", label: "note" },
+  };
+  function markerStyle(marker) {
+    return MARKER_STYLES[marker.type] || MARKER_STYLES.note;
+  }
 
   function updatePanHint(view) {
     if (view.rangeMs == null || !curPoints.length) { hint.textContent = ""; return; }
@@ -89,11 +110,73 @@ export function createChart({ onBarClick, onSessionClick, getSessionById }) {
   // Dispatch to the active view. points is the already-windowed timeline series.
   function drawTimeline(points, threshold) {
     chartBars = [];
+    markerHitAreas = [];
     const geo = chartSetup();
     if (!points.length) { geo.ctx.fillStyle = theme.dim; geo.ctx.fillText("no token data yet", M.left, geo.H / 2); legend.replaceChildren(); return; }
-    if (chartMode === "cumulative") return drawCumulative(points, geo);
-    if (chartMode === "bygroup") return drawCumulativeByGroup(points, geo);
-    return drawDeltas(points, threshold, geo);
+    if (chartMode === "cumulative") drawCumulative(points, geo);
+    else if (chartMode === "bygroup") drawCumulativeByGroup(points, geo);
+    else drawDeltas(points, threshold, geo);
+    // Marker overlay is drawn last, on top of the active view, using the SAME time span every mode
+    // already derives from `points` — so overlay lines land at the same x position as the data
+    // beneath them regardless of which chart mode is active.
+    drawMarkerOverlay(points, geo);
+  }
+
+  // Overlay marker lines on the timeline (plan: "Overlay marker lines on the existing canvas
+  // timeline" — distinct style by type, cluster when close together, click opens detail). Drawn as
+  // thin vertical lines spanning the plot area, with a small flag at the top; markers outside the
+  // current point span are skipped (they were already excluded server-side by the same window, but
+  // this guards against any client-side clock skew).
+  const MARKER_CLUSTER_PX = 10;
+  function drawMarkerOverlay(points, geo) {
+    if (!curMarkers.length || !points.length) return;
+    const { ctx, W, plotW, plotH } = geo;
+    const t0 = Date.parse(points[0].ts), tN = Date.parse(points[points.length - 1].ts);
+    const span = Math.max(1, tN - t0);
+    const xOf = (ts) => M.left + ((Date.parse(ts) - t0) / span) * plotW;
+    const sorted = [...curMarkers]
+      .map((m) => ({ marker: m, x: xOf(m.ts) }))
+      .filter((m) => Number.isFinite(m.x) && m.x >= M.left - 1 && m.x <= W - M.right + 1)
+      .sort((a, b) => a.x - b.x);
+    // Cluster markers whose x positions land within MARKER_CLUSTER_PX of each other so overlapping
+    // markers don't become an unreadable stack of lines (plan: "overlapping markers cluster rather
+    // than becoming unreadable").
+    const clusters = [];
+    for (const entry of sorted) {
+      const last = clusters[clusters.length - 1];
+      if (last && entry.x - last.x <= MARKER_CLUSTER_PX) last.items.push(entry.marker);
+      else clusters.push({ x: entry.x, items: [entry.marker] });
+    }
+    for (const cluster of clusters) {
+      const style = markerStyle(cluster.items[0]);
+      ctx.save();
+      ctx.strokeStyle = style.color;
+      ctx.globalAlpha = 0.7;
+      ctx.setLineDash([2, 2]);
+      ctx.beginPath();
+      ctx.moveTo(cluster.x, M.top);
+      ctx.lineTo(cluster.x, M.top + plotH);
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = style.color;
+      ctx.beginPath();
+      ctx.arc(cluster.x, M.top, cluster.items.length > 1 ? 4 : 3, 0, Math.PI * 2);
+      ctx.fill();
+      markerHitAreas.push({ x: cluster.x, y: M.top, items: cluster.items });
+    }
+  }
+
+  // Nearest marker cluster to a cursor position, or null if none within hit tolerance.
+  function markerAt(clientX, clientY) {
+    if (!markerHitAreas.length) return null;
+    const rect = canvas.getBoundingClientRect();
+    const cx = clientX - rect.left, cy = clientY - rect.top;
+    let best = null, bestD = Infinity;
+    for (const m of markerHitAreas) {
+      const d = Math.sqrt((m.x - cx) ** 2 + (m.y - cy) ** 2);
+      if (d < bestD) { bestD = d; best = m; }
+    }
+    return best && bestD <= 8 ? best : null;
   }
 
   // Per-turn delta bars. Bars widen automatically when there are few points (low time ranges) for
@@ -277,18 +360,29 @@ export function createChart({ onBarClick, onSessionClick, getSessionById }) {
     return best && bestD <= tol ? best : null;
   }
 
-  function redraw(points, threshold, cumulativeConcern, view) {
+  function redraw(points, threshold, cumulativeConcern, view, markers) {
     curPoints = points;
     curThreshold = threshold;
     if (cumulativeConcern != null) curCumulativeConcern = cumulativeConcern;
+    if (markers != null) curMarkers = markers;
     drawTimeline(curPoints, curThreshold);
     if (view) updatePanHint(view);
   }
 
-  // Map cursor to the nearest drawn bar/point: show a tooltip AND highlight it.
+  // Map cursor to the nearest drawn bar/point: show a tooltip AND highlight it. Marker clusters take
+  // priority over data-bar hover when both are near the cursor, since a marker hover is a more
+  // deliberate hit (small fixed-size dot) than the wide data-bar hit area.
   function onTimelineHover(e) {
-    if (panState.dragging) { tip.style.display = "none"; return; }
+    if (panState.dragging) { tip.style.display = "none"; markertip.style.display = "none"; return; }
     const rect = canvas.getBoundingClientRect();
+    const markerHit = markerAt(e.clientX, e.clientY);
+    if (markerHit) {
+      tip.style.display = "none";
+      if (hoverIdx !== -1) { hoverIdx = -1; drawTimeline(curPoints, curThreshold); }
+      showMarkerTip(markerHit, rect);
+      return;
+    }
+    markertip.style.display = "none";
     const best = barAt(e.clientX, e.clientY);
     const newIdx = best ? best.idx : -1;
     if (newIdx !== hoverIdx) { hoverIdx = newIdx; drawTimeline(curPoints, curThreshold); }
@@ -334,6 +428,30 @@ export function createChart({ onBarClick, onSessionClick, getSessionById }) {
     const left = best.x + tipW + 14 > rect.width ? best.x - tipW - 8 : best.x + 8;
     tip.style.left = Math.max(0, left) + "px";
     tip.style.top = Math.max(0, Math.min(best.y, rect.height - tip.offsetHeight - 4)) + "px";
+  }
+
+  // Marker hover tooltip: title, timestamp, SHA, packages/skills, and expected metric (plan: "hover
+  // shows title, timestamp, SHA, packages/skills, and expected metric"). A clustered hover shows
+  // every marker in the cluster, one block per marker.
+  function showMarkerTip(hit, rect) {
+    const nodes = [];
+    for (const marker of hit.items) {
+      const style = markerStyle(marker);
+      nodes.push(tooltipHead(marker.title, { color: style.color }));
+      nodes.push(tooltipRow("type:", marker.type));
+      nodes.push(tooltipRow("when:", marker.ts.slice(0, 19).replace("T", " ")));
+      if (marker.sha) nodes.push(tooltipRow("sha:", marker.sha));
+      if (marker.packages?.length) nodes.push(tooltipRow("packages:", marker.packages.join(", ")));
+      if (marker.skills?.length) nodes.push(tooltipRow("skills:", marker.skills.join(", ")));
+      if (marker.metric) nodes.push(tooltipRow("metric:", marker.metric + (marker.expected_direction ? " (expect " + marker.expected_direction + ")" : "")));
+    }
+    nodes.push(tooltipRow("click", "for marker detail"));
+    markertip.replaceChildren(...nodes);
+    markertip.style.display = "block";
+    const tipW = markertip.offsetWidth;
+    const left = hit.x + tipW + 14 > rect.width ? hit.x - tipW - 8 : hit.x + 8;
+    markertip.style.left = Math.max(0, left) + "px";
+    markertip.style.top = Math.max(0, hit.y) + "px";
   }
 
   // --- pan (drag the chart to view earlier/later) -------------------------------------------------
@@ -385,6 +503,13 @@ export function createChart({ onBarClick, onSessionClick, getSessionById }) {
     // any click on a button or table — which this window-level mouseup also receives — from opening a
     // bar modal.
     if (pressedOnCanvas && e.target === canvas && panState.distMoved < 4) {
+      const markerHit = markerAt(e.clientX, e.clientY);
+      if (markerHit && onMarkerClick) {
+        // A cluster opens the first marker's detail — the tooltip already showed every marker in the
+        // cluster, and the plan's "click opens marker detail" is scoped to one marker at a time.
+        onMarkerClick(markerHit.items[0]);
+        return;
+      }
       const best = barAt(e.clientX, e.clientY);
       if (best) {
         if (chartMode === "cumulative" && best.sessId) {
@@ -400,6 +525,7 @@ export function createChart({ onBarClick, onSessionClick, getSessionById }) {
   canvas.addEventListener("mousemove", (e) => onTimelineHover(e));
   canvas.addEventListener("mouseleave", () => {
     tip.style.display = "none";
+    markertip.style.display = "none";
     if (hoverIdx !== -1) { hoverIdx = -1; drawTimeline(curPoints, curThreshold); }
   });
 

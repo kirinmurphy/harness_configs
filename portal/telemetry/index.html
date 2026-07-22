@@ -16,6 +16,18 @@
           <span class="flabel">source</span>
         </div>
       </div>
+      <!-- Phase 6 global filter bar: model/repo/experiment on top of the existing time/harness
+           window. Compact selectors + active-filter-count + clear, per the plan's "Hybrid
+           filtering" design (high-cardinality refinement stays in the Analysis explorer, not here). -->
+      <div class="ranges" id="cohortfilt">
+        <span class="flabel">cohort</span>
+        <select id="modelfilt" data-slot="modelfilt"><option value="">all models</option></select>
+        <select id="repofilt" data-slot="repofilt"><option value="">all repos</option></select>
+        <select id="markerfilt" data-slot="markerfilt"><option value="">no marker comparison</option></select>
+        <span class="pan" id="cohortsummary"></span>
+        <button class="linkbtn" id="cohortclear" style="display: none">clear</button>
+        <button class="linkbtn" id="openmarkermodal">+ mark change ›</button>
+      </div>
     </div>
     <div class="page-meta stat-row" id="meta"></div>
     <main>
@@ -66,6 +78,7 @@
         <div class="chartwrap">
           <canvas id="timeline"></canvas>
           <div class="tooltip" id="tooltip"></div>
+          <div class="markertip" id="markertip"></div>
           <div class="loadoverlay" id="loadoverlay">
             <span class="spinner"></span> computing…
           </div>
@@ -81,6 +94,14 @@
           the chat</span
         >
       </h2>
+      <section class="panel" id="testeffpanel" style="display: none">
+        <h2>testing efficiency</h2>
+        <div id="testefficiency"></div>
+        <div class="legend">
+          full vs. targeted test activity, redundant reruns, and how much of
+          captured tool time goes to testing
+        </div>
+      </section>
       <section class="panel" id="qualitypanel" style="display: none">
         <h2>data quality warnings</h2>
         <div id="qualitywarnings"></div>
@@ -150,13 +171,19 @@
           </div>
         </section>
         <section class="panel">
-          <h2>package cost &amp; regression</h2>
+          <h2>package cost &amp; regression (exploratory)</h2>
           <div id="packagecost"></div>
           <div id="regression"></div>
           <div class="legend">
-            per package: avg tokens/call · regression compares the earlier vs
-            later half (↑ = got more expensive)
+            per package: avg tokens/call · midpoint regression compares the
+            earlier vs later half of ALL data (↑ = got more expensive) — not
+            tied to any specific change; select a marker in the cohort filter
+            above for a marker-relative comparison instead
           </div>
+        </section>
+        <section class="panel" id="markercomparisonpanel" style="display: none">
+          <h2>marker-relative comparison</h2>
+          <div id="markercomparison"></div>
         </section>
       </details>
 
@@ -188,6 +215,44 @@
         <section class="panel">
           <h2>spike vs normal</h2>
           <div id="comparison"></div>
+        </section>
+      </details>
+
+      <!-- Analysis explorer (plan: "Add a collapsed-by-default or drawer-based explorer accessible
+           from every insight and detail panel"): high-cardinality cohort-A/cohort-B or marker-
+           relative comparison, kept out of the always-visible global filter bar. Reachable via any
+           insight/finding row's future "open analysis" action (Phase 7) or directly via this
+           details block. -->
+      <details class="detailsblock" id="analysisexplorer">
+        <summary>
+          ⑦ analysis explorer
+          <span class="sub">compare two cohorts, or before/after a marker, on any registry metric</span>
+        </summary>
+        <section class="panel">
+          <h2>metric</h2>
+          <select id="explorer-metric"></select>
+          <div class="legend">choose a metric from the shared registry — the same formula the CLI report and every alert use</div>
+        </section>
+        <section class="panel">
+          <h2>comparison mode</h2>
+          <div class="ranges" id="explorer-mode">
+            <button data-explorer-mode="marker" class="active">marker-relative</button>
+            <button data-explorer-mode="cohorts">cohort A vs cohort B</button>
+          </div>
+          <div id="explorer-marker-controls">
+            <label>marker <select id="explorer-marker"></select></label>
+          </div>
+          <div id="explorer-cohort-controls" style="display: none">
+            <label>cohort A harness <select id="explorer-a-harness"><option value="">any</option></select></label>
+            <label>cohort B harness <select id="explorer-b-harness"><option value="">any</option></select></label>
+          </div>
+          <div class="modalactions">
+            <button id="explorer-run">run comparison</button>
+          </div>
+        </section>
+        <section class="panel">
+          <h2>result</h2>
+          <div id="explorer-result"></div>
         </section>
       </details>
     </main>
@@ -295,6 +360,47 @@
       <dl id="modalbody"></dl>
       <div class="modalactions" id="modalactions"></div>
       <div class="modalextra" id="modalextra"></div>
+    </dialog>
+    <!-- Phase 6: create-marker dialog, reachable from the cohort filter bar's "+ mark change" button
+         and from any insight/finding's future "mark change" action (Phase 7). Plain form fields —
+         no client-side marker logic, the CLI's validation rules are re-enforced server-side by
+         createMarkerFromPortalRequest in telemetry.mjs. -->
+    <dialog id="marker-modal">
+      <button class="closebtn" id="markermodalclose">×</button>
+      <h3>create marker</h3>
+      <div class="sub">markers appear on the timeline and can drive before/after comparisons</div>
+      <form id="markerform" method="dialog">
+        <label>type
+          <select id="markertype">
+            <option value="change">change</option>
+            <option value="note">note</option>
+            <option value="outcome">outcome</option>
+          </select>
+        </label>
+        <label>title <input id="markertitle" type="text" required maxlength="200" /></label>
+        <label>metric (optional) <input id="markermetric" type="text" placeholder="e.g. tokens.total" /></label>
+        <label>expected direction
+          <select id="markerdirection">
+            <option value="">(none)</option>
+            <option value="decrease">decrease</option>
+            <option value="increase">increase</option>
+            <option value="no-change">no-change</option>
+          </select>
+        </label>
+        <label id="markerstatuswrap" style="display: none">status
+          <select id="markerstatus">
+            <option value="successful">successful</option>
+            <option value="partial">partial</option>
+            <option value="failed">failed</option>
+            <option value="abandoned">abandoned</option>
+            <option value="unknown">unknown</option>
+          </select>
+        </label>
+        <div class="modalactions">
+          <button type="submit" id="markersubmit">create marker</button>
+        </div>
+        <div class="item-err" id="markererr"></div>
+      </form>
     </dialog>
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/telemetry/app.js" type="module"></script>

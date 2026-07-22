@@ -82,3 +82,53 @@ export function clip(str, n) {
 export function sessionById(id, sessions) {
   return sessions.find((s) => s.session_id === id) || null;
 }
+
+// --- Phase 6: global filter <-> URL state -------------------------------------------------------
+// The view object app.js keeps in memory: { rangeMs, panEnd, harness, model, repo, markerId }.
+// Serialized into the URL so a filtered analysis can be bookmarked/copied/restored after reload
+// (plan: "Filters must serialize into the URL so a filtered analysis can be copied, bookmarked, and
+// restored after reload"). Keys are terse (matching the server's own ?range/&end/&harness query
+// params) so a bookmarked URL and the fetch querystring share the same vocabulary.
+
+const VIEW_URL_KEYS = { rangeMs: "range", panEnd: "end", harness: "harness", model: "model", repo: "repo", markerId: "marker_id" };
+
+export function viewToSearchParams(view) {
+  const params = new URLSearchParams();
+  for (const [viewKey, urlKey] of Object.entries(VIEW_URL_KEYS)) {
+    const value = view[viewKey];
+    if (value != null && value !== "") params.set(urlKey, String(value));
+  }
+  return params;
+}
+
+// Reads the current view state out of a URLSearchParams (or the page's own location.search).
+// Numeric fields (rangeMs/panEnd) fall back to null on anything non-finite, matching the server's
+// own tolerant parsing of ?range=/&end=.
+export function viewFromSearchParams(params) {
+  const rangeMs = params.has("range") ? Number(params.get("range")) : null;
+  const panEnd = params.has("end") ? Number(params.get("end")) : null;
+  return {
+    rangeMs: Number.isFinite(rangeMs) && rangeMs > 0 ? rangeMs : null,
+    panEnd: Number.isFinite(panEnd) ? panEnd : null,
+    harness: params.get("harness") || null,
+    model: params.get("model") || null,
+    repo: params.get("repo") || null,
+    markerId: params.get("marker_id") || null,
+  };
+}
+
+// Pushes the current view into the URL without a page navigation (replaceState — filter changes are
+// not separate history entries, matching how the existing range/harness buttons already behave).
+export function syncViewToUrl(view) {
+  const params = viewToSearchParams(view);
+  const qs = params.toString();
+  const url = qs ? `${location.pathname}?${qs}` : location.pathname;
+  history.replaceState(null, "", url);
+}
+
+// Count of active cohort dimensions in the view, for the "active-filter count" the plan's global
+// filter bar requires. Excludes rangeMs/panEnd (those have their own always-visible range buttons)
+// and counts only the Phase 6 additions: harness/model/repo/markerId.
+export function activeFilterCountFromView(view) {
+  return ["harness", "model", "repo", "markerId"].filter((key) => view[key] != null && view[key] !== "").length;
+}

@@ -1,7 +1,8 @@
 /* Breakpoints used on this page — kept to these two values everywhere below (no build step here,
  * so no @custom-media/var() substitution in media queries; consolidating to a fixed pair and
  * reusing them is the plain-CSS equivalent):
- *   680px  — narrow: lifecycle tabs collapse to a dropdown selector.
+ *   765px  — narrow: lifecycle tabs collapse to a dropdown selector. Set ~50px above the point
+ *            tabs would wrap to 2 lines, so the dropdown swap happens before wrapping occurs.
  *   960px  — wide: drawer/root-form/filter-row go single-column below it; the plan card's status
  *            section becomes a fixed 200px right-side column at/above it.
  */
@@ -478,6 +479,23 @@ dialog#skill-modal::backdrop {
     "actions"
     "status";
   row-gap: 4px;
+  cursor: pointer;
+}
+/* Whole card is the click surface (see plan-card.js) — hover feedback lives here instead of on
+ * the title/description individually. Title still underlines on hover so it keeps reading as the
+ * primary link; description doesn't need its own underline since it's not link-styled text.
+ * :hover:not(:has(...)) suppresses the feedback when the pointer is over a nested widget (priority
+ * dropdown, action buttons) — hovering those doesn't open the card, so they shouldn't look like
+ * they will. */
+.plan-card:hover:not(:has(button:hover, option-dropdown:hover)) {
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel));
+}
+.plan-card:hover:not(:has(button:hover, option-dropdown:hover)) .title-link {
+  text-decoration: underline;
+}
+.plan-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .plan-card h3 {
   grid-area: title;
@@ -531,8 +549,6 @@ dialog#skill-modal::backdrop {
   gap: 8px;
 }
 .title-link {
-  all: unset;
-  cursor: pointer;
   color: inherit;
   font: inherit;
   flex: 1 1 auto;
@@ -540,13 +556,6 @@ dialog#skill-modal::backdrop {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.title-link:hover {
-  text-decoration: underline;
-}
-.title-link:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 .meta-line,
 .description-line {
@@ -556,21 +565,8 @@ dialog#skill-modal::backdrop {
 }
 .description-line {
   color: var(--ink);
-  background: none;
-  border: none;
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-  padding: 0;
-  display: block;
+  margin: 0;
   width: 100%;
-}
-.description-line:hover {
-  text-decoration: underline;
-}
-.description-line:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 .priority-slot {
   display: flex;
@@ -974,7 +970,7 @@ option-dropdown {
 .lifecycle-dropdown-mount .dropdown-menu {
   width: 100%;
 }
-@media (max-width: 680px) {
+@media (max-width: 765px) {
   .lifecycle-tabs {
     display: none;
   }

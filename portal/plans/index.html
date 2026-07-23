@@ -311,18 +311,10 @@
     <template id="tpl-plan-card">
       <article class="plan-card">
         <h3 class="card-header-row">
-          <button
-            type="button"
-            class="title-link"
-            data-slot="title-link"
-          ></button>
+          <span class="title-link" data-slot="title-link"></span>
           <div class="priority-slot" data-slot="priority"></div>
         </h3>
-        <button
-          type="button"
-          class="description-line"
-          data-slot="description"
-        ></button>
+        <p class="description-line" data-slot="description"></p>
         <div class="chips" data-slot="chips"></div>
         <div class="card-actions" data-slot="actions"></div>
         <div class="status-section" data-slot="status">

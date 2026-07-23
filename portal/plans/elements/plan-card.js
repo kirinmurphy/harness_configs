@@ -1,7 +1,8 @@
 // <plan-card> — set .record (plan record) and .actions (cardActions bag: onOpen, onCopyPath,
 // onCopyContext, onPlanDocsStart, planDocsEnabled, onError) as properties right after creation,
-// then append to the DOM. Title text is a link that triggers onOpen; builds the chip row and
-// action-button row from the two properties.
+// then append to the DOM. The whole card triggers onOpen on click, except interactive widgets
+// (priority dropdown, action buttons) inside it; builds the chip row and action-button row from
+// the two properties.
 import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
 
 // Card shows a shortened preview; full text (up to 500 chars) still lives in plan.excerpt
@@ -70,6 +71,10 @@ const PRIORITY_OPTIONS = [
   ["low", "low"],
   ["none", "none"],
 ];
+
+// Priority no longer applies once a plan is done — completed/archived plans keep the field on
+// the record for history, but the card shouldn't offer to edit it.
+const LIFECYCLES_WITHOUT_PRIORITY = new Set(["completed", "archived"]);
 
 function renderPriorityDropdown(record, cardActions) {
   const dropdown = document.createElement("option-dropdown");
@@ -164,15 +169,13 @@ class PlanCardElement extends HTMLElement {
         : []),
       chip(plan.reviewState, plan.reviewState === "possibly-stale" ? "warn" : ""),
     );
-    node.querySelector("[data-slot=priority]").append(renderPriorityDropdown(record, cardActions));
+    if (!LIFECYCLES_WITHOUT_PRIORITY.has(plan.lifecycle)) {
+      node.querySelector("[data-slot=priority]").append(renderPriorityDropdown(record, cardActions));
+    }
     node.querySelector("[data-slot=chips]").append(
       warnings ? chip(`${warnings} warnings`, "warn") : chip("valid", "ok"),
     );
-    const titleLink = node.querySelector("[data-slot=title-link]");
-    titleLink.textContent = plan.title;
-    titleLink.addEventListener("click", () => cardActions.onOpen(record.key));
-    const descriptionEl = node.querySelector("[data-slot=description]");
-    descriptionEl.addEventListener("click", () => cardActions.onOpen(record.key));
+    node.querySelector("[data-slot=title-link]").textContent = plan.title;
     node.querySelector("[data-slot=actions]").append(
       actionButton("Copy path", () => cardActions.onCopyPath(plan.relativePath), onError),
       actionButton("Copy Context", () => cardActions.onCopyContext(record), onError),
@@ -180,6 +183,25 @@ class PlanCardElement extends HTMLElement {
         ? [actionButton("/plan-docs start", () => cardActions.onPlanDocsStart(record.key), onError)]
         : []),
     );
+    // Whole card is the click surface now (not just title/description text). Clicks/keypresses
+    // that land on an interactive widget — priority dropdown, action buttons — are ignored here
+    // so they only do their own thing; everywhere else on the card opens the plan. tabindex+role
+    // make the card itself keyboard-reachable now that title/description are plain text, not
+    // buttons.
+    node.tabIndex = 0;
+    node.setAttribute("role", "button");
+    const isInteractiveTarget = (event) =>
+      event.target.closest("button, option-dropdown, a, input, select");
+    node.addEventListener("click", (event) => {
+      if (isInteractiveTarget(event)) return;
+      cardActions.onOpen(record.key);
+    });
+    node.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (isInteractiveTarget(event)) return;
+      event.preventDefault();
+      cardActions.onOpen(record.key);
+    });
     this.replaceChildren(node);
   }
 }

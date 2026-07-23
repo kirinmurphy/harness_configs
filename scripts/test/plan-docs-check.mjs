@@ -198,6 +198,50 @@ Run targeted checks.
   assert.equal(portalSnapshot.plans[0].absolutePath, undefined);
   assert.equal(portalSnapshot.plans[0].repository.root, undefined);
 
+  // Regression: planDocsPackage.enabled must track the package's real live-enabled state
+  // (buildPackageLiveState, same source config.mjs's readConfigSnapshot uses), not the raw
+  // catalog entry — the catalog entry never carries a `.status`/`.catalogStatus` field at all, so
+  // reading those directly off it (the previous implementation) always evaluated to `enabled:
+  // false` regardless of whether the package was actually enabled.
+  {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-plan-docs-home-"));
+    const cliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "scripts", "cli", "main.mjs");
+    fs.mkdirSync(path.join(homeDir, ".claude"), { recursive: true });
+    fs.mkdirSync(path.join(homeDir, ".codex"), { recursive: true });
+    fs.writeFileSync(path.join(homeDir, ".claude", "settings.json"), "{}");
+    fs.writeFileSync(path.join(homeDir, ".codex", "config.toml"), "");
+    const env = {
+      ...process.env,
+      HOME: homeDir,
+      ROBOREPO_STATE_DIR: path.join(homeDir, ".roborepo"),
+      ROBOREPO_STATE_ROOT: path.join(homeDir, ".roborepo"),
+      ROBOREPO_SKIP_MCP: "1",
+    };
+    const cwd = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+    const readSnapshotEnabled = () => {
+      const result = spawnSync(process.execPath, [
+        "-e",
+        "import('./scripts/cli/plans.mjs').then((m) => { process.stdout.write(JSON.stringify(m.loadPlansSnapshot().planDocsPackage)); })",
+      ], { cwd, env, encoding: "utf8" });
+      assert.equal(result.status, 0, result.stderr);
+      return JSON.parse(result.stdout);
+    };
+
+    const beforeEnable = readSnapshotEnabled();
+    assert.equal(beforeEnable.enabled, false, "plan-docs starts disabled in a fresh HOME");
+
+    spawnSync(process.execPath, [cliPath, "enable", "plan-docs"], { env, stdio: "ignore" });
+    const afterEnable = readSnapshotEnabled();
+    assert.equal(afterEnable.enabled, true, "planDocsPackage.enabled reflects the real live-enabled state after `roborepo enable plan-docs`");
+
+    spawnSync(process.execPath, [cliPath, "disable", "plan-docs"], { env, stdio: "ignore" });
+    const afterDisable = readSnapshotEnabled();
+    assert.equal(afterDisable.enabled, false, "planDocsPackage.enabled reflects disabled state after `roborepo disable plan-docs`");
+
+    fs.rmSync(homeDir, { recursive: true, force: true });
+  }
+
   // --- repository discovery traversal (recursive walk rewrite) ---------------------------------
   const traversalRoot = path.join(tempRoot, "traversal");
 

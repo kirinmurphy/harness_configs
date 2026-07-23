@@ -4,80 +4,84 @@
   <body>
     {{CHROME}}
     <section id="package-banner" class="package-banner" hidden></section>
-    <section class="control-bar" id="control-bar" hidden>
-      <div class="control-bar-row">
-        <span class="repo-count">
-          Monitoring
-          <span id="plans-count-text"><strong>0</strong> Plans</span>
-          in
-          <span id="repos-count-text"><strong>0</strong> Repos</span>
-          <button type="button" class="control-underline" id="roots-toggle">
-            update
-          </button>
-        </span>
-        <button
-          type="button"
-          class="control-item control-item-action"
-          id="filters-toggle"
-        >
-          <svg
-            class="control-icon"
-            viewBox="0 0 16 16"
-            fill="none"
-            aria-hidden="true"
+    <div id="plans-header" hidden>
+      <section class="control-bar" id="control-bar">
+        <div class="control-bar-row">
+          <span class="repo-count">
+            Monitoring
+            <span id="plans-count-text"><strong>0</strong> Plans</span>
+            in
+            <span id="repos-count-text"><strong>0</strong> Repos</span>
+            <button type="button" class="control-underline" id="roots-toggle">
+              update
+            </button>
+          </span>
+          <button
+            type="button"
+            class="control-item control-item-action"
+            id="filters-toggle"
           >
-            <path
-              d="M2 3h12L9.5 8.2v4.3L6.5 14V8.2L2 3Z"
-              stroke="currentColor"
-              stroke-width="1.3"
-              stroke-linejoin="round"
-            />
-          </svg>
-          <span class="control-underline">Filters</span>
-        </button>
-      </div>
-      <div id="roots-panel-mount" hidden></div>
-      <div class="filter-chips" id="filter-chips"></div>
-      <div class="filters-body" id="filters-body" hidden>
-        <div class="filter-row filter-row-search">
-          <label for="search">Search</label>
-          <div class="search-field">
-            <input id="search" type="search" placeholder="search plans" />
+            <svg
+              class="control-icon"
+              viewBox="0 0 16 16"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M2 3h12L9.5 8.2v4.3L6.5 14V8.2L2 3Z"
+                stroke="currentColor"
+                stroke-width="1.3"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span class="control-underline">Filters</span>
+          </button>
+        </div>
+        <div id="roots-panel-mount" hidden></div>
+        <div class="filter-chips" id="filter-chips"></div>
+        <div class="filters-body" id="filters-body" hidden>
+          <div class="filter-row filter-row-search">
+            <label for="search">Search</label>
+            <div class="search-field">
+              <input id="search" type="search" placeholder="search plans" />
+            </div>
+          </div>
+          <div class="filter-row">
+            <label for="repository">Repository</label>
+            <select id="repository"></select>
+          </div>
+          <div class="filter-row">
+            <label for="priority">Priority</label>
+            <select id="priority"></select>
+          </div>
+          <div class="filter-row">
+            <label for="blocked">Blocked</label>
+            <select id="blocked"></select>
+          </div>
+          <div class="filter-row">
+            <label for="readiness">Readiness</label>
+            <select id="readiness"></select>
+          </div>
+          <div class="filter-row">
+            <label for="review">Review</label>
+            <select id="review"></select>
+          </div>
+          <div class="filter-row">
+            <label for="health">Health</label>
+            <select id="health"></select>
+          </div>
+          <div class="filter-row filter-row-actions">
+            <button id="refresh" type="button">Refresh</button>
+            <button id="next-prompt" type="button" hidden>
+              Copy next prompt
+            </button>
+            <button id="filters-done" type="button">Done</button>
           </div>
         </div>
-        <div class="filter-row">
-          <label for="repository">Repository</label>
-          <select id="repository"></select>
-        </div>
-        <div class="filter-row">
-          <label for="priority">Priority</label>
-          <select id="priority"></select>
-        </div>
-        <div class="filter-row">
-          <label for="blocked">Blocked</label>
-          <select id="blocked"></select>
-        </div>
-        <div class="filter-row">
-          <label for="readiness">Readiness</label>
-          <select id="readiness"></select>
-        </div>
-        <div class="filter-row">
-          <label for="review">Review</label>
-          <select id="review"></select>
-        </div>
-        <div class="filter-row">
-          <label for="health">Health</label>
-          <select id="health"></select>
-        </div>
-        <div class="filter-row filter-row-actions">
-          <button id="refresh" type="button">Refresh</button>
-          <button id="next-prompt" type="button" hidden>
-            Copy next prompt
-          </button>
-          <button id="filters-done" type="button">Done</button>
-        </div>
-      </div>
-    </section>
+      </section>
+      <nav class="lifecycle-tabs" id="lifecycle-tabs" role="tablist"></nav>
+      <div class="lifecycle-dropdown-mount" id="lifecycle-dropdown-mount"></div>
+    </div>
     <div id="toast" class="toast" hidden></div>
     <main>
       {{LOADING}}
@@ -111,8 +115,6 @@
         </div>
       </div>
       <section id="warnings" class="warnings" hidden></section>
-      <nav class="lifecycle-tabs" id="lifecycle-tabs" role="tablist"></nav>
-      <div class="lifecycle-dropdown-mount" id="lifecycle-dropdown-mount"></div>
       <section id="groups" class="groups"></section>
     </main>
     <dialog id="info-modal" aria-labelledby="info-modal-title">

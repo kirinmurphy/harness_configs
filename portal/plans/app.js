@@ -45,7 +45,7 @@ const warningsEl = document.getElementById("warnings");
 const bannerEl = document.getElementById("package-banner");
 const drawer = document.getElementById("drawer");
 const nextPrompt = document.getElementById("next-prompt");
-const controlBarEl = document.getElementById("control-bar");
+const plansHeaderEl = document.getElementById("plans-header");
 const filtersToggleEl = document.getElementById("filters-toggle");
 const filtersBodyEl = document.getElementById("filters-body");
 const filterChipsEl = document.getElementById("filter-chips");
@@ -119,7 +119,7 @@ function applySnapshot(snapshot) {
   flushDirtyState();
   portalSetUpdatedAt();
   rootsPanel.render(snapshot.settings.discoveryRoots);
-  controlBarEl.hidden = snapshot.settings.discoveryRoots.length === 0;
+  plansHeaderEl.hidden = snapshot.settings.discoveryRoots.length === 0;
   setPluralCount(plansCountTextEl, snapshot.plans.length, "Plan");
   setPluralCount(reposCountTextEl, snapshot.repositories.length, "Repo");
   populateFilters(snapshot);

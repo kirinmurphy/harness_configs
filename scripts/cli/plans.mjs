@@ -1,4 +1,5 @@
-import { loadPackageCatalog } from "./package-catalog.mjs";
+import { loadPackageCatalog, isPackageAvailable } from "./package-catalog.mjs";
+import { buildPackageLiveState } from "./package-probes.mjs";
 import { stateRoot } from "./paths.mjs";
 import {
   buildPlanSnapshot,
@@ -51,14 +52,20 @@ export function refreshPlans() {
   return loadPlansSnapshot();
 }
 
+// Matches config.mjs's readConfigSnapshot(): the raw catalog entry only carries the package's
+// static definition (id/label/lifecycle/etc), never its live enabled/disabled state — that comes
+// from buildPackageLiveState(), which actually probes installed rules/hooks/permissions on disk.
 function planDocsPackageState() {
-  const pkg = loadPackageCatalog({ includeUnavailable: true }).find((item) => item.id === "plan-docs");
+  const allPackages = loadPackageCatalog({ includeUnavailable: true });
+  const pkg = allPackages.find((item) => item.id === "plan-docs");
   if (!pkg) return { available: false, enabled: false, status: "missing" };
+  const available = isPackageAvailable(pkg);
+  const liveState = available ? buildPackageLiveState([pkg]).get(pkg.id) : null;
   return {
-    available: pkg.catalogStatus !== "unavailable",
-    enabled: pkg.status === "enabled",
-    status: pkg.status || "disabled",
-    message: pkg.message || "",
+    available,
+    enabled: liveState?.desired || false,
+    status: liveState?.status || "disabled",
+    message: "",
   };
 }
 

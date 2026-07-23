@@ -1,7 +1,7 @@
 ---
 id: telemetry-analysis-io-performance
 priority: high
-next_action: Tier 1 + Tier 2 shipped and verified; only optional Tier 1.5 (single-pass analyze) remains — pursue only if the ~200-270ms background recompute is ever felt
+next_action:
 blocked_by: []
 depends_on: []
 related:
@@ -163,15 +163,16 @@ Tier 2 depends on Tier 1: the debounced recompute reads events cheaply, so the
 only main-thread cost per refresh is the ~183ms analyze, happening at most once
 per debounce interval and between requests rather than inside one.
 
-### Optional Tier 1.5 — analyze pass reduction (measure first)
+### Tier 1.5 — bounded analyze pass reduction
 
 `analyzeTelemetry` makes ~15 passes over the captures array. Folding the
 independent single-pass aggregations (the `topBy` calls, `usageWindows`,
 per-tool/group tallies) into one loop could cut the ~183ms materially. This is a
 pure-function optimization with strong test coverage available
-(`telemetry-correctness-check.mjs`). Treat as optional: only pursue if, after
-Tier 1+2, the ~183ms analyze is still the felt bottleneck. Guard any rewrite with
-before/after output equality on a real spool.
+(`telemetry-correctness-check.mjs`). Tier 1.5 deliberately stayed bounded:
+consolidate the low-risk independent summaries into one capture index, but leave
+deeper result-cost helpers alone because they have more subtle ordering and
+rounding behavior for less certain gain.
 
 ## Implementation plan
 
@@ -197,9 +198,13 @@ before/after output equality on a real spool.
 - [x] Tier 2 verification: default `/api/data` served in **~0.4ms** warm; nav to
       other portal pages instant while an on-demand windowed compute is in flight;
       append → `capture_count` increments after the debounce refresh (correctness).
-- [ ] (Optional) Tier 1.5: single-pass aggregation in `analyzeTelemetry`, guarded
-      by output-equality against the correctness check. Deferred — analyze is
-      ~180-270ms and now off the hot path; pursue only if still felt.
+- [x] Tier 1.5: bounded single-pass aggregation in `analyzeTelemetry`. A new
+      `indexScopedEvents` pass builds `captures` and harnesses together, and
+      `indexCaptures` builds top repos/tools/MCP/events, sorted timeline rows,
+      latest Codex rate limits, and the usage-window clock in one pass. Kept
+      the deeper result-cost helpers (`toolCost`, `groupCost`, `spikeAnatomy`,
+      `packageCost`, `regression`, `detectLoops`) separate to avoid a broader
+      behavioral rewrite with weaker payoff.
 - [x] Documented the store + debounced-refresh model (this plan's Results +
       `docs/reference/services/portal.md`).
 - [x] Extracted the incremental byte-tail read (offset advance, partial-line hold,
@@ -217,17 +222,30 @@ before/after output equality on a real spool.
 | Spool read+parse (steady state, no change) | ~450-590ms full re-read | **~1.3ms** incremental |
 | Default `/api/data` response (warm) | ~100ms (per-request stringify) + read | **~0.4ms** (cached serialized JSON) |
 | Nav to another page during a compute | queued behind the ~780ms block | **instant** (~0.5ms) |
+| Analyzer summary passes | separate capture filter, harness map, topBy x4, timeline map, rate-limit reverse scan | **one indexed pass** for those summaries |
 
 `analyzeTelemetry` (~180-270ms) and its stringify (~70-100ms) still run on a
 change, but now on the background debounce timer between requests — not inside a
 page/API request. The default view is kept warm proactively, so the request path
 reads a ready serialized report.
 
+## Decision log
+
+- **Tier 1.5 scope:** chose a bounded pass-reduction rather than a full analyzer
+  rewrite. The clear win was consolidating independent summaries that had direct
+  one-to-one replacements. The less clear work was folding cost/regression/loop
+  helpers into the same pass; that would couple currently readable helpers and
+  risk subtle sort or rounding drift. This can still be revisited later if a
+  benchmark shows analyzer CPU is again user-visible.
+
 ## Validation
 
 - `node --check` on every changed `.mjs`.
 - `node scripts/test/telemetry-correctness-check.mjs` passes (report shape/values
   unchanged — this is the guardrail for Tier 1 and any Tier 1.5 work).
+- `telemetry-correctness-check.mjs` now includes `testAnalyzerIndexedSummaries`,
+  pinning the outputs consolidated by Tier 1.5: harnesses, top rollups, timeline
+  ordering, usage-window clock/totals, and latest Codex rate limits.
 - New/updated equality assertion: incremental store == full re-read for the same
   spool state.
 - CI: the three guardrails (`jsonl-tail-check.mjs`, `telemetry-spool-store-check.mjs`,
@@ -258,15 +276,14 @@ reads a ready serialized report.
   JSON → more as live objects). Acceptable for a local single-user tool at
   current scale, but noted as a driver for future spool rotation.
 
-## Open questions
+## Deferred follow-ups
 
-- Debounce interval and max-wait values: what staleness is acceptable for the
-  default view? (Proposed 10-20s quiet, ~60s max-wait — confirm during Tier 2.)
-- Should the in-memory store also back the terminal report path
-  (`readSpoolEvents()` is used by CLI report generation too), or stay
-  server-only? Server-only is simpler and lower-risk initially.
-- Worker thread deferral: revisit only if steady-state analyze (~183ms today)
-  grows past a felt threshold (~1s) as the spool scales. Documented here so the
-  decision is explicit, not forgotten.
-- Spool rotation / compaction as a longer-term lever to cap read+parse and memory
-  growth — out of scope here, but this plan's measurements motivate it.
+- Debounce interval and max-wait shipped as 12s quiet / 60s max-wait. Revisit
+  only if the default dashboard view feels too stale during sustained capture.
+- Keep the in-memory store on the live-server path only. One-shot terminal report
+  and export paths continue using a full read, which is simpler and avoids
+  cross-command process-state assumptions.
+- Worker threads remain deferred. Revisit only if analyzer CPU again becomes
+  user-visible as spool size grows.
+- Spool rotation / compaction remains a separate future lever to cap memory and
+  long-term spool size.

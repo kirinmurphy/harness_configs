@@ -23,6 +23,14 @@ Load a matching skill before the work it governs, not after — and only the ski
 - Final response should include `Verified: <command> -> <pass|fail|blocked>` when verification was run or attempted.
 
 
+## Context Cost
+
+- Before broad searches, estimate result size and search the narrowest likely source first.
+- Do not recursively search home, global caches, session logs, telemetry spools, or generated history unless the user explicitly asks for that scope.
+- For config provenance questions, inspect active process args and known config files before searching logs.
+- When a broad search is necessary, exclude high-volume dirs and cap output with targeted patterns.
+
+
 ## Temporary Files and Cleanup
 
 - For scratch work, scaffolding, or throwaway test repos, create under `$TMPDIR`/`/tmp` with `mktemp -d`, never in the project tree.

@@ -146,13 +146,15 @@ function render(snapshot, { reconcile }) {
 }
 
 function emptyStateNode(snapshot) {
+  if (snapshot.capabilities.discovery === "supported") {
+    return tmpl.emptyState(
+      "No active HTTP apps found",
+      "Refresh after starting a local development server.",
+    );
+  }
   return tmpl.emptyState(
-    snapshot.capabilities.discovery === "supported"
-      ? "No active HTTP apps found"
-      : "Saved projects remain available",
-    snapshot.capabilities.discovery === "supported"
-      ? "Refresh after starting a local development server."
-      : snapshot.capabilities.message,
+    "Saved projects remain available",
+    tmpl.noticeWithDoc(snapshot.capabilities.message),
   );
 }
 

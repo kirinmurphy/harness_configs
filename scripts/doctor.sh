@@ -362,7 +362,7 @@ check_toml "generated/codex/config.toml"
 if command -v uvx >/dev/null 2>&1; then
   ok "uvx available"
 else
-  fail "uvx missing"
+  ok "uvx unavailable; skipped (optional, only needed for jcodemunch/jdocmunch MCP setup)"
 fi
 
 if command -v node >/dev/null 2>&1; then

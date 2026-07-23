@@ -1,11 +1,11 @@
 ---
 id: roborepo-telemetry-events-experiments
 priority: high
-next_action: "Plan complete — all 8 phases implemented, tested (328 passed / 0 failed), and documented; see Phase 8 notes for the recommended-first-experiment validation run and Acceptance Criteria section for the final per-criterion status (all 15 met; no blocked items). One deliberate deferral: no package declares a live telemetry.policies entry yet (Phase 5 notes) — the mechanism is built, validated, and tested, just unused by any real package."
+next_action: ""
 blocked_by: []
 depends_on: []
 related: []
-reviewed_commit:
+reviewed_commit: c1be1dc540b1380f909ed2cdea53e1a792776450
 ---
 
 # Telemetry Events, Experiments, and Actionable Analysis
@@ -334,6 +334,67 @@ the underlying comparison/metric logic it exercises is already covered by
 `telemetry-compare-check.mjs`'s and `telemetry-metrics-check.mjs`'s fixtures, which mirror this same
 scenario shape). Full suite: 328 passed, 0 failed (unchanged from Phase 7 — no test files were added
 in Phase 8, only doc/CLI-report-wiring changes verified not to regress existing assertions).
+
+## Phase 9 notes (post-merge UI polish and plan closure)
+
+Recorded 2026-07-23, closing the plan out after PR #1 merged to `main` (`c1be1dc`).
+
+**Filter bar bugs found and fixed during a user-driven UI review pass** (not a new phase of planned
+work — reactive fixes to the Phase 6 filter bar surfaced by actually using it): the time-range/
+source controls stayed right-aligned instead of sharing a left edge when wrapped to two lines; the
+fix's first attempt targeted a stale `.ranges` selector left over from the `.filter-row` rename and
+silently never applied (caught during this phase's own review pass) — corrected to target
+`.filter-row .pan`. The redundant "filters" label was dropped from the cohort row (both filter rows
+read as filters without it) and the info icon was moved into its own fixed-width gutter, bottom-
+aligned to the cohort row via `align-items:flex-end`. The active-filter count/clear pair could split
+across wrapped lines (`.filter-count-group` now wraps both as one flex item, right-aligned via
+`flex-basis:100%` when it wraps alone). "time range" label shortened to "range"; the marker
+dropdown's default option changed from "no marker comparison" to "all events".
+
+**Real bug, not cosmetic: the marker-relative comparison panel (Phase 6/7's actionable-finding-
+contract UI) was invisible in practice.** `#markercomparisonpanel` lived inside the collapsed-by-
+default "④ cost analysis" `<details>` block — selecting a marker in the global filter bar correctly
+populated `data.marker_comparison` server-side and correctly toggled the panel's own `display`, but
+the ancestor `<details>` stayed closed, so the panel was invisible regardless. This directly
+undermines acceptance criterion 9 ("every alert exposes evidence, cohort, sample size, confidence/
+data-quality, and a concrete next action") — the alert existed but was unreachable without already
+knowing to expand an unrelated collapsed section. Fixed by moving the panel out of tier-4 entirely,
+into its own always-visible section right after the chart (tier 2) — it is a direct result of the
+global filter bar above it, not a raw cost breakdown, so it does not belong gated behind a disclosure
+widget. Also redesigned its content: before/after/change/confidence now render as scannable stat
+tiles (this page's existing `.stat-row`/`.stat-item` language, reused rather than inventing a new
+pattern) instead of one comma-packed sentence, and the data-quality caveats collapse into a
+`<details class="quality-issues">` bullet list instead of a semicolon-joined paragraph.
+
+**Mermaid diagrams in the "view docs" guide popup now render live**, closing a gap the Phase 6 notes
+didn't call out: `docs/guides/telemetry.md`'s mermaid fenced blocks previously rendered as escaped
+source text only (no CDN dependency, so no runtime renderer existed). Vendored `mermaid.min.js`
+(v11.16.0, MIT, `portal/shared/vendor/`) rather than loading from a CDN, keeping the portal
+loopback-only/offline-capable per its existing architecture constraint — `markdown-render.mjs` now
+emits `<pre class="mermaid" data-mermaid-source="...">`, and `doc-guide-modal.js` lazy-loads mermaid
+and renders each block to SVG (theme-matched light/dark), falling back to the escaped source
+untouched if the script fails to load or a diagram fails to parse.
+
+**Merge conflict resolved bringing `main` in before closing the plan:** `portal/plans/index.html` had
+diverged — this branch had refactored the Plans page's control bar onto the shared `.control-panel`/
+`.control-panel-row` classes, while `main` had independently shipped the lifecycle-tabs feature
+(replacing an inline lifecycle `<select>` filter-row with a dedicated tabs nav) on the pre-refactor
+structure. Resolved by taking main's content (lifecycle-tabs nav, dropped the now-redundant
+lifecycle dropdown) with this branch's `.control-panel` class refactor applied on top — verified
+against `styles.css`'s own documented rationale for those classes, not a guess.
+
+Tests: `markdown-render-check.mjs` updated for the new mermaid markup shape and passing;
+`plan-docs-check.mjs` passing after the merge. No new pure-module test files this phase — the UI
+fixes are DOM-rendering/layout code verified via live-server checks (`curl` against a running
+`roborepo serve`, `node --check` on served JS, tag-balance sanity checks), consistent with the
+"no Playwright" verification approach the plan established in Phase 6.
+
+**Closing status:** all 9 phases now implemented, tested, and documented. Acceptance criteria 1-15
+remain met (see Phase 8 notes); this phase's fixes strengthen criterion 9's actual reachability
+rather than changing its status. The one deliberate deferral from Phase 5 stands unchanged: no
+package declares a live `telemetry.policies` entry yet — the mechanism is built, validated, and
+tested, just unused by any real package. Branch `telemetry-events-experiments` merged to `main` via
+PR #1 (`c1be1dc`); worktree and local branch removed post-merge.
 
 ## Current behavior that must be preserved
 

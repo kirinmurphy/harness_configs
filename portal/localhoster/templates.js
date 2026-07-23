@@ -11,6 +11,12 @@ export function notice(text) {
   return el("p", {}, text);
 }
 
+export function noticeWithDoc(text) {
+  const node = el("p", {}, text, " ");
+  node.append(el("a", { href: "/docs/reference/services/localhoster.md", target: "_blank", rel: "noreferrer" }, "Localhoster docs"));
+  return node;
+}
+
 export function group(title, headerEnd, nodes) {
   const node = fill(tpl("tpl-group"), { title });
   const headerEndSlot = node.querySelector("[data-slot=meta]");

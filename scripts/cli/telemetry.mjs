@@ -1044,12 +1044,15 @@ function cachedAnalysisEntry(window, harness, extra = {}) {
   if (hit) return hit;
   const allEvents = readSpoolEventsCached();
   const markers = readMarkers();
-  // Expose every dimension present in the FULL spool (before any filter), so the dashboard can
-  // always render a complete filter list even when a narrower cohort is currently selected.
+  // Filter dropdowns cascade: harness is the top-level split, so the model/repo dropdowns should
+  // only ever offer values that actually co-occur with the selected harness — picking "codex"
+  // must not still list Claude-only models. Harness itself always lists every harness in the full
+  // spool (nothing sits above it to narrow it). Model does not narrow repo, or vice versa — both
+  // sit at the same level under harness — so each is scoped by harness alone, not by each other.
   const availableHarnesses = [...new Set(allEvents.map((e) => e.harness).filter(Boolean))].sort();
-  const availableModels = [...new Set(allEvents.map((e) => e.session?.model).filter(Boolean))].sort();
-  const availableRepos = [...new Set(allEvents.map((e) => e.repo?.label).filter(Boolean))].sort();
   const events = harness ? allEvents.filter((e) => e.harness === harness) : allEvents;
+  const availableModels = [...new Set(events.map((e) => e.session?.model).filter(Boolean))].sort();
+  const availableRepos = [...new Set(events.map((e) => e.repo?.label).filter(Boolean))].sort();
   const windowed = filterByWindow(events, window);
   const cohortFilter = (model || repo) ? { models: model ? [model] : [], repos: repo ? [repo] : [] } : null;
   const report = analyzeTelemetry(windowed, { cohortFilter, markers, markerId, compareMetric: "tokens.total" });

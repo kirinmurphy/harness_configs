@@ -133,7 +133,7 @@ async function load(force, opts) {
   if (data.available_models) updateSelectOptions("modelfilt", data.available_models, view.model);
   if (data.available_repos) updateSelectOptions("repofilt", data.available_repos, view.repo);
   updateMarkerFilter(data.markers || [], data.experiments || []);
-  updateCohortSummary(data.cohort);
+  updateCohortSummary();
   analysisExplorer.refresh({ markers: data.markers || [], metrics: data.available_metrics || [], harnesses: data.available_harnesses || [] });
   renders.renderCauses(data.spike_causes);
   document.body.dataset.threshold = data.spike_threshold || 0;
@@ -204,11 +204,16 @@ function updateMarkerFilter(markers, experiments) {
   document.getElementById("openmarkermodal").dataset.experimentCount = experiments.length;
 }
 
-function updateCohortSummary(cohort) {
-  const el = document.getElementById("cohortsummary");
+// cohort.summary is intentionally NOT shown here: every dimension it could name (model, repo,
+// harness) is already visible in that dimension's own dropdown, so repeating it as a text summary
+// duplicated information rather than adding any. A plain active-filter count is enough to signal
+// "something is narrowed" without restating what's already on screen.
+function updateCohortSummary() {
+  const countEl = document.getElementById("filtercount");
   const clearBtn = document.getElementById("cohortclear");
   const activeCount = activeFilterCountFromView(view);
-  el.textContent = activeCount > 0 ? (cohort?.summary || "") + " (" + activeCount + " active)" : "";
+  countEl.textContent = activeCount > 0 ? activeCount + (activeCount === 1 ? " filter" : " filters") : "";
+  countEl.style.display = activeCount > 0 ? "" : "none";
   clearBtn.style.display = activeCount > 0 ? "" : "none";
 }
 
@@ -261,10 +266,17 @@ document.addEventListener("click", (e) => {
     try { analysisExplorer.openWithFilterState(JSON.parse(openAnalysisBtn.dataset.filterState || "{}")); } catch {}
     return;
   }
-  // Harness filter buttons.
+  // Harness filter buttons. Model/repo dropdowns are scoped to the selected harness (server-side,
+  // see cachedAnalysisEntry's availableModels/availableRepos), so a model or repo picked under a
+  // different harness would no longer be a valid option — reset both rather than leave a stale
+  // selection that silently narrows the request to an empty/contradictory cohort.
   const harnessBtn = e.target.closest("#harnessfilt button[data-harness]");
   if (harnessBtn) {
     view.harness = harnessBtn.dataset.harness === "all" ? null : harnessBtn.dataset.harness;
+    view.model = null;
+    view.repo = null;
+    document.getElementById("modelfilt").value = "";
+    document.getElementById("repofilt").value = "";
     for (const b of document.querySelectorAll("#harnessfilt button")) b.classList.toggle("active", b === harnessBtn);
     load(true, { wipe: true });
     return;
@@ -363,14 +375,20 @@ function closeMarkerModal() {
 document.getElementById("openmarkermodal").addEventListener("click", () => openCreateMarkerModal());
 
 // --- "view docs" popup: renders docs/guides/telemetry.md server-side rather than duplicating its
-// content into this page. Header "docs" link opens at the top; each .infoicon next to a panel
-// heading opens the same popup pre-scrolled to that heading's slug id (data-doc-anchor), via one
-// delegated listener rather than wiring every icon individually. ---------------------------------
+// content into this page. Each <portal-info-icon> next to a panel heading (or the filter bar's own
+// "filters" icon) opens the same popup pre-scrolled to that heading's slug id (data-doc-anchor),
+// via one delegated listener rather than wiring every icon individually — same shared component
+// and aria-expanded contract as /plans' createInfoModal (portal/plans/panels.js). -----------------
 const docModal = createDocGuideModal(document.getElementById("docmodal"), api.fetchTelemetryGuide);
-document.getElementById("opendocs").addEventListener("click", () => docModal.open());
+document.getElementById("docmodal").addEventListener("close", () => {
+  for (const icon of document.querySelectorAll("portal-info-icon[aria-expanded='true']")) {
+    icon.setAttribute("aria-expanded", "false");
+  }
+});
 document.addEventListener("click", (event) => {
-  const trigger = event.target.closest(".infoicon[data-doc-anchor]");
+  const trigger = event.target.closest("portal-info-icon[data-doc-anchor]");
   if (!trigger) return;
+  trigger.setAttribute("aria-expanded", "true");
   docModal.open(trigger.dataset.docAnchor);
 });
 

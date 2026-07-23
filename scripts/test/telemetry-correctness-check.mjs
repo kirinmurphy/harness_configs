@@ -12,6 +12,7 @@ try {
   testClaudeTranscript();
   testClaudeTranscriptFailureText();
   testCodexTranscript();
+  testCodexTranscriptTurnContextModel();
   testAnalyzerWarnings();
   console.log("telemetry correctness checks passed");
 } finally {
@@ -126,6 +127,27 @@ function testCodexTranscript() {
   assert.equal(stats.last_result.tool, "mcp__jcodemunch__get_context_bundle");
   assert.equal(stats.details.codex_reasoning_output_tokens, 40);
   assert.equal(stats.details.codex_rate_limits[0].used_percent, 12.5);
+}
+
+// Newer Codex CLI releases (verified cli_version 0.140.0 against a real transcript) omit `model`
+// from session_meta entirely and instead carry it at turn_context.payload.model — a real transcript
+// on disk exposed this: the session_meta-only fix from an earlier session left every session
+// recorded by a newer Codex CLI with model: null. Both shapes must resolve a model.
+function testCodexTranscriptTurnContextModel() {
+  const file = path.join(tmp, "codex-turn-context.jsonl");
+  writeJsonl(file, [
+    {
+      type: "session_meta",
+      payload: { id: "019f81c1-50fd-7270-b8b3-0b34fc7c083c", cli_version: "0.140.0", model_provider: "openai" },
+    },
+    {
+      type: "turn_context",
+      payload: { turn_id: "019f81c1-e083-7e53-a5c7-31bd6446720a", model: "gpt-5.5", effort: "medium" },
+    },
+  ]);
+
+  const stats = transcriptStats(file, { sessionId: "codex-turn-context-session", collectorDir: tmp });
+  assert.equal(stats.model, "gpt-5.5");
 }
 
 function testAnalyzerWarnings() {

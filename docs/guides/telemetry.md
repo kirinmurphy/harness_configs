@@ -45,13 +45,16 @@ Two different things narrow what you see, and they feed the same cohort:
 | --- | --- | --- |
 | Time range | `time range` row | 1h / 6h / 1d / 1w / all, or drag on the chart to pan |
 | Source | `source` row | Claude only, Codex only, or both |
-| Model | `cohort` row → model dropdown | one model |
-| Repository | `cohort` row → repo dropdown | one repo |
-| Marker | `cohort` row → marker dropdown | before/after a `change` marker instead of a plain filter |
+| Model | `filters` row → model dropdown | one model |
+| Repository | `filters` row → repo dropdown | one repo |
+| Marker | `filters` row → marker dropdown | before/after a `change` marker instead of a plain filter |
+
+Model and repository are scoped to whatever source is selected — pick Codex and the model dropdown
+only offers models actually used by Codex sessions, not Claude's. Switching source resets model and
+repository, since a value picked under one source may not exist under the other.
 
 Every filter serializes into the page URL — a filtered view can be bookmarked or shared and comes
-back exactly as left. A **clear** link appears once anything is active, next to a short summary of
-what's selected.
+back exactly as left. A small count badge and a **clear** link appear once anything is active.
 
 ## Markers
 
@@ -65,7 +68,7 @@ sequenceDiagram
   participant Timeline
   You->>CLI: --type change --title "..." --metric tokens.total --expect decrease
   CLI->>Timeline: marker appears immediately
-  You->>Timeline: pick marker in cohort filter
+  You->>Timeline: pick marker in the filter bar
   Timeline-->>You: before/after comparison
 ```
 
@@ -77,7 +80,7 @@ sequenceDiagram
 | `note` | Free-form timestamped context |
 | `experiment-start` / `experiment-end` | Bookended by `roborepo telemetry experiment start/end` |
 
-**From the UI:** click **"+ mark change"** in the filter bar → title, optional metric, expected
+**From the UI:** click **"+ mark change"** (top-right, below the filter bar) → title, optional metric, expected
 direction → submit. Shows up on the chart immediately.
 
 **From the terminal**, the same thing:
@@ -108,7 +111,7 @@ testing — the panel most likely to surface a debugging-loop problem worth fixi
 
 ### Marker-Relative Comparison
 
-When a marker is selected in the cohort filter, this replaces the exploratory midpoint regression
+When a marker is selected in the filter bar, this replaces the exploratory midpoint regression
 with a real before/after comparison anchored to that specific change.
 
 ## Analysis Explorer

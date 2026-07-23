@@ -216,11 +216,14 @@ function resultText(content) {
 }
 
 function applyCodexEntry(counters, entry) {
-  // session_meta is Codex's one-time session-start entry (unlike Claude, which repeats `model` on
-  // every assistant turn's message.usage) — payload.model is the only place a Codex transcript
-  // states which model is in use, so this must be checked before the event_msg/response_item gate
-  // below returns early for every other entry type.
-  if (entry.type === "session_meta") {
+  // Model location has moved across Codex CLI versions: older releases (verified cli_version
+  // 0.118.0) put it at session_meta.payload.model, a one-time session-start entry; newer releases
+  // (verified 0.140.0) omit it there and instead carry it at turn_context.payload.model, emitted
+  // once per turn (collaboration_mode.settings.model can differ per-turn in some modes, but
+  // payload.model is the turn's actual active model). Check both shapes rather than assuming one —
+  // a transcript recorded by either CLI version must still resolve a model. This must run before
+  // the event_msg/response_item gate below, which returns early for every other entry type.
+  if (entry.type === "session_meta" || entry.type === "turn_context") {
     const model = entry.payload?.model;
     if (typeof model === "string" && model) counters.model = model;
     return null;

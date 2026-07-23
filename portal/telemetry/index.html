@@ -4,7 +4,7 @@
   <body>
     {{CHROME}}
     <div class="filterbar">
-      <div class="ranges" id="ranges">
+      <div class="filter-row" id="ranges">
         <span class="flabel">time range</span>
         <button data-range="3600000">1h</button>
         <button data-range="21600000">6h</button>
@@ -16,27 +16,41 @@
           <span class="flabel">source</span>
         </div>
       </div>
-      <!-- Phase 6 global filter bar: model/repo/experiment on top of the existing time/harness
-           window. Compact selectors + active-filter-count + clear, per the plan's "Hybrid
-           filtering" design (high-cardinality refinement stays in the Analysis explorer, not here). -->
-      <div class="ranges" id="cohortfilt">
-        <span class="flabel">cohort</span>
-        <button class="infoicon" type="button" data-doc-anchor="global-filters" title="view docs" aria-label="view docs">?</button>
-        <select id="modelfilt" data-slot="modelfilt"><option value="">all models</option></select>
-        <select id="repofilt" data-slot="repofilt"><option value="">all repos</option></select>
-        <select id="markerfilt" data-slot="markerfilt"><option value="">no marker comparison</option></select>
-        <span class="pan" id="cohortsummary"></span>
+      <!-- Phase 6 global filter bar: model/repo/marker on top of the existing time/harness window.
+           Compact selectors + active-filter-count + clear, per the plan's "Hybrid filtering" design
+           (high-cardinality refinement stays in the Analysis explorer, not here). One info icon
+           covers the row as a whole ("what do these filters do") — model/repo dropdowns are scoped
+           server-side to the selected source (see cachedAnalysisEntry's availableModels/
+           availableRepos), so picking Codex only ever offers models actually used by Codex sessions. -->
+      <div class="filter-row" id="cohortfilt">
+        <span class="flabel">filters</span>
+        <portal-info-icon
+          id="filters-info"
+          data-doc-anchor="global-filters"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-label="about these filters"
+          title="about these filters"
+        ></portal-info-icon>
+        <select id="modelfilt" data-slot="modelfilt" aria-label="model"><option value="">all models</option></select>
+        <select id="repofilt" data-slot="repofilt" aria-label="repository"><option value="">all repos</option></select>
+        <select id="markerfilt" data-slot="markerfilt" aria-label="marker comparison"><option value="">no marker comparison</option></select>
+        <span class="filter-count" id="filtercount" style="display: none"></span>
         <button class="linkbtn" id="cohortclear" style="display: none">clear</button>
-        <button class="linkbtn" id="openmarkermodal">+ mark change ›</button>
-        <button class="linkbtn" id="opendocs">docs ›</button>
       </div>
+    </div>
+    <!-- Marker creation lives outside the filter bar — it's a data-entry action ("I changed
+         something, mark it"), not a way of narrowing the current view, so grouping it with the
+         filter controls above misrepresented what it does. -->
+    <div class="page-actions">
+      <button class="markchangebtn" id="openmarkermodal" type="button">+ mark change</button>
     </div>
     <div class="page-meta stat-row" id="meta"></div>
     <main>
       {{LOADING}}
       <!-- TIER 1 — conclusions & action items (the headline; always first) -->
       <section class="panel" id="insightspanel">
-        <h2>① what this means · action items <button class="infoicon" type="button" data-doc-anchor="panel-map" title="view docs" aria-label="view docs">?</button></h2>
+        <h2>① what this means · action items <portal-info-icon data-doc-anchor="panel-map" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
         <div id="insights"></div>
         <div class="modalactions">
           <button class="linkbtn" id="deepread">deeper read ›</button>
@@ -98,7 +112,7 @@
         >
       </h2>
       <section class="panel" id="testeffpanel" style="display: none">
-        <h2>testing efficiency <button class="infoicon" type="button" data-doc-anchor="testing-efficiency" title="view docs" aria-label="view docs">?</button></h2>
+        <h2>testing efficiency <portal-info-icon data-doc-anchor="testing-efficiency" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
         <div id="testefficiency"></div>
         <div class="legend">
           full vs. targeted test activity, redundant reruns, and how much of
@@ -185,7 +199,7 @@
           </div>
         </section>
         <section class="panel" id="markercomparisonpanel" style="display: none">
-          <h2>marker-relative comparison <button class="infoicon" type="button" data-doc-anchor="marker-relative-comparison" title="view docs" aria-label="view docs">?</button></h2>
+          <h2>marker-relative comparison <portal-info-icon data-doc-anchor="marker-relative-comparison" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
           <div id="markercomparison"></div>
         </section>
       </details>
@@ -229,7 +243,7 @@
       <details class="detailsblock" id="analysisexplorer">
         <summary>
           ⑦ analysis explorer
-          <button class="infoicon" type="button" data-doc-anchor="analysis-explorer" title="view docs" aria-label="view docs">?</button>
+          <portal-info-icon data-doc-anchor="analysis-explorer" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon>
           <span class="sub">compare two cohorts, or before/after a marker, on any registry metric</span>
         </summary>
         <section class="panel">
@@ -371,7 +385,7 @@
          createMarkerFromPortalRequest in telemetry.mjs. -->
     <dialog id="marker-modal">
       <button class="closebtn" id="markermodalclose">×</button>
-      <h3>create marker <button class="infoicon" type="button" data-doc-anchor="markers" title="view docs" aria-label="view docs">?</button></h3>
+      <h3>create marker <portal-info-icon data-doc-anchor="markers" aria-haspopup="dialog" aria-expanded="false" aria-label="how markers work" title="how markers work"></portal-info-icon></h3>
       <div class="sub">markers appear on the timeline and can drive before/after comparisons</div>
       <form id="markerform" method="dialog">
         <label>type
@@ -406,11 +420,11 @@
         <div class="item-err" id="markererr"></div>
       </form>
     </dialog>
-    <!-- "view docs" popup (docguide.js's createDocGuideModal): renders docs/guides/telemetry.md
-         server-side (GET /api/telemetry/guide) rather than duplicating the guide's content into
-         this page. Opened from the header "docs" link and from each .infoicon scattered next to a
-         panel heading, which pass that section's heading id so the popup opens already scrolled
-         there instead of always landing at the top. -->
+    <!-- "view docs" popup (portal/shared/doc-guide-modal.js's createDocGuideModal): renders
+         docs/guides/telemetry.md server-side (GET /api/telemetry/guide) rather than duplicating the
+         guide's content into this page. Opened from each shared <portal-info-icon> scattered next
+         to a filter/panel heading, which passes that section's heading id so the popup opens
+         already scrolled there instead of always landing at the top. -->
     <dialog id="docmodal">
       <div class="modal-head">
         <div>
@@ -424,6 +438,7 @@
       </div>
     </dialog>
     <script src="/portal/shared/theme.js" type="module"></script>
+    <script src="/portal/shared/info-icon.js" type="module"></script>
     <script src="/portal/telemetry/app.js" type="module"></script>
   </body>
 </html>

@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"model":"claude-test","content":[{"type":"tool_use","id":"t2","name":"Bash"}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","content":"AssertionError: expected 1 to equal 2","is_error":true}]}}

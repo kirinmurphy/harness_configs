@@ -1,0 +1,2 @@
+{"type":"session_meta","payload":{"id":"019f81c1-50fd-7270-b8b3-0b34fc7c083c","cli_version":"0.140.0","model_provider":"openai"}}
+{"type":"turn_context","payload":{"turn_id":"019f81c1-e083-7e53-a5c7-31bd6446720a","model":"gpt-5.5","effort":"medium"}}

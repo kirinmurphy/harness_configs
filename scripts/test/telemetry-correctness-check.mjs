@@ -6,7 +6,12 @@ import path from "node:path";
 import { transcriptStats } from "../cli/telemetry-transcript.mjs";
 import { analyzeTelemetry } from "../cli/telemetry-analyze.mjs";
 
+const FIXTURES_DIR = path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "telemetry");
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-telemetry-correctness-"));
+
+function fixture(name) {
+  return path.join(FIXTURES_DIR, name);
+}
 
 try {
   testClaudeTranscript();
@@ -14,6 +19,7 @@ try {
   testCodexTranscript();
   testCodexTranscriptTurnContextModel();
   testAnalyzerWarnings();
+  testAnalyzerRateLimitPresent();
   testAnalyzerIndexedSummaries();
   console.log("telemetry correctness checks passed");
 } finally {
@@ -21,30 +27,7 @@ try {
 }
 
 function testClaudeTranscript() {
-  const file = path.join(tmp, "claude.jsonl");
-  writeJsonl(file, [
-    {
-      type: "assistant",
-      message: {
-        model: "claude-test",
-        usage: {
-          input_tokens: 100,
-          output_tokens: 20,
-          cache_creation_input_tokens: 5,
-          cache_read_input_tokens: 10,
-        },
-        content: [{ type: "tool_use", id: "t1", name: "Read" }],
-      },
-    },
-    {
-      type: "user",
-      message: {
-        content: [{ type: "tool_result", tool_use_id: "t1", content: "x".repeat(120) }],
-      },
-    },
-  ]);
-
-  const stats = transcriptStats(file, { sessionId: "claude-session", collectorDir: tmp });
+  const stats = transcriptStats(fixture("claude-basic.jsonl"), { sessionId: "claude-session", collectorDir: tmp });
   assert.equal(stats.tokens.total, 135);
   assert.equal(stats.model, "claude-test");
   assert.equal(stats.tool_calls, 1);
@@ -57,67 +40,13 @@ function testClaudeTranscript() {
 }
 
 function testClaudeTranscriptFailureText() {
-  const file = path.join(tmp, "claude-failure.jsonl");
-  writeJsonl(file, [
-    {
-      type: "assistant",
-      message: { model: "claude-test", content: [{ type: "tool_use", id: "t2", name: "Bash" }] },
-    },
-    {
-      type: "user",
-      message: {
-        content: [{ type: "tool_result", tool_use_id: "t2", content: "AssertionError: expected 1 to equal 2", is_error: true }],
-      },
-    },
-  ]);
-
-  const stats = transcriptStats(file, { sessionId: "claude-failure-session", collectorDir: tmp });
+  const stats = transcriptStats(fixture("claude-failure.jsonl"), { sessionId: "claude-failure-session", collectorDir: tmp });
   assert.equal(stats.last_result.is_error, true);
   assert.equal(stats.last_result_failure_text, "AssertionError: expected 1 to equal 2");
 }
 
 function testCodexTranscript() {
-  const file = path.join(tmp, "codex.jsonl");
-  writeJsonl(file, [
-    {
-      type: "session_meta",
-      payload: { id: "019d5b33-0010-73d0-af05-8994a1d338ae", model: "gpt-5.4", model_provider: "openai" },
-    },
-    {
-      type: "event_msg",
-      name: "token_count",
-      payload: {
-        info: {
-          total_token_usage: {
-            total_tokens: 500,
-            input_tokens: 300,
-            cached_input_tokens: 80,
-            output_tokens: 120,
-            reasoning_output_tokens: 40,
-          },
-        },
-        rate_limits: [{ name: "weekly", used_percent: 12.5, window_minutes: 10080 }],
-      },
-    },
-    {
-      type: "response_item",
-      payload: {
-        type: "function_call",
-        call_id: "c1",
-        name: "mcp__jcodemunch__get_context_bundle",
-      },
-    },
-    {
-      type: "response_item",
-      payload: {
-        type: "function_call_output",
-        call_id: "c1",
-        output: "bundle output",
-      },
-    },
-  ]);
-
-  const stats = transcriptStats(file, { sessionId: "codex-session", collectorDir: tmp });
+  const stats = transcriptStats(fixture("codex-basic.jsonl"), { sessionId: "codex-session", collectorDir: tmp });
   assert.equal(stats.model, "gpt-5.4");
   assert.equal(stats.tokens.total, 500);
   assert.equal(stats.tokens.input, 220);
@@ -135,19 +64,7 @@ function testCodexTranscript() {
 // on disk exposed this: the session_meta-only fix from an earlier session left every session
 // recorded by a newer Codex CLI with model: null. Both shapes must resolve a model.
 function testCodexTranscriptTurnContextModel() {
-  const file = path.join(tmp, "codex-turn-context.jsonl");
-  writeJsonl(file, [
-    {
-      type: "session_meta",
-      payload: { id: "019f81c1-50fd-7270-b8b3-0b34fc7c083c", cli_version: "0.140.0", model_provider: "openai" },
-    },
-    {
-      type: "turn_context",
-      payload: { turn_id: "019f81c1-e083-7e53-a5c7-31bd6446720a", model: "gpt-5.5", effort: "medium" },
-    },
-  ]);
-
-  const stats = transcriptStats(file, { sessionId: "codex-turn-context-session", collectorDir: tmp });
+  const stats = transcriptStats(fixture("codex-turn-context-model.jsonl"), { sessionId: "codex-turn-context-session", collectorDir: tmp });
   assert.equal(stats.model, "gpt-5.5");
 }
 
@@ -178,6 +95,22 @@ function testAnalyzerWarnings() {
   assert(report.read_warnings.some((warning) => warning.type === "stale_doc_lookup"));
   assert(report.read_warnings.some((warning) => warning.type === "mixed_code_lookup"));
   assert(report.data_quality_warnings.some((warning) => warning.type === "unsupported_usage_schema"));
+  // All codex events above carry nonzero tokens but no details.codex_rate_limits.
+  assert(report.data_quality_warnings.some((warning) => warning.type === "rate_limit_unavailable" && warning.harness === "codex"));
+}
+
+function testAnalyzerRateLimitPresent() {
+  const events = [
+    baseEvent({
+      session_id: "b",
+      tool: tool("mcp__jcodemunch__get_context_bundle", null, null),
+      chars: 400,
+      harness: "codex",
+      details: { codex_rate_limits: [{ name: "weekly", used_percent: 60, window_minutes: 10080 }] },
+    }),
+  ];
+  const report = analyzeTelemetry(events);
+  assert(!report.data_quality_warnings.some((warning) => warning.type === "rate_limit_unavailable"));
 }
 
 function testAnalyzerIndexedSummaries() {
@@ -255,8 +188,4 @@ function tool(name, ext, hash, commandChars = 0) {
     file_path_hash: hash,
     command_chars: commandChars,
   };
-}
-
-function writeJsonl(file, records) {
-  fs.writeFileSync(file, records.map((record) => JSON.stringify(record)).join("\n") + "\n");
 }

@@ -1,0 +1,4 @@
+{"type":"session_meta","payload":{"id":"019d5b33-0010-73d0-af05-8994a1d338ae","model":"gpt-5.4","model_provider":"openai"}}
+{"type":"event_msg","name":"token_count","payload":{"info":{"total_token_usage":{"total_tokens":500,"input_tokens":300,"cached_input_tokens":80,"output_tokens":120,"reasoning_output_tokens":40}},"rate_limits":[{"name":"weekly","used_percent":12.5,"window_minutes":10080}]}}
+{"type":"response_item","payload":{"type":"function_call","call_id":"c1","name":"mcp__jcodemunch__get_context_bundle"}}
+{"type":"response_item","payload":{"type":"function_call_output","call_id":"c1","output":"bundle output"}}

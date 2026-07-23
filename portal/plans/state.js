@@ -1,10 +1,17 @@
 // Filter state, matching, sorting, and facet counts — no DOM here. app.js owns wiring DOM events
 // to this module's functions; templates.js owns turning its output into markup.
 
+export const LIFECYCLE_LABELS = {
+  active: "Active",
+  backlog: "Backlog",
+  completed: "Completed",
+  archived: "Archived",
+  unclassified: "Unclassified",
+};
+
 export const FILTER_IDS = [
   "search",
   "repository",
-  "lifecycle",
   "priority",
   "blocked",
   "readiness",
@@ -15,7 +22,6 @@ export const FILTER_IDS = [
 export const FILTER_DEFAULTS = {
   search: "",
   repository: "all",
-  lifecycle: "all",
   priority: "all",
   blocked: "all",
   readiness: "all",
@@ -25,7 +31,6 @@ export const FILTER_DEFAULTS = {
 
 export const FILTER_LABELS = {
   repository: "repo",
-  lifecycle: "lifecycle",
   priority: "priority",
   blocked: "blocked",
   readiness: "readiness",
@@ -37,12 +42,6 @@ export const FILTER_OPTION_DEFS = {
   repository: (snapshot) => [
     ["all", "all repositories"],
     ...snapshot.repositories.map((repo) => [repo.id, repo.name]),
-  ],
-  lifecycle: () => [
-    ["all", "all lifecycle"],
-    ...["active", "backlog", "completed", "archived", "unclassified"].map(
-      (v) => [v, v],
-    ),
   ],
   priority: () => [
     ["all", "all priority"],
@@ -78,8 +77,6 @@ export const FILTER_OPTION_DEFS = {
 export const FIELD_MATCHERS = {
   repository: (record, value) =>
     value === "all" || record.repository.id === value,
-  lifecycle: (record, value) =>
-    value === "all" || record.plan.lifecycle === value,
   priority: (record, value) =>
     value === "all" || record.plan.priority === value,
   blocked: (record, value) => {

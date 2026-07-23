@@ -15,21 +15,29 @@ import {
   FILTER_IDS,
   FILTER_DEFAULTS,
   FILTER_OPTION_DEFS,
+  LIFECYCLE_LABELS,
   filteredPlans,
   actionablePlans,
+  matchesFilters,
   optionCounts,
   optionLabel,
+  planSort,
   repositoryContext,
 } from "./state.js";
+
+const LIFECYCLE_ORDER = ["backlog", "active", "completed", "archived"];
 
 const state = {
   snapshot: null,
   filters: { ...FILTER_DEFAULTS },
   filtersExpanded: false,
+  selectedLifecycle: "active",
 };
 
-const COLLAPSIBLE_GROUPS = new Set(["completed"]);
-const openGroups = new Set(); // lifecycle names the user has expanded, preserved across re-renders
+// Plan keys whose displayed field(s) changed via an in-card action (e.g. priority dropdown)
+// since the last filter/tab flush — force-included in render() even if they'd now be excluded
+// by the active filters, so the user doesn't lose the card they were just acting on.
+const dirtyKeys = new Set();
 
 const toastEl = document.getElementById("toast");
 const groupsEl = document.getElementById("groups");
@@ -37,12 +45,15 @@ const warningsEl = document.getElementById("warnings");
 const bannerEl = document.getElementById("package-banner");
 const drawer = document.getElementById("drawer");
 const nextPrompt = document.getElementById("next-prompt");
-const controlBarEl = document.getElementById("control-bar");
+const plansHeaderEl = document.getElementById("plans-header");
 const filtersToggleEl = document.getElementById("filters-toggle");
 const filtersBodyEl = document.getElementById("filters-body");
 const filterChipsEl = document.getElementById("filter-chips");
 const plansCountTextEl = document.getElementById("plans-count-text");
 const reposCountTextEl = document.getElementById("repos-count-text");
+const lifecycleTabsEl = document.getElementById("lifecycle-tabs");
+const lifecycleDropdownMountEl = document.getElementById("lifecycle-dropdown-mount");
+let lifecycleDropdownEl = null;
 
 // Only one of {roots panel, filter panel} is open at a time — each setter closes the other.
 const rootsPanel = createRootsPanel({
@@ -66,6 +77,7 @@ function bindStaticControls() {
     const node = document.getElementById(id);
     node.addEventListener(id === "search" ? "input" : "change", () => {
       state.filters[id] = node.value;
+      flushDirtyState();
       render();
     });
   }
@@ -84,7 +96,12 @@ function resetFilter(id) {
   state.filters[id] = FILTER_DEFAULTS[id];
   const node = document.getElementById(id);
   if (node) node.value = FILTER_DEFAULTS[id];
+  flushDirtyState();
   render();
+}
+
+function flushDirtyState() {
+  dirtyKeys.clear();
 }
 
 async function load() {
@@ -99,9 +116,10 @@ async function load() {
 
 function applySnapshot(snapshot) {
   state.snapshot = snapshot;
+  flushDirtyState();
   portalSetUpdatedAt();
   rootsPanel.render(snapshot.settings.discoveryRoots);
-  controlBarEl.hidden = snapshot.settings.discoveryRoots.length === 0;
+  plansHeaderEl.hidden = snapshot.settings.discoveryRoots.length === 0;
   setPluralCount(plansCountTextEl, snapshot.plans.length, "Plan");
   setPluralCount(reposCountTextEl, snapshot.repositories.length, "Repo");
   populateFilters(snapshot);
@@ -145,38 +163,95 @@ function render() {
   renderPackageBanner(snapshot);
   renderFilterChips(snapshot);
   refreshFilterCounts(snapshot);
-  const plans = filteredPlans(snapshot.plans, state.filters);
-  nextPrompt.hidden = !snapshot.planDocsPackage.enabled || actionablePlans(plans).length === 0;
-  if (plans.length === 0) {
+  const allMatchingCurrentFilters = filteredPlans(snapshot.plans, state.filters);
+  renderLifecycleTabs(allMatchingCurrentFilters);
+  nextPrompt.hidden =
+    !snapshot.planDocsPackage.enabled || actionablePlans(allMatchingCurrentFilters).length === 0;
+  const currentLifecyclePlans = allMatchingCurrentFilters.filter(
+    (record) => record.plan.lifecycle === state.selectedLifecycle,
+  );
+  const visiblePlans = includeDirtyCards(currentLifecyclePlans);
+  if (visiblePlans.length === 0) {
     const empty = tmpl.emptyState(snapshot);
     groupsEl.replaceChildren(...(empty ? [empty] : []));
     return;
   }
-  const order = ["active", "backlog", "completed", "archived", "unclassified"];
   const cardActions = {
     onOpen: openPlan,
     onCopyPath: copyText,
     onCopyContext: (record) => copyText(repositoryContext(record)),
     onPlanDocsStart: (key) => copyPrompt("start", [key]),
+    onPriorityChange: handlePriorityChange,
     planDocsEnabled: snapshot.planDocsPackage.enabled,
     onError: showError,
   };
-  groupsEl.replaceChildren(
-    ...order
-      .map((life) =>
-        tmpl.group(
-          life,
-          plans.filter((record) => record.plan.lifecycle === life),
-          {
-            collapsible: COLLAPSIBLE_GROUPS.has(life),
-            open: openGroups.has(life),
-            onToggle: (open) => (open ? openGroups.add(life) : openGroups.delete(life)),
-            cardActions,
-          },
-        ),
-      )
-      .filter(Boolean),
+  groupsEl.replaceChildren(tmpl.cardGrid(visiblePlans, cardActions, dirtyKeys));
+}
+
+// Dirty cards are force-included only within their OWN lifecycle tab — a card that was
+// priority-filtered-out stays visible in whichever tab it already belongs to.
+function includeDirtyCards(currentLifecyclePlans) {
+  if (dirtyKeys.size === 0) return currentLifecyclePlans;
+  const present = new Set(currentLifecyclePlans.map((record) => record.key));
+  const forced = state.snapshot.plans.filter(
+    (record) =>
+      dirtyKeys.has(record.key) &&
+      record.plan.lifecycle === state.selectedLifecycle &&
+      !present.has(record.key),
   );
+  return forced.length ? [...currentLifecyclePlans, ...forced].sort(planSort) : currentLifecyclePlans;
+}
+
+function renderLifecycleTabs(plansMatchingOtherFilters) {
+  const lifecycles = [...LIFECYCLE_ORDER];
+  const unclassifiedCount = plansMatchingOtherFilters.filter(
+    (record) => record.plan.lifecycle === "unclassified",
+  ).length;
+  if (unclassifiedCount > 0) lifecycles.push("unclassified");
+  const counts = new Map();
+  for (const life of lifecycles) {
+    counts.set(
+      life,
+      plansMatchingOtherFilters.filter((record) => record.plan.lifecycle === life).length,
+    );
+  }
+  lifecycleTabsEl.replaceChildren(
+    ...lifecycles.map((life) =>
+      tmpl.lifecycleTab(life, counts.get(life) ?? 0, life === state.selectedLifecycle, selectLifecycle),
+    ),
+  );
+  const dropdown = ensureLifecycleDropdown();
+  dropdown.options = lifecycles.map((life) => [
+    life,
+    `${LIFECYCLE_LABELS[life] || life} (${counts.get(life) ?? 0})`,
+  ]);
+  dropdown.value = state.selectedLifecycle;
+}
+
+function ensureLifecycleDropdown() {
+  if (!lifecycleDropdownEl) {
+    lifecycleDropdownEl = document.createElement("option-dropdown");
+    lifecycleDropdownEl.onSelect = (value) => selectLifecycle(value);
+    lifecycleDropdownMountEl.replaceChildren(lifecycleDropdownEl);
+  }
+  return lifecycleDropdownEl;
+}
+
+function selectLifecycle(life) {
+  state.selectedLifecycle = life;
+  flushDirtyState();
+  render();
+}
+
+async function handlePriorityChange(record, newPriority) {
+  const result = await api.updatePlanPriority(record.key, newPriority, record.mtimeMs);
+  record.plan.priority = result.priority;
+  record.mtimeMs = result.mtimeMs;
+  if (!matchesFilters(record, state.filters, null)) {
+    dirtyKeys.add(record.key);
+    render(); // repaint immediately so the dirty indicator shows without waiting for a refilter
+  }
+  return result;
 }
 
 function renderFilterChips(snapshot) {

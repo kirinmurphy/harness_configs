@@ -64,6 +64,31 @@ function actionButton(label, onClick, onError) {
   return button;
 }
 
+const PRIORITY_OPTIONS = [
+  ["high", "high"],
+  ["medium", "medium"],
+  ["low", "low"],
+  ["none", "none"],
+];
+
+function renderPriorityDropdown(record, cardActions) {
+  const dropdown = document.createElement("option-dropdown");
+  dropdown.options = PRIORITY_OPTIONS;
+  dropdown.value = record.plan.priority;
+  dropdown.onSelect = async (value) => {
+    dropdown.loading = true;
+    try {
+      const result = await cardActions.onPriorityChange(record, value);
+      dropdown.value = result.priority;
+    } catch (err) {
+      cardActions.onError(err);
+    } finally {
+      dropdown.loading = false;
+    }
+  };
+  return dropdown;
+}
+
 class PlanCardElement extends HTMLElement {
   connectedCallback() {
     if (this.record && this.actions) this.render();
@@ -85,6 +110,14 @@ class PlanCardElement extends HTMLElement {
     return this._actions;
   }
 
+  set dirty(value) {
+    this._dirty = Boolean(value);
+    if (this.isConnected && this.record && this.actions) this.render();
+  }
+  get dirty() {
+    return Boolean(this._dirty);
+  }
+
   render() {
     const record = this._record;
     const cardActions = this._actions;
@@ -95,18 +128,23 @@ class PlanCardElement extends HTMLElement {
     const { total, remaining } = plan.taskCounts;
     const complete = total - remaining;
     const percentComplete = total > 0 ? Math.round((complete / total) * 100) : 0;
-    const state = plan.blockers.length ? "blocked" : plan.lifecycle;
-    const isActive = state === "active";
+    const isBlocked = plan.blockers.length > 0;
+    const isActive = plan.lifecycle === "active";
 
     const node = fill(tpl("tpl-plan-card"), {
       description: truncate(plan.excerpt || "No description", EXCERPT_DISPLAY_LENGTH),
-      "state-badge": state,
       meta: `modified ${formatRelativeTime(plan.modifiedAt)}`,
-      "progress-label": total > 0 ? `${percentComplete}% (${complete}/${total} tasks)` : "no tasks",
+      "progress-label": total > 0 ? `${percentComplete}%` : "no tasks",
       next: plan.nextAction || "No next action",
     });
+    node.classList.toggle("dirty", this.dirty);
     node.querySelector("[data-slot=meta]").title = new Date(plan.modifiedAt).toLocaleString();
-    node.querySelector("[data-slot=state-badge]").classList.add(state === "blocked" ? "warn" : "ok");
+    const stateBadge = node.querySelector("[data-slot=state-badge]");
+    if (isBlocked) {
+      stateBadge.textContent = "blocked";
+      stateBadge.classList.add("warn");
+      stateBadge.hidden = false;
+    }
     node.querySelector("[data-slot=implementation]").hidden = !isActive;
     node.querySelector("[data-slot=progress-fill]").style.width = `${percentComplete}%`;
     node.querySelector("[data-slot=status-chips]").append(
@@ -117,13 +155,15 @@ class PlanCardElement extends HTMLElement {
         : []),
       chip(plan.reviewState, plan.reviewState === "possibly-stale" ? "warn" : ""),
     );
+    node.querySelector("[data-slot=priority]").append(renderPriorityDropdown(record, cardActions));
     node.querySelector("[data-slot=chips]").append(
-      chip(plan.priority, plan.priority === "high" ? "warn" : ""),
       warnings ? chip(`${warnings} warnings`, "warn") : chip("valid", "ok"),
     );
     const titleLink = node.querySelector("[data-slot=title-link]");
     titleLink.textContent = plan.title;
     titleLink.addEventListener("click", () => cardActions.onOpen(record.key));
+    const descriptionEl = node.querySelector("[data-slot=description]");
+    descriptionEl.addEventListener("click", () => cardActions.onOpen(record.key));
     node.querySelector("[data-slot=actions]").append(
       actionButton("Copy path", () => cardActions.onCopyPath(plan.relativePath), onError),
       actionButton("Copy Context", () => cardActions.onCopyContext(record), onError),

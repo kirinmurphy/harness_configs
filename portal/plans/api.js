@@ -15,6 +15,10 @@ export function saveDiscoveryRoots(discoveryRoots) {
   return portalPostJson("/api/plans/settings", { discoveryRoots });
 }
 
+export function updatePlanPriority(key, priority, mtimeMs) {
+  return portalPostJson("/api/plans/priority", { key, priority, mtimeMs });
+}
+
 export function fetchPlanDocument(key) {
   return portalGetJson(`/api/plans/document?key=${encodeURIComponent(key)}`);
 }

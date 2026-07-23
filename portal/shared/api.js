@@ -24,7 +24,11 @@ export async function portalPostJson(path, body) {
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok || data.ok === false) throw new Error(data.error || data.message || "request failed");
+  if (!res.ok || data.ok === false) {
+    const err = new Error(data.error || data.message || "request failed");
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 

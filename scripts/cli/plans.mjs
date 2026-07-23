@@ -1,4 +1,5 @@
-import { loadPackageCatalog } from "./package-catalog.mjs";
+import { loadPackageCatalog, isPackageAvailable } from "./package-catalog.mjs";
+import { buildPackageLiveState } from "./package-probes.mjs";
 import { stateRoot } from "./paths.mjs";
 import {
   buildPlanSnapshot,
@@ -7,6 +8,7 @@ import {
   normalizeRootInput,
   readPlanDocument,
   readPlanSettings,
+  updatePlanPriority as updatePlanPriorityInDocs,
   writePlanSettings,
 } from "../../modules/plan-docs/index.mjs";
 
@@ -38,19 +40,32 @@ export function updatePlanSettings({ discoveryRoots }) {
   return loadPlansSnapshot();
 }
 
+export function updatePlanPriority({ key, priority, mtimeMs }) {
+  const snapshot = cachedSnapshot || buildPlanSnapshot({ stateRoot, packageState: planDocsPackageState() });
+  const result = updatePlanPriorityInDocs(snapshot, key, priority, mtimeMs);
+  cachedSnapshot = null;
+  return result;
+}
+
 export function refreshPlans() {
   cachedSnapshot = null;
   return loadPlansSnapshot();
 }
 
+// Matches config.mjs's readConfigSnapshot(): the raw catalog entry only carries the package's
+// static definition (id/label/lifecycle/etc), never its live enabled/disabled state — that comes
+// from buildPackageLiveState(), which actually probes installed rules/hooks/permissions on disk.
 function planDocsPackageState() {
-  const pkg = loadPackageCatalog({ includeUnavailable: true }).find((item) => item.id === "plan-docs");
+  const allPackages = loadPackageCatalog({ includeUnavailable: true });
+  const pkg = allPackages.find((item) => item.id === "plan-docs");
   if (!pkg) return { available: false, enabled: false, status: "missing" };
+  const available = isPackageAvailable(pkg);
+  const liveState = available ? buildPackageLiveState([pkg]).get(pkg.id) : null;
   return {
-    available: pkg.catalogStatus !== "unavailable",
-    enabled: pkg.status === "enabled",
-    status: pkg.status || "disabled",
-    message: pkg.message || "",
+    available,
+    enabled: liveState?.desired || false,
+    status: liveState?.status || "disabled",
+    message: "",
   };
 }
 

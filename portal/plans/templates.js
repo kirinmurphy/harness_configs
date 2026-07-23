@@ -8,7 +8,7 @@ import {
   portalTpl as tpl,
   portalFillSlots as fill,
 } from "/portal/shared/api.js";
-import { FILTER_LABELS, formatDate } from "./state.js";
+import { FILTER_LABELS, LIFECYCLE_LABELS, formatDate } from "./state.js";
 
 export function rootChip(root, onRemove) {
   const node = fill(tpl("tpl-root-chip"), { path: root });
@@ -88,31 +88,39 @@ export function packageBanner(pkg, onEnable, skillModal) {
   return node;
 }
 
-export function group(
-  lifecycle,
-  plans,
-  { collapsible, open, onToggle, cardActions },
-) {
-  if (plans.length === 0) return null;
-  const title = `${lifecycle} (${plans.length})`;
-  const cards = plans.map((record) => planCardElement(record, cardActions));
-  if (collapsible) {
-    const details = fill(tpl("tpl-group-collapsible"), { title });
-    details.querySelector("[data-slot=cards]").append(...cards);
-    details.open = open;
-    details.addEventListener("toggle", () => onToggle(details.open));
-    return details;
-  }
-  const section = fill(tpl("tpl-group"), { title });
-  section.querySelector("[data-slot=cards]").append(...cards);
-  return section;
+export function lifecycleTab(lifecycle, count, isSelected, onSelect) {
+  const btn = el(
+    "button",
+    {
+      type: "button",
+      class: "lifecycle-tab" + (isSelected ? " selected" : ""),
+      role: "tab",
+      "aria-selected": String(isSelected),
+    },
+    `${LIFECYCLE_LABELS[lifecycle] || lifecycle} (${count})`,
+  );
+  btn.addEventListener("click", () => onSelect(lifecycle));
+  return btn;
 }
 
-// cardActions: { onOpen, onCopyPath, onCopyContext, onPlanDocsStart, planDocsEnabled, onError }
-function planCardElement(record, cardActions) {
+// cardActions: { onOpen, onCopyPath, onCopyContext, onPlanDocsStart, onPriorityChange,
+//                 planDocsEnabled, onError }
+export function cardGrid(plans, cardActions, dirtyKeys) {
+  const grid = document.createElement("div");
+  grid.className = "card-grid";
+  grid.append(
+    ...plans.map((record) =>
+      planCardElement(record, cardActions, dirtyKeys.has(record.key)),
+    ),
+  );
+  return grid;
+}
+
+function planCardElement(record, cardActions, isDirty) {
   const node = document.createElement("plan-card");
   node.record = record;
   node.actions = cardActions;
+  node.dirty = isDirty;
   return node;
 }
 

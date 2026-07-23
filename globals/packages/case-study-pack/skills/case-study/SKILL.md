@@ -69,26 +69,49 @@ The audience spans non-technical to highly technical and everywhere between.
   it conveys the relationship more directly.
 - Snippets must be real, taken from the actual repo. Never invent code.
 
-## Diagrams (mermaid)
+## Visualize structure, don't describe it in prose
 
-Actively look for places a **mermaid** diagram conveys a relationship or workflow
-better than prose or code, and use one when it does. This audience often follows a
-picture of _how pieces relate_ faster than a paragraph describing it.
+Actively look for places a diagram, table, or chart conveys a relationship, workflow,
+or comparison better than a paragraph, and use one when it does. This audience often
+follows a picture of _how pieces relate_ faster than prose describing it. When the
+piece is explaining something structured — a sequence, a comparison, a set of
+tradeoffs, a shape of data — reach for the visual form of that structure before
+defaulting to a dense paragraph.
 
 - **Where diagrams earn their place:** a sequence of steps where order matters (what
   happens before what), a flow from one source to several outputs, a decision with
   branches, a dependency or data path between components, a state transition. If the
   prose is spending sentences establishing "A feeds B, which the renderer turns into C
   and D," a diagram says it at a glance.
-- **Same bar as code.** A diagram must reveal a relationship the prose can't say as
-  cleanly — not decorate a point already clear. Don't diagram a linear two-step process
-  or restate a sentence. One strong diagram beats three weak ones.
-- **Use real names.** Nodes and steps carry the actual component, file, and function
-  names from the repo, exactly as code snippets do. Never invent structure.
-- **Format:** fenced ` ```mermaid ` blocks. Prefer `sequenceDiagram` for ordered
-  interactions, `flowchart` for data/dependency paths, `stateDiagram-v2` for states.
-  Keep them small — a diagram the reader can't parse at a glance has failed.
-- The diagram supports the prose; it does not replace the beat. The surrounding text
+- **Same bar as code.** A diagram, table, or chart must reveal a relationship the prose
+  can't say as cleanly — not decorate a point already clear. Don't diagram a linear
+  two-step process or restate a sentence. One strong visual beats three weak ones.
+- **Use real names and real numbers.** Nodes, steps, table cells, and chart values
+  carry the actual component, file, function, or measured data from the repo/source
+  docs, exactly as code snippets do. Never invent structure or figures.
+- **Mermaid for relationships and flow.** Fenced ` ```mermaid ` blocks. Prefer
+  `sequenceDiagram` for ordered interactions, `flowchart` for data/dependency paths,
+  `stateDiagram-v2` for states. Keep them small — a diagram the reader can't parse at a
+  glance has failed.
+- **Tables for comparison and enumeration.** When the prose is listing options,
+  tradeoffs, before/after states, or any set of items sharing the same dimensions
+  (Roads Not Taken is a common fit), a Markdown table reads faster than "Option A
+  does X, while option B does Y, whereas option C..." prose.
+- **Charts or a small code/data snippet for measured behavior.** When a decision is
+  backed by real numbers (latency, size, cost, throughput), show the numbers — a small
+  fenced data snippet or table beats restating them as a sentence of figures.
+- **Canvas/interactive charts — only when the render target supports it, always with a
+  fallback.** If the piece will be published somewhere that renders live HTML/canvas
+  (e.g. an Artifact), a canvas-based chart can go beyond what mermaid or a static table
+  can show — use it when the extra depth (an animated trace, an interactive
+  comparison) genuinely earns its place over a static alternative. If the piece will
+  also or instead be read as plain Markdown (a repo file, a doc site without canvas
+  rendering), it must still work there: include a Markdown-native fallback in the same
+  location — a table, a mermaid diagram, or a data snippet that conveys the same
+  structure without executing anything. The fallback does not need to reproduce the
+  canvas version's exact behavior; it only needs to stand in as a legible placeholder
+  so the piece is never broken or empty for a reader without canvas rendering.
+- The visual supports the prose; it does not replace the beat. The surrounding text
   still names what the reader should take from it.
 
 ## Before writing

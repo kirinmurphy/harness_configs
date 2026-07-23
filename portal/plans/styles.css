@@ -1,3 +1,10 @@
+/* Breakpoints used on this page — kept to these two values everywhere below (no build step here,
+ * so no @custom-media/var() substitution in media queries; consolidating to a fixed pair and
+ * reusing them is the plain-CSS equivalent):
+ *   680px  — narrow: lifecycle tabs collapse to a dropdown selector.
+ *   960px  — wide: drawer/root-form/filter-row go single-column below it; the plan card's status
+ *            section becomes a fixed 200px right-side column at/above it.
+ */
 main {
   padding: 18px;
   display: grid;
@@ -481,7 +488,53 @@ dialog#skill-modal::backdrop {
   border-radius: 8px;
   padding: 10px 12px;
   display: grid;
+  grid-template-areas:
+    "title"
+    "description"
+    "priority"
+    "chips"
+    "actions"
+    "status";
   row-gap: 4px;
+}
+.plan-card h3 {
+  grid-area: title;
+}
+.plan-card > .description-line {
+  grid-area: description;
+}
+.plan-card > .priority-slot {
+  grid-area: priority;
+}
+.plan-card > .chips {
+  grid-area: chips;
+}
+.plan-card > .card-actions {
+  grid-area: actions;
+}
+.plan-card > .status-section {
+  grid-area: status;
+}
+/* Wide screens: status (blocked badge / progress / next-action) moves to a fixed right column
+ * instead of stacking under the card's main content — see breakpoint note at top of file. */
+@media (min-width: 960px) {
+  .plan-card {
+    grid-template-columns: 1fr 200px;
+    grid-template-areas:
+      "title       status"
+      "description status"
+      "priority    status"
+      "chips       status"
+      "actions     status";
+    column-gap: 12px;
+  }
+  .plan-card > .status-section {
+    margin: 0;
+    border-top: none;
+    border-left: 1px solid var(--warn-line);
+    border-radius: 0 7px 7px 0;
+    height: 100%;
+  }
 }
 .plan-card h3 {
   margin: 0;
@@ -508,6 +561,27 @@ dialog#skill-modal::backdrop {
 }
 .description-line {
   color: var(--ink);
+  background: none;
+  border: none;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+  display: block;
+  width: 100%;
+}
+.description-line:hover {
+  text-decoration: underline;
+}
+.description-line:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.priority-slot {
+  display: flex;
+}
+.plan-card.dirty {
+  border-left: 2px solid var(--accent);
 }
 .chips {
   display: flex;
@@ -565,10 +639,6 @@ dialog#skill-modal::backdrop {
 .state-badge.warn {
   color: var(--warn);
   border-color: var(--warn-line);
-}
-.state-badge.ok {
-  color: var(--ok);
-  border-color: var(--ok);
 }
 .status-state-row .meta-line {
   font-size: var(--text-2xs);
@@ -717,7 +787,7 @@ plan-drawer[hidden] {
   padding: 12px;
   overflow: auto;
 }
-@media (max-width: 900px) {
+@media (max-width: 960px) {
   .drawer-grid {
     grid-template-columns: 1fr;
   }
@@ -772,4 +842,107 @@ plan-drawer[hidden] {
 }
 .banner-sep {
   color: var(--line);
+}
+
+/* Shared <option-dropdown> popover — used for the per-card priority picker and the mobile
+   lifecycle selector. */
+option-dropdown {
+  display: inline-block;
+  position: relative;
+}
+.dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-2xs);
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.dropdown-trigger:hover {
+  border-color: var(--accent);
+}
+.dropdown-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.dropdown-trigger:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.dropdown-chevron {
+  color: var(--dim);
+  font-size: 9px;
+}
+.dropdown-menu {
+  position: fixed;
+  z-index: 30;
+  display: grid;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px var(--modal-shadow);
+  padding: 4px;
+  min-width: 100px;
+}
+.dropdown-option {
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  color: var(--ink);
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.dropdown-option:hover,
+.dropdown-option.highlighted {
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+}
+.dropdown-option[aria-selected="true"] {
+  font-weight: 600;
+}
+
+/* Lifecycle tabs (desktop) / dropdown fallback (narrow screens), replacing stacked sections. */
+.lifecycle-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.lifecycle-tab {
+  font: inherit;
+  font-size: var(--text-sm);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 12px;
+  color: var(--dim);
+  cursor: pointer;
+}
+.lifecycle-tab:hover {
+  color: var(--ink);
+}
+.lifecycle-tab.selected {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.lifecycle-dropdown-mount {
+  display: none;
+  margin-bottom: 12px;
+}
+@media (max-width: 680px) {
+  .lifecycle-tabs {
+    display: none;
+  }
+  .lifecycle-dropdown-mount {
+    display: block;
+  }
 }

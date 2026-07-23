@@ -5,7 +5,7 @@
 import { send, readJsonBody } from "./portal-routes-http.mjs";
 
 export function handlePlansApi(req, res, urlPath, qs, handlers) {
-  const { loadPlans, loadPlanDocument, buildPlansPrompt, updatePlanSettings, refreshPlans } = handlers;
+  const { loadPlans, loadPlanDocument, buildPlansPrompt, updatePlanSettings, updatePlanPriority, refreshPlans } = handlers;
 
   if (urlPath === "/api/plans") {
     send(res, 200, "application/json", JSON.stringify(loadPlans()));
@@ -38,6 +38,18 @@ export function handlePlansApi(req, res, urlPath, qs, handlers) {
         send(res, 200, "application/json", JSON.stringify(updatePlanSettings(body || {})));
       } catch (error) {
         send(res, 400, "application/json", JSON.stringify({ error: String(error?.message || error) }));
+      }
+    });
+    return true;
+  }
+  if (req.method === "POST" && urlPath === "/api/plans/priority") {
+    readJsonBody(req, (body, err) => {
+      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
+      try {
+        send(res, 200, "application/json", JSON.stringify(updatePlanPriority(body || {})));
+      } catch (error) {
+        const status = error?.code === "CONFLICT" ? 409 : 400;
+        send(res, status, "application/json", JSON.stringify({ error: String(error?.message || error) }));
       }
     });
     return true;

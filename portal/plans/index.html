@@ -50,10 +50,6 @@
           <select id="repository"></select>
         </div>
         <div class="filter-row">
-          <label for="lifecycle">Lifecycle</label>
-          <select id="lifecycle"></select>
-        </div>
-        <div class="filter-row">
           <label for="priority">Priority</label>
           <select id="priority"></select>
         </div>
@@ -115,6 +111,8 @@
         </div>
       </div>
       <section id="warnings" class="warnings" hidden></section>
+      <nav class="lifecycle-tabs" id="lifecycle-tabs" role="tablist"></nav>
+      <div class="lifecycle-dropdown-mount" id="lifecycle-dropdown-mount"></div>
       <section id="groups" class="groups"></section>
     </main>
     <dialog id="info-modal" aria-labelledby="info-modal-title">
@@ -256,28 +254,17 @@
         </button>
       </span>
     </template>
-    <template id="tpl-group">
-      <section class="group">
-        <h2 data-slot="title"></h2>
-        <div class="card-grid" data-slot="cards"></div>
-      </section>
-    </template>
-    <template id="tpl-group-collapsible">
-      <details class="group">
-        <summary data-slot="title"></summary>
-        <div class="card-grid" data-slot="cards"></div>
-      </details>
-    </template>
     <template id="tpl-plan-card">
       <article class="plan-card">
         <h3><button type="button" class="title-link" data-slot="title-link"></button></h3>
-        <div class="description-line" data-slot="description"></div>
+        <button type="button" class="description-line" data-slot="description"></button>
+        <div class="priority-slot" data-slot="priority"></div>
         <div class="chips" data-slot="chips"></div>
         <div class="card-actions" data-slot="actions"></div>
         <div class="status-section" data-slot="status">
           <div class="status-state-row">
             <div class="status-state-chips" data-slot="status-chips">
-              <span class="state-badge" data-slot="state-badge"></span>
+              <span class="state-badge" data-slot="state-badge" hidden></span>
             </div>
             <span class="meta-line" data-slot="meta"></span>
           </div>

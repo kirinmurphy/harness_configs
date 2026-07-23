@@ -309,6 +309,7 @@ function buildPlanRecord(repository, absolutePath, relativePath, stat) {
   return {
     key: stableKey(`${repository.root}:${relativePath}`),
     absolutePath,
+    mtimeMs: stat.mtimeMs,
     repository,
     plan: {
       id: parsed.frontmatter.id || "",
@@ -405,6 +406,52 @@ export function parseFrontmatter(markdown) {
     }
   });
   return { frontmatter: normalizeFrontmatter(frontmatter, warnings), body, warnings };
+}
+
+// Narrow scalar-only frontmatter writer: patches one `key: value` line in place, preserving key
+// order, blank lines, and the entire body byte-for-byte. Appends the key (at the end of the
+// frontmatter block) when it's missing entirely — a plan with no `priority:` line at all renders
+// the same "none" fallback in buildPlanRecord() as one with an empty value, so the writer must be
+// able to turn either into a real on-disk line. Does not support list fields (blocked_by etc).
+export function writeFrontmatterField(markdown, key, value) {
+  if (!markdown.startsWith("---\n")) throw new Error("missing frontmatter");
+  const end = markdown.indexOf("\n---", 4);
+  if (end === -1) throw new Error("unclosed frontmatter");
+  const rawLines = markdown.slice(4, end).split("\n");
+  const bodyAndClose = markdown.slice(end);
+  const pattern = new RegExp(`^${key}:.*$`);
+  let found = false;
+  const updated = rawLines.map((line) => {
+    if (pattern.test(line)) {
+      found = true;
+      return `${key}: ${value}`;
+    }
+    return line;
+  });
+  if (!found) updated.push(`${key}: ${value}`);
+  return `---\n${updated.join("\n")}${bodyAndClose}`;
+}
+
+export function updatePlanPriority(snapshot, key, priority, expectedMtimeMs) {
+  if (!PRIORITIES.has(priority)) throw new Error("invalid priority");
+  const publicRecord = findPlanByKey(snapshot, key);
+  if (!publicRecord.absolutePath) throw new Error("plan file path unavailable");
+  const repoRoot = publicRecord.repository.root;
+  const realRepo = fs.realpathSync(repoRoot);
+  const realFile = fs.realpathSync(publicRecord.absolutePath);
+  if (!inside(realRepo, realFile)) throw new Error("plan file escaped repository boundary");
+  const stat = fs.statSync(realFile);
+  if (stat.mtimeMs !== expectedMtimeMs) {
+    const err = new Error("plan file changed since it was loaded");
+    err.code = "CONFLICT";
+    throw err;
+  }
+  const markdown = fs.readFileSync(realFile, "utf8");
+  const updated = writeFrontmatterField(markdown, "priority", priority);
+  fs.writeFileSync(realFile, updated);
+  const newStat = fs.statSync(realFile);
+  planRecordCache.delete(publicRecord.absolutePath);
+  return { priority, mtimeMs: newStat.mtimeMs };
 }
 
 function normalizeFrontmatter(frontmatter, warnings) {
@@ -538,6 +585,7 @@ function publicPlan(record) {
   return {
     key: record.key,
     absolutePath: record.absolutePath,
+    mtimeMs: record.mtimeMs,
     repository: publicRepository(record.repository),
     plan: record.plan,
   };

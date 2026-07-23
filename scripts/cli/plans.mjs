@@ -7,6 +7,7 @@ import {
   normalizeRootInput,
   readPlanDocument,
   readPlanSettings,
+  updatePlanPriority as updatePlanPriorityInDocs,
   writePlanSettings,
 } from "../../modules/plan-docs/index.mjs";
 
@@ -36,6 +37,13 @@ export function updatePlanSettings({ discoveryRoots }) {
   writePlanSettings({ stateRoot, discoveryRoots: normalized, ignoredDirectories: current.ignoredDirectories });
   cachedSnapshot = null;
   return loadPlansSnapshot();
+}
+
+export function updatePlanPriority({ key, priority, mtimeMs }) {
+  const snapshot = cachedSnapshot || buildPlanSnapshot({ stateRoot, packageState: planDocsPackageState() });
+  const result = updatePlanPriorityInDocs(snapshot, key, priority, mtimeMs);
+  cachedSnapshot = null;
+  return result;
 }
 
 export function refreshPlans() {

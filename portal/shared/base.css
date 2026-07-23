@@ -217,6 +217,7 @@ body {
 /* Shared centering wrapper — keeps content readable-width on very wide screens while the parent
  * (header/footer background, page body) stays full-bleed. */
 .inner {
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -300,8 +301,10 @@ nav a.active {
   color: var(--ink);
   border-color: var(--line);
 }
-portal-info-icon {
+portal-info-icon,
+portal-icon {
   display: inline-flex;
+  flex: 0 0 auto;
 }
 .info-icon {
   display: inline-flex;

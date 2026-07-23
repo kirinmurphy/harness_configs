@@ -146,6 +146,7 @@ class PlanCardElement extends HTMLElement {
       next: plan.nextAction || "No next action",
     });
     node.classList.toggle("dirty", this.dirty);
+    node.classList.toggle("is-active", isActive);
     node.querySelector("[data-slot=meta]").title = new Date(plan.modifiedAt).toLocaleString();
     const stateBadge = node.querySelector("[data-slot=state-badge]");
     if (isBlocked) {

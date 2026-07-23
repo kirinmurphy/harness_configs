@@ -37,22 +37,24 @@ main {
 .control-bar-row strong {
   color: var(--ink);
 }
-/* Layout only — button chrome (border/background/padding) now comes from data-btn, not this
- * class. Two of these sit side by side (Filters, Agent prompts), so they're grouped in a shared
- * wrapper for consistent screen positioning. */
-.control-toggle-group {
-  display: flex;
+.repo-count {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+}
+/* Layout only — button chrome (border/background/padding) now comes from data-btn, not this
+ * class. Groups paired icon buttons (update/refresh; Filters/Agent prompts) for consistent
+ * screen positioning. */
+.control-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }
 .control-item-action {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-.control-icon {
-  width: 17px;
-  height: 17px;
-  flex: 0 0 auto;
 }
 .filter-chips {
   display: flex;
@@ -117,9 +119,10 @@ main {
   gap: 10px;
 }
 @media (min-width: 960px) {
-  /* 6 select filters split 4/3 across two columns: column-major auto-flow fills the left column
-   * top-to-bottom first (4 rows), then the right column (remaining rows) — a plain
-   * grid-template-columns:1fr 1fr would instead interleave items row-by-row across both columns. */
+  /* Search + 6 select filters (7 items) split 4/4 across two columns: column-major auto-flow
+   * fills the left column top-to-bottom first (4 rows, starting with search), then the right
+   * column (remaining rows) — a plain grid-template-columns:1fr 1fr would instead interleave
+   * items row-by-row across both columns. */
   .filter-row-grid {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: repeat(4, auto);
@@ -494,9 +497,12 @@ dialog#skill-modal::backdrop {
   min-width: 0;
 }
 /* Wide screens: status (blocked badge / progress / next-action) moves to a fixed right column
- * instead of stacking under the card's main content — see breakpoint note at top of file. */
+ * instead of stacking under the card's main content — see breakpoint note at top of file.
+ * Active-lifecycle cards only: progress/next-action only apply while a plan is in flight, so the
+ * dedicated column is wasted space on every other lifecycle — those keep the narrow-screen
+ * stacked layout regardless of viewport width. */
 @media (min-width: 960px) {
-  .plan-card {
+  .plan-card.is-active {
     grid-template-columns: 1fr 360px;
     grid-template-areas:
       "title       status"
@@ -505,7 +511,7 @@ dialog#skill-modal::backdrop {
       "actions     status";
     column-gap: 12px;
   }
-  .plan-card > .status-section {
+  .plan-card.is-active > .status-section {
     margin: 0;
     border-top: none;
     border-left: 1px solid var(--warn-line);

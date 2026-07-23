@@ -6,106 +6,105 @@
     <section id="package-banner" class="package-banner" hidden></section>
     <div id="plans-header" hidden>
       <section class="control-panel control-bar" id="control-bar">
-        <div class="control-panel-row control-bar-row">
-          <span class="repo-count">
-            Monitoring
-            <span id="plans-count-text"><strong>0</strong> Plans</span>
-            in
-            <span id="repos-count-text"><strong>0</strong> Repos</span>
-            <button type="button" data-btn="text" id="roots-toggle">
-              update
-            </button>
-          </span>
-          <div class="control-toggle-group">
-            <button
-              type="button"
-              data-btn="secondary"
-              class="control-item-action"
-              id="filters-toggle"
-            >
-              <svg
-                class="control-icon"
-                viewBox="0 0 16 16"
-                fill="none"
-                aria-hidden="true"
+        <div class="inner">
+          <div class="control-panel-row control-bar-row">
+            <span class="repo-count">
+              Monitoring
+              <span id="plans-count-text"><strong>0</strong> Plans</span>
+              in
+              <span id="repos-count-text"><strong>0</strong> Repos</span>
+              <span class="control-toggle-group">
+                <button
+                  type="button"
+                  data-btn="secondary"
+                  class="control-item-action"
+                  id="roots-toggle"
+                  aria-label="Update project folders"
+                  title="Update project folders"
+                >
+                  <portal-icon name="pencil" width="20" height="20"></portal-icon>
+                </button>
+                <button
+                  type="button"
+                  data-btn="secondary"
+                  class="control-item-action"
+                  id="refresh"
+                  aria-label="Refresh"
+                  title="Refresh"
+                >
+                  <portal-icon name="refresh" width="20" height="20"></portal-icon>
+                  <span class="spinner" hidden></span>
+                </button>
+              </span>
+            </span>
+            <div class="control-toggle-group">
+              <button
+                type="button"
+                data-btn="secondary"
+                class="control-item-action"
+                id="filters-toggle"
               >
-                <path
-                  d="M2 3h12L9.5 8.2v4.3L6.5 14V8.2L2 3Z"
-                  stroke="currentColor"
-                  stroke-width="1.3"
-                  stroke-linejoin="round"
-                />
-              </svg>
-              Filters
-            </button>
-            <button
-              type="button"
-              data-btn="secondary"
-              class="control-item-action"
-              id="next-prompt"
-              hidden
-              aria-label="Agent prompts"
-              title="Agent prompts"
-            >
-              <svg
-                class="control-icon"
-                viewBox="0 0 16 16"
-                fill="none"
-                aria-hidden="true"
+                <portal-icon name="filter" width="20" height="20"></portal-icon>
+                Filters
+              </button>
+              <button
+                type="button"
+                data-btn="secondary"
+                class="control-item-action"
+                id="next-prompt"
+                hidden
+                aria-label="Agent prompts"
+                title="Agent prompts"
               >
-                <path
-                  d="M2 2.5h12a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8.8L5.5 13.8V10.5H2a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z"
-                  stroke="currentColor"
-                  stroke-width="1.3"
-                  stroke-linejoin="round"
-                />
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div id="roots-panel-mount" hidden></div>
-        <div class="filter-chips" id="filter-chips"></div>
-        <div class="filters-body" id="filters-body" hidden>
-          <div class="filter-row filter-row-search">
-            <label for="search">Search</label>
-            <div class="search-field">
-              <input id="search" type="search" placeholder="search plans" />
+                <portal-icon name="agent-prompt" width="20" height="20"></portal-icon>
+              </button>
             </div>
           </div>
-          <div class="filter-row-grid">
-            <div class="filter-row">
-              <label for="repository">Repository</label>
-              <select id="repository"></select>
+          <div id="roots-panel-mount" hidden></div>
+          <div class="filter-chips" id="filter-chips"></div>
+          <div class="filters-body" id="filters-body" hidden>
+            <div class="filter-row-grid">
+              <div class="filter-row filter-row-search">
+                <label for="search">Search</label>
+                <div class="search-field">
+                  <input id="search" type="search" placeholder="search plans" />
+                </div>
+              </div>
+              <div class="filter-row">
+                <label for="repository">Repository</label>
+                <select id="repository"></select>
+              </div>
+              <div class="filter-row">
+                <label for="priority">Priority</label>
+                <select id="priority"></select>
+              </div>
+              <div class="filter-row">
+                <label for="blocked">Blocked</label>
+                <select id="blocked"></select>
+              </div>
+              <div class="filter-row">
+                <label for="readiness">Readiness</label>
+                <select id="readiness"></select>
+              </div>
+              <div class="filter-row">
+                <label for="review">Review</label>
+                <select id="review"></select>
+              </div>
+              <div class="filter-row">
+                <label for="health">Health</label>
+                <select id="health"></select>
+              </div>
             </div>
-            <div class="filter-row">
-              <label for="priority">Priority</label>
-              <select id="priority"></select>
+            <div class="filter-row filter-row-actions">
+              <button id="filters-done" type="button">Done</button>
             </div>
-            <div class="filter-row">
-              <label for="blocked">Blocked</label>
-              <select id="blocked"></select>
-            </div>
-            <div class="filter-row">
-              <label for="readiness">Readiness</label>
-              <select id="readiness"></select>
-            </div>
-            <div class="filter-row">
-              <label for="review">Review</label>
-              <select id="review"></select>
-            </div>
-            <div class="filter-row">
-              <label for="health">Health</label>
-              <select id="health"></select>
-            </div>
-          </div>
-          <div class="filter-row filter-row-actions">
-            <button id="refresh" type="button" data-btn="cta">Refresh</button>
-            <button id="filters-done" type="button">Done</button>
           </div>
         </div>
       </section>
-      <nav class="lifecycle-tabs" id="lifecycle-tabs" role="tablist"></nav>
-      <div class="lifecycle-dropdown-mount" id="lifecycle-dropdown-mount"></div>
+      <div class="inner">
+        <nav class="lifecycle-tabs" id="lifecycle-tabs" role="tablist"></nav>
+        <div class="lifecycle-dropdown-mount" id="lifecycle-dropdown-mount"></div>
+      </div>
     </div>
     <div id="toast" class="toast" hidden></div>
     <main>
@@ -352,6 +351,7 @@
       </div>
     </template>
     <script src="/portal/shared/info-icon.js" type="module"></script>
+    <script src="/portal/shared/icon.js" type="module"></script>
     <script src="/portal/plans/elements/index.js" type="module"></script>
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/plans/app.js" type="module"></script>

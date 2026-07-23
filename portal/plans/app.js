@@ -71,9 +71,19 @@ bindStaticControls();
 load();
 
 function bindStaticControls() {
-  document
-    .getElementById("refresh")
-    .addEventListener("click", () => api.refreshSnapshot().then(applySnapshot).catch(showError));
+  const refreshEl = document.getElementById("refresh");
+  const refreshIconEl = refreshEl.querySelector("portal-icon");
+  const refreshSpinnerEl = refreshEl.querySelector(".spinner");
+  refreshEl.addEventListener("click", () => {
+    refreshEl.disabled = true;
+    refreshIconEl.hidden = true;
+    refreshSpinnerEl.hidden = false;
+    api.refreshSnapshot().then(applySnapshot).catch(showError).finally(() => {
+      refreshEl.disabled = false;
+      refreshIconEl.hidden = false;
+      refreshSpinnerEl.hidden = true;
+    });
+  });
   nextPrompt.addEventListener("click", openNextPrompt);
   document.getElementById("drawer-close").addEventListener("click", () => drawer.close());
   for (const id of FILTER_IDS) {

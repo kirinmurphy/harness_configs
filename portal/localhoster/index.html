@@ -184,12 +184,7 @@
     <template id="tpl-toolbar-actions">
       <div class="toolbar-actions">
         <button id="refresh" type="button" class="icon-button" title="Refresh" aria-label="Refresh">
-          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M8 2.5a5.5 5.5 0 1 0 5.163 3.588.75.75 0 0 1 1.406-.526A7 7 0 1 1 8 1v-.5a.5.5 0 0 1 .82-.385l2.25 1.875a.5.5 0 0 1 0 .77L8.82 4.635A.5.5 0 0 1 8 4.25V2.5Z"
-            />
-          </svg>
+          <portal-icon name="refresh"></portal-icon>
           <span class="spinner" hidden></span>
         </button>
         <button id="settings" type="button">Settings</button>
@@ -315,6 +310,7 @@
       </div>
     </template>
     <script type="module" src="/portal/shared/info-icon.js"></script>
+    <script type="module" src="/portal/shared/icon.js"></script>
     <script type="module" src="/portal/shared/theme.js"></script>
     <script type="module" src="/portal/localhoster/app.js"></script>
   </body>

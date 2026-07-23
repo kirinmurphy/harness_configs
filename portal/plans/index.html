@@ -12,30 +12,56 @@
             <span id="plans-count-text"><strong>0</strong> Plans</span>
             in
             <span id="repos-count-text"><strong>0</strong> Repos</span>
-            <button type="button" class="control-underline" id="roots-toggle">
+            <button type="button" data-btn="text" id="roots-toggle">
               update
             </button>
           </span>
-          <button
-            type="button"
-            class="control-item control-item-action"
-            id="filters-toggle"
-          >
-            <svg
-              class="control-icon"
-              viewBox="0 0 16 16"
-              fill="none"
-              aria-hidden="true"
+          <div class="control-toggle-group">
+            <button
+              type="button"
+              data-btn="secondary"
+              class="control-item-action"
+              id="filters-toggle"
             >
-              <path
-                d="M2 3h12L9.5 8.2v4.3L6.5 14V8.2L2 3Z"
-                stroke="currentColor"
-                stroke-width="1.3"
-                stroke-linejoin="round"
-              />
-            </svg>
-            <span class="control-underline">Filters</span>
-          </button>
+              <svg
+                class="control-icon"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M2 3h12L9.5 8.2v4.3L6.5 14V8.2L2 3Z"
+                  stroke="currentColor"
+                  stroke-width="1.3"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              Filters
+            </button>
+            <button
+              type="button"
+              data-btn="secondary"
+              class="control-item-action"
+              id="next-prompt"
+              hidden
+              aria-label="Agent prompts"
+              title="Agent prompts"
+            >
+              <svg
+                class="control-icon"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M2 2.5h12a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8.8L5.5 13.8V10.5H2a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z"
+                  stroke="currentColor"
+                  stroke-width="1.3"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
         <div id="roots-panel-mount" hidden></div>
         <div class="filter-chips" id="filter-chips"></div>
@@ -46,35 +72,34 @@
               <input id="search" type="search" placeholder="search plans" />
             </div>
           </div>
-          <div class="filter-row">
-            <label for="repository">Repository</label>
-            <select id="repository"></select>
-          </div>
-          <div class="filter-row">
-            <label for="priority">Priority</label>
-            <select id="priority"></select>
-          </div>
-          <div class="filter-row">
-            <label for="blocked">Blocked</label>
-            <select id="blocked"></select>
-          </div>
-          <div class="filter-row">
-            <label for="readiness">Readiness</label>
-            <select id="readiness"></select>
-          </div>
-          <div class="filter-row">
-            <label for="review">Review</label>
-            <select id="review"></select>
-          </div>
-          <div class="filter-row">
-            <label for="health">Health</label>
-            <select id="health"></select>
+          <div class="filter-row-grid">
+            <div class="filter-row">
+              <label for="repository">Repository</label>
+              <select id="repository"></select>
+            </div>
+            <div class="filter-row">
+              <label for="priority">Priority</label>
+              <select id="priority"></select>
+            </div>
+            <div class="filter-row">
+              <label for="blocked">Blocked</label>
+              <select id="blocked"></select>
+            </div>
+            <div class="filter-row">
+              <label for="readiness">Readiness</label>
+              <select id="readiness"></select>
+            </div>
+            <div class="filter-row">
+              <label for="review">Review</label>
+              <select id="review"></select>
+            </div>
+            <div class="filter-row">
+              <label for="health">Health</label>
+              <select id="health"></select>
+            </div>
           </div>
           <div class="filter-row filter-row-actions">
-            <button id="refresh" type="button">Refresh</button>
-            <button id="next-prompt" type="button" hidden>
-              Copy next prompt
-            </button>
+            <button id="refresh" type="button" data-btn="cta">Refresh</button>
             <button id="filters-done" type="button">Done</button>
           </div>
         </div>
@@ -107,7 +132,7 @@
                 id="root-input"
                 placeholder="/path/to/repo or /path/to/projects"
               />
-              <button type="submit" id="root-submit">Add Folder</button>
+              <button type="submit" id="root-submit" data-btn="cta">Add Folder</button>
               <button id="roots-done" type="button" hidden>Done</button>
             </div>
             <div class="item-err" id="root-form-err"></div>
@@ -161,7 +186,11 @@
     </dialog>
     <dialog id="skill-modal" aria-labelledby="skill-modal-title">
       <div class="modal-head">
-        <span class="modal-title" id="skill-modal-title" data-slot="title"></span>
+        <span
+          class="modal-title"
+          id="skill-modal-title"
+          data-slot="title"
+        ></span>
         <span class="modal-path" data-slot="path"></span>
         <button
           type="button"
@@ -174,6 +203,30 @@
       </div>
       <div class="modal-body">
         <div class="markdown" data-slot="content"></div>
+      </div>
+    </dialog>
+    <dialog id="prompt-modal" aria-labelledby="prompt-modal-title">
+      <div class="modal-head">
+        <span
+          class="modal-title"
+          id="prompt-modal-title"
+          data-slot="title"
+        ></span>
+        <button
+          type="button"
+          class="modal-close"
+          data-slot="close"
+          aria-label="Close"
+        >
+          ×
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-note" data-slot="objective"></p>
+        <p class="modal-note" data-slot="scope"></p>
+        <div class="modalactions">
+          <button type="button" data-btn="cta" data-slot="copy">Copy prompt</button>
+        </div>
       </div>
     </dialog>
     <plan-drawer id="drawer" hidden>
@@ -210,11 +263,11 @@
           ><span data-slot="text"></span>
         </header>
         <div class="banner-links">
-          <button type="button" class="banner-link" data-slot="details">
+          <button type="button" data-btn="text" data-slot="details">
             View Skill Details
           </button>
           <span class="banner-sep">|</span>
-          <button type="button" class="banner-link" data-slot="action">
+          <button type="button" data-btn="cta" data-slot="action">
             Enable Skill
           </button>
         </div>
@@ -258,9 +311,19 @@
     </template>
     <template id="tpl-plan-card">
       <article class="plan-card">
-        <h3><button type="button" class="title-link" data-slot="title-link"></button></h3>
-        <button type="button" class="description-line" data-slot="description"></button>
-        <div class="priority-slot" data-slot="priority"></div>
+        <h3 class="card-header-row">
+          <button
+            type="button"
+            class="title-link"
+            data-slot="title-link"
+          ></button>
+          <div class="priority-slot" data-slot="priority"></div>
+        </h3>
+        <button
+          type="button"
+          class="description-line"
+          data-slot="description"
+        ></button>
         <div class="chips" data-slot="chips"></div>
         <div class="card-actions" data-slot="actions"></div>
         <div class="status-section" data-slot="status">
@@ -272,7 +335,9 @@
           </div>
           <div class="status-implementation" data-slot="implementation">
             <div class="status-progress-row">
-              <div class="progress-bar"><div class="progress-fill" data-slot="progress-fill"></div></div>
+              <div class="progress-bar">
+                <div class="progress-fill" data-slot="progress-fill"></div>
+              </div>
               <span class="progress-label" data-slot="progress-label"></span>
             </div>
             <div class="next-line" data-slot="next"></div>

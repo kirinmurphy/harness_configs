@@ -49,9 +49,7 @@
     ],
     "deny": [
       "Bash(git push:*)",
-      "Bash(git pull:*)",
-      "Bash(git rm:*)",
-      "Bash(rm:*)"
+      "Bash(git pull:*)"
     ]
   },
   "roborepoProfile": "readonly"

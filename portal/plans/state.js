@@ -177,3 +177,22 @@ export function formatDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "unknown" : date.toLocaleString();
 }
+
+// --- lifecycle tab <-> URL state -----------------------------------------------------------
+// The selected lifecycle tab is serialized into `?lifecycle=` so the tab survives a refresh and
+// participates in back/forward navigation (unlike telemetry's filters, which intentionally use
+// replaceState — lifecycle tab switches are meant to be real history stops).
+
+const LIFECYCLE_QUERY_KEY = "lifecycle";
+const VALID_LIFECYCLES = new Set([...Object.keys(LIFECYCLE_LABELS)]);
+
+export function lifecycleFromSearchParams(params, fallback = "active") {
+  const value = params.get(LIFECYCLE_QUERY_KEY);
+  return value && VALID_LIFECYCLES.has(value) ? value : fallback;
+}
+
+export function urlForLifecycle(lifecycle) {
+  const params = new URLSearchParams(location.search);
+  params.set(LIFECYCLE_QUERY_KEY, lifecycle);
+  return `${location.pathname}?${params.toString()}`;
+}

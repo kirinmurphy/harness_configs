@@ -1,6 +1,7 @@
 main {
   padding: 18px 20px 24px;
   max-width: 1180px;
+  margin: 0 auto;
   display: grid;
   gap: 16px;
 }
@@ -15,30 +16,8 @@ main {
   gap: 10px;
   flex-wrap: wrap;
 }
-input,
-select,
-button {
-  font: inherit;
-}
-input,
-select {
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 7px 9px;
-}
-button {
-  color: var(--ink);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 7px 10px;
-  cursor: pointer;
-}
-button:hover {
-  border-color: var(--accent);
-}
+/* Button chrome (default/secondary, cta, text) is defined globally in portal/shared/base.css via
+ * data-btn — no page-local button {} override here. */
 .icon-button {
   width: 34px;
   height: 34px;
@@ -118,23 +97,8 @@ button:hover {
   margin: 0;
   font-size: var(--text-lg);
 }
-.expanded-head .action-link {
+.expanded-head [data-btn="text"] {
   margin-left: auto;
-}
-/* Inline text action (e.g. "Hide") — underlined like a link but intentionally not accent-colored.
-   Blue/accent is reserved for real navigation (instance origin, quick links); this style is for
-   buttons that change local UI state in place. */
-.action-link {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  color: var(--ink);
-  text-decoration: underline;
-  cursor: pointer;
-}
-.action-link:hover {
-  border-color: transparent;
-  color: var(--accent);
 }
 .collapsed-group .instance-grid {
   margin-top: 12px;

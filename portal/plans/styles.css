@@ -7,6 +7,8 @@
  */
 main {
   padding: 18px;
+  max-width: 1200px;
+  margin: 0 auto;
   display: grid;
   gap: 14px;
 }
@@ -35,34 +37,22 @@ main {
 .control-bar-row strong {
   color: var(--ink);
 }
-.control-item-action {
-  border: none;
-  background: none;
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
+/* Layout only — button chrome (border/background/padding) now comes from data-btn, not this
+ * class. Two of these sit side by side (Filters, Agent prompts), so they're grouped in a shared
+ * wrapper for consistent screen positioning. */
+.control-toggle-group {
+  display: flex;
+  gap: 6px;
 }
-.control-item-action:hover {
-  color: var(--ink);
+.control-item-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .control-icon {
   width: 17px;
   height: 17px;
   flex: 0 0 auto;
-}
-.control-underline {
-  border: none;
-  background: none;
-  padding: 0;
-  font: inherit;
-  color: var(--dim);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-.control-underline:hover {
-  background: none;
-  color: var(--ink);
 }
 .filter-chips {
   display: flex;
@@ -122,6 +112,21 @@ main {
   padding-right: 20px;
   padding-bottom: 12px;
 }
+.filter-row-grid {
+  display: grid;
+  gap: 10px;
+}
+@media (min-width: 960px) {
+  /* 6 select filters split 4/3 across two columns: column-major auto-flow fills the left column
+   * top-to-bottom first (4 rows), then the right column (remaining rows) — a plain
+   * grid-template-columns:1fr 1fr would instead interleave items row-by-row across both columns. */
+  .filter-row-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: repeat(4, auto);
+    grid-auto-flow: column;
+    column-gap: 20px;
+  }
+}
 .filter-row {
   display: grid;
   grid-template-columns: 110px 1fr;
@@ -132,8 +137,11 @@ main {
   font-size: var(--text-xs);
   color: var(--dim);
 }
+
+.filter-row input,
 .filter-row select {
   width: 100%;
+  max-width: 350px;
 }
 .filter-row-actions {
   grid-template-columns: none;
@@ -173,35 +181,8 @@ main {
   width: 100%;
   padding-left: 32px;
 }
-input,
-select,
-button {
-  font: inherit;
-}
-input,
-select {
-  min-width: 0;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  padding: 7px 8px;
-}
-button {
-  color: var(--ink);
-  background: color-mix(in srgb, var(--ok) 16%, var(--bg));
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  padding: 7px 10px;
-  cursor: pointer;
-}
-button:hover {
-  background: color-mix(in srgb, var(--ok) 26%, var(--bg));
-}
-button:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
+/* Button chrome (default/secondary, cta, text) is defined globally in portal/shared/base.css via
+ * data-btn — no page-local button {} override here. */
 /* Matches .empty-state h2's weight/size, so "No Project Folders configured" reads as the same
  * heading style. Only shown in the true-empty state — once roots exist, the row-1 "N Repos"
  * control item takes over and this whole block relocates into the control bar (unlabeled). */
@@ -398,6 +379,20 @@ dialog#skill-modal::backdrop {
   font-size: var(--text-2xs);
   color: var(--dim);
 }
+#prompt-modal {
+  width: min(480px, 100%);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px var(--modal-shadow);
+  padding: 18px;
+}
+#prompt-modal::backdrop {
+  background: var(--backdrop);
+}
+#prompt-modal .modalactions {
+  margin-top: 12px;
+}
 /* Full-width banner, flush to the viewport edges — a sibling of <main> (not a child), so it can
  * break out of main's padding. Scrolls normally with the page (no sticky/fixed). */
 .package-banner {
@@ -457,7 +452,7 @@ dialog#skill-modal::backdrop {
 }
 .group summary::before {
   content: "▶";
-  font-size: 9px;
+  font-size: var(--text-2xs);
   transition: transform 0.1s ease;
 }
 .group[open] summary::before {
@@ -476,7 +471,6 @@ dialog#skill-modal::backdrop {
   grid-template-areas:
     "title"
     "description"
-    "priority"
     "chips"
     "actions"
     "status";
@@ -484,12 +478,10 @@ dialog#skill-modal::backdrop {
 }
 .plan-card h3 {
   grid-area: title;
+  min-width: 0;
 }
 .plan-card > .description-line {
   grid-area: description;
-}
-.plan-card > .priority-slot {
-  grid-area: priority;
 }
 .plan-card > .chips {
   grid-area: chips;
@@ -499,16 +491,16 @@ dialog#skill-modal::backdrop {
 }
 .plan-card > .status-section {
   grid-area: status;
+  min-width: 0;
 }
 /* Wide screens: status (blocked badge / progress / next-action) moves to a fixed right column
  * instead of stacking under the card's main content — see breakpoint note at top of file. */
 @media (min-width: 960px) {
   .plan-card {
-    grid-template-columns: 1fr 200px;
+    grid-template-columns: 1fr 360px;
     grid-template-areas:
       "title       status"
       "description status"
-      "priority    status"
       "chips       status"
       "actions     status";
     column-gap: 12px;
@@ -519,17 +511,29 @@ dialog#skill-modal::backdrop {
     border-left: 1px solid var(--warn-line);
     border-radius: 0 7px 7px 0;
     height: 100%;
+    align-self: start;
   }
 }
 .plan-card h3 {
   margin: 0;
   font-size: var(--text-md);
 }
+.card-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .title-link {
   all: unset;
   cursor: pointer;
   color: inherit;
   font: inherit;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .title-link:hover {
   text-decoration: underline;
@@ -564,6 +568,24 @@ dialog#skill-modal::backdrop {
 }
 .priority-slot {
   display: flex;
+  flex: 0 0 auto;
+}
+/* Distinct surface so the priority control reads as an actionable widget, not flat card text. */
+.priority-slot .dropdown-trigger {
+  font-size: var(--text-sm);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  padding: 3px 9px;
+}
+.priority-slot .dropdown-chevron {
+  font-size: var(--text-2xs);
+  color: var(--ink);
+}
+/* Failed priority update (e.g. stale mtime conflict): the page-level warning banner is far above
+ * the card grid, so put a visible marker on the control itself too — a native title tooltip
+ * alone is too easy to miss. */
+.priority-slot option-dropdown.dropdown-error .dropdown-trigger {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 .plan-card.dirty {
   border-left: 2px solid var(--accent);
@@ -599,18 +621,21 @@ dialog#skill-modal::backdrop {
   background: color-mix(in srgb, var(--warn) 10%, var(--panel));
   display: grid;
   gap: 6px;
+  overflow-wrap: anywhere;
 }
 .status-state-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
 }
 .status-state-chips {
   display: flex;
   align-items: center;
   gap: 5px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 .state-badge {
   border: 1px solid var(--line);
@@ -627,21 +652,25 @@ dialog#skill-modal::backdrop {
 }
 .status-state-row .meta-line {
   font-size: var(--text-2xs);
+  min-width: 0;
 }
 .status-implementation {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 .status-implementation[hidden] {
   display: none;
 }
 .status-progress-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 8px;
 }
 .progress-bar {
-  flex: 1;
+  flex: 1 1 60px;
+  min-width: 0;
   height: 6px;
   border-radius: 3px;
   background: var(--line);
@@ -660,6 +689,7 @@ dialog#skill-modal::backdrop {
 .status-section .next-line {
   font-size: var(--text-sm);
   color: var(--ink);
+  min-width: 0;
 }
 .card-actions {
   display: flex;
@@ -779,8 +809,15 @@ plan-drawer[hidden] {
   #root-form {
     display: grid;
   }
+}
+@media (max-width: 420px) {
   .filter-row {
     grid-template-columns: 1fr;
+  }
+
+  .filter-row label {
+    display: none;
+    /* grid-template-columns: 1fr; */
   }
 }
 /* Overrides base.css's .spinner: smaller, green (not accent), inline next to button text. */
@@ -805,25 +842,9 @@ plan-drawer[hidden] {
 }
 
 .banner-links {
+  display: flex;
   gap: 8px;
-}
-.banner-link {
-  border: none;
-  background: none;
-  padding: 0;
-  font: inherit;
-  color: var(--dim);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-.banner-link:hover {
-  color: var(--ink);
-}
-.banner-link:disabled {
-  cursor: default;
-  opacity: 0.6;
-  text-decoration: none;
+  align-items: center;
 }
 .banner-sep {
   color: var(--line);
@@ -861,7 +882,7 @@ option-dropdown {
 }
 .dropdown-chevron {
   color: var(--dim);
-  font-size: 9px;
+  font-size: var(--text-2xs);
 }
 .dropdown-menu {
   position: fixed;
@@ -922,6 +943,30 @@ option-dropdown {
 .lifecycle-dropdown-mount {
   display: none;
   margin-bottom: 12px;
+}
+/* Stylized full-width trigger — this dropdown reads as the page's section title on narrow
+ * screens (it replaces the lifecycle tabs entirely), so it needs to look prominent rather than
+ * like a small floating control that gets lost above the card list. */
+.lifecycle-dropdown-mount option-dropdown {
+  display: block;
+  width: 100%;
+}
+.lifecycle-dropdown-mount .dropdown-trigger {
+  width: 100%;
+  justify-content: space-between;
+  font-size: var(--text-lg);
+  font-weight: 400;
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+  border-color: var(--line);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: 8px;
+}
+.lifecycle-dropdown-mount .dropdown-chevron {
+  font-size: var(--text-lg);
+  color: var(--ink);
+}
+.lifecycle-dropdown-mount .dropdown-menu {
+  width: 100%;
 }
 @media (max-width: 680px) {
   .lifecycle-tabs {

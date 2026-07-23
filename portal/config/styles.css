@@ -5,6 +5,7 @@ main {
   display: grid;
   gap: 16px;
   max-width: 960px;
+  margin: 0 auto;
   grid-template-columns: 1fr;
 }
 .panel.wide {
@@ -549,6 +550,8 @@ main {
   line-height: 1.2;
   color: var(--ink);
 }
+/* em, not var(--text-*): scales relative to the markdown container's inherited size rather than
+ * the fixed portal type scale, so nested/rendered content keeps a readable heading hierarchy. */
 .markdown h1 {
   font-size: 1.2em;
 }

@@ -23,6 +23,10 @@
   --danger: #f85149;
   --spike: #f85149;
   --on-accent: #0b0e13;
+  /* CTA: a brighter, more saturated green than --ok (which stays reserved for status/validation
+   * indicators elsewhere in the portal) — the one true "primary action" fill color. */
+  --cta: #2ea043;
+  --on-cta: #ffffff;
   --badge-skill-ink: #79c0ff;
   --badge-skill-line: #1f6feb;
   --badge-skill-bg: #0d1b2e;
@@ -53,12 +57,23 @@
 
   /* Fixed type scale — every font-size in the portal maps to one of these instead of a bare px
    * value, so sizing stays consistent across pages and can be re-tuned in one place. */
-  --text-2xs: 12px; /* fine print: timestamps, meta, badges */
-  --text-xs: 13px; /* secondary: labels, chips, table cells */
-  --text-sm: 14px; /* body default: card text, list items */
-  --text-md: 16px; /* emphasized body: card titles, nav */
-  --text-lg: 20px; /* section headers, drawer title */
-  --text-xl: 24px; /* page-level headings */
+  --text-2xs: 13px; /* fine print: timestamps, meta, badges */
+  --text-xs: 14px; /* secondary: labels, chips, table cells */
+  --text-sm: 16px; /* body default: card text, list items */
+  --text-md: 18px; /* emphasized body: card titles, nav */
+  --text-lg: 22px; /* section headers, drawer title */
+  --text-xl: 26px; /* page-level headings */
+
+  /* Spacing scale — padding/margin/gap should reference one of these instead of a bare px value. */
+  --space-xs: 6px;
+  --space-sm: 10px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+
+  --line-height-tight: 1.3;
+  --line-height-normal: 1.5;
+  --line-height-loose: 1.7;
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -76,6 +91,8 @@
   --danger: #cf222e;
   --spike: #cf222e;
   --on-accent: #ffffff;
+  --cta: #1f8f38;
+  --on-cta: #ffffff;
   --badge-skill-ink: #0550ae;
   --badge-skill-line: #b6e3ff;
   --badge-skill-bg: #ddf4ff;
@@ -107,11 +124,82 @@
 [hidden] {
   display: none !important;
 }
+input,
+select,
+button {
+  font: inherit;
+}
+input,
+select {
+  min-width: 0;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: var(--space-xs) var(--space-sm);
+}
+/* Global button system — three variants selected via data-btn (not a class) so the intent is
+ * legible at the call site: data-btn="cta" | "secondary" | "text". A bare <button> with no
+ * data-btn defaults to "secondary" (the trim-but-not-accented look), matching how most buttons in
+ * the portal are default/dismiss/toggle actions rather than CTAs — CTA is the deliberate opt-in.
+ *
+ * cta: primary workflow-terminating actions (submit, save, add, run, enable). Solid, high-contrast
+ *   fill — there should be at most one per view competing for attention.
+ * secondary (default): everything else that still needs button chrome — cancel, close, persistent
+ *   toggles that open a popup/panel, default/neutral actions. Enough contrast off the page
+ *   background to read as clickable, without competing with a CTA.
+ * text: inline actions embedded in a sentence or label row (e.g. "...in 5 Repos, update") — no
+ *   chrome at all, just link-like text. Existing .control-underline/.linkbtn-style rules already
+ *   do this per-page; new call sites should use data-btn="text" instead of reinventing one.
+ */
+button,
+[data-btn="secondary"] {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, var(--bg));
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: var(--space-xs) var(--space-sm);
+  cursor: pointer;
+}
+button:hover,
+[data-btn="secondary"]:hover {
+  border-color: var(--dim);
+  background: color-mix(in srgb, var(--ink) 10%, var(--bg));
+}
+[data-btn="cta"] {
+  color: var(--on-cta);
+  background: var(--cta);
+  border: 1px solid var(--cta);
+  border-radius: 5px;
+  padding: var(--space-xs) var(--space-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+[data-btn="cta"]:hover {
+  filter: brightness(1.08);
+}
+[data-btn="text"] {
+  color: var(--dim);
+  background: none;
+  border: none;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+[data-btn="text"]:hover {
+  color: var(--ink);
+}
+button:disabled,
+[data-btn]:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
 body {
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: var(--text-sm);
-  line-height: 1.5;
+  line-height: var(--line-height-normal);
   background: var(--bg);
   color: var(--ink);
 }
@@ -126,27 +214,36 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
+/* Shared centering wrapper — keeps content readable-width on very wide screens while the parent
+ * (header/footer background, page body) stays full-bleed. */
+.inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
 .portal-header .inner {
   display: flex;
 }
 
+/* No flex: h1 + #portal-updated are inline-block instead, so the updated text naturally wraps
+ * onto its own line below "roborepo" once the header gets too narrow to fit both — no breakpoint
+ * to measure or maintain. */
 .portal-header .logo-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  min-width: 0;
   padding: 0.5rem 1.25rem;
 }
 
 .portal-header h1 {
+  display: inline-block;
   font-size: var(--text-md);
   margin: 0;
   margin-right: 0.5rem;
   font-weight: 600;
 }
 .portal-updated {
+  display: inline-block;
   color: var(--dim);
   font-size: var(--text-2xs);
-  white-space: nowrap;
 }
 nav {
   display: flex;
@@ -180,11 +277,13 @@ nav a.active {
   padding: 12px 20px;
   border-top: 1px solid var(--line);
   color: var(--dim);
+  font-size: var(--text-2xs);
+}
+.portal-footer .inner {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  font-size: var(--text-2xs);
 }
 .theme-toggle {
   color: var(--dim);
@@ -452,7 +551,7 @@ dd {
 }
 .chip-tip-foot {
   color: var(--dim);
-  font-size: 11px;
+  font-size: var(--text-2xs);
 }
 /* Shared modal chrome — used by /config's #config-modal and /plans' #skill-modal. Each dialog's
  * own box styling (size, background, backdrop) stays in that page's own styles.css keyed off its

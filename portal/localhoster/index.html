@@ -30,7 +30,7 @@
         </div>
         <div class="modal-actions">
           <button type="button" id="link-add">Add row</button>
-          <button type="submit">Save links</button>
+          <button type="submit" data-btn="cta">Save links</button>
         </div>
       </form>
     </dialog>
@@ -123,7 +123,7 @@
           <button type="button" id="app-remove-association">
             Remove association
           </button>
-          <button type="submit">Save project/app</button>
+          <button type="submit" data-btn="cta">Save project/app</button>
         </div>
       </form>
     </dialog>
@@ -157,7 +157,7 @@
           <div class="item-err" id="alias-error"></div>
         </div>
         <div class="modal-actions">
-          <button type="submit">Save alias</button>
+          <button type="submit" data-btn="cta">Save alias</button>
         </div>
       </form>
     </dialog>
@@ -205,7 +205,7 @@
         </summary>
         <div class="expanded-head">
           <h2 data-slot="expanded-title"></h2>
-          <button type="button" class="action-link" data-action="collapse">Hide</button>
+          <button type="button" data-btn="text" data-action="collapse">Hide</button>
         </div>
         <div class="instance-grid" data-slot="items"></div>
       </details>

@@ -10,7 +10,7 @@ import {
 import { createSkillDetailModal } from "/portal/shared/skill-detail-modal.js";
 import * as api from "./api.js";
 import * as tmpl from "./templates.js";
-import { createRootsPanel, createInfoModal } from "./panels.js";
+import { createRootsPanel, createInfoModal, createPromptModal } from "./panels.js";
 import {
   FILTER_IDS,
   FILTER_DEFAULTS,
@@ -23,6 +23,8 @@ import {
   optionLabel,
   planSort,
   repositoryContext,
+  lifecycleFromSearchParams,
+  urlForLifecycle,
 } from "./state.js";
 
 const LIFECYCLE_ORDER = ["backlog", "active", "completed", "archived"];
@@ -31,7 +33,7 @@ const state = {
   snapshot: null,
   filters: { ...FILTER_DEFAULTS },
   filtersExpanded: false,
-  selectedLifecycle: "active",
+  selectedLifecycle: lifecycleFromSearchParams(new URLSearchParams(location.search)),
 };
 
 // Plan keys whose displayed field(s) changed via an in-card action (e.g. priority dropdown)
@@ -63,6 +65,7 @@ const rootsPanel = createRootsPanel({
 });
 createInfoModal();
 const skillModal = createSkillDetailModal(document.getElementById("skill-modal"));
+const promptModal = createPromptModal(document.getElementById("prompt-modal"));
 
 bindStaticControls();
 load();
@@ -71,7 +74,7 @@ function bindStaticControls() {
   document
     .getElementById("refresh")
     .addEventListener("click", () => api.refreshSnapshot().then(applySnapshot).catch(showError));
-  nextPrompt.addEventListener("click", () => copyVisibleNextPrompt().catch(showError));
+  nextPrompt.addEventListener("click", openNextPrompt);
   document.getElementById("drawer-close").addEventListener("click", () => drawer.close());
   for (const id of FILTER_IDS) {
     const node = document.getElementById(id);
@@ -165,8 +168,7 @@ function render() {
   refreshFilterCounts(snapshot);
   const allMatchingCurrentFilters = filteredPlans(snapshot.plans, state.filters);
   renderLifecycleTabs(allMatchingCurrentFilters);
-  nextPrompt.hidden =
-    !snapshot.planDocsPackage.enabled || actionablePlans(allMatchingCurrentFilters).length === 0;
+  nextPrompt.hidden = !snapshot.planDocsPackage.enabled;
   const currentLifecyclePlans = allMatchingCurrentFilters.filter(
     (record) => record.plan.lifecycle === state.selectedLifecycle,
   );
@@ -240,8 +242,17 @@ function ensureLifecycleDropdown() {
 function selectLifecycle(life) {
   state.selectedLifecycle = life;
   flushDirtyState();
+  history.pushState(null, "", urlForLifecycle(life));
   render();
 }
+
+// Back/forward nav: re-read the tab from the URL (now restored by the browser) and repaint
+// without a full reload — pushState above is what makes this fire in the first place.
+window.addEventListener("popstate", () => {
+  state.selectedLifecycle = lifecycleFromSearchParams(new URLSearchParams(location.search));
+  flushDirtyState();
+  render();
+});
 
 async function handlePriorityChange(record, newPriority) {
   const result = await api.updatePlanPriority(record.key, newPriority, record.mtimeMs);
@@ -261,12 +272,29 @@ function renderFilterChips(snapshot) {
   filterChipsEl.replaceChildren(...descriptors.map(tmpl.filterChip));
 }
 
-async function copyVisibleNextPrompt() {
-  const keys = actionablePlans(filteredPlans(state.snapshot.plans, state.filters))
+function visibleNextPromptKeys() {
+  return actionablePlans(filteredPlans(state.snapshot.plans, state.filters))
     .map((record) => record.key)
     .slice(0, 20);
-  if (keys.length === 0) throw new Error("no active or backlog plans in the current view");
-  await copyPrompt("next", keys, "portable");
+}
+
+// The popup shows the scope count up front, so it needs the (cheap) key list before the user
+// commits to copying — copyPrompt's own key list is recomputed at click-time in case filters
+// changed while the popup was open.
+function openNextPrompt() {
+  const keys = visibleNextPromptKeys();
+  promptModal.open({
+    title: "/plan-docs next",
+    objective:
+      "Copies a prompt that asks an agent to work through the next actionable step across these plans, one at a time.",
+    scopeCount: keys.length,
+    onCopy: async () => {
+      const freshKeys = visibleNextPromptKeys();
+      if (freshKeys.length === 0) throw new Error("no active or backlog plans in the current view");
+      await copyPrompt("next", freshKeys, "portable");
+    },
+    onError: showError,
+  });
 }
 
 function renderWarnings(snapshot) {

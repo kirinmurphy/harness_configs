@@ -77,10 +77,18 @@ function renderPriorityDropdown(record, cardActions) {
   dropdown.value = record.plan.priority;
   dropdown.onSelect = async (value) => {
     dropdown.loading = true;
+    dropdown.title = "";
+    dropdown.classList.remove("dropdown-error");
     try {
       const result = await cardActions.onPriorityChange(record, value);
       dropdown.value = result.priority;
     } catch (err) {
+      // The page-level error banner lives far above the card grid — easy to miss when you're
+      // scrolled down acting on a card, so the failure can look like it silently did nothing.
+      // Put the message on the control itself too (native title tooltip + red outline) as a
+      // failure the user notices right where they clicked.
+      dropdown.title = err?.message || String(err);
+      dropdown.classList.add("dropdown-error");
       cardActions.onError(err);
     } finally {
       dropdown.loading = false;

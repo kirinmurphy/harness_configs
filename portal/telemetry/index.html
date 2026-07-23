@@ -49,7 +49,7 @@
          something, mark it"), not a way of narrowing the current view, so grouping it with the
          filter controls above misrepresented what it does. -->
     <div class="page-actions">
-      <button class="markchangebtn" id="openmarkermodal" type="button">+ mark change</button>
+      <button data-btn="cta" id="openmarkermodal" type="button">+ mark change</button>
     </div>
     <div class="page-meta stat-row" id="meta"></div>
     <main>
@@ -80,7 +80,7 @@
           collecting data across your harnesses.
         </div>
         <div class="modalactions">
-          <button class="enablebtn" id="enabletelemetry">
+          <button data-btn="cta" id="enabletelemetry">
             turn on telemetry
           </button>
         </div>
@@ -275,7 +275,7 @@
             <label>cohort B harness <select id="explorer-b-harness"><option value="">any</option></select></label>
           </div>
           <div class="modalactions">
-            <button id="explorer-run">run comparison</button>
+            <button id="explorer-run" data-btn="cta">run comparison</button>
           </div>
         </section>
         <section class="panel">
@@ -425,7 +425,7 @@
           </select>
         </label>
         <div class="modalactions">
-          <button type="submit" id="markersubmit">create marker</button>
+          <button type="submit" id="markersubmit" data-btn="cta">create marker</button>
         </div>
         <div class="item-err" id="markererr"></div>
       </form>

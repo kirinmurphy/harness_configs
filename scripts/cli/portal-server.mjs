@@ -28,15 +28,15 @@ const STATIC_TYPES = {
 // marks the page served at "/" (what `roborepo serve` opens). Keep "/config" as a stable alias for
 // existing docs, tests, and saved browser links.
 export const PAGES = [
-  { path: "/", id: "config", title: "Config", dir: "config", default: true },
   { path: "/plans", id: "plans", title: "Plans", dir: "plans" },
+  { path: "/telemetry", id: "telemetry", title: "Token Use", dir: "telemetry" },
+  { path: "/", id: "config", title: "Agent Configs", dir: "config", default: true },
   {
     path: "/localhoster",
     id: "localhoster",
-    title: "Localhoster",
+    title: "Localhost",
     dir: "localhoster",
   },
-  { path: "/telemetry", id: "telemetry", title: "Telemetry", dir: "telemetry" },
 ];
 const PAGE_BY_PATH = new Map(
   PAGES.flatMap((p) =>

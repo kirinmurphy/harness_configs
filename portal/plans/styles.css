@@ -485,12 +485,12 @@ dialog#skill-modal::backdrop {
  * the title/description individually. Title still underlines on hover so it keeps reading as the
  * primary link; description doesn't need its own underline since it's not link-styled text.
  * :hover:not(:has(...)) suppresses the feedback when the pointer is over a nested widget (priority
- * dropdown, action buttons) — hovering those doesn't open the card, so they shouldn't look like
- * they will. */
-.plan-card:hover:not(:has(button:hover, option-dropdown:hover)) {
+ * dropdown, action buttons) or the status-section (progress/next-action) — none of those open the
+ * card, so they shouldn't look like they will. */
+.plan-card:hover:not(:has(button:hover, option-dropdown:hover, .status-section:hover)) {
   background: color-mix(in srgb, var(--accent) 4%, var(--panel));
 }
-.plan-card:hover:not(:has(button:hover, option-dropdown:hover)) .title-link {
+.plan-card:hover:not(:has(button:hover, option-dropdown:hover, .status-section:hover)) .title-link {
   text-decoration: underline;
 }
 .plan-card:focus-visible {

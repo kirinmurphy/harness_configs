@@ -191,7 +191,7 @@ class PlanCardElement extends HTMLElement {
     node.tabIndex = 0;
     node.setAttribute("role", "button");
     const isInteractiveTarget = (event) =>
-      event.target.closest("button, option-dropdown, a, input, select");
+      event.target.closest("button, option-dropdown, a, input, select, .status-section");
     node.addEventListener("click", (event) => {
       if (isInteractiveTarget(event)) return;
       cardActions.onOpen(record.key);

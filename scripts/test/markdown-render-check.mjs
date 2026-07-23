@@ -48,8 +48,9 @@ function testMermaidFallback() {
   const md = "```mermaid\nflowchart LR\n  A --> B\n```\n";
   const html = renderMarkdown(md);
   assert.match(html, /class="md-mermaid"/);
-  assert.match(html, /mermaid diagram \(source shown; rendered view not available\)/);
-  // Diagram source stays present and legible (escaped), never dropped.
+  assert.match(html, /<pre class="mermaid" data-mermaid-source="/);
+  // Diagram source stays present and legible (escaped) in both the rendered element's textContent
+  // and the data attribute doc-guide-modal.js reads from if mermaid.run() fails.
   assert.match(html, /flowchart LR/);
   assert.match(html, /A --&gt; B/);
 }

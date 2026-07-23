@@ -54,13 +54,16 @@ function slugify(text, seen) {
   return count === 0 ? base : `${base}-${count}`;
 }
 
-// Fenced ```mermaid blocks have no runtime renderer here (zero-dependency, loopback-only portal —
-// no CDN script tag for the real mermaid.js library). Rather than rendering the raw diagram source
-// as an opaque code block, label it clearly and keep the source visible/selectable as a legible
-// placeholder — see globals/packages/case-study-pack's canvas/mermaid fallback guidance for the
-// same "always leave a Markdown-native stand-in" rule this mirrors.
+// Fenced ```mermaid blocks render client-side via a vendored mermaid.js (portal/shared/vendor/
+// mermaid.min.js — doc-guide-modal.js loads it lazily and calls mermaid.render() per block after
+// this HTML is inserted, replacing each <pre class="mermaid"> with the resulting SVG).
+// escapeHtml here is for HTML safety, not a fallback-only concern — mermaid.render() reads the
+// raw source from data-mermaid-source, not the element's (HTML-escaped) textContent.
+// data-mermaid-source keeps the raw text available so a failed render (offline, load error, bad
+// diagram source) can still leave the escaped source visible instead of a blank box.
 function renderMermaidFallback(source) {
-  return `<div class="md-mermaid"><p class="md-meta">mermaid diagram (source shown; rendered view not available)</p><pre><code>${escapeHtml(source)}</code></pre></div>`;
+  const escaped = escapeHtml(source);
+  return `<div class="md-mermaid"><pre class="mermaid" data-mermaid-source="${escapeAttr(source)}">${escaped}</pre></div>`;
 }
 
 // GitHub-style pipe table: a header row, a `---|---` separator row, then body rows. Cells are split

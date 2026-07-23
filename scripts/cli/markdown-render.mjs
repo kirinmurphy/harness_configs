@@ -40,6 +40,51 @@ function isCommentMarker(line) {
   return /^<!--\s*(BEGIN|END)\s+[^>]+-->$/.test(line.trim());
 }
 
+// GitHub-style heading slug: lowercase, strip anything that isn't a word char/space/hyphen, spaces
+// to hyphens, then dedupe repeats with a trailing -1/-2/... so deep links stay unambiguous within
+// one rendered document.
+function slugify(text, seen) {
+  const base = String(text)
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-");
+  const count = seen.get(base) || 0;
+  seen.set(base, count + 1);
+  return count === 0 ? base : `${base}-${count}`;
+}
+
+// Fenced ```mermaid blocks render client-side via a vendored mermaid.js (portal/shared/vendor/
+// mermaid.min.js — doc-guide-modal.js loads it lazily and calls mermaid.render() per block after
+// this HTML is inserted, replacing each <pre class="mermaid"> with the resulting SVG).
+// escapeHtml here is for HTML safety, not a fallback-only concern — mermaid.render() reads the
+// raw source from data-mermaid-source, not the element's (HTML-escaped) textContent.
+// data-mermaid-source keeps the raw text available so a failed render (offline, load error, bad
+// diagram source) can still leave the escaped source visible instead of a blank box.
+function renderMermaidFallback(source) {
+  const escaped = escapeHtml(source);
+  return `<div class="md-mermaid"><pre class="mermaid" data-mermaid-source="${escapeAttr(source)}">${escaped}</pre></div>`;
+}
+
+// GitHub-style pipe table: a header row, a `---|---` separator row, then body rows. Cells are split
+// on unescaped `|`; a leading/trailing pipe on each line is optional and stripped if present.
+function isTableSeparator(line) {
+  return /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/.test(line) && line.includes("-");
+}
+
+function splitTableRow(line) {
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  return trimmed.split(/(?<!\\)\|/).map((cell) => cell.trim().replace(/\\\|/g, "|"));
+}
+
+function renderTable(headerLine, bodyLines) {
+  const headers = splitTableRow(headerLine);
+  const rows = bodyLines.map(splitTableRow);
+  const head = `<thead><tr>${headers.map((cell) => `<th>${renderInline(cell)}</th>`).join("")}</tr></thead>`;
+  const body = `<tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${renderInline(cell)}</td>`).join("")}</tr>`).join("")}</tbody>`;
+  return `<div class="md-table-wrap"><table>${head}${body}</table></div>`;
+}
+
 function renderCommentLine(line) {
   return `<p class="md-meta"><code>${escapeHtml(line.trim())}</code></p>`;
 }
@@ -51,10 +96,12 @@ function renderList(items, ordered) {
 
 function renderBlocks(lines) {
   const blocks = [];
+  const headingSlugs = new Map();
   let para = [];
   let list = null;
   let quote = [];
   let code = null;
+  let codeLang = null;
 
   const flushPara = () => {
     if (!para.length) return;
@@ -72,23 +119,31 @@ function renderBlocks(lines) {
     quote = [];
   };
 
-  for (const raw of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
     const line = raw.replace(/\s+$/, "");
     const trimmed = line.trim();
 
     if (code) {
       if (/^```/.test(trimmed)) {
-        blocks.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+        blocks.push(
+          codeLang === "mermaid"
+            ? renderMermaidFallback(code.join("\n"))
+            : `<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`,
+        );
         code = null;
+        codeLang = null;
       } else {
         code.push(raw);
       }
       continue;
     }
 
-    if (/^```/.test(trimmed)) {
+    const fenceOpen = /^```(\S*)/.exec(trimmed);
+    if (fenceOpen) {
       flushPara(); flushList(); flushQuote();
       code = [];
+      codeLang = fenceOpen[1] || null;
       continue;
     }
 
@@ -107,7 +162,24 @@ function renderBlocks(lines) {
     if (heading) {
       flushPara(); flushList(); flushQuote();
       const level = heading[1].length;
-      blocks.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
+      const text = heading[2];
+      const id = slugify(text.replace(/[`*_]/g, ""), headingSlugs);
+      blocks.push(`<h${level} id="${id}">${renderInline(text)}</h${level}>`);
+      continue;
+    }
+
+    // Table: a header row immediately followed by a `---|---` separator row. Only recognized at
+    // this exact shape (GitHub's minimum), not arbitrary pipe-containing prose.
+    if (line.includes("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1].trim())) {
+      flushPara(); flushList(); flushQuote();
+      const bodyLines = [];
+      let j = i + 2;
+      while (j < lines.length && lines[j].trim() && lines[j].includes("|")) {
+        bodyLines.push(lines[j]);
+        j += 1;
+      }
+      blocks.push(renderTable(trimmed, bodyLines));
+      i = j - 1;
       continue;
     }
 
@@ -141,7 +213,13 @@ function renderBlocks(lines) {
     para.push(line);
   }
 
-  if (code) blocks.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+  if (code) {
+    blocks.push(
+      codeLang === "mermaid"
+        ? renderMermaidFallback(code.join("\n"))
+        : `<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`,
+    );
+  }
   flushPara(); flushList(); flushQuote();
   return blocks.join("\n");
 }

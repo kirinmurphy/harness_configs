@@ -4,14 +4,21 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { telemetryCollectorDir, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
 import { mcpServerOf, transcriptStats } from "./telemetry-transcript.mjs";
+import { classifyCommand, failureSignature } from "./telemetry-classify.mjs";
+import { generateCaptureId } from "./telemetry-schemas/capture-schema-v3.mjs";
+import { inferPhase } from "./telemetry-phase-infer.mjs";
+import { categorizeFile } from "./telemetry-task-infer.mjs";
 
 // Minimal-import capture path, split out of telemetry.mjs so the hot hook (fires on every
 // PreToolUse/PostToolUse) doesn't pay to load portal-server/config/presets/telemetry-analyze/
 // telemetry-insights just to append one JSONL line. Keep this file's import graph small.
+// telemetry-classify.mjs is a pure, dependency-free module (no fs/config imports) so it stays
+// cheap enough to import here unconditionally; the config-snapshot builder is NOT imported here —
+// see resolveConfigSnapshotId() below, which dynamic-imports config.mjs only on SessionStart.
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
-export function telemetryCaptureCommand(args) {
+export async function telemetryCaptureCommand(args) {
   const options = parseCaptureArgs(args);
   const state = readTelemetryState();
   if (state.enabled !== true) return;
@@ -28,8 +35,29 @@ export function telemetryCaptureCommand(args) {
   const stats = transcriptStats(transcriptPath, { sessionId, collectorDir: telemetryCollectorDir });
   const event = options.event || input.hook_event_name || input.hookEventName || "unknown";
   const tool = toolMetadata(input);
+  // Raw command text never leaves this function scope — classifyCommand() only returns a
+  // category/runner/scope/signature-hash, never the command itself, matching the same
+  // hash-don't-store discipline as command_hash above.
+  const rawCommand = typeof (input.tool_input || input.toolInput || {}).command === "string" ? (input.tool_input || input.toolInput).command : null;
+  let operation = rawCommand ? classifyCommand(rawCommand) : null;
+  // Exit status/failure signature are only knowable once the tool result is back (PostToolUse), and
+  // only for Bash-classified operations — a passing/failing test's transcript result is this
+  // operation's outcome. stats.last_result is transcript-derived and best-effort: a PostToolUse whose
+  // transcript chunk hasn't caught up yet (rare, but possible under fast successive hooks) leaves
+  // exit_status/failure_signature null rather than guessing.
+  if (operation && event === "PostToolUse" && stats?.last_result && stats.last_result.tool === tool.name) {
+    operation = {
+      ...operation,
+      exit_status: stats.last_result.is_error ? "fail" : "pass",
+      failure_signature: stats.last_result.is_error ? failureSignature(stats.last_result_failure_text) : null,
+    };
+  }
+  const callId = resolveCallId(input, sessionId, tool.name, event);
+  const activity = updateSessionActivity(sessionId, event, tool, operation, cwd);
   const record = {
     schema: SCHEMA_VERSION,
+    capture_id: generateCaptureId(),
+    call_id: callId,
     ts: new Date().toISOString(),
     harness: options.harness,
     event,
@@ -40,9 +68,20 @@ export function telemetryCaptureCommand(args) {
     cwd_name: path.basename(cwd),
     repo: repoMetadata(cwd),
     tool,
-    // Wall-clock tool latency: PreToolUse stamps a start cursor, PostToolUse reads it back. Null for
-    // non-tool events or an unmatched pair. Helps spot slow tools independent of token cost.
-    duration_ms: toolDuration(event, sessionId, tool.name),
+    // Wall-clock tool latency: PreToolUse stamps a start cursor keyed by call_id, PostToolUse reads
+    // it back by the same call_id. Null for non-tool events or an unmatched pair. call_id (rather
+    // than session alone) keeps concurrent/nested tool calls in the same session from clobbering
+    // each other's cursor.
+    duration_ms: toolDuration(event, callId),
+    config_snapshot_id: await resolveConfigSnapshotId(event, sessionId, options.harness, stats),
+    operation,
+    // Explicit phase markers (`telemetry mark --type phase`) are read at analysis time (Phase 5+) and
+    // take precedence from their timestamp forward — this capture-time field is always the inferred
+    // reading from this session's accumulated activity signals, never a lookup against markers (that
+    // would require importing marker persistence into the hot path, which the plan's performance
+    // constraints rule out).
+    phase: activity ? inferPhase(activity.phaseSignals) : null,
+    intervening: activity ? activity.intervening : null,
     prompt: promptMetadata(input),
     tokens: stats ? stats.tokens : null,
     delta_tokens: stats ? deltaTokens(sessionId, stats.tokens.total) : null,
@@ -139,6 +178,155 @@ function repoMetadata(cwd) {
   };
 }
 
+// Tool names whose PostToolUse counts as an "edit completed" for phase inference and intervening-work
+// tracking (plan: "whether a write/edit tool completed"). Kept to the tools that mutate repo files —
+// Read/Grep/Glob-shaped tools are discovery signals, not edits.
+const EDIT_TOOL_NAMES = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+const READ_TOOL_NAMES = new Set(["Read", "Grep", "Glob", "WebFetch", "WebSearch"]);
+
+function sessionActivityPath(sessionId) {
+  return path.join(telemetryCollectorDir, `activity-${hash(sessionId)}.json`);
+}
+
+function emptySessionActivity() {
+  return {
+    editCount: 0,
+    readCount: 0,
+    testFailureStreak: 0,
+    editSinceLastFailure: false,
+    broadCheckRan: false,
+    finalizationSignals: false,
+    changedFileCategories: [],
+    changedFileCount: 0,
+    lastDiffFingerprint: null,
+    targetedTestRanSinceLastFull: false,
+    lastFailureSignature: null,
+  };
+}
+
+// Session-scoped activity state, read-modify-written on every PostToolUse (the point at which we
+// know a tool actually completed, and — for test operations — whether it passed or failed). Feeds
+// both phase inference (telemetry-phase-infer.mjs) and the per-capture `intervening` field (plan:
+// "Intervening-work analysis"). Best-effort throughout: a cursor read/write failure degrades to an
+// empty/stale activity view rather than failing the capture.
+function updateSessionActivity(sessionId, event, tool, operation, cwd) {
+  if (!sessionId) return null;
+  const cursorPath = sessionActivityPath(sessionId);
+  let activity = emptySessionActivity();
+  try {
+    activity = { ...activity, ...JSON.parse(fs.readFileSync(cursorPath, "utf8")) };
+  } catch {
+    // First activity this session, or a corrupt/missing cursor — start fresh.
+  }
+
+  if (event === "PostToolUse") {
+    const isEdit = EDIT_TOOL_NAMES.has(tool.name);
+    const isRead = READ_TOOL_NAMES.has(tool.name);
+    const fileTouched = isEdit && tool.file_ext != null;
+
+    if (isEdit) {
+      activity.editCount += 1;
+      activity.editSinceLastFailure = activity.testFailureStreak > 0 ? true : activity.editSinceLastFailure;
+    }
+    if (isRead) activity.readCount += 1;
+    if (fileTouched) {
+      const category = categorizeFile(tool.file_ext);
+      activity.changedFileCategories = dedupe([...activity.changedFileCategories, category]);
+      activity.changedFileCount += 1;
+    }
+
+    if (operation) {
+      const isTestLike = operation.category === "test" || operation.category === "lint" || operation.category === "typecheck";
+      if (isTestLike) {
+        if (operation.exit_status === "fail") {
+          const changed = operation.failure_signature && operation.failure_signature !== activity.lastFailureSignature;
+          activity.testFailureStreak += 1;
+          activity.lastFailureSignature = operation.failure_signature ?? activity.lastFailureSignature;
+          activity._failureSignatureChanged = Boolean(changed);
+        } else if (operation.exit_status === "pass") {
+          activity.testFailureStreak = 0;
+          activity.editSinceLastFailure = false;
+          activity._failureSignatureChanged = false;
+        } else {
+          activity._failureSignatureChanged = false;
+        }
+        if (operation.scope === "full") {
+          activity.broadCheckRan = true;
+          activity._targetedSinceLastFull = activity.targetedTestRanSinceLastFull;
+          activity.targetedTestRanSinceLastFull = false;
+        } else if (operation.scope === "targeted" || operation.scope === "affected") {
+          activity.targetedTestRanSinceLastFull = true;
+          activity._targetedSinceLastFull = true;
+        } else {
+          activity._targetedSinceLastFull = activity.targetedTestRanSinceLastFull;
+        }
+      } else {
+        activity._targetedSinceLastFull = activity.targetedTestRanSinceLastFull;
+        activity._failureSignatureChanged = false;
+      }
+      if (operation.category === "git" || /\bcommit\b/.test(operation.signature || "")) {
+        activity.finalizationSignals = true;
+      }
+    } else {
+      activity._targetedSinceLastFull = activity.targetedTestRanSinceLastFull;
+      activity._failureSignatureChanged = false;
+    }
+  } else {
+    activity._targetedSinceLastFull = activity.targetedTestRanSinceLastFull;
+    activity._failureSignatureChanged = false;
+  }
+
+  const diffFingerprint = gitDiffFingerprint(cwd);
+  const diffChanged = diffFingerprint != null && diffFingerprint !== activity.lastDiffFingerprint;
+  const editSinceLastTest = activity.editCount > 0 && (activity.testFailureStreak > 0 || diffChanged);
+  const priorDiffFingerprint = activity.lastDiffFingerprint;
+  activity.lastDiffFingerprint = diffFingerprint ?? activity.lastDiffFingerprint;
+
+  const intervening = {
+    edit_since_last_test: editSinceLastTest,
+    changed_file_count: activity.changedFileCount,
+    changed_file_categories: activity.changedFileCategories,
+    diff_fingerprint: diffFingerprint,
+    diff_fingerprint_changed: priorDiffFingerprint != null && diffFingerprint != null ? diffFingerprint !== priorDiffFingerprint : false,
+    targeted_test_ran_since_last_full: activity._targetedSinceLastFull ?? activity.targetedTestRanSinceLastFull,
+    failure_signature_changed: activity._failureSignatureChanged ?? false,
+  };
+
+  const phaseSignals = {
+    editCount: activity.editCount,
+    readCount: activity.readCount,
+    lastTestOperation: operation && event === "PostToolUse" ? operation : null,
+    testFailureStreak: activity.testFailureStreak,
+    editSinceLastFailure: activity.editSinceLastFailure,
+    broadCheckRan: activity.broadCheckRan,
+    finalizationSignals: activity.finalizationSignals,
+  };
+
+  try {
+    fs.mkdirSync(telemetryCollectorDir, { recursive: true });
+    const { _failureSignatureChanged, _targetedSinceLastFull, ...persisted } = activity;
+    fs.writeFileSync(cursorPath, JSON.stringify(persisted));
+  } catch {
+    // Best-effort; a failed write just means the next call rebuilds from an empty/stale cursor.
+  }
+
+  return { intervening, phaseSignals };
+}
+
+function dedupe(values) {
+  return [...new Set(values)];
+}
+
+// Content-addressed fingerprint of the working tree's current diff shape — a hash, never the diff
+// text itself (plan: "whether Git diff fingerprint changed"). `git diff --stat` names/sizes changed
+// files without their content, which is enough to detect "something changed" without persisting any
+// source text. Returns null (not thrown) when cwd isn't a git repo or git is unavailable.
+function gitDiffFingerprint(cwd) {
+  const diffStat = git(cwd, ["diff", "--stat", "HEAD"]);
+  if (!diffStat) return null;
+  return hash(diffStat);
+}
+
 function toolMetadata(input) {
   const toolInput = input.tool_input || input.toolInput || {};
   const name = input.tool_name || input.toolName || input.tool || null;
@@ -212,16 +400,20 @@ function deltaTokens(sessionId, cumulativeTotal) {
   return Math.max(0, cumulativeTotal - previous);
 }
 
-// Wall-clock latency of a single tool call. PreToolUse writes a start stamp into a per-session
-// cursor; PostToolUse reads and clears it, returning the elapsed ms. Best-effort: a missing start
-// (hook race, restart) yields null rather than a bogus duration. Cursor keyed by session so
-// concurrent sessions do not collide.
-function toolDuration(event, sessionId, toolName) {
-  if (!sessionId) return null;
-  const cursorPath = path.join(telemetryCollectorDir, `tool-${hash(sessionId)}.json`);
+// Wall-clock latency of a single tool call. PreToolUse writes a start stamp into a cursor keyed by
+// call_id; PostToolUse reads and clears it by the same call_id, returning the elapsed ms.
+// Best-effort: a missing start (hook race, restart) yields null rather than a bogus duration.
+//
+// Keyed by call_id (not session alone) so nested/concurrent tool calls within one session cannot
+// clobber each other's cursor — this was limitation #10 in the plan doc and the reason Phase 3
+// exists: the old session-only cursor meant a second tool starting before the first one's
+// PostToolUse fired would silently overwrite the first call's start stamp.
+function toolDuration(event, callId) {
+  if (!callId) return null;
+  const cursorPath = path.join(telemetryCollectorDir, `tool-${hash(callId)}.json`);
   if (event === "PreToolUse") {
     try {
-      fs.writeFileSync(cursorPath, JSON.stringify({ start: Date.now(), tool: toolName }));
+      fs.writeFileSync(cursorPath, JSON.stringify({ start: Date.now() }));
     } catch {
       // Best-effort; a failed write just means the matching PostToolUse reports null.
     }
@@ -238,6 +430,91 @@ function toolDuration(event, sessionId, toolName) {
     return typeof start === "number" ? Math.max(0, Date.now() - start) : null;
   }
   return null;
+}
+
+// Prefer a harness-provided tool-use id (Claude: tool_use_id on PostToolUse payloads; Codex
+// transcripts key tool calls by call_id — see Phase 0 notes in the plan doc). When the harness
+// doesn't supply one on this hook's stdin (observed to happen on PreToolUse for some harness
+// versions, or when a harness omits it entirely), derive a best-effort id from session, tool name,
+// and an incrementing per-session-per-tool cursor, exactly as the plan's capture-v3 section
+// specifies. Two back-to-back calls to the *same* tool in the *same* session without a harness id
+// would otherwise collide; the cursor makes each one unique.
+function resolveCallId(input, sessionId, toolName, event) {
+  const harnessId = input.tool_use_id || input.toolUseId || input.call_id || input.callId || null;
+  if (typeof harnessId === "string" && harnessId) return harnessId;
+  if (!sessionId || !toolName) return null;
+  return derivedCallId(sessionId, toolName, event);
+}
+
+// Best-effort derived id: session+tool share a small counter file so repeated calls to the same
+// tool in the same session get distinct ids. PreToolUse advances the counter and stamps it;
+// PostToolUse reads the same counter value back without advancing, so a Pre/Post pair for the same
+// invocation agrees on one id (matching how toolDuration() expects Pre to write and Post to read
+// the same cursor key).
+function derivedCallId(sessionId, toolName, event) {
+  const counterPath = path.join(telemetryCollectorDir, `callseq-${hash(`${sessionId}:${toolName}`)}.json`);
+  let counter = 0;
+  try {
+    counter = JSON.parse(fs.readFileSync(counterPath, "utf8")).counter || 0;
+  } catch {
+    counter = 0;
+  }
+  if (event === "PreToolUse") {
+    counter += 1;
+    try {
+      fs.writeFileSync(counterPath, JSON.stringify({ counter }));
+    } catch {
+      // Best-effort; worst case PostToolUse derives the same stale counter value, still unique
+      // enough to avoid colliding with a *different* tool's cursor.
+    }
+  }
+  return `derived_${hash(`${sessionId}:${toolName}:${counter}`)}`;
+}
+
+// Effective-configuration snapshot for this session. Built once on SessionStart (dynamic-importing
+// config.mjs's heavier readConfigSnapshot()/buildEffectiveSnapshot() only for that one event, per
+// the plan's "keep the hot capture import graph small" constraint) and cached in the session
+// cursor dir; every later event in the same session reads the cached id back for free. Best-effort
+// throughout — a session with no cached snapshot (e.g. telemetry enabled mid-session, or a
+// telemetry-only install where config.mjs's dependencies aren't installed) reports null rather than
+// failing the capture.
+async function resolveConfigSnapshotId(event, sessionId, harness, stats) {
+  if (!sessionId) return null;
+  const cachePath = path.join(telemetryCollectorDir, `snapshot-${hash(sessionId)}.json`);
+  if (event === "SessionStart") {
+    try {
+      const snapshotId = await buildAndCacheSnapshot(harness, stats?.model ?? null);
+      if (snapshotId) fs.writeFileSync(cachePath, JSON.stringify({ snapshot_id: snapshotId }));
+      return snapshotId;
+    } catch {
+      return null;
+    }
+  }
+  try {
+    return JSON.parse(fs.readFileSync(cachePath, "utf8")).snapshot_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Dynamic import (not a top-level one) is the whole point here: config.mjs pulls in
+// package-catalog/skill-inventory/rules-render/etc., which is exactly the import weight the hot
+// PreToolUse/PostToolUse path must not pay. Only SessionStart (once per session) takes it.
+async function buildAndCacheSnapshot(harness, model) {
+  const [{ readConfigSnapshot }, { buildEffectiveSnapshot }, { readPackageVersion }, { writeSnapshot }] = await Promise.all([
+    import("./config.mjs"),
+    import("./telemetry-schemas/snapshot-schema.mjs"),
+    import("./workspace.mjs"),
+    import("./telemetry-schemas/persistence.mjs"),
+  ]);
+  const configSnapshot = readConfigSnapshot();
+  const snapshot = buildEffectiveSnapshot(configSnapshot, {
+    harness,
+    model,
+    roborepoVersion: readPackageVersion(),
+  });
+  writeSnapshot(snapshot);
+  return snapshot.snapshot_id;
 }
 
 function git(cwd, args) {

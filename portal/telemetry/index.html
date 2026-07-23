@@ -3,26 +3,60 @@
   {{HEAD}}
   <body>
     {{CHROME}}
-    <div class="filterbar">
-      <div class="ranges" id="ranges">
-        <span class="flabel">time range</span>
-        <button data-range="3600000">1h</button>
-        <button data-range="21600000">6h</button>
-        <button data-range="86400000">1d</button>
-        <button data-range="604800000">1w</button>
-        <button data-range="all" class="active">all</button>
-        <span class="pan" id="panhint"></span>
-        <div id="harnessfilt">
-          <span class="flabel">source</span>
+    <div class="control-panel filterbar">
+      <div class="filterbar-rows">
+        <div class="control-panel-row filter-row" id="ranges">
+          <span class="flabel">range</span>
+          <button data-range="3600000">1h</button>
+          <button data-range="21600000">6h</button>
+          <button data-range="86400000">1d</button>
+          <button data-range="604800000">1w</button>
+          <button data-range="all" class="active">all</button>
+          <span class="pan" id="panhint"></span>
+          <div id="harnessfilt">
+            <span class="flabel">source</span>
+          </div>
+        </div>
+        <!-- Phase 6 global filter bar: model/repo/marker on top of the existing time/harness window.
+             Compact selectors + active-filter-count + clear, per the plan's "Hybrid filtering" design
+             (high-cardinality refinement stays in the Analysis explorer, not here). -->
+        <div class="control-panel-row filter-row" id="cohortfilt">
+          <select id="modelfilt" data-slot="modelfilt" aria-label="model"><option value="">all models</option></select>
+          <select id="repofilt" data-slot="repofilt" aria-label="repository"><option value="">all repos</option></select>
+          <select id="markerfilt" data-slot="markerfilt" aria-label="marker comparison"><option value="">all events</option></select>
+          <span class="filter-count-group">
+            <span class="filter-count" id="filtercount" style="display: none"></span>
+            <button class="linkbtn" id="cohortclear" style="display: none">clear</button>
+          </span>
         </div>
       </div>
+      <!-- Fixed-width gutter, bottom-aligned to the cohort row: the filter bar no longer has a
+           "Filters" heading to anchor the info icon to (both rows ARE filters), so it lives in its
+           own column instead of inline in either row. Fixed width keeps the two filter rows' own
+           wrap width stable as the viewport shrinks — the gutter never grows to eat their space. -->
+      <div class="filterbar-info">
+        <portal-info-icon
+          id="filters-info"
+          data-doc-anchor="global-filters"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-label="about these filters"
+          title="about these filters"
+        ></portal-info-icon>
+      </div>
+    </div>
+    <!-- Marker creation lives outside the filter bar — it's a data-entry action ("I changed
+         something, mark it"), not a way of narrowing the current view, so grouping it with the
+         filter controls above misrepresented what it does. -->
+    <div class="page-actions">
+      <button class="markchangebtn" id="openmarkermodal" type="button">+ mark change</button>
     </div>
     <div class="page-meta stat-row" id="meta"></div>
     <main>
       {{LOADING}}
       <!-- TIER 1 — conclusions & action items (the headline; always first) -->
       <section class="panel" id="insightspanel">
-        <h2>① what this means · action items</h2>
+        <h2>① what this means · action items <portal-info-icon data-doc-anchor="panel-map" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
         <div id="insights"></div>
         <div class="modalactions">
           <button class="linkbtn" id="deepread">deeper read ›</button>
@@ -67,11 +101,20 @@
         <div class="chartwrap">
           <canvas id="timeline"></canvas>
           <div class="tooltip" id="tooltip"></div>
+          <div class="markertip" id="markertip"></div>
           <div class="loadoverlay" id="loadoverlay">
             <span class="spinner"></span> computing…
           </div>
         </div>
         <div class="legend" id="chartlegend"></div>
+      </section>
+
+      <!-- Lives right after the chart, not buried in TIER 4's collapsed "cost analysis" — this is
+           a direct result of the marker filter in the bar above (not a raw cost breakdown), so it
+           needs to be seen without the user knowing to expand a details block first. -->
+      <section class="panel" id="markercomparisonpanel" style="display: none">
+        <h2>marker-relative comparison <portal-info-icon data-doc-anchor="marker-relative-comparison" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
+        <div id="markercomparison"></div>
       </section>
 
       <!-- TIER 3 — warnings & abnormalities (spikes, loops, causes) -->
@@ -82,6 +125,14 @@
           the chat</span
         >
       </h2>
+      <section class="panel" id="testeffpanel" style="display: none">
+        <h2>testing efficiency <portal-info-icon data-doc-anchor="testing-efficiency" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
+        <div id="testefficiency"></div>
+        <div class="legend">
+          full vs. targeted test activity, redundant reruns, and how much of
+          captured tool time goes to testing
+        </div>
+      </section>
       <section class="panel" id="qualitypanel" style="display: none">
         <h2>data quality warnings</h2>
         <div id="qualitywarnings"></div>
@@ -151,12 +202,14 @@
           </div>
         </section>
         <section class="panel">
-          <h2>package cost &amp; regression</h2>
+          <h2>package cost &amp; regression (exploratory)</h2>
           <div id="packagecost"></div>
           <div id="regression"></div>
           <div class="legend">
-            per package: avg tokens/call · regression compares the earlier vs
-            later half (↑ = got more expensive)
+            per package: avg tokens/call · midpoint regression compares the
+            earlier vs later half of ALL data (↑ = got more expensive) — not
+            tied to any specific change; select a marker in the cohort filter
+            above for a marker-relative comparison instead
           </div>
         </section>
       </details>
@@ -189,6 +242,45 @@
         <section class="panel">
           <h2>spike vs normal</h2>
           <div id="comparison"></div>
+        </section>
+      </details>
+
+      <!-- Analysis explorer (plan: "Add a collapsed-by-default or drawer-based explorer accessible
+           from every insight and detail panel"): high-cardinality cohort-A/cohort-B or marker-
+           relative comparison, kept out of the always-visible global filter bar. Reachable via any
+           insight/finding row's future "open analysis" action (Phase 7) or directly via this
+           details block. -->
+      <details class="detailsblock" id="analysisexplorer">
+        <summary>
+          ⑦ analysis explorer
+          <portal-info-icon data-doc-anchor="analysis-explorer" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon>
+          <span class="sub">compare two cohorts, or before/after a marker, on any registry metric</span>
+        </summary>
+        <section class="panel">
+          <h2>metric</h2>
+          <select id="explorer-metric"></select>
+          <div class="legend">choose a metric from the shared registry — the same formula the CLI report and every alert use</div>
+        </section>
+        <section class="panel">
+          <h2>comparison mode</h2>
+          <div class="ranges" id="explorer-mode">
+            <button data-explorer-mode="marker" class="active">marker-relative</button>
+            <button data-explorer-mode="cohorts">cohort A vs cohort B</button>
+          </div>
+          <div id="explorer-marker-controls">
+            <label>marker <select id="explorer-marker"></select></label>
+          </div>
+          <div id="explorer-cohort-controls" style="display: none">
+            <label>cohort A harness <select id="explorer-a-harness"><option value="">any</option></select></label>
+            <label>cohort B harness <select id="explorer-b-harness"><option value="">any</option></select></label>
+          </div>
+          <div class="modalactions">
+            <button id="explorer-run">run comparison</button>
+          </div>
+        </section>
+        <section class="panel">
+          <h2>result</h2>
+          <div id="explorer-result"></div>
         </section>
       </details>
     </main>
@@ -297,7 +389,66 @@
       <div class="modalactions" id="modalactions"></div>
       <div class="modalextra" id="modalextra"></div>
     </dialog>
+    <!-- Phase 6: create-marker dialog, reachable from the cohort filter bar's "+ mark change" button
+         and from any insight/finding's future "mark change" action (Phase 7). Plain form fields —
+         no client-side marker logic, the CLI's validation rules are re-enforced server-side by
+         createMarkerFromPortalRequest in telemetry.mjs. -->
+    <dialog id="marker-modal">
+      <button class="closebtn" id="markermodalclose">×</button>
+      <h3>create marker <portal-info-icon data-doc-anchor="markers" aria-haspopup="dialog" aria-expanded="false" aria-label="how markers work" title="how markers work"></portal-info-icon></h3>
+      <div class="sub">markers appear on the timeline and can drive before/after comparisons</div>
+      <form id="markerform" method="dialog">
+        <label>type
+          <select id="markertype">
+            <option value="change">change</option>
+            <option value="note">note</option>
+            <option value="outcome">outcome</option>
+          </select>
+        </label>
+        <label>title <input id="markertitle" type="text" required maxlength="200" /></label>
+        <label>metric (optional) <input id="markermetric" type="text" placeholder="e.g. tokens.total" /></label>
+        <label>expected direction
+          <select id="markerdirection">
+            <option value="">(none)</option>
+            <option value="decrease">decrease</option>
+            <option value="increase">increase</option>
+            <option value="no-change">no-change</option>
+          </select>
+        </label>
+        <label id="markerstatuswrap" style="display: none">status
+          <select id="markerstatus">
+            <option value="successful">successful</option>
+            <option value="partial">partial</option>
+            <option value="failed">failed</option>
+            <option value="abandoned">abandoned</option>
+            <option value="unknown">unknown</option>
+          </select>
+        </label>
+        <div class="modalactions">
+          <button type="submit" id="markersubmit">create marker</button>
+        </div>
+        <div class="item-err" id="markererr"></div>
+      </form>
+    </dialog>
+    <!-- "view docs" popup (portal/shared/doc-guide-modal.js's createDocGuideModal): renders
+         docs/guides/telemetry.md server-side (GET /api/telemetry/guide) rather than duplicating the
+         guide's content into this page. Opened from each shared <portal-info-icon> scattered next
+         to a filter/panel heading, which passes that section's heading id so the popup opens
+         already scrolled there instead of always landing at the top. -->
+    <dialog id="docmodal">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title" data-slot="title">Telemetry Walkthrough</div>
+          <div class="modal-path" data-slot="path"></div>
+        </div>
+        <button class="modal-close" data-slot="close" type="button">close</button>
+      </div>
+      <div class="modal-body">
+        <div class="markdown" data-slot="content"></div>
+      </div>
+    </dialog>
     <script src="/portal/shared/theme.js" type="module"></script>
+    <script src="/portal/shared/info-icon.js" type="module"></script>
     <script src="/portal/telemetry/app.js" type="module"></script>
   </body>
 </html>

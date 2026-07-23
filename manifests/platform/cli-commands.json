@@ -42,6 +42,8 @@
     "roborepo telemetry status|report|export|backup|purge",
     "roborepo telemetry backup                snapshot the spool to a timestamped backup",
     "roborepo telemetry purge --all [--backup] reset telemetry (optionally back up first)",
+    "roborepo telemetry mark --type <type> --title <title> [...]   record a marker event",
+    "roborepo telemetry experiment start|end|status [<id>]          run an experiment",
     "",
     "roborepo run <cmd> [args...]",
     "",

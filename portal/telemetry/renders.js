@@ -148,6 +148,67 @@ export function createRenders(modals) {
     ]));
   }
 
+  // Phase 5/6: marker-relative comparison — the PREFERRED comparison path once a change marker is
+  // selected in the cohort filter bar (plan: "Retain midpoint regression as a labeled exploratory
+  // fallback when no marker is selected" implies this IS the non-fallback path). Renders the full
+  // actionable finding contract: observation, evidence, confidence, interpretation, next action.
+  function renderMarkerComparison(finding) {
+    const panel = document.getElementById("markercomparisonpanel");
+    if (!finding) { panel.style.display = "none"; return; }
+    panel.style.display = "";
+    const container = document.getElementById("markercomparison");
+    container.replaceChildren();
+    const ev = finding.evidence;
+    const rows = [el("p", { class: "hl" }, finding.observation)];
+    // Before/after/delta/confidence as scannable stat tiles (this page's existing .stat-row/
+    // .stat-item language from the header meta strip) instead of one comma-packed sentence — the
+    // numbers are the thing being compared, so they read as numbers, not prose.
+    const deltaSign = ev.effect_size > 0 ? "+" : ev.effect_size < 0 ? "−" : "·";
+    rows.push(el("div", { class: "stat-row" }, [
+      el("div", { class: "stat-item" }, [
+        el("span", { class: "stat-label" }, "before"),
+        el("span", { class: "stat-value" }, fmt(ev.before.value)),
+        el("span", { style: "color:var(--dim); font-size:var(--text-2xs)" }, finding.sample_size.before + " sessions"),
+      ]),
+      el("div", { class: "stat-item" }, [
+        el("span", { class: "stat-label" }, "after"),
+        el("span", { class: "stat-value" }, fmt(ev.after.value)),
+        el("span", { style: "color:var(--dim); font-size:var(--text-2xs)" }, finding.sample_size.after + " sessions"),
+      ]),
+      el("div", { class: "stat-item" }, [
+        el("span", { class: "stat-label" }, "change"),
+        el("span", { class: "stat-value", style: ev.effect_size > 0 ? "color:var(--spike)" : "" },
+          deltaSign + fmt(Math.abs(ev.effect_size)) + " (" + (ev.relative_change * 100).toFixed(0) + "%)"),
+      ]),
+      el("div", { class: "stat-item" }, [
+        el("span", { class: "stat-label" }, "confidence"),
+        el("span", { class: "stat-value", style: "font-size:var(--text-xs)" }, finding.confidence),
+      ]),
+    ]));
+    if (finding.interpretation) {
+      rows.push(el("p", {}, "interpretation (inference): " + finding.interpretation.text));
+    }
+    if (finding.next_action) {
+      rows.push(el("p", { style: "color:var(--accent)" }, "next action: " + finding.next_action));
+    }
+    if (finding.data_quality_issues?.length) {
+      // A bulleted list scans far faster than the same issues semicolon-joined into one paragraph —
+      // each issue is its own independent caveat, not a continuation of the last one.
+      rows.push(el("details", { class: "quality-issues" }, [
+        el("summary", {}, finding.data_quality_issues.length + " data quality " + (finding.data_quality_issues.length === 1 ? "issue" : "issues")),
+        el("ul", {}, finding.data_quality_issues.map((issue) => el("li", {}, issue))),
+      ]));
+    }
+    if (finding.analysis_filter_state) {
+      const btn = document.createElement("button");
+      btn.className = "linkbtn open-analysis";
+      btn.textContent = "open analysis ›";
+      btn.dataset.filterState = JSON.stringify(finding.analysis_filter_state);
+      rows.push(btn);
+    }
+    container.append(...rows);
+  }
+
   function renderLoops(rows) {
     const panel = document.getElementById("loopspanel");
     if (!rows || !rows.length) { panel.style.display = "none"; return; }
@@ -230,6 +291,48 @@ export function createRenders(modals) {
     })));
   }
 
+  // Phase 7: testing-efficiency panel (plan: "Add a first-class panel under warnings and
+  // abnormalities" — "should lead with the most actionable abnormality rather than a comprehensive
+  // table"). Reads the metrics-registry values telemetry-analyze.mjs's testingEfficiencySummary()
+  // computed, same numbers the CLI report's future testing-efficiency section will show.
+  function renderTestingEfficiency(summary) {
+    const panel = document.getElementById("testeffpanel");
+    if (!summary) { panel.style.display = "none"; return; }
+    const share = summary["test.share_of_tool_time"];
+    const fullPerSession = summary["test.full_suite_calls_per_session"];
+    const redundant = summary["test.full_suite_without_intervening_edit"];
+    const unchangedFailure = summary["test.full_suite_unchanged_failure_signature"];
+    // Nothing to show yet (no test-classified operations in this cohort) — keep the panel hidden
+    // rather than showing an all-null table.
+    if (share == null && fullPerSession == null && redundant == null) { panel.style.display = "none"; return; }
+    panel.style.display = "";
+    const container = document.getElementById("testefficiency");
+    // tmpl.table() owns and clears #testefficiency directly, so the headline lives in its OWN
+    // sibling node (created once, reused) rather than as a child tmpl.table() would wipe out.
+    let headlineEl = document.getElementById("testeffheadline");
+    if (!headlineEl) {
+      headlineEl = el("p", { id: "testeffheadline", class: "hl" });
+      container.before(headlineEl);
+    }
+    // Lead with the most actionable abnormality (redundant reruns), not a full table, per the plan.
+    headlineEl.textContent = redundant > 0
+      ? `Testing consumed ${share != null ? share + "%" : "an unmeasured share"} of captured tool time. `
+        + `${fmt(redundant)} full-suite rerun${redundant === 1 ? "" : "s"} had no intervening source edit — `
+        + `run a targeted reproduction first, and reserve the next full suite for a phase boundary.`
+      : share != null
+        ? `Testing consumed ${share}% of captured tool time.`
+        : "";
+    const rows = [
+      ["full-suite runs / session", fullPerSession != null ? fullPerSession.toFixed(2) : "—"],
+      ["full-suite runs / debugging phase", summary["test.full_suite_calls_per_debug_phase"] != null ? summary["test.full_suite_calls_per_debug_phase"].toFixed(2) : "—"],
+      ["redundant reruns (no intervening edit)", redundant ?? "—"],
+      ["reruns with unchanged failure signature", unchangedFailure ?? "—"],
+      ["targeted-to-full ratio", summary["test.targeted_to_full_ratio"] != null ? summary["test.targeted_to_full_ratio"].toFixed(2) : "—"],
+      ["finalization full-suite count", summary["test.finalization_full_suite_count"] ?? "—"],
+    ];
+    tmpl.table("testefficiency", ["metric", "value"], rows);
+  }
+
   function renderComparison(c) {
     tmpl.table("comparison", ["cohort", "n", "avg Δ", "avg tools", "mcp rate"], [
       ["spike", { num: c.spike.count }, { num: fmt(c.spike.avg_delta) }, { num: c.spike.avg_tool_calls }, { num: c.spike.mcp_rate }],
@@ -240,6 +343,7 @@ export function createRenders(modals) {
   return {
     renderCauses, renderSessions, renderSpikes, renderContrib, renderInsights,
     renderGroupCost, renderToolCost, renderAnatomy, renderPackageCost,
-    renderRegression, renderLoops, renderDataQualityWarnings, renderReadWarnings, renderComparison,
+    renderRegression, renderMarkerComparison, renderTestingEfficiency, renderLoops,
+    renderDataQualityWarnings, renderReadWarnings, renderComparison,
   };
 }

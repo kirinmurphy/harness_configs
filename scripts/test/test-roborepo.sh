@@ -827,6 +827,36 @@ if [[ -n "${cfg_port:-}" ]]; then
   assert "config: POST package telemetry disable flips snapshot" \
     bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/config/packages' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"id\":\"telemetry\",\"enabled\":false}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.config?.telemetry?.enabled===false?0:1)})\""
 
+  # Phase 6 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: portal marker/
+  # experiment/analysis endpoints. Real HTTP calls against the running loopback server (per the
+  # plan's "no Playwright" decision — verified via API status/JSON-shape checks, not a real browser).
+  assert "telemetry: served page includes cohort filter bar and marker-create dialog" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/telemetry' | grep -q 'id=\"cohortfilt\"' && curl -s 'http://127.0.0.1:${cfg_port}/telemetry' | grep -q 'id=\"marker-modal\"'"
+  assert "telemetry: served dashboard JS parses" \
+    bash -c "telejs=\"${cfg_home}/telemetry-app.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/telemetry/app.js' > \"\${telejs}\" && node --check \"\${telejs}\""
+  assert "telemetry: served chart.js parses" \
+    bash -c "chartjs=\"${cfg_home}/telemetry-chart.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/telemetry/chart.js' > \"\${chartjs}\" && node --check \"\${chartjs}\""
+  assert "telemetry: GET /api/telemetry/markers returns an array (empty spool ok)" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/telemetry/markers' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(Array.isArray(j.markers)?0:1)})\""
+  assert "telemetry: POST /api/telemetry/markers without token returns 403" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/telemetry/markers' -H 'Content-Type: application/json' -d '{\"type\":\"note\",\"title\":\"x\"}')\" = 403 ]"
+  assert "telemetry: POST /api/telemetry/markers creates a marker" \
+    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/telemetry/markers' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"type\":\"change\",\"title\":\"portal marker test\",\"metric\":\"tokens.total\",\"expected_direction\":\"decrease\"}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&/^mark_[a-f0-9]{16}\$/.test(j.marker.marker_id)?0:1)})\""
+  assert "telemetry: POST /api/telemetry/markers rejects invalid type (400)" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/telemetry/markers' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"type\":\"bogus\",\"title\":\"x\"}')\" = 400 ]"
+  assert "telemetry: GET /api/data reflects the created marker in the markers array" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/data' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.markers.some(m=>m.title==='portal marker test')?0:1)})\""
+  assert "telemetry: POST /api/telemetry/experiments starts an experiment" \
+    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/telemetry/experiments' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"title\":\"portal exp test\",\"metric\":\"tokens.total\",\"expected_direction\":\"decrease\"}' > '${cfg_home}/exp-start.json' && node -e \"const j=require('${cfg_home}/exp-start.json');process.exit(j.ok&&/^exp_[a-f0-9]{16}\$/.test(j.experiment.experiment_id)?0:1)\""
+  assert "telemetry: GET /api/telemetry/experiments reports readiness fields" \
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/telemetry/experiments' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);const e=j.experiments.find(x=>x.title==='portal exp test');process.exit(e&&typeof e.ready==='boolean'&&Array.isArray(e.data_quality_warnings)?0:1)})\""
+  assert "telemetry: POST /api/telemetry/experiments/:id/end ends the experiment" \
+    bash -c "id=\$(node -e \"console.log(require('${cfg_home}/exp-start.json').experiment.experiment_id)\") && curl -s -X POST \"http://127.0.0.1:${cfg_port}/api/telemetry/experiments/\${id}/end\" -H 'X-Roborepo-Portal-Token: ${cfg_token}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.experiment.end_marker_id?0:1)})\""
+  assert "telemetry: POST /api/telemetry/analysis rejects unknown metric (400)" \
+    bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://127.0.0.1:${cfg_port}/api/telemetry/analysis' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"metric\":\"bogus.metric\"}')\" = 400 ]"
+  assert "telemetry: POST /api/telemetry/analysis with no marker compares two cohorts" \
+    bash -c "curl -s -X POST 'http://127.0.0.1:${cfg_port}/api/telemetry/analysis' -H 'Content-Type: application/json' -H 'X-Roborepo-Portal-Token: ${cfg_token}' -d '{\"metric\":\"tokens.total\",\"cohort_a\":{},\"cohort_b\":{}}' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.finding.cohort_a&&j.finding.cohort_b?0:1)})\""
+
   kill "${cfg_srv}" 2>/dev/null || true
   cfg_srv=""
 fi
@@ -849,8 +879,10 @@ echo "{\"session_id\":\"sess-x\",\"cwd\":\"${repo_root}\",\"transcript_path\":\"
   | env "${tele_env[@]}" node "${cli}" telemetry capture --harness claude --event Stop
 assert "telemetry capture: records token totals from transcript" \
   bash -c "grep -q '\"total\":67800' '${tele_home}/.roborepo/telemetry/spool/claude.jsonl'"
-assert "telemetry capture: marks mcp tool metadata" \
-  bash -c "grep -q '\"schema\":2' '${tele_home}/.roborepo/telemetry/spool/claude.jsonl'"
+# Phase 3: capture now writes schema 3 (capture_id/call_id/config_snapshot_id/operation/phase
+# added; schema-v2 records elsewhere in the spool remain readable — see the "legacy" assertion below).
+assert "telemetry capture: writes schema v3 records" \
+  bash -c "grep -q '\"schema\":3' '${tele_home}/.roborepo/telemetry/spool/claude.jsonl'"
 # Spike attribution: capture sizes the tool result that most recently entered context (last_result)
 # and the heaviest result of the session (biggest_result), tying a spike back to what caused it.
 assert "telemetry capture: records last tool result for spike attribution" \
@@ -1426,6 +1458,63 @@ assert "ownership refactor: every confirmed leakage case stays fixed" \
 # (install/reapply/disable/reapply, unrelated user hooks survive throughout).
 assert "ownership refactor: cross-harness hook composition round-trips" \
   node "${repo_root}/scripts/test/hook-composition-check.mjs"
+
+# Telemetry transcript parsing (Claude/Codex field shapes) and analyzer warning detection.
+assert "telemetry: transcript stats and analyzer warnings are correct" \
+  node "${repo_root}/scripts/test/telemetry-correctness-check.mjs"
+
+# Phase 1 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: marker/snapshot/
+# experiment/capture-v3 schema validation plus append-only persistence round-trips.
+assert "telemetry: marker/snapshot/experiment schemas validate and persist correctly" \
+  node "${repo_root}/scripts/test/telemetry-schemas-check.mjs"
+
+# Phase 2 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: `telemetry mark`
+# and `telemetry experiment start|end|status` through the real CLI process.
+assert "telemetry: mark and experiment CLI commands work end to end" \
+  node "${repo_root}/scripts/test/telemetry-marker-cli-check.mjs"
+
+# Phase 3 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: pure semantic
+# command classification (test/lint/build/... + runner/scope for tests).
+assert "telemetry: semantic command classification" \
+  node "${repo_root}/scripts/test/telemetry-classify-check.mjs"
+
+# Phase 3: capture v3 (capture_id/call_id/config_snapshot_id/operation) through the real capture
+# hot path, including the call-aware duration pairing fix for concurrent/nested tool calls.
+assert "telemetry: capture v3 fields and call-aware duration pairing" \
+  node "${repo_root}/scripts/test/telemetry-capture-v3-check.mjs"
+
+# Phase 4 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: explainable phase
+# inference and task category/scale inference, pure modules with no fs/session dependency.
+assert "telemetry: phase inference rules" \
+  node "${repo_root}/scripts/test/telemetry-phase-infer-check.mjs"
+assert "telemetry: task category/scale inference" \
+  node "${repo_root}/scripts/test/telemetry-task-infer-check.mjs"
+
+# Phase 4: inferred phase tagging, intervening-work signals (edit/diff/failure-signature
+# transitions), and failure-signature capture wired into the real capture hot path.
+assert "telemetry: phase 4 capture-time phase and intervening-work signals" \
+  node "${repo_root}/scripts/test/telemetry-phase4-integration-check.mjs"
+
+# Phase 5 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: the declarative
+# metrics registry, normalized cohort filtering, marker-relative comparisons, and package telemetry
+# policy evaluation — all pure modules, no fs/config dependency.
+assert "telemetry: metrics registry formulas" \
+  node "${repo_root}/scripts/test/telemetry-metrics-check.mjs"
+assert "telemetry: normalized cohort filtering" \
+  node "${repo_root}/scripts/test/telemetry-cohort-check.mjs"
+assert "telemetry: marker-relative comparisons and confidence gates" \
+  node "${repo_root}/scripts/test/telemetry-compare-check.mjs"
+assert "telemetry: package telemetry policy validation and evaluation" \
+  node "${repo_root}/scripts/test/telemetry-policy-check.mjs"
+
+# Phase 6: portal global-filter <-> URL state round-trip (state.js's pure helpers, no DOM needed).
+assert "telemetry: portal global filter URL state round-trips" \
+  node "${repo_root}/scripts/test/telemetry-portal-state-check.mjs"
+
+# Telemetry "view docs" popup: heading-slug ids, table, and mermaid-fallback extensions to the
+# shared markdown renderer (also used by Config's skill-source popup).
+assert "markdown-render: heading ids, tables, mermaid fallback" \
+  node "${repo_root}/scripts/test/markdown-render-check.mjs"
 
 # ---------------------------------------------------------------------------
 echo ""

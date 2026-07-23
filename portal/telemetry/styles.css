@@ -6,6 +6,19 @@
   .stat-item { display:flex; flex-direction:column; gap:2px; }
   .stat-label { color:var(--dim); font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.06em; }
   .stat-value { color:var(--ink); font-size:var(--text-md); font-variant-numeric:tabular-nums; }
+  /* Marker-relative comparison's caveats (small sample, dominant session, excluded sessions): a
+     collapsed-by-default toggle, not a semicolon-joined paragraph — each issue is an independent
+     caveat, so it reads as a scannable list once opened, and doesn't compete with the headline
+     stat row when closed. Lighter weight than .detailsblock (no uppercase/border-top) since this
+     nests inside a single panel rather than being a page-level tier of its own. */
+  .quality-issues { margin-top:8px; }
+  .quality-issues summary { font-size:var(--text-2xs); color:var(--dim); cursor:pointer; list-style:none; }
+  .quality-issues summary::-webkit-details-marker { display:none; }
+  .quality-issues summary::before { content:"▸ "; color:var(--accent); }
+  .quality-issues[open] summary::before { content:"▾ "; }
+  .quality-issues summary:hover { color:var(--ink); }
+  .quality-issues ul { margin:6px 0 0; padding-left:1.2em; color:var(--dim); font-size:var(--text-2xs); }
+  .quality-issues li { margin:2px 0; }
   main { padding:20px; display:grid; gap:20px; max-width:1200px; }
   .panel h2 { font-size:var(--text-xs); text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 12px; }
   .sectionhead { font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.1em; color:var(--accent); margin:18px 0 0; font-weight:700; padding-top:14px; border-top:1px solid var(--line); }
@@ -28,6 +41,7 @@
   .insight.info .dot { background:var(--dim); }
   .insight .body .hl { color:var(--ink); }
   .insight .body .dt { color:var(--dim); font-size:var(--text-2xs); margin-top:2px; }
+  .insight .body .dt.next-action { color:var(--accent); }
   #deepreadout { white-space:pre-wrap; font-size:var(--text-xs); color:var(--ink); }
   .detailsblock { border-top:1px solid var(--line); padding-top:8px; }
   .detailsblock > summary { font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.1em; color:var(--dim); font-weight:700; cursor:pointer; padding:6px 0; list-style:none; }
@@ -68,15 +82,86 @@
   .viewmore { background:none; border:none; color:var(--accent); font:inherit; font-size:var(--text-2xs); cursor:pointer; padding:3px 0; text-decoration:underline dotted; margin-top:4px; display:block; }
   .viewmore:hover { color:var(--ink); }
   .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:4px; flex:none; }
-  .filterbar { position:sticky; top:0; z-index:10; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 20px; }
-  .flabel { color:var(--dim); font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.06em; margin-right:4px; }
+  /* Background/border/padding come from the shared .control-panel (portal/shared/base.css) — same
+     "this strip is a control surface" treatment as Plans' Plans/Repos/Filters row. Telemetry
+     overrides .control-panel's default grid with its own flex row so a fixed-width info-icon gutter
+     (.filterbar-info) can sit beside the stacked filter rows rather than inside either one — there's
+     no "Filters" heading left to anchor the icon to now that both rows read as filters on their own. */
+  .filterbar { position:sticky; top:0; z-index:10; display:flex; align-items:flex-end; gap:14px; }
+  .filterbar-rows { display:grid; gap:14px; flex:1; min-width:0; }
+  /* Fixed to the info icon's own footprint (portal/shared/base.css's .info-icon is 15px) so the
+     gutter never grows/shrinks with viewport width — it stays a constant-size column while
+     .filterbar-rows does all the wrapping/shrinking. align-items:flex-end on .filterbar (above)
+     bottom-aligns it to the cohort row, the last and shortest of the two stacked rows. */
+  .filterbar-info { flex:none; width:15px; display:flex; justify-content:center; margin-bottom:3px; }
+  .flabel { color:var(--dim); font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.06em; margin-right:4px; flex:none; }
   .ranges { display:flex; gap:6px; flex-wrap:wrap; align-items:center; max-width:1200px; }
   .ranges button { background:var(--bg); color:var(--dim); border:1px solid var(--line); border-radius:5px; padding:3px 10px; font:inherit; font-size:var(--text-2xs); cursor:pointer; }
   .ranges button:hover { color:var(--ink); border-color:var(--accent); }
   .ranges button.active { color:var(--bg); background:var(--accent); border-color:var(--accent); font-weight:600; }
-  .ranges .pan { color:var(--dim); font-size:var(--text-2xs); margin-left:auto; }
-  #harnessfilt { display:none; margin-left:auto; gap:6px; align-items:center; }
+  /* Filter bar: two rows, each a distinct concern — time/source above, model/repo/marker below —
+     rather than one row where unrelated controls ran together. Both rows share button/select
+     styling but each keeps its own flex-wrap so a narrow viewport wraps within a row instead of
+     the two rows visually merging. row-gap matches .filterbar's own row gap (14px) so a control
+     wrapping onto its own line WITHIN a row (e.g. source, below) reads with the same spacing
+     rhythm as the gap BETWEEN the two filter rows — otherwise the wrapped line sits noticeably
+     closer to its row than the rows sit to each other. */
+  .filter-row { display:flex; gap:14px 10px; flex-wrap:wrap; align-items:center; max-width:1200px; }
+  /* :not(.info-icon) so this generic rule never reaches into <portal-info-icon>'s own internal
+     button (portal/shared/info-icon.js renders it into the light DOM) and overrides its round "i"
+     badge shape from base.css with a rectangular filter-button look. */
+  .filter-row button:not(.info-icon) { background:var(--bg); color:var(--dim); border:1px solid var(--line); border-radius:5px; padding:3px 10px; font:inherit; font-size:var(--text-2xs); cursor:pointer; }
+  .filter-row button:not(.info-icon):hover { color:var(--ink); border-color:var(--accent); }
+  .filter-row button.active { color:var(--bg); background:var(--accent); border-color:var(--accent); font-weight:600; }
+  .filter-row .pan { color:var(--dim); font-size:var(--text-2xs); margin-left:auto; }
+  /* Source (label + buttons) is one flex item with margin-left:auto, so it sits at the row's right
+     edge whenever there's room. Content-driven wrap, no pixel breakpoint: .filter-row's own
+     flex-wrap:wrap already drops this item to a fresh line the instant it no longer fits next to
+     the time-range buttons — at exactly the width where it stops fitting, not a guessed viewport
+     size. margin-left:auto still applies on that fresh line, so it keeps the same right-aligned
+     position there too; "source" and its buttons never separate, and it's never left-aligned. */
+  #harnessfilt { display:none; gap:6px; align-items:center; margin-left:auto; }
   #harnessfilt.visible { display:flex; }
+  @media (max-width:630px) {
+    .filter-row .pan { margin-left:0; }
+    #harnessfilt { margin-left:0; }
+  }
+  /* No own padding-top — .filterbar-rows' 14px grid gap already matches the wrap-gap within #ranges
+     above, so adding more here would make this gap read almost 2x that one. */
+  #cohortfilt { border-top:1px dashed var(--line); }
+  #cohortfilt select { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:3px 8px; font:inherit; font-size:var(--text-2xs); cursor:pointer; }
+  #cohortfilt select:hover { border-color:var(--accent); }
+  /* Count + clear are wrapped in one flex item (.filter-count-group) so #cohortfilt's flex-wrap
+     can only ever break the LINE before this pair, never between them — otherwise "1 filter" and
+     "clear" could land on separate wrapped lines since flex-wrap treats direct children as
+     independently breakable. */
+  .filter-count-group { display:inline-flex; align-items:center; gap:8px; margin-left:auto; }
+  .filter-count { color:var(--dim); font-size:var(--text-2xs); font-variant-numeric:tabular-nums; }
+  #cohortfilt #cohortclear { margin-left:0; }
+  /* Marker creation is a data-entry action, not a filter — deliberately outside .filterbar so it
+     never reads as "part of narrowing the view." Not sticky, so it scrolls away with the page body
+     like any other page action, while the filter bar above stays pinned. */
+  .page-actions { max-width:1200px; padding:10px 20px 0; display:flex; justify-content:flex-end; }
+  .markchangebtn { background:var(--accent); color:var(--bg); border:1px solid var(--accent); border-radius:6px; padding:6px 14px; font:inherit; font-size:var(--text-xs); font-weight:600; cursor:pointer; }
+  .markchangebtn:hover { filter:brightness(1.08); }
+  /* Medium: cohort row's selects shrink so model/repo/marker keep fitting on one line longer.
+     Source's own wrap-to-own-line behavior is defined next to its base #harnessfilt rule above. */
+  @media (max-width:980px) {
+    #cohortfilt select { max-width:140px; }
+  }
+  /* Small: each filter row's controls wrap onto their own lines under the label instead of
+     squeezing horizontally; the mark-change button goes full-width so it stays a clear tap target.
+     row-gap intentionally NOT overridden here — keeping it equal to .filterbar's own row gap is
+     what keeps wrapped-line spacing consistent with between-row spacing at every width. */
+  @media (max-width:760px) {
+    #cohortfilt select { max-width:none; flex:1 1 140px; }
+    /* Still right-aligned when it wraps to its own row — margin-left:auto alone can't do that
+       once the group is the only thing on its line (nothing left of it to push against), so the
+       group instead takes the full row width and aligns its own content to the end. */
+    .filter-count-group { flex-basis:100%; justify-content:flex-end; margin-left:0; }
+    .page-actions { justify-content:stretch; }
+    .markchangebtn { width:100%; }
+  }
   .copybtn { background:var(--bg); color:var(--dim); border:1px solid var(--line); border-radius:5px; padding:3px 10px; font:inherit; font-size:var(--text-2xs); cursor:pointer; }
   .copybtn:hover { color:var(--ink); border-color:var(--accent); }
   canvas.panning { cursor:grabbing; }
@@ -91,6 +176,12 @@
   dialog#telemetry-modal dd { margin:0; font-variant-numeric:tabular-nums; word-break:break-word; }
   dialog#telemetry-modal .closebtn { float:right; background:none; border:none; color:var(--dim); font-size:18px; cursor:pointer; line-height:1; }
   dialog#telemetry-modal .closebtn:hover { color:var(--ink); }
+  /* "view docs" popup: wider/taller than #telemetry-modal since it holds a full guide document,
+     not a single detail card. Shares .modal-head/.modal-body/.modal-title/.modal-path/.modal-close
+     from portal/shared/base.css (same chrome as /config's #config-modal and /plans' #skill-modal). */
+  dialog#docmodal { background:var(--panel); border:1px solid var(--line); border-radius:8px; max-width:820px; width:100%; max-height:85vh; padding:0; box-shadow:0 12px 48px var(--modal-shadow); }
+  dialog#docmodal[open] { display:flex; flex-direction:column; }
+  dialog#docmodal::backdrop { background:var(--backdrop); }
   .modalactions { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; }
   .modalactions button { background:var(--bg); color:var(--accent); border:1px solid var(--accent); border-radius:6px; padding:6px 12px; font:inherit; font-size:var(--text-xs); cursor:pointer; }
   .modalactions button:hover { background:var(--accent); color:var(--bg); }
@@ -100,3 +191,67 @@
   .modalextra .turn .tool { color:var(--accent); }
   .modalextra .turn .prev { color:var(--ink); margin-top:3px; white-space:pre-wrap; word-break:break-word; opacity:.85; }
   .modalextra .note { color:var(--dim); font-size:var(--text-xs); }
+
+  /* Phase 6: marker-creation dialog. (#cohortfilt select rules live earlier, near .filter-row.) */
+  dialog#marker-modal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px 22px; max-width:420px; width:90%; box-shadow:0 12px 48px var(--modal-shadow); }
+  dialog#marker-modal::backdrop { background:var(--backdrop); }
+  dialog#marker-modal h3 { margin:0 0 4px; font-size:var(--text-md); }
+  dialog#marker-modal .sub { color:var(--dim); font-size:var(--text-xs); margin-bottom:14px; }
+  dialog#marker-modal .closebtn { float:right; background:none; border:none; color:var(--dim); font-size:18px; cursor:pointer; line-height:1; }
+  dialog#marker-modal .closebtn:hover { color:var(--ink); }
+  #markerform { display:flex; flex-direction:column; gap:10px; }
+  #markerform label { display:flex; flex-direction:column; gap:3px; font-size:var(--text-2xs); color:var(--dim); }
+  #markerform input, #markerform select { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:5px 8px; font:inherit; font-size:var(--text-xs); }
+  #markerform button[type="submit"] { background:var(--accent); border:none; color:var(--on-accent); font:inherit; font-size:var(--text-xs); font-weight:600; cursor:pointer; padding:6px 14px; border-radius:6px; }
+  #markerform button[type="submit"]:hover { filter:brightness(1.1); }
+
+  /* Marker overlay lines on the timeline canvas (drawn by chart.js in the per-turn-deltas view). */
+  .markertip { position:absolute; pointer-events:none; z-index:5; background:var(--tooltip-bg); border:1px solid var(--accent); border-radius:6px; padding:6px 9px; font-size:var(--text-2xs); line-height:1.5; color:var(--ink); box-shadow:0 4px 16px var(--tooltip-shadow); display:none; max-width:280px; }
+
+  /* Phase 7: marker-relative comparison panel, testing-efficiency panel, and Analysis explorer share
+     this general-purpose headline/body text styling (previously scoped only to .insight rows). */
+  p.hl { color:var(--ink); font-size:var(--text-xs); margin:0 0 6px; }
+  #markercomparison p, #testefficiency ~ p, #explorer-result p { font-size:var(--text-xs); margin:4px 0; }
+  #testeffheadline { font-size:var(--text-xs); margin:0 0 8px; }
+  #analysisexplorer label { display:flex; align-items:center; gap:6px; font-size:var(--text-2xs); color:var(--dim); margin:8px 0; }
+  #analysisexplorer select { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit; font-size:var(--text-xs); }
+  #explorer-metric { min-width:280px; }
+  .open-analysis { display:block; margin-top:6px; }
+
+  /* "view docs" popup (#docmodal): renders docs/guides/telemetry.md server-side into .markdown.
+     Shared <portal-info-icon> elements (portal/shared/info-icon.js, styled in
+     portal/shared/base.css) sit next to panel headers and open the same popup pre-scrolled to that
+     section's heading id — see app.js's delegated click listener. */
+  portal-info-icon { margin-left:6px; vertical-align:middle; }
+  .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { margin:.9em 0 .35em; line-height:1.25; color:var(--ink); scroll-margin-top:12px; }
+  .markdown h1:first-child, .markdown h2:first-child { margin-top:0; }
+  .markdown h1 { font-size:1.15em; }
+  .markdown h2 { font-size:1.02em; }
+  .markdown h3 { font-size:.95em; }
+  .markdown p { margin:.45em 0; line-height:1.5; }
+  .markdown ul, .markdown ol { margin:.45em 0; padding-left:1.4em; }
+  .markdown li { margin:.2em 0; }
+  .markdown code { font:inherit; color:var(--code-ink); background:var(--code-inline-bg); padding:.08em .3em; border-radius:4px; }
+  .markdown pre { margin:.65em 0; padding:.8em; overflow:auto; background:var(--code-bg); border:1px solid var(--line); border-radius:6px; }
+  .markdown pre code { display:block; padding:0; background:none; color:var(--ink); }
+  .markdown hr { border:none; border-top:1px solid var(--line); margin:.8em 0; }
+  .markdown a { color:var(--accent); text-decoration:none; }
+  .markdown a:hover { text-decoration:underline; }
+  .markdown .md-meta { margin:.25em 0; color:var(--dim); font-size:var(--text-2xs); }
+  /* Tables (markdown-render.mjs's renderTable): the actual reference/comparison content the
+     "as many tables as possible" instruction calls for lives here, so give it real chrome instead
+     of unstyled browser-default borders. */
+  .markdown .md-table-wrap { overflow-x:auto; margin:.65em 0; }
+  .markdown table { border-collapse:collapse; width:100%; font-size:var(--text-2xs); }
+  .markdown th, .markdown td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .markdown thead th { color:var(--dim); text-transform:uppercase; letter-spacing:.04em; font-size:10px; border-bottom:1px solid var(--accent); }
+  .markdown tbody tr:hover { background:var(--row-hover, rgba(128,128,128,.06)); }
+  /* Mermaid diagrams (markdown-render.mjs's renderMermaidFallback emits <pre class="mermaid">;
+     doc-guide-modal.js's renderMermaidBlocks replaces it with the rendered SVG on load). The
+     dashed-border `pre` styling only ever shows if that render fails (offline, blocked script,
+     bad diagram source) — the escaped source is what's left sitting in the DOM at that point, so
+     it should still read as a deliberate, legible fallback rather than a broken box. */
+  .markdown .md-mermaid { margin:.65em 0; }
+  .markdown .md-mermaid pre { border-style:dashed; }
+  .markdown .mermaid-rendered { display:flex; justify-content:center; overflow-x:auto; }
+  .markdown .mermaid-rendered svg { max-width:100%; height:auto; }

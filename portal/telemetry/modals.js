@@ -19,6 +19,36 @@ export function createModalOpeners({ modal, getThreshold }) {
     modal.open(title, sub, rows, opts);
   }
 
+  // Phase 7 session-detail extension: renders sessionSpoolContext()'s fields (model history, config
+  // snapshot, phase timeline, operation totals, explicit outcome/task category, nearby markers, data-
+  // quality flags) — everything the plan's "Extend the current session modal with..." list asks for
+  // that is derivable from the spool alone, independent of whether the transcript is still on disk.
+  function spoolContextNodes(ctx) {
+    if (!ctx) return [];
+    const nodes = [note("session facts:")];
+    if (ctx.model_history?.length) nodes.push(el("div", { class: "note" }, "models: " + ctx.model_history.join(" → ")));
+    if (ctx.config_snapshot) {
+      nodes.push(el("div", { class: "note" }, "config snapshot: " + ctx.config_snapshot.snapshot_id
+        + (ctx.config_snapshot.packages?.length ? " · packages: " + ctx.config_snapshot.packages.join(", ") : "")));
+    }
+    if (ctx.phase_timeline?.length) {
+      nodes.push(el("div", { class: "note" }, "phases: " + ctx.phase_timeline.map((p) => p.name).join(" → ")));
+    }
+    const opEntries = Object.entries(ctx.operation_totals || {});
+    if (opEntries.length) {
+      nodes.push(el("div", { class: "note" }, "operations: " + opEntries.map(([k, n]) => `${k}×${n}`).join(", ")));
+    }
+    nodes.push(el("div", { class: "note" }, "outcome: " + ctx.outcome.status
+      + (ctx.outcome.task_category ? ` · task: ${ctx.outcome.task_category} (${ctx.outcome.task_category_source || ctx.outcome.source})` : "")));
+    if (ctx.nearby_markers?.length) {
+      nodes.push(el("div", { class: "note" }, "nearby markers: " + ctx.nearby_markers.map((m) => m.title).join("; ")));
+    }
+    if (ctx.data_quality_flags?.length) {
+      nodes.push(el("div", { class: "note", style: "color:var(--dim)" }, "data quality: " + ctx.data_quality_flags.join("; ")));
+    }
+    return nodes;
+  }
+
   // Fetch a flagged event's chat context (transcript turns + paste-ready prompt) and render it into
   // the modal's extra region. Best-effort: a missing transcript shows a note, never an error.
   async function fetchSessionContext(id, harness, finding, repo) {
@@ -26,11 +56,12 @@ export function createModalOpeners({ modal, getThreshold }) {
     extra.replaceChildren(note("loading chat context…"));
     try {
       const data = await api.fetchSession({ id, harness, finding, repo });
+      const spoolNodes = spoolContextNodes(data.spool_context);
       if (!data.found) {
-        extra.replaceChildren(note("transcript not found on disk (rotated or different machine). Use the analysis prompt above."));
+        extra.replaceChildren(...spoolNodes, note("transcript not found on disk (rotated or different machine). Use the analysis prompt above."));
         return;
       }
-      extra.replaceChildren(note("heaviest turns in this chat (result size = context cost):"));
+      extra.replaceChildren(...spoolNodes, note("heaviest turns in this chat (result size = context cost):"));
       extra.append(...(data.heavy_turns || []).map(tmpl.turnRow));
     } catch (err) {
       extra.replaceChildren(note("could not load transcript: " + String((err && err.message) || err)));

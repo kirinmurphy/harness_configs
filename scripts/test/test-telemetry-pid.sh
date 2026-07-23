@@ -84,6 +84,40 @@ assert "foreign-occupied explicit port: stale PID cleared, port left untouched" 
 kill "${foreign_pid}" 2>/dev/null || true
 wait "${foreign_pid}" 2>/dev/null || true
 
+# --- two servers on different ports don't kill each other ---
+# Regression for the bug where PID tracking was one shared file regardless of port: starting a
+# second `serve` on a different port SIGTERM'd whatever the first one had recorded, even though the
+# first server wasn't occupying the port the second one was starting on. Runs WITHOUT
+# ROBOREPO_PORTAL_PID_PATH so portalPidPathForPort's real per-port scheme is exercised, still
+# sandboxed under ROBOREPO_STATE_DIR from the top of this script; restored afterward so later
+# assertions in this file (if any were appended below) keep the single-file sandbox.
+saved_pid_path="${ROBOREPO_PORTAL_PID_PATH}"
+unset ROBOREPO_PORTAL_PID_PATH
+
+port_a=14319
+port_b=14320
+node "${cli}" serve --detach --no-open --port "${port_a}" > /dev/null 2>&1 || true
+pid_a_file="${ROBOREPO_STATE_DIR}/portal/server-${port_a}.pid"
+pid_a="$(cat "${pid_a_file}" 2>/dev/null || echo "")"
+
+node "${cli}" serve --detach --no-open --port "${port_b}" > /dev/null 2>&1 || true
+pid_b_file="${ROBOREPO_STATE_DIR}/portal/server-${port_b}.pid"
+pid_b="$(cat "${pid_b_file}" 2>/dev/null || echo "")"
+
+assert "two ports: server A still running after server B starts" pid_running "${pid_a}"
+assert "two ports: server A's PID file untouched by server B's start" test -f "${pid_a_file}"
+assert "two ports: server B started successfully" pid_running "${pid_b}"
+
+node "${cli}" telemetry stop --port "${port_a}" > /dev/null 2>&1 || true
+sleep 0.3
+assert "two ports: stopping server A leaves server B running" pid_running "${pid_b}"
+assert "two ports: server B's PID file untouched by stopping A" test -f "${pid_b_file}"
+
+node "${cli}" telemetry stop --port "${port_b}" > /dev/null 2>&1 || true
+sleep 0.3
+
+export ROBOREPO_PORTAL_PID_PATH="${saved_pid_path}"
+
 echo ""
 echo "results: ${pass} passed, ${fail} failed"
 [[ "${fail}" -eq 0 ]]

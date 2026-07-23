@@ -34,6 +34,10 @@ export const telemetryDir = path.join(roborepoStateDir, "telemetry");
 export const telemetryDbPath = path.join(telemetryDir, "telemetry.sqlite");
 export const telemetrySpoolDir = path.join(telemetryDir, "spool");
 export const telemetryCollectorDir = path.join(telemetryDir, "collector");
+export const telemetryEventsDir = path.join(telemetryDir, "events");
+export const telemetryMarkersPath = path.join(telemetryEventsDir, "markers.jsonl");
+export const telemetrySnapshotsDir = path.join(telemetryDir, "snapshots");
+export const telemetryExperimentsDir = path.join(telemetryDir, "experiments");
 // Backups live OUTSIDE telemetryDir so `purge --all` (which removes telemetryDir) can't delete the
 // snapshot it just took.
 export const telemetryBackupDir = path.join(roborepoStateDir, "telemetry-backups");
@@ -41,9 +45,22 @@ export const telemetryBackupDir = path.join(roborepoStateDir, "telemetry-backups
 // be stopped and cleaned up after the server rename.
 export const legacyTelemetryPidPath = process.env.ROBOREPO_TELEMETRY_PID_PATH
   || path.join(os.homedir(), ".local", "state", "roborepo", "telemetry-server.pid");
-export const portalPidPath = process.env.ROBOREPO_PORTAL_PID_PATH
-  || process.env.ROBOREPO_TELEMETRY_PID_PATH
-  || path.join(os.homedir(), ".local", "state", "roborepo", "portal-server.pid");
+// Keyed by port, not a single fixed path: the portal server is inherently per-repo (it serves
+// whatever repoRoot the invoking `roborepo serve` resolves to), so two different checkouts/
+// worktrees running on two different ports are legitimately two independent servers, not one
+// "the" portal. A single shared PID file meant the most-recently-started instance's
+// killExistingServer() would SIGTERM whichever OTHER repo's server happened to be recorded there,
+// even though it wasn't actually occupying the port being started on. ROBOREPO_PORTAL_PID_PATH
+// (set by test-telemetry-pid.sh to sandbox a temp dir) is an explicit override and wins outright,
+// regardless of port — a caller setting it has already opted out of the per-port default scheme.
+export function portalPidPathForPort(port) {
+  if (process.env.ROBOREPO_PORTAL_PID_PATH) return process.env.ROBOREPO_PORTAL_PID_PATH;
+  if (process.env.ROBOREPO_TELEMETRY_PID_PATH) return process.env.ROBOREPO_TELEMETRY_PID_PATH;
+  // Routes through roborepoStateDir (respects ROBOREPO_STATE_DIR), unlike the legacy fixed path
+  // above, so tests can sandbox per-port PID files the same way they already sandbox every other
+  // piece of roborepo state.
+  return path.join(roborepoStateDir, "portal", `server-${port}.pid`);
+}
 // Registry of enabled packages — source of truth for rules rendering (Phase 3+).
 export const enabledPackagesPath = path.join(roborepoStateDir, "enabled-packages.json");
 // Content hash of root config (settings.json / config.toml) as of roborepo's last write, keyed by

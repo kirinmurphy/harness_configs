@@ -5,6 +5,9 @@
 
 import { mcpServerOf } from "./telemetry-transcript.mjs";
 import { deriveInsights } from "./telemetry-insights.mjs";
+import { computeMetric } from "./telemetry-metrics.mjs";
+import { applyCohortFilter, normalizeCohortFilter, describeCohortFilter, activeFilterCount } from "./telemetry-cohort.mjs";
+import { compareAcrossMarker, describeMarkerComparison } from "./telemetry-compare.mjs";
 
 // A capture counts as a spike when its token delta exceeds the mean by this many standard
 // deviations. Tunable, but kept conservative so quiet sessions never trip the threshold.
@@ -19,8 +22,22 @@ const MIXED_CODE_LOOKUP_NATIVE_READS = 4;
 const DOC_EXTS = new Set([".md", ".mdx", ".rst", ".txt"]);
 const SOURCE_EXTS = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".json", ".css", ".scss", ".sh", ".py", ".rb", ".go", ".rs", ".java", ".kt", ".swift", ".php", ".cs", ".cpp", ".c", ".h", ".hpp", ".toml", ".yaml", ".yml"]);
 
-export function analyzeTelemetry(events) {
-  const captures = events.filter(hasTokens);
+// `options` (Phase 5 addition, fully optional so every existing call site keeps working unchanged):
+//   - cohortFilter: a normalized (or raw, pre-normalization) cohort filter object (telemetry-cohort.mjs).
+//     Applied on top of `events` before every downstream computation, so cohort-scoped callers (the
+//     portal's Analysis explorer, a future CLI --filter flag) get one filtered event set feeding every
+//     panel — same principle the existing time/harness window already followed for /api/data.
+//   - markers: the marker timeline, needed for outcome-aware metrics and marker-relative comparison.
+//   - markerId: when set (and found in `markers`), triggers a marker-relative comparison for
+//     `compareMetric` (default "tokens.total") and demotes the existing midpoint regression() to a
+//     labeled exploratory fallback in the report (plan: "Retain midpoint regression as a labeled
+//     exploratory fallback when no marker is selected").
+//   - compareMetric: metric id for the marker-relative comparison (only used when markerId is set).
+export function analyzeTelemetry(events, options = {}) {
+  const { cohortFilter = null, markers = [], markerId = null, compareMetric = "tokens.total" } = options;
+  const normalizedFilter = cohortFilter ? normalizeCohortFilter(cohortFilter) : null;
+  const scopedEvents = normalizedFilter ? applyCohortFilter(events, normalizedFilter, { markers }) : events;
+  const captures = scopedEvents.filter(hasTokens);
   const sessions = rollupSessions(captures);
   const spikeThreshold = deltaSpikeThreshold(captures);
   const spikeCaptures = captures.filter((event) => (event.delta_tokens || 0) >= spikeThreshold && spikeThreshold > 0);
@@ -44,8 +61,10 @@ export function analyzeTelemetry(events) {
   const report = {
     // Cheap change token for the dashboard's poll loop: spool is append-only, so event count plus the
     // newest timestamp changes whenever a capture lands. The client redraws only when this differs.
-    version: `${events.length}:${events[events.length - 1]?.ts ?? "0"}`,
-    event_count: events.length,
+    // Cohort-scoped so a filter change is always reflected, matching the existing time/harness window
+    // behavior this token already covered.
+    version: `${scopedEvents.length}:${scopedEvents[scopedEvents.length - 1]?.ts ?? "0"}`,
+    event_count: scopedEvents.length,
     capture_count: captures.length,
     sessions,
     spike_threshold: spikeThreshold,
@@ -54,7 +73,7 @@ export function analyzeTelemetry(events) {
       .map((event) => ({ ...spikeRow(event, sessionsById), spike_count: spikeCountBySess.get(event.session_id || "unknown") || 1 }))
       .sort((a, b) => b.delta_tokens - a.delta_tokens),
     // Also expose harnesses present in the data so the dashboard can render a filter.
-    harnesses: [...new Set(events.map((e) => e.harness).filter(Boolean))].sort(),
+    harnesses: [...new Set(scopedEvents.map((e) => e.harness).filter(Boolean))].sort(),
     // Computed concern threshold for the cumulative chart: 2× the 90th-percentile session total,
     // floored at 10M so it is always a visible limit even in low-activity installs.
     cumulative_concern: computeCumulativeConcern(sessions),
@@ -98,14 +117,57 @@ export function analyzeTelemetry(events) {
     group_cost: groupCost(captures),
     spike_anatomy: spikeAnatomy(captures, spikeCaptures),
     package_cost: packageCost(captures),
-    regression: regression(captures),
+    // Midpoint regression is now a labeled EXPLORATORY fallback (plan: "Retain midpoint regression as
+    // a labeled exploratory fallback when no marker is selected") — marker_comparison below is the
+    // PREFERRED path once a change marker exists to compare across. regression() itself is untouched.
+    regression: { ...regression(captures), exploratory: true, label: "midpoint (exploratory — not tied to any specific change)" },
     loops: detectLoops(captures, sessionsById),
-    data_quality_warnings: dataQualityWarnings(events),
-    read_warnings: readWarnings(events, sessionsById),
+    data_quality_warnings: dataQualityWarnings(scopedEvents),
+    read_warnings: readWarnings(scopedEvents, sessionsById),
+    // Phase 5: testing-efficiency summary (plan: "Derived testing findings"), computed from the same
+    // metrics registry the CLI report and portal both read — see telemetry-metrics.mjs.
+    testing_efficiency: testingEfficiencySummary(captures),
+    // Phase 5: cohort context so a filtered response can describe itself (plan: "readable cohort
+    // summary" / "expose cohorts and sample size").
+    cohort: normalizedFilter
+      ? { filter: normalizedFilter, summary: describeCohortFilter(normalizedFilter), active_filter_count: activeFilterCount(normalizedFilter) }
+      : null,
   };
+  // Marker-relative comparison (Phase 5 "preferred" path) — only computed when the caller selected a
+  // marker. Uses the FULL (pre-cohort-filter) event set so the marker's own before/after split isn't
+  // additionally restricted by the same filter that might have selected this marker's sessions; a
+  // caller wanting both should pass a marker whose surrounding sessions remain visible in `events`.
+  const marker = markerId ? markers.find((m) => m.marker_id === markerId) : null;
+  if (marker) {
+    const comparison = compareAcrossMarker(events.filter(hasTokens), marker, compareMetric, { markers });
+    report.marker_comparison = describeMarkerComparison(comparison, marker);
+  } else {
+    report.marker_comparison = null;
+  }
   // Ranked plain-English conclusions derived from the facts above — the "what this means" headline.
   report.insights = deriveInsights(report);
   return report;
+}
+
+// Plan: "Derived testing findings" — full-suite runs per session/debugging phase, redundant reruns,
+// testing share of tool time, targeted-to-full ratio, and the token cost of testing activity. Reads
+// straight from the metrics registry so the CLI report and portal never diverge on the formula.
+function testingEfficiencySummary(captures) {
+  const metricIds = [
+    "test.full_suite_calls_per_session",
+    "test.full_suite_calls_per_debug_phase",
+    "test.full_suite_without_intervening_edit",
+    "test.full_suite_unchanged_failure_signature",
+    "test.targeted_to_full_ratio",
+    "test.share_of_tool_time",
+    "test.time_failure_to_targeted_repro_ms",
+    "test.time_first_failure_to_verification_ms",
+    "test.finalization_full_suite_count",
+    "test.tokens_during_testing",
+  ];
+  const summary = {};
+  for (const id of metricIds) summary[id] = computeMetric(id, captures);
+  return summary;
 }
 
 // A tool result this many characters or larger is treated as the likely cause of a spike. ~1 token

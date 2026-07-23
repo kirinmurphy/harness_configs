@@ -5,8 +5,17 @@ import net from "node:net";
 import { spawnSync, spawn } from "node:child_process";
 import { markTelemetrySelected } from "./presets.mjs";
 import { repoRoot } from "./paths.mjs";
-import { portalPidPath, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
+import { portalPidPathForPort, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
+import { readMarkers, readSnapshot, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
+import { readSourceFile } from "./config-source-lookup.mjs";
+import {
+  createMarker, startExperiment, endExperiment, experimentStatus,
+  MARKER_TYPES, OUTCOME_STATUSES, EXPECTED_DIRECTIONS, TASK_CATEGORIES,
+} from "./telemetry-markers.mjs";
+import { isKnownMetric, listMetrics, computeMetric } from "./telemetry-metrics.mjs";
+import { normalizeCohortFilter, applyCohortFilter } from "./telemetry-cohort.mjs";
+import { compareAcrossMarker, describeMarkerComparison } from "./telemetry-compare.mjs";
 import { readAppendedLines } from "./jsonl-tail.mjs";
 import { startPortalServer } from "./portal-server.mjs";
 import { readConfigSnapshot, loadConfigSource } from "./config.mjs";
@@ -45,6 +54,10 @@ export async function telemetryCommand(rest) {
       return telemetryPurge(args);
     case "backup":
       return telemetryBackup(args);
+    case "mark":
+      return telemetryMark(args);
+    case "experiment":
+      return telemetryExperiment(args);
     // The hot hook path (fires every PreToolUse/PostToolUse) bypasses this module entirely via
     // main.mjs's dynamic import of telemetry-capture.mjs. This case only serves callers that go
     // through telemetryCommand directly (tests, telemetry-only install's wired hook command still
@@ -54,9 +67,228 @@ export async function telemetryCommand(rest) {
       return telemetryCaptureCommand(args);
     }
     default:
-      console.error("usage: roborepo telemetry install|stop|enable|disable|status|report|export|backup|purge");
+      console.error("usage: roborepo telemetry install|stop|enable|disable|status|report|export|backup|purge|mark|experiment");
       console.error("portal: roborepo serve [--detach] [--no-open] [--port <n>]");
       process.exit(2);
+  }
+}
+
+// --------------------------------------------------------------------------- markers
+
+const MARK_USAGE = "usage: roborepo telemetry mark --type <type> --title <title> [--description <text>] "
+  + "[--package <id>]... [--skill <id>]... [--tag <tag>]... [--metric <id>] [--expect increase|decrease|no-change] "
+  + "[--session <id>] [--phase <phase>] [--status <status>] [--supersedes <marker-id>] "
+  + "[--task-category <id>] [--files-touched <n>] [--directories-touched <n>] [--insertions <n>] [--deletions <n>]";
+
+function parseMarkArgs(args) {
+  const options = { packages: [], skills: [], tags: [] };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    switch (arg) {
+      case "--type": options.type = args[++i]; break;
+      case "--title": options.title = args[++i]; break;
+      case "--description": options.description = args[++i]; break;
+      case "--package": options.packages.push(args[++i]); break;
+      case "--skill": options.skills.push(args[++i]); break;
+      case "--tag": options.tags.push(args[++i]); break;
+      case "--metric": options.metric = args[++i]; break;
+      case "--expect": options.expected_direction = args[++i]; break;
+      case "--session": options.session_id = args[++i]; break;
+      case "--phase": options.phase = args[++i]; break;
+      case "--status": options.status = args[++i]; break;
+      case "--supersedes": options.supersedes = args[++i]; break;
+      // Task category/scale are explicit-only through the CLI — a human or scripted caller stating
+      // "this was a bug-fix touching 3 files" is task_category_source: "explicit" by construction.
+      // Inferred task classification (telemetry-task-infer.mjs) is a Phase 5+ analysis-time concern,
+      // not something this command computes itself.
+      case "--task-category": options.task_category = args[++i]; break;
+      case "--files-touched": options.files_touched = Number(args[++i]); break;
+      case "--directories-touched": options.directories_touched = Number(args[++i]); break;
+      case "--insertions": options.insertions = Number(args[++i]); break;
+      case "--deletions": options.deletions = Number(args[++i]); break;
+      default:
+        console.error(`unknown argument: ${arg}`);
+        console.error(MARK_USAGE);
+        process.exit(2);
+    }
+  }
+  return options;
+}
+
+function telemetryMark(args) {
+  const options = parseMarkArgs(args);
+  if (!options.type || !MARKER_TYPES.has(options.type)) {
+    console.error(`--type is required and must be one of: ${[...MARKER_TYPES].join(", ")}`);
+    console.error(MARK_USAGE);
+    process.exit(2);
+  }
+  if (!options.title || !options.title.trim()) {
+    console.error("--title is required");
+    console.error(MARK_USAGE);
+    process.exit(2);
+  }
+  if (options.expected_direction && !EXPECTED_DIRECTIONS.has(options.expected_direction)) {
+    console.error(`--expect must be one of: ${[...EXPECTED_DIRECTIONS].join(", ")}`);
+    process.exit(2);
+  }
+  if (options.type === "outcome" && (!options.status || !OUTCOME_STATUSES.has(options.status))) {
+    console.error(`outcome markers require --status to be one of: ${[...OUTCOME_STATUSES].join(", ")}`);
+    process.exit(2);
+  }
+  if (options.type === "phase" && !options.phase) {
+    console.error("phase markers require --phase");
+    process.exit(2);
+  }
+  if (options.task_category != null && !TASK_CATEGORIES.has(options.task_category)) {
+    console.error(`--task-category must be one of: ${[...TASK_CATEGORIES].join(", ")}`);
+    process.exit(2);
+  }
+  if (options.task_category != null && options.type !== "outcome") {
+    console.error("--task-category is only valid on outcome markers (--type outcome)");
+    process.exit(2);
+  }
+  let marker;
+  try {
+    marker = createMarker(options);
+  } catch (err) {
+    console.error(`failed to create marker: ${err.message}`);
+    process.exit(1);
+  }
+  console.log(`marker: ${marker.marker_id}`);
+  console.log(`  ts: ${marker.ts}`);
+  console.log(`  type: ${marker.type}`);
+  console.log(`  title: ${marker.title}`);
+  console.log(`  repo: ${marker.repo ?? "unknown"}  branch: ${marker.branch ?? "unknown"}  sha: ${marker.sha ?? "unknown"}`);
+  console.log(`  snapshot: ${marker.config_snapshot_id ?? "unavailable"}`);
+  if (marker.task_category) {
+    console.log(`  task_category: ${marker.task_category} (${marker.task_category_source})`);
+  }
+  if (marker.task_scale) {
+    console.log(`  task_scale: files=${marker.task_scale.files_touched ?? "?"} dirs=${marker.task_scale.directories_touched ?? "?"} +${marker.task_scale.insertions ?? "?"}/-${marker.task_scale.deletions ?? "?"} cross_cutting=${marker.task_scale.cross_cutting}`);
+  }
+}
+
+// --------------------------------------------------------------------------- experiments
+
+const EXPERIMENT_USAGE = "usage: roborepo telemetry experiment start --title <title> --metric <id> "
+  + "--expect increase|decrease|no-change [--guardrail <id>]... [--task-category <id>]... "
+  + "[--minimum-sessions <n>] [--comparison previous-equivalent-window|midpoint]\n"
+  + "       roborepo telemetry experiment end <experiment-id>\n"
+  + "       roborepo telemetry experiment status [<experiment-id>]";
+
+function parseExperimentStartArgs(args) {
+  const options = { guardrails: [], task_categories: [] };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    switch (arg) {
+      case "--title": options.title = args[++i]; break;
+      case "--metric": options.metric = args[++i]; break;
+      case "--expect": options.expected_direction = args[++i]; break;
+      case "--guardrail": options.guardrails.push(args[++i]); break;
+      case "--task-category": options.task_categories.push(args[++i]); break;
+      case "--minimum-sessions": options.minimum_sessions_per_cohort = Number(args[++i]); break;
+      case "--comparison": options.comparison = args[++i]; break;
+      default:
+        console.error(`unknown argument: ${arg}`);
+        console.error(EXPERIMENT_USAGE);
+        process.exit(2);
+    }
+  }
+  return options;
+}
+
+function telemetryExperiment(args) {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "start":
+      return telemetryExperimentStart(rest);
+    case "end":
+      return telemetryExperimentEnd(rest);
+    case "status":
+      return telemetryExperimentStatus(rest);
+    default:
+      console.error(EXPERIMENT_USAGE);
+      process.exit(2);
+  }
+}
+
+function telemetryExperimentStart(args) {
+  const options = parseExperimentStartArgs(args);
+  if (!options.title || !options.title.trim()) {
+    console.error("--title is required");
+    console.error(EXPERIMENT_USAGE);
+    process.exit(2);
+  }
+  if (!options.metric || !options.metric.trim()) {
+    console.error("--metric is required");
+    console.error(EXPERIMENT_USAGE);
+    process.exit(2);
+  }
+  if (!options.expected_direction || !EXPECTED_DIRECTIONS.has(options.expected_direction)) {
+    console.error(`--expect is required and must be one of: ${[...EXPECTED_DIRECTIONS].join(", ")}`);
+    process.exit(2);
+  }
+  if (options.minimum_sessions_per_cohort != null && (!Number.isInteger(options.minimum_sessions_per_cohort) || options.minimum_sessions_per_cohort < 1)) {
+    console.error("--minimum-sessions must be a positive integer");
+    process.exit(2);
+  }
+  let result;
+  try {
+    result = startExperiment(options);
+  } catch (err) {
+    console.error(`failed to start experiment: ${err.message}`);
+    process.exit(1);
+  }
+  console.log(`experiment: ${result.experiment.experiment_id}`);
+  console.log(`  title: ${result.experiment.title}`);
+  console.log(`  start marker: ${result.startMarker.marker_id}`);
+  console.log(`  primary metric: ${result.experiment.primary_metric} (expect ${result.experiment.expected_direction})`);
+}
+
+function telemetryExperimentEnd(args) {
+  const [experimentId, ...rest] = args;
+  rejectArgs(rest);
+  if (!experimentId) {
+    console.error(EXPERIMENT_USAGE);
+    process.exit(2);
+  }
+  let result;
+  try {
+    result = endExperiment(experimentId);
+  } catch (err) {
+    console.error(`failed to end experiment: ${err.message}`);
+    process.exit(1);
+  }
+  console.log(`experiment ended: ${result.experiment.experiment_id}`);
+  console.log(`  end marker: ${result.endMarker.marker_id}`);
+}
+
+function telemetryExperimentStatus(args) {
+  const [experimentId, ...rest] = args;
+  rejectArgs(rest);
+  let statuses;
+  try {
+    statuses = experimentStatus(experimentId || null);
+  } catch (err) {
+    console.error(`failed to read experiment status: ${err.message}`);
+    process.exit(1);
+  }
+  if (statuses.length === 0) {
+    console.log("no experiments found.");
+    return;
+  }
+  for (const status of statuses) {
+    console.log(`experiment: ${status.experiment_id}  [${status.state}]`);
+    console.log(`  title: ${status.title}`);
+    console.log(`  metric: ${status.primary_metric} (expect ${status.expected_direction})`);
+    console.log(`  started: ${status.started_at ?? "unknown"}${status.ended_at ? `  ended: ${status.ended_at}` : ""}`);
+    if (status.guardrails.length) console.log(`  guardrails: ${status.guardrails.join(", ")}`);
+    console.log(`  ready: ${status.ready}`);
+    if (status.cohorts) {
+      console.log(`  cohorts: before=${status.cohorts.before.sessions} sessions (${formatMetricValue(status.cohorts.before.value)}), after=${status.cohorts.after.sessions} sessions (${formatMetricValue(status.cohorts.after.value)})`);
+      console.log(`  effect size: ${status.effect_size == null ? "unknown" : status.effect_size}  confidence: ${status.confidence}`);
+    }
+    for (const warning of status.data_quality_warnings) console.log(`  warning: ${warning}`);
   }
 }
 
@@ -120,12 +352,29 @@ function wireCaptureHooks(settingsPath, harness) {
 }
 
 function telemetryStop(args) {
-  rejectArgs(args);
-  const stopped = stopServer();
+  const port = parseStopArgs(args);
+  const stopped = stopServer(port);
   ensureTelemetryDirs();
   writeTelemetryState({ enabled: false });
   markTelemetrySelected(false);
   console.log(stopped ? "telemetry: disabled · server stopped" : "telemetry: disabled · no server was running");
+}
+
+// PID tracking is per-port (see the "PID management" section below), so stopping the right server
+// needs to know which port — defaults to the same 4317 `serve` itself defaults to.
+function parseStopArgs(args) {
+  let port = 4317;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--port") port = Number(args[++i]);
+    else if (arg.startsWith("--port=")) port = Number(arg.slice("--port=".length));
+    else rejectArgs([arg]);
+  }
+  if (!Number.isInteger(port) || port < 0) {
+    console.error("usage: roborepo telemetry stop [--port <n>]");
+    process.exit(2);
+  }
+  return port;
 }
 
 async function telemetryEnable(args) {
@@ -185,7 +434,8 @@ function telemetryReport(args) {
     console.log(`Capture enabled: ${state.enabled === true ? "yes" : "no"}`);
     return;
   }
-  const report = analyzeTelemetry(events);
+  const markers = readMarkers();
+  const report = analyzeTelemetry(events, { markers });
   // Headline first: the deterministic "what this means" conclusions, before any raw table.
   printInsights(report.insights);
   printDataQualityWarnings(report.data_quality_warnings);
@@ -195,12 +445,17 @@ function telemetryReport(args) {
   console.log(`\nevents: ${report.event_count}  (with token data: ${report.capture_count})`);
   printTop("repos", countBy(events, (event) => event.repo?.label ?? "unknown"));
   printTop("tools/events", countBy(events, (event) => event.tool?.name ?? event.event ?? "unknown"));
+  // Recent markers (plan CLI report change: "recent markers"). Shown even when there is no token
+  // data yet, since markers can exist independent of capture activity.
+  printRecentMarkers(markers);
+  printExperimentReadiness();
   if (report.capture_count === 0) {
     console.log("\n(no token-bearing records yet — start a session with telemetry enabled to populate spike analysis)");
     return;
   }
   printUsageWindows(report.usage_windows);
   printSpikeCauses(report.spike_causes);
+  printTestingEfficiency(report.testing_efficiency);
   // Conclusions first — the actionable headlines before the raw contributor tables.
   printGroupCost(report.group_cost);
   printToolCost(report.tool_cost);
@@ -213,6 +468,53 @@ function telemetryReport(args) {
   printTokenContributors("token by tool", report.top_tools);
   printTokenContributors("token by MCP server", report.top_mcp);
   printComparison(report.comparison);
+}
+
+// Plan CLI report change: "recent markers" — the latest few, newest first, so a terminal report
+// shows what has been marked without requiring a separate `telemetry mark --list` (which does not
+// exist; export is the only current bulk-read path).
+function printRecentMarkers(markers) {
+  if (!markers.length) return;
+  const recent = [...markers].sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 5);
+  console.log("\nrecent markers:");
+  for (const m of recent) {
+    console.log(`  ${m.ts}  [${m.type}]  ${m.title}${m.metric ? `  (metric: ${m.metric})` : ""}`);
+  }
+}
+
+// Plan CLI report change: "experiment readiness/results" — mirrors telemetryExperimentStatus's
+// printer so the CLI report and `telemetry experiment status` never disagree on wording.
+function printExperimentReadiness() {
+  let statuses;
+  try {
+    statuses = experimentStatus(null);
+  } catch {
+    return;
+  }
+  const running = statuses.filter((s) => s.state === "running");
+  if (!running.length) return;
+  console.log("\nexperiment readiness:");
+  for (const status of running) {
+    const cohortSummary = status.cohorts ? `before=${status.cohorts.before.sessions} after=${status.cohorts.after.sessions}` : "no cohort data";
+    console.log(`  ${status.title}  ready=${status.ready}  ${cohortSummary}${status.confidence ? `  confidence=${status.confidence}` : ""}`);
+  }
+}
+
+// Plan CLI report change: "testing efficiency" section, same metric registry values the portal's
+// testing-efficiency panel reads — CLI and portal must agree for the same cohort (acceptance
+// criterion 11).
+function printTestingEfficiency(summary) {
+  const share = summary["test.share_of_tool_time"];
+  const fullPerSession = summary["test.full_suite_calls_per_session"];
+  const redundant = summary["test.full_suite_without_intervening_edit"];
+  if (share == null && fullPerSession == null && redundant == null) return;
+  console.log("\ntesting efficiency:");
+  if (share != null) console.log(`  testing share of tool time: ${share}%`);
+  if (fullPerSession != null) console.log(`  full-suite runs/session: ${fullPerSession.toFixed(2)}`);
+  if (summary["test.full_suite_calls_per_debug_phase"] != null) console.log(`  full-suite runs/debugging phase: ${summary["test.full_suite_calls_per_debug_phase"].toFixed(2)}`);
+  if (redundant != null) console.log(`  redundant reruns (no intervening edit): ${redundant}`);
+  if (summary["test.full_suite_unchanged_failure_signature"] != null) console.log(`  reruns with unchanged failure signature: ${summary["test.full_suite_unchanged_failure_signature"]}`);
+  if (summary["test.targeted_to_full_ratio"] != null) console.log(`  targeted-to-full ratio: ${summary["test.targeted_to_full_ratio"].toFixed(2)}`);
 }
 
 // Trailing-window consumption is a local estimate from capture deltas — not the real server-side
@@ -366,6 +668,14 @@ function printTokenContributors(label, rows) {
   }
 }
 
+// Terse metric-value formatter for the experiment status printout. Mirrors telemetry-compare.mjs's
+// internal formatMetricValue (kept local here since the CLI print layer doesn't import compare.mjs's
+// private helpers) — used only for human-readable output, never fed back into a comparison.
+function formatMetricValue(value) {
+  if (value == null) return "unknown";
+  return String(Math.round(value * 100) / 100);
+}
+
 function printComparison(comparison) {
   console.log("\nspike vs normal captures:");
   for (const [label, stats] of [["spike", comparison.spike], ["normal", comparison.normal]]) {
@@ -375,7 +685,20 @@ function printComparison(comparison) {
 
 function telemetryExport(args) {
   rejectSupportedReportArgs(args);
-  console.log(JSON.stringify(readSpoolEvents(), null, 2));
+  console.log(JSON.stringify({
+    captures: readSpoolEvents(),
+    markers: readMarkers(),
+    snapshots: readSnapshots(),
+    experiments: readExperiments(),
+  }, null, 2));
+}
+
+// Backs the Telemetry page's "view docs" popup: renders docs/guides/telemetry.md server-side
+// (same renderMarkdown() used by the Config page's skill-source popup) so the page and the guide
+// never drift into two separately-maintained copies of the same explanation. readSourceFile()
+// confines the path inside repoRoot, so this can only ever serve this one repo-relative file.
+function loadTelemetryGuide() {
+  return readSourceFile(path.join(repoRoot, "docs", "guides", "telemetry.md"), "Telemetry Walkthrough");
 }
 
 export async function serveCommand(args, { allowPortFallback = false, openPath = "" } = {}) {
@@ -394,18 +717,18 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
   });
   if (resolved.reuse) {
     const existingUrl = `http://127.0.0.1:${resolved.port}`;
-    writePid(resolved.pid);
+    writePid(resolved.port, resolved.pid);
     console.log(`roborepo portal already running: ${existingUrl}`);
     if (options.open) openLocalUrl(`${existingUrl}${openPath}`);
     return;
   }
-  await killExistingServer();
-  writePid(process.pid);
+  await killExistingServer(resolved.port);
+  writePid(resolved.port, process.pid);
   options.port = resolved.port;
   const portalUrl = (port) => `http://127.0.0.1:${port}`;
   // Clean up the PID file (and stop the refresh timer) when the server exits cleanly (SIGTERM from
   // stop or OS shutdown).
-  process.on("SIGTERM", () => { stopAnalysisRefresh(); clearPid(); process.exit(0); });
+  process.on("SIGTERM", () => { stopAnalysisRefresh(); clearPid(resolved.port); process.exit(0); });
   if (readTelemetryState().enabled !== true) {
     console.log("telemetry is disabled; serving whatever is already in the spool.");
   }
@@ -419,9 +742,21 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
   // flagged event to its chat transcript (file I/O lives here, not in the server).
   startPortalServer({
     port: options.port,
-    loadAnalysisJson: (window, harness) => cachedAnalysisJson(window, harness),
-    loadSession: (req) => loadSessionDetail(req),
+    // Phase 6 additions (model/repo/markerId) layer a normalized cohort filter on top of the
+    // existing time/harness window; folded into cachedAnalysisJson's cache key (see
+    // cachedAnalysisEntry above) so cohort-filtered views stay cached the same way the default
+    // view is. See telemetry-analyze.mjs's analyzeTelemetry() options and telemetry-cohort.mjs for
+    // the shared filter shape the CLI report will eventually reuse too.
+    loadAnalysisJson: (window, harness, extra = {}) => cachedAnalysisJson(window, harness, extra),
+    loadSession: (req) => loadSessionDetail({ ...req, spoolContext: sessionSpoolContext(req.id, readMarkers()) }),
     loadInsightsLlm: () => loadInsightsLlm(),
+    loadMarkers: () => readMarkers(),
+    createMarkerFromRequest: (body) => createMarkerFromPortalRequest(body),
+    loadExperiments: () => experimentStatus(null),
+    createExperimentFromRequest: (body) => createExperimentFromPortalRequest(body),
+    endExperimentFromRequest: (experimentId) => endExperimentFromPortalRequest(experimentId),
+    loadTelemetryAnalysis: (body) => loadTelemetryAnalysisRequest(body),
+    loadTelemetryGuide: () => loadTelemetryGuide(),
     loadConfig: () => readConfigSnapshot(),
     loadConfigSource: (params) => loadConfigSource(params),
     loadPlans: () => loadPlansSnapshot(),
@@ -540,7 +875,33 @@ function spoolSignature() {
       // File vanished between readdir and stat; ignore — the next tick re-signs the spool.
     }
   }
-  return `${files.length}:${maxMtime}:${totalSize}`;
+  // Cached reports embed markers and experiments (chart overlay, cohort/marker-relative
+  // comparisons, the recent-markers list) alongside spool-derived data, so a marker/experiment
+  // mutation must also invalidate the cache even though it never touches the spool directory
+  // itself — otherwise a marker or experiment created through the portal would not appear in
+  // /api/data until the next unrelated capture landed.
+  let markersStamp = "0:0";
+  try {
+    const stat = fs.statSync(telemetryMarkersPath);
+    markersStamp = `${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    // No markers file yet; stable "0:0" until one is created.
+  }
+  // Experiments are one file per experiment_id (mutable in place — status/end_marker_id update),
+  // so the signature is a count+max-mtime over the directory rather than a single file stamp.
+  let experimentsStamp = "0:0";
+  try {
+    const experimentFiles = fs.readdirSync(telemetryExperimentsDir).filter((file) => file.endsWith(".json"));
+    let maxExpMtime = 0;
+    for (const file of experimentFiles) {
+      const stat = fs.statSync(path.join(telemetryExperimentsDir, file));
+      if (stat.mtimeMs > maxExpMtime) maxExpMtime = stat.mtimeMs;
+    }
+    experimentsStamp = `${experimentFiles.length}:${maxExpMtime}`;
+  } catch {
+    // No experiments dir yet; stable "0:0" until one is created.
+  }
+  return `${files.length}:${maxMtime}:${totalSize}|${markersStamp}|${experimentsStamp}`;
 }
 
 // Plain full-read of the whole spool. Used by the one-shot CLI paths (`telemetry report`/`export`)
@@ -686,21 +1047,33 @@ function filterByWindow(events, window) {
 // object is discarded once stringified rather than retained as dead memory.
 const _analysisCache = new Map();
 const ANALYSIS_CACHE_MAX = 32;
-function analysisKey(window, harness) {
-  return `${spoolSignature()}|${window ? `${window.rangeMs}:${window.end ?? ""}` : "all"}|${harness || "all"}`;
+// Phase 6 additions (model/repo/markerId) layer a normalized cohort filter on top of the existing
+// time/harness window; folded into the cache key so a cohort-filtered view gets its own cached
+// entry instead of colliding with (or evicting) the unfiltered default view.
+function analysisKey(window, harness, { model = null, repo = null, markerId = null } = {}) {
+  return `${spoolSignature()}|${window ? `${window.rangeMs}:${window.end ?? ""}` : "all"}|${harness || "all"}|${model || "all"}|${repo || "all"}|${markerId || "none"}`;
 }
 
-// Returns the cache entry { report, json } for the given view, computing (and caching) it on a miss.
-function cachedAnalysisEntry(window, harness) {
-  const key = analysisKey(window, harness);
+// Returns the cache entry { json } for the given view, computing (and caching) it on a miss.
+function cachedAnalysisEntry(window, harness, extra = {}) {
+  const { model = null, repo = null, markerId = null } = extra;
+  const key = analysisKey(window, harness, { model, repo, markerId });
   const hit = _analysisCache.get(key);
   if (hit) return hit;
   const allEvents = readSpoolEventsCached();
-  // Expose all harnesses found in the spool, before any harness filter, so the dashboard can
-  // always render the full filter even when one harness is selected.
+  const markers = readMarkers();
+  // Filter dropdowns cascade: harness is the top-level split, so the model/repo dropdowns should
+  // only ever offer values that actually co-occur with the selected harness — picking "codex"
+  // must not still list Claude-only models. Harness itself always lists every harness in the full
+  // spool (nothing sits above it to narrow it). Model does not narrow repo, or vice versa — both
+  // sit at the same level under harness — so each is scoped by harness alone, not by each other.
   const availableHarnesses = [...new Set(allEvents.map((e) => e.harness).filter(Boolean))].sort();
   const events = harness ? allEvents.filter((e) => e.harness === harness) : allEvents;
-  const report = analyzeTelemetry(filterByWindow(events, window));
+  const availableModels = [...new Set(events.map((e) => e.session?.model).filter(Boolean))].sort();
+  const availableRepos = [...new Set(events.map((e) => e.repo?.label).filter(Boolean))].sort();
+  const windowed = filterByWindow(events, window);
+  const cohortFilter = (model || repo) ? { models: model ? [model] : [], repos: repo ? [repo] : [] } : null;
+  const report = analyzeTelemetry(windowed, { cohortFilter, markers, markerId, compareMetric: "tokens.total" });
   // Backfill session titles from transcripts: the transcript always has the first user message
   // (turn 1), whereas the spool only captures prompts when hooks fired — so new sessions or
   // sessions started before telemetry was enabled may have no spool title or a mid-chat title.
@@ -710,6 +1083,15 @@ function cachedAnalysisEntry(window, harness) {
     if (t) s.title = t;
   }
   report.available_harnesses = availableHarnesses;
+  report.available_models = availableModels;
+  report.available_repos = availableRepos;
+  // Metric ids from the shared registry (plan: "available ... metric" dimension) so the Analysis
+  // explorer's metric select never hand-maintains its own list.
+  report.available_metrics = listMetrics().map((m) => m.id);
+  // Window-scoped markers for the chart overlay (plan: "The server supplies window-scoped
+  // markers"). Uses the same filterByWindow the events themselves went through.
+  report.markers = filterByWindow(markers, window);
+  report.experiments = readExperiments();
   report.deepread_cli = findDeepReadCli();
   // Cache the serialized JSON, not the report object: the only consumer is the /api/data route,
   // which sends the string, so retaining the ~10MB object per entry would be dead memory. The report
@@ -724,9 +1106,9 @@ function cachedAnalysisEntry(window, harness) {
   return entry;
 }
 
-// Serialized report JSON for the hot /api/data path, memoized per signature+window+harness.
-function cachedAnalysisJson(window, harness) {
-  return cachedAnalysisEntry(window, harness).json;
+// Serialized report JSON for the hot /api/data path, memoized per signature+window+harness+cohort.
+function cachedAnalysisJson(window, harness, extra = {}) {
+  return cachedAnalysisEntry(window, harness, extra).json;
 }
 
 // Tier 2 — debounced default-view refresh. cachedAnalysisJson() still computes synchronously on a
@@ -808,9 +1190,81 @@ function cachedTranscriptTitle(sessionId, harness) {
   return t;
 }
 
+// Phase 7 session-detail extension (plan: "Extend the current session modal with: model history,
+// configuration snapshot, active packages/skills, explicit versus inferred task category and
+// outcome, phase timeline, semantic operation totals, testing-efficiency summary, markers inside or
+// adjacent to the session, data-quality flags"). Scans the already-loaded spool for this session's
+// own captures (cheap: one session's records only, not a re-read) and pulls together everything
+// derivable without touching the transcript. Best-effort throughout — missing data reports as
+// unavailable rather than guessed.
+function sessionSpoolContext(sessionId, markers) {
+  if (!sessionId) return null;
+  const events = readSpoolEvents().filter((e) => e.session_id === sessionId);
+  if (!events.length) return null;
+  const sorted = [...events].sort((a, b) => a.ts.localeCompare(b.ts));
+
+  // Model history: every distinct model seen across this session's captures, in first-seen order.
+  const modelHistory = [...new Set(sorted.map((e) => e.session?.model).filter(Boolean))];
+
+  // Configuration snapshot: the most recent non-null snapshot id (a session may span more than one
+  // if configuration changed mid-session per the snapshot schema's per-turn-override allowance).
+  const snapshotIds = [...new Set(sorted.map((e) => e.config_snapshot_id).filter(Boolean))];
+  const latestSnapshot = snapshotIds.length ? readSnapshot(snapshotIds[snapshotIds.length - 1]) : null;
+
+  // Phase timeline: contiguous runs of the same phase.name, in order, with start/end timestamps.
+  const phaseTimeline = [];
+  for (const e of sorted) {
+    const name = e.phase?.name ?? null;
+    if (name == null) continue;
+    const last = phaseTimeline[phaseTimeline.length - 1];
+    if (last && last.name === name) last.end = e.ts;
+    else phaseTimeline.push({ name, source: e.phase?.source ?? null, start: e.ts, end: e.ts });
+  }
+
+  // Semantic operation totals: count by operation.category.
+  const operationTotals = {};
+  for (const e of sorted) {
+    if (!e.operation?.category) continue;
+    operationTotals[e.operation.category] = (operationTotals[e.operation.category] || 0) + 1;
+  }
+
+  // Explicit outcome/task-category marker for this session, if any (kept distinguishable from any
+  // future inferred value — the plan requires "explicit versus inferred" stay separate, and today
+  // only explicit outcome markers set task_category, per Phase 4 notes).
+  const outcomeMarker = markers.find((m) => m.type === "outcome" && m.session_id === sessionId) ?? null;
+
+  // Markers "inside or adjacent to" the session: any marker whose timestamp falls within the
+  // session's own [first, last] capture window, widened by a small adjacency margin.
+  const ADJACENCY_MS = 15 * 60 * 1000;
+  const sessionStart = Date.parse(sorted[0].ts) - ADJACENCY_MS;
+  const sessionEnd = Date.parse(sorted[sorted.length - 1].ts) + ADJACENCY_MS;
+  const nearbyMarkers = markers.filter((m) => {
+    const ms = Date.parse(m.ts);
+    return Number.isFinite(ms) && ms >= sessionStart && ms <= sessionEnd;
+  });
+
+  // Data-quality flags: same reliability dimensions the metrics registry tracks, scoped to this
+  // session so a modal can show "this session's data is thinner than usual" at a glance.
+  const flags = [];
+  if (!snapshotIds.length) flags.push("no configuration snapshot recorded for this session");
+  if (!modelHistory.length) flags.push("model unknown for every capture in this session");
+  const v3Count = sorted.filter((e) => e.schema === 3).length;
+  if (v3Count < sorted.length) flags.push(`${sorted.length - v3Count} of ${sorted.length} captures predate schema v3 (fewer derived fields)`);
+
+  return {
+    model_history: modelHistory,
+    config_snapshot: latestSnapshot ? { snapshot_id: latestSnapshot.snapshot_id, packages: latestSnapshot.packages, skills: latestSnapshot.skills, harness: latestSnapshot.harness } : null,
+    phase_timeline: phaseTimeline,
+    operation_totals: operationTotals,
+    outcome: outcomeMarker ? { status: outcomeMarker.status, task_category: outcomeMarker.task_category ?? null, task_category_source: outcomeMarker.task_category_source ?? null, source: "explicit" } : { status: "unknown", task_category: null, source: "none" },
+    nearby_markers: nearbyMarkers.map((m) => ({ marker_id: m.marker_id, type: m.type, title: m.title, ts: m.ts })),
+    data_quality_flags: flags,
+  };
+}
+
 // Resolve a flagged event to its chat: find the transcript, surface the heaviest turns, and build a
 // paste-ready analysis prompt. Best-effort — a missing transcript returns found:false, never throws.
-function loadSessionDetail({ id, harness, finding, repo }) {
+function loadSessionDetail({ id, harness, finding, repo, spoolContext = null }) {
   const transcriptPath = locateTranscript(id, harness);
   if (!transcriptPath) {
     return {
@@ -818,6 +1272,7 @@ function loadSessionDetail({ id, harness, finding, repo }) {
       session_id: id,
       harness,
       analysis_prompt: buildAnalysisPrompt({ sessionId: id, harness, repo, finding, transcriptPath: null }),
+      spool_context: spoolContext,
     };
   }
   return {
@@ -828,6 +1283,7 @@ function loadSessionDetail({ id, harness, finding, repo }) {
     title: transcriptTitle(transcriptPath),
     heavy_turns: extractHeavyTurns(transcriptPath, { limit: 8 }),
     analysis_prompt: buildAnalysisPrompt({ sessionId: id, harness, repo, finding, transcriptPath }),
+    spool_context: spoolContext,
   };
 }
 
@@ -870,6 +1326,129 @@ function loadInsightsLlm() {
   return runDeepRead(analyzeTelemetry(readSpoolEventsCached()));
 }
 
+// --- Phase 6: portal marker/experiment/analysis request handlers ------------------------------
+// All three reuse the exact same domain functions the CLI calls (createMarker/startExperiment/
+// endExperiment from telemetry-markers.mjs) — no browser-side rule duplication, per the plan's
+// "Do not duplicate experiment rules in the browser." Server-side validation mirrors the CLI's own
+// argument checks (parseMarkArgs/parseExperimentStartArgs) since a browser POST body skips that path.
+
+// Portal markers omit --session/--phase/--status conveniences the CLI supports via flags the portal
+// doesn't yet render a control for; only the fields the plan's marker-creation UI needs are accepted.
+function createMarkerFromPortalRequest(body) {
+  if (typeof body.type !== "string" || !MARKER_TYPES.has(body.type)) {
+    return { ok: false, error: `type must be one of: ${[...MARKER_TYPES].join(", ")}` };
+  }
+  if (typeof body.title !== "string" || !body.title.trim()) {
+    return { ok: false, error: "title is required" };
+  }
+  if (body.expected_direction != null && !EXPECTED_DIRECTIONS.has(body.expected_direction)) {
+    return { ok: false, error: `expected_direction must be one of: ${[...EXPECTED_DIRECTIONS].join(", ")}` };
+  }
+  if (body.type === "outcome" && !OUTCOME_STATUSES.has(body.status)) {
+    return { ok: false, error: `outcome markers require status to be one of: ${[...OUTCOME_STATUSES].join(", ")}` };
+  }
+  try {
+    const marker = createMarker({
+      type: body.type,
+      title: body.title,
+      description: typeof body.description === "string" ? body.description : null,
+      packages: Array.isArray(body.packages) ? body.packages : [],
+      skills: Array.isArray(body.skills) ? body.skills : [],
+      tags: Array.isArray(body.tags) ? body.tags : [],
+      metric: typeof body.metric === "string" ? body.metric : null,
+      expected_direction: body.expected_direction ?? null,
+      session_id: typeof body.session_id === "string" ? body.session_id : null,
+      phase: body.type === "phase" ? body.phase : null,
+      status: body.type === "outcome" ? body.status : null,
+      supersedes: typeof body.supersedes === "string" ? body.supersedes : null,
+    });
+    return { ok: true, marker };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+function createExperimentFromPortalRequest(body) {
+  if (typeof body.title !== "string" || !body.title.trim()) return { ok: false, error: "title is required" };
+  if (typeof body.metric !== "string" || !body.metric.trim()) return { ok: false, error: "metric is required" };
+  if (!EXPECTED_DIRECTIONS.has(body.expected_direction)) {
+    return { ok: false, error: `expected_direction must be one of: ${[...EXPECTED_DIRECTIONS].join(", ")}` };
+  }
+  try {
+    const result = startExperiment({
+      title: body.title,
+      metric: body.metric,
+      expected_direction: body.expected_direction,
+      guardrails: Array.isArray(body.guardrails) ? body.guardrails : [],
+      task_categories: Array.isArray(body.task_categories) ? body.task_categories : [],
+      minimum_sessions_per_cohort: Number.isInteger(body.minimum_sessions_per_cohort) ? body.minimum_sessions_per_cohort : 10,
+      comparison: body.comparison,
+    });
+    return { ok: true, experiment: result.experiment, startMarker: result.startMarker };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+function endExperimentFromPortalRequest(experimentId) {
+  try {
+    const result = endExperiment(experimentId);
+    return { ok: true, experiment: result.experiment, endMarker: result.endMarker };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+// POST /api/telemetry/analysis: dedicated high-dimensional comparison endpoint for the Analysis
+// explorer (plan: "Add a dedicated endpoint for high-dimensional comparisons rather than inflating
+// /api/data for every explorer interaction"). Body: { cohort_a, cohort_b, metric, marker_id }.
+// Validates known metric ids and cohort filter shapes server-side; never trusts client-supplied
+// formulas or cohort definitions beyond selecting from the shared registry/cohort model.
+function loadTelemetryAnalysisRequest(body) {
+  const metricId = body.metric;
+  if (typeof metricId !== "string" || !isKnownMetric(metricId)) {
+    return { ok: false, error: `metric must be one of the known metric ids (see /api/telemetry/analysis with no metric for the list)`, known_metrics: listMetrics().map((m) => m.id) };
+  }
+  const allEvents = readSpoolEvents();
+  const markers = readMarkers();
+
+  // marker_id (or cohort_a.marker_id) selects the marker-relative path — the plan's preferred
+  // comparison when a change marker exists. Falling back to a bare cohort_a-vs-cohort_b comparison
+  // (two independent cohort filters, no marker) is supported for the explorer's "compare two
+  // arbitrary cohorts" mode, using a simple metric-value-per-cohort comparison rather than the
+  // marker-relative before/after split (which needs a single marker timestamp to split around).
+  const markerId = body.marker_id || body.cohort_a?.marker_id || null;
+  if (markerId) {
+    const marker = markers.find((m) => m.marker_id === markerId);
+    if (!marker) return { ok: false, error: `unknown marker: ${markerId}` };
+    try {
+      const comparison = compareAcrossMarker(allEvents.filter((e) => e.tokens), marker, metricId, {
+        markers,
+        cohortFilter: body.cohort_a || null,
+      });
+      return { ok: true, finding: describeMarkerComparison(comparison, marker) };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  // No marker: compare two independently-filtered cohorts directly (metric value + sample size for
+  // each), without the before/after marker-relative machinery (there is no shared timestamp to split
+  // sessions around). Still surfaces sample size so the explorer can flag thin cohorts the same way.
+  const cohortA = applyCohortFilter(allEvents.filter((e) => e.tokens), normalizeCohortFilter(body.cohort_a), { markers });
+  const cohortB = applyCohortFilter(allEvents.filter((e) => e.tokens), normalizeCohortFilter(body.cohort_b), { markers });
+  const sessionsOf = (captures) => new Set(captures.map((e) => e.session_id).filter(Boolean)).size;
+  return {
+    ok: true,
+    finding: {
+      metric: metricId,
+      cohort_a: { sessions: sessionsOf(cohortA), value: computeMetric(metricId, cohortA, { markers }) },
+      cohort_b: { sessions: sessionsOf(cohortB), value: computeMetric(metricId, cohortB, { markers }) },
+      correlation_only: true,
+    },
+  };
+}
+
 function countBy(events, keyFor) {
   const counts = new Map();
   for (const event of events) {
@@ -909,11 +1488,20 @@ function writeTelemetryState(patch) {
 }
 
 // --- PID management for the detached portal server ---------------------------------------------
+// Keyed by port (portalPidPathForPort), not one shared file: each port is an independent server,
+// commonly from a different repo/worktree entirely. Reading/writing/clearing the wrong repo's PID
+// here previously meant starting a portal on ANY port would SIGTERM whatever the last-started
+// portal on ANY OTHER port happened to be, because they all wrote to the same file — see the
+// bugfix commit for the concrete repro (a main-checkout `serve` and a worktree `serve` on
+// different ports were killing each other every time either one restarted).
 
-function readPid() {
+function readPid(port) {
   try {
-    return parseInt(fs.readFileSync(portalPidPath, "utf8").trim(), 10) || null;
+    return parseInt(fs.readFileSync(portalPidPathForPort(port), "utf8").trim(), 10) || null;
   } catch {}
+  // The legacy single-file path predates per-port tracking, so it could only ever have recorded a
+  // default-port (4317) server — never consult it for any other port.
+  if (port !== 4317) return null;
   try {
     return parseInt(fs.readFileSync(legacyTelemetryPidPath, "utf8").trim(), 10) || null;
   } catch {
@@ -925,26 +1513,29 @@ function isProcessRunning(pid) {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
-function writePid(pid) {
-  fs.mkdirSync(path.dirname(portalPidPath), { recursive: true });
-  fs.writeFileSync(portalPidPath, String(pid));
+function writePid(port, pid) {
+  const pidPath = portalPidPathForPort(port);
+  fs.mkdirSync(path.dirname(pidPath), { recursive: true });
+  fs.writeFileSync(pidPath, String(pid));
 }
 
-function clearPid() {
-  try { fs.rmSync(portalPidPath, { force: true }); } catch {}
-  try { fs.rmSync(legacyTelemetryPidPath, { force: true }); } catch {}
+function clearPid(port) {
+  try { fs.rmSync(portalPidPathForPort(port), { force: true }); } catch {}
+  if (port === 4317) {
+    try { fs.rmSync(legacyTelemetryPidPath, { force: true }); } catch {}
+  }
 }
 
-// Kill any existing detached server (stale or live) and wait for it to actually exit before
-// returning. Clears the PID file unconditionally. Waiting matters: a caller that immediately
-// tries to bind the same port right after this resolves would otherwise race the killed
-// process's own teardown (SIGTERM handling + socket close isn't instant) — a transient bind
+// Kill any existing detached server ON THIS PORT (stale or live) and wait for it to actually exit
+// before returning. Clears that port's PID file unconditionally. Waiting matters: a caller that
+// immediately tries to bind the same port right after this resolves would otherwise race the
+// killed process's own teardown (SIGTERM handling + socket close isn't instant) — a transient bind
 // failure right after signalling would read as "port occupied by something else" and fall back
 // to a random port, permanently orphaning the process we just tried to kill instead of waiting
 // the extra tens of milliseconds for it to actually die.
-async function killExistingServer() {
-  const pid = readPid();
-  clearPid();
+async function killExistingServer(port) {
+  const pid = readPid(port);
+  clearPid(port);
   if (pid == null || !isProcessRunning(pid)) return;
   try { process.kill(pid, "SIGTERM"); } catch { return; }
   const deadline = Date.now() + 2000;
@@ -953,34 +1544,37 @@ async function killExistingServer() {
   }
 }
 
-// Kill the running server. Returns true if a live process was found and signalled.
-function stopServer() {
-  const pid = readPid();
+// Kill the running server on this port. Returns true if a live process was found and signalled.
+function stopServer(port) {
+  const pid = readPid(port);
   if (pid == null) return false;
-  clearPid();
+  clearPid(port);
   if (!isProcessRunning(pid)) return false;
   try { process.kill(pid, "SIGTERM"); return true; } catch { return false; }
 }
 
 async function startDetachedPortal(port, { allowPortFallback = false, portExplicit = false } = {}) {
-  await killExistingServer();
+  // Only kill whatever was previously tracked on THIS port (skip when port is 0/auto-assign — there
+  // is no specific port's prior server to reconcile with yet). A stale/dead process recorded here
+  // never touches any other port's own PID record.
+  if (port !== 0) await killExistingServer(port);
   const resolved = await resolvePortalPort(port, { allowPortFallback, portExplicit, warn: true });
   if (resolved.reuse) {
-    writePid(resolved.pid);
+    writePid(resolved.port, resolved.pid);
     return resolved.port;
   }
   const selectedPort = resolved.port;
   const { child, readyFile } = spawnDetachedServer(selectedPort);
   const ready = await waitForPortalReady(selectedPort, child, readyFile);
   if (!ready.ok) {
-    clearPid();
+    clearPid(selectedPort);
     try { fs.rmSync(readyFile, { force: true }); } catch {}
     if (child.exitCode == null) {
       try { process.kill(child.pid, "SIGTERM"); } catch {}
     }
     throw new Error(ready.message);
   }
-  writePid(child.pid);
+  writePid(ready.port ?? selectedPort, child.pid);
   child.unref();
   return ready.port ?? selectedPort;
 }

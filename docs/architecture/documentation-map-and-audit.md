@@ -50,7 +50,7 @@ Use this as the target ownership model. Each row should have one primary doc, wi
 | Hooks | `docs/reference/services/claude-hooks.md` and `docs/reference/services/codex-hooks.md` | `docs/reference/internal/harness-anatomy.md#hooks`, `docs/reference/internal/harnesses-explained.md` | Pair is useful. Add an umbrella pointer from `docs/README.md`. |
 | MCP | `docs/reference/internal/harness-anatomy.md#mcp-servers` or a new dedicated MCP doc | `docs/reference/services/roborepo-cli.md`, `manifests/inventory/README.md` | The behavior is described in several places but lacks a focused source-of-truth page. |
 | Config portal/onboarding | `docs/reference/services/config-control-panel.md` | `README.md`, `docs/guides/first-time-setup.md` | Keep detailed API/routes here; README should only summarize. |
-| Telemetry/portal | `docs/reference/services/roborepo.md#preset-onboarding` and telemetry sections | `README.md`, hook docs | Telemetry is buried inside the CLI reference. A dedicated service doc would improve linkability. |
+| Telemetry/portal | `docs/reference/services/telemetry.md` (reference), `docs/guides/telemetry.md` (walkthrough) | `README.md`, hook docs | Extracted into a dedicated service doc plus a task-oriented guide (see Recommended Cleanup Order, now done). |
 | Code/doc indexing | `docs/reference/services/jcodemunch.md`, `docs/reference/services/jdocmunch.md` | `docs/guides/setup-and-daily-use.md`, `docs/reference/services/roborepo-cli.md` | Good split. |
 | Inventory manifests | `manifests/inventory/README.md` | `docs/reference/internal/harness-anatomy.md`, `docs/architecture/config-code-separation.md` | Updated to describe flat permission behavior buckets. |
 
@@ -116,7 +116,7 @@ Replace the current list-only index with a map like this:
 ## Recommended Cleanup Order
 
 1. Decide whether permissions and MCP each deserve a dedicated reference page.
-2. Consider extracting telemetry from `docs/reference/services/roborepo.md` into a dedicated service doc.
+2. ~~Consider extracting telemetry from `docs/reference/services/roborepo.md` into a dedicated service doc.~~ Done: `docs/reference/services/telemetry.md` plus `docs/guides/telemetry.md`.
 3. Keep future docs aligned to the semantic map in `docs/README.md`.
 
 ## Validation Performed

@@ -37,7 +37,9 @@ export function analyzeTelemetry(events, options = {}) {
   const { cohortFilter = null, markers = [], markerId = null, compareMetric = "tokens.total" } = options;
   const normalizedFilter = cohortFilter ? normalizeCohortFilter(cohortFilter) : null;
   const scopedEvents = normalizedFilter ? applyCohortFilter(events, normalizedFilter, { markers }) : events;
-  const captures = scopedEvents.filter(hasTokens);
+  const scopedIndex = indexScopedEvents(scopedEvents);
+  const captures = scopedIndex.captures;
+  const captureIndex = indexCaptures(captures);
   const sessions = rollupSessions(captures);
   const spikeThreshold = deltaSpikeThreshold(captures);
   const spikeCaptures = captures.filter((event) => (event.delta_tokens || 0) >= spikeThreshold && spikeThreshold > 0);
@@ -73,42 +75,23 @@ export function analyzeTelemetry(events, options = {}) {
       .map((event) => ({ ...spikeRow(event, sessionsById), spike_count: spikeCountBySess.get(event.session_id || "unknown") || 1 }))
       .sort((a, b) => b.delta_tokens - a.delta_tokens),
     // Also expose harnesses present in the data so the dashboard can render a filter.
-    harnesses: [...new Set(scopedEvents.map((e) => e.harness).filter(Boolean))].sort(),
+    harnesses: scopedIndex.harnesses,
     // Computed concern threshold for the cumulative chart: 2× the 90th-percentile session total,
     // floored at 10M so it is always a visible limit even in low-activity installs.
     cumulative_concern: computeCumulativeConcern(sessions),
-    top_repos: topBy(captures, (event) => event.repo?.label ?? "unknown"),
-    top_tools: topBy(captures, (event) => event.tool?.name ?? event.event ?? "unknown"),
-    top_mcp: topBy(captures.filter((event) => event.tool?.is_mcp), (event) => event.tool?.mcp_server ?? "unknown"),
-    top_events: topBy(captures, (event) => event.event ?? "unknown"),
+    top_repos: rankedTop(captureIndex.topRepos),
+    top_tools: rankedTop(captureIndex.topTools),
+    top_mcp: rankedTop(captureIndex.topMcp),
+    top_events: rankedTop(captureIndex.topEvents),
     comparison: compareSpikeVsNormal(captures, spikeThreshold),
     // The actionable view: every spike tagged with the pattern that drove it, then rolled up so the
     // user sees "doing X blows up my tokens" rather than a wall of per-capture numbers.
     spike_causes: rollupCauses(spikeCaptures),
-    usage_windows: usageWindows(captures),
-    codex_provider_rate_limits: latestCodexRateLimits(captures),
+    usage_windows: usageWindows(captures, captureIndex.latestTs),
+    codex_provider_rate_limits: captureIndex.latestCodexRateLimits,
     // Per-capture series for the timeline chart. Carries the context the dashboard tooltip needs
     // (tool, event, cause, sizes, duration) so hover can explain a bar without a second request.
-    timeline: captures
-      .map((event) => ({
-        ts: event.ts,
-        total: event.tokens?.total ?? 0,
-        delta: event.delta_tokens ?? 0,
-        event: event.event ?? null,
-        tool: event.tool?.name ?? null,
-        mcp_tool: event.tool?.mcp_tool ?? null,
-        file_ext: event.tool?.file_ext ?? null,
-        duration_ms: event.duration_ms ?? null,
-        repo: event.repo?.label ?? "unknown",
-        session_id: event.session_id ?? null,
-        result_chars: event.last_result?.chars ?? null,
-        prompt: event.prompt?.preview ?? null,
-        cause: spikeCause(event).cause,
-        // Functional group, computed server-side (with bare-MCP-name resolution) so the
-        // cumulative-by-group chart doesn't re-derive it client-side and diverge.
-        group: toolGroup(event.last_result?.tool ?? event.tool?.name ?? null),
-      }))
-      .sort((a, b) => a.ts.localeCompare(b.ts)),
+    timeline: captureIndex.timeline,
     // --- conclusions: actionable rollups, not raw rows -------------------------------------------
     // Attribution note: per-tool cost is measured by the SIZE of the result a tool put into context
     // (last_result.chars → approx tokens), NOT by delta_tokens-by-hook (which mis-credits whichever
@@ -170,6 +153,67 @@ function testingEfficiencySummary(captures) {
   return summary;
 }
 
+function indexScopedEvents(scopedEvents) {
+  const harnesses = new Set();
+  const captures = [];
+  for (const event of scopedEvents) {
+    if (event.harness) harnesses.add(event.harness);
+    if (hasTokens(event)) captures.push(event);
+  }
+  return { captures, harnesses: [...harnesses].sort() };
+}
+
+function indexCaptures(captures) {
+  const index = {
+    latestTs: captures[0]?.ts ?? new Date().toISOString(),
+    latestCodexRateLimits: null,
+    timeline: [],
+    topRepos: new Map(),
+    topTools: new Map(),
+    topMcp: new Map(),
+    topEvents: new Map(),
+  };
+  for (const event of captures) {
+    if (event.ts > index.latestTs) index.latestTs = event.ts;
+    if (event.harness === "codex" && event.details?.codex_rate_limits) index.latestCodexRateLimits = event.details.codex_rate_limits;
+    countTop(index.topRepos, event.repo?.label ?? "unknown", event.delta_tokens || 0);
+    countTop(index.topTools, event.tool?.name ?? event.event ?? "unknown", event.delta_tokens || 0);
+    if (event.tool?.is_mcp) countTop(index.topMcp, event.tool?.mcp_server ?? "unknown", event.delta_tokens || 0);
+    countTop(index.topEvents, event.event ?? "unknown", event.delta_tokens || 0);
+    index.timeline.push({
+      ts: event.ts,
+      total: event.tokens?.total ?? 0,
+      delta: event.delta_tokens ?? 0,
+      event: event.event ?? null,
+      tool: event.tool?.name ?? null,
+      mcp_tool: event.tool?.mcp_tool ?? null,
+      file_ext: event.tool?.file_ext ?? null,
+      duration_ms: event.duration_ms ?? null,
+      repo: event.repo?.label ?? "unknown",
+      session_id: event.session_id ?? null,
+      result_chars: event.last_result?.chars ?? null,
+      prompt: event.prompt?.preview ?? null,
+      cause: spikeCause(event).cause,
+      // Functional group, computed server-side (with bare-MCP-name resolution) so the
+      // cumulative-by-group chart doesn't re-derive it client-side and diverge.
+      group: toolGroup(event.last_result?.tool ?? event.tool?.name ?? null),
+    });
+  }
+  index.timeline.sort((a, b) => a.ts.localeCompare(b.ts));
+  return index;
+}
+
+function countTop(counts, key, tokens) {
+  const current = counts.get(key) ?? { key, captures: 0, tokens: 0 };
+  current.captures += 1;
+  current.tokens += tokens;
+  counts.set(key, current);
+}
+
+function rankedTop(counts) {
+  return [...counts.values()].sort((a, b) => b.tokens - a.tokens || b.captures - a.captures);
+}
+
 // A tool result this many characters or larger is treated as the likely cause of a spike. ~1 token
 // per 4 chars, so 40k chars ≈ 10k tokens of context — well above an incidental small result.
 const HEAVY_RESULT_CHARS = 40_000;
@@ -226,8 +270,7 @@ function rollupCauses(spikeCaptures) {
 // per-capture deltas. This is a LOCAL ESTIMATE of how much you've spent recently — not your real
 // server-side Claude rate limit, which telemetry cannot see. Useful for spotting that you're
 // trending toward a wall before you hit it.
-function usageWindows(captures) {
-  const now = captures.reduce((latest, event) => (event.ts > latest ? event.ts : latest), captures[0]?.ts ?? new Date().toISOString());
+function usageWindows(captures, now = captures[0]?.ts ?? new Date().toISOString()) {
   const nowMs = Date.parse(now);
   const sumSince = (windowMs) =>
     captures.reduce((sum, event) => (nowMs - Date.parse(event.ts) <= windowMs ? sum + (event.delta_tokens ?? 0) : sum), 0);
@@ -565,18 +608,6 @@ function detectLoops(captures, sessionsById) {
   return loops.sort((a, b) => b.max_repeat - a.max_repeat);
 }
 
-function topBy(events, keyFor) {
-  const counts = new Map();
-  for (const event of events) {
-    const key = keyFor(event);
-    const current = counts.get(key) ?? { key, captures: 0, tokens: 0 };
-    current.captures += 1;
-    current.tokens += event.delta_tokens || 0;
-    counts.set(key, current);
-  }
-  return [...counts.values()].sort((a, b) => b.tokens - a.tokens || b.captures - a.captures);
-}
-
 function dataQualityWarnings(events) {
   const warnings = [];
   const byHarness = new Map();
@@ -611,13 +642,6 @@ function dataQualityWarnings(events) {
     }
   }
   return warnings;
-}
-
-function latestCodexRateLimits(captures) {
-  const event = [...captures]
-    .reverse()
-    .find((capture) => capture.harness === "codex" && capture.details?.codex_rate_limits);
-  return event?.details?.codex_rate_limits || null;
 }
 
 function readWarnings(events, sessionsById) {

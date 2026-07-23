@@ -14,6 +14,7 @@ try {
   testCodexTranscript();
   testCodexTranscriptTurnContextModel();
   testAnalyzerWarnings();
+  testAnalyzerIndexedSummaries();
   console.log("telemetry correctness checks passed");
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -179,19 +180,67 @@ function testAnalyzerWarnings() {
   assert(report.data_quality_warnings.some((warning) => warning.type === "unsupported_usage_schema"));
 }
 
-function baseEvent({ session_id, tool, chars }) {
+function testAnalyzerIndexedSummaries() {
+  const events = [
+    baseEvent({ session_id: "a", tool: tool("Read", ".js", "a"), chars: 80, ts: "2026-01-01T00:00:00.000Z", delta_tokens: 20, harness: "codex" }),
+    baseEvent({ session_id: "a", tool: tool("Bash", null, null), chars: 40, ts: "2026-01-01T01:00:00.000Z", delta_tokens: 5, harness: "claude" }),
+    baseEvent({
+      session_id: "b",
+      tool: tool("mcp__jcodemunch__get_context_bundle", null, null),
+      chars: 400,
+      ts: "2026-01-01T04:30:00.000Z",
+      delta_tokens: 100,
+      harness: "codex",
+      details: { codex_rate_limits: [{ name: "weekly", used_percent: 60, window_minutes: 10080 }] },
+    }),
+    baseEvent({
+      session_id: "b",
+      tool: tool("mcp__jdocmunch__search_docs", null, null),
+      chars: 160,
+      ts: "2026-01-01T08:00:00.000Z",
+      delta_tokens: 30,
+      harness: "codex",
+      details: { codex_rate_limits: [{ name: "weekly", used_percent: 75, window_minutes: 10080 }] },
+    }),
+  ];
+
+  const report = analyzeTelemetry(events);
+  assert.deepEqual(report.harnesses, ["claude", "codex"]);
+  assert.deepEqual(
+    report.top_repos.map((row) => [row.key, row.captures, row.tokens]),
+    [["repo", 4, 155]],
+  );
+  assert.deepEqual(
+    report.top_tools.map((row) => [row.key, row.captures, row.tokens]),
+    [
+      ["mcp__jcodemunch__get_context_bundle", 1, 100],
+      ["mcp__jdocmunch__search_docs", 1, 30],
+      ["Read", 1, 20],
+      ["Bash", 1, 5],
+    ],
+  );
+  assert.deepEqual(report.top_mcp.map((row) => [row.key, row.captures, row.tokens]), [["jcodemunch", 1, 100], ["jdocmunch", 1, 30]]);
+  assert.equal(report.timeline.at(-1).ts, "2026-01-01T08:00:00.000Z");
+  assert.equal(report.usage_windows.as_of, "2026-01-01T08:00:00.000Z");
+  assert.equal(report.usage_windows.five_hour, 130);
+  assert.equal(report.usage_windows.seven_day, 155);
+  assert.equal(report.codex_provider_rate_limits[0].used_percent, 75);
+}
+
+function baseEvent({ session_id, tool, chars, ts = "2026-01-01T00:00:00.000Z", delta_tokens = 10, harness = "codex", details = {} }) {
   return {
     schema: 2,
-    ts: "2026-01-01T00:00:00.000Z",
-    harness: "codex",
+    ts,
+    harness,
     event: "PostToolUse",
     session_id,
     repo: { label: "repo" },
     tool,
     tokens: { total: 100, input: 80, output: 20, cache_creation: 0, cache_read: 0 },
-    delta_tokens: 10,
+    delta_tokens,
     session: { tool_calls: 1, mcp_calls: tool.is_mcp ? 1 : 0 },
     last_result: { tool: tool.name, chars, is_error: false },
+    details,
   };
 }
 

@@ -1,3 +1,13 @@
+---
+id: fable-security-behavior-audit
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # RoboRepo Audit — Security, UX, and Native-CLI Divergence
 
 **Date:** 2026-07-03

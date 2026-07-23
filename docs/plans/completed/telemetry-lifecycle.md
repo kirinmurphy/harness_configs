@@ -1,3 +1,13 @@
+---
+id: telemetry-lifecycle
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # telemetry lifecycle: start / stop
 
 ## Problem

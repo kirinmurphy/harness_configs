@@ -1,3 +1,13 @@
+---
+id: portal-lit-native-scaled-plan
+priority: low
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Native Web Components And Lit Portal Scaling Plan
 
 ## Status

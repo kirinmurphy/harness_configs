@@ -1,3 +1,13 @@
+---
+id: cleanup-before-reinstall
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Cleanup Before Reinstall — Checklist
 
 > **Status: obsolete historical checklist.** This was a one-machine cleanup note from the

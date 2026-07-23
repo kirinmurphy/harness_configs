@@ -1,3 +1,13 @@
+---
+id: skill-reference-docs-and-conventions
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Skill Reference Docs & Portal Conventions
 
 > **Status: PARTIAL.** One concrete change shipped (`javascript-typescript`'s

@@ -37,6 +37,7 @@
     "test:package-default-enabled": "node scripts/test/package-default-enabled-check.mjs",
     "test:usage-statusline": "node scripts/test/usage-statusline-check.mjs",
     "test:plans": "node scripts/test/plan-docs-check.mjs",
+    "test:plans-repair": "node scripts/test/plan-docs-repair-check.mjs",
     "test:telemetry": "node scripts/test/telemetry-correctness-check.mjs",
     "test:telemetry-schemas": "node scripts/test/telemetry-schemas-check.mjs",
     "test:telemetry-marker-cli": "node scripts/test/telemetry-marker-cli-check.mjs",

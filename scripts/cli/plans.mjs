@@ -11,6 +11,7 @@ import {
   updatePlanPriority as updatePlanPriorityInDocs,
   writePlanSettings,
 } from "../../modules/plan-docs/index.mjs";
+import { repairPlansMissingFrontmatter } from "../../modules/plan-docs/repair.mjs";
 
 let cachedSnapshot = null;
 
@@ -83,4 +84,32 @@ function publicSnapshot(snapshot) {
 function stripRepositoryRoot(repository) {
   const { root, ...publicRepository } = repository || {};
   return publicRepository;
+}
+
+export function plansCommand(args) {
+  const [sub, ...rest] = args;
+  if (sub === "repair") return plansRepairCommand(rest);
+  console.error(`unknown: roborepo plans ${sub ?? ""}`.trim());
+  console.error("usage: roborepo plans repair <root> [--dry-run]");
+  process.exit(2);
+}
+
+function plansRepairCommand(args) {
+  const dryRun = args.includes("--dry-run");
+  const root = args.find((arg) => !arg.startsWith("--"));
+  if (!root) {
+    console.error("usage: roborepo plans repair <root> [--dry-run]");
+    process.exit(2);
+  }
+  const resolvedRoot = normalizeRootInput(root);
+  const { repaired, errors } = repairPlansMissingFrontmatter(resolvedRoot, { dryRun });
+  if (repaired.length === 0) {
+    console.log("no plan docs missing frontmatter found.");
+  } else {
+    const verb = dryRun ? "would scaffold frontmatter for" : "scaffolded frontmatter for";
+    console.log(`${verb} ${repaired.length} plan doc${repaired.length === 1 ? "" : "s"}:`);
+    for (const item of repaired) console.log(`  ${item.repository}: ${item.relativePath}`);
+  }
+  for (const err of errors) console.error(`warning: ${err.root || err.repository}: ${err.error}`);
+  if (errors.length > 0) process.exit(1);
 }

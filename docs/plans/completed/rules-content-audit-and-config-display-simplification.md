@@ -1,3 +1,13 @@
+---
+id: rules-content-audit-and-config-display-simplification
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Rules Content Audit And Config Display Simplification
 
 > Status: completed. The rules audit cleanup and `/config` live-rules display shipped.

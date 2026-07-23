@@ -1,3 +1,13 @@
+---
+id: onboarding-wizard
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Onboarding Wizard — Implementation Plan
 
 > **Status: completed.** The item-level, multi-step `roborepo onboard` wizard shipped. It mirrors

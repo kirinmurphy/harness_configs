@@ -1,3 +1,13 @@
+---
+id: harness-parity-case-study-prompt
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Case study prompt — "Same agent, two dialects: a parity story"
 
 A ready-to-run prompt for the `/case-study` skill. Paste the **Prompt** section into `/case-study`. The rest is

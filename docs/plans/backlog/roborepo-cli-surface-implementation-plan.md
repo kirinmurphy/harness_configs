@@ -1,3 +1,13 @@
+---
+id: roborepo-cli-surface-implementation-plan
+priority: high
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # RoboRepo CLI Surface Redesign — Comprehensive Implementation Plan
 
 ## Status

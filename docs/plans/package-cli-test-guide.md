@@ -1,3 +1,13 @@
+---
+id: package-cli-test-guide
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Package & User-Content CLI Test Guide
 
 ## Purpose

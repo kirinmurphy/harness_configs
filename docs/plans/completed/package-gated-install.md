@@ -1,3 +1,13 @@
+---
+id: package-gated-install
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Copy-Everything Materialization
 
 > **Status: completed.** Phases 1-5 shipped. This file is archived as the implementation record for

@@ -1,3 +1,13 @@
+---
+id: wrap-up-coderabbit-integration-plan
+priority: low
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Wrap-Up Codex Invocation and CodeRabbit Integration Plan
 
 > Status: proposed

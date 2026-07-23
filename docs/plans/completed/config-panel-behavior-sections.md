@@ -1,3 +1,13 @@
+---
+id: config-panel-behavior-sections
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Config Panel Behavior Sections — Plan
 
 > **Status: implemented.** Both additions below shipped — the Commands section and the

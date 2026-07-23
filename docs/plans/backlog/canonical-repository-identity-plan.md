@@ -1,3 +1,13 @@
+---
+id: canonical-repository-identity-plan
+priority: medium
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # RoboRepo Canonical Repository Identity and Activity Correlation — Implementation Plan
 
 ## Purpose

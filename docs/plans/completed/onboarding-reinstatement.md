@@ -1,3 +1,13 @@
+---
+id: onboarding-reinstatement
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Onboarding UI — Reinstatement Record
 
 > **SUPERSEDED.** The old bundle-toggle onboarding UI described here was *not* restored. It was

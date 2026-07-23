@@ -1,3 +1,13 @@
+---
+id: portal-telemetry-web-components-plan
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # portal/telemetry/ Web Components + `<dialog>` Refactor
 
 ## Context

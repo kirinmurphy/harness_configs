@@ -1,3 +1,13 @@
+---
+id: portal-homepage-implementation-plan
+priority: high
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # RoboRepo Portal Homepage — Implementation Plan
 
 ## Purpose

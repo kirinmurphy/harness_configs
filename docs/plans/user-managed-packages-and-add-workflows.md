@@ -1,3 +1,13 @@
+---
+id: user-managed-packages-and-add-workflows
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # User-Managed Packages And Add Workflows
 
 > Status: draft. This plan proposes a user-facing creation model for custom skills, MCP servers,

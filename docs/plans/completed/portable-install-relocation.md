@@ -1,3 +1,13 @@
+---
+id: portable-install-relocation
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Portable Install: Surviving Repo Relocation
 
 ## Purpose

@@ -193,6 +193,11 @@ async function dispatch(args) {
       console.error(`unknown: roborepo watch ${sub ?? ""}`.trim());
       return usageError();
 
+    case "plans": {
+      const { plansCommand } = await import("./plans.mjs");
+      return plansCommand(sub === undefined ? rest : [sub, ...rest]);
+    }
+
     case "run":
       return runCmd(sub === undefined ? [] : [sub, ...rest]);
 

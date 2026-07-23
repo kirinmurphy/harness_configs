@@ -1,3 +1,13 @@
+---
+id: sync-from-home-manifest
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # sync-from-home Manifest Migration Plan
 
 ## Context

@@ -1,3 +1,13 @@
+---
+id: root-config-layered-inheritance
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Root Config Drift Detection
 
 > Status: core mechanism shipped and code-reviewed 2026-07-07. Earlier version of this doc proposed

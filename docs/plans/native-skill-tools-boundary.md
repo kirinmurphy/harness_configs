@@ -1,3 +1,13 @@
+---
+id: native-skill-tools-boundary
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Native Skill Tools Boundary
 
 > Status: active. The first read-only inventory pass has shipped: `roborepo skill inspect <name>`

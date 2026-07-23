@@ -1,3 +1,13 @@
+---
+id: package-registry-live-state-reconciliation
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Package Registry vs Live State Reconciliation
 
 > Status: active. First read-only reconciliation pass shipped: `/api/config` now reports

@@ -1,3 +1,13 @@
+---
+id: config-control-panel
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Config Control Panel + Phased Onboarding
 
 > **Status: shipped (archived).** The read-only config view, the interactive

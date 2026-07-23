@@ -1,3 +1,13 @@
+---
+id: roborepo-packaging-distribution-plan
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # RoboRepo Packaging and Distribution Plan
 
 ## Implementation status (2026-07-14)

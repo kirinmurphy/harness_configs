@@ -1,3 +1,13 @@
+---
+id: harness-parity-todo
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Harness Parity Todo
 
 Backlog of cross-harness parity work. Revised 2026-07-16 after native-alignment,

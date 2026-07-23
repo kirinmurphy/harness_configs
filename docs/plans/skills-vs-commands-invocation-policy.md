@@ -1,3 +1,13 @@
+---
+id: skills-vs-commands-invocation-policy
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Skills vs. Commands: Invocation & Risk Policy
 
 > **Status: ACTIVE.** Package-owned skill and slash-command resources, the baseline audit doc, and

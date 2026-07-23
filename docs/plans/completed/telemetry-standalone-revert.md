@@ -1,3 +1,13 @@
+---
+id: telemetry-standalone-revert
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Reverting the Standalone Telemetry Shim
 
 ## Purpose

@@ -1,3 +1,13 @@
+---
+id: portal-obvious-seams-plan
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Portal Obvious Seams Cleanup Plan
 
 ## Status

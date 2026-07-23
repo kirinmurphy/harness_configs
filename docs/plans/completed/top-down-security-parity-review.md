@@ -1,3 +1,13 @@
+---
+id: top-down-security-parity-review
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Top-Down Security, Parity, And Persistence Review
 
 ## Purpose

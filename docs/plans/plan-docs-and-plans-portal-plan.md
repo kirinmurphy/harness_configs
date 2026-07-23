@@ -1,3 +1,13 @@
+---
+id: plan-docs-and-plans-portal-plan
+priority: none
+next_action: Fill in the next concrete task.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+
 # Plan Docs and Plans Portal Implementation Plan
 
 ## Status

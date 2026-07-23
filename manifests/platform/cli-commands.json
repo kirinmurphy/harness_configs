@@ -45,6 +45,8 @@
     "roborepo telemetry mark --type <type> --title <title> [...]   record a marker event",
     "roborepo telemetry experiment start|end|status [<id>]          run an experiment",
     "",
+    "roborepo plans repair <root> [--dry-run]  scaffold default frontmatter for plan docs missing it entirely",
+    "",
     "roborepo run <cmd> [args...]",
     "",
     "roborepo update  [--dry-run] [--verbose] [--on-conflict overwrite|keep|abort]   dev: pull new config + re-apply; package mode: alias for apply",

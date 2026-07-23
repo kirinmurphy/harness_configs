@@ -1,6 +1,6 @@
 ---
 id: localhoster-git-health-history
-priority: high
+priority: low
 next_action: Implement Git provider, health-state normalization, and bounded JSONL history
 blocked_by: []
 depends_on:

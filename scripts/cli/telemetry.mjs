@@ -8,6 +8,7 @@ import { repoRoot } from "./paths.mjs";
 import { portalPidPath, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { readMarkers, readSnapshot, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
+import { readSourceFile } from "./config-source-lookup.mjs";
 import {
   createMarker, startExperiment, endExperiment, experimentStatus,
   MARKER_TYPES, OUTCOME_STATUSES, EXPECTED_DIRECTIONS, TASK_CATEGORIES,
@@ -675,6 +676,14 @@ function telemetryExport(args) {
   }, null, 2));
 }
 
+// Backs the Telemetry page's "view docs" popup: renders docs/guides/telemetry.md server-side
+// (same renderMarkdown() used by the Config page's skill-source popup) so the page and the guide
+// never drift into two separately-maintained copies of the same explanation. readSourceFile()
+// confines the path inside repoRoot, so this can only ever serve this one repo-relative file.
+function loadTelemetryGuide() {
+  return readSourceFile(path.join(repoRoot, "docs", "guides", "telemetry.md"), "Telemetry Walkthrough");
+}
+
 export async function serveCommand(args, { allowPortFallback = false, openPath = "" } = {}) {
   const options = parseServeArgs(args);
   if (options.detach) {
@@ -730,6 +739,7 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     createExperimentFromRequest: (body) => createExperimentFromPortalRequest(body),
     endExperimentFromRequest: (experimentId) => endExperimentFromPortalRequest(experimentId),
     loadTelemetryAnalysis: (body) => loadTelemetryAnalysisRequest(body),
+    loadTelemetryGuide: () => loadTelemetryGuide(),
     loadConfig: () => readConfigSnapshot(),
     loadConfigSource: (params) => loadConfigSource(params),
     loadPlans: () => loadPlansSnapshot(),

@@ -1511,6 +1511,11 @@ assert "telemetry: package telemetry policy validation and evaluation" \
 assert "telemetry: portal global filter URL state round-trips" \
   node "${repo_root}/scripts/test/telemetry-portal-state-check.mjs"
 
+# Telemetry "view docs" popup: heading-slug ids, table, and mermaid-fallback extensions to the
+# shared markdown renderer (also used by Config's skill-source popup).
+assert "markdown-render: heading ids, tables, mermaid fallback" \
+  node "${repo_root}/scripts/test/markdown-render-check.mjs"
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"

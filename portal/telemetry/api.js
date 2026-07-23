@@ -58,3 +58,8 @@ export function fetchTelemetryAnalysis({ metric, markerId, cohortA, cohortB }) {
     cohort_b: cohortB || null,
   });
 }
+
+// Backs the "view docs" popup (docguide.js): server-rendered docs/guides/telemetry.md.
+export function fetchTelemetryGuide() {
+  return portalGetJson("/api/telemetry/guide");
+}

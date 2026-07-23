@@ -78,6 +78,10 @@ function testCodexTranscript() {
   const file = path.join(tmp, "codex.jsonl");
   writeJsonl(file, [
     {
+      type: "session_meta",
+      payload: { id: "019d5b33-0010-73d0-af05-8994a1d338ae", model: "gpt-5.4", model_provider: "openai" },
+    },
+    {
       type: "event_msg",
       name: "token_count",
       payload: {
@@ -112,6 +116,7 @@ function testCodexTranscript() {
   ]);
 
   const stats = transcriptStats(file, { sessionId: "codex-session", collectorDir: tmp });
+  assert.equal(stats.model, "gpt-5.4");
   assert.equal(stats.tokens.total, 500);
   assert.equal(stats.tokens.input, 220);
   assert.equal(stats.tokens.cache_read, 80);

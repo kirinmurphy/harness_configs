@@ -10,6 +10,7 @@ doc of record first; supporting docs should add context, not redefine the behavi
 | Install roborepo on a machine | [First-Time Setup](guides/first-time-setup.md) | [Install Workflows](guides/install-workflows.md) |
 | Use roborepo day to day | [Setup and Daily Use](guides/setup-and-daily-use.md) | [roborepo CLI Commands](reference/services/roborepo-cli.md) |
 | Browse and manage plan docs | [Plan Docs Walkthrough](guides/plan-docs.md) | [Plans Portal Technical Reference](reference/services/plans-portal.md) |
+| See token/tool cost and mark changes over time | [Telemetry Walkthrough](guides/telemetry.md) | [Telemetry Service Reference](reference/services/telemetry.md) |
 | Understand collision behavior | [Config Collision Handling](reference/internal/config-collision-handling.md) | [Install Workflows](guides/install-workflows.md) |
 | Use the CLI | [roborepo CLI Commands](reference/services/roborepo-cli.md) | [roborepo CLI Reference](reference/services/roborepo.md) |
 | Choose or inspect behavior packages | [Config Control Panel](reference/services/config-control-panel.md) | [Setup and Daily Use](guides/setup-and-daily-use.md) |
@@ -35,6 +36,7 @@ doc of record first; supporting docs should add context, not redefine the behavi
 | Docs indexing | [jdocmunch](reference/services/jdocmunch.md) | [roborepo CLI Commands](reference/services/roborepo-cli.md#index-code-and-docs) |
 | Convention capture | [Convention Capture](reference/services/convention-capture.md) | [Config Control Panel](reference/services/config-control-panel.md) |
 | Plans portal and workflows | [Plans Portal Technical Reference](reference/services/plans-portal.md) | [Plan Docs Walkthrough](guides/plan-docs.md) |
+| Telemetry and the telemetry portal | [Telemetry Service Reference](reference/services/telemetry.md) | [Telemetry Walkthrough](guides/telemetry.md) |
 | Inventory manifests | [Inventory Manifest README](../manifests/inventory/README.md) | [Config-Code Separation](architecture/config-code-separation.md) |
 
 ## Maintenance Notes

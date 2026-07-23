@@ -50,6 +50,7 @@
     "test:telemetry-compare": "node scripts/test/telemetry-compare-check.mjs",
     "test:telemetry-policy": "node scripts/test/telemetry-policy-check.mjs",
     "test:telemetry-portal-state": "node scripts/test/telemetry-portal-state-check.mjs",
+    "test:markdown-render": "node scripts/test/markdown-render-check.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "pack:smoke": "npm pack"
   },

@@ -216,6 +216,15 @@ function resultText(content) {
 }
 
 function applyCodexEntry(counters, entry) {
+  // session_meta is Codex's one-time session-start entry (unlike Claude, which repeats `model` on
+  // every assistant turn's message.usage) — payload.model is the only place a Codex transcript
+  // states which model is in use, so this must be checked before the event_msg/response_item gate
+  // below returns early for every other entry type.
+  if (entry.type === "session_meta") {
+    const model = entry.payload?.model;
+    if (typeof model === "string" && model) counters.model = model;
+    return null;
+  }
   if (entry.type !== "event_msg" && entry.type !== "response_item") return null;
   const payload = entry.payload || {};
   if (entry.type === "event_msg" && entry.name === "token_count") {

@@ -12,6 +12,7 @@ import { createModalOpeners } from "./modals.js";
 import { createRenders } from "./renders.js";
 import { createChart } from "./chart.js";
 import { createAnalysisExplorer } from "./analysis-explorer.js";
+import { createDocGuideModal } from "/portal/shared/doc-guide-modal.js";
 import {
   fmt, sessionById as lookupSessionById, viewFromSearchParams, syncViewToUrl, activeFilterCountFromView,
 } from "./state.js";
@@ -360,6 +361,18 @@ function closeMarkerModal() {
 }
 
 document.getElementById("openmarkermodal").addEventListener("click", () => openCreateMarkerModal());
+
+// --- "view docs" popup: renders docs/guides/telemetry.md server-side rather than duplicating its
+// content into this page. Header "docs" link opens at the top; each .infoicon next to a panel
+// heading opens the same popup pre-scrolled to that heading's slug id (data-doc-anchor), via one
+// delegated listener rather than wiring every icon individually. ---------------------------------
+const docModal = createDocGuideModal(document.getElementById("docmodal"), api.fetchTelemetryGuide);
+document.getElementById("opendocs").addEventListener("click", () => docModal.open());
+document.addEventListener("click", (event) => {
+  const trigger = event.target.closest(".infoicon[data-doc-anchor]");
+  if (!trigger) return;
+  docModal.open(trigger.dataset.docAnchor);
+});
 
 // Chart-click marker detail: the generic key/value popup (same primitive every other detail view
 // uses), not the create form — clicking an existing marker on the timeline shows what it is, not an

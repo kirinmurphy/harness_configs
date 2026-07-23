@@ -11,9 +11,15 @@ export function handleTelemetryApi(req, res, urlPath, qs, handlers) {
     loadAnalysisJson, loadSession, loadInsightsLlm,
     loadMarkers, createMarkerFromRequest,
     loadExperiments, createExperimentFromRequest, endExperimentFromRequest,
-    loadTelemetryAnalysis,
+    loadTelemetryAnalysis, loadTelemetryGuide,
   } = handlers;
 
+  if (urlPath === "/api/telemetry/guide") {
+    // Backs the page's "view docs" popup — server-rendered docs/guides/telemetry.md, so the popup
+    // and the on-disk guide are always the same content, never a second copy to keep in sync.
+    send(res, 200, "application/json", JSON.stringify(loadTelemetryGuide()));
+    return true;
+  }
   if (urlPath === "/api/insights-llm") {
     // On-demand LLM synthesis of the deterministic facts. May take seconds (shells to claude -p).
     send(res, 200, "application/json", JSON.stringify(loadInsightsLlm()));

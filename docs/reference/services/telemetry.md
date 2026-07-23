@@ -192,6 +192,13 @@ mutation-token contract, route dispatch). Telemetry-specific pieces:
   `{ metric, cohort_a, cohort_b }` for a direct two-cohort comparison (no before/after language — no
   shared timestamp to split sessions around). Validates the metric id against the registry and
   returns `400` for an unknown one along with the full known-metric list.
+- `GET /api/telemetry/guide` — server-rendered `docs/guides/telemetry.md`, backing the page's
+  "view docs" popup (`portal/shared/doc-guide-modal.js`) so the popup and the on-disk guide are
+  the same content, never a second copy. `renderMarkdown()` (`scripts/cli/markdown-render.mjs`)
+  gives every heading a stable slug `id` so a panel's info icon can deep-link straight to its
+  section; fenced ` ```mermaid ` blocks render as a labeled, still-legible source fallback rather
+  than an opaque code block, since the portal has no mermaid.js runtime (zero-dependency,
+  loopback-only architecture).
 
 All mutating routes are POST-only and use the portal's standard loopback-origin + mutation-token
 guard (see `docs/reference/services/portal.md`).

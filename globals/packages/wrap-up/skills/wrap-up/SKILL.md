@@ -14,6 +14,18 @@ description: >
 
 # Wrap Up
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**🧹 WRAP UP — closing out this session**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Print a separator line like the one above (plain repeated characters — `━`, `=`, or
+`*` all work; a bold emoji-prefixed label between two rules) as the FIRST thing in the
+chat response when this skill starts running, before any review/commit output. This is
+plain markdown text emitted directly in the response — not a shell/ANSI escape (see the
+Rendering note under step 5 for why that distinction matters). Its job is to make the
+start of a wrap-up visually obvious in a long conversation, the same way the handoff
+block at the end is visually obvious.
+
 ## Overview
 
 Wrap Up closes out a work session cleanly so the next chat can start cold without
@@ -149,21 +161,34 @@ filters to what you include:
   (open plan items, a half-built feature, a deferred decision) — as work, by what it is
   and where it lives, without framing it in terms of commits.
 
-**Rendering.** The prompt body goes in its own fenced code block so the terminal's copy
-button grabs exactly the prompt and nothing else. Frame it with an ANSI-colored header
-line printed directly ABOVE the fence and a matching colored `=` rule directly BELOW it —
-both outside the fence, so they render in real color and are visually clearly not part
-of what gets pasted. Match the rule's width to the header line. Use the same color for
-both (cyan `\e[36m` is a good default; reset with `\e[0m`). Example shape:
+**Rendering.** The prompt body goes in its own fenced code block so the copy button on
+that block grabs exactly the prompt and nothing else. Frame it with a header line
+directly ABOVE the fence and a matching rule directly BELOW it, both written as plain
+markdown text in the chat response — never as a shell command whose output is piped
+back (e.g. `Bash printf '\e[36m...'`). Match the rule's width to the header line.
+Example shape:
 
 ```text
-<cyan>─── HANDOFF: paste into the next chat ───<reset>
+**─── HANDOFF: paste into the next chat ───**
 ```<fenced prompt body — the only thing meant to be copied>```
-<cyan>=========================================<reset>
+**═══════════════════════════════════════**
 ```
 
 The header/footer are delimiters only; the copyable content is the fenced body between
 them.
+
+Do NOT use raw ANSI escape codes (`\e[36m`, `\033[...]`) for this or any other emphasis
+in a chat response, even though they look like the obvious way to get color. They only
+render as color when whatever is displaying the output treats it as a live terminal
+stream. Markdown emphasis (bold/headers/etc.) you write directly into the response text
+is a different mechanism — the chat surface parses that as markdown natively, which is
+why *that* renders reliably as color/weight everywhere. But this header/footer is
+produced by a tool call whose result is piped back as tool-output text, not written
+directly into the response — some surfaces echo raw terminal streams straight through
+(color renders), others treat tool output as inert logged text (you get the literal
+`\e[36m` bytes on screen). There's no way to know in advance which one a given session
+is using, so don't gamble on it: use markdown bold/rule characters written directly in
+the chat text instead, which every surface renders the same way.
 
 ## What Wrap Up Must Not Do
 

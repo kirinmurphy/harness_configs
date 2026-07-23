@@ -6,6 +6,19 @@
   .stat-item { display:flex; flex-direction:column; gap:2px; }
   .stat-label { color:var(--dim); font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.06em; }
   .stat-value { color:var(--ink); font-size:var(--text-md); font-variant-numeric:tabular-nums; }
+  /* Marker-relative comparison's caveats (small sample, dominant session, excluded sessions): a
+     collapsed-by-default toggle, not a semicolon-joined paragraph — each issue is an independent
+     caveat, so it reads as a scannable list once opened, and doesn't compete with the headline
+     stat row when closed. Lighter weight than .detailsblock (no uppercase/border-top) since this
+     nests inside a single panel rather than being a page-level tier of its own. */
+  .quality-issues { margin-top:8px; }
+  .quality-issues summary { font-size:var(--text-2xs); color:var(--dim); cursor:pointer; list-style:none; }
+  .quality-issues summary::-webkit-details-marker { display:none; }
+  .quality-issues summary::before { content:"▸ "; color:var(--accent); }
+  .quality-issues[open] summary::before { content:"▾ "; }
+  .quality-issues summary:hover { color:var(--ink); }
+  .quality-issues ul { margin:6px 0 0; padding-left:1.2em; color:var(--dim); font-size:var(--text-2xs); }
+  .quality-issues li { margin:2px 0; }
   main { padding:20px; display:grid; gap:20px; max-width:1200px; }
   .panel h2 { font-size:var(--text-xs); text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 12px; }
   .sectionhead { font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.1em; color:var(--accent); margin:18px 0 0; font-weight:700; padding-top:14px; border-top:1px solid var(--line); }
@@ -69,18 +82,23 @@
   .viewmore { background:none; border:none; color:var(--accent); font:inherit; font-size:var(--text-2xs); cursor:pointer; padding:3px 0; text-decoration:underline dotted; margin-top:4px; display:block; }
   .viewmore:hover { color:var(--ink); }
   .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:4px; flex:none; }
-  /* Background/border/padding/grid layout come from the shared .control-panel (portal/shared/base.css)
-     — same "this strip is a control surface" treatment as Plans' Plans/Repos/Filters row. Telemetry
-     only adds what's specific to it: sticky positioning (stays pinned while panels scroll beneath
-     it) and a taller row gap (two dense rows of selects/buttons need more separation than Plans'
-     single row). */
-  .filterbar { position:sticky; top:0; z-index:10; gap:14px; }
+  /* Background/border/padding come from the shared .control-panel (portal/shared/base.css) — same
+     "this strip is a control surface" treatment as Plans' Plans/Repos/Filters row. Telemetry
+     overrides .control-panel's default grid with its own flex row so a fixed-width info-icon gutter
+     (.filterbar-info) can sit beside the stacked filter rows rather than inside either one — there's
+     no "Filters" heading left to anchor the icon to now that both rows read as filters on their own. */
+  .filterbar { position:sticky; top:0; z-index:10; display:flex; align-items:flex-end; gap:14px; }
+  .filterbar-rows { display:grid; gap:14px; flex:1; min-width:0; }
+  /* Fixed to the info icon's own footprint (portal/shared/base.css's .info-icon is 15px) so the
+     gutter never grows/shrinks with viewport width — it stays a constant-size column while
+     .filterbar-rows does all the wrapping/shrinking. align-items:flex-end on .filterbar (above)
+     bottom-aligns it to the cohort row, the last and shortest of the two stacked rows. */
+  .filterbar-info { flex:none; width:15px; display:flex; justify-content:center; margin-bottom:3px; }
   .flabel { color:var(--dim); font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.06em; margin-right:4px; flex:none; }
   .ranges { display:flex; gap:6px; flex-wrap:wrap; align-items:center; max-width:1200px; }
   .ranges button { background:var(--bg); color:var(--dim); border:1px solid var(--line); border-radius:5px; padding:3px 10px; font:inherit; font-size:var(--text-2xs); cursor:pointer; }
   .ranges button:hover { color:var(--ink); border-color:var(--accent); }
   .ranges button.active { color:var(--bg); background:var(--accent); border-color:var(--accent); font-weight:600; }
-  .ranges .pan { color:var(--dim); font-size:var(--text-2xs); margin-left:auto; }
   /* Filter bar: two rows, each a distinct concern — time/source above, model/repo/marker below —
      rather than one row where unrelated controls ran together. Both rows share button/select
      styling but each keeps its own flex-wrap so a narrow viewport wraps within a row instead of
@@ -104,11 +122,21 @@
      position there too; "source" and its buttons never separate, and it's never left-aligned. */
   #harnessfilt { display:none; gap:6px; align-items:center; margin-left:auto; }
   #harnessfilt.visible { display:flex; }
-  #cohortfilt { padding-top:12px; border-top:1px dashed var(--line); }
-  #cohortfilt portal-info-icon { margin-right:2px; }
+  @media (max-width:630px) {
+    .filter-row .pan { margin-left:0; }
+    #harnessfilt { margin-left:0; }
+  }
+  /* No own padding-top — .filterbar-rows' 14px grid gap already matches the wrap-gap within #ranges
+     above, so adding more here would make this gap read almost 2x that one. */
+  #cohortfilt { border-top:1px dashed var(--line); }
   #cohortfilt select { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:3px 8px; font:inherit; font-size:var(--text-2xs); cursor:pointer; }
   #cohortfilt select:hover { border-color:var(--accent); }
-  .filter-count { color:var(--dim); font-size:var(--text-2xs); font-variant-numeric:tabular-nums; margin-left:auto; }
+  /* Count + clear are wrapped in one flex item (.filter-count-group) so #cohortfilt's flex-wrap
+     can only ever break the LINE before this pair, never between them — otherwise "1 filter" and
+     "clear" could land on separate wrapped lines since flex-wrap treats direct children as
+     independently breakable. */
+  .filter-count-group { display:inline-flex; align-items:center; gap:8px; margin-left:auto; }
+  .filter-count { color:var(--dim); font-size:var(--text-2xs); font-variant-numeric:tabular-nums; }
   #cohortfilt #cohortclear { margin-left:0; }
   /* Marker creation is a data-entry action, not a filter — deliberately outside .filterbar so it
      never reads as "part of narrowing the view." Not sticky, so it scrolls away with the page body
@@ -127,7 +155,10 @@
      what keeps wrapped-line spacing consistent with between-row spacing at every width. */
   @media (max-width:760px) {
     #cohortfilt select { max-width:none; flex:1 1 140px; }
-    .filter-count { margin-left:0; }
+    /* Still right-aligned when it wraps to its own row — margin-left:auto alone can't do that
+       once the group is the only thing on its line (nothing left of it to push against), so the
+       group instead takes the full row width and aligns its own content to the end. */
+    .filter-count-group { flex-basis:100%; justify-content:flex-end; margin-left:0; }
     .page-actions { justify-content:stretch; }
     .markchangebtn { width:100%; }
   }
@@ -215,9 +246,12 @@
   .markdown th, .markdown td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
   .markdown thead th { color:var(--dim); text-transform:uppercase; letter-spacing:.04em; font-size:10px; border-bottom:1px solid var(--accent); }
   .markdown tbody tr:hover { background:var(--row-hover, rgba(128,128,128,.06)); }
-  /* Mermaid fallback (markdown-render.mjs's renderMermaidFallback): no mermaid.js runtime in this
-     zero-dependency portal, so the diagram source stays visible/selectable behind a clear label
-     instead of rendering as an opaque unlabeled code block. */
+  /* Mermaid diagrams (markdown-render.mjs's renderMermaidFallback emits <pre class="mermaid">;
+     doc-guide-modal.js's renderMermaidBlocks replaces it with the rendered SVG on load). The
+     dashed-border `pre` styling only ever shows if that render fails (offline, blocked script,
+     bad diagram source) — the escaped source is what's left sitting in the DOM at that point, so
+     it should still read as a deliberate, legible fallback rather than a broken box. */
   .markdown .md-mermaid { margin:.65em 0; }
-  .markdown .md-mermaid .md-meta { margin-bottom:.3em; }
   .markdown .md-mermaid pre { border-style:dashed; }
+  .markdown .mermaid-rendered { display:flex; justify-content:center; overflow-x:auto; }
+  .markdown .mermaid-rendered svg { max-width:100%; height:auto; }

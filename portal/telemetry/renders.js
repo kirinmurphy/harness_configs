@@ -158,13 +158,33 @@ export function createRenders(modals) {
     panel.style.display = "";
     const container = document.getElementById("markercomparison");
     container.replaceChildren();
-    const rows = [
-      el("p", { class: "hl" }, finding.observation),
-      el("p", { style: "color:var(--dim)" },
-        "confidence: " + finding.confidence
-        + " · before: " + finding.sample_size.before + " sessions"
-        + " · after: " + finding.sample_size.after + " sessions"),
-    ];
+    const ev = finding.evidence;
+    const rows = [el("p", { class: "hl" }, finding.observation)];
+    // Before/after/delta/confidence as scannable stat tiles (this page's existing .stat-row/
+    // .stat-item language from the header meta strip) instead of one comma-packed sentence — the
+    // numbers are the thing being compared, so they read as numbers, not prose.
+    const deltaSign = ev.effect_size > 0 ? "+" : ev.effect_size < 0 ? "−" : "·";
+    rows.push(el("div", { class: "stat-row" }, [
+      el("div", { class: "stat-item" }, [
+        el("span", { class: "stat-label" }, "before"),
+        el("span", { class: "stat-value" }, fmt(ev.before.value)),
+        el("span", { style: "color:var(--dim); font-size:var(--text-2xs)" }, finding.sample_size.before + " sessions"),
+      ]),
+      el("div", { class: "stat-item" }, [
+        el("span", { class: "stat-label" }, "after"),
+        el("span", { class: "stat-value" }, fmt(ev.after.value)),
+        el("span", { style: "color:var(--dim); font-size:var(--text-2xs)" }, finding.sample_size.after + " sessions"),
+      ]),
+      el("div", { class: "stat-item" }, [
+        el("span", { class: "stat-label" }, "change"),
+        el("span", { class: "stat-value", style: ev.effect_size > 0 ? "color:var(--spike)" : "" },
+          deltaSign + fmt(Math.abs(ev.effect_size)) + " (" + (ev.relative_change * 100).toFixed(0) + "%)"),
+      ]),
+      el("div", { class: "stat-item" }, [
+        el("span", { class: "stat-label" }, "confidence"),
+        el("span", { class: "stat-value", style: "font-size:var(--text-xs)" }, finding.confidence),
+      ]),
+    ]));
     if (finding.interpretation) {
       rows.push(el("p", {}, "interpretation (inference): " + finding.interpretation.text));
     }
@@ -172,7 +192,12 @@ export function createRenders(modals) {
       rows.push(el("p", { style: "color:var(--accent)" }, "next action: " + finding.next_action));
     }
     if (finding.data_quality_issues?.length) {
-      rows.push(el("p", { style: "color:var(--dim)" }, "data quality: " + finding.data_quality_issues.join("; ")));
+      // A bulleted list scans far faster than the same issues semicolon-joined into one paragraph —
+      // each issue is its own independent caveat, not a continuation of the last one.
+      rows.push(el("details", { class: "quality-issues" }, [
+        el("summary", {}, finding.data_quality_issues.length + " data quality " + (finding.data_quality_issues.length === 1 ? "issue" : "issues")),
+        el("ul", {}, finding.data_quality_issues.map((issue) => el("li", {}, issue))),
+      ]));
     }
     if (finding.analysis_filter_state) {
       const btn = document.createElement("button");

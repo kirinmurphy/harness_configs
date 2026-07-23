@@ -4,26 +4,37 @@
   <body>
     {{CHROME}}
     <div class="control-panel filterbar">
-      <div class="control-panel-row filter-row" id="ranges">
-        <span class="flabel">time range</span>
-        <button data-range="3600000">1h</button>
-        <button data-range="21600000">6h</button>
-        <button data-range="86400000">1d</button>
-        <button data-range="604800000">1w</button>
-        <button data-range="all" class="active">all</button>
-        <span class="pan" id="panhint"></span>
-        <div id="harnessfilt">
-          <span class="flabel">source</span>
+      <div class="filterbar-rows">
+        <div class="control-panel-row filter-row" id="ranges">
+          <span class="flabel">range</span>
+          <button data-range="3600000">1h</button>
+          <button data-range="21600000">6h</button>
+          <button data-range="86400000">1d</button>
+          <button data-range="604800000">1w</button>
+          <button data-range="all" class="active">all</button>
+          <span class="pan" id="panhint"></span>
+          <div id="harnessfilt">
+            <span class="flabel">source</span>
+          </div>
+        </div>
+        <!-- Phase 6 global filter bar: model/repo/marker on top of the existing time/harness window.
+             Compact selectors + active-filter-count + clear, per the plan's "Hybrid filtering" design
+             (high-cardinality refinement stays in the Analysis explorer, not here). -->
+        <div class="control-panel-row filter-row" id="cohortfilt">
+          <select id="modelfilt" data-slot="modelfilt" aria-label="model"><option value="">all models</option></select>
+          <select id="repofilt" data-slot="repofilt" aria-label="repository"><option value="">all repos</option></select>
+          <select id="markerfilt" data-slot="markerfilt" aria-label="marker comparison"><option value="">all events</option></select>
+          <span class="filter-count-group">
+            <span class="filter-count" id="filtercount" style="display: none"></span>
+            <button class="linkbtn" id="cohortclear" style="display: none">clear</button>
+          </span>
         </div>
       </div>
-      <!-- Phase 6 global filter bar: model/repo/marker on top of the existing time/harness window.
-           Compact selectors + active-filter-count + clear, per the plan's "Hybrid filtering" design
-           (high-cardinality refinement stays in the Analysis explorer, not here). One info icon
-           covers the row as a whole ("what do these filters do") — model/repo dropdowns are scoped
-           server-side to the selected source (see cachedAnalysisEntry's availableModels/
-           availableRepos), so picking Codex only ever offers models actually used by Codex sessions. -->
-      <div class="control-panel-row filter-row" id="cohortfilt">
-        <span class="flabel">filters</span>
+      <!-- Fixed-width gutter, bottom-aligned to the cohort row: the filter bar no longer has a
+           "Filters" heading to anchor the info icon to (both rows ARE filters), so it lives in its
+           own column instead of inline in either row. Fixed width keeps the two filter rows' own
+           wrap width stable as the viewport shrinks — the gutter never grows to eat their space. -->
+      <div class="filterbar-info">
         <portal-info-icon
           id="filters-info"
           data-doc-anchor="global-filters"
@@ -32,11 +43,6 @@
           aria-label="about these filters"
           title="about these filters"
         ></portal-info-icon>
-        <select id="modelfilt" data-slot="modelfilt" aria-label="model"><option value="">all models</option></select>
-        <select id="repofilt" data-slot="repofilt" aria-label="repository"><option value="">all repos</option></select>
-        <select id="markerfilt" data-slot="markerfilt" aria-label="marker comparison"><option value="">no marker comparison</option></select>
-        <span class="filter-count" id="filtercount" style="display: none"></span>
-        <button class="linkbtn" id="cohortclear" style="display: none">clear</button>
       </div>
     </div>
     <!-- Marker creation lives outside the filter bar — it's a data-entry action ("I changed
@@ -101,6 +107,14 @@
           </div>
         </div>
         <div class="legend" id="chartlegend"></div>
+      </section>
+
+      <!-- Lives right after the chart, not buried in TIER 4's collapsed "cost analysis" — this is
+           a direct result of the marker filter in the bar above (not a raw cost breakdown), so it
+           needs to be seen without the user knowing to expand a details block first. -->
+      <section class="panel" id="markercomparisonpanel" style="display: none">
+        <h2>marker-relative comparison <portal-info-icon data-doc-anchor="marker-relative-comparison" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
+        <div id="markercomparison"></div>
       </section>
 
       <!-- TIER 3 — warnings & abnormalities (spikes, loops, causes) -->
@@ -197,10 +211,6 @@
             tied to any specific change; select a marker in the cohort filter
             above for a marker-relative comparison instead
           </div>
-        </section>
-        <section class="panel" id="markercomparisonpanel" style="display: none">
-          <h2>marker-relative comparison <portal-info-icon data-doc-anchor="marker-relative-comparison" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
-          <div id="markercomparison"></div>
         </section>
       </details>
 

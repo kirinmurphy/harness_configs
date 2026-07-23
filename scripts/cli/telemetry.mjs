@@ -5,7 +5,7 @@ import net from "node:net";
 import { spawnSync, spawn } from "node:child_process";
 import { markTelemetrySelected } from "./presets.mjs";
 import { repoRoot } from "./paths.mjs";
-import { portalPidPath, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir } from "./state-paths.mjs";
+import { portalPidPathForPort, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { readMarkers, readSnapshot, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
 import { readSourceFile } from "./config-source-lookup.mjs";
@@ -352,12 +352,29 @@ function wireCaptureHooks(settingsPath, harness) {
 }
 
 function telemetryStop(args) {
-  rejectArgs(args);
-  const stopped = stopServer();
+  const port = parseStopArgs(args);
+  const stopped = stopServer(port);
   ensureTelemetryDirs();
   writeTelemetryState({ enabled: false });
   markTelemetrySelected(false);
   console.log(stopped ? "telemetry: disabled · server stopped" : "telemetry: disabled · no server was running");
+}
+
+// PID tracking is per-port (see the "PID management" section below), so stopping the right server
+// needs to know which port — defaults to the same 4317 `serve` itself defaults to.
+function parseStopArgs(args) {
+  let port = 4317;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--port") port = Number(args[++i]);
+    else if (arg.startsWith("--port=")) port = Number(arg.slice("--port=".length));
+    else rejectArgs([arg]);
+  }
+  if (!Number.isInteger(port) || port < 0) {
+    console.error("usage: roborepo telemetry stop [--port <n>]");
+    process.exit(2);
+  }
+  return port;
 }
 
 async function telemetryEnable(args) {
@@ -700,18 +717,18 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
   });
   if (resolved.reuse) {
     const existingUrl = `http://127.0.0.1:${resolved.port}`;
-    writePid(resolved.pid);
+    writePid(resolved.port, resolved.pid);
     console.log(`roborepo portal already running: ${existingUrl}`);
     if (options.open) openLocalUrl(`${existingUrl}${openPath}`);
     return;
   }
-  await killExistingServer();
-  writePid(process.pid);
+  await killExistingServer(resolved.port);
+  writePid(resolved.port, process.pid);
   options.port = resolved.port;
   const portalUrl = (port) => `http://127.0.0.1:${port}`;
   // Clean up the PID file (and stop the refresh timer) when the server exits cleanly (SIGTERM from
   // stop or OS shutdown).
-  process.on("SIGTERM", () => { stopAnalysisRefresh(); clearPid(); process.exit(0); });
+  process.on("SIGTERM", () => { stopAnalysisRefresh(); clearPid(resolved.port); process.exit(0); });
   if (readTelemetryState().enabled !== true) {
     console.log("telemetry is disabled; serving whatever is already in the spool.");
   }
@@ -1470,11 +1487,20 @@ function writeTelemetryState(patch) {
 }
 
 // --- PID management for the detached portal server ---------------------------------------------
+// Keyed by port (portalPidPathForPort), not one shared file: each port is an independent server,
+// commonly from a different repo/worktree entirely. Reading/writing/clearing the wrong repo's PID
+// here previously meant starting a portal on ANY port would SIGTERM whatever the last-started
+// portal on ANY OTHER port happened to be, because they all wrote to the same file — see the
+// bugfix commit for the concrete repro (a main-checkout `serve` and a worktree `serve` on
+// different ports were killing each other every time either one restarted).
 
-function readPid() {
+function readPid(port) {
   try {
-    return parseInt(fs.readFileSync(portalPidPath, "utf8").trim(), 10) || null;
+    return parseInt(fs.readFileSync(portalPidPathForPort(port), "utf8").trim(), 10) || null;
   } catch {}
+  // The legacy single-file path predates per-port tracking, so it could only ever have recorded a
+  // default-port (4317) server — never consult it for any other port.
+  if (port !== 4317) return null;
   try {
     return parseInt(fs.readFileSync(legacyTelemetryPidPath, "utf8").trim(), 10) || null;
   } catch {
@@ -1486,26 +1512,29 @@ function isProcessRunning(pid) {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
-function writePid(pid) {
-  fs.mkdirSync(path.dirname(portalPidPath), { recursive: true });
-  fs.writeFileSync(portalPidPath, String(pid));
+function writePid(port, pid) {
+  const pidPath = portalPidPathForPort(port);
+  fs.mkdirSync(path.dirname(pidPath), { recursive: true });
+  fs.writeFileSync(pidPath, String(pid));
 }
 
-function clearPid() {
-  try { fs.rmSync(portalPidPath, { force: true }); } catch {}
-  try { fs.rmSync(legacyTelemetryPidPath, { force: true }); } catch {}
+function clearPid(port) {
+  try { fs.rmSync(portalPidPathForPort(port), { force: true }); } catch {}
+  if (port === 4317) {
+    try { fs.rmSync(legacyTelemetryPidPath, { force: true }); } catch {}
+  }
 }
 
-// Kill any existing detached server (stale or live) and wait for it to actually exit before
-// returning. Clears the PID file unconditionally. Waiting matters: a caller that immediately
-// tries to bind the same port right after this resolves would otherwise race the killed
-// process's own teardown (SIGTERM handling + socket close isn't instant) — a transient bind
+// Kill any existing detached server ON THIS PORT (stale or live) and wait for it to actually exit
+// before returning. Clears that port's PID file unconditionally. Waiting matters: a caller that
+// immediately tries to bind the same port right after this resolves would otherwise race the
+// killed process's own teardown (SIGTERM handling + socket close isn't instant) — a transient bind
 // failure right after signalling would read as "port occupied by something else" and fall back
 // to a random port, permanently orphaning the process we just tried to kill instead of waiting
 // the extra tens of milliseconds for it to actually die.
-async function killExistingServer() {
-  const pid = readPid();
-  clearPid();
+async function killExistingServer(port) {
+  const pid = readPid(port);
+  clearPid(port);
   if (pid == null || !isProcessRunning(pid)) return;
   try { process.kill(pid, "SIGTERM"); } catch { return; }
   const deadline = Date.now() + 2000;
@@ -1514,34 +1543,37 @@ async function killExistingServer() {
   }
 }
 
-// Kill the running server. Returns true if a live process was found and signalled.
-function stopServer() {
-  const pid = readPid();
+// Kill the running server on this port. Returns true if a live process was found and signalled.
+function stopServer(port) {
+  const pid = readPid(port);
   if (pid == null) return false;
-  clearPid();
+  clearPid(port);
   if (!isProcessRunning(pid)) return false;
   try { process.kill(pid, "SIGTERM"); return true; } catch { return false; }
 }
 
 async function startDetachedPortal(port, { allowPortFallback = false, portExplicit = false } = {}) {
-  await killExistingServer();
+  // Only kill whatever was previously tracked on THIS port (skip when port is 0/auto-assign — there
+  // is no specific port's prior server to reconcile with yet). A stale/dead process recorded here
+  // never touches any other port's own PID record.
+  if (port !== 0) await killExistingServer(port);
   const resolved = await resolvePortalPort(port, { allowPortFallback, portExplicit, warn: true });
   if (resolved.reuse) {
-    writePid(resolved.pid);
+    writePid(resolved.port, resolved.pid);
     return resolved.port;
   }
   const selectedPort = resolved.port;
   const { child, readyFile } = spawnDetachedServer(selectedPort);
   const ready = await waitForPortalReady(selectedPort, child, readyFile);
   if (!ready.ok) {
-    clearPid();
+    clearPid(selectedPort);
     try { fs.rmSync(readyFile, { force: true }); } catch {}
     if (child.exitCode == null) {
       try { process.kill(child.pid, "SIGTERM"); } catch {}
     }
     throw new Error(ready.message);
   }
-  writePid(child.pid);
+  writePid(ready.port ?? selectedPort, child.pid);
   child.unref();
   return ready.port ?? selectedPort;
 }

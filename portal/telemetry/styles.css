@@ -69,7 +69,12 @@
   .viewmore { background:none; border:none; color:var(--accent); font:inherit; font-size:var(--text-2xs); cursor:pointer; padding:3px 0; text-decoration:underline dotted; margin-top:4px; display:block; }
   .viewmore:hover { color:var(--ink); }
   .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:4px; flex:none; }
-  .filterbar { position:sticky; top:0; z-index:10; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 20px; display:flex; flex-direction:column; gap:14px; }
+  /* Background/border/padding/grid layout come from the shared .control-panel (portal/shared/base.css)
+     — same "this strip is a control surface" treatment as Plans' Plans/Repos/Filters row. Telemetry
+     only adds what's specific to it: sticky positioning (stays pinned while panels scroll beneath
+     it) and a taller row gap (two dense rows of selects/buttons need more separation than Plans'
+     single row). */
+  .filterbar { position:sticky; top:0; z-index:10; gap:14px; }
   .flabel { color:var(--dim); font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.06em; margin-right:4px; flex:none; }
   .ranges { display:flex; gap:6px; flex-wrap:wrap; align-items:center; max-width:1200px; }
   .ranges button { background:var(--bg); color:var(--dim); border:1px solid var(--line); border-radius:5px; padding:3px 10px; font:inherit; font-size:var(--text-2xs); cursor:pointer; }
@@ -79,8 +84,11 @@
   /* Filter bar: two rows, each a distinct concern — time/source above, model/repo/marker below —
      rather than one row where unrelated controls ran together. Both rows share button/select
      styling but each keeps its own flex-wrap so a narrow viewport wraps within a row instead of
-     the two rows visually merging. */
-  .filter-row { display:flex; gap:6px 10px; flex-wrap:wrap; align-items:center; max-width:1200px; row-gap:6px; }
+     the two rows visually merging. row-gap matches .filterbar's own row gap (14px) so a control
+     wrapping onto its own line WITHIN a row (e.g. source, below) reads with the same spacing
+     rhythm as the gap BETWEEN the two filter rows — otherwise the wrapped line sits noticeably
+     closer to its row than the rows sit to each other. */
+  .filter-row { display:flex; gap:14px 10px; flex-wrap:wrap; align-items:center; max-width:1200px; }
   /* :not(.info-icon) so this generic rule never reaches into <portal-info-icon>'s own internal
      button (portal/shared/info-icon.js renders it into the light DOM) and overrides its round "i"
      badge shape from base.css with a rectangular filter-button look. */
@@ -88,16 +96,14 @@
   .filter-row button:not(.info-icon):hover { color:var(--ink); border-color:var(--accent); }
   .filter-row button.active { color:var(--bg); background:var(--accent); border-color:var(--accent); font-weight:600; }
   .filter-row .pan { color:var(--dim); font-size:var(--text-2xs); margin-left:auto; }
-  /* Source sits at the time-range row's right edge when it fits (margin-left:auto). Below 980px,
-     flex-basis:100% forces it onto its own full-width line instead of wrapping into whatever gap
-     is left mid-row — it never loses its "source" label and never ends up left-aligned; it's
-     simply on the next line, right where its label already sits, at the row's left edge because a
-     100%-basis item starts a fresh line of its own. */
+  /* Source (label + buttons) is one flex item with margin-left:auto, so it sits at the row's right
+     edge whenever there's room. Content-driven wrap, no pixel breakpoint: .filter-row's own
+     flex-wrap:wrap already drops this item to a fresh line the instant it no longer fits next to
+     the time-range buttons — at exactly the width where it stops fitting, not a guessed viewport
+     size. margin-left:auto still applies on that fresh line, so it keeps the same right-aligned
+     position there too; "source" and its buttons never separate, and it's never left-aligned. */
   #harnessfilt { display:none; gap:6px; align-items:center; margin-left:auto; }
   #harnessfilt.visible { display:flex; }
-  @media (max-width:980px) {
-    #harnessfilt.visible { flex-basis:100%; margin-left:0; padding-top:4px; }
-  }
   #cohortfilt { padding-top:12px; border-top:1px dashed var(--line); }
   #cohortfilt portal-info-icon { margin-right:2px; }
   #cohortfilt select { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:3px 8px; font:inherit; font-size:var(--text-2xs); cursor:pointer; }
@@ -116,9 +122,10 @@
     #cohortfilt select { max-width:140px; }
   }
   /* Small: each filter row's controls wrap onto their own lines under the label instead of
-     squeezing horizontally; the mark-change button goes full-width so it stays a clear tap target. */
+     squeezing horizontally; the mark-change button goes full-width so it stays a clear tap target.
+     row-gap intentionally NOT overridden here — keeping it equal to .filterbar's own row gap is
+     what keeps wrapped-line spacing consistent with between-row spacing at every width. */
   @media (max-width:760px) {
-    .filter-row { row-gap:8px; }
     #cohortfilt select { max-width:none; flex:1 1 140px; }
     .filter-count { margin-left:0; }
     .page-actions { justify-content:stretch; }

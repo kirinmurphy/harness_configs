@@ -3,8 +3,8 @@
   {{HEAD}}
   <body>
     {{CHROME}}
-    <div class="filterbar">
-      <div class="filter-row" id="ranges">
+    <div class="control-panel filterbar">
+      <div class="control-panel-row filter-row" id="ranges">
         <span class="flabel">time range</span>
         <button data-range="3600000">1h</button>
         <button data-range="21600000">6h</button>
@@ -22,7 +22,7 @@
            covers the row as a whole ("what do these filters do") — model/repo dropdowns are scoped
            server-side to the selected source (see cachedAnalysisEntry's availableModels/
            availableRepos), so picking Codex only ever offers models actually used by Codex sessions. -->
-      <div class="filter-row" id="cohortfilt">
+      <div class="control-panel-row filter-row" id="cohortfilt">
         <span class="flabel">filters</span>
         <portal-info-icon
           id="filters-info"

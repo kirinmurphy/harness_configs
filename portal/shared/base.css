@@ -494,6 +494,32 @@ dd {
 .modal-body > .markdown {
   padding: 14px 16px;
 }
+/* Control panel: a full-bleed strip that visibly reads as an active control surface (filters,
+ * monitoring status, live toggles) rather than another content panel. Deliberately a neutral gray
+ * tint, off the --accent/--panel blue used throughout the rest of a page, so pages with an
+ * accent-tinted "editable" surface elsewhere (e.g. .settings) don't collide with this one visually.
+ * Sits flush against whatever it's placed under (portal header, package banner) — no side
+ * borders/radius, no outer margin — so it reads as part of the page chrome, not a floating card.
+ * Originated on the Plans page's Plans/Repos/Filters row; pulled here so any page needing the same
+ * "this strip is a control surface" treatment (Telemetry's filter bar, etc.) uses one definition.
+ * A page's own stylesheet still owns everything INSIDE a .control-panel-row — this only owns the
+ * strip's background/border/outer spacing. */
+.control-panel {
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, #808080 16%, var(--panel));
+  border-radius: 0;
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  padding: 12px 20px;
+}
+.control-panel-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
 @media (max-width: 760px) {
   /* .portal-header {
     align-items: flex-start;

@@ -17,27 +17,12 @@ main {
   background: color-mix(in srgb, var(--accent) 6%, var(--panel));
   /* border-color: var(--accent); */
 }
-/* Control bar: Plans/Repos/Filters row + persistent chips + whichever panel is open. Sits
- * full-bleed (outside <main>'s padding, no side borders/radius) flush under the package banner
- * or portal header — a neutral gray strip, deliberately off the --accent/--panel blue used
- * throughout the rest of the page, so it reads as a distinct control surface rather than another
- * blue-tinted panel. */
-.control-bar {
-  border: none;
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, #808080 16%, var(--panel));
-  border-radius: 0;
-  width: 100%;
-  padding: 12px 20px;
-  display: grid;
-  gap: 10px;
-}
+/* Control bar: Plans/Repos/Filters row + persistent chips + whichever panel is open. Background/
+ * border/outer spacing come from the shared .control-panel (portal/shared/base.css) — this only
+ * adds what's specific to Plans: the row's items spread to the edges (space-between) rather than
+ * just flowing left-to-right. */
 .control-bar-row {
-  display: flex;
-  flex-wrap: wrap;
   justify-content: space-between;
-  align-items: center;
-  gap: 10px;
 }
 
 .control-bar-row strong {

@@ -16,7 +16,7 @@ Add a dedicated portal homepage at `/` that summarizes current work and actionab
 
 Keep `/localhoster` as its own management page. The homepage receives a compact active-app view rather than inheriting Localhoster's editing, alias, hidden-item, inactive-project, and settings controls.
 
-Repository identity plumbing is specified separately in `canonical-repository-identity-plan.md`. This first homepage iteration may consume canonical repository IDs where available, but it must not introduce repository-centric cards or broader cross-domain UI yet.
+Repository identity plumbing is specified separately in `../completed/canonical-repository-identity-plan-v2.md` (delivered). This first homepage iteration may consume canonical repository IDs where available, but it must not introduce repository-centric cards or broader cross-domain UI yet.
 
 ## Confirmed Product Decisions
 

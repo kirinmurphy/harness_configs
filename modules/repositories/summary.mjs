@@ -23,10 +23,15 @@ export function repositorySummary(record) {
   };
 }
 
-// The registry-wide list payload — array of summaries, path-free by construction.
-export function repositoryListPayload(registry) {
+// The registry-wide list payload — array of summaries, path-free by construction. Hidden
+// repositories are omitted from the ordinary list (that is what "hidden" means) and only counted;
+// a management view can pass includeHidden to see them.
+export function repositoryListPayload(registry, { includeHidden = false } = {}) {
+  const all = Object.values(registry.repositories || {});
+  const visible = includeHidden ? all : all.filter((r) => r.visibility !== "hidden");
   return {
-    repositories: Object.values(registry.repositories || {}).map(repositorySummary),
+    repositories: visible.map(repositorySummary),
+    hiddenCount: all.length - all.filter((r) => r.visibility !== "hidden").length,
   };
 }
 
@@ -66,11 +71,16 @@ function isEnabled(record, domain) {
   return record.enrollments?.[domain]?.enabled === true;
 }
 
+// Highest-confidence discovery; ties broken by recency (most recent lastSeenAt wins) so the
+// surfaced headline confidence/evidence is deterministic and reflects the freshest strong signal.
 function bestDiscovery(discoveries) {
   const rank = { high: 3, medium: 2, low: 1, suggestion: 0 };
   let best = null;
   for (const d of discoveries) {
-    if (!best || (rank[d.confidence] ?? -1) > (rank[best.confidence] ?? -1)) best = d;
+    if (!best) { best = d; continue; }
+    const dr = rank[d.confidence] ?? -1;
+    const br = rank[best.confidence] ?? -1;
+    if (dr > br || (dr === br && Date.parse(d.lastSeenAt) > Date.parse(best.lastSeenAt))) best = d;
   }
   return best;
 }

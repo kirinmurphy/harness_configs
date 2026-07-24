@@ -85,17 +85,27 @@ export function enrollRepositoryInPlans({
   if (!registry.repositories[repositoryId]) throw new Error(`unknown repository: ${repositoryId}`);
 
   const settings = readSettings({ stateRoot });
-  const plan = planPlansEnrollment(repoRoot, settings.discoveryRoots || []);
+  const priorRoots = settings.discoveryRoots || [];
+  const plan = planPlansEnrollment(repoRoot, priorRoots);
 
   let sourceAdded = null;
   if (!plan.covered) {
     // Add ONLY the exact repo root. Broadening to a parent is an explicit, separate user choice.
-    const nextRoots = [...new Set([...(settings.discoveryRoots || []), plan.suggestedSource])];
+    const nextRoots = [...new Set([...priorRoots, plan.suggestedSource])];
     updatePlanSettings({ discoveryRoots: nextRoots });
     sourceAdded = plan.suggestedSource;
   }
-  // Refresh so the newly-covered repository's plans are discovered (or the registry re-syncs).
-  refreshPlans();
+  // Refresh so the newly-covered repository's plans are discovered (or the registry re-syncs). If
+  // this fails after we added a source, roll the source back so we never leave Plans configured
+  // with a source the user never got a working refresh for — enrollment must be all-or-nothing.
+  try {
+    refreshPlans();
+  } catch (err) {
+    if (sourceAdded) {
+      try { updatePlanSettings({ discoveryRoots: priorRoots }); } catch {}
+    }
+    throw err;
+  }
 
   // Only now — after Plans config + refresh succeeded — mark monitoring enabled.
   updateRegistry({
@@ -109,14 +119,20 @@ export function enrollRepositoryInPlans({
 
 // ---- Browser-safe API bridge (Phase 4). Every return value is path-free by construction. ----
 
-export function loadRepositoriesPayload({ stateRoot = defaultStateRoot, fsApi = fs } = {}) {
-  return repositoryListPayload(loadRegistry({ stateRoot, fsApi }));
+function notFound(repositoryId) {
+  const e = new Error(`unknown repository: ${repositoryId}`);
+  e.code = "NOT_FOUND";
+  return e;
+}
+
+export function loadRepositoriesPayload({ stateRoot = defaultStateRoot, fsApi = fs, includeHidden = false } = {}) {
+  return repositoryListPayload(loadRegistry({ stateRoot, fsApi }), { includeHidden });
 }
 
 export function loadRepositoryPayload({ repositoryId, stateRoot = defaultStateRoot, fsApi = fs } = {}) {
   const registry = loadRegistry({ stateRoot, fsApi });
   const record = registry.repositories[repositoryId];
-  if (!record) { const e = new Error(`unknown repository: ${repositoryId}`); e.code = "NOT_FOUND"; throw e; }
+  if (!record) throw notFound(repositoryId);
   return repositoryDetailPayload(record);
 }
 
@@ -130,7 +146,7 @@ export function loadRepositoryAssociations({ repositoryId, stateRoot = defaultSt
 // PATCH: currently only visibility (hide/restore). Returns the refreshed detail payload.
 export function patchRepository({ repositoryId, visibility, stateRoot = defaultStateRoot, fsApi = fs, now = new Date().toISOString() }) {
   const registry = loadRegistry({ stateRoot, fsApi });
-  if (!registry.repositories[repositoryId]) { const e = new Error(`unknown repository: ${repositoryId}`); e.code = "NOT_FOUND"; throw e; }
+  if (!registry.repositories[repositoryId]) throw notFound(repositoryId);
   if (visibility != null && !["visible", "hidden"].includes(visibility)) throw new Error("visibility must be visible or hidden");
   if (visibility != null) {
     updateRegistry({ stateRoot, fsApi, mutate: (reg) => hideRepository(reg, repositoryId, { hidden: visibility === "hidden", now }) });

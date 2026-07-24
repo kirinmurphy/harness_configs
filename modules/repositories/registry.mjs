@@ -10,16 +10,14 @@ import {
   validateRegistry,
 } from "./schema.mjs";
 
+import { LAST_SEEN_DEBOUNCE_MS } from "./config.mjs";
+
 export {
   REGISTRY_VERSION,
   defaultRegistry,
   resolveRegistryAlias,
   validateRegistry,
 };
-
-// Do not rewrite lastSeenAt more often than this — avoids churning the file (and its backups) on
-// every process-discovery refresh when nothing else changed. See doc §Performance.
-const LAST_SEEN_DEBOUNCE_MS = 60_000;
 
 export function registryPathFor(stateRoot) {
   return path.join(stateRoot, "repositories", "registry.json");
@@ -91,6 +89,13 @@ function backupRegistryFile(filePath, version, fsApi) {
 
 // ---- In-memory mutators (operate on a registry clone; used inside updateRegistry) ----
 
+// Shared guard: every mutator needs an existing record and fails identically without one.
+function requireRecord(registry, id, action) {
+  const record = registry.repositories[id];
+  if (!record) throw new Error(`cannot ${action} for unknown repository: ${id}`);
+  return record;
+}
+
 // Insert or refresh a canonical repository record. Idempotent: an existing record keeps its
 // createdAt/discoveries/localRoots and only merges the provided metadata. Returns the record.
 export function upsertRepository(registry, { id, kind, displayName, providerUrl = null, normalizedRemote = null, now = new Date().toISOString() }) {
@@ -112,8 +117,7 @@ export function upsertRepository(registry, { id, kind, displayName, providerUrl 
 // discoveries from the same source only bump lastSeenAt (debounced). Returns true if anything
 // changed (so updateRegistry can skip a pure-debounce write).
 export function recordDiscovery(registry, id, { source, evidence, confidence, now = new Date().toISOString() }) {
-  const record = registry.repositories[id];
-  if (!record) throw new Error(`cannot record discovery for unknown repository: ${id}`);
+  const record = requireRecord(registry, id, "record discovery");
   const existing = record.discoveries.find((d) => d.source === source);
   if (!existing) {
     record.discoveries.push({ source, firstSeenAt: now, lastSeenAt: now, evidence, confidence });
@@ -130,8 +134,7 @@ export function recordDiscovery(registry, id, { source, evidence, confidence, no
 
 // Register a local on-disk root (clone or worktree) under a repository. Idempotent by rootId.
 export function registerLocalRoot(registry, id, { rootId, kind = "clone", now = new Date().toISOString() }) {
-  const record = registry.repositories[id];
-  if (!record) throw new Error(`cannot register local root for unknown repository: ${id}`);
+  const record = requireRecord(registry, id, "register local root");
   const existing = record.localRoots.find((r) => r.rootId === rootId);
   if (!existing) {
     // First root registered becomes primary unless caller says otherwise.
@@ -150,8 +153,7 @@ export function registerLocalRoot(registry, id, { rootId, kind = "clone", now = 
 
 // Set enrollment for a domain. Idempotent — returns false when nothing changed.
 export function setEnrollment(registry, id, domain, { enabled, sourceId = null, now = new Date().toISOString() }) {
-  const record = registry.repositories[id];
-  if (!record) throw new Error(`cannot set enrollment for unknown repository: ${id}`);
+  const record = requireRecord(registry, id, "set enrollment");
   const existing = record.enrollments[domain];
   const next = { enabled, ...(sourceId != null ? { sourceId } : {}) };
   if (existing && existing.enabled === enabled && (existing.sourceId ?? null) === sourceId) return false;
@@ -161,8 +163,7 @@ export function setEnrollment(registry, id, domain, { enabled, sourceId = null, 
 }
 
 export function hideRepository(registry, id, { hidden, now = new Date().toISOString() }) {
-  const record = registry.repositories[id];
-  if (!record) throw new Error(`cannot hide unknown repository: ${id}`);
+  const record = requireRecord(registry, id, "hide");
   const target = hidden ? "hidden" : "visible";
   if (record.visibility === target) return false;
   record.visibility = target;

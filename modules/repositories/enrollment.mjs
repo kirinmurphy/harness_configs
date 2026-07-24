@@ -1,4 +1,5 @@
 import path from "node:path";
+import { realpathOf } from "./identity.mjs";
 
 // Enrollment answers "which features has the user enabled for this repository?" — distinct from
 // discovery (registry membership) and from capabilities (data exists / can be queried). A repo can
@@ -17,10 +18,13 @@ export function enrollmentSourceId(record, domain) {
 // `discoveryRoots` are absolute, already-normalized source paths (plan-docs settings.discoveryRoots).
 export function plansSourceCoverage(repoRoot, discoveryRoots) {
   if (typeof repoRoot !== "string" || !repoRoot) return null;
-  const target = path.resolve(repoRoot);
+  // Realpath both sides so a source and repo that are the same directory reached via different
+  // symlink paths still match (otherwise enrollment would wrongly add a duplicate source). Returns
+  // the ORIGINAL source string (what Plans stores), not its realpath.
+  const target = realpathOf(path.resolve(repoRoot));
   for (const root of discoveryRoots || []) {
-    const source = path.resolve(root);
-    if (target === source || isDescendant(source, target)) return source;
+    const source = realpathOf(path.resolve(root));
+    if (target === source || isDescendant(source, target)) return root;
   }
   return null;
 }

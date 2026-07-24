@@ -186,6 +186,12 @@ try {
   assert.equal(procAssoc.repositoryId, null);
   assert.equal(procAssoc.autoAssociate, false);
 
+  // A no-remote path repo is medium confidence (not upgraded to high) with path-root evidence.
+  const pathAssoc = associateResolved(withRepo(pathId), {});
+  assert.equal(pathAssoc.evidence, "path-root");
+  assert.equal(pathAssoc.confidence, "medium", "path tier must not be upgraded to high");
+  assert.equal(pathAssoc.autoAssociate, true);
+
   // user alias wins and is high-confidence
   const aliasReg = defaultRegistry();
   upsertRepository(aliasReg, { id: "git:github.com/kirinmurphy/roborepo", kind: "git", displayName: "roborepo" });
@@ -195,14 +201,13 @@ try {
   assert.equal(aliasAssoc.evidence, "user-alias");
   assert.equal(aliasAssoc.confidence, "high");
 
-  // ---- Legacy hash association ----
+  // ---- Legacy hash association (remote-hash only; no root-hash tier) ----
   const hashIndex = {
     byNormalizedRemoteHash: new Map([["rem123", "git:github.com/kirinmurphy/roborepo"]]),
-    byRootHash: new Map([["root456", "local:deadbeefdeadbeef"]]),
   };
   assert.equal(associateLegacyHashes({ normalizedRemoteHash: "rem123", hashIndex }).provenance, "legacy-remote-hash");
-  assert.equal(associateLegacyHashes({ rootHash: "root456", hashIndex }).provenance, "legacy-root-hash");
-  assert.equal(associateLegacyHashes({ normalizedRemoteHash: "nope", rootHash: "nope", hashIndex }).provenance, "unresolved");
+  assert.equal(associateLegacyHashes({ normalizedRemoteHash: "nope", hashIndex }).provenance, "unresolved");
+  assert.equal(associateLegacyHashes({ hashIndex }).repositoryId, null);
 
   // ---- Plans source coverage / enrollment planning ----
   const parent = path.join(tempRoot, "projects");

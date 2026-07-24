@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { KNOWN_PROVIDER_HOSTS } from "./config.mjs";
 
 // Namespacing salt for opaque local-root and local-repository ids. Not secret; it only keeps these
 // hashes from colliding with any other sha256-of-path scheme elsewhere in roborepo. Kept stable
@@ -100,14 +101,31 @@ export function canonicalRepositoryId(resolved) {
 // Opaque, stable, path-free id for a repository that has no usable git remote. Shares the
 // sha256-hex-16 shape that plan-docs' stableKey uses so a `local:` id and a plan-docs repo id
 // derived from the same realpath agree on the underlying hash.
+//
+// IMPORTANT: the input MUST already be a realpath. The `local:` id is only stable across domains if
+// every producer canonicalizes the path the same way — resolveProjectIdentity realpaths its root,
+// so any other caller (Telemetry capture, Plans) must realpath too or a symlinked repo mints
+// diverging ids. Callers that hold a possibly-symlinked path should use localRepositoryIdForRoot,
+// which realpaths first.
 export function localRepositoryId(realpath) {
   return `local:${hashPath(realpath)}`;
+}
+
+// Realpath a path (falling back to the raw value on error), using the same discipline the resolver
+// applies. Exported so every domain canonicalizes paths identically.
+export function realpathOf(value, fsApi = fs) {
+  return realpathSafe(fsApi, value);
+}
+
+// Convenience: realpath a root then derive its local: id. Prevents the symlink-divergence bug by
+// making the realpath step impossible to skip.
+export function localRepositoryIdForRoot(root, fsApi = fs) {
+  return localRepositoryId(realpathSafe(fsApi, root));
 }
 
 // Build a browser-safe https provider URL for a canonical git id, or null. Only recognized hosts
 // get a URL (avoids emitting links for hosts whose web layout we can't assume). A `local:` id has
 // no provider and returns null. Never emits credentials — the id is already credential-free.
-const KNOWN_PROVIDER_HOSTS = new Set(["github.com", "gitlab.com", "bitbucket.org", "codeberg.org"]);
 export function providerUrlForRepositoryId(repositoryId) {
   if (typeof repositoryId !== "string" || !repositoryId.startsWith("git:")) return null;
   const rest = repositoryId.slice("git:".length);

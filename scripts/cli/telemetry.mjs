@@ -5,7 +5,7 @@ import net from "node:net";
 import { spawnSync, spawn } from "node:child_process";
 import { markTelemetrySelected } from "./presets.mjs";
 import { repoRoot, stateRoot } from "./paths.mjs";
-import { portalPidPathForPort, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir } from "./state-paths.mjs";
+import { portalPidPathForPort, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir, repositoriesRegistryPath } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { readMarkers, readSnapshot, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
 import { readSourceFile } from "./config-source-lookup.mjs";
@@ -36,7 +36,7 @@ import {
   enrollRepositoryInPlans,
   patchRepository,
 } from "./repositories.mjs";
-import { loadRegistry } from "../../modules/repositories/index.mjs";
+import { loadRegistry, updateRegistry, upsertRepository, recordDiscovery } from "../../modules/repositories/index.mjs";
 import { buildRepositoryHashIndex } from "./telemetry-repository.mjs";
 import { createHash } from "node:crypto";
 import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
@@ -780,7 +780,7 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     updateLocalhosterSettings: (params) => updateLocalhosterSettings(params),
     loadLocalhosterHistory: (key) => loadLocalhosterHistory(key),
     loadLocalhosterMetadata: (key) => loadLocalhosterMetadata(key),
-    loadRepositories: () => loadRepositoriesPayload(),
+    loadRepositories: () => { reconcileTelemetryRepositories(); return loadRepositoriesPayload(); },
     loadRepository: (params) => loadRepositoryPayload(params),
     loadRepositoryAssociations: (params) => loadRepositoryAssociations(params),
     enrollRepositoryInPlans: (params) => enrollRepositoryInPlans(params),
@@ -1079,8 +1079,52 @@ let _repositoryHashIndexSig = null;
 function captureRepositoryHash(value) {
   return createHash("sha256").update(String(value)).digest("hex").slice(0, 24);
 }
-function repositoryHashIndexCached() {
+// Reconcile telemetry-observed repositories into the registry so `capabilities.telemetry` can be
+// true. Runs at portal repo-list load (NOT on the capture hot path): scans the spool's distinct
+// repository_ids and records one `telemetry` discovery each, batched into a single registry write.
+// Cached by spool signature so it only does work when new events have arrived. Best-effort — a
+// registry failure never breaks the repositories list.
+let _telemetryReconcileSig = null;
+export function reconcileTelemetryRepositories() {
   const sig = spoolSignature();
+  if (_telemetryReconcileSig === sig) return;
+  _telemetryReconcileSig = sig;
+  const seen = new Map(); // repository_id -> label
+  for (const event of readSpoolEventsCached()) {
+    const id = event?.repo?.repository_id;
+    if (id && !seen.has(id)) seen.set(id, event.repo.label || null);
+  }
+  if (seen.size === 0) return;
+  try {
+    updateRegistry({
+      stateRoot,
+      mutate: (registry) => {
+        let changed = false;
+        for (const [id, label] of seen) {
+          upsertRepository(registry, { id, kind: id.startsWith("git:") ? "git" : "local", displayName: label || id });
+          if (recordDiscovery(registry, id, { source: "telemetry", evidence: "telemetry-session", confidence: id.startsWith("git:") ? "high" : "medium" })) changed = true;
+        }
+        return changed;
+      },
+    });
+  } catch {
+    // Registry unavailable — telemetry capability just stays unreported; not fatal.
+  }
+}
+
+// Signature of the registry file itself (mtime+size), so the hash index is rebuilt only when the
+// REGISTRY changes — not on every spool change (the index is derived from the registry, not the
+// spool). Missing file -> "none" so a first write invalidates.
+function registrySignature() {
+  try {
+    const st = fs.statSync(repositoriesRegistryPath);
+    return `${st.mtimeMs}:${st.size}`;
+  } catch {
+    return "none";
+  }
+}
+function repositoryHashIndexCached() {
+  const sig = registrySignature();
   if (_repositoryHashIndex && _repositoryHashIndexSig === sig) return _repositoryHashIndex;
   let registry;
   try {

@@ -8,7 +8,7 @@ import { classifyCommand, failureSignature } from "./telemetry-classify.mjs";
 import { generateCaptureId } from "./telemetry-schemas/capture-schema-v3.mjs";
 import { inferPhase } from "./telemetry-phase-infer.mjs";
 import { categorizeFile } from "./telemetry-task-infer.mjs";
-import { normalizeGitRemote, localRepositoryId } from "../../modules/repositories/index.mjs";
+import { normalizeGitRemote, localRepositoryIdForRoot } from "../../modules/repositories/index.mjs";
 
 // Minimal-import capture path, split out of telemetry.mjs so the hot hook (fires on every
 // PreToolUse/PostToolUse) doesn't pay to load portal-server/config/presets/telemetry-analyze/
@@ -181,8 +181,10 @@ function repoMetadata(cwd) {
   // repository_id — the correlation the legacy raw remote_hash could never provide. repository_id
   // is credential- and path-free (git: id, or an opaque local: id derived from the root), so it is
   // safe to store in the clear. Legacy git_root_hash/remote_hash stay for the migration window.
+  // The local: id realpaths the root so it agrees with resolveProjectIdentity (Localhoster/Plans)
+  // for symlinked repos. The legacy git_root_hash below stays on the RAW toplevel for back-compat.
   const normalizedRemote = remote ? normalizeGitRemote(remote) : null;
-  const repositoryId = normalizedRemote || (root ? localRepositoryId(root) : null);
+  const repositoryId = normalizedRemote || (root ? localRepositoryIdForRoot(root) : null);
 
   const result = {
     label: root ? path.basename(root) : path.basename(cwd),

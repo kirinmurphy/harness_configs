@@ -8,6 +8,8 @@ export {
   resolveProjectIdentity,
   canonicalRepositoryId,
   localRepositoryId,
+  localRepositoryIdForRoot,
+  realpathOf,
   rootId,
   resolveGitDir,
   providerUrlForRepositoryId,
@@ -46,7 +48,6 @@ export {
 export {
   EVIDENCE_POLICY,
   evidencePolicy,
-  associateWorkingDir,
   associateResolved,
   associateLegacyHashes,
 } from "./associations.mjs";

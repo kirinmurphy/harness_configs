@@ -36,7 +36,8 @@ try {
   const summary = listPayload.repositories[0];
   const json = JSON.stringify(summary);
   assert.ok(!json.includes(tempRoot), "summary must not leak the temp/local path");
-  assert.ok(!json.includes("root"), "summary carries no localRoots/root path field");
+  assert.ok(!/\/(Users|home|tmp|var|private)\//.test(json), "summary must not contain a filesystem path");
+  assert.ok(!("root" in summary) && !("localRoots" in summary), "summary carries no root field");
   assert.equal(summary.repositoryId, id);
   assert.equal(summary.providerUrl, "https://github.com/kirinmurphy/roborepo");
   assert.deepEqual([...summary.discoveredBy].sort(), ["localhoster", "plans"]);
@@ -71,6 +72,15 @@ try {
   const one = get(`/api/repositories/${encoded}`, handlers);
   assert.equal(one.res.statusCode, 200);
   assert.equal(JSON.parse(one.res.body).repositoryId, id);
+
+  // ---- Hidden repos are omitted from the ordinary list, but counted ----
+  patchRepository({ repositoryId: id, visibility: "hidden", stateRoot });
+  const afterHide = loadRepositoriesPayload({ stateRoot });
+  assert.equal(afterHide.repositories.length, 0, "hidden repo omitted from ordinary list");
+  assert.equal(afterHide.hiddenCount, 1, "hidden repo still counted");
+  const withHidden = loadRepositoriesPayload({ stateRoot, includeHidden: true });
+  assert.equal(withHidden.repositories.length, 1, "includeHidden surfaces it");
+  patchRepository({ repositoryId: id, visibility: "visible", stateRoot }); // restore for later asserts
 
   const assoc = get(`/api/repositories/${encoded}/associations`, handlers);
   assert.equal(assoc.res.statusCode, 200);

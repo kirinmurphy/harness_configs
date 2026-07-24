@@ -1,0 +1,7 @@
+{
+  "path": ["mcp"],
+  "kind": "namespace",
+  "title": "MCPs",
+  "description": "Manage MCP registrations",
+  "order": 300
+}

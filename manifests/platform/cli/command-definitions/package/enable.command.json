@@ -1,0 +1,14 @@
+{
+  "path": ["package", "enable"],
+  "kind": "command",
+  "title": "Enable package",
+  "description": "Enable a package and apply it live",
+  "order": 40,
+  "usage": "roborepo package enable <package-id> [--dry-run]",
+  "arguments": [{ "name": "package-id", "required": true, "interactive": { "prompt": "Package id" } }],
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/packages.mjs",
+    "export": "enablePackage"
+  }
+}

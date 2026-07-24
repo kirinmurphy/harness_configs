@@ -1,0 +1,8 @@
+{
+  "path": ["apply"],
+  "kind": "internal",
+  "title": "Apply",
+  "description": "Legacy apply alias",
+  "usage": "roborepo apply [--dry-run]",
+  "execution": { "adapter": "configApply", "script": "update" }
+}

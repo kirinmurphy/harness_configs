@@ -1,0 +1,8 @@
+{
+  "path": ["telemetry", "disable"],
+  "kind": "command",
+  "title": "Disable telemetry",
+  "description": "Disable telemetry capture",
+  "order": 40,
+  "execution": { "adapter": "module", "module": "scripts/cli/telemetry.mjs", "export": "telemetryCommand", "prependArgs": ["disable"] }
+}

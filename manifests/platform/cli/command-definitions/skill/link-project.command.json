@@ -1,0 +1,15 @@
+{
+  "path": ["skill", "link-project"],
+  "kind": "command",
+  "title": "Link project skills",
+  "description": "Link this project's Codex skills into Claude",
+  "order": 20,
+  "usage": "roborepo skill link-project [--dry-run] [--uninstall]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/skills.mjs",
+    "export": "skillLink",
+    "argv": "set",
+    "commandName": "skill link-project"
+  }
+}

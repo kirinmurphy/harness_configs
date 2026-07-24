@@ -231,11 +231,11 @@ Run targeted checks.
     const beforeEnable = readSnapshotEnabled();
     assert.equal(beforeEnable.enabled, false, "plan-docs starts disabled in a fresh HOME");
 
-    spawnSync(process.execPath, [cliPath, "enable", "plan-docs"], { env, stdio: "ignore" });
+    spawnSync(process.execPath, [cliPath, "package", "enable", "plan-docs"], { env, stdio: "ignore" });
     const afterEnable = readSnapshotEnabled();
     assert.equal(afterEnable.enabled, true, "planDocsPackage.enabled reflects the real live-enabled state after `roborepo enable plan-docs`");
 
-    spawnSync(process.execPath, [cliPath, "disable", "plan-docs"], { env, stdio: "ignore" });
+    spawnSync(process.execPath, [cliPath, "package", "disable", "plan-docs"], { env, stdio: "ignore" });
     const afterDisable = readSnapshotEnabled();
     assert.equal(afterDisable.enabled, false, "planDocsPackage.enabled reflects disabled state after `roborepo disable plan-docs`");
 

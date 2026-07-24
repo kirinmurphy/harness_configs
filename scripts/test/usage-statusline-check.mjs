@@ -75,7 +75,7 @@ assert.doesNotMatch(invalid.stderr, /\{ nope/, "invalid JSON should not echo inp
 const home = makeHome();
 try {
   const env = { ...process.env, HOME: home, ROBOREPO_STATE_DIR: path.join(home, ".roborepo"), ROBOREPO_SKIP_MCP: "1" };
-  const enable = spawnSync(process.execPath, [cli, "enable", "usage-statusline"], { env, encoding: "utf8" });
+  const enable = spawnSync(process.execPath, [cli, "package", "enable", "usage-statusline"], { env, encoding: "utf8" });
   assert.equal(enable.status, 0, `enable should succeed:\n${enable.stderr}\n${enable.stdout}`);
 
   const runtimePath = path.join(home, ".roborepo", "runtime", "usage-statusline", "claude-statusline.mjs");
@@ -91,7 +91,7 @@ try {
     assert.match(codexConfig, new RegExp(JSON.stringify(item)), `Codex status_line contains ${item}`);
   }
 
-  const disable = spawnSync(process.execPath, [cli, "disable", "usage-statusline"], { env, encoding: "utf8" });
+  const disable = spawnSync(process.execPath, [cli, "package", "disable", "usage-statusline"], { env, encoding: "utf8" });
   assert.equal(disable.status, 0, `disable should succeed:\n${disable.stderr}\n${disable.stdout}`);
   const afterSettings = JSON.parse(fs.readFileSync(path.join(home, ".claude", "settings.json"), "utf8"));
   assert.equal(afterSettings.statusLine, undefined, "disable removes owned Claude statusLine");
@@ -108,7 +108,7 @@ const conflictHome = makeHome();
 try {
   fs.writeFileSync(path.join(conflictHome, ".claude", "settings.json"), `${JSON.stringify({ statusLine: { type: "command", command: "custom-status" } }, null, 2)}\n`);
   const env = { ...process.env, HOME: conflictHome, ROBOREPO_STATE_DIR: path.join(conflictHome, ".roborepo"), ROBOREPO_SKIP_MCP: "1" };
-  const enable = spawnSync(process.execPath, [cli, "enable", "usage-statusline"], { env, encoding: "utf8" });
+  const enable = spawnSync(process.execPath, [cli, "package", "enable", "usage-statusline"], { env, encoding: "utf8" });
   assert.equal(enable.status, 0, `conflict enable should report but not fail:\n${enable.stderr}\n${enable.stdout}`);
   const settings = JSON.parse(fs.readFileSync(path.join(conflictHome, ".claude", "settings.json"), "utf8"));
   assert.equal(settings.statusLine.command, "custom-status", "unmanaged Claude statusLine is preserved");

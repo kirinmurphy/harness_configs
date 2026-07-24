@@ -1,255 +1,61 @@
 #!/usr/bin/env node
-// roborepo CLI orchestrator. User-facing usage/menu text and repo script targets live in
-// manifests/platform/cli-commands.json; command implementations live in sibling modules.
+// roborepo CLI composition root. Command/menu/help metadata lives in the command catalog;
+// command behavior stays in focused sibling modules.
 
-import fs from "node:fs";
-import path from "node:path";
-import { selectMenu } from "./skill-lib.mjs";
-import { repoRoot } from "./paths.mjs";
-import { runRepoCommand } from "./repo-script-runner.mjs";
-import { skillLink, skillExport, skillAdopt, skillNative, skillInspect } from "./skills.mjs";
-import { skillNew } from "./skill-new.mjs";
-import { skillAudit } from "./skill-audit.mjs";
-import { skillTriggerCheck } from "./skill-trigger-check.mjs";
-import { indexCode, indexDocs, watchCode, runCmd } from "./index.mjs";
-import { maybeRunPresetOnboarding, presetsCommand } from "./presets.mjs";
-import { enablePackage, disablePackage, packageCommand } from "./packages.mjs";
-import { configCommand } from "./config.mjs";
-import { experimentalCommand } from "./package-catalog.mjs";
-import { packageMode } from "./paths.mjs";
-import { setupCommand, versionCommand, workspaceCommand } from "./workspace.mjs";
+import { loadCommandCatalog } from "./command-catalog.mjs";
+import { executeCommand, validateExecutions } from "./command-executor.mjs";
+import { resolveCommand } from "./command-resolver.mjs";
+import { renderHelp } from "./help-renderer.mjs";
+import { runInteractiveMenu } from "./interactive-menu.mjs";
+import { maybeRunPresetOnboarding } from "./presets.mjs";
 
 const argv = await maybeRunPresetOnboarding(process.argv.slice(2));
-const cliCatalog = JSON.parse(fs.readFileSync(path.join(repoRoot, "manifests", "platform", "cli-commands.json"), "utf8"));
+const catalog = loadCommandCatalog();
+validateExecutions({ catalog });
 
-// --------------------------------------------------------------------------- help
-
-function usage() {
-  console.log(`roborepo — harness config CLI\n\nusage:\n  ${cliCatalog.usage.join("\n  ")}`);
+async function dispatch(args) {
+  const resolved = resolveCommand(catalog, args);
+  if (resolved.kind === "root-menu") {
+    return runInteractiveMenu({ catalog, dispatchCommand });
+  }
+  if (resolved.kind === "menu") {
+    return runInteractiveMenu({
+      catalog,
+      node: resolved.node,
+      tokens: resolved.tokens,
+      dispatchCommand,
+    });
+  }
+  if (resolved.kind === "help") {
+    console.log(renderHelp(catalog, resolved.node, resolved.tokens));
+    return;
+  }
+  if (resolved.kind === "command") {
+    return dispatchCommand(resolved.node, resolved.tokens, resolved.args);
+  }
+  if (resolved.kind === "removed") {
+    return removedCommandError(resolved);
+  }
+  return invalidCommandError(resolved);
 }
 
-function usageError() {
-  usage();
+async function dispatchCommand(node, tokens, args) {
+  return executeCommand({ catalog, node, tokens, args });
+}
+
+function removedCommandError({ replacement }) {
+  console.error(replacement.message || "command removed");
+  if (replacement.replacement?.length) {
+    console.error(`Try: ${catalog.commandName} ${replacement.replacement.join(" ")}`);
+  }
   process.exit(2);
 }
 
-// --------------------------------------------------------------------------- menu
-
-async function interactiveMenu() {
-  const choice = await selectMenu("roborepo — choose an action:", cliCatalog.menu);
-  if (choice === null) {
-    console.log("cancelled.");
-    return;
-  }
-  // "run" from the menu has no command to run; guide the user instead of erroring.
-  if (Array.isArray(choice) && choice.length === 1 && choice[0] === "run") {
-    console.log("usage: roborepo run <cmd> [args...]");
-    return;
-  }
-  if (Array.isArray(choice) && choice.length === 2 && choice[0] === "mcp" && choice[1] === "add") {
-    console.log("usage: roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>]");
-    return;
-  }
-  if (Array.isArray(choice) && choice.length === 2 && choice[0] === "skill" && choice[1] === "adopt") {
-    console.log("usage: roborepo skill adopt <name>");
-    return;
-  }
-  if (Array.isArray(choice) && choice.length === 2 && choice[0] === "skill" && choice[1] === "inspect") {
-    console.log("usage: roborepo skill inspect <name>");
-    return;
-  }
-  await dispatch(choice);
-}
-
-// --------------------------------------------------------------------------- dispatch
-
-async function dispatch(args) {
-  const [cat, sub, ...rest] = args;
-  const flags = new Set(rest);
-
-  switch (cat) {
-    case undefined:
-      return interactiveMenu();
-
-    case "-h":
-    case "--help":
-      return usage();
-
-    case "skill":
-      if (sub === "export-to-project") return skillExport(new Set(rest), `skill ${sub}`);
-      if (sub === "new") return skillNew(rest);
-      if (sub === "adopt") return skillAdopt(rest);
-      if (sub === "link-project") {
-        return skillLink(flags, `skill ${sub}`);
-      }
-      if (sub === "sync-global") {
-        if (rest.length > 0) {
-          console.error(`unknown flag for "skill ${sub}": ${rest.join(" ")}`);
-          return usageError();
-        }
-        return runRepoCommand(cliCatalog.repoScripts["skill sync-global"], rest);
-      }
-      if (sub === "render-commands") return runRepoCommand(cliCatalog.repoScripts["skill render-commands"], rest);
-      if (sub === "audit") return skillAudit(rest);
-      if (sub === "triggers") return skillTriggerCheck(rest);
-      if (sub === "inspect") return skillInspect(rest);
-      if (sub === "native") return skillNative(rest);
-      console.error(`unknown: roborepo skill ${sub ?? ""}`.trim());
-      return usageError();
-
-    case "index":
-      if (sub === "code") return indexCode(rest);
-      if (sub === "docs") return indexDocs(rest);
-      console.error(`unknown: roborepo index ${sub ?? ""}`.trim());
-      return usageError();
-
-    case "mcp":
-      if (sub === "add") {
-        const { mcpAdd } = await import("./mcp.mjs");
-        return mcpAdd(rest);
-      }
-      if (sub === "apply") {
-        const { mcpApply } = await import("./mcp.mjs");
-        return mcpApply({ dryRun: rest.includes("--dry-run") });
-      }
-      console.error(`unknown: roborepo mcp ${sub ?? ""}`.trim());
-      return usageError();
-
-    case "version":
-      return versionCommand();
-
-    case "workspace":
-      return workspaceCommand(sub === undefined ? [] : [sub, ...rest]);
-
-    case "setup":
-      return setupCommand(sub === undefined ? rest : [sub, ...rest]);
-
-    case "onboard":
-      return presetsCommand(["onboard", ...rest]);
-
-    // First-install welcome page + 4-option menu. Invoked by scripts/install/main.sh after core
-    // install, never by users directly (deliberately absent from usage/menu). One menu option calls
-    // `onboard`; onboarding is no longer auto-run by install.
-    case "onboard-intro":
-      return presetsCommand(["intro", ...rest]);
-
-    // Alias of `serve --detach`: starts the portal in the background and opens it in the browser.
-    case "web": {
-      const { serveCommand } = await import("./telemetry.mjs");
-      return serveCommand(["--detach", ...[sub, ...rest].filter(Boolean)], { allowPortFallback: true });
-    }
-
-    // `bundle` / `presets` are internal install-time verbs (run by scripts/install/main.sh), not
-    // user-facing — deliberately absent from usage/menu in cli-commands.json. Kept dispatchable so
-    // install and back-compat callers still work. Users manage the platform via update/uninstall and
-    // features via enable/disable.
-    case "bundle":
-      return presetsCommand(sub === undefined ? ["bundle"] : ["bundle", sub, ...rest]);
-
-    case "presets":
-      return presetsCommand(sub === undefined ? [] : [sub, ...rest]);
-
-    // `telemetry capture` is the hot hook path — fires on every PreToolUse/PostToolUse. It gets its
-    // own minimal-import module (telemetry-capture.mjs) so this cold `node` invocation doesn't pay to
-    // load telemetry.mjs's full graph (portal-server, config, config-mutate, telemetry-analyze,
-    // telemetry-insights) just to append one JSONL line.
-    case "telemetry":
-      if (sub === "capture") {
-        const { telemetryCaptureCommand } = await import("./telemetry-capture.mjs");
-        return telemetryCaptureCommand(rest);
-      }
-      {
-        const { telemetryCommand } = await import("./telemetry.mjs");
-        return telemetryCommand(sub === undefined ? [] : [sub, ...rest]);
-      }
-
-    case "serve": {
-      const { serveCommand } = await import("./telemetry.mjs");
-      return serveCommand([sub, ...rest].filter(Boolean));
-    }
-
-    case "localhoster": {
-      const { localhosterCommand } = await import("./localhoster.mjs");
-      return localhosterCommand([sub, ...rest].filter(Boolean));
-    }
-
-    case "enable":
-      return enablePackage(sub === undefined ? rest : [sub, ...rest]);
-
-    case "disable":
-      return disablePackage(sub === undefined ? rest : [sub, ...rest]);
-
-    case "package":
-      return packageCommand(sub === undefined ? [] : [sub, ...rest]);
-
-    case "config":
-      return configCommand(sub === undefined ? [] : [sub, ...rest]);
-
-    case "experimental":
-      return experimentalCommand(sub === undefined ? [] : [sub, ...rest]);
-
-    case "watch":
-      if (sub === "code") return watchCode(rest);
-      console.error(`unknown: roborepo watch ${sub ?? ""}`.trim());
-      return usageError();
-
-    case "plans": {
-      const { plansCommand } = await import("./plans.mjs");
-      return plansCommand(sub === undefined ? rest : [sub, ...rest]);
-    }
-
-    case "run":
-      return runCmd(sub === undefined ? [] : [sub, ...rest]);
-
-    // Lifecycle verbs -> existing bash scripts. The first install always happens via the shell
-    // bootstrap (scripts/install/main.sh) — that's how roborepo lands on PATH — so the CLI
-    // only ever re-applies: `update` re-runs that same script to pick up new config.
-    case "update": {
-      if (packageMode) {
-        console.log("package mode: `roborepo update` is an alias for `roborepo apply`; it does not download packages.");
-        return dispatch(["apply", sub, ...rest].filter(Boolean));
-      }
-      const { runUpdateWithReport } = await import("./update-report.mjs");
-      return runUpdateWithReport(cliCatalog.repoScripts.update, [sub, ...rest].filter(Boolean));
-    }
-    case "apply": {
-      const applyArgs = [sub, ...rest].filter(Boolean);
-      setupCommand(applyArgs.includes("--dry-run") ? ["--dry-run"] : []);
-      const { runUpdateWithReport } = await import("./update-report.mjs");
-      return runUpdateWithReport(cliCatalog.repoScripts.update, applyArgs);
-    }
-    case "repair":
-      return runRepoCommand(cliCatalog.repoScripts.repair, [sub, ...rest].filter(Boolean));
-    case "uninstall":
-      return runRepoCommand(cliCatalog.repoScripts.uninstall, [sub, ...rest].filter(Boolean));
-    case "doctor":
-      return runRepoCommand(cliCatalog.repoScripts.doctor, [sub, ...rest].filter(Boolean));
-    case "verify": {
-      const verifyArgs = [sub, ...rest].filter(Boolean);
-      const verbose = verifyArgs.includes("--verbose");
-      return runRepoCommand(
-        cliCatalog.repoScripts.verify,
-        verbose ? verifyArgs.filter((arg) => arg !== "--verbose") : [...verifyArgs, "--quiet"],
-      );
-    }
-    case "rules":
-      if (sub === "render") {
-        const { renderHomeRules } = await import("./rules-render.mjs");
-        return renderHomeRules({ dryRun: flags.has("--dry-run") });
-      }
-      if (sub === "check-home") {
-        const { checkHomeRules } = await import("./rules-render.mjs");
-        process.exit(checkHomeRules() ? 0 : 1);
-      }
-      return runRepoCommand(cliCatalog.repoScripts.rules, [sub, ...rest].filter(Boolean));
-    case "permissions":
-      return runRepoCommand(cliCatalog.repoScripts.permissions, [sub, ...rest].filter(Boolean));
-
-    default:
-      console.error(`unknown command: ${args.join(" ")}`);
-      usage();
-      process.exit(2);
-  }
+function invalidCommandError({ tokens, suggestions }) {
+  console.error(`unknown command: ${tokens.join(" ")}`);
+  if (suggestions.length) console.error(`Did you mean: ${suggestions.join(", ")}?`);
+  console.error(catalog.helpLabels.scopedHelpHint);
+  process.exit(2);
 }
 
 dispatch(argv).catch((err) => {

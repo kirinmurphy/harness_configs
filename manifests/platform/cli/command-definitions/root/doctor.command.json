@@ -1,0 +1,9 @@
+{
+  "path": ["doctor"],
+  "kind": "command",
+  "title": "Doctor",
+  "description": "Diagnose installation and configuration problems",
+  "order": 40,
+  "usage": "roborepo doctor [--installed] [--verbose]",
+  "execution": { "adapter": "repoScript", "script": "doctor" }
+}

@@ -64,10 +64,12 @@ assert "source layout: legacy globals/rules absent" bash -c "! test -e '${repo_r
 pkg_app="${work}/pkg-app"
 pkg_state="${work}/pkg-state"
 pkg_workspace="${work}/pkg-workspace"
-mkdir -p "${pkg_app}/manifests/platform" "${pkg_app}/scripts/build"
+mkdir -p "${pkg_app}/manifests/platform" "${pkg_app}/scripts/build" "${pkg_app}/scripts/cli"
 cp "${repo_root}/package.json" "${pkg_app}/package.json"
+cp -R "${repo_root}/scripts/cli/." "${pkg_app}/scripts/cli/"
 cp "${repo_root}/manifests/platform/cli-commands.json" "${pkg_app}/manifests/platform/cli-commands.json"
 cp "${repo_root}/manifests/platform/context-cost-thresholds.json" "${pkg_app}/manifests/platform/context-cost-thresholds.json"
+cp -R "${repo_root}/manifests/platform/cli" "${pkg_app}/manifests/platform/cli"
 printf '#!/usr/bin/env bash\nexit 0\n' > "${pkg_app}/scripts/build/render-rules.sh"
 chmod +x "${pkg_app}/scripts/build/render-rules.sh"
 assert "package mode: version reports package roots" \
@@ -340,13 +342,14 @@ mkdir -p \
   "${new_harness}/globals/system/skills" \
   "${new_harness}/globals/packages" \
   "${new_harness}/local/skills"
-cp "${repo_root}"/scripts/cli/*.mjs "${new_harness}/scripts/cli/"
+cp -R "${repo_root}/scripts/cli/." "${new_harness}/scripts/cli/"
 cp "${repo_root}/scripts/build/link-skills.sh" "${new_harness}/scripts/build/link-skills.sh"
 cp "${repo_root}/scripts/build/link-global-skills.sh" "${new_harness}/scripts/build/link-global-skills.sh"
 cp "${repo_root}/scripts/build/skill-lib.sh" "${new_harness}/scripts/build/skill-lib.sh"
 cp "${repo_root}/scripts/build/render-slash-commands.mjs" "${new_harness}/scripts/build/render-slash-commands.mjs"
 cp "${repo_root}/manifests/platform/cli-commands.json" "${new_harness}/manifests/platform/cli-commands.json"
 cp "${repo_root}/manifests/platform/context-cost-thresholds.json" "${new_harness}/manifests/platform/context-cost-thresholds.json"
+cp -R "${repo_root}/manifests/platform/cli" "${new_harness}/manifests/platform/cli"
 cp "${repo_root}/manifests/inventory/mcp-presets.json" "${new_harness}/manifests/inventory/mcp-presets.json"
 cp "${repo_root}/manifests/inventory/package-categories.json" "${new_harness}/manifests/inventory/package-categories.json"
 cat > "${new_harness}/README.md" <<'EOF_README'
@@ -510,12 +513,12 @@ cfg_settings_before="$(git -C "${repo_root}" status --porcelain generated/claude
 
 # disable on a fresh home is a clean no-op (idempotent); dry-run never writes.
 assert "config: disable dry-run does not write settings" \
-  bash -c "${cfg_env} node '${cli}' disable jcodemunch --dry-run >/dev/null && [ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" = 0 ]"
+  bash -c "${cfg_env} node '${cli}' package disable jcodemunch --dry-run >/dev/null && [ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" = 0 ]"
 assert "config: disable unknown package exits non-zero" \
-  bash -c "! ${cfg_env} node '${cli}' disable nope-pkg >/dev/null 2>&1"
+  bash -c "! ${cfg_env} node '${cli}' package disable nope-pkg >/dev/null 2>&1"
 
 # enable writes perms+hooks+rules; disable reverses them. (mcp add fails gracefully w/o claude CLI.)
-bash -c "${cfg_env} node '${cli}' enable jcodemunch >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package enable jcodemunch >/dev/null 2>&1" || true
 assert "config: enable wires package permissions" \
   bash -c "[ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" -gt 0 ]"
 assert "config: enable wires package-owned Codex tool approvals" \
@@ -529,7 +532,7 @@ assert "config: package snapshot includes runtime status and component status" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='jcodemunch');process.exit(p?.enabled===true&&p?.status==='partial'&&Array.isArray(p.componentStatus)&&p.componentStatus.some(x=>x.type==='mcp'&&x.state==='missing')?0:1)})\""
 assert "config: package snapshot tracks package-owned Codex tool approvals" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='jcodemunch');process.exit(p?.componentStatus?.some(x=>x.type==='codex_tool_approvals'&&x.state==='present')?0:1)})\""
-bash -c "${cfg_env} node '${cli}' disable jcodemunch >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package disable jcodemunch >/dev/null 2>&1" || true
 assert "config: disable removes package permissions" \
   bash -c "[ \"\$(node -e \"console.log((require('${cfg_home}/.claude/settings.json').permissions?.allow||[]).length)\")\" = 0 ]"
 assert "config: disable removes package hooks" \
@@ -541,12 +544,12 @@ assert "config: enable/disable did not mutate tracked repo source" \
 
 # Plugin component type (caveman package): enable writes enabledPlugins bool + marketplace entry,
 # disable removes both. The harness performs the actual fetch on next launch — not asserted here.
-bash -c "${cfg_env} node '${cli}' enable caveman >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package enable caveman >/dev/null 2>&1" || true
 assert "config: enable plugin sets enabledPlugins bool + marketplace" \
   bash -c "node -e \"const s=require('${cfg_home}/.claude/settings.json');process.exit(s.enabledPlugins?.['caveman@caveman']===true&&!!s.extraKnownMarketplaces?.caveman?0:1)\""
 assert "config: caveman package reports enabled in snapshot" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='caveman');process.exit(p&&p.enabled?0:1)})\""
-bash -c "${cfg_env} node '${cli}' disable caveman >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package disable caveman >/dev/null 2>&1" || true
 assert "config: disable plugin removes bool + marketplace" \
   bash -c "node -e \"const s=require('${cfg_home}/.claude/settings.json');process.exit(!s.enabledPlugins?.['caveman@caveman']&&!s.extraKnownMarketplaces?.caveman?0:1)\""
 assert "config: caveman package reports disabled after removal" \
@@ -557,7 +560,7 @@ mkdir -p "${recon_home}/.claude" "${recon_home}/.codex"
 echo '{}' > "${recon_home}/.claude/settings.json"
 printf '' > "${recon_home}/.codex/config.toml"
 recon_env="HOME='${recon_home}' ROBOREPO_STATE_DIR='${recon_home}/.roborepo' ROBOREPO_SKIP_MCP=1"
-bash -c "${recon_env} node '${cli}' enable jcodemunch >/dev/null 2>&1 && ${recon_env} node '${cli}' enable caveman >/dev/null 2>&1" || true
+bash -c "${recon_env} node '${cli}' package enable jcodemunch >/dev/null 2>&1 && ${recon_env} node '${cli}' package enable caveman >/dev/null 2>&1" || true
 cp "${repo_root}/generated/claude/settings.json" "${recon_home}/.claude/settings.json"
 cp "${repo_root}/generated/codex/config.toml" "${recon_home}/.codex/config.toml"
 bash -c "${recon_env} node '${cli}' package reconcile >/dev/null 2>&1" || true
@@ -591,7 +594,7 @@ assert "package adopt-live marks external skill-component package as enabled" \
 # CLAUDE.md and AGENTS.md; snapshot reports enabled; toggles are independent; disable removes from
 # both paths. The throwaway home has .claude and .codex dirs, so "both" targets both harnesses.
 printf 'override custom\n' > "${cfg_home}/.codex/AGENTS.override.md"
-bash -c "${cfg_env} node '${cli}' enable impact-awareness >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package enable impact-awareness >/dev/null 2>&1" || true
 assert "config: rules pkg merges into Claude CLAUDE.md" \
   bash -c "grep -q 'Impact Awareness' '${cfg_home}/.claude/CLAUDE.md'"
 assert "config: rules pkg merges into Codex AGENTS.md (both-harness parity)" \
@@ -604,8 +607,8 @@ assert "config: rules pkg reports enabled in snapshot" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='impact-awareness');process.exit(p&&p.enabled?0:1)})\""
 # Independence: enabling a second behavior must not disturb the first; disabling the first must leave
 # the second in place in both harnesses.
-bash -c "${cfg_env} node '${cli}' enable skill-visibility >/dev/null 2>&1" || true
-bash -c "${cfg_env} node '${cli}' disable impact-awareness >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package enable skill-visibility >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package disable impact-awareness >/dev/null 2>&1" || true
 assert "config: disable rules pkg removes its block from both harnesses" \
   bash -c "! grep -q 'Impact Awareness' '${cfg_home}/.claude/CLAUDE.md' && ! grep -q 'Impact Awareness' '${cfg_home}/.codex/AGENTS.md'"
 assert "config: disabling one rules pkg leaves the others (Claude)" \
@@ -614,16 +617,16 @@ assert "config: disabling one rules pkg leaves the others (Codex)" \
   bash -c "grep -q 'Skill Visibility' '${cfg_home}/.codex/AGENTS.md'"
 assert "config: existing Codex override keeps user text after rerender" \
   bash -c "grep -q 'Skill Visibility' '${cfg_home}/.codex/AGENTS.override.md' && grep -q 'override custom' '${cfg_home}/.codex/AGENTS.override.md'"
-bash -c "${cfg_env} node '${cli}' disable skill-visibility >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package disable skill-visibility >/dev/null 2>&1" || true
 
 broken_home="${work}/broken-rules-home"
 mkdir -p "${broken_home}/.codex"
 printf '<!-- BEGIN managed:roborepo-code-style -->\n' > "${broken_home}/.codex/AGENTS.md"
 assert "config: managed rules fail safely on broken marker" \
-  bash -c "! HOME='${broken_home}' ROBOREPO_STATE_DIR='${broken_home}/.roborepo' node '${cli}' enable impact-awareness >'${broken_home}/out' 2>&1 && grep -q 'incomplete Roborepo managed block' '${broken_home}/out'"
+  bash -c "! HOME='${broken_home}' ROBOREPO_STATE_DIR='${broken_home}/.roborepo' node '${cli}' package enable impact-awareness >'${broken_home}/out' 2>&1 && grep -q 'incomplete Roborepo managed block' '${broken_home}/out'"
 printf '<!-- END managed:roborepo-code-style -->\nuser text\n<!-- BEGIN managed:roborepo-code-style -->\n' > "${broken_home}/.codex/AGENTS.md"
 assert "config: managed rules fail safely on reversed markers" \
-  bash -c "! HOME='${broken_home}' ROBOREPO_STATE_DIR='${broken_home}/.roborepo' node '${cli}' enable impact-awareness >'${broken_home}/out-reversed' 2>&1 && grep -q 'incomplete Roborepo managed block' '${broken_home}/out-reversed'"
+  bash -c "! HOME='${broken_home}' ROBOREPO_STATE_DIR='${broken_home}/.roborepo' node '${cli}' package enable impact-awareness >'${broken_home}/out-reversed' 2>&1 && grep -q 'incomplete Roborepo managed block' '${broken_home}/out-reversed'"
 
 legacy_import_home="${work}/legacy-import-home"
 mkdir -p "${legacy_import_home}/.claude" "${legacy_import_home}/.roborepo/rules"
@@ -634,32 +637,32 @@ assert "config: Claude legacy import block migrates to inline rules" \
 
 # Service component (telemetry as a package): enable via the generic package path flips its state +
 # snapshot, disable reverses. The service handler owns telemetry's bespoke install (hooks + spool).
-bash -c "${cfg_env} node '${cli}' enable telemetry >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package enable telemetry >/dev/null 2>&1" || true
 assert "config: enable service package flips telemetry state" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const p=s.packages.find(x=>x.id==='telemetry');process.exit(s.telemetry.enabled&&p?.enabled&&p?.desired&&p?.status==='enabled'?0:1)})\""
 # Administratively-off service: the telemetry PACKAGE stays enabled (desired) but its capture state
 # is turned off (state file present, enabled:false). This must read as "configured" — installed, the
 # service is just not running — NOT "partial", which would look like a broken install. Re-enable the
 # package, then force the service state off directly and check the status folds to "configured".
-bash -c "${cfg_env} node '${cli}' enable telemetry >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package enable telemetry >/dev/null 2>&1" || true
 printf '{"enabled":false,"updatedAt":"x"}\n' > "${cfg_home}/.roborepo/telemetry/state.json"
 assert "config: enabled package with capture off reports configured, not partial" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const p=s.packages.find(x=>x.id==='telemetry');const svc=p?.componentStatus?.find(x=>x.type==='service');process.exit(p?.desired===true&&p?.status==='configured'&&svc?.state==='inactive'?0:1)})\""
-bash -c "${cfg_env} node '${cli}' disable telemetry >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package disable telemetry >/dev/null 2>&1" || true
 assert "config: disable service package clears telemetry state" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();process.exit(!s.telemetry.enabled&&!s.packages.find(p=>p.id==='telemetry')?.enabled?0:1)})\""
 
 # Skill component: a package whose payload is a shared-skill copy. Enable copies it into both harness
 # skill dirs via the machine-local cache; disable removes the owned cache entry and views. Reuses
 # the same skill materializer as the Code Conventions toggles.
-bash -c "${cfg_env} node '${cli}' enable case-study-pack >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package enable case-study-pack >/dev/null 2>&1" || true
 assert "config: enabling a skill-component package links the Claude view" \
   assert_skill_cache_link "${cfg_home}" "claude" "case-study" "${repo_root}/globals/packages/case-study-pack/skills/case-study" "config: Claude skill cache link created"
 assert "config: enabling a skill-component package links the Codex view" \
   assert_skill_cache_link "${cfg_home}" "codex" "case-study" "${repo_root}/globals/packages/case-study-pack/skills/case-study" "config: Codex skill cache link created"
 assert "config: skill-component package reports enabled" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{process.exit(c.readConfigSnapshot().packages.find(p=>p.id==='case-study-pack')?.enabled?0:1)})\""
-bash -c "${cfg_env} node '${cli}' disable case-study-pack >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package disable case-study-pack >/dev/null 2>&1" || true
 assert "config: disabling a skill-component package removes the skill links" \
   bash -c "! test -e '${cfg_home}/.claude/skills/case-study' && ! test -e '${cfg_home}/.codex/skills/case-study' && ! test -e '${cfg_home}/.roborepo/skills/case-study'"
 
@@ -682,13 +685,13 @@ cat > "${cfg_workspace}/packages/test-composite/package.config.json" <<'JSON'
   "resources": []
 }
 JSON
-bash -c "${cfg_env} node '${cli}' enable test-composite >/dev/null 2>&1" || true
+bash -c "${cfg_env} node '${cli}' package enable test-composite >/dev/null 2>&1" || true
 assert "config: enabling a composite package enables its required packages" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const e=id=>s.packages.find(p=>p.id===id)?.enabled;process.exit(e('jcodemunch')&&e('jdocmunch')&&e('test-composite')?0:1)})\""
 assert "config: disabling dependency required by enabled package is rejected" \
-  bash -c "! ${cfg_env} node '${cli}' disable jdocmunch >/dev/null 2>&1"
+  bash -c "! ${cfg_env} node '${cli}' package disable jdocmunch >/dev/null 2>&1"
 assert "config: cascade disables dependent package and dependency" \
-  bash -c "${cfg_env} node '${cli}' disable jdocmunch --cascade >/dev/null 2>&1 && ${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const e=id=>s.packages.find(p=>p.id===id)?.enabled;process.exit(!e('jdocmunch')&&!e('test-composite')?0:1)})\""
+  bash -c "${cfg_env} node '${cli}' package disable jdocmunch --cascade >/dev/null 2>&1 && ${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const e=id=>s.packages.find(p=>p.id===id)?.enabled;process.exit(!e('jdocmunch')&&!e('test-composite')?0:1)})\""
 assert "config: snapshot exposes a package's requires list" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const p=c.readConfigSnapshot().packages.find(x=>x.id==='test-composite');process.exit(Array.isArray(p.requires)&&p.requires.includes('jcodemunch')&&p.requires.includes('jdocmunch')?0:1)})\""
 
@@ -714,7 +717,7 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
   # Dashboard POST endpoints: start the loopback server, exercise both routes, assert JSON contract.
   cfg_ready="${cfg_home}/portal.ready"
   env HOME="${cfg_home}" ROBOREPO_STATE_DIR="${cfg_home}/.roborepo" ROBOREPO_PORTAL_READY_FILE="${cfg_ready}" \
-    node "${cli}" serve --no-open --port 0 --allow-zero-port >"${cfg_home}/portal.log" 2>&1 &
+    node "${cli}" web --no-open --port 0 --allow-zero-port >"${cfg_home}/portal.log" 2>&1 &
   cfg_srv=$!
   cfg_port=""
   for _ in $(seq 1 50); do
@@ -737,8 +740,8 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
     bash -c "node -e \"const j=require('${cfg_home}/config-snapshot.json');const secs=j.behaviorView.filter(s=>s.kind!=='permissions');const perms=j.behaviorView.find(s=>s.kind==='permissions');process.exit(secs.length&&secs.every(s=>s.contextCost&&Number.isFinite(s.contextCost.activeStartupTokens))&&perms.contextCost.label==='not-prompt-context'?0:1)\""
   assert "config: portal status identifies current app" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/portal/status' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.appRoot==='${repo_root}'&&String(j.portalDir).endsWith('/portal')&&Number.isInteger(j.pid)&&j.pages.some(p=>p.id==='localhoster'&&p.path==='/localhoster')?0:1)})\""
-  assert "config: serve reuses an existing current portal" \
-    bash -c "${cfg_env} node '${cli}' serve --no-open --port '${cfg_port}' >'${cfg_home}/portal-reuse.log' 2>&1 && grep -q 'already running' '${cfg_home}/portal-reuse.log'"
+  assert "config: web reuses an existing current portal" \
+    bash -c "${cfg_env} node '${cli}' web --no-open --port '${cfg_port}' >'${cfg_home}/portal-reuse.log' 2>&1 && grep -q 'already running' '${cfg_home}/portal-reuse.log'"
   cfg_token="$(curl -s "http://127.0.0.1:${cfg_port}/config" | sed -n 's/.*name="roborepo-portal-token" content="\([^"]*\)".*/\1/p' | head -1)"
   assert "config: portal exposes mutation token only in served HTML" \
     bash -c "test -n '${cfg_token}'"
@@ -781,9 +784,9 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
   # panels render) and is invisible to HTTP-status checks. Guards the template-literal trap (a literal
   # newline inside a JS string, etc.).
   assert "config: served /config dashboard JS parses" \
-    bash -c "dashjs=\"${cfg_home}/dash.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/config/app.js' > \"\${dashjs}\" && node --check \"\${dashjs}\""
+    bash -c "dashjs=\"${cfg_home}/dash.mjs\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/config/app.js' > \"\${dashjs}\" && node --check \"\${dashjs}\""
   assert "localhoster: served dashboard JS parses" \
-    bash -c "dashjs=\"${cfg_home}/localhoster.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/localhoster/app.js' > \"\${dashjs}\" && node --check \"\${dashjs}\""
+    bash -c "dashjs=\"${cfg_home}/localhoster.mjs\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/localhoster/app.js' > \"\${dashjs}\" && node --check \"\${dashjs}\""
 else
   [[ "${quiet}" -eq 0 ]] && echo "skip: config portal HTTP tests (loopback bind unavailable)"
 fi
@@ -833,9 +836,9 @@ if [[ -n "${cfg_port:-}" ]]; then
   assert "telemetry: served page includes cohort filter bar and marker-create dialog" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/telemetry' | grep -q 'id=\"cohortfilt\"' && curl -s 'http://127.0.0.1:${cfg_port}/telemetry' | grep -q 'id=\"marker-modal\"'"
   assert "telemetry: served dashboard JS parses" \
-    bash -c "telejs=\"${cfg_home}/telemetry-app.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/telemetry/app.js' > \"\${telejs}\" && node --check \"\${telejs}\""
+    bash -c "telejs=\"${cfg_home}/telemetry-app.mjs\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/telemetry/app.js' > \"\${telejs}\" && node --check \"\${telejs}\""
   assert "telemetry: served chart.js parses" \
-    bash -c "chartjs=\"${cfg_home}/telemetry-chart.js\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/telemetry/chart.js' > \"\${chartjs}\" && node --check \"\${chartjs}\""
+    bash -c "chartjs=\"${cfg_home}/telemetry-chart.mjs\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/telemetry/chart.js' > \"\${chartjs}\" && node --check \"\${chartjs}\""
   assert "telemetry: GET /api/telemetry/markers returns an array (empty spool ok)" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/telemetry/markers' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(Array.isArray(j.markers)?0:1)})\""
   assert "telemetry: POST /api/telemetry/markers without token returns 403" \
@@ -903,8 +906,8 @@ assert "telemetry perf: incremental spool store equals a full re-read" \
   node "${repo_root}/scripts/test/telemetry-spool-store-check.mjs"
 assert "telemetry perf: analyzer output unchanged (report correctness)" \
   node "${repo_root}/scripts/test/telemetry-correctness-check.mjs"
-assert "serve: top-level alias rejects invalid port" \
-  bash -c "! env ${tele_env[*]} node '${cli}' serve --port 0 >/dev/null 2>&1"
+assert "web: rejects invalid port" \
+  bash -c "! env ${tele_env[*]} node '${cli}' web --port 0 >/dev/null 2>&1"
 assert "telemetry start: removed" \
   bash -c "! env ${tele_env[*]} node '${cli}' telemetry start >/dev/null 2>&1"
 assert "telemetry serve: removed" \
@@ -1035,15 +1038,15 @@ EOF
 assert "package command: duplicate command ownership in same enable set is rejected" \
   bash -c "cd '${repo_root}' && node '${work}/package-command-duplicate-check.mjs'"
 
-bash -c "HOME='${command_home}' ROBOREPO_STATE_DIR='${command_home}/.roborepo' ROBOREPO_SKIP_MCP=1 node '${cli}' enable jcodemunch >/dev/null 2>&1" || true
-bash -c "HOME='${command_home}' ROBOREPO_STATE_DIR='${command_home}/.roborepo' ROBOREPO_SKIP_MCP=1 node '${cli}' enable jdocmunch >/dev/null 2>&1" || true
+bash -c "HOME='${command_home}' ROBOREPO_STATE_DIR='${command_home}/.roborepo' ROBOREPO_SKIP_MCP=1 node '${cli}' package enable jcodemunch >/dev/null 2>&1" || true
+bash -c "HOME='${command_home}' ROBOREPO_STATE_DIR='${command_home}/.roborepo' ROBOREPO_SKIP_MCP=1 node '${cli}' package enable jdocmunch >/dev/null 2>&1" || true
 
 UVX_ARGS_FILE="${command_home}/index-args.txt" PATH="${command_bin}:$PATH" HOME="${command_home}" ROBOREPO_STATE_DIR="${command_home}/.roborepo" node "${cli}" index code "${command_home}/repo/file.ts" >/dev/null
 assert "package command: index code uses package-owned command recipe" \
   grep -Fq "jcodemunch-mcp index-file --no-ai-summaries" "${command_home}/index-args.txt"
 
-UVX_ARGS_FILE="${command_home}/watch-args.txt" PATH="${command_bin}:$PATH" HOME="${command_home}" ROBOREPO_STATE_DIR="${command_home}/.roborepo" node "${cli}" watch code "${command_home}/repo" >/dev/null
-assert "package command: watch code uses package-owned command recipe" \
+UVX_ARGS_FILE="${command_home}/watch-args.txt" PATH="${command_bin}:$PATH" HOME="${command_home}" ROBOREPO_STATE_DIR="${command_home}/.roborepo" node "${cli}" index code "${command_home}/repo" --watch >/dev/null
+assert "package command: index code --watch uses package-owned command recipe" \
   grep -Fq -- "--with watchfiles jcodemunch-mcp watch" "${command_home}/watch-args.txt"
 
 UVX_ARGS_FILE="${command_home}/docs-args.txt" PATH="${command_bin}:$PATH" HOME="${command_home}" ROBOREPO_STATE_DIR="${command_home}/.roborepo" node "${cli}" index docs "${command_home}/docs" >/dev/null
@@ -1060,10 +1063,11 @@ mcp_harness="${work}/mcp-harness"
 mcp_home="${work}/mcp-home"
 mkdir -p "${mcp_harness}/scripts/cli" "${mcp_harness}/generated/codex" "${mcp_harness}/generated/claude" "${mcp_harness}/manifests/inventory" "${mcp_harness}/manifests/platform"
 mkdir -p "${mcp_home}/.codex" "${mcp_home}/.claude"
-cp "${repo_root}"/scripts/cli/*.mjs "${mcp_harness}/scripts/cli/"
+cp -R "${repo_root}/scripts/cli/." "${mcp_harness}/scripts/cli/"
 cp "${repo_root}/manifests/inventory/mcp-presets.json" "${mcp_harness}/manifests/inventory/mcp-presets.json"
 cp "${repo_root}/manifests/platform/cli-commands.json" "${mcp_harness}/manifests/platform/cli-commands.json"
 cp "${repo_root}/manifests/platform/context-cost-thresholds.json" "${mcp_harness}/manifests/platform/context-cost-thresholds.json"
+cp -R "${repo_root}/manifests/platform/cli" "${mcp_harness}/manifests/platform/cli"
 printf '[features]\nhooks = true\n' > "${mcp_harness}/generated/codex/config.toml"
 printf '{"permissions":{"allow":["Read"]}}\n' > "${mcp_harness}/generated/claude/settings.json"
 printf '[features]\nhooks = true\n' > "${mcp_home}/.codex/config.toml"
@@ -1139,7 +1143,7 @@ ln -s "${repo_root}/generated/codex/rules" "${update_home}/.codex/rules"
 # Skills and commands are linked/composed per-package by the installer's enumerate-step, not as
 # dir-level links (Phase 7 of the ownership plan moved commands off the old whole-directory copy).
 assert "lifecycle: setup package skills before update" \
-  bash -c "HOME='${update_home}' ROBOREPO_STATE_DIR='${update_home}/.roborepo' node '${cli}' enable jcodemunch >/dev/null 2>&1 && HOME='${update_home}' ROBOREPO_STATE_DIR='${update_home}/.roborepo' node '${cli}' enable case-study-pack >/dev/null 2>&1 && test -L '${update_home}/.claude/skills/case-study' && test -L '${update_home}/.codex/skills/case-study'"
+  bash -c "HOME='${update_home}' ROBOREPO_STATE_DIR='${update_home}/.roborepo' node '${cli}' package enable jcodemunch >/dev/null 2>&1 && HOME='${update_home}' ROBOREPO_STATE_DIR='${update_home}/.roborepo' node '${cli}' package enable case-study-pack >/dev/null 2>&1 && test -L '${update_home}/.claude/skills/case-study' && test -L '${update_home}/.codex/skills/case-study'"
 
 # The mcp-add tests above intentionally exercise source mutation for Claude permissions. Normalize
 # generated permission output before lifecycle doctor, which checks generated source drift.
@@ -1153,9 +1157,9 @@ assert "lifecycle: roborepo doctor dispatches and passes" \
 # that mirrors the packaged layout, then run doctor against it with ROBOREPO_MODE=package.
 pkg_doctor_root="${work}/pkg-doctor-root"
 mkdir -p "${pkg_doctor_root}"
-# Copy tracked working-tree files (reflects uncommitted edits) except the dev-only paths and the
-# project-scope skill symlinks that point into local/skills (excluding those avoids dangling links).
-( cd "${repo_root}" && git ls-files | while IFS= read -r file; do [[ -e "${file}" ]] && printf '%s\n' "${file}"; done | grep -vE '^(local/skills/|scripts/test/|\.claude/skills/|\.codex/skills/)' \
+# Copy tracked and new untracked working-tree files except the dev-only paths and the project-scope
+# skill symlinks that point into local/skills (excluding those avoids dangling links).
+( cd "${repo_root}" && git ls-files --cached --others --exclude-standard | while IFS= read -r file; do [[ -e "${file}" ]] && printf '%s\n' "${file}"; done | grep -vE '^(local/skills/|scripts/test/|\.claude/skills/|\.codex/skills/)' \
     | tar -cf - -T - | tar -xf - -C "${pkg_doctor_root}" )
 pkg_doctor_out="${work}/pkg-doctor.out"
 ROBOREPO_MODE=package bash "${pkg_doctor_root}/scripts/doctor.sh" >"${pkg_doctor_out}" 2>&1 || true
@@ -1181,10 +1185,10 @@ assert "lifecycle: roborepo sync alias removed" \
   bash -c "! HOME='${update_home}' node '${cli}' sync --bad-flag >/dev/null 2>&1"
 assert "lifecycle: roborepo install verb removed (first install is the shell bootstrap)" \
   bash -c "! node '${cli}' install --dry-run >/dev/null 2>&1"
-assert "lifecycle: roborepo verify dispatches and exits non-zero when not installed" \
-  bash -c "! HOME='${work}/not-installed-home' node '${cli}' verify >/dev/null 2>&1"
-assert "lifecycle: roborepo verify defaults to concise output" \
-  bash -c "HOME='${update_home}' node '${cli}' verify >'${work}/verify.out' 2>&1 && grep -q 'verify passed' '${work}/verify.out' && ! grep -q 'globals/codex/AGENTS.md exists' '${work}/verify.out'"
+assert "lifecycle: roborepo verify is removed" \
+  bash -c "! HOME='${work}/not-installed-home' node '${cli}' verify >'${work}/verify.err' 2>&1 && grep -q 'roborepo doctor --installed' '${work}/verify.err'"
+assert "lifecycle: roborepo doctor --installed is concise by default" \
+  bash -c "HOME='${update_home}' node '${cli}' doctor --installed >'${work}/doctor-installed.out' 2>&1 || true; ! grep -q 'globals/codex/AGENTS.md exists' '${work}/doctor-installed.out'"
 assert "lifecycle: roborepo rules --check dispatches render verifier" \
   bash -c "cd '${repo_root}' && node '${cli}' rules --check >/dev/null"
 
@@ -1195,17 +1199,17 @@ assert "lifecycle: roborepo rules --check dispatches render verifier" \
 # quoting if interpolated into `bash -c`.
 menu_out="${work}/menu.txt"
 printf '\n' | node "${cli}" > "${menu_out}" 2>&1 || true
-assert "menu: shows web section header" grep -q "^  web$" "${menu_out}"
-assert "menu: shows File Indexing section header" grep -q "File Indexing" "${menu_out}"
-assert "menu: shows Add packages section header" grep -q "Add packages" "${menu_out}"
-assert "menu: shows Skills section header" grep -q "Skills" "${menu_out}"
-assert "menu: shows Telemetry section header" grep -q "Telemetry" "${menu_out}"
-assert "menu: shows Maintenance section header" grep -q "Maintenance" "${menu_out}"
-assert "menu: shows Other section header" grep -q "Other" "${menu_out}"
-assert "menu: numbers actions but not headers (web is 1)" grep -qE "1\) web" "${menu_out}"
-assert "menu: items have descriptions" grep -q "health check" "${menu_out}"
-assert "menu: numbered fallback cancels on out-of-range/blank" \
-  bash -c "printf '99\n' | node '${cli}' 2>&1 | grep -q 'cancelled'"
+assert "menu: shows promoted web action" grep -q "Open web portal" "${menu_out}"
+assert "menu: shows promoted package manager action" grep -q "Manage packages and features" "${menu_out}"
+assert "menu: shows package namespace" grep -q "Packages" "${menu_out}"
+assert "menu: shows indexing namespace" grep -q "Indexing" "${menu_out}"
+assert "menu: shows skills namespace" grep -q "Skills" "${menu_out}"
+assert "menu: shows telemetry namespace" grep -q "Telemetry" "${menu_out}"
+assert "menu: shows maintenance namespace" grep -q "Maintenance" "${menu_out}"
+assert "menu: numbers root actions (web is 1)" grep -qE "1\) Open web portal" "${menu_out}"
+assert "menu: items have descriptions" grep -q "Diagnose installation" "${menu_out}"
+assert "menu: numbered fallback exits cleanly on out-of-range/blank" \
+  bash -c "printf '99\n' | node '${cli}' >'${work}/menu-invalid.out' 2>&1 && grep -q 'Select a number' '${work}/menu-invalid.out'"
 
 # ---------------------------------------------------------------------------
 # install-global-commands.sh PATH wiring (isolated via a fake HOME under the temp dir,
@@ -1399,15 +1403,15 @@ assert "legacy: real ~/.agents/skills user dir is preserved, not reclaimed" \
 assert "onboard: presets.json default is base-only" \
   bash -c "node -e 'const d=require(\"${repo_root}/manifests/platform/presets.json\"); process.exit(JSON.stringify(d.default)===JSON.stringify([\"base\"])?0:1)'"
 
-# Non-TTY `onboard` takes the headless path: applies the default + records onboardedAt (no prompt,
+# Non-TTY package management takes the headless path: applies the default + records onboardedAt (no prompt,
 # no hang). Run in an isolated HOME/state so it never touches the real machine.
 ob_home="$(mktemp -d "${work}/onboard-home.XXXXXX")"
 mkdir -p "${ob_home}/.claude" "${ob_home}/.codex"
 HOME="${ob_home}" ROBOREPO_STATE_DIR="${ob_home}/.roborepo" \
-  node "${cli}" onboard < /dev/null > "${ob_home}/out.txt" 2>&1 || true
-assert "onboard: non-TTY reports headless apply" \
+  node "${cli}" package manage < /dev/null > "${ob_home}/out.txt" 2>&1 || true
+assert "package manage: non-TTY reports headless apply" \
   grep -q "applying the default configuration" "${ob_home}/out.txt"
-assert "onboard: non-TTY records onboardedAt in preset state" \
+assert "package manage: non-TTY records onboardedAt in preset state" \
   bash -c "test -f '${ob_home}/.roborepo/presets/state.json' && grep -q onboardedAt '${ob_home}/.roborepo/presets/state.json'"
 
 # The wizard flips item.active in memory during the keypress loop, then applies only the changed rows

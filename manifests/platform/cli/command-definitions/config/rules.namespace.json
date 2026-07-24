@@ -1,0 +1,9 @@
+{
+  "path": ["config", "rules"],
+  "kind": "namespace",
+  "title": "Rules",
+  "description": "Render or check generated agent rules",
+  "order": 30,
+  "usage": "roborepo config rules [--check]",
+  "execution": { "adapter": "repoScript", "script": "rules" }
+}

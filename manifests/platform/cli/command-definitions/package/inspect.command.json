@@ -1,0 +1,15 @@
+{
+  "path": ["package", "inspect"],
+  "kind": "command",
+  "title": "Inspect package",
+  "description": "Inspect a package and its resources",
+  "order": 30,
+  "usage": "roborepo package inspect <package-id>",
+  "arguments": [{ "name": "package-id", "required": true, "interactive": { "prompt": "Package id" } }],
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/packages.mjs",
+    "export": "packageCommand",
+    "prependArgs": ["inspect"]
+  }
+}

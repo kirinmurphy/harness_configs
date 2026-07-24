@@ -1,0 +1,13 @@
+{
+  "path": ["config", "rules", "check-home"],
+  "kind": "command",
+  "title": "Check home rules",
+  "description": "Check rendered home rules against enabled packages",
+  "order": 10,
+  "usage": "roborepo config rules check-home",
+  "execution": {
+    "adapter": "booleanExitModule",
+    "module": "scripts/cli/rules-render.mjs",
+    "export": "checkHomeRules"
+  }
+}

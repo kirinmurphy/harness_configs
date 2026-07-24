@@ -1,0 +1,8 @@
+{
+  "path": ["telemetry", "enable"],
+  "kind": "command",
+  "title": "Enable telemetry",
+  "description": "Enable telemetry capture",
+  "order": 30,
+  "execution": { "adapter": "module", "module": "scripts/cli/telemetry.mjs", "export": "telemetryCommand", "prependArgs": ["enable"] }
+}

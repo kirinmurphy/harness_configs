@@ -1,0 +1,7 @@
+{
+  "path": ["config"],
+  "kind": "namespace",
+  "title": "Configuration",
+  "description": "Inspect and apply configuration",
+  "order": 600
+}

@@ -1,0 +1,11 @@
+{
+  "path": ["experimental"],
+  "kind": "internal",
+  "title": "Experimental",
+  "description": "Experimental package catalog controls",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/package-catalog.mjs",
+    "export": "experimentalCommand"
+  }
+}

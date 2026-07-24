@@ -1,0 +1,8 @@
+{
+  "path": ["telemetry", "export"],
+  "kind": "command",
+  "title": "Export telemetry",
+  "description": "Export telemetry data",
+  "order": 70,
+  "execution": { "adapter": "module", "module": "scripts/cli/telemetry.mjs", "export": "telemetryCommand", "prependArgs": ["export"] }
+}

@@ -57,16 +57,16 @@ const cli = path.join(repoRoot, "scripts/cli/main.mjs");
     ((readCodexHooks().hooks || {}).SessionStart || []).some((e) => (e.hooks || []).some((h) => pattern.test(h.command)));
 
   for (const [pkgId, pattern] of [["caveman", /CAVEMAN MODE ACTIVE/], ["jdocmunch", /jdocmunch: docs indexed/]]) {
-    spawnSync(process.execPath, [cli, "enable", pkgId], { env, stdio: "ignore" });
+    spawnSync(process.execPath, [cli, "package", "enable", pkgId], { env, stdio: "ignore" });
     assert.ok(hasSessionStartCommand(pattern), `${pkgId} Codex hook present after enable`);
-    spawnSync(process.execPath, [cli, "enable", pkgId], { env, stdio: "ignore" });
+    spawnSync(process.execPath, [cli, "package", "enable", pkgId], { env, stdio: "ignore" });
     const count = ((readCodexHooks().hooks || {}).SessionStart || [])
       .flatMap((e) => e.hooks || [])
       .filter((h) => pattern.test(h.command)).length;
     assert.equal(count, 1, `${pkgId} Codex hook not duplicated on reapply`);
-    spawnSync(process.execPath, [cli, "disable", pkgId], { env, stdio: "ignore" });
+    spawnSync(process.execPath, [cli, "package", "disable", pkgId], { env, stdio: "ignore" });
     assert.ok(!hasSessionStartCommand(pattern), `${pkgId} Codex hook absent after disable`);
-    spawnSync(process.execPath, [cli, "disable", pkgId], { env, stdio: "ignore" });
+    spawnSync(process.execPath, [cli, "package", "disable", pkgId], { env, stdio: "ignore" });
     assert.ok(!hasSessionStartCommand(pattern), `${pkgId} Codex hook stays absent after re-disable`);
   }
 
@@ -114,9 +114,9 @@ const cli = path.join(repoRoot, "scripts/cli/main.mjs");
 
   for (const pkgId of ["jcodemunch", "jdocmunch"]) {
     assert.ok(!hasServer(pkgId), `${pkgId} MCP server absent on a clean baseline`);
-    spawnSync(process.execPath, [cli, "enable", pkgId], { env, stdio: "ignore" });
+    spawnSync(process.execPath, [cli, "package", "enable", pkgId], { env, stdio: "ignore" });
     assert.ok(hasServer(pkgId), `${pkgId} MCP server present after enable`);
-    spawnSync(process.execPath, [cli, "disable", pkgId], { env, stdio: "ignore" });
+    spawnSync(process.execPath, [cli, "package", "disable", pkgId], { env, stdio: "ignore" });
     assert.ok(!hasServer(pkgId), `${pkgId} MCP server absent after disable`);
   }
 
@@ -174,11 +174,11 @@ const cli = path.join(repoRoot, "scripts/cli/main.mjs");
     return result.stdout;
   };
 
-  spawnSync(process.execPath, [cli, "enable", "jcodemunch"], { env, stdio: "ignore" });
+  spawnSync(process.execPath, [cli, "package", "enable", "jcodemunch"], { env, stdio: "ignore" });
   const blockedOutput = runBlocker("grep -r foo src/index.ts");
   assert.match(blockedOutput, /"permissionDecision":"deny"/, "enabled jcodemunch: Bash source exploration is blocked");
 
-  spawnSync(process.execPath, [cli, "disable", "jcodemunch"], { env, stdio: "ignore" });
+  spawnSync(process.execPath, [cli, "package", "disable", "jcodemunch"], { env, stdio: "ignore" });
   assert.ok(!fs.existsSync(path.join(tmp, ".claude", "hooks", "block-source-exploration.mjs")), "disabled jcodemunch: blocker hook file removed, Bash exploration unaffected");
 
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -205,7 +205,7 @@ const cli = path.join(repoRoot, "scripts/cli/main.mjs");
   const telemetryStateAfterInstall = JSON.parse(fs.readFileSync(path.join(tmp, ".roborepo", "telemetry", "state.json"), "utf8"));
   assert.equal(telemetryStateAfterInstall.enabled, true, "telemetry service state is enabled immediately alongside hook install");
 
-  spawnSync(process.execPath, [cli, "disable", "telemetry"], { env, stdio: "ignore" });
+  spawnSync(process.execPath, [cli, "package", "disable", "telemetry"], { env, stdio: "ignore" });
   const claudeAfterDisable = fs.readFileSync(path.join(tmp, ".claude", "settings.json"), "utf8");
   assert.doesNotMatch(claudeAfterDisable, /roborepo telemetry capture/, "fixed: capture hooks no longer remain wired in Claude settings.json after `disable telemetry`");
   const codexAfterDisable = fs.readFileSync(path.join(tmp, ".codex", "hooks.json"), "utf8");
@@ -217,7 +217,7 @@ const cli = path.join(repoRoot, "scripts/cli/main.mjs");
   assert.equal(hooksComponents.length, 2, "telemetry package now declares hooks/claude and hooks/codex components");
 
   // Re-enable: idempotent, no duplication, both harnesses restored.
-  spawnSync(process.execPath, [cli, "enable", "telemetry"], { env, stdio: "ignore" });
+  spawnSync(process.execPath, [cli, "package", "enable", "telemetry"], { env, stdio: "ignore" });
   const claudeAfterReenable = JSON.parse(fs.readFileSync(path.join(tmp, ".claude", "settings.json"), "utf8"));
   const preToolUseCount = (claudeAfterReenable.hooks?.PreToolUse || [])
     .filter((e) => (e.hooks || []).some((h) => h.command === "roborepo telemetry capture --harness claude --event PreToolUse")).length;
@@ -240,12 +240,12 @@ const cli = path.join(repoRoot, "scripts/cli/main.mjs");
   fs.writeFileSync(path.join(tmp, ".codex", "config.toml"), "");
   fs.writeFileSync(path.join(tmp, ".claude", "commands", "user-owned.md"), "user command\n");
 
-  spawnSync(process.execPath, [cli, "enable", "plan-docs"], { env, stdio: "ignore" });
-  spawnSync(process.execPath, [cli, "enable", "tighten"], { env, stdio: "ignore" });
+  spawnSync(process.execPath, [cli, "package", "enable", "plan-docs"], { env, stdio: "ignore" });
+  spawnSync(process.execPath, [cli, "package", "enable", "tighten"], { env, stdio: "ignore" });
   assert.ok(fs.existsSync(path.join(tmp, ".claude", "commands", "plan-docs.md")), "enabled plan-docs installs its Claude command wrapper");
   assert.ok(fs.existsSync(path.join(tmp, ".codex", "commands", "plan-docs.md")), "enabled plan-docs installs its Codex command wrapper");
 
-  spawnSync(process.execPath, [cli, "disable", "plan-docs"], { env, stdio: "ignore" });
+  spawnSync(process.execPath, [cli, "package", "disable", "plan-docs"], { env, stdio: "ignore" });
   assert.ok(!fs.existsSync(path.join(tmp, ".claude", "commands", "plan-docs.md")), "disabled plan-docs removes its Claude command wrapper");
   assert.ok(!fs.existsSync(path.join(tmp, ".codex", "commands", "plan-docs.md")), "disabled plan-docs removes its Codex command wrapper");
   assert.ok(fs.existsSync(path.join(tmp, ".claude", "commands", "tighten.md")), "disabling plan-docs leaves tighten's command untouched");

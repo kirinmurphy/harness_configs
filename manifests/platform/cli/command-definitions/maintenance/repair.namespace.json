@@ -1,0 +1,10 @@
+{
+  "path": ["maintenance", "repair"],
+  "kind": "namespace",
+  "title": "Repair",
+  "description": "Repair moved checkout links or local settings",
+  "order": 10,
+  "advanced": true,
+  "usage": "roborepo maintenance repair [--dry-run] [--on-conflict overwrite|keep|abort]",
+  "execution": { "adapter": "repoScript", "script": "repair" }
+}

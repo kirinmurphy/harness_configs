@@ -1,0 +1,11 @@
+{
+  "path": ["plans"],
+  "kind": "internal",
+  "title": "Plans",
+  "description": "Plans portal API helpers",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/plans.mjs",
+    "export": "plansCommand"
+  }
+}

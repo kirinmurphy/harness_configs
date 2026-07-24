@@ -99,7 +99,7 @@ try {
   const home2 = makeHome();
   const env2 = { ...process.env, ROBOREPO_MODE: "development", ROBOREPO_APP_ROOT: appRoot, HOME: home2, ROBOREPO_STATE_DIR: path.join(home2, ".roborepo"), ROBOREPO_SKIP_MCP: "1" };
   try {
-    const disable = spawnSync(process.execPath, [cli, "disable", "always-on-check"], { env: env2, encoding: "utf8" });
+    const disable = spawnSync(process.execPath, [cli, "package", "disable", "always-on-check"], { env: env2, encoding: "utf8" });
     assert.equal(disable.status, 0, `disable should succeed: ${disable.stderr}\n${disable.stdout}`);
     const claudeRules = fs.readFileSync(path.join(home2, ".claude", "CLAUDE.md"), "utf8");
     assert.doesNotMatch(claudeRules, /Always-on check marker text\./, "explicit disable suppresses a default-enabled package's rules");
@@ -108,7 +108,7 @@ try {
     assert.ok(registry.disabled.includes("always-on-check"), "explicit disable is recorded in the registry's disabled list");
 
     // Re-enabling clears the explicit-disable and the package renders again.
-    const enable = spawnSync(process.execPath, [cli, "enable", "always-on-check"], { env: env2, encoding: "utf8" });
+    const enable = spawnSync(process.execPath, [cli, "package", "enable", "always-on-check"], { env: env2, encoding: "utf8" });
     assert.equal(enable.status, 0, `re-enable should succeed: ${enable.stderr}\n${enable.stdout}`);
     const claudeRulesAfterEnable = fs.readFileSync(path.join(home2, ".claude", "CLAUDE.md"), "utf8");
     assert.match(claudeRulesAfterEnable, /Always-on check marker text\./, "re-enable clears explicit-disable and restores default-enabled behavior");

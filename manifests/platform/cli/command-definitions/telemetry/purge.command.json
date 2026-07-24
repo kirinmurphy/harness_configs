@@ -1,0 +1,9 @@
+{
+  "path": ["telemetry", "purge"],
+  "kind": "command",
+  "title": "Purge telemetry",
+  "description": "Reset telemetry data",
+  "order": 90,
+  "usage": "roborepo telemetry purge --all [--backup]",
+  "execution": { "adapter": "module", "module": "scripts/cli/telemetry.mjs", "export": "telemetryCommand", "prependArgs": ["purge"] }
+}

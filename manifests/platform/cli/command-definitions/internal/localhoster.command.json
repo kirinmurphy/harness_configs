@@ -1,0 +1,12 @@
+{
+  "path": ["localhoster"],
+  "kind": "internal",
+  "title": "Localhoster",
+  "description": "List active localhost web apps",
+  "usage": "roborepo localhoster [--json] [--open]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/localhoster.mjs",
+    "export": "localhosterCommand"
+  }
+}

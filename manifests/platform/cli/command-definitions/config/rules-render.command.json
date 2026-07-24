@@ -1,0 +1,16 @@
+{
+  "path": ["config", "rules", "render"],
+  "kind": "command",
+  "title": "Render rules",
+  "description": "Render generated home rules",
+  "advanced": true,
+  "order": 5,
+  "usage": "roborepo config rules render [--dry-run]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/rules-render.mjs",
+    "export": "renderHomeRules",
+    "argv": "object",
+    "objectFlags": [{ "name": "dryRun", "arg": "--dry-run" }]
+  }
+}

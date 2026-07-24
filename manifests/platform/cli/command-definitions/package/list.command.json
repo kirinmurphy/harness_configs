@@ -1,0 +1,14 @@
+{
+  "path": ["package", "list"],
+  "kind": "command",
+  "title": "List packages",
+  "description": "List available packages",
+  "order": 10,
+  "usage": "roborepo package list",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/packages.mjs",
+    "export": "packageCommand",
+    "prependArgs": ["list"]
+  }
+}

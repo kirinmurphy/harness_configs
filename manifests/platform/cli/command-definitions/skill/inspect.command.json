@@ -1,0 +1,14 @@
+{
+  "path": ["skill", "inspect"],
+  "kind": "command",
+  "title": "Inspect skill",
+  "description": "Show source, ownership, and harness install state",
+  "order": 40,
+  "usage": "roborepo skill inspect <name>",
+  "arguments": [{ "name": "name", "required": true, "interactive": { "prompt": "Skill name" } }],
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/skills.mjs",
+    "export": "skillInspect"
+  }
+}

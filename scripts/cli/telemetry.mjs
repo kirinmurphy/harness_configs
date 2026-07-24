@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import net from "node:net";
@@ -1610,12 +1611,8 @@ function canBindPort(port) {
 }
 
 async function probePortal(port) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 500);
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/portal/status`, { signal: controller.signal });
-    if (!res.ok) return { current: false };
-    const data = await res.json();
+    const data = await getPortalStatus(port);
     const currentPortalDir = path.join(repoRoot, "portal");
     const pid = Number(data?.pid);
     return {
@@ -1624,9 +1621,39 @@ async function probePortal(port) {
     };
   } catch {
     return { current: false };
-  } finally {
-    clearTimeout(timeout);
   }
+}
+
+function getPortalStatus(port) {
+  return new Promise((resolve, reject) => {
+    const req = http.get(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/portal/status",
+        timeout: 500,
+      },
+      (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          reject(new Error(`portal status returned ${res.statusCode}`));
+          return;
+        }
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => { body += chunk; });
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch (err) {
+            reject(err);
+          }
+        });
+      },
+    );
+    req.on("timeout", () => req.destroy(new Error("portal status timed out")));
+    req.on("error", reject);
+  });
 }
 
 // Spawn a new foreground `serve` process in the background. The caller writes the PID only after the

@@ -1,0 +1,8 @@
+{
+  "path": ["telemetry", "backup"],
+  "kind": "command",
+  "title": "Backup telemetry",
+  "description": "Snapshot telemetry data",
+  "order": 80,
+  "execution": { "adapter": "module", "module": "scripts/cli/telemetry.mjs", "export": "telemetryCommand", "prependArgs": ["backup"] }
+}

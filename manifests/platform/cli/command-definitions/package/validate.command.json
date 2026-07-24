@@ -1,0 +1,14 @@
+{
+  "path": ["package", "validate"],
+  "kind": "command",
+  "title": "Validate packages",
+  "description": "Validate package manifests",
+  "order": 60,
+  "usage": "roborepo package validate [package-id]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/packages.mjs",
+    "export": "packageCommand",
+    "prependArgs": ["validate"]
+  }
+}

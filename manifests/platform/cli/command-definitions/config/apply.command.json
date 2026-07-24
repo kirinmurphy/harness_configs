@@ -1,0 +1,9 @@
+{
+  "path": ["config", "apply"],
+  "kind": "command",
+  "title": "Apply configuration",
+  "description": "Re-render and apply enabled packages and harness configuration",
+  "order": 20,
+  "usage": "roborepo config apply [--dry-run]",
+  "execution": { "adapter": "configApply", "script": "update" }
+}

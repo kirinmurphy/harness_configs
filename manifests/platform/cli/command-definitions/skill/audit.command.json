@@ -1,0 +1,13 @@
+{
+  "path": ["skill", "audit"],
+  "kind": "command",
+  "title": "Audit skills",
+  "description": "Render or check shared skill invocation audit",
+  "order": 60,
+  "usage": "roborepo skill audit [--check]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/skill-audit.mjs",
+    "export": "skillAudit"
+  }
+}

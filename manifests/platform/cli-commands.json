@@ -1,254 +1,60 @@
 {
-  "usage": [
-    "roborepo                       interactive menu",
-    "",
-    "roborepo skill new [--kind=auto|skill-command|standalone] [--name=<name>] [--description=<text>]",
-    "roborepo skill adopt <name>",
-    "roborepo skill export-to-project [--yes] [--on-conflict=skip|override]",
-    "roborepo skill link-project      [--dry-run] [--uninstall]   link this project's .codex/skills into .claude/skills",
-    "roborepo skill sync-global                              refresh shared skill cache + harness links",
-    "roborepo skill inspect <name>                           show source, ownership, native metadata, and harness install state",
-    "roborepo skill native [--full]                          show native Claude/Codex skill and plugin entrypoints",
-    "roborepo skill audit [--check]                           render/check shared skill invocation audit",
-    "roborepo skill triggers [--check]                        check skill trigger fixtures",
-    "roborepo skill render-commands [--check]                   render/check slash commands",
-    "",
-    "roborepo index code  [path]",
-    "roborepo index docs  [path]",
-    "roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--dry-run] [--only-claude|--only-codex] [--skip-claude-permission]",
-    "roborepo watch code  [path]",
-    "roborepo setup [--dry-run]                initialize workspace/state for package mode",
-    "roborepo apply [--dry-run]                apply harness config from app/workspace/state roots",
-    "roborepo version                          show version and resolved roots",
-    "roborepo workspace status                 show app/workspace/state roots",
-    "roborepo workspace use <path>             select a portable workspace",
-    "roborepo workspace validate               validate typed workspace resources",
-    "roborepo workspace import <path> [--dry-run]  import obvious custom content from a checkout",
-    "roborepo onboard",
-    "roborepo web                              open the local web portal in the browser (serve --detach)",
-    "roborepo serve [--detach] [--no-open] [--port <n>]   local web portal (/config + /localhoster + telemetry)",
-    "roborepo localhoster [--json] [--open]  list active localhost HTTP apps",
-    "roborepo package list",
-    "roborepo package inspect <package-id>",
-    "roborepo package create <package-id> [--kind=empty|auto-skill|skill-command|standalone-command] [--description=<text>]",
-    "roborepo package enable  <package-id> [--dry-run]",
-    "roborepo package disable <package-id> [--dry-run] [--cascade]",
-    "roborepo package validate [package-id]",
-    "roborepo enable  <package-id> [--dry-run]   alias: package enable",
-    "roborepo disable <package-id> [--dry-run] [--cascade]   alias: package disable",
-    "roborepo telemetry install                 wire only capture hooks (no full roborepo required)",
-    "roborepo telemetry stop                   stop detached dashboard + disable capture",
-    "roborepo telemetry enable|disable         capture toggle (power-user)",
-    "roborepo telemetry status|report|export|backup|purge",
-    "roborepo telemetry backup                snapshot the spool to a timestamped backup",
-    "roborepo telemetry purge --all [--backup] reset telemetry (optionally back up first)",
-    "roborepo telemetry mark --type <type> --title <title> [...]   record a marker event",
-    "roborepo telemetry experiment start|end|status [<id>]          run an experiment",
-    "",
-    "roborepo plans repair <root> [--dry-run]  scaffold default frontmatter for plan docs missing it entirely",
-    "",
-    "roborepo run <cmd> [args...]",
-    "",
-    "roborepo update  [--dry-run] [--verbose] [--on-conflict overwrite|keep|abort]   dev: pull new config + re-apply; package mode: alias for apply",
-    "roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]  refresh copied install after the repo was moved/renamed",
-    "roborepo repair local-config [--dry-run|--apply]  recover local Claude/Codex settings from safe backups",
-    "roborepo uninstall [--dry-run]",
-    "roborepo doctor  [--installed] health check",
-    "roborepo verify [--verbose]    post-install verification",
-    "roborepo rules   [--check]     render/check tracked generated agent rules",
-    "roborepo rules check-home      check rendered home rules against enabled packages",
-    "roborepo permissions [--check] render/check agent permission outputs",
-    "roborepo config status                 show enabled behaviors/packages",
-    "roborepo config root inspect            report root config baseline/active/drift state per harness",
-    "",
-    "roborepo --help | -h",
-    "",
-    "[path] is optional (defaults to the current directory) and may be relative or absolute."
+  "schemaVersion": 2,
+  "commandName": "roborepo",
+  "title": "RoboRepo",
+  "description": "manage Claude and Codex harness configuration",
+  "helpLabels": {
+    "usage": "Usage:",
+    "openMenu": "Open the interactive menu",
+    "openNamespaceMenu": "Open that namespace's menu",
+    "openThisMenu": "Open this menu",
+    "runDirect": "Run a command directly",
+    "primaryCommands": "Primary commands:",
+    "commands": "Commands:",
+    "namespaces": "Namespaces:",
+    "scopedHelpHint": "Run `roborepo help <namespace>` for scoped help.",
+    "deeperHelpHint": "Run `roborepo help {path} <name>` for deeper help."
+  },
+  "navigation": [
+    { "kind": "header", "label": "Navigation" },
+    { "action": "help", "label": "Help", "description": "Show scoped help" },
+    { "action": "back", "label": "Back", "description": "Return to parent menu" },
+    { "action": "exit", "label": "Exit", "description": "Quit" }
   ],
-  "menu": [
-    { "header": "web" },
-    {
-      "label": "web",
-      "value": ["web"],
-      "desc": "open the local web portal in the browser"
+  "executionPresets": {
+    "packageCommand": {
+      "adapter": "module",
+      "module": "scripts/cli/packages.mjs",
+      "export": "packageCommand"
     },
-    {
-      "label": "serve",
-      "value": ["serve", "--detach"],
-      "desc": "start the local web server"
+    "telemetryCommand": {
+      "adapter": "module",
+      "module": "scripts/cli/telemetry.mjs",
+      "export": "telemetryCommand",
+      "argv": "tokensTail",
+      "tailFrom": 1
     },
-    {
-      "label": "localhoster",
-      "value": ["localhoster"],
-      "desc": "list active localhost web apps"
+    "configCommand": {
+      "adapter": "module",
+      "module": "scripts/cli/config.mjs",
+      "export": "configCommand"
     },
-
-    { "header": "File Indexing" },
-    {
-      "label": "index code",
-      "value": ["index", "code"],
-      "desc": "index this repo's code with the enabled package-owned indexer"
-    },
-    {
-      "label": "watch code",
-      "value": ["watch", "code"],
-      "desc": "live-index code as files change"
-    },
-    {
-      "label": "index docs",
-      "value": ["index", "docs"],
-      "desc": "index this repo's docs with the enabled package-owned docs indexer"
-    },
-    { "header": "Add packages" },
-    {
-      "label": "onboard",
-      "value": ["onboard"],
-      "desc": "turn global harness behaviors on or off"
-    },
-    {
-      "label": "rules",
-      "value": ["rules"],
-      "desc": "render/check generated agent rules"
-    },
-    {
-      "label": "mcp add",
-      "value": ["mcp", "add"],
-      "desc": "register an MCP server with Claude + Codex"
-    },
-    {
-      "label": "permissions",
-      "value": ["permissions"],
-      "desc": "render/check agent permission outputs"
-    },
-
-    { "header": "Skills" },
-    {
-      "label": "skill new",
-      "value": ["skill", "new"],
-      "desc": "scaffold a shared skill or slash command"
-    },
-    {
-      "label": "skill adopt",
-      "value": ["skill", "adopt"],
-      "desc": "move a native skill into shared roborepo source"
-    },
-    {
-      "label": "skill export-to-project",
-      "value": ["skill", "export-to-project"],
-      "desc": "copy shared skills into this project"
-    },
-    {
-      "label": "skill link-project",
-      "value": ["skill", "link-project"],
-      "desc": "link this project's .codex/skills into .claude"
-    },
-    {
-      "label": "skill sync-global",
-      "value": ["skill", "sync-global"],
-      "desc": "refresh shared skill cache and harness links"
-    },
-    {
-      "label": "skill inspect",
-      "value": ["skill", "inspect"],
-      "desc": "show source, ownership, and harness install state"
-    },
-    {
-      "label": "skill native",
-      "value": ["skill", "native"],
-      "desc": "show native Claude/Codex skill and plugin entrypoints"
-    },
-    {
-      "label": "skill audit",
-      "value": ["skill", "audit"],
-      "desc": "render shared skill invocation audit"
-    },
-    {
-      "label": "skill triggers",
-      "value": ["skill", "triggers"],
-      "desc": "check skill trigger fixtures"
-    },
-    {
-      "label": "skill render-commands",
-      "value": ["skill", "render-commands"],
-      "desc": "render slash commands"
-    },
-    { "header": "Telemetry" },
-    {
-      "label": "telemetry stop",
-      "value": ["telemetry", "stop"],
-      "desc": "stop dashboard + disable capture"
-    },
-    {
-      "label": "telemetry status",
-      "value": ["telemetry", "status"],
-      "desc": "show local telemetry capture state"
-    },
-    {
-      "label": "telemetry backup",
-      "value": ["telemetry", "backup"],
-      "desc": "snapshot telemetry data to a timestamped backup"
-    },
-    {
-      "label": "telemetry purge",
-      "value": ["telemetry", "purge", "--all", "--backup"],
-      "desc": "reset telemetry (backs up first)"
-    },
-    { "header": "Maintenance" },
-    { "label": "setup", "value": ["setup"], "desc": "initialize workspace and state" },
-    { "label": "apply", "value": ["apply"], "desc": "re-apply config from current app/workspace/state (no download)" },
-    { "label": "workspace status", "value": ["workspace", "status"], "desc": "show resolved roots" },
-    { "label": "workspace validate", "value": ["workspace", "validate"], "desc": "validate workspace resources" },
-    { "label": "version", "value": ["version"], "desc": "show version and roots" },
-    { "label": "doctor", "value": ["doctor"], "desc": "health check" },
-    {
-      "label": "verify",
-      "value": ["verify"],
-      "desc": "post-install verification"
-    },
-    { "header": "Other" },
-    { "label": "help", "value": ["--help"], "desc": "show full usage" },
-    {
-      "label": "run",
-      "value": ["run"],
-      "desc": "run a command with trimmed output"
-    },
-    {
-      "label": "update",
-      "value": ["update"],
-      "desc": "re-apply harness config on this machine (pick up new config)"
-    },
-    {
-      "label": "repair",
-      "value": ["repair"],
-      "desc": "repair moved-checkout links; use local-config for Claude/Codex settings"
-    },
-    {
-      "label": "uninstall",
-      "value": ["uninstall"],
-      "desc": "remove repo-owned files and install state"
-    },
-    { "label": "exit", "value": null, "desc": "quit" }
-  ],
+    "workspaceCommand": {
+      "adapter": "module",
+      "module": "scripts/cli/workspace.mjs"
+    }
+  },
+  "commandDefinitionRoots": ["manifests/platform/cli/command-definitions"],
+  "removedPath": "manifests/platform/cli/removed.json",
   "repoScripts": {
-    "skill sync-global": {
-      "runtime": "bash",
-      "path": "scripts/build/link-global-skills.sh"
-    },
-    "skill render-commands": {
-      "runtime": "node",
-      "path": "scripts/build/render-slash-commands.mjs",
-      "requiresDevelopmentCheckout": true
-    },
+    "skill sync-global": { "runtime": "bash", "path": "scripts/build/link-global-skills.sh" },
+    "skill render-commands": { "runtime": "node", "path": "scripts/build/render-slash-commands.mjs", "requiresDevelopmentCheckout": true },
     "update": { "runtime": "bash", "path": "scripts/install/main.sh" },
     "repair": { "runtime": "bash", "path": "scripts/install/repair.sh" },
     "uninstall": { "runtime": "bash", "path": "scripts/install/uninstall.sh" },
     "doctor": { "runtime": "bash", "path": "scripts/doctor.sh" },
     "verify": { "runtime": "bash", "path": "scripts/verify-install.sh" },
     "rules": { "runtime": "bash", "path": "scripts/build/render-rules.sh", "requiresDevelopmentCheckout": true },
-    "permissions": {
-      "runtime": "node",
-      "path": "scripts/build/render-agent-permissions.mjs",
-      "requiresDevelopmentCheckout": true
-    }
+    "permissions": { "runtime": "node", "path": "scripts/build/render-agent-permissions.mjs", "requiresDevelopmentCheckout": true }
   }
 }

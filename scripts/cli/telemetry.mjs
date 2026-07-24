@@ -69,7 +69,7 @@ export async function telemetryCommand(rest) {
     }
     default:
       console.error("usage: roborepo telemetry install|stop|enable|disable|status|report|export|backup|purge|mark|experiment");
-      console.error("portal: roborepo web [--no-open] [--port <n>]");
+      console.error("portal: roborepo web [--detach] [--no-open] [--port <n>]");
       process.exit(2);
   }
 }
@@ -800,7 +800,7 @@ function parseServeArgs(args) {
     else rejectArgs([arg]);
   }
   if (!Number.isInteger(options.port) || options.port < 0 || (options.port === 0 && !options.allowZeroPort)) {
-    console.error("usage: roborepo web [--no-open] [--port <n>]");
+    console.error("usage: roborepo web [--detach] [--no-open] [--port <n>]");
     process.exit(2);
   }
   return options;
@@ -1656,11 +1656,11 @@ function getPortalStatus(port) {
   });
 }
 
-// Spawn a new foreground `serve` process in the background. The caller writes the PID only after the
+// Spawn a new foreground `web` process in the background. The caller writes the PID only after the
 // child writes its ready-file from server.listen(), so a failed bind never leaves a stale "running" PID.
 function spawnDetachedServer(port) {
   const readyFile = path.join(os.tmpdir(), `roborepo-portal-${process.pid}-${Date.now()}.ready`);
-  const child = spawn(process.execPath, [process.argv[1], "serve", "--no-open", "--port", String(port), "--allow-zero-port"], {
+  const child = spawn(process.execPath, [process.argv[1], "web", "--no-open", "--port", String(port), "--allow-zero-port"], {
     detached: true,
     stdio: "ignore",
     env: { ...process.env, ROBOREPO_PORTAL_READY_FILE: readyFile },

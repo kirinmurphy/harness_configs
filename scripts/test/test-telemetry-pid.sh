@@ -45,7 +45,7 @@ str_contains() { [[ "$1" == *"$2"* ]]; }
 # --- stale PID detection ---
 # Write a PID that no real process holds (high enough to be safe on macOS + Linux).
 echo "9999999" > "${pidfile}"
-node "${cli}" serve --detach --no-open --port 14317 > /dev/null 2>&1 || true
+node "${cli}" web --detach --no-open --port 14317 > /dev/null 2>&1 || true
 
 new_pid=$(cat "${pidfile}" 2>/dev/null || echo "")
 assert "stale PID cleared: PID file updated to new value" test "${new_pid}" != "9999999"
@@ -77,7 +77,7 @@ for _ in $(seq 1 25); do
   sleep 0.2
 done
 echo "9999999" > "${pidfile}"
-conflict_output=$(node "${cli}" serve --detach --no-open --port "${conflict_port}" 2>&1 || true)
+conflict_output=$(node "${cli}" web --detach --no-open --port "${conflict_port}" 2>&1 || true)
 assert "foreign-occupied explicit port: refused with actionable message" \
   str_contains "${conflict_output}" "stop it or pass --port"
 assert "foreign-occupied explicit port: stale PID cleared, port left untouched" test ! -f "${pidfile}"
@@ -96,11 +96,11 @@ unset ROBOREPO_PORTAL_PID_PATH
 
 port_a=14319
 port_b=14320
-node "${cli}" serve --detach --no-open --port "${port_a}" > /dev/null 2>&1 || true
+node "${cli}" web --detach --no-open --port "${port_a}" > /dev/null 2>&1 || true
 pid_a_file="${ROBOREPO_STATE_DIR}/portal/server-${port_a}.pid"
 pid_a="$(cat "${pid_a_file}" 2>/dev/null || echo "")"
 
-node "${cli}" serve --detach --no-open --port "${port_b}" > /dev/null 2>&1 || true
+node "${cli}" web --detach --no-open --port "${port_b}" > /dev/null 2>&1 || true
 pid_b_file="${ROBOREPO_STATE_DIR}/portal/server-${port_b}.pid"
 pid_b="$(cat "${pid_b_file}" 2>/dev/null || echo "")"
 

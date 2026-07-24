@@ -111,12 +111,12 @@ defaults should be merged back into the repo baseline. It is a reminder, not a b
 
 ## Local Machine Commands
 
-- `roborepo onboard` toggles enabled skills, commands, package behavior, and chat-time output.
+- `roborepo package manage` toggles enabled skills, commands, package behavior, and chat-time output.
 - `roborepo update` reapplies copied/rendered config after pulling repo changes.
 - `roborepo doctor --installed` checks live `~/.claude`, `~/.codex`, and `~/.roborepo` state.
 - `roborepo config root inspect` reports drift between portable baselines and active root config.
-- `roborepo serve` / `roborepo web` opens the local portal for config and telemetry.
-- `roborepo enable <package-id>` / `disable <package-id>` wires package-owned MCP, hooks, rules,
+- `roborepo web` opens the local portal for config and telemetry.
+- `roborepo package enable <package-id>` / `package disable <package-id>` wires package-owned MCP, hooks, rules,
   permissions, and command behavior.
 
 ## Parity principle

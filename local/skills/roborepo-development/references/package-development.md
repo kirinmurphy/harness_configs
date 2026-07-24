@@ -189,14 +189,13 @@ accurate `package.config.json` automatically renders a complete portal card.
 | `roborepo package list` | Lists all packages with live enabled/disabled status, category, label. |
 | `roborepo package inspect <id>` | Prints full manifest JSON for one package. |
 | `roborepo package validate [id]` | Runs `validatePackageCatalog`; scope to one package or the whole catalog. |
-| `roborepo package enable <id>` / `roborepo enable <id>` | Enables a package and **applies live immediately** — see Apply behavior below. |
-| `roborepo package disable <id>` / `roborepo disable <id>` | Disables a package and **applies live immediately**. |
+| `roborepo package enable <id>` | Enables a package and **applies live immediately** — see Apply behavior below. |
+| `roborepo package disable <id>` | Disables a package and **applies live immediately**. |
 | `roborepo package reconcile` | Re-applies every currently-enabled package (full reconciliation entry point — see Apply behavior). |
 | `roborepo package adopt-live [--dry-run]` | Detects externally-installed (unmanaged) package behavior and marks it enabled in the registry without re-installing it. |
 
 Add these rows to `docs/reference/services/roborepo-cli.md` and to
-`local/skills/roborepo-development/SKILL.md`'s own CLI list whenever this table changes — both
-currently list only `enable`/`disable`, omitting the rest of the `package` family.
+`local/skills/roborepo-development/SKILL.md`'s own CLI list whenever this table changes.
 
 ## Apply behavior (already automatic — do not reintroduce a manual step)
 

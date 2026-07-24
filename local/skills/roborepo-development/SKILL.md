@@ -120,25 +120,23 @@ Subcommands, grouped by category:
   `skill audit` / `skill triggers` / `skill render-commands` / `skill native` — shared skill,
   slash-command, ownership, and invocation-policy tools. They operate on the shared/client-local
   layer — never `local/skills/`.
-- `index code|docs [path]`, `watch code [path]`, `run <cmd>` (`cli/index.mjs`) — package-owned
+- `index code|docs [path]`, `index code [path] --watch`, `run <cmd>` (`cli/index.mjs`) — package-owned
   jcodemunch/jdocmunch wrappers + the trimmed-output runner. `[path]` optional, defaults to cwd,
-  resolved to absolute. `watch code` writes the pidfile `/tmp/jcmwatch-<md5(absdir)>.pid` that the
+  resolved to absolute. `index code --watch` writes the pidfile `/tmp/jcmwatch-<md5(absdir)>.pid` that the
   Claude SessionStart hook reads — keep that in sync with `globals/claude/settings.json` if you
   change it.
 - `mcp add <name-or-url>` / `mcp apply` (`cli/mcp.mjs`) — register/apply MCP server config with
   Claude and Codex. Presets live in `manifests/inventory/mcp-presets.json`; portable intent lives
   in `manifests/inventory/mcp-servers.json`.
-- `enable <package-id>` / `disable <package-id>` / `onboard` / `presets` — package and preset
+- `package enable <package-id>` / `package disable <package-id>` / `package manage` / `presets` — package and preset
   feature toggles. Package mode separates immutable app files, portable workspace resources, and
   machine-local state; do not collapse those roots.
 - `package create|list|inspect|validate|enable|disable|reconcile|adopt-live` (`cli/packages.mjs`)
-  — full package lifecycle surface; `enable`/`disable` top-level are aliases for `package
-  enable`/`disable`. See `references/package-development.md` for details on each subcommand.
+  — full package lifecycle surface. See `references/package-development.md` for details on each subcommand.
   `enable`/`disable` already apply live immediately — no `roborepo update` needed afterward.
 - `setup` / `apply` / `workspace` / `version` — package-mode setup and root inspection tools.
-- `serve` / `web` / `telemetry ...` — local portal and telemetry capture/reporting. `web` is
-  `serve --detach` with browser-open behavior.
-- `update`/`repair`/`uninstall`/`doctor`/`verify`/`rules`/`permissions` — lifecycle verbs that
+- `web` / `telemetry ...` — local portal and telemetry capture/reporting.
+- `update`/`repair`/`uninstall`/`doctor`/`rules`/`permissions` — lifecycle verbs that
   dispatch to the existing scripts. `update` re-runs `scripts/install/main.sh`; in package mode it
   aliases to `apply`.
 

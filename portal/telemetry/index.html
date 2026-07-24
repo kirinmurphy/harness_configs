@@ -48,7 +48,7 @@
          filter controls above misrepresented what it does. -->
     <!-- Frame-of-reference count line (left) + the "I changed something, mark it" data-entry action
          (right), on one flex-row. Stacks on mobile. The counts stay deliberately low-prominence —
-         action items (①) and the chart (②) carry the actionable load. -->
+         the action-items panel and the chart carry the actionable load. -->
     <div class="page-frame inner">
       <div class="frame-counts" id="meta"></div>
       <button data-btn="cta" id="openmarkermodal" type="button">+ mark change</button>
@@ -57,10 +57,11 @@
       {{LOADING}}
       <!-- TIER 1 — conclusions & action items (the headline; always first) -->
       <section class="panel" id="insightspanel">
-        <h2>① what this means · action items <portal-info-icon data-doc-anchor="panel-map" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
+        <h2>Action Items <portal-info-icon data-doc-anchor="panel-map" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
         <div id="insights"></div>
         <div class="modalactions">
           <button class="linkbtn" id="deepread">deeper read ›</button>
+          <button class="linkbtn" id="openanalysis">open analysis explorer ›</button>
         </div>
         <div class="modalextra" id="deepreadout"></div>
         <div id="deepreadcopy" style="display: none; margin-top: 6px">
@@ -90,7 +91,7 @@
 
       <!-- TIER 2 — visualize (the chart) -->
       <section class="panel">
-        <h2>② token usage over time</h2>
+        <h2>token usage over time</h2>
         <div class="ranges" id="chartmodes">
           <span class="flabel">view</span>
           <button data-mode="cumulative" class="active">
@@ -120,7 +121,7 @@
 
       <!-- TIER 3 — warnings & abnormalities (spikes, loops, causes) -->
       <h2 class="sectionhead">
-        ③ warnings &amp; abnormalities
+        warnings &amp; abnormalities
         <span class="sub"
           >spikes, loops, and the patterns behind them — click any row to open
           the chat</span
@@ -180,7 +181,7 @@
       <!-- TIER 4 — details (collapsed by default; summaries lead, raw is on-demand) -->
       <details class="detailsblock">
         <summary>
-          ④ cost analysis
+          cost analysis
           <span class="sub"
             >what each tool/package puts into context, and what changed</span
           >
@@ -217,7 +218,7 @@
 
       <details class="detailsblock">
         <summary>
-          ⑤ sessions
+          sessions
           <span class="sub"
             >every session by tokens — click a row to open its chat</span
           >
@@ -302,7 +303,18 @@
         <span class="dot"></span>
         <div class="body">
           <div class="hl" data-slot="headline"></div>
-          <div class="dt" data-slot="detail"></div>
+          <div class="dt detail-line">
+            <span data-slot="detail"></span
+            ><button
+              type="button"
+              class="badge confidence-badge"
+              data-slot="confidence"
+              hidden
+            ></button>
+          </div>
+          <div class="dt next-line" data-slot="next-line" hidden>
+            <span class="next-action" data-slot="next-action"></span>
+          </div>
         </div>
       </div>
     </template>
@@ -445,6 +457,8 @@
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/shared/info-icon.js" type="module"></script>
     <script src="/portal/shared/icon.js" type="module"></script>
+    <script src="/portal/shared/notice.js" type="module"></script>
+    <script src="/portal/shared/tooltip.js" type="module"></script>
     <script src="/portal/shared/close-button.js" type="module"></script>
     <script src="/portal/telemetry/app.js" type="module"></script>
   </body>

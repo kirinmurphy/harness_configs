@@ -220,8 +220,8 @@
       </div>
       <div class="drawer-body">
         <div class="drawer-actions" id="drawer-actions">
-          <portal-menu-button id="drawer-copy-menu" icon="copy" label="Copy"></portal-menu-button>
-          <portal-menu-button id="drawer-actions-menu" label="Actions"></portal-menu-button>
+          <button type="button" class="recommended-cta" id="drawer-cta" data-btn="cta" hidden></button>
+          <portal-menu-button id="drawer-menu" label="⋯" aria-label="Plan actions"></portal-menu-button>
         </div>
         <section class="drawer-warnings-section" id="drawer-warnings-section" hidden>
           <h3><portal-icon name="warning" width="14" height="14"></portal-icon> Warnings</h3>
@@ -241,21 +241,23 @@
       </div>
     </dialog>
     <template id="tpl-package-banner">
-      <div class="package-not-installed-banner">
-        <header>
-          <strong>/plan-docs workflows are not enabled </strong
-          ><span data-slot="text"></span>
-        </header>
-        <div class="banner-links">
-          <button type="button" data-btn="text" data-slot="details">
-            View Skill Details
-          </button>
-          <span class="banner-sep">|</span>
-          <button type="button" data-btn="cta" data-slot="action">
-            Enable Skill
-          </button>
+      <portal-notice class="package-not-installed-banner" variant="info">
+        <div class="package-not-installed-body">
+          <header>
+            <strong>/plan-docs workflows are not enabled </strong
+            ><span data-slot="text"></span>
+          </header>
+          <div class="banner-links">
+            <button type="button" data-btn="text" data-slot="details">
+              View Skill Details
+            </button>
+            <span class="banner-sep">|</span>
+            <button type="button" data-btn="cta" data-slot="action">
+              Enable Skill
+            </button>
+          </div>
         </div>
-      </div>
+      </portal-notice>
     </template>
     <template id="tpl-root-chip">
       <span class="root-chip">
@@ -297,7 +299,6 @@
       <article class="plan-card">
         <h3 class="card-header-row">
           <span class="title-link" data-slot="title-link"></span>
-          <div class="priority-slot" data-slot="priority"></div>
         </h3>
         <p class="description-line" data-slot="description"></p>
         <div class="chips" data-slot="chips"></div>
@@ -305,6 +306,7 @@
         <div class="status-section" data-slot="status">
           <div class="status-state-row">
             <div class="status-state-chips" data-slot="status-chips">
+              <div class="priority-slot" data-slot="priority"></div>
               <span class="state-badge" data-slot="state-badge" hidden></span>
             </div>
             <span class="meta-line" data-slot="meta"></span>
@@ -329,6 +331,7 @@
     </template>
     <script src="/portal/shared/info-icon.js" type="module"></script>
     <script src="/portal/shared/icon.js" type="module"></script>
+    <script src="/portal/shared/notice.js" type="module"></script>
     <script src="/portal/shared/close-button.js" type="module"></script>
     <script src="/portal/shared/copy-button.js" type="module"></script>
     <script src="/portal/shared/menu-button.js" type="module"></script>

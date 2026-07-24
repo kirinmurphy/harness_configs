@@ -46,16 +46,27 @@
   .linkbtn:hover { color:var(--ink); }
   .sesschip { display:inline-flex; align-items:center; margin:2px 6px 2px 0; text-decoration:none; border:1px solid var(--line); border-radius:5px; padding:2px 8px; }
   .sesschip:hover { border-color:var(--accent); }
-  #insightspanel { border-color:var(--accent); }
+  /* Softened from the old hard --accent border: a lightened border + a background a touch sharper
+     than a default section, so it still reads as a called-out panel without shouting. */
+  #insightspanel { border-color:color-mix(in srgb, var(--accent) 40%, var(--line)); background:color-mix(in srgb, var(--accent) 5%, var(--panel)); }
   .insight { display:flex; gap:10px; padding:7px 0; border-top:1px solid var(--line); }
   .insight:first-child { border-top:none; }
-  .insight .dot { flex:none; width:8px; height:8px; border-radius:50%; margin-top:5px; }
+  .insight .dot { flex:none; width:8px; height:8px; border-radius:50%; margin-top:6px; }
+  /* Industry-convention severity coloring: alert (red) / warning (orange) / neutral (gray). Keys
+     stay high/warn/info so the CLI + insight tests are unaffected — only the color mapping changed. */
   .insight.high .dot { background:var(--spike); }
-  .insight.warn .dot { background:var(--accent); }
+  .insight.warn .dot { background:var(--warn); }
   .insight.info .dot { background:var(--dim); }
   .insight .body .hl { color:var(--ink); }
-  .insight .body .dt { color:var(--dim); font-size:var(--text-2xs); margin-top:2px; }
-  .insight .body .dt.next-action { color:var(--accent); }
+  /* Detail + next lines bumped one step up the type scale (2xs -> xs) for readability. */
+  .insight .body .dt { color:var(--dim); font-size:var(--text-xs); margin-top:3px; }
+  /* Detail line carries the confidence badge inline at its end. The badge's data-tip is shown by the
+     shared JS tooltip (portal/shared/tooltip.js), which positions itself inside the viewport. */
+  .insight .detail-line { display:inline; }
+  .insight .confidence-badge { display:inline-block; margin-left:8px; padding:1px 7px; border-radius:999px; border:1px solid var(--line); background:var(--chip-muted-bg); color:var(--dim); font-size:var(--text-2xs); cursor:help; white-space:nowrap; }
+  .insight .confidence-badge.conf-strong-signal { color:var(--ink); border-color:color-mix(in srgb, var(--ok) 50%, var(--line)); }
+  .insight .next-line { display:block; }
+  .insight .next-action { color:var(--next-ink); }
   #deepreadout { white-space:pre-wrap; font-size:var(--text-xs); color:var(--ink); }
   .detailsblock { border-top:1px solid var(--line); padding-top:8px; }
   .detailsblock > summary { font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.1em; color:var(--dim); font-weight:700; cursor:pointer; padding:6px 0; list-style:none; }

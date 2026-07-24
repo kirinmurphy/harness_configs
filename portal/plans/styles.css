@@ -26,6 +26,31 @@ main {
   background: color-mix(in srgb, var(--accent) 6%, var(--panel));
   /* border-color: var(--accent); */
 }
+/* Whole-page sticky header block: control-bar + lifecycle tabs ride together and stay pinned for
+ * the entire scroll, not just the ~2 rows of their old short wrapper. #plans-header is a direct
+ * child of <body> (the page scroll container), so a sticky here tracks the full page. It pins to
+ * the very top of the viewport and rides OVER the shared .portal-header (z-index above the header's
+ * 10) as you scroll — same behavior as the Tokens page's control bar, not fixed to its default
+ * on-page position. A solid background keeps scrolled card content from showing through. */
+#plans-header {
+  position: sticky;
+  top: 0;
+  z-index: 11;
+  background: var(--bg);
+}
+/* The control-bar no longer sticks on its own — #plans-header owns the stickiness now, so the
+ * shared .control-panel sticky would just fight it. Neutralize position here (keeps its
+ * background/border/padding from base.css). */
+#plans-header .control-panel.control-bar {
+  position: static;
+  top: auto;
+}
+/* Lifecycle-tabs row needs its own solid background + a little breathing room now that it's part of
+ * the pinned block sitting over scrolling cards. */
+#plans-header > .inner {
+  background: var(--bg);
+  padding-top: 8px;
+}
 /* Control bar: Plans/Repos/Filters row + persistent chips + whichever panel is open. Background/
  * border/outer spacing come from the shared .control-panel (portal/shared/base.css) — this only
  * adds what's specific to Plans: the row's items spread to the edges (space-between) rather than
@@ -390,16 +415,13 @@ dialog#skill-modal::backdrop {
 }
 /* Full-width banner, flush to the viewport edges — a sibling of <main> (not a child), so it can
  * break out of main's padding. Scrolls normally with the page (no sticky/fixed). */
+/* Full-width mount for the not-installed callout. Callout chrome (border/bg/padding) is owned by
+   the shared <portal-notice> inside it now; this just spans the page width and pads the edges. */
 .package-banner {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  color: var(--dim);
+  display: block;
   width: 100%;
+  color: var(--dim);
   padding: 12px 20px;
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
-  border-bottom: 1px solid var(--line);
 }
 .package-banner strong {
   color: var(--ink);
@@ -772,30 +794,53 @@ dialog#drawer::backdrop {
   font-size: var(--text-xs);
   text-transform: uppercase;
 }
-/* Actions popup (drawer-actions-menu panel content, built in templates.js#actionsMenuContent). */
-.actions-menu-disabled {
-  display: grid;
-  gap: 10px;
-}
-.actions-menu-table {
-  border-collapse: collapse;
-  width: 100%;
-}
-.actions-menu-table td {
-  padding: 8px;
-  vertical-align: top;
-  font-size: var(--text-xs);
-}
-.actions-menu-table td:first-child {
-  color: var(--desc-dim);
-}
-.actions-menu-table td:last-child {
-  text-align: right;
+/* Unified plan ⋯ menu (drawer-menu / card ⋯ panel content, built in templates.js#planMenuBody) plus
+   the recommended-next CTA that sits beside the ⋯ trigger. */
+.recommended-cta {
   white-space: nowrap;
 }
-.actions-menu-row-recommended {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+.plan-menu {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.plan-menu-note {
+  margin: 0 0 2px;
+}
+.plan-menu-group {
+  display: grid;
+  gap: 2px;
+}
+/* Each action row: the action item takes the width; the optional portable variant sits at the end. */
+.plan-menu-action {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
   border-radius: 6px;
+}
+.plan-menu-action .menu-button-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.plan-menu-action.is-recommended {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.plan-menu-variant {
+  flex: none;
+  align-self: center;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--dim);
+  font: inherit;
+  font-size: var(--text-2xs);
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin-right: 4px;
+  cursor: pointer;
+}
+.plan-menu-variant:hover {
+  color: var(--ink);
+  border-color: var(--accent);
 }
 .drawer-warnings-section {
   border: 1px solid var(--warn);
@@ -866,7 +911,7 @@ dialog#drawer::backdrop {
   vertical-align: -1px;
 }
 
-.package-not-installed-banner {
+.package-not-installed-body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -931,6 +976,10 @@ option-dropdown {
   box-shadow: 0 8px 24px var(--modal-shadow);
   padding: 4px;
   min-width: 100px;
+  /* max-height is set inline by positionPopoverPanel (popover-position.js) to keep the far edge
+     on-screen; scroll internally past that instead of overflowing the viewport. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .dropdown-option {
   border: none;

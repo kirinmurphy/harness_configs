@@ -67,10 +67,12 @@
       <div class="modal-footer" id="modal-footer" hidden></div>
     </dialog>
     <template id="tpl-context-warnings">
-      <section class="token-warnings" aria-live="polite">
-        <p class="token-warnings-title" data-slot="title"></p>
-        <div class="token-warning-list" data-slot="items"></div>
-      </section>
+      <portal-notice class="token-warnings" variant="warning" aria-live="polite">
+        <div class="token-warnings-body">
+          <p class="token-warnings-title" data-slot="title"></p>
+          <div class="token-warning-list" data-slot="items"></div>
+        </div>
+      </portal-notice>
     </template>
     <template id="tpl-config-files">
       <section class="panel wide">
@@ -374,6 +376,7 @@
     </template>
     <script src="/portal/config/elements/index.js" type="module"></script>
     <script src="/portal/shared/icon.js" type="module"></script>
+    <script src="/portal/shared/notice.js" type="module"></script>
     <script src="/portal/shared/close-button.js" type="module"></script>
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/config/app.js" type="module"></script>

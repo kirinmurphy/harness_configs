@@ -59,7 +59,7 @@ function sessionById(id) {
 }
 
 // Subtle frame-of-reference line: how many sessions/captures the current filter spans. Deliberately
-// low-prominence — the action items (①) and chart (②) carry the actionable load, so this only tells
+// low-prominence — the action-items panel and chart carry the actionable load, so this only tells
 // the reader what the numbers below are drawn from. Codex provider limit (when present) is a real
 // signal, so it rides along as a second dim clause rather than its own stat card.
 function renderMeta(data) {
@@ -260,9 +260,13 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("#deltafilter")) { chart.toggleShowAll(); return; }
   if (e.target.closest("#viewmore-cumulative")) { chart.viewMore("cumulative"); return; }
   if (e.target.closest("#viewmore-bygroup")) { chart.viewMore("bygroup"); return; }
-  // "open analysis" affordance on any insight/finding row — reproduces that finding's exact cohort
-  // and metric in the Analysis explorer (plan: "'open analysis' reproduces the alert's exact cohort
-  // and metric"). filter_state is a JSON-serialized analysis_filter_state from the finding contract.
+  // Action Items panel footer: open the Analysis explorer with no filter. The insight findings can't
+  // meaningfully prefill it (their analysis_filter_state is only { kind }, which the explorer
+  // ignores), so this is one shared entry point rather than a redundant per-row link.
+  if (e.target.closest("#openanalysis")) { analysisExplorer.openWithFilterState({}); return; }
+  // "open analysis" affordance on a marker-comparison finding row — those carry a real
+  // { metric, marker_id } filter state, so this reproduces that finding's exact cohort/metric in the
+  // Analysis explorer. filter_state is a JSON-serialized analysis_filter_state from the finding contract.
   const openAnalysisBtn = e.target.closest(".open-analysis");
   if (openAnalysisBtn) {
     try { analysisExplorer.openWithFilterState(JSON.parse(openAnalysisBtn.dataset.filterState || "{}")); } catch {}

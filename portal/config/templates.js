@@ -260,6 +260,9 @@ export function contextWarnings(snap) {
   if (!entries.length) return null;
   const panel = tpl("tpl-context-warnings");
   const hasHigh = entries.some((entry) => entry.spec.level === "high");
+  // <portal-notice> owns the callout chrome now; escalate to the alert (red) variant when any
+  // element is in high token use, otherwise the default warning (amber) tint.
+  panel.setAttribute("variant", hasHigh ? "alert" : "warning");
   panel.querySelector('[data-slot="title"]').textContent = hasHigh
     ? "The following elements have a high token use:"
     : "The following elements have elevated token use:";

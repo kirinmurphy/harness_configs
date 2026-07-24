@@ -122,14 +122,12 @@ main {
   gap: 8px;
   flex-wrap: wrap;
 }
-/* token-cost warnings above the agent files grid */
-.token-warnings {
+/* token-cost warnings above the agent files grid. Callout chrome (border/bg/padding/icon) is now
+   owned by the shared <portal-notice> wrapper (portal/shared/base.css); this only lays out the
+   title + list inside it. */
+.token-warnings-body {
   display: grid;
   gap: 8px;
-  padding: 12px 14px;
-  border: 1px solid var(--warn-line, var(--warn));
-  border-radius: 6px;
-  background: var(--warn-bg, transparent);
 }
 .token-warnings-title {
   margin: 0;

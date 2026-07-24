@@ -41,6 +41,17 @@
   --knob: #fff;
   --warn-line: #7a641f;
   --warn-bg: #241f0e;
+  /* Notice/callout tints — subtle border+bg pairs per severity, tuned like --warn-line/--warn-bg
+   * so the shared <portal-notice> frames content without shouting. warning reuses --warn-*. */
+  --alert-line: #6e2420;
+  --alert-bg: #2a1110;
+  --info-line: #37404b;
+  --info-bg: #141a22;
+  --success-line: #1f5c2e;
+  --success-bg: #0e2113;
+  /* "next action" text on the tokens insight rows — a lightened accent, pushed toward white in
+   * dark mode (and toward dark in light mode below) so it reads as a soft emphasis, not a link. */
+  --next-ink: #c7dbff;
   --code-bg: #010409;
   --code-ink: #d2a8ff;
   --code-inline-bg: rgba(255, 255, 255, 0.04);
@@ -112,6 +123,13 @@
   --knob: #ffffff;
   --warn-line: #d4a72c;
   --warn-bg: #fdf3b8;
+  --alert-line: #ffcecb;
+  --alert-bg: #ffebe9;
+  --info-line: #c2cad2;
+  --info-bg: #f2f4f7;
+  --success-line: #aceebb;
+  --success-bg: #e6f6eb;
+  --next-ink: #0a3977;
   --code-bg: #f6f8fa;
   --code-ink: #8250df;
   --code-inline-bg: rgba(27, 31, 36, 0.05);
@@ -676,6 +694,10 @@ portal-menu-button {
   padding: 6px;
   min-width: 220px;
   max-width: min(420px, 90vw);
+  /* max-height is set inline by positionPopoverPanel (popover-position.js) so the far edge stays
+     on-screen; scroll internally past that. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .menu-button-item {
   display: flex;
@@ -756,4 +778,74 @@ portal-menu-button {
   .portal-updated {
     margin-left: auto;
   } */
+}
+
+/* Shared JS-positioned tooltip bubble (portal/shared/tooltip.js). Fixed to the viewport; tooltip.js
+ * sets top/left clamped so it never crosses the screen edges. */
+.portal-tooltip {
+  position: fixed;
+  z-index: 60;
+  max-width: 260px;
+  background: var(--tooltip-bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  box-shadow: 0 4px 16px var(--tooltip-shadow);
+  pointer-events: none;
+}
+.portal-tooltip[hidden] {
+  display: none;
+}
+
+/* Shared notification chrome — the <portal-notice> wrapper (portal/shared/notice.js). Theme only:
+ * a subtle per-variant border + background tint and an optional leading icon. Content is slotted by
+ * the caller. Variant class (.notice-alert/-warning/-info/-success) is set by the element. */
+.portal-notice {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-start;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--info-line);
+  background: var(--info-bg);
+  border-radius: 6px;
+  color: var(--ink);
+}
+.portal-notice > [data-notice-icon] {
+  flex: none;
+  display: inline-flex;
+  margin-top: 1px;
+}
+/* The slotted content should take the remaining width so multi-line bodies wrap cleanly next to
+ * the icon rather than being squeezed. Direct children other than our own icon node. */
+.portal-notice > :not([data-notice-icon]) {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.portal-notice.notice-alert {
+  border-color: var(--alert-line);
+  background: var(--alert-bg);
+}
+.portal-notice.notice-alert > [data-notice-icon] {
+  color: var(--spike);
+}
+.portal-notice.notice-warning {
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+}
+.portal-notice.notice-warning > [data-notice-icon] {
+  color: var(--warn);
+}
+.portal-notice.notice-info {
+  border-color: var(--info-line);
+  background: var(--info-bg);
+}
+.portal-notice.notice-success {
+  border-color: var(--success-line);
+  background: var(--success-bg);
+}
+.portal-notice.notice-success > [data-notice-icon] {
+  color: var(--ok);
 }

@@ -1,9 +1,10 @@
 // <plan-card> — set .record (plan record) and .actions (cardActions bag: onOpen, onCopyPath,
-// onCopyContext, onPlanDocsStart, planDocsEnabled, onError) as properties right after creation,
-// then append to the DOM. The whole card triggers onOpen on click, except interactive widgets
-// (priority dropdown, action buttons) inside it; builds the chip row and action-button row from
-// the two properties.
+// onCopyContext, onCopyPortableContext, onPlanDocsAction, onPriorityChange, planDocsEnabled,
+// planDocsPackage, skillModal, onEnablePackage, onError) as properties right after creation, then
+// append to the DOM. The whole card triggers onOpen on click, except interactive widgets (priority
+// dropdown, the recommended-next CTA, and the ⋯ actions menu) inside it.
 import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
+import { cardActionMenu, cardRecommendedCta } from "/portal/plans/templates.js";
 
 // Card shows a shortened preview; full text (up to 500 chars) still lives in plan.excerpt
 // for copy-context/drawer use — only the on-card display is truncated further here.
@@ -55,14 +56,6 @@ function chip(text, cls = "") {
   node.textContent = text;
   if (cls) node.classList.add(cls);
   return node;
-}
-
-function actionButton(label, onClick, onError) {
-  const button = document.createElement("action-button");
-  button.setAttribute("label", label);
-  button.onClick = onClick;
-  button.onError = onError;
-  return button;
 }
 
 const PRIORITY_OPTIONS = [
@@ -176,12 +169,12 @@ class PlanCardElement extends HTMLElement {
       warnings ? chip(`${warnings} warnings`, "warn") : chip("valid", "ok"),
     );
     node.querySelector("[data-slot=title-link]").textContent = plan.title;
+    // Recommended-next CTA (when there's a clear next step) + the unified ⋯ menu — the same menu the
+    // drawer uses, scoped to this plan's lifecycle. One component, no overlapping loose buttons.
+    const cta = cardRecommendedCta(record, cardActions);
     node.querySelector("[data-slot=actions]").append(
-      actionButton("Copy path", () => cardActions.onCopyPath(plan.relativePath), onError),
-      actionButton("Copy Context", () => cardActions.onCopyContext(record), onError),
-      ...(cardActions.planDocsEnabled
-        ? [actionButton("/plan-docs start", () => cardActions.onPlanDocsStart(record.key), onError)]
-        : []),
+      ...(cta ? [cta] : []),
+      cardActionMenu(record, cardActions),
     );
     // Whole card is the click surface now (not just title/description text). Clicks/keypresses
     // that land on an interactive widget — priority dropdown, action buttons — are ignored here
@@ -191,7 +184,7 @@ class PlanCardElement extends HTMLElement {
     node.tabIndex = 0;
     node.setAttribute("role", "button");
     const isInteractiveTarget = (event) =>
-      event.target.closest("button, option-dropdown, a, input, select, .status-section");
+      event.target.closest("button, option-dropdown, portal-menu-button, a, input, select, .status-section");
     node.addEventListener("click", (event) => {
       if (isInteractiveTarget(event)) return;
       cardActions.onOpen(record.key);

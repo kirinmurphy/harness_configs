@@ -6,6 +6,8 @@
 // Usage: set `.panelContent` to a Node right after creation. `icon`/`label` configure the trigger
 // face — set as plain HTML attributes for static markup, or as JS properties to change them later.
 // The panel is only mounted while open, matching option-dropdown's re-render-on-toggle approach.
+import { positionPopoverPanel } from "/portal/shared/popover-position.js";
+
 class PortalMenuButton extends HTMLElement {
   connectedCallback() {
     for (const key of ["panelContent", "icon", "label"]) {
@@ -81,23 +83,7 @@ class PortalMenuButton extends HTMLElement {
     const menu = this.querySelector(".menu-button-panel");
     const trigger = this.querySelector(".menu-button-trigger");
     if (!menu || !trigger) return;
-    const rect = trigger.getBoundingClientRect();
-    const openAbove = window.innerHeight - rect.bottom < 320;
-    if (openAbove) {
-      menu.style.top = "auto";
-      menu.style.bottom = window.innerHeight - rect.top + 4 + "px";
-    } else {
-      menu.style.bottom = "auto";
-      menu.style.top = rect.bottom + 4 + "px";
-    }
-    const rightAligned = rect.left + rect.width / 2 > window.innerWidth / 2;
-    if (rightAligned) {
-      menu.style.right = window.innerWidth - rect.right + "px";
-      menu.style.left = "auto";
-    } else {
-      menu.style.left = rect.left + "px";
-      menu.style.right = "auto";
-    }
+    positionPopoverPanel(menu, trigger);
   }
 
   render() {

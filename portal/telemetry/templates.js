@@ -14,13 +14,6 @@ export function harnessBtn(harness, active) {
   return node;
 }
 
-export function statItem(label, value) {
-  const node = tpl("tpl-stat");
-  node.querySelector("[data-slot=label]").textContent = label;
-  node.querySelector("[data-slot=value]").textContent = value;
-  return node;
-}
-
 // One heavy-turn row in the "surface chat context" detail (fetchSessionContext in app.js). Plain
 // textContent throughout, so tool names/previews from the transcript need no manual HTML escaping.
 export function turnRow(t) {

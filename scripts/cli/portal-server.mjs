@@ -29,7 +29,7 @@ const STATIC_TYPES = {
 // existing docs, tests, and saved browser links.
 export const PAGES = [
   { path: "/plans", id: "plans", title: "Plans", dir: "plans" },
-  { path: "/telemetry", id: "telemetry", title: "Token Use", dir: "telemetry" },
+  { path: "/tokens", id: "telemetry", title: "Tokens", dir: "telemetry" },
   { path: "/", id: "config", title: "Agent Configs", dir: "config", default: true },
   {
     path: "/localhoster",
@@ -127,7 +127,7 @@ export function startPortalServer(handlers) {
       `localhoster:         http://${LOOPBACK}:${actualPort}/localhoster`,
     );
     console.log(
-      `telemetry dashboard: http://${LOOPBACK}:${actualPort}/telemetry`,
+      `tokens dashboard:    http://${LOOPBACK}:${actualPort}/tokens`,
     );
     console.log("(Ctrl-C to stop)");
     handlers.onListening?.(actualPort);

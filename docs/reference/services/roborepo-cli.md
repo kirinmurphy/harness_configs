@@ -37,7 +37,7 @@ See [Package Development](../../../local/skills/roborepo-development/references/
 
 | | |
 | --- | --- |
-| `roborepo serve` | Starts the local portal. `/config` manages packages/permissions, `/plans` browses plan docs, `/localhoster` lists local web apps, and `/telemetry` shows token usage when telemetry has data. |
+| `roborepo serve` | Starts the local portal. `/config` manages packages/permissions, `/plans` browses plan docs, `/localhoster` lists local web apps, and `/tokens` shows token usage when telemetry has data. |
 | `roborepo web` | Starts the same portal detached and opens it in the browser. |
 | `roborepo localhoster [--json] [--open]` | Lists active localhost HTTP apps, prints the portal snapshot as JSON, or opens `/localhoster`. |
 

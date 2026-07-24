@@ -3,7 +3,7 @@
 ## Purpose
 
 The portal is the local `roborepo serve` web UI: Config (`/`, alias `/config`), Plans (`/plans`),
-Localhoster (`/localhoster`), and Telemetry (`/telemetry`). It is static HTML/CSS/browser JavaScript served by a loopback-only
+Localhoster (`/localhoster`), and Tokens (`/tokens`). It is static HTML/CSS/browser JavaScript served by a loopback-only
 Node HTTP server — no build step, no framework, no bundler. This doc covers the shared
 architecture (page manifest, browser API helpers, server route dispatch) that every page relies
 on. Page-specific behavior lives in `docs/reference/services/config-control-panel.md` and

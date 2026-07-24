@@ -12,11 +12,11 @@
   /* Background layer scale: --bg (page base) < --panel (cards/sections) < --raised (hover/
    * highlight/nested-within-a-panel surfaces). Each step must read as visually distinct from its
    * neighbor at a glance — don't reach for a bare color-mix() tint when one of these three fits. */
-  --bg: #0d1117;
-  --panel: #161c25;
-  --raised: #1e2530;
+  --bg: #0b0f14;
+  --panel: #1a212b;
+  --raised: #262f3c;
   --neutral-tint: #7c8794;
-  --line: #2d333b;
+  --line: #37404b;
   --ink: #e6edf3;
   --dim: #a3adb8;
   --desc-dim: #c3cad3;
@@ -39,8 +39,8 @@
   --badge-cmd-line: #238636;
   --badge-cmd-bg: #0d2214;
   --knob: #fff;
-  --warn-line: #5a4a1a;
-  --warn-bg: #17150d;
+  --warn-line: #7a641f;
+  --warn-bg: #241f0e;
   --code-bg: #010409;
   --code-ink: #d2a8ff;
   --code-inline-bg: rgba(255, 255, 255, 0.04);
@@ -82,11 +82,14 @@
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #ffffff;
-  --panel: #eef1f4;
-  --raised: #e2e7ec;
+  /* Light mode shifts the dark-mode layer order (bg darkest → panel → highlight), it does not
+     invert it: the page base is a soft gray, content sections sit LIGHTER (white) on top, and
+     warning surfaces are the most prominent. --raised is a touch darker than the page for hover. */
+  --bg: #e7eaee;
+  --panel: #ffffff;
+  --raised: #dbe0e6;
   --neutral-tint: #6e7781;
-  --line: #d0d7de;
+  --line: #c2cad2;
   --ink: #1f2328;
   --dim: #656d76;
   --desc-dim: #454f58;
@@ -108,7 +111,7 @@
   --badge-cmd-bg: #dafbe1;
   --knob: #ffffff;
   --warn-line: #d4a72c;
-  --warn-bg: #fff8c5;
+  --warn-bg: #fdf3b8;
   --code-bg: #f6f8fa;
   --code-ink: #8250df;
   --code-inline-bg: rgba(27, 31, 36, 0.05);

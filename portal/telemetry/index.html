@@ -46,10 +46,13 @@
     <!-- Marker creation lives outside the filter bar — it's a data-entry action ("I changed
          something, mark it"), not a way of narrowing the current view, so grouping it with the
          filter controls above misrepresented what it does. -->
-    <div class="page-actions inner">
+    <!-- Frame-of-reference count line (left) + the "I changed something, mark it" data-entry action
+         (right), on one flex-row. Stacks on mobile. The counts stay deliberately low-prominence —
+         action items (①) and the chart (②) carry the actionable load. -->
+    <div class="page-frame inner">
+      <div class="frame-counts" id="meta"></div>
       <button data-btn="cta" id="openmarkermodal" type="button">+ mark change</button>
     </div>
-    <div class="page-meta stat-row inner" id="meta"></div>
     <main class="inner">
       {{LOADING}}
       <!-- TIER 1 — conclusions & action items (the headline; always first) -->
@@ -282,12 +285,6 @@
         </section>
       </details>
     </main>
-    <template id="tpl-stat">
-      <div class="stat-item">
-        <div class="stat-label" data-slot="label"></div>
-        <div class="stat-value" data-slot="value"></div>
-      </div>
-    </template>
     <template id="tpl-datatable">
       <table><thead><tr data-slot="headrow"></tr></thead><tbody data-slot="body"></tbody></table>
     </template>

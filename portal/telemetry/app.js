@@ -58,18 +58,20 @@ function sessionById(id) {
   return lookupSessionById(id, allSessions);
 }
 
+// Subtle frame-of-reference line: how many sessions/captures the current filter spans. Deliberately
+// low-prominence — the action items (①) and chart (②) carry the actionable load, so this only tells
+// the reader what the numbers below are drawn from. Codex provider limit (when present) is a real
+// signal, so it rides along as a second dim clause rather than its own stat card.
 function renderMeta(data) {
   const meta = document.getElementById("meta");
-  const spikeCount = (data.spikes || []).length;
-  const spikeRate = data.capture_count > 0 ? Math.round((spikeCount / data.capture_count) * 1000) / 10 : 0;
-  const scope = (view.rangeMs == null ? "all time" : "filtered") + (view.harness ? " · " + view.harness + " only" : "");
-  meta.replaceChildren(
-    tmpl.statItem("captures", fmt(data.capture_count)),
-    tmpl.statItem("sessions", fmt(data.sessions.length)),
-    tmpl.statItem("spike rate", spikeRate + "%" + (spikeCount ? " (" + fmt(spikeCount) + ")" : "")),
-    tmpl.statItem("scope", scope),
-    ...(data.codex_provider_rate_limits ? [tmpl.statItem("Codex provider limit", codexRateLimitLabel(data.codex_provider_rate_limits))] : []),
-  );
+  const parts = [
+    fmt(data.sessions.length) + " sessions",
+    fmt(data.capture_count) + " captures",
+  ];
+  if (data.codex_provider_rate_limits) {
+    parts.push("Codex limit " + codexRateLimitLabel(data.codex_provider_rate_limits));
+  }
+  meta.textContent = parts.join(" · ");
 }
 
 function codexRateLimitLabel(rateLimits) {

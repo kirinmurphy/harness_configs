@@ -1,11 +1,22 @@
   /* Palette, reset, and header/nav/footer/theme-toggle chrome live in /portal/shared/base.css.
      This file holds only telemetry-page-specific styles. */
   header .meta { color:var(--dim); font-size:var(--text-xs); }
-  /* Meta stat row: label/value pairs, replacing the old single dot-separated status string.
-     Vertical padding only (longhand) so it never zeroes the horizontal gutter: as #meta this row
-     also carries .inner and must inherit its 20px side padding to line up with the panels below;
-     nested inside a panel (renders.js) it has no .inner and correctly gets 0 side inset from here. */
+  /* Stat-tile row: label/value pairs, used only nested inside a panel now (renders.js's
+     marker-comparison tiles). Vertical padding only (longhand) so it never zeroes a horizontal
+     gutter; nested in a panel it has no .inner and correctly gets 0 side inset from here. */
   .stat-row { display:flex; flex-wrap:wrap; gap:20px; padding-top:12px; padding-bottom:12px; }
+  /* Page frame: subtle count line (left) + mark-change CTA (right) on one row. .inner carries the
+     side gutter. Wraps to stacked on narrow screens, CTA below the counts. */
+  .page-frame { display:flex; align-items:center; justify-content:space-between; gap:var(--space-md);
+    flex-wrap:wrap; padding-top:12px; padding-bottom:12px; }
+  .frame-counts { color:var(--dim); font-size:var(--text-2xs); font-variant-numeric:tabular-nums;
+    letter-spacing:.02em; }
+  @media (max-width: 560px) {
+    /* Stack counts over a full-width CTA — same clear tap-target intent the old .page-actions
+       block had for #openmarkermodal at narrow widths. */
+    .page-frame { flex-direction:column; align-items:stretch; }
+    .page-frame [data-btn="cta"] { width:100%; }
+  }
   .stat-item { display:flex; flex-direction:column; gap:2px; }
   .stat-label { color:var(--dim); font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.06em; }
   .stat-value { color:var(--ink); font-size:var(--text-md); font-variant-numeric:tabular-nums; }
@@ -137,11 +148,9 @@
   .filter-count-group { display:inline-flex; align-items:center; gap:8px; margin-left:auto; }
   .filter-count { color:var(--dim); font-size:var(--text-2xs); font-variant-numeric:tabular-nums; }
   #cohortfilt #cohortclear { margin-left:0; }
-  /* Marker creation is a data-entry action, not a filter — deliberately outside .filterbar so it
-     never reads as "part of narrowing the view." Not sticky, so it scrolls away with the page body
-     like any other page action, while the filter bar above stays pinned. */
-  .page-actions { padding-top:10px; display:flex; justify-content:flex-end; }
-  /* CTA chrome for #openmarkermodal comes from data-btn="cta" in shared/base.css. */
+  /* Marker creation (#openmarkermodal) lives in .page-frame, not .filterbar, so it never reads as
+     "part of narrowing the view." Layout + responsive stacking come from .page-frame above; CTA
+     chrome comes from data-btn="cta" in shared/base.css. */
   /* Medium: cohort row's selects shrink so model/repo/marker keep fitting on one line longer.
      Source's own wrap-to-own-line behavior is defined next to its base #harnessfilt rule above. */
   @media (max-width:980px) {
@@ -157,8 +166,6 @@
        once the group is the only thing on its line (nothing left of it to push against), so the
        group instead takes the full row width and aligns its own content to the end. */
     .filter-count-group { flex-basis:100%; justify-content:flex-end; margin-left:0; }
-    .page-actions { justify-content:stretch; }
-    #openmarkermodal { width:100%; }
   }
   .copybtn { background:var(--bg); color:var(--dim); border:1px solid var(--line); border-radius:5px; padding:3px 10px; font:inherit; font-size:var(--text-2xs); cursor:pointer; }
   .copybtn:hover { color:var(--ink); border-color:var(--accent); }

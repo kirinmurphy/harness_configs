@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import {
   emptyCohortFilter, normalizeCohortFilter, applyCohortFilter, describeCohortFilter,
   activeFilterCount, filterSessionsByTaskCategory,
 } from "../cli/telemetry-cohort.mjs";
+import { buildRepositoryHashIndex, repositoryRefForEvent } from "../cli/telemetry-repository.mjs";
 
 // Phase 5 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: the normalized cohort
 // filter object shared by the CLI and portal (plan: "Cohort model" — "All panels must receive the
@@ -20,7 +22,45 @@ testApplyFilterByTaskCategoryIgnoredWithoutMarkers();
 testFilterSessionsByTaskCategory();
 testDescribeCohortFilter();
 testActiveFilterCount();
+testCanonicalRepositoryScope();
+testReadTimeRepositoryResolution();
 console.log("telemetry cohort checks passed");
+
+// sha256/24 — must match telemetry-capture.mjs hash() so the registry index lines up with the
+// normalized_remote_hash written at capture time.
+function captureHash(value) {
+  return crypto.createHash("sha256").update(String(value)).digest("hex").slice(0, 24);
+}
+
+function testCanonicalRepositoryScope() {
+  const direct = event({ repo: { label: "roborepo", repository_id: "git:github.com/kirinmurphy/roborepo" } });
+  const other = event({ repo: { label: "other", repository_id: "git:github.com/kirinmurphy/other" } });
+  const filter = { ...emptyCohortFilter(), repository_ids: ["git:github.com/kirinmurphy/roborepo"] };
+  const kept = applyCohortFilter([direct, other], filter);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0].repo.repository_id, "git:github.com/kirinmurphy/roborepo");
+
+  // Legacy event (no repository_id) matched via normalized_remote_hash against a registry index.
+  const registry = { repositories: { "git:github.com/kirinmurphy/roborepo": { id: "git:github.com/kirinmurphy/roborepo", normalizedRemote: "git:github.com/kirinmurphy/roborepo" } } };
+  const hashIndex = buildRepositoryHashIndex(registry, captureHash);
+  const legacy = event({ repo: { label: "roborepo", normalized_remote_hash: captureHash("git:github.com/kirinmurphy/roborepo") } });
+  const legacyKept = applyCohortFilter([legacy, other], filter, { repositoryHashIndex: hashIndex });
+  assert.equal(legacyKept.length, 1, "legacy event resolves via normalized-remote-hash");
+
+  // Composes with legacy label filter (both must pass).
+  const both = { ...filter, repos: ["roborepo"] };
+  assert.equal(applyCohortFilter([direct], both).length, 1);
+  assert.equal(applyCohortFilter([event({ repo: { label: "nope", repository_id: "git:github.com/kirinmurphy/roborepo" } })], both).length, 0);
+}
+
+function testReadTimeRepositoryResolution() {
+  assert.equal(repositoryRefForEvent(event({ repo: { label: "x", repository_id: "git:h/o/r" } }), null).provenance, "direct");
+  const registry = { repositories: { "git:h/o/r": { id: "git:h/o/r", normalizedRemote: "git:h/o/r" } } };
+  const idx = buildRepositoryHashIndex(registry, captureHash);
+  assert.equal(repositoryRefForEvent(event({ repo: { label: "x", normalized_remote_hash: captureHash("git:h/o/r") } }), idx).provenance, "legacy-remote-hash");
+  assert.equal(repositoryRefForEvent(event({ repo: { label: "x" } }), idx).provenance, "unresolved");
+  assert.equal(repositoryRefForEvent(event({}), idx).repositoryId, null);
+}
 
 function event(overrides) {
   return {

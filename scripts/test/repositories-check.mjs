@@ -29,6 +29,10 @@ import {
   planPlansEnrollment,
   importLocalhosterAliases,
   canonicalizeLocalhosterIdentity,
+  repositoryScopedFinding,
+  globalFinding,
+  isRepositoryScoped,
+  providerUrlForRepositoryId,
 } from "../../modules/repositories/index.mjs";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-repositories-"));
@@ -237,6 +241,24 @@ try {
   const second = importLocalhosterAliases(migReg, lhSettings);
   assert.equal(second.changed, false, "re-import is idempotent");
   validateRegistry(migReg);
+
+  // ---- Provider URL builder: recognized hosts only, never for local ids ----
+  assert.equal(providerUrlForRepositoryId("git:github.com/kirinmurphy/roborepo"), "https://github.com/kirinmurphy/roborepo");
+  assert.equal(providerUrlForRepositoryId("git:gitlab.com/g/p"), "https://gitlab.com/g/p");
+  assert.equal(providerUrlForRepositoryId("git:git.example.com/g/p"), null, "unknown host gets no url");
+  assert.equal(providerUrlForRepositoryId("local:deadbeefdeadbeef"), null);
+
+  // ---- Findings contract: repo-scoped vs global; never force association ----
+  const scoped = repositoryScopedFinding({ code: "X" }, { repositoryId: "git:github.com/kirinmurphy/roborepo", rootId: "aaaa1111" });
+  assert.equal(scoped.scope, "repository");
+  assert.equal(scoped.repositoryId, "git:github.com/kirinmurphy/roborepo");
+  assert.equal(scoped.rootId, "aaaa1111");
+  assert.equal(isRepositoryScoped(scoped), true);
+  const glob = globalFinding({ code: "Y" });
+  assert.equal(glob.scope, "global");
+  assert.equal(glob.repositoryId, undefined, "global finding never carries a repositoryId");
+  assert.equal(isRepositoryScoped(glob), false);
+  assert.throws(() => repositoryScopedFinding({}, { repositoryId: "path:/x" }), /invalid repository id/);
 
   console.log("repositories-check passed");
 } finally {

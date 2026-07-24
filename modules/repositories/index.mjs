@@ -10,6 +10,7 @@ export {
   localRepositoryId,
   rootId,
   resolveGitDir,
+  providerUrlForRepositoryId,
 } from "./identity.mjs";
 
 export {
@@ -61,3 +62,9 @@ export {
   importLocalhosterAliases,
   canonicalizeLocalhosterIdentity,
 } from "./migrate-localhoster.mjs";
+
+export {
+  repositoryScopedFinding,
+  globalFinding,
+  isRepositoryScoped,
+} from "./findings.mjs";

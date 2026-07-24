@@ -4,7 +4,7 @@ import path from "node:path";
 import net from "node:net";
 import { spawnSync, spawn } from "node:child_process";
 import { markTelemetrySelected } from "./presets.mjs";
-import { repoRoot } from "./paths.mjs";
+import { repoRoot, stateRoot } from "./paths.mjs";
 import { portalPidPathForPort, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { readMarkers, readSnapshot, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
@@ -29,6 +29,16 @@ import {
   updateLocalhosterSettings,
   setLocalhosterPortalInfo,
 } from "./localhoster.mjs";
+import {
+  loadRepositoriesPayload,
+  loadRepositoryPayload,
+  loadRepositoryAssociations,
+  enrollRepositoryInPlans,
+  patchRepository,
+} from "./repositories.mjs";
+import { loadRegistry } from "../../modules/repositories/index.mjs";
+import { buildRepositoryHashIndex } from "./telemetry-repository.mjs";
+import { createHash } from "node:crypto";
 import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
 import { mergeHooksInto } from "./hook-composition.mjs";
@@ -770,6 +780,11 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     updateLocalhosterSettings: (params) => updateLocalhosterSettings(params),
     loadLocalhosterHistory: (key) => loadLocalhosterHistory(key),
     loadLocalhosterMetadata: (key) => loadLocalhosterMetadata(key),
+    loadRepositories: () => loadRepositoriesPayload(),
+    loadRepository: (params) => loadRepositoryPayload(params),
+    loadRepositoryAssociations: (params) => loadRepositoryAssociations(params),
+    enrollRepositoryInPlans: (params) => enrollRepositoryInPlans(params),
+    patchRepository: (params) => patchRepository(params),
     mutatePackage: (id, enabled) => mutatePackage(id, enabled),
     mutateSkill: (id, enabled) => setSkillInstalled(id, enabled),
     mutateBehavior: (behaviorId, bucket) => setBehaviorBucket(behaviorId, bucket),
@@ -1050,14 +1065,37 @@ const ANALYSIS_CACHE_MAX = 32;
 // Phase 6 additions (model/repo/markerId) layer a normalized cohort filter on top of the existing
 // time/harness window; folded into the cache key so a cohort-filtered view gets its own cached
 // entry instead of colliding with (or evicting) the unfiltered default view.
-function analysisKey(window, harness, { model = null, repo = null, markerId = null } = {}) {
-  return `${spoolSignature()}|${window ? `${window.rangeMs}:${window.end ?? ""}` : "all"}|${harness || "all"}|${model || "all"}|${repo || "all"}|${markerId || "none"}`;
+function analysisKey(window, harness, { model = null, repo = null, repository = null, markerId = null } = {}) {
+  return `${spoolSignature()}|${window ? `${window.rangeMs}:${window.end ?? ""}` : "all"}|${harness || "all"}|${model || "all"}|${repo || "all"}|${repository || "all"}|${markerId || "none"}`;
 }
 
 // Returns the cache entry { json } for the given view, computing (and caching) it on a miss.
+// Registry-derived hash index for read-time legacy telemetry association, cached by spool signature
+// so it is rebuilt only when the spool changes (the registry is small; loading it is cheap, and a
+// missing/corrupt registry degrades to an empty index rather than throwing). Uses the SAME hash as
+// telemetry-capture.mjs (sha256, first 24 hex) so normalized_remote_hash values line up.
+let _repositoryHashIndex = null;
+let _repositoryHashIndexSig = null;
+function captureRepositoryHash(value) {
+  return createHash("sha256").update(String(value)).digest("hex").slice(0, 24);
+}
+function repositoryHashIndexCached() {
+  const sig = spoolSignature();
+  if (_repositoryHashIndex && _repositoryHashIndexSig === sig) return _repositoryHashIndex;
+  let registry;
+  try {
+    registry = loadRegistry({ stateRoot });
+  } catch {
+    registry = { repositories: {} };
+  }
+  _repositoryHashIndex = buildRepositoryHashIndex(registry, captureRepositoryHash);
+  _repositoryHashIndexSig = sig;
+  return _repositoryHashIndex;
+}
+
 function cachedAnalysisEntry(window, harness, extra = {}) {
-  const { model = null, repo = null, markerId = null } = extra;
-  const key = analysisKey(window, harness, { model, repo, markerId });
+  const { model = null, repo = null, repository = null, markerId = null } = extra;
+  const key = analysisKey(window, harness, { model, repo, repository, markerId });
   const hit = _analysisCache.get(key);
   if (hit) return hit;
   const allEvents = readSpoolEventsCached();
@@ -1072,8 +1110,14 @@ function cachedAnalysisEntry(window, harness, extra = {}) {
   const availableModels = [...new Set(events.map((e) => e.session?.model).filter(Boolean))].sort();
   const availableRepos = [...new Set(events.map((e) => e.repo?.label).filter(Boolean))].sort();
   const windowed = filterByWindow(events, window);
-  const cohortFilter = (model || repo) ? { models: model ? [model] : [], repos: repo ? [repo] : [] } : null;
-  const report = analyzeTelemetry(windowed, { cohortFilter, markers, markerId, compareMetric: "tokens.total" });
+  // The global repository scope (?repository=<canonical-id>) composes with the legacy per-page
+  // ?repo=<label> filter. When set, legacy events are resolved to a canonical id at read time via a
+  // registry-derived hash index (built lazily; absent/broken registry -> unresolved, never a crash).
+  const cohortFilter = (model || repo || repository)
+    ? { models: model ? [model] : [], repos: repo ? [repo] : [], repository_ids: repository ? [repository] : [] }
+    : null;
+  const repositoryHashIndex = repository ? repositoryHashIndexCached() : null;
+  const report = analyzeTelemetry(windowed, { cohortFilter, markers, markerId, compareMetric: "tokens.total", repositoryHashIndex });
   // Backfill session titles from transcripts: the transcript always has the first user message
   // (turn 1), whereas the spool only captures prompts when hooks fired — so new sessions or
   // sessions started before telemetry was enabled may have no spool title or a mid-chat title.

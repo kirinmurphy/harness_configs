@@ -1454,6 +1454,11 @@ assert "repositories: canonical identity + registry + associations" \
 assert "repositories: discovery recording + Plans enrollment" \
   node "${repo_root}/scripts/test/repositories-service-check.mjs"
 
+# Browser-safe repository API (Phase 4): summary/detail payloads carry no absolute paths or
+# credentials; route handler dispatches list/detail/associations/patch and 404s unknown ids.
+assert "repositories: browser-safe API contracts" \
+  node "${repo_root}/scripts/test/repositories-api-check.mjs"
+
 # Root config drift VIEW (buildRootConfigView in root-config-view.mjs): the per-harness state the terminal
 # `config root inspect` report and the web /config drift chip both render from — not-installed /
 # unwritten / in-sync / drifted / staged-pending.

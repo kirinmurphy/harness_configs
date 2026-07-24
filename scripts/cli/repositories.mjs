@@ -11,8 +11,11 @@ import {
   recordDiscovery,
   registerLocalRoot,
   setEnrollment,
+  hideRepository,
   planPlansEnrollment,
   providerUrlForRepositoryId,
+  repositoryListPayload,
+  repositoryDetailPayload,
 } from "../../modules/repositories/index.mjs";
 import { readPlanSettings } from "../../modules/plan-docs/index.mjs";
 import { updatePlanSettings as updatePlanSettingsDefault, refreshPlans as refreshPlansDefault } from "./plans.mjs";
@@ -102,4 +105,35 @@ export function enrollRepositoryInPlans({
   });
 
   return { covered: plan.covered, coveringSource: plan.coveringSource || null, sourceAdded };
+}
+
+// ---- Browser-safe API bridge (Phase 4). Every return value is path-free by construction. ----
+
+export function loadRepositoriesPayload({ stateRoot = defaultStateRoot, fsApi = fs } = {}) {
+  return repositoryListPayload(loadRegistry({ stateRoot, fsApi }));
+}
+
+export function loadRepositoryPayload({ repositoryId, stateRoot = defaultStateRoot, fsApi = fs } = {}) {
+  const registry = loadRegistry({ stateRoot, fsApi });
+  const record = registry.repositories[repositoryId];
+  if (!record) { const e = new Error(`unknown repository: ${repositoryId}`); e.code = "NOT_FOUND"; throw e; }
+  return repositoryDetailPayload(record);
+}
+
+// Associations = the same detail payload's discovery/local-root provenance. Separated as its own
+// endpoint so a future detail page can lazy-load it without re-fetching the whole list.
+export function loadRepositoryAssociations({ repositoryId, stateRoot = defaultStateRoot, fsApi = fs } = {}) {
+  const detail = loadRepositoryPayload({ repositoryId, stateRoot, fsApi });
+  return { repositoryId: detail.repositoryId, discoveries: detail.discoveries, localRoots: detail.localRoots, capabilities: detail.capabilities, enrollments: detail.enrollments };
+}
+
+// PATCH: currently only visibility (hide/restore). Returns the refreshed detail payload.
+export function patchRepository({ repositoryId, visibility, stateRoot = defaultStateRoot, fsApi = fs, now = new Date().toISOString() }) {
+  const registry = loadRegistry({ stateRoot, fsApi });
+  if (!registry.repositories[repositoryId]) { const e = new Error(`unknown repository: ${repositoryId}`); e.code = "NOT_FOUND"; throw e; }
+  if (visibility != null && !["visible", "hidden"].includes(visibility)) throw new Error("visibility must be visible or hidden");
+  if (visibility != null) {
+    updateRegistry({ stateRoot, fsApi, mutate: (reg) => hideRepository(reg, repositoryId, { hidden: visibility === "hidden", now }) });
+  }
+  return loadRepositoryPayload({ repositoryId, stateRoot, fsApi });
 }

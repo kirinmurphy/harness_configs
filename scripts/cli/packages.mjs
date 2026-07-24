@@ -305,7 +305,7 @@ function installMcpPreset(presetId) {
 export async function enablePackage(rest, _seen = new Set()) {
   const [pkgId, ...flags] = rest;
   if (!pkgId) {
-    console.error("usage: roborepo enable <package-id>");
+    console.error("usage: roborepo package enable <package-id>");
     const catalog = loadPackageCatalog();
     console.error(`available: ${catalog.map((p) => p.id).join(", ")}`);
     process.exit(2);
@@ -545,7 +545,7 @@ function removeMcpPreset(presetId, dryRun) {
 export async function disablePackage(rest) {
   const [pkgId, ...flags] = rest;
   if (!pkgId) {
-    console.error("usage: roborepo disable <package-id>");
+    console.error("usage: roborepo package disable <package-id>");
     console.error(`available: ${loadPackageCatalog().map((p) => p.id).join(", ")}`);
     process.exit(2);
   }

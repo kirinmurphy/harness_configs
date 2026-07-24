@@ -69,7 +69,7 @@ export async function telemetryCommand(rest) {
     }
     default:
       console.error("usage: roborepo telemetry install|stop|enable|disable|status|report|export|backup|purge|mark|experiment");
-      console.error("portal: roborepo serve [--detach] [--no-open] [--port <n>]");
+      console.error("portal: roborepo web [--no-open] [--port <n>]");
       process.exit(2);
   }
 }
@@ -315,7 +315,7 @@ function telemetryInstall(args) {
   }
   console.log("telemetry-only install complete.");
   console.log("capture is enabled.");
-  console.log("open the portal:       roborepo serve");
+  console.log("open the portal:       roborepo web");
   console.log("view reports:          roborepo telemetry report");
   console.log("upgrade to full suite: re-run the roborepo install script");
 }
@@ -800,7 +800,7 @@ function parseServeArgs(args) {
     else rejectArgs([arg]);
   }
   if (!Number.isInteger(options.port) || options.port < 0 || (options.port === 0 && !options.allowZeroPort)) {
-    console.error("usage: roborepo serve [--detach] [--no-open] [--port <n>]");
+    console.error("usage: roborepo web [--no-open] [--port <n>]");
     process.exit(2);
   }
   return options;

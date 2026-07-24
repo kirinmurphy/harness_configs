@@ -29,7 +29,7 @@ prompt buttons such as `/plan-docs start`, `/plan-docs sync`, `/plan-docs review
 Start the local portal:
 
 ```sh
-roborepo serve
+roborepo web
 ```
 
 Open:
@@ -137,7 +137,7 @@ The browser copies prompts. It does not launch Claude or Codex.
 Enable from the Plans page, Config page, onboarding, or CLI:
 
 ```sh
-roborepo enable plan-docs
+roborepo package enable plan-docs
 ```
 
 Then use:
@@ -163,7 +163,7 @@ Common modes:
 
 ## Typical Workflow
 
-1. Run `roborepo serve` and open `/plans`.
+1. Run `roborepo web` and open `/plans`.
 2. Add a discovery root.
 3. Open a plan and check warnings, tasks, blockers, and review state.
 4. Enable /plan-docs workflows if not already enabled.

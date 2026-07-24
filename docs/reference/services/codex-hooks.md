@@ -158,7 +158,7 @@ roborepo permissions --check
 ```
 
 Edit behaviors and arbitrary commands via the web portal (`roborepo web`) — the only
-place per-command overrides are editable; `roborepo onboard`'s Permissions step offers
+place per-command overrides are editable; `roborepo package manage`'s Permissions step offers
 the 5 named behaviors as a direct toggle, `roborepo config status` is read-only.
 
 The renderer writes the generated permission block in `generated/codex/config.toml`

@@ -10,7 +10,7 @@ Roborepo materializes global harness config onto a machine by copying owned file
 2. Run the installer.
 3. Choose collision handling only if the installer finds a conflicting local file.
 4. Let onboarding enable optional packages and skills.
-5. Verify with `roborepo doctor --installed` or `roborepo verify`.
+5. Verify with `roborepo doctor --installed`.
 
 ## Preview
 
@@ -35,7 +35,7 @@ The installer writes:
 - `~/.local/bin/roborepo`
 - install state at `~/.roborepo/install-state.json`
 
-Then it applies the default `base` bundle and starts `roborepo onboard` unless onboarding was already completed or explicitly skipped. On update, that base bundle still re-applies so rendered rules stay fresh even on an already-onboarded machine.
+Then it applies the default `base` bundle and starts `roborepo package manage` unless onboarding was already completed or explicitly skipped. On update, that base bundle still re-applies so rendered rules stay fresh even on an already-onboarded machine.
 
 ## Collision Policy
 
@@ -66,8 +66,8 @@ Home rules files are generated from base fragments plus enabled package rule fra
 Commands that change package state update the registry and re-render the home rules files:
 
 ```sh
-roborepo enable jcodemunch
-roborepo disable jcodemunch
+roborepo package enable jcodemunch
+roborepo package disable jcodemunch
 roborepo rules --check
 ```
 
@@ -108,7 +108,7 @@ Uninstall removes roborepo-owned copied files, rendered rules, managed skill cop
 
 ```sh
 roborepo doctor --installed
-roborepo verify
+roborepo doctor --installed
 ```
 
-`doctor --installed` checks the active machine state, including rendered home rules and base skill copies. `verify` runs the post-install verification wrapper.
+`doctor --installed` checks the active machine state, including rendered home rules and base skill copies.

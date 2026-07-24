@@ -67,7 +67,7 @@ These act on tools or output protocols that exist only on Claude.
 
 **Trigger:** every new session or resume.
 
-Checks whether the code watcher (`roborepo watch code`) is running for the current
+Checks whether the code watcher (`roborepo index code --watch`) is running for the current
 directory by looking for a pidfile at `/tmp/jcmwatch-<md5-of-pwd>.pid` and verifying
 the pid is alive. Injects a system message telling the model either:
 

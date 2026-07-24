@@ -13,7 +13,7 @@ click" version, meant to be read inline from the `/telemetry` page itself.
 ## Open The Page
 
 ```sh
-roborepo serve
+roborepo web
 ```
 
 ```text

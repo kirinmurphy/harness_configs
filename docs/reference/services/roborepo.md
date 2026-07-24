@@ -128,7 +128,7 @@ roborepo skill render-commands [--check]
 roborepo index code  [path]
 roborepo index docs  [path]
 roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--dry-run] [--only-claude|--only-codex] [--skip-claude-permission]
-roborepo watch code  [path]
+roborepo index code [path] --watch
 roborepo setup [--dry-run]
 roborepo apply [--dry-run]
 roborepo version
@@ -136,8 +136,8 @@ roborepo workspace status
 roborepo workspace use <path>
 roborepo workspace validate
 roborepo workspace import <path> [--dry-run]
-roborepo onboard
-roborepo serve [--detach] [--no-open] [--port <n>]
+roborepo package manage
+roborepo web [--no-open] [--port <n>]
 roborepo telemetry install|start|stop|enable|disable|status|report|export|backup|purge
 
 roborepo run <cmd> [args...]
@@ -145,8 +145,8 @@ roborepo run <cmd> [args...]
 roborepo update  [--dry-run] [--verbose]
 roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]
 roborepo repair local-config [--dry-run|--apply]
-roborepo doctor  [--installed]
-roborepo verify [--verbose]
+roborepo doctor  [--installed] [--verbose]
+roborepo doctor --installed [--verbose]
 roborepo rules   [--check]
 roborepo permissions [--check]
 
@@ -224,17 +224,17 @@ workspace package config:
 ```
 
 Use this pattern when the front-door command should stay stable but the implementation belongs to
-an enabled package. `roborepo index code`, `roborepo watch code`, and `roborepo index docs` follow
+an enabled package. `roborepo index code`, `roborepo index code --watch`, and `roborepo index docs` follow
 this pattern. Running one of these commands resolves the enabled package owner first; if no owning
 package is enabled, the CLI tells the user which package to enable.
 
 Lifecycle behavior:
 
-- `roborepo enable <package-id>` records command ownership in `~/.roborepo/enabled-packages.json`
+- `roborepo package enable <package-id>` records command ownership in `~/.roborepo/enabled-packages.json`
   for packages with `cli-command` or `rule` resources.
-- `roborepo disable <package-id>` removes that ownership.
+- `roborepo package disable <package-id>` removes that ownership.
 - `roborepo doctor` validates command resource shape and duplicate ownership inside package
-  dependency closures; `roborepo verify` runs doctor, so it inherits the same guard.
+  dependency closures; `roborepo doctor --installed` checks live install links too.
 - `roborepo repair` relinks moved install paths and preserves package command state because the
   command registry is path-independent runtime state. `roborepo repair local-config --dry-run`
   handles the separate case where local Claude/Codex settings can be safely recovered from backup.
@@ -249,7 +249,7 @@ documented maintainer workflows.
 
 ## Preset Onboarding
 
-`roborepo onboard` is the machine-level chooser for global harness behaviors. Interactive install
+`roborepo package manage` is the machine-level chooser for global harness behaviors. Interactive install
 starts it after the core install completes; the CLI also gates normal commands until onboarding has
 completed at least once, unless you bypass the gate for automation. Re-running it shows enabled
 options checked and disabled options unchecked so you can turn a behavior on or off later.
@@ -275,7 +275,7 @@ bounded, each `<harness>.jsonl` is size-capped
 chronological), so the file can't fill the disk.
 
 **Lifecycle — capture and portal.** `roborepo telemetry enable` turns capture on;
-`roborepo telemetry disable` turns capture off; `roborepo web` or `roborepo serve --detach`
+`roborepo telemetry disable` turns capture off; `roborepo web`
 opens the detached portal. `roborepo telemetry stop` remains a cleanup command: it kills the
 detached server if present and disables capture. The detached server's PID is tracked in
 `~/.local/state/roborepo/portal-server.pid`; a stale PID file (process gone) is detected and
@@ -354,7 +354,7 @@ id, heaviest turns surfaced, plus a copy-paste analysis prompt).
 > bare tool names Codex sometimes logs (e.g. `search_symbols`), via a known-tool table in
 > `telemetry-transcript.mjs` — without it, Codex MCP usage is undercounted.
 
-`roborepo serve [--detach] [--no-open] [--port <n>]` (default `4317`) starts a dependency-free local
+`roborepo web [--no-open] [--port <n>]` (default `4317`) starts a dependency-free local
 web portal on `127.0.0.1` and opens `/config` by default (`--detach` forks it into the background and
 writes the PID file; this is what `roborepo web` uses under the hood). Before binding, it probes an
 occupied port through `/api/portal/status`: a current portal is reused/adopted, while an old or

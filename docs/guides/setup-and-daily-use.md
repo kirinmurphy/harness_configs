@@ -29,10 +29,10 @@ This installs the core CLI plus the shared baseline. It detects which harnesses 
 Interactive install starts onboarding after the core install completes. If you skip it, or if install ran noninteractively, run:
 
 ```sh
-roborepo onboard
+roborepo package manage
 ```
 
-That workflow turns on or skips optional behavior packages such as skills, hooks, commands, rules, MCP defaults, permissions, and telemetry. Re-running `roborepo onboard` later shows selected options checked and unselected options unchecked.
+That workflow turns on or skips optional behavior packages such as skills, hooks, commands, rules, MCP defaults, permissions, and telemetry. Re-running `roborepo package manage` later shows selected options checked and unselected options unchecked.
 
 The installer has one materialization model: copy owned files, render generated rules, and preserve
 user-authored root config unless the selected collision policy says otherwise. See
@@ -40,7 +40,7 @@ user-authored root config unless the selected collision policy says otherwise. S
 
 Root config export merges the repo baseline with the active local file when a root-config row collides, preserving the local content and cleaning up redundant backup originals after a no-op resolution. The installer does not auto-merge user config for other managed paths, or silently replace non-root conflicts. If another harness file or global command target already exists and is not managed by this repo, install stops before changing files and prints a merge prompt after the blocking action. See [Config Collision Handling](../reference/internal/config-collision-handling.md) for exact behavior.
 
-**The script is safe to re-run** — owned copies and rendered rules are refreshed, and local Claude/Codex settings are merged with the repo baseline instead of replaced. If a past update left recoverable local settings in a backup, `roborepo update`, `roborepo doctor --installed`, or `roborepo verify` will point you at `roborepo repair local-config --dry-run`.
+**The script is safe to re-run** — owned copies and rendered rules are refreshed, and local Claude/Codex settings are merged with the repo baseline instead of replaced. If a past update left recoverable local settings in a backup, `roborepo update` or `roborepo doctor --installed` will point you at `roborepo repair local-config --dry-run`.
 
 If onboarding has not been completed yet, `roborepo` runs that workflow before most normal commands. `--no-presets-onboard` or `ROBOREPO_PRESETS_ONBOARD=skip` bypasses install-time onboarding and the later command gate for automation.
 
@@ -77,7 +77,7 @@ bundle such as `readonly`, `interactive`, or `workspace`.
 Use the onboarding flow or config portal for normal machine-level changes:
 
 ```sh
-roborepo onboard
+roborepo package manage
 roborepo web
 ```
 
@@ -109,7 +109,7 @@ as shown below. Full reference: [roborepo CLI](../reference/services/roborepo.md
 Open the local portal and go to `/plans`:
 
 ```sh
-roborepo serve
+roborepo web
 ```
 
 The Plans page discovers Markdown files under `docs/plans/**/*.md` from configured discovery roots.
@@ -119,7 +119,7 @@ warnings/tasks, and copy repository-aware context.
 Enable the Plan Docs package when you want agent workflow prompts and the `/plan-docs` slash command:
 
 ```sh
-roborepo enable plan-docs
+roborepo package enable plan-docs
 ```
 
 Then use `/plan-docs create`, `/plan-docs start`, `/plan-docs sync`, `/plan-docs validate`,
@@ -132,9 +132,9 @@ See [Plan Docs Walkthrough](plan-docs.md) for the full user flow.
 Keep the package-owned code index current so Claude can navigate your codebase. Start this when opening a project you'll be actively coding in. The watcher runs continuously — edits are picked up automatically within the session.
 
 ```sh
-roborepo enable jcodemunch       # once per machine, if not already enabled
-roborepo watch code               # watch the current dir (runs continuously)
-roborepo watch code path/to/dir
+roborepo package enable jcodemunch       # once per machine, if not already enabled
+roborepo index code --watch       # watch the current dir (runs continuously)
+roborepo index code path/to/dir --watch
 roborepo index code path/to/dir   # one-shot index instead of watching
 ```
 
@@ -143,7 +143,7 @@ roborepo index code path/to/dir   # one-shot index instead of watching
 Index a project's documentation so Claude can search sections and headings rather than reading full files. Run once per project to initialize. After that, edits to existing files are picked up automatically via mtime detection — no manual reindex needed. Re-run only when doc files are added or deleted.
 
 ```sh
-roborepo enable jdocmunch        # once per machine, if not already enabled
+roborepo package enable jdocmunch        # once per machine, if not already enabled
 roborepo index docs               # index docs in the current dir
 roborepo index docs path/to/dir
 ```
@@ -197,14 +197,15 @@ Then render and check:
 Something feels off — commands missing, config not loading, hooks not firing. Run this to verify key files, JSON/TOML config, helpers, and dependencies. The skill checks are derived from `globals/system/skills/` and `globals/packages/*/skills/`, so adding a skill needs no edit here.
 
 ```sh
-roborepo doctor        # (dispatches to scripts/doctor.sh)
+roborepo doctor        # concise health summary
+roborepo doctor --verbose  # include every passing check
 scripts/doctor.sh --installed     # also checks global ~/.claude·~/.codex links and managed skills
-scripts/doctor.sh --installed -q  # --quiet: failures + a one-line summary only
+scripts/doctor.sh --installed --verbose  # include every passing check
 ```
 
-`doctor.sh`, `verify-install.sh`, `test-roborepo.sh`, and `link-skills.sh` all accept
-`--quiet`/`-q` — prints only failures plus a summary line, exit code unchanged. Prefer that over
-piping a checker through `grep`/`head`.
+`doctor.sh` is concise by default; `--verbose` prints every passing check. `verify-install.sh`,
+`test-roborepo.sh`, and `link-skills.sh` accept `--quiet`/`-q` — prints only failures plus a
+summary line, exit code unchanged. Prefer those flags over piping a checker through `grep`/`head`.
 
 ### Run noisy commands with trimmed output
 

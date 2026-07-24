@@ -46,7 +46,7 @@ export async function presetsCommand(rest) {
     case "remove":
       return presetsRemove(args);
     default:
-      console.error(`usage: roborepo onboard | roborepo bundle status|apply|check|remove`);
+      console.error(`usage: roborepo package manage | roborepo bundle status|apply|check|remove`);
       process.exit(2);
   }
 }
@@ -173,7 +173,7 @@ function buildOnboardSteps() {
   }
 
   if (steps[0]) {
-    steps[0].notice = "Prefer a web UI? Run: roborepo serve";
+    steps[0].notice = "Prefer a web UI? Run: roborepo web";
   }
 
   // Permissions: the 5 named behaviors are directly toggleable here (deny/ask/allow cycle via
@@ -253,7 +253,7 @@ async function applyWizardChanges(steps) {
 
 async function runInteractiveOnboard({ launchPortal = true } = {}) {
   console.log("roborepo onboarding — toggle behavior across the sections, then press Enter on the last step.\n");
-  console.log("Web UI: roborepo serve\n");
+  console.log("Web UI: roborepo web\n");
   await wizard(buildOnboardSteps(), applyWizardChanges);
   // The first-install intro owns the "open web?" nudge, so it runs the wizard with launchPortal=false
   // to avoid a duplicate portal prompt.
@@ -263,7 +263,7 @@ async function runInteractiveOnboard({ launchPortal = true } = {}) {
 
 // First-install welcome page + 4-option menu. A property of the INSTALL workflow only: install calls
 // `roborepo onboard-intro` once, after core install, before any onboarding. Never shown on a direct
-// `roborepo onboard`, and the already-onboarded guard in scripts/install/main.sh keeps it off updates
+// `roborepo package manage`, and the already-onboarded guard in scripts/install/main.sh keeps it off updates
 // and re-installs. Marks onboarded at the end of every path so it never re-shows.
 export async function presetsIntro(args) {
   rejectUnknownFlags(args, new Set());
@@ -325,8 +325,8 @@ function printIntroWelcome() {
   console.log("roborepo — version-controlled Claude/Codex harness config.\n");
   console.log("Main commands");
   console.log("  roborepo web        manage your settings online");
-  console.log("  roborepo onboard    choose which behaviors are enabled");
-  console.log("  roborepo enable X   turn on a package (jcodemunch, telemetry, ...)");
+  console.log("  roborepo package manage    choose which behaviors are enabled");
+  console.log("  roborepo package enable X   turn on a package (jcodemunch, telemetry, ...)");
   console.log("  roborepo update     re-apply config after pulling changes");
   console.log("");
   console.log("Run `roborepo --help` for all commands.");
@@ -341,8 +341,7 @@ function printIntroHelp() {
 
 async function maybeLaunchPortal() {
   console.log("\nWeb portal:");
-  console.log("  roborepo serve           open the portal and keep the server in this terminal");
-  console.log("  roborepo serve --detach  open the portal and keep the server running in the background");
+  console.log("  roborepo web             open the portal and keep the server running in the background");
   console.log("  URL: http://127.0.0.1:4317/config");
 
   const prompter = makePrompter();
@@ -357,7 +356,7 @@ async function maybeLaunchPortal() {
     stdio: "inherit",
   });
   if (result.status !== 0) {
-    console.error("Portal launch failed. You can retry with: roborepo serve");
+    console.error("Portal launch failed. You can retry with: roborepo web");
   }
 }
 

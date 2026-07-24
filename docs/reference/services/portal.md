@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The portal is the local `roborepo serve` web UI: Config (`/`, alias `/config`), Plans (`/plans`),
+The portal is the local `roborepo web` UI: Config (`/`, alias `/config`), Plans (`/plans`),
 Localhoster (`/localhoster`), and Telemetry (`/telemetry`). It is static HTML/CSS/browser JavaScript served by a loopback-only
 Node HTTP server — no build step, no framework, no bundler. This doc covers the shared
 architecture (page manifest, browser API helpers, server route dispatch) that every page relies
@@ -179,7 +179,7 @@ Telemetry's "turn on telemetry" button, which previously POSTed without the toke
 - `npm test` (`scripts/test/test-roborepo.sh`) — starts the portal server, asserts
   `/api/portal/status`, token exposure, mutating POST success/400/403 responses, and that each
   served `app.js` parses (`node --check`).
-- `roborepo serve` — click through Config → Plans → Localhoster → Telemetry, confirm nav highlighting, and
+- `roborepo web` — click through Config → Plans → Localhoster → Telemetry, confirm nav highlighting, and
   exercise each page's mutations (Config toggles, Plans refresh/discovery-root edits, Telemetry
   "turn on telemetry").
 - `node --input-type=module --check < portal/<page>/app.js` for a quick module-syntax check on a

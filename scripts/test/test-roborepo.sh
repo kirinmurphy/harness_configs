@@ -1151,6 +1151,10 @@ node "${repo_root}/scripts/build/render-agent-permissions.mjs" >/dev/null
 
 assert "lifecycle: roborepo doctor dispatches and passes" \
   bash -c "node '${cli}' doctor >/dev/null 2>&1"
+assert "lifecycle: roborepo doctor is concise by default" \
+  bash -c "node '${cli}' doctor >'${work}/doctor-default.out' 2>&1 && ! grep -q '^ok:' '${work}/doctor-default.out' && grep -q '^doctor passed (' '${work}/doctor-default.out'"
+assert "lifecycle: roborepo doctor --verbose reports per-check detail" \
+  bash -c "node '${cli}' doctor --verbose >'${work}/doctor-verbose.out' 2>&1 && grep -q '^ok: generated/codex/AGENTS.md exists' '${work}/doctor-verbose.out' && grep -q '^doctor passed (' '${work}/doctor-verbose.out'"
 
 # Package mode: dev-only source files (local/skills, scripts/test/test-roborepo.sh) are excluded
 # from the npm artifact, so doctor must not fail on their absence. Build a stripped tracked-file copy
@@ -1187,6 +1191,8 @@ assert "lifecycle: roborepo install verb removed (first install is the shell boo
   bash -c "! node '${cli}' install --dry-run >/dev/null 2>&1"
 assert "lifecycle: roborepo verify is removed" \
   bash -c "! HOME='${work}/not-installed-home' node '${cli}' verify >'${work}/verify.err' 2>&1 && grep -q 'roborepo doctor --installed' '${work}/verify.err'"
+assert "lifecycle: CLI surface help/menu/removed routes work in sandbox" \
+  node "${repo_root}/scripts/test/cli-surface-integration-check.mjs"
 assert "lifecycle: roborepo doctor --installed is concise by default" \
   bash -c "HOME='${update_home}' node '${cli}' doctor --installed >'${work}/doctor-installed.out' 2>&1 || true; ! grep -q 'globals/codex/AGENTS.md exists' '${work}/doctor-installed.out'"
 assert "lifecycle: roborepo rules --check dispatches render verifier" \

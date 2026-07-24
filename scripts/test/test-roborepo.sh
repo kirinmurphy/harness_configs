@@ -1442,6 +1442,12 @@ assert "mcp: enabling a built-in MCP package does not record it into the workspa
 assert "workspace: built-in conflicts require a typed replace override" \
   node "${repo_root}/scripts/test/workspace-resources-check.mjs"
 
+# Canonical repository identity (modules/repositories): shared resolver extraction, normalization
+# equivalence, worktree/clone roots, versioned registry persistence, aliases, associations,
+# Plans source coverage. See docs/plans/backlog/canonical-repository-identity-plan-v2.md.
+assert "repositories: canonical identity + registry + associations" \
+  node "${repo_root}/scripts/test/repositories-check.mjs"
+
 # Root config drift VIEW (buildRootConfigView in root-config-view.mjs): the per-harness state the terminal
 # `config root inspect` report and the web /config drift chip both render from — not-installed /
 # unwritten / in-sync / drifted / staged-pending.

@@ -107,7 +107,7 @@
       </div>
     </div>
     <div id="toast" class="toast" hidden></div>
-    <main>
+    <main class="inner">
       {{LOADING}}
       <div class="settings" id="settings">
         <span class="settings-label" id="settings-label"
@@ -144,14 +144,7 @@
     <dialog id="info-modal" aria-labelledby="info-modal-title">
       <div class="modal-head">
         <h2 id="info-modal-title">How folder scanning works</h2>
-        <button
-          type="button"
-          id="info-modal-close"
-          class="modal-close"
-          aria-label="Close"
-        >
-          ×
-        </button>
+        <portal-close-button id="info-modal-close" aria-label="Close"></portal-close-button>
       </div>
       <div class="modal-body">
         <pre class="folder-tree"><span class="tree-root">projects/</span>
@@ -191,14 +184,7 @@
           data-slot="title"
         ></span>
         <span class="modal-path" data-slot="path"></span>
-        <button
-          type="button"
-          class="modal-close"
-          data-slot="close"
-          aria-label="Close"
-        >
-          ×
-        </button>
+        <portal-close-button data-slot="close" aria-label="Close"></portal-close-button>
       </div>
       <div class="modal-body">
         <div class="markdown" data-slot="content"></div>
@@ -211,14 +197,7 @@
           id="prompt-modal-title"
           data-slot="title"
         ></span>
-        <button
-          type="button"
-          class="modal-close"
-          data-slot="close"
-          aria-label="Close"
-        >
-          ×
-        </button>
+        <portal-close-button data-slot="close" aria-label="Close"></portal-close-button>
       </div>
       <div class="modal-body">
         <p class="modal-note" data-slot="objective"></p>
@@ -228,24 +207,30 @@
         </div>
       </div>
     </dialog>
-    <plan-drawer id="drawer" hidden>
-      <aside class="drawer-panel">
-        <div class="drawer-head">
-          <div>
-            <h2 id="drawer-title"></h2>
+    <dialog id="drawer">
+      <div class="drawer-head">
+        <div>
+          <h2 id="drawer-title"></h2>
+          <div class="drawer-path-row">
             <p id="drawer-path"></p>
+            <portal-copy-button id="drawer-path-copy" icon="copy" aria-label="Copy path"></portal-copy-button>
           </div>
-          <button id="drawer-close" type="button">Close</button>
         </div>
-        <div class="drawer-actions" id="drawer-actions"></div>
+        <portal-close-button id="drawer-close"></portal-close-button>
+      </div>
+      <div class="drawer-body">
+        <div class="drawer-actions" id="drawer-actions">
+          <portal-menu-button id="drawer-copy-menu" icon="copy" label="Copy"></portal-menu-button>
+          <portal-menu-button id="drawer-actions-menu" label="Actions"></portal-menu-button>
+        </div>
+        <section class="drawer-warnings-section" id="drawer-warnings-section" hidden>
+          <h3><portal-icon name="warning" width="14" height="14"></portal-icon> Warnings</h3>
+          <ul id="drawer-warnings"></ul>
+        </section>
         <div class="drawer-grid">
           <section>
             <h3>Metadata</h3>
             <dl id="drawer-meta"></dl>
-          </section>
-          <section>
-            <h3>Warnings</h3>
-            <ul id="drawer-warnings"></ul>
           </section>
           <section>
             <h3>Tasks</h3>
@@ -253,10 +238,10 @@
           </section>
         </div>
         <article class="markdown" id="drawer-doc"></article>
-      </aside>
-    </plan-drawer>
+      </div>
+    </dialog>
     <template id="tpl-package-banner">
-      <div id="package-not-installed-banner">
+      <div class="package-not-installed-banner">
         <header>
           <strong>/plan-docs workflows are not enabled </strong
           ><span data-slot="text"></span>
@@ -344,6 +329,9 @@
     </template>
     <script src="/portal/shared/info-icon.js" type="module"></script>
     <script src="/portal/shared/icon.js" type="module"></script>
+    <script src="/portal/shared/close-button.js" type="module"></script>
+    <script src="/portal/shared/copy-button.js" type="module"></script>
+    <script src="/portal/shared/menu-button.js" type="module"></script>
     <script src="/portal/plans/elements/index.js" type="module"></script>
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/plans/app.js" type="module"></script>

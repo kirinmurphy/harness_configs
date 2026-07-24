@@ -3,8 +3,8 @@
   {{HEAD}}
   <body>
     {{CHROME}}
-    <div class="control-panel filterbar">
-      <div class="filterbar-rows">
+    <div class="control-panel">
+      <div class="inner filterbar-rows">
         <div class="control-panel-row filter-row" id="ranges">
           <span class="flabel">range</span>
           <button data-range="3600000">1h</button>
@@ -16,6 +16,18 @@
           <div id="harnessfilt">
             <span class="flabel">source</span>
           </div>
+          <!-- Info icon rides at the end of the range row, after source. No fixed-width gutter column
+               anymore — that inset the filter rows' right edge past every other page's content edge.
+               Inline here keeps the rows stretching the full .inner width, matching Plans' control bar. -->
+          <portal-info-icon
+            id="filters-info"
+            class="filterbar-info"
+            data-doc-anchor="global-filters"
+            aria-haspopup="dialog"
+            aria-expanded="false"
+            aria-label="about these filters"
+            title="about these filters"
+          ></portal-info-icon>
         </div>
         <!-- Phase 6 global filter bar: model/repo/marker on top of the existing time/harness window.
              Compact selectors + active-filter-count + clear, per the plan's "Hybrid filtering" design
@@ -30,29 +42,15 @@
           </span>
         </div>
       </div>
-      <!-- Fixed-width gutter, bottom-aligned to the cohort row: the filter bar no longer has a
-           "Filters" heading to anchor the info icon to (both rows ARE filters), so it lives in its
-           own column instead of inline in either row. Fixed width keeps the two filter rows' own
-           wrap width stable as the viewport shrinks — the gutter never grows to eat their space. -->
-      <div class="filterbar-info">
-        <portal-info-icon
-          id="filters-info"
-          data-doc-anchor="global-filters"
-          aria-haspopup="dialog"
-          aria-expanded="false"
-          aria-label="about these filters"
-          title="about these filters"
-        ></portal-info-icon>
-      </div>
     </div>
     <!-- Marker creation lives outside the filter bar — it's a data-entry action ("I changed
          something, mark it"), not a way of narrowing the current view, so grouping it with the
          filter controls above misrepresented what it does. -->
-    <div class="page-actions">
+    <div class="page-actions inner">
       <button data-btn="cta" id="openmarkermodal" type="button">+ mark change</button>
     </div>
-    <div class="page-meta stat-row" id="meta"></div>
-    <main>
+    <div class="page-meta stat-row inner" id="meta"></div>
+    <main class="inner">
       {{LOADING}}
       <!-- TIER 1 — conclusions & action items (the headline; always first) -->
       <section class="panel" id="insightspanel">
@@ -382,7 +380,7 @@
       <div class="t-row"><span data-slot="term"></span> <span data-slot="value"></span></div>
     </template>
     <dialog id="telemetry-modal">
-      <button class="closebtn" id="modalclose">×</button>
+      <portal-close-button id="modalclose"></portal-close-button>
       <h3 id="modaltitle"></h3>
       <div class="sub" id="modalsub"></div>
       <dl id="modalbody"></dl>
@@ -394,7 +392,7 @@
          no client-side marker logic, the CLI's validation rules are re-enforced server-side by
          createMarkerFromPortalRequest in telemetry.mjs. -->
     <dialog id="marker-modal">
-      <button class="closebtn" id="markermodalclose">×</button>
+      <portal-close-button id="markermodalclose"></portal-close-button>
       <h3>create marker <portal-info-icon data-doc-anchor="markers" aria-haspopup="dialog" aria-expanded="false" aria-label="how markers work" title="how markers work"></portal-info-icon></h3>
       <div class="sub">markers appear on the timeline and can drive before/after comparisons</div>
       <form id="markerform" method="dialog">
@@ -441,7 +439,7 @@
           <div class="modal-title" data-slot="title">Telemetry Walkthrough</div>
           <div class="modal-path" data-slot="path"></div>
         </div>
-        <button class="modal-close" data-slot="close" type="button">close</button>
+        <portal-close-button data-slot="close"></portal-close-button>
       </div>
       <div class="modal-body">
         <div class="markdown" data-slot="content"></div>
@@ -449,6 +447,8 @@
     </dialog>
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/shared/info-icon.js" type="module"></script>
+    <script src="/portal/shared/icon.js" type="module"></script>
+    <script src="/portal/shared/close-button.js" type="module"></script>
     <script src="/portal/telemetry/app.js" type="module"></script>
   </body>
 </html>

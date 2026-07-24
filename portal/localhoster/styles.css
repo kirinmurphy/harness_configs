@@ -1,7 +1,6 @@
 main {
-  padding: 18px 20px 24px;
-  max-width: 1180px;
-  margin: 0 auto;
+  padding-top: 18px;
+  padding-bottom: 24px;
   display: grid;
   gap: 16px;
 }
@@ -298,9 +297,6 @@ dialog::backdrop {
 .toggle-row input,
 .check-line input {
   width: auto;
-}
-.modal-close {
-  line-height: 1;
 }
 .link-list {
   display: grid;

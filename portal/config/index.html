@@ -3,7 +3,7 @@
   {{HEAD}}
   <body>
     {{CHROME}}
-    <main id="main">
+    <main id="main" class="inner">
       {{LOADING}}
       <!-- Static shell shown until the first snapshot loads (see .page-loading in base.css). Mirrors
        tpl-config-files below so the loading scrim sits over real structure instead of a blank page.
@@ -56,7 +56,7 @@
       <div class="modal-head">
         <div class="modal-head-main">
           <span class="modal-title" id="modal-title"></span>
-          <button class="modal-close" id="modal-close">✕</button>
+          <portal-close-button id="modal-close"></portal-close-button>
         </div>
         <span class="modal-path" id="modal-path"></span>
       </div>
@@ -374,6 +374,7 @@
     </template>
     <script src="/portal/config/elements/index.js" type="module"></script>
     <script src="/portal/shared/icon.js" type="module"></script>
+    <script src="/portal/shared/close-button.js" type="module"></script>
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/config/app.js" type="module"></script>
   </body>

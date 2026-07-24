@@ -9,8 +9,13 @@
  */
 :root {
   color-scheme: dark;
+  /* Background layer scale: --bg (page base) < --panel (cards/sections) < --raised (hover/
+   * highlight/nested-within-a-panel surfaces). Each step must read as visually distinct from its
+   * neighbor at a glance — don't reach for a bare color-mix() tint when one of these three fits. */
   --bg: #0d1117;
-  --panel: #12171e;
+  --panel: #161c25;
+  --raised: #1e2530;
+  --neutral-tint: #7c8794;
   --line: #2d333b;
   --ink: #e6edf3;
   --dim: #a3adb8;
@@ -78,7 +83,9 @@
 :root[data-theme="light"] {
   color-scheme: light;
   --bg: #ffffff;
-  --panel: #f6f8fa;
+  --panel: #eef1f4;
+  --raised: #e2e7ec;
+  --neutral-tint: #6e7781;
   --line: #d0d7de;
   --ink: #1f2328;
   --dim: #656d76;
@@ -155,7 +162,7 @@ select {
 button,
 [data-btn="secondary"] {
   color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 6%, var(--bg));
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 5px;
   padding: var(--space-xs) var(--space-sm);
@@ -164,7 +171,7 @@ button,
 button:hover,
 [data-btn="secondary"]:hover {
   border-color: var(--dim);
-  background: color-mix(in srgb, var(--ink) 10%, var(--bg));
+  background: var(--raised);
 }
 [data-btn="cta"] {
   color: var(--on-cta);
@@ -215,11 +222,17 @@ body {
 }
 
 /* Shared centering wrapper — keeps content readable-width on very wide screens while the parent
- * (header/footer background, page body) stays full-bleed. */
+ * (header/footer background, page body) stays full-bleed. Owns side padding too, so every page's
+ * content column lines up at the same 1200px+20px box instead of each page inventing its own
+ * max-width/padding pair. Elements that already sit inside a padded parent (e.g. .control-panel)
+ * should not add another .inner layer — use .inner directly on the padded parent instead. */
 .inner {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
+  padding-left: 20px;
+  padding-right: 20px;
+  box-sizing: border-box;
 }
 
 .portal-header .inner {
@@ -232,6 +245,7 @@ body {
 .portal-header .logo-wrapper {
   min-width: 0;
   padding: 0.5rem 1.25rem;
+  padding-left: 0;
 }
 
 .portal-header h1 {
@@ -275,7 +289,7 @@ nav a.active {
 }
 .portal-footer {
   margin-top: 24px;
-  padding: 12px 20px;
+  padding: 12px 0;
   border-top: 1px solid var(--line);
   color: var(--dim);
   font-size: var(--text-2xs);
@@ -577,18 +591,118 @@ dd {
    * text */
   color: var(--dim);
 }
-.modal-close {
+/* <portal-close-button> — the shared X-icon close control (portal/shared/close-button.js). One
+ * component used by every dialog/drawer head instead of each page hand-rolling its own ×/✕/Close
+ * button and CSS class. */
+portal-close-button {
   margin-left: auto;
+  flex-shrink: 0;
+}
+.close-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: 1px solid var(--line);
   color: var(--dim);
   border-radius: 5px;
-  padding: 3px 9px;
+  padding: 5px;
   cursor: pointer;
 }
-.modal-close:hover {
+.close-button:hover {
   color: var(--ink);
   border-color: var(--dim);
+  background: var(--raised);
+}
+/* <portal-copy-button> — the shared copy-to-clipboard control (portal/shared/copy-button.js).
+ * Idle and "Copied!" contents are stacked in the same grid cell (grid-area) so both are always
+ * laid out and the button's intrinsic width already fits the wider of the two — swapping which
+ * one is visible never resizes the button. */
+.copy-button {
+  display: inline-grid;
+  cursor: pointer;
+}
+.copy-button-state {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.copy-button-idle {
+  visibility: visible;
+}
+.copy-button-copied {
+  visibility: hidden;
+  color: var(--ok);
+}
+.copy-button-showing-copied .copy-button-idle {
+  visibility: hidden;
+}
+.copy-button-showing-copied .copy-button-copied {
+  visibility: visible;
+}
+.copy-button:disabled {
+  opacity: 1;
+}
+.copy-button-showing-copied {
+  border-color: var(--ok);
+}
+/* <portal-menu-button> — shared anchored-popover trigger (portal/shared/menu-button.js). Panel
+ * content is caller-supplied (unlike option-dropdown's fixed option list), used for the plan
+ * drawer's Copy menu and Actions popup. */
+portal-menu-button {
+  display: inline-block;
+  position: relative;
+}
+.menu-button-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.menu-button-chevron {
+  color: var(--dim);
+}
+.menu-button-panel {
+  position: fixed;
+  z-index: 30;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px var(--modal-shadow);
+  padding: 6px;
+  min-width: 220px;
+  max-width: min(420px, 90vw);
+}
+.menu-button-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  padding: 7px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.menu-button-item:hover {
+  background: var(--raised);
+}
+.menu-button-item-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--dim);
+}
+.menu-button-item-body {
+  display: grid;
+  gap: 2px;
+}
+.menu-button-item-desc {
+  color: var(--desc-dim);
+  font-size: var(--text-2xs);
 }
 .modal-body {
   overflow: auto;
@@ -607,14 +721,17 @@ dd {
  * A page's own stylesheet still owns everything INSIDE a .control-panel-row — this only owns the
  * strip's background/border/outer spacing. */
 .control-panel {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   border: none;
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, #808080 16%, var(--panel));
+  background: color-mix(in srgb, var(--neutral-tint) 16%, var(--panel));
   border-radius: 0;
   width: 100%;
   display: grid;
   gap: 10px;
-  padding: 12px 20px;
+  padding: 12px 0;
 }
 .control-panel-row {
   display: flex;

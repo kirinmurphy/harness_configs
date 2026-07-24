@@ -3,7 +3,7 @@
   {{HEAD}}
   <body>
     {{CHROME}}
-    <main>
+    <main class="inner">
       {{LOADING}}
       <section id="warnings" class="notice warn" hidden></section>
       <section id="content" class="localhoster-content"></section>
@@ -13,14 +13,7 @@
       <form method="dialog" id="link-form">
         <div class="modal-head">
           <h2 id="link-dialog-title">Edit links</h2>
-          <button
-            type="button"
-            class="modal-close"
-            data-close
-            aria-label="Close"
-          >
-            x
-          </button>
+          <portal-close-button data-close aria-label="Close"></portal-close-button>
         </div>
         <div class="modal-body">
           <input type="hidden" id="link-project" />
@@ -39,14 +32,7 @@
       <form method="dialog" id="app-form">
         <div class="modal-head">
           <h2 id="app-dialog-title">App association</h2>
-          <button
-            type="button"
-            class="modal-close"
-            data-close
-            aria-label="Close"
-          >
-            x
-          </button>
+          <portal-close-button data-close aria-label="Close"></portal-close-button>
         </div>
         <div class="modal-body">
           <input type="hidden" id="app-association" />
@@ -132,14 +118,7 @@
       <form method="dialog" id="alias-form">
         <div class="modal-head">
           <h2 id="alias-dialog-title">Confirm alias</h2>
-          <button
-            type="button"
-            class="modal-close"
-            data-close
-            aria-label="Close"
-          >
-            x
-          </button>
+          <portal-close-button data-close aria-label="Close"></portal-close-button>
         </div>
         <div class="modal-body">
           <label>
@@ -165,9 +144,7 @@
     <dialog id="settings-dialog" aria-labelledby="settings-dialog-title">
       <div class="modal-head">
         <h2 id="settings-dialog-title">Localhost settings</h2>
-        <button type="button" class="modal-close" data-close aria-label="Close">
-          x
-        </button>
+        <portal-close-button data-close aria-label="Close"></portal-close-button>
       </div>
       <div class="modal-body settings-body" id="settings-body"></div>
     </dialog>
@@ -311,6 +288,7 @@
     </template>
     <script type="module" src="/portal/shared/info-icon.js"></script>
     <script type="module" src="/portal/shared/icon.js"></script>
+    <script type="module" src="/portal/shared/close-button.js"></script>
     <script type="module" src="/portal/shared/theme.js"></script>
     <script type="module" src="/portal/localhoster/app.js"></script>
   </body>

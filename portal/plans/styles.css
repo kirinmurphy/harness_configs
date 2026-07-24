@@ -7,9 +7,8 @@
  *            section becomes a fixed 200px right-side column at/above it.
  */
 main {
-  padding: 18px;
-  max-width: 1200px;
-  margin: 0 auto;
+  padding-top: 18px;
+  padding-bottom: 18px;
   display: grid;
   gap: 14px;
 }
@@ -108,7 +107,7 @@ main {
   margin-top: 10px;
   padding: 10px 0 0;
   border-top: 1px solid var(--line);
-  background: color-mix(in srgb, #808080 8%, var(--panel));
+  background: color-mix(in srgb, var(--neutral-tint) 8%, var(--panel));
   margin-left: -20px;
   margin-right: -20px;
   padding-left: 20px;
@@ -204,7 +203,7 @@ main {
   margin-top: 0;
   padding: 10px 20px 12px;
   border-top: 1px solid var(--line);
-  background: color-mix(in srgb, #808080 8%, var(--panel));
+  background: color-mix(in srgb, var(--neutral-tint) 8%, var(--panel));
   margin-left: -20px;
   margin-right: -20px;
 }
@@ -290,16 +289,8 @@ dialog#info-modal::backdrop {
   margin: 0;
   font-size: var(--text-md);
 }
-#info-modal .modal-close {
+#info-modal portal-close-button {
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--text-md);
-  line-height: 1;
   margin-left: 0;
 }
 #info-modal .modal-body {
@@ -715,41 +706,47 @@ dialog#skill-modal::backdrop {
 .toast[hidden] {
   display: none;
 }
-plan-drawer {
-  position: fixed;
-  inset: 0;
-  background: var(--backdrop);
-  display: flex;
-  justify-content: flex-end;
-  z-index: 10;
-}
-plan-drawer[hidden] {
-  display: none;
-}
-.drawer-panel {
+dialog#drawer {
   width: min(980px, 100vw);
-  height: 100vh;
+  max-height: 85vh;
   overflow: auto;
   background: var(--bg);
-  border-left: 1px solid var(--line);
-  box-shadow: -20px 0 40px var(--modal-shadow);
-  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px var(--modal-shadow);
+  padding: 0;
+}
+dialog#drawer::backdrop {
+  background: var(--backdrop);
 }
 .drawer-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: start;
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
-  padding-bottom: 12px;
+  padding: 18px 18px 12px;
+}
+.drawer-body {
+  padding: 0 18px 18px;
 }
 .drawer-head h2 {
   margin: 0;
   font-size: var(--text-lg);
 }
-.drawer-head p {
+.drawer-path-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+}
+.drawer-path-row p {
   color: var(--dim);
-  margin: 3px 0 0;
+  margin: 0;
   overflow-wrap: anywhere;
 }
 .drawer-actions {
@@ -760,7 +757,7 @@ plan-drawer[hidden] {
 }
 .drawer-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 .drawer-grid section {
@@ -774,6 +771,47 @@ plan-drawer[hidden] {
   color: var(--dim);
   font-size: var(--text-xs);
   text-transform: uppercase;
+}
+/* Actions popup (drawer-actions-menu panel content, built in templates.js#actionsMenuContent). */
+.actions-menu-disabled {
+  display: grid;
+  gap: 10px;
+}
+.actions-menu-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.actions-menu-table td {
+  padding: 8px;
+  vertical-align: top;
+  font-size: var(--text-xs);
+}
+.actions-menu-table td:first-child {
+  color: var(--desc-dim);
+}
+.actions-menu-table td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+.actions-menu-row-recommended {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-radius: 6px;
+}
+.drawer-warnings-section {
+  border: 1px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, var(--panel));
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.drawer-warnings-section h3 {
+  margin: 0 0 8px;
+  color: var(--warn);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .task-done {
   color: var(--dim);
@@ -805,9 +843,6 @@ plan-drawer[hidden] {
   overflow: auto;
 }
 @media (max-width: 960px) {
-  .drawer-grid {
-    grid-template-columns: 1fr;
-  }
   #root-form {
     display: grid;
   }
@@ -831,13 +866,13 @@ plan-drawer[hidden] {
   vertical-align: -1px;
 }
 
-#package-not-installed-banner {
+.package-not-installed-banner {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-#package-not-installed-banner header {
+.package-not-installed-banner header {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;

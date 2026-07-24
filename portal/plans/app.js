@@ -6,6 +6,7 @@ import {
   portalSetUpdatedAt,
   portalHideLoading,
   portalCopyText,
+  portalWireBackdropClose,
 } from "/portal/shared/api.js";
 import { createSkillDetailModal } from "/portal/shared/skill-detail-modal.js";
 import * as api from "./api.js";
@@ -66,6 +67,7 @@ const rootsPanel = createRootsPanel({
 createInfoModal();
 const skillModal = createSkillDetailModal(document.getElementById("skill-modal"));
 const promptModal = createPromptModal(document.getElementById("prompt-modal"));
+portalWireBackdropClose(drawer, () => drawer.close());
 
 bindStaticControls();
 load();
@@ -350,19 +352,26 @@ function renderDrawer(doc) {
     onCopyRepoContext: (record) => copyText(repositoryContext(record)),
     onCopyPortableContext: (key) => copyPrompt("review", [key], "portable"),
     onPlanDocsAction: (mode, key) => copyPrompt(mode, [key]),
-    planDocsEnabled: state.snapshot.planDocsPackage.enabled,
+    onEnablePackage: enablePackage,
+    planDocsPackage: state.snapshot.planDocsPackage,
+    skillModal,
     onError: showError,
   });
   document.getElementById("drawer-title").textContent = content.title;
   document.getElementById("drawer-path").textContent = content.path;
+  const pathCopyEl = document.getElementById("drawer-path-copy");
+  pathCopyEl.copySource = () => doc.plan.plan.relativePath;
   document.getElementById("drawer-doc").innerHTML = content.html;
   document.getElementById("drawer-meta").replaceChildren(...content.meta);
   document
     .getElementById("drawer-warnings")
     .replaceChildren(...content.warnings.map(tmpl.listItem));
+  document.getElementById("drawer-warnings-section").hidden =
+    content.warnings.length === 0;
   document.getElementById("drawer-tasks").replaceChildren(...tmpl.drawerTaskItems(content.tasks));
-  document.getElementById("drawer-actions").replaceChildren(...content.actions);
-  drawer.open();
+  document.getElementById("drawer-copy-menu").panelContent = content.copyMenu;
+  document.getElementById("drawer-actions-menu").panelContent = content.actionsMenu;
+  drawer.showModal();
 }
 
 async function copyPrompt(actionName, keys, mode = "repository-aware") {

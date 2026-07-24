@@ -124,43 +124,36 @@ function planCardElement(record, cardActions, isDirty) {
   return node;
 }
 
+// Short, fixed descriptions for each /plan-docs mode — shown in the drawer's Actions popup table.
+// Wording matches docs/guides/plan-docs.md's "Common modes" list.
+const PLAN_DOCS_MODES = [
+  ["start", "Move selected work into active and begin."],
+  ["sync", "Update a plan from completed session work."],
+  ["validate", "Check schema, lifecycle, and repo consistency."],
+  ["review", "Decide complete/incomplete/blocked/superseded."],
+  ["handoff", "Prepare a next-chat handoff."],
+];
+
+// Best-effort single recommended next mode, derived from plan state. Returns null when no rule
+// clearly applies (e.g. blocked, or already mid-progress with no strong signal) rather than
+// guessing — an unhighlighted table beats a wrong highlight.
+export function recommendedPlanDocsMode(plan) {
+  if (plan.blockers.length > 0) return null;
+  if (plan.lifecycle === "backlog") return "start";
+  if (plan.lifecycle !== "active") return null;
+  const { complete, total } = plan.taskCounts;
+  if (total > 0 && complete === total) return "review";
+  if (plan.reviewState === "possibly-stale") return "sync";
+  if (plan.reviewState === "never-reviewed") return "validate";
+  return null;
+}
+
 // drawerActions: { onCopyMarkdown, onCopyPath, onCopyRepoContext, onCopyPortableContext,
-//                   onPlanDocsAction, planDocsEnabled, onError }
+//                   onPlanDocsAction, onEnablePackage, planDocsPackage, skillModal, onError }
 export function drawerContent(doc, drawerActions) {
   const plan = doc.plan.plan;
-  const { onError } = drawerActions;
-  const actions = [
-    actionButton(
-      "Copy Markdown",
-      () => drawerActions.onCopyMarkdown(doc.markdown),
-      onError,
-    ),
-    actionButton(
-      "Copy path",
-      () => drawerActions.onCopyPath(plan.relativePath),
-      onError,
-    ),
-    actionButton(
-      "Repository context",
-      () => drawerActions.onCopyRepoContext(doc.plan),
-      onError,
-    ),
-    actionButton(
-      "Portable context",
-      () => drawerActions.onCopyPortableContext(doc.plan.key),
-      onError,
-    ),
-  ];
-  if (drawerActions.planDocsEnabled) {
-    for (const mode of ["start", "sync", "validate", "review", "handoff"])
-      actions.push(
-        actionButton(
-          `/plan-docs ${mode}`,
-          () => drawerActions.onPlanDocsAction(mode, doc.plan.key),
-          onError,
-        ),
-      );
-  }
+  const copyMenu = copyMenuContent(doc, drawerActions);
+  const actionsMenu = actionsMenuContent(doc, drawerActions);
   return {
     title: plan.title,
     path: `${doc.plan.repository.name} / ${plan.relativePath}`,
@@ -176,12 +169,86 @@ export function drawerContent(doc, drawerActions) {
         `${plan.taskCounts.complete}/${plan.taskCounts.total} complete`,
       ),
     ],
-    warnings: plan.validation.warnings.length
-      ? plan.validation.warnings
-      : ["none"],
+    warnings: plan.validation.warnings,
     tasks: doc.parsed?.tasks || [],
-    actions,
+    copyMenu,
+    actionsMenu,
   };
+}
+
+function copyMenuItem(label, description, copySource) {
+  const item = el(
+    "button",
+    { type: "button", class: "menu-button-item" },
+    el("portal-icon", { name: "copy", width: "14", height: "14", class: "menu-button-item-icon" }),
+    el(
+      "div",
+      { class: "menu-button-item-body" },
+      el("span", {}, label),
+      description ? el("span", { class: "menu-button-item-desc" }, description) : null,
+    ),
+  );
+  item.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    await copySource();
+  });
+  return item;
+}
+
+function copyMenuContent(doc, drawerActions) {
+  const plan = doc.plan.plan;
+  return el(
+    "div",
+    {},
+    copyMenuItem("Copy Markdown", null, () => drawerActions.onCopyMarkdown(doc.markdown)),
+    copyMenuItem("Copy path", null, () => drawerActions.onCopyPath(plan.relativePath)),
+    copyMenuItem(
+      "Repository context",
+      "Prompt for an agent that already has this repo open",
+      () => drawerActions.onCopyRepoContext(doc.plan),
+    ),
+    copyMenuItem(
+      "Portable context",
+      "Self-contained prompt — works without repo access",
+      () => drawerActions.onCopyPortableContext(doc.plan.key),
+    ),
+  );
+}
+
+function actionsMenuContent(doc, drawerActions) {
+  const plan = doc.plan.plan;
+  const pkg = drawerActions.planDocsPackage || {};
+  if (!pkg.enabled) {
+    return el(
+      "div",
+      { class: "actions-menu-disabled" },
+      el("p", { class: "menu-button-item-desc" }, "Plan Docs is an optional skill that adds /plan-docs workflow prompts (start, sync, validate, review, handoff) for this plan."),
+      packageBanner(pkg, drawerActions.onEnablePackage, drawerActions.skillModal),
+    );
+  }
+  const recommended = recommendedPlanDocsMode(plan);
+  const table = el("table", { class: "actions-menu-table" });
+  for (const [mode, description] of PLAN_DOCS_MODES) {
+    const isRecommended = mode === recommended;
+    const button = el(
+      "button",
+      { type: "button", "data-btn": isRecommended ? "cta" : "secondary" },
+      mode,
+    );
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      await drawerActions.onPlanDocsAction(mode, doc.plan.key);
+    });
+    table.append(
+      el(
+        "tr",
+        { class: isRecommended ? "actions-menu-row-recommended" : "" },
+        el("td", {}, el("strong", {}, `${mode}: `), description),
+        el("td", {}, button),
+      ),
+    );
+  }
+  return table;
 }
 
 export function drawerTaskItems(tasks) {
@@ -193,14 +260,6 @@ export function drawerTaskItems(tasks) {
       `${task.done ? "[x]" : "[ ]"} ${task.text}`,
     ),
   );
-}
-
-export function actionButton(label, onClick, onError) {
-  const button = document.createElement("action-button");
-  button.setAttribute("label", label);
-  button.onClick = onClick;
-  button.onError = onError;
-  return button;
 }
 
 export function dtdd(term, value) {

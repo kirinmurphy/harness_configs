@@ -1448,6 +1448,12 @@ assert "workspace: built-in conflicts require a typed replace override" \
 assert "repositories: canonical identity + registry + associations" \
   node "${repo_root}/scripts/test/repositories-check.mjs"
 
+# Cross-domain discovery recording + server-side Plans enrollment (Phase 3): idempotent discovery,
+# multiple clones/worktrees collapsing to one canonical repo, exact-root enrollment default,
+# enrollment failure leaving the repo unmonitored.
+assert "repositories: discovery recording + Plans enrollment" \
+  node "${repo_root}/scripts/test/repositories-service-check.mjs"
+
 # Root config drift VIEW (buildRootConfigView in root-config-view.mjs): the per-harness state the terminal
 # `config root inspect` report and the web /config drift chip both render from — not-installed /
 # unwritten / in-sync / drifted / staged-pending.

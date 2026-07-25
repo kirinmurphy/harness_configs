@@ -15,6 +15,8 @@
 //
 // variant defaults to "info". Set the `no-icon` attribute to drop the leading icon.
 
+import { portalTpl as tpl, portalFillSlots as fill } from "./api.js";
+
 const VARIANT_ICON = {
   alert: "warning",
   warning: "warning",
@@ -49,14 +51,7 @@ class PortalNotice extends HTMLElement {
     if (existingIcon) existingIcon.remove();
     const iconName = VARIANT_ICON[variant];
     if (iconName && !this.hasAttribute("no-icon")) {
-      const wrap = document.createElement("span");
-      wrap.dataset.noticeIcon = "";
-      wrap.setAttribute("aria-hidden", "true");
-      const icon = document.createElement("portal-icon");
-      icon.setAttribute("name", iconName);
-      icon.setAttribute("width", "15");
-      icon.setAttribute("height", "15");
-      wrap.append(icon);
+      const wrap = fill(tpl("tpl-notice-icon"), { icon: { name: iconName } });
       this.prepend(wrap);
     }
   }

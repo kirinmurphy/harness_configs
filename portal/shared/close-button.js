@@ -2,6 +2,8 @@
 // dialog/drawer head. Renders a <button class="close-button"> with the shared "close" icon; a
 // native click on that inner button bubbles through the host element unchanged, so existing
 // id/data-close/data-slot wiring (querySelector + addEventListener against the host) keeps working.
+import { portalTpl as tpl } from "./api.js";
+
 class PortalCloseButton extends HTMLElement {
   static observedAttributes = ["aria-label"];
 
@@ -10,14 +12,7 @@ class PortalCloseButton extends HTMLElement {
       this.syncAttributes();
       return;
     }
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "close-button";
-    const icon = document.createElement("portal-icon");
-    icon.setAttribute("name", "close");
-    icon.setAttribute("width", "14");
-    icon.setAttribute("height", "14");
-    button.append(icon);
+    const button = tpl("tpl-close-button");
     this.button = button;
     this.replaceChildren(button);
     this.syncAttributes();

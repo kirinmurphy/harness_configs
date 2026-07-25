@@ -349,9 +349,7 @@ export function cardLifecycleActions(record, cardActions) {
   });
   buttons.push(startBtn);
   if (lifecycle === "active") {
-    const archiveBtn = document.createElement("button");
-    archiveBtn.type = "button";
-    archiveBtn.textContent = "Archive";
+    const archiveBtn = fill(tpl("tpl-secondary-action"), { label: "Archive" });
     archiveBtn.addEventListener("click", (event) => {
       event.stopPropagation();
       cardActions.onArchive(record);

@@ -84,12 +84,23 @@ const LOADING_PARTIAL_PATH = path.join(
 );
 const renderLoading = () => fs.readFileSync(LOADING_PARTIAL_PATH, "utf8");
 
+// <template>s for shared/*.js custom elements (option-dropdown, token-chip, menu-button,
+// copy-button, close-button, notice) — same one-partial-many-pages pattern as {{CHROME}}, since
+// those elements are cloned/instantiated across every page, not just one.
+const WIDGET_TEMPLATES_PARTIAL_PATH = path.join(
+  PORTAL_DIR,
+  "shared",
+  "widget-templates-partial.html",
+);
+const renderWidgetTemplates = () => fs.readFileSync(WIDGET_TEMPLATES_PARTIAL_PATH, "utf8");
+
 const pageHtml = (page, token) =>
   fs
     .readFileSync(path.join(PORTAL_DIR, page.dir, "index.html"), "utf8")
     .replace("{{HEAD}}", renderHead(page))
     .replace("{{CHROME}}", renderChrome())
     .replace("{{LOADING}}", renderLoading())
+    .replace("{{WIDGET_TEMPLATES}}", renderWidgetTemplates())
     .replace(
       "</head>",
       `<meta name="roborepo-portal-token" content="${token}" />\n` +

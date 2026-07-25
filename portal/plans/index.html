@@ -3,6 +3,7 @@
   {{HEAD}}
   <body>
     {{CHROME}}
+    {{WIDGET_TEMPLATES}}
     <section id="package-banner" class="package-banner" hidden></section>
     <div id="plans-header" hidden>
       <section class="control-panel control-bar" id="control-bar">
@@ -390,6 +391,13 @@
         type="button"
         class="recommended-cta"
         data-btn="cta"
+        data-slot="label"
+      ></button>
+    </template>
+    <template id="tpl-secondary-action">
+      <button
+        type="button"
+        class="secondary-action"
         data-slot="label"
       ></button>
     </template>

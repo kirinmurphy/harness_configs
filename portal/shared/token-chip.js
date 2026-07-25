@@ -15,6 +15,7 @@
 // ("Startup:", "When loaded:") next to the chip rather than baking it into the chip itself.
 //
 // Styling lives in base.css (.token-chip / .chip-tip) so light/dark stay in one palette file.
+import { portalTpl as tpl, portalFillSlots as fill } from "./api.js";
 
 export function formatTokens(n) {
   if (!Number.isFinite(n)) return "";
@@ -87,17 +88,12 @@ class TokenChipElement extends HTMLElement {
       this.replaceChildren();
       return;
     }
-    const chip = document.createElement("span");
-    chip.className = "token-chip" + (this._level ? " level-" + this._level : "");
-    chip.append(formatTokens(this._tokens) + " tokens");
+    const chip = fill(tpl("tpl-token-chip"), { text: formatTokens(this._tokens) + " tokens" });
+    if (this._level) chip.classList.add("level-" + this._level);
 
     const showInfo = this._info ?? this.hasTip();
     if (showInfo) {
-      const icon = document.createElement("span");
-      icon.className = "chip-info";
-      icon.textContent = "ⓘ";
-      icon.setAttribute("aria-hidden", "true");
-      chip.append(icon);
+      chip.append(tpl("tpl-chip-info-icon"));
     }
 
     if (this.hasTip()) {
@@ -149,27 +145,20 @@ class TokenChipElement extends HTMLElement {
   }
 
   buildTip() {
-    const tip = document.createElement("span");
-    tip.className = "chip-tip";
-    tip.hidden = true;
+    const tip = tpl("tpl-chip-tip");
 
-    const head = document.createElement("span");
-    head.className = "chip-tip-head";
-    head.textContent = Math.round(this._tokens).toLocaleString() + " tokens"
-      + (this._level ? " · " + (LEVEL_WORD[this._level] || this._level) : "");
-    tip.append(head);
+    tip.append(fill(tpl("tpl-chip-tip-head"), {
+      text: Math.round(this._tokens).toLocaleString() + " tokens"
+        + (this._level ? " · " + (LEVEL_WORD[this._level] || this._level) : ""),
+    }));
 
     if (this._detail) {
-      const note = document.createElement("span");
-      note.className = "chip-tip-note";
-      note.textContent = this._detail;
-      tip.append(note);
+      tip.append(fill(tpl("tpl-chip-tip-note"), { text: this._detail }));
     }
 
     const rows = this._breakdown || [];
     if (rows.length) {
-      const table = document.createElement("span");
-      table.className = "chip-tip-table";
+      const table = tpl("tpl-chip-tip-table");
       for (const row of rows) {
         table.append(tipCell(row.label), tipCell(Math.round(row.tokens).toLocaleString(), "num"));
       }
@@ -179,28 +168,22 @@ class TokenChipElement extends HTMLElement {
 
     if (this._legend) {
       const { mediumAt, highAbove } = this._legend;
-      const legend = document.createElement("span");
-      legend.className = "chip-tip-legend";
+      const legend = tpl("tpl-chip-tip-legend");
       const lines = [
         ["low", `Low (<${shortCount(mediumAt)} tokens)`],
         ["medium", `Med (${shortCount(mediumAt)}–${shortCount(highAbove)} tokens)`],
         ["high", `High (>${shortCount(highAbove)} tokens)`],
       ];
       for (const [level, text] of lines) {
-        const line = document.createElement("span");
-        line.className = "chip-tip-legend-line" + (level === this._level ? " current" : "");
-        const dot = document.createElement("span");
-        dot.className = "chip-tip-dot dot-" + level;
-        line.append(dot, text);
+        const line = fill(tpl("tpl-chip-tip-legend-line"), { text });
+        line.classList.toggle("current", level === this._level);
+        line.querySelector("[data-slot=dot]").classList.add("dot-" + level);
         legend.append(line);
       }
       tip.append(legend);
     }
 
-    const foot = document.createElement("span");
-    foot.className = "chip-tip-foot";
-    foot.textContent = "Estimated: ~4 characters ≈ 1 token";
-    tip.append(foot);
+    tip.append(tpl("tpl-chip-tip-foot"));
     return tip;
   }
 }
@@ -210,9 +193,8 @@ function shortCount(n) {
 }
 
 function tipCell(text, extra = "") {
-  const cell = document.createElement("span");
-  cell.className = ("chip-tip-cell " + extra).trim();
-  cell.textContent = text;
+  const cell = fill(tpl("tpl-chip-tip-cell"), { text });
+  if (extra) cell.classList.add(...extra.split(" "));
   return cell;
 }
 

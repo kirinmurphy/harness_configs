@@ -266,17 +266,29 @@ window.addEventListener("popstate", () => {
 // domain mutation result"), so handlePlanChange doesn't need to know which one ran.
 const mutations = {
   priority: (record, value) =>
-    api.updatePlanPriority(record.plan.id, record.key, value, record.plan.priority, record.mtimeMs),
+    api.updatePlanPriority(record.plan.id, record.key, value, record.plan.priority, record.mtimeMs, record.repository.id),
   lifecycle: (record, value) =>
-    api.updatePlanLifecycle(record.plan.id, record.key, value, record.plan.lifecycle, record.mtimeMs),
+    api.updatePlanLifecycle(record.plan.id, record.key, value, record.plan.lifecycle, record.mtimeMs, record.repository.id),
 };
+
+// Plan keys currently mid-mutation. Guards against two overlapping handlePlanChange calls for the
+// same record (e.g. the card's and the drawer's mounted <plan-status> both showing the same plan)
+// racing the server with the same expected mtimeMs/lifecycle — the loser would otherwise surface a
+// confusing stale-conflict recovery for what looked like a single click.
+const pendingMutationKeys = new Set();
 
 // The one page-level mutation orchestrator, shared by card dropdowns, the drawer's mounted
 // <plan-status>, and the Start/Archive/Revert/Undo shortcuts. Filesystem truth controls UI truth:
 // the snapshot is only updated after the server confirms success, and the full record it returns
 // replaces the old one outright rather than patching individual fields in place.
 async function handlePlanChange({ property, value, record }) {
-  const wasVisible = isVisible(record, state.selectedLifecycle, state.filters);
+  if (pendingMutationKeys.has(record.key)) return null;
+  pendingMutationKeys.add(record.key);
+  // Captured once up front so the outcome this mutation reports (visibility, tab, filters) always
+  // describes the view the user was looking at when they triggered it — not whatever tab/filters
+  // are current by the time the server responds.
+  const viewAtRequestTime = { selectedLifecycle: state.selectedLifecycle, filters: { ...state.filters } };
+  const wasVisible = isVisible(record, viewAtRequestTime.selectedLifecycle, viewAtRequestTime.filters);
   let result;
   try {
     result = await mutations[property](record, value);
@@ -293,9 +305,11 @@ async function handlePlanChange({ property, value, record }) {
     refreshMountedStatus(record);
     showError(err);
     return null;
+  } finally {
+    pendingMutationKeys.delete(record.key);
   }
   state.snapshot.plans = replaceRecord(state.snapshot.plans, record.key, result.record);
-  const nowVisible = isVisible(result.record, state.selectedLifecycle, state.filters);
+  const nowVisible = isVisible(result.record, viewAtRequestTime.selectedLifecycle, viewAtRequestTime.filters);
   const previousKey = record.key;
   render();
   // The card grid's render() mounts fresh <plan-status> instances, but the drawer isn't part of
@@ -307,7 +321,7 @@ async function handlePlanChange({ property, value, record }) {
     const drawerStatus = document.getElementById("drawer-status-mount").querySelector("plan-status");
     if (drawerStatus) drawerStatus.record = result.record;
   }
-  presentChangeOutcome({ result, wasVisible, nowVisible, previousKey });
+  presentChangeOutcome({ result, wasVisible, nowVisible, previousKey, view: viewAtRequestTime });
   return result.record;
 }
 
@@ -348,7 +362,7 @@ async function recoverFromStaleConflict(record) {
 // regardless of current visibility. Everything else gets the passive toast, but only when the
 // mutation actually removed the record from view — an unrelated field change that keeps the
 // record visible needs no notification.
-function presentChangeOutcome({ result, wasVisible, nowVisible, previousKey }) {
+function presentChangeOutcome({ result, wasVisible, nowVisible, previousKey, view }) {
   const { change, record } = result;
   // A lifecycle move invalidates the open drawer's key/path/actions — close it before showing
   // either outcome surface rather than leaving a stale detail view open behind the dialog/toast.
@@ -360,7 +374,9 @@ function presentChangeOutcome({ result, wasVisible, nowVisible, previousKey }) {
     return;
   }
   if (!(wasVisible && !nowVisible)) return;
-  const filteredAction = filteredListActionFor(change, state);
+  // Use the tab/filters captured when the mutation started, not whatever is current now — the
+  // toast must describe the view the user was actually looking at when they triggered the change.
+  const filteredAction = filteredListActionFor(change, view);
   const label = change.property === "lifecycle" ? LIFECYCLE_LABELS[change.newValue] : change.newValue;
   outcomeToast.show({
     message: `"${record.plan.title}" ${change.property} was set to ${label}.`,

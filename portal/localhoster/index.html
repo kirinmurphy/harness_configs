@@ -149,6 +149,7 @@
       <div class="modal-body settings-body" id="settings-body"></div>
     </dialog>
 
+    <!-- Instance grouping & toolbar -->
     <template id="tpl-group">
       <section class="instance-group">
         <header>
@@ -182,6 +183,7 @@
         <div class="instance-grid" data-slot="items"></div>
       </details>
     </template>
+    <!-- Instance card + quick links -->
     <template id="tpl-card">
       <article class="instance-card">
         <div class="card-head">
@@ -241,11 +243,28 @@
         <div class="quick-links" data-slot="links" hidden></div>
       </article>
     </template>
+    <!-- Generic primitives -->
     <template id="tpl-empty">
       <section class="empty-state">
         <h2 data-slot="title"></h2>
         <p data-slot="body"></p>
       </section>
+    </template>
+    <template id="tpl-notice">
+      <p data-slot="text"></p>
+    </template>
+    <template id="tpl-notice-with-doc">
+      <p><span data-slot="text"></span> <a href="/docs/reference/services/localhoster.md" target="_blank" rel="noreferrer">Localhoster docs</a></p>
+    </template>
+    <template id="tpl-quick-link">
+      <a class="quick-link" target="_blank" rel="noreferrer" data-slot="label"></a>
+    </template>
+    <template id="tpl-no-links">
+      <span class="no-links" data-slot="text"></span>
+    </template>
+    <!-- Settings dialog: link editor rows + settings sections -->
+    <template id="tpl-link-empty">
+      <p class="no-links" data-empty="true">No saved links. Add a row to create one.</p>
     </template>
     <template id="tpl-link-row">
       <div class="link-row">

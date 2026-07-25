@@ -1,5 +1,8 @@
   /* Palette, reset, and header/nav/footer/theme-toggle chrome live in /portal/shared/base.css.
      This file holds only telemetry-page-specific styles. */
+  /* Generic message-line color variants (tpl-msg-line / templates.js msgLine) — .hl is already the
+     headline weight used elsewhere on this page. */
+  .msg-dim { color:var(--dim); } .msg-spike { color:var(--spike); } .msg-accent { color:var(--accent); }
   header .meta { color:var(--dim); font-size:var(--text-xs); }
   /* Stat-tile row: label/value pairs, used only nested inside a panel now (renders.js's
      marker-comparison tiles). Vertical padding only (longhand) so it never zeroes a horizontal

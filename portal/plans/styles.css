@@ -477,54 +477,55 @@ dialog#skill-modal::backdrop {
 }
 .card-grid {
   display: grid;
-  gap: 8px;
+  gap: 1rem;
+}
+plan-card {
+  display: block;
+  min-width: 0;
 }
 .plan-card {
-  border: 1px solid var(--line);
-  background: var(--panel);
-  border-radius: 8px;
-  padding: 10px 12px;
   display: grid;
-  grid-template-areas:
-    "title"
-    "description"
-    "chips"
-    "actions"
-    "status";
-  row-gap: 4px;
-  cursor: pointer;
+  grid-template-columns: 1fr;
+  min-width: 0;
 }
-/* Whole card is the click surface (see plan-card.js) — hover feedback lives here instead of on
+/* doc-details is the click surface (see plan-card.js) — hover feedback lives here instead of on
  * the title/description individually. Title still underlines on hover so it keeps reading as the
  * primary link; description doesn't need its own underline since it's not link-styled text.
- * :hover:not(:has(...)) suppresses the feedback when the pointer is over a nested widget (priority
- * dropdown, action buttons) or the status-section (progress/next-action) — none of those open the
- * card, so they shouldn't look like they will. */
-.plan-card:hover:not(:has(button:hover, option-dropdown:hover, .status-section:hover)) {
+ * :hover:not(:has(...)) suppresses the feedback when the pointer is over a nested interactive
+ * widget (priority dropdown, action buttons) — those don't open the card, so they shouldn't look
+ * like they will. status-section is a sibling of doc-details now (not a descendant), so it's
+ * excluded automatically and needs no :has() clause here. */
+.plan-card .doc-details:hover:not(:has(button:hover, option-dropdown:hover)) {
   background: color-mix(in srgb, var(--accent) 4%, var(--panel));
 }
-.plan-card:hover:not(:has(button:hover, option-dropdown:hover, .status-section:hover)) .title-link {
+
+.plan-card
+  .doc-details:hover:not(:has(button:hover, option-dropdown:hover))
+  .title-link {
   text-decoration: underline;
 }
-.plan-card:focus-visible {
+
+.plan-card .doc-details:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+.plan-card .doc-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  cursor: pointer;
+}
+
 .plan-card h3 {
-  grid-area: title;
   min-width: 0;
 }
-.plan-card > .description-line {
-  grid-area: description;
-}
-.plan-card > .chips {
-  grid-area: chips;
-}
-.plan-card > .card-actions {
-  grid-area: actions;
-}
+
 .plan-card > .status-section {
-  grid-area: status;
   min-width: 0;
 }
 /* Wide screens: status (blocked badge / progress / next-action) moves to a fixed right column
@@ -535,13 +536,8 @@ dialog#skill-modal::backdrop {
 @media (min-width: 960px) {
   .plan-card.is-active {
     grid-template-columns: 1fr 360px;
-    grid-template-areas:
-      "title       status"
-      "description status"
-      "chips       status"
-      "actions     status";
-    column-gap: 12px;
   }
+
   .plan-card.is-active > .status-section {
     margin: 0;
     border-top: none;
@@ -551,7 +547,7 @@ dialog#skill-modal::backdrop {
     align-self: start;
   }
 }
-.plan-card h3 {
+.plan-card .doc-details h3 {
   margin: 0;
   font-size: var(--text-md);
 }
@@ -560,11 +556,15 @@ dialog#skill-modal::backdrop {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
 }
 .title-link {
   color: inherit;
   font: inherit;
-  flex: 1 1 auto;
+  display: block;
+  flex: 1 1 0;
+  max-width: 100%;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -625,11 +625,42 @@ dialog#skill-modal::backdrop {
   color: var(--ok);
   border-color: var(--ok);
 }
-.plan-card .card-actions {
+
+.plan-card .doc-details footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.plan-card .doc-details .card-actions {
   margin-top: 2px;
+  align-items: stretch;
+}
+/* Card's ⋯/copy menu trigger sits beside the recommended-cta button and should match its height
+ * (both share [data-btn="cta"]-equivalent padding, but a bare icon has a shorter line-box than
+ * text) — align-items: stretch above plus box-sizing here closes that gap. Icon bumped up from the
+ * component's 14px default since it's the row's only visual affordance now (no label text). Shared
+ * with .drawer-actions below — same portal-menu-button widget, same trigger face, on both surfaces. */
+.plan-card .card-actions portal-menu-button,
+.drawer-actions portal-menu-button {
+  display: inline-flex;
+  align-self: stretch;
+}
+.plan-card .card-actions .menu-button-trigger,
+.drawer-actions .menu-button-trigger {
+  box-sizing: border-box;
+  height: 100%;
+}
+.plan-card
+  .card-actions
+  .menu-button-trigger
+  portal-icon:not(.menu-button-chevron)
+  svg,
+.drawer-actions .menu-button-trigger portal-icon:not(.menu-button-chevron) svg {
+  width: 18px;
+  height: 18px;
 }
 .status-section {
-  margin: 6px -12px -10px;
   padding: 8px 12px;
   border-top: 1px solid var(--warn-line);
   border-radius: 0 0 7px 7px;

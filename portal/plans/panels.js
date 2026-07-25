@@ -14,7 +14,8 @@ export function createRootsPanel({ onSnapshot, onError, onExpand }) {
   const settingsEl = document.getElementById("settings");
   const settingsLabelEl = document.getElementById("settings-label");
   const rootsToggleEl = document.getElementById("roots-toggle");
-  const rootFormLabelEl = document.getElementById("root-form-label");
+  const rootFormLabelEmptyEl = document.getElementById("root-form-label-empty");
+  const rootFormLabelPopulatedEl = document.getElementById("root-form-label-populated");
   const rootSubmitEl = document.getElementById("root-submit");
   const settingsBodyEl = document.getElementById("settings-body");
   const rootsDoneEl = document.getElementById("roots-done");
@@ -66,7 +67,8 @@ export function createRootsPanel({ onSnapshot, onError, onExpand }) {
       settingsEl.hidden = false;
       settingsEl.append(settingsBodyEl);
       settingsLabelEl.textContent = "No Project Folders configured";
-      rootFormLabelEl.innerHTML = "Look for all <b>/docs/plans</b> folders in:";
+      rootFormLabelEmptyEl.hidden = false;
+      rootFormLabelPopulatedEl.hidden = true;
       rootsDoneEl.hidden = true;
       rootsPanelMountEl.hidden = true;
       rootsEl.replaceChildren();
@@ -78,7 +80,8 @@ export function createRootsPanel({ onSnapshot, onError, onExpand }) {
     // from empty to populated, collapse it by default.
     settingsEl.hidden = true;
     rootsPanelMountEl.append(settingsBodyEl);
-    rootFormLabelEl.textContent = "Look for more /docs/plans folders in:";
+    rootFormLabelEmptyEl.hidden = true;
+    rootFormLabelPopulatedEl.hidden = false;
     rootsDoneEl.hidden = false;
     if (wasEmpty) setExpanded(false);
     wasEmpty = false;

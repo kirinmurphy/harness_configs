@@ -5,10 +5,9 @@
 // createRenders() time so this file never imports panels.js/api.js directly.
 
 import * as tmpl from "./templates.js";
-import { portalEl as el } from "/portal/shared/api.js";
 import { fmt, short, durLabel, clip } from "./state.js";
 
-const dimNote = (msg) => el("p", { style: "color:var(--dim)" }, msg);
+const dimNote = (msg) => tmpl.msgLine(msg, "msg-dim");
 const emptyPanel = (id, msg) => { document.getElementById(id).replaceChildren(dimNote(msg)); };
 
 // modals: the object returned by createModalOpeners() in modals.js.
@@ -159,52 +158,31 @@ export function createRenders(modals) {
     const container = document.getElementById("markercomparison");
     container.replaceChildren();
     const ev = finding.evidence;
-    const rows = [el("p", { class: "hl" }, finding.observation)];
+    const rows = [tmpl.msgLine(finding.observation, "hl")];
     // Before/after/delta/confidence as scannable stat tiles (this page's existing .stat-row/
     // .stat-item language from the header meta strip) instead of one comma-packed sentence — the
     // numbers are the thing being compared, so they read as numbers, not prose.
     const deltaSign = ev.effect_size > 0 ? "+" : ev.effect_size < 0 ? "−" : "·";
-    rows.push(el("div", { class: "stat-row" }, [
-      el("div", { class: "stat-item" }, [
-        el("span", { class: "stat-label" }, "before"),
-        el("span", { class: "stat-value" }, fmt(ev.before.value)),
-        el("span", { style: "color:var(--dim); font-size:var(--text-2xs)" }, finding.sample_size.before + " sessions"),
-      ]),
-      el("div", { class: "stat-item" }, [
-        el("span", { class: "stat-label" }, "after"),
-        el("span", { class: "stat-value" }, fmt(ev.after.value)),
-        el("span", { style: "color:var(--dim); font-size:var(--text-2xs)" }, finding.sample_size.after + " sessions"),
-      ]),
-      el("div", { class: "stat-item" }, [
-        el("span", { class: "stat-label" }, "change"),
-        el("span", { class: "stat-value", style: ev.effect_size > 0 ? "color:var(--spike)" : "" },
-          deltaSign + fmt(Math.abs(ev.effect_size)) + " (" + (ev.relative_change * 100).toFixed(0) + "%)"),
-      ]),
-      el("div", { class: "stat-item" }, [
-        el("span", { class: "stat-label" }, "confidence"),
-        el("span", { class: "stat-value", style: "font-size:var(--text-xs)" }, finding.confidence),
-      ]),
-    ]));
+    rows.push(tmpl.markerComparisonStats({
+      ev: { before: { value: fmt(ev.before.value) }, after: { value: fmt(ev.after.value) } },
+      sampleSize: finding.sample_size,
+      confidence: finding.confidence,
+      deltaLabel: deltaSign + fmt(Math.abs(ev.effect_size)) + " (" + (ev.relative_change * 100).toFixed(0) + "%)",
+      isRegression: ev.effect_size > 0,
+    }));
     if (finding.interpretation) {
-      rows.push(el("p", {}, "interpretation (inference): " + finding.interpretation.text));
+      rows.push(tmpl.msgLine("interpretation (inference): " + finding.interpretation.text));
     }
     if (finding.next_action) {
-      rows.push(el("p", { style: "color:var(--accent)" }, "next action: " + finding.next_action));
+      rows.push(tmpl.msgLine("next action: " + finding.next_action, "msg-accent"));
     }
     if (finding.data_quality_issues?.length) {
       // A bulleted list scans far faster than the same issues semicolon-joined into one paragraph —
       // each issue is its own independent caveat, not a continuation of the last one.
-      rows.push(el("details", { class: "quality-issues" }, [
-        el("summary", {}, finding.data_quality_issues.length + " data quality " + (finding.data_quality_issues.length === 1 ? "issue" : "issues")),
-        el("ul", {}, finding.data_quality_issues.map((issue) => el("li", {}, issue))),
-      ]));
+      rows.push(tmpl.qualityIssues(finding.data_quality_issues));
     }
     if (finding.analysis_filter_state) {
-      const btn = document.createElement("button");
-      btn.className = "linkbtn open-analysis";
-      btn.textContent = "open analysis ›";
-      btn.dataset.filterState = JSON.stringify(finding.analysis_filter_state);
-      rows.push(btn);
+      rows.push(tmpl.openAnalysisBtn(finding.analysis_filter_state));
     }
     container.append(...rows);
   }
@@ -311,7 +289,8 @@ export function createRenders(modals) {
     // sibling node (created once, reused) rather than as a child tmpl.table() would wipe out.
     let headlineEl = document.getElementById("testeffheadline");
     if (!headlineEl) {
-      headlineEl = el("p", { id: "testeffheadline", class: "hl" });
+      headlineEl = tmpl.msgLine("", "hl");
+      headlineEl.id = "testeffheadline";
       container.before(headlineEl);
     }
     // Lead with the most actionable abnormality (redundant reruns), not a full table, per the plan.

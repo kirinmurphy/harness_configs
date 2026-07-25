@@ -286,6 +286,7 @@
         </section>
       </details>
     </main>
+    <!-- Data table (tmpl.table): panel body shared by causes/sessions/spikes/cost/etc -->
     <template id="tpl-datatable">
       <table><thead><tr data-slot="headrow"></tr></thead><tbody data-slot="body"></tbody></table>
     </template>
@@ -298,6 +299,7 @@
     <template id="tpl-datatable-td">
       <td></td>
     </template>
+    <!-- Insights panel + marker-comparison finding contract -->
     <template id="tpl-insight">
       <div class="insight">
         <span class="dot"></span>
@@ -318,6 +320,7 @@
         </div>
       </div>
     </template>
+    <!-- Session/chat-context detail: modal extra region, dtdd rows, sessions-table cell -->
     <template id="tpl-turn">
       <div class="turn">
         <div class="th">
@@ -339,6 +342,7 @@
         <span class="sub" data-slot="sub"></span>
       </span>
     </template>
+    <!-- Chart legend + hover tooltip (chart.js) -->
     <template id="tpl-harness-btn">
       <button></button>
     </template>
@@ -387,6 +391,49 @@
     </template>
     <template id="tpl-tooltip-row">
       <div class="t-row"><span data-slot="term"></span> <span data-slot="value"></span></div>
+    </template>
+    <!-- Generic one-off message/status lines -->
+    <template id="tpl-msg-line">
+      <p data-slot="text"></p>
+    </template>
+    <template id="tpl-note">
+      <div class="note" data-slot="text"></div>
+    </template>
+
+    <!-- Marker-comparison finding contract (renders.js renderMarkerComparison) -->
+    <template id="tpl-marker-comparison-stats">
+      <div class="stat-row">
+        <div class="stat-item">
+          <span class="stat-label">before</span>
+          <span class="stat-value" data-slot="before-value"></span>
+          <span class="msg-dim" style="font-size:var(--text-2xs)" data-slot="before-sub"></span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">after</span>
+          <span class="stat-value" data-slot="after-value"></span>
+          <span class="msg-dim" style="font-size:var(--text-2xs)" data-slot="after-sub"></span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">change</span>
+          <span class="stat-value" data-slot="change-value"></span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">confidence</span>
+          <span class="stat-value" style="font-size:var(--text-xs)" data-slot="confidence-value"></span>
+        </div>
+      </div>
+    </template>
+    <template id="tpl-quality-issues">
+      <details class="quality-issues">
+        <summary data-slot="summary"></summary>
+        <ul data-slot="items"></ul>
+      </details>
+    </template>
+    <template id="tpl-quality-issue-item">
+      <li data-slot="text"></li>
+    </template>
+    <template id="tpl-open-analysis-btn">
+      <button class="linkbtn open-analysis" type="button">open analysis ›</button>
     </template>
     <dialog id="telemetry-modal">
       <portal-close-button id="modalclose"></portal-close-button>

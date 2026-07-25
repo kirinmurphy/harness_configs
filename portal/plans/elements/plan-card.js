@@ -176,20 +176,22 @@ class PlanCardElement extends HTMLElement {
       ...(cta ? [cta] : []),
       cardActionMenu(record, cardActions),
     );
-    // Whole card is the click surface now (not just title/description text). Clicks/keypresses
-    // that land on an interactive widget — priority dropdown, action buttons — are ignored here
-    // so they only do their own thing; everywhere else on the card opens the plan. tabindex+role
-    // make the card itself keyboard-reachable now that title/description are plain text, not
-    // buttons.
-    node.tabIndex = 0;
-    node.setAttribute("role", "button");
+    // doc-details (title/description/footer) is the click surface — status-section (progress/
+    // next-action) sits outside it as its own sibling now, so it's naturally excluded rather than
+    // needing a manual closest() exclusion. Clicks/keypresses landing on an interactive widget
+    // inside doc-details (priority dropdown, action buttons) are still ignored so they only do
+    // their own thing. tabindex+role make doc-details itself keyboard-reachable now that
+    // title/description are plain text, not buttons.
+    const docDetails = node.querySelector(".doc-details");
+    docDetails.tabIndex = 0;
+    docDetails.setAttribute("role", "button");
     const isInteractiveTarget = (event) =>
-      event.target.closest("button, option-dropdown, portal-menu-button, a, input, select, .status-section");
-    node.addEventListener("click", (event) => {
+      event.target.closest("button, option-dropdown, portal-menu-button, a, input, select");
+    docDetails.addEventListener("click", (event) => {
       if (isInteractiveTarget(event)) return;
       cardActions.onOpen(record.key);
     });
-    node.addEventListener("keydown", (event) => {
+    docDetails.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
       if (isInteractiveTarget(event)) return;
       event.preventDefault();

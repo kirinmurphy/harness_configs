@@ -22,7 +22,11 @@
                   aria-label="Update project folders"
                   title="Update project folders"
                 >
-                  <portal-icon name="pencil" width="20" height="20"></portal-icon>
+                  <portal-icon
+                    name="pencil"
+                    width="20"
+                    height="20"
+                  ></portal-icon>
                 </button>
                 <button
                   type="button"
@@ -32,7 +36,11 @@
                   aria-label="Refresh"
                   title="Refresh"
                 >
-                  <portal-icon name="refresh" width="20" height="20"></portal-icon>
+                  <portal-icon
+                    name="refresh"
+                    width="20"
+                    height="20"
+                  ></portal-icon>
                   <span class="spinner" hidden></span>
                 </button>
               </span>
@@ -56,7 +64,11 @@
                 aria-label="Agent prompts"
                 title="Agent prompts"
               >
-                <portal-icon name="agent-prompt" width="20" height="20"></portal-icon>
+                <portal-icon
+                  name="agent-prompt"
+                  width="20"
+                  height="20"
+                ></portal-icon>
               </button>
             </div>
           </div>
@@ -103,7 +115,10 @@
       </section>
       <div class="inner">
         <nav class="lifecycle-tabs" id="lifecycle-tabs" role="tablist"></nav>
-        <div class="lifecycle-dropdown-mount" id="lifecycle-dropdown-mount"></div>
+        <div
+          class="lifecycle-dropdown-mount"
+          id="lifecycle-dropdown-mount"
+        ></div>
       </div>
     </div>
     <div id="toast" class="toast" hidden></div>
@@ -118,7 +133,11 @@
           <form id="root-form">
             <div class="root-form-label-row">
               <label for="root-input" id="root-form-label"
-                >Look for all /docs/plans folders in:</label
+                ><span id="root-form-label-empty"
+                  >Look for all <b>/docs/plans</b> folders in:</span
+                ><span id="root-form-label-populated" hidden
+                  >Look for more /docs/plans folders in:</span
+                ></label
               >
               <portal-info-icon
                 id="info-icon"
@@ -131,7 +150,9 @@
                 id="root-input"
                 placeholder="/path/to/repo or /path/to/projects"
               />
-              <button type="submit" id="root-submit" data-btn="cta">Add Folder</button>
+              <button type="submit" id="root-submit" data-btn="cta">
+                Add Folder
+              </button>
               <button id="roots-done" type="button" hidden>Done</button>
             </div>
             <div class="item-err" id="root-form-err"></div>
@@ -144,7 +165,10 @@
     <dialog id="info-modal" aria-labelledby="info-modal-title">
       <div class="modal-head">
         <h2 id="info-modal-title">How folder scanning works</h2>
-        <portal-close-button id="info-modal-close" aria-label="Close"></portal-close-button>
+        <portal-close-button
+          id="info-modal-close"
+          aria-label="Close"
+        ></portal-close-button>
       </div>
       <div class="modal-body">
         <pre class="folder-tree"><span class="tree-root">projects/</span>
@@ -184,7 +208,10 @@
           data-slot="title"
         ></span>
         <span class="modal-path" data-slot="path"></span>
-        <portal-close-button data-slot="close" aria-label="Close"></portal-close-button>
+        <portal-close-button
+          data-slot="close"
+          aria-label="Close"
+        ></portal-close-button>
       </div>
       <div class="modal-body">
         <div class="markdown" data-slot="content"></div>
@@ -197,13 +224,18 @@
           id="prompt-modal-title"
           data-slot="title"
         ></span>
-        <portal-close-button data-slot="close" aria-label="Close"></portal-close-button>
+        <portal-close-button
+          data-slot="close"
+          aria-label="Close"
+        ></portal-close-button>
       </div>
       <div class="modal-body">
         <p class="modal-note" data-slot="objective"></p>
         <p class="modal-note" data-slot="scope"></p>
         <div class="modalactions">
-          <button type="button" data-btn="cta" data-slot="copy">Copy prompt</button>
+          <button type="button" data-btn="cta" data-slot="copy">
+            Copy prompt
+          </button>
         </div>
       </div>
     </dialog>
@@ -213,18 +245,39 @@
           <h2 id="drawer-title"></h2>
           <div class="drawer-path-row">
             <p id="drawer-path"></p>
-            <portal-copy-button id="drawer-path-copy" icon="copy" aria-label="Copy path"></portal-copy-button>
+            <portal-copy-button
+              id="drawer-path-copy"
+              icon="copy"
+              aria-label="Copy path"
+            ></portal-copy-button>
           </div>
         </div>
         <portal-close-button id="drawer-close"></portal-close-button>
       </div>
       <div class="drawer-body">
         <div class="drawer-actions" id="drawer-actions">
-          <button type="button" class="recommended-cta" id="drawer-cta" data-btn="cta" hidden></button>
-          <portal-menu-button id="drawer-menu" label="⋯" aria-label="Plan actions"></portal-menu-button>
+          <button
+            type="button"
+            class="recommended-cta"
+            id="drawer-cta"
+            data-btn="cta"
+            hidden
+          ></button>
+          <portal-menu-button
+            id="drawer-menu"
+            icon="copy"
+            aria-label="Plan actions"
+          ></portal-menu-button>
         </div>
-        <section class="drawer-warnings-section" id="drawer-warnings-section" hidden>
-          <h3><portal-icon name="warning" width="14" height="14"></portal-icon> Warnings</h3>
+        <section
+          class="drawer-warnings-section"
+          id="drawer-warnings-section"
+          hidden
+        >
+          <h3>
+            <portal-icon name="warning" width="14" height="14"></portal-icon>
+            Warnings
+          </h3>
           <ul id="drawer-warnings"></ul>
         </section>
         <div class="drawer-grid">
@@ -240,6 +293,7 @@
         <article class="markdown" id="drawer-doc"></article>
       </div>
     </dialog>
+    <!-- Discovery roots: enable-skill banner + one chip per configured root path -->
     <template id="tpl-package-banner">
       <portal-notice class="package-not-installed-banner" variant="info">
         <div class="package-not-installed-body">
@@ -272,6 +326,7 @@
         </button>
       </span>
     </template>
+    <!-- Generic primitives: reused across panels, no single owner -->
     <template id="tpl-empty-state">
       <section class="empty-state">
         <h2 data-slot="title"></h2>
@@ -281,6 +336,76 @@
     <template id="tpl-chip">
       <span class="chip"></span>
     </template>
+    <template id="tpl-warning-line">
+      <div data-slot="text"></div>
+    </template>
+    <template id="tpl-list-item">
+      <li data-slot="text"></li>
+    </template>
+    <template id="tpl-spinner">
+      <span class="spinner"></span>
+    </template>
+
+    <!-- Filters & lifecycle tabs -->
+    <template id="tpl-lifecycle-tab">
+      <button
+        type="button"
+        class="lifecycle-tab"
+        role="tab"
+        data-slot="label"
+      ></button>
+    </template>
+
+    <!-- Plan action menu (⋯): shared by the card and the drawer -->
+    <template id="tpl-recommended-cta">
+      <button
+        type="button"
+        class="recommended-cta"
+        data-btn="cta"
+        data-slot="label"
+      ></button>
+    </template>
+    <template id="tpl-menu-item">
+      <button type="button" class="menu-button-item">
+        <portal-icon
+          data-slot="icon"
+          width="14"
+          height="14"
+          class="menu-button-item-icon"
+        ></portal-icon>
+        <div class="menu-button-item-body">
+          <span data-slot="label"></span>
+          <span
+            class="menu-button-item-desc"
+            data-slot="description"
+            hidden
+          ></span>
+        </div>
+      </button>
+    </template>
+    <template id="tpl-plan-menu">
+      <div class="plan-menu">
+        <p class="menu-button-item-desc plan-menu-note" data-slot="note"></p>
+        <div class="plan-menu-group" data-slot="group" hidden></div>
+        <div data-slot="fallback-actions"></div>
+        <div data-slot="copy-path"></div>
+        <div data-slot="package-banner"></div>
+      </div>
+    </template>
+    <template id="tpl-plan-menu-action">
+      <div class="plan-menu-action">
+        <div data-slot="item"></div>
+        <button
+          type="button"
+          class="plan-menu-variant"
+          data-slot="portable"
+          hidden
+        >
+          portable
+        </button>
+      </div>
+    </template>
+    <!-- Active-filter chips (control bar) -->
     <template id="tpl-filter-chip">
       <span class="filter-chip">
         <span class="filter-chip-label" data-slot="label"></span>
@@ -295,14 +420,20 @@
         </button>
       </span>
     </template>
+
+    <!-- Plan card & drawer -->
     <template id="tpl-plan-card">
       <article class="plan-card">
-        <h3 class="card-header-row">
-          <span class="title-link" data-slot="title-link"></span>
-        </h3>
-        <p class="description-line" data-slot="description"></p>
-        <div class="chips" data-slot="chips"></div>
-        <div class="card-actions" data-slot="actions"></div>
+        <div class="doc-details">
+          <h3 class="card-header-row">
+            <span class="title-link" data-slot="title-link"></span>
+          </h3>
+          <p class="description-line" data-slot="description"></p>
+          <footer>
+            <div class="card-actions" data-slot="actions"></div>
+            <div class="chips" data-slot="chips"></div>
+          </footer>
+        </div>
         <div class="status-section" data-slot="status">
           <div class="status-state-row">
             <div class="status-state-chips" data-slot="status-chips">
@@ -328,6 +459,9 @@
         <dt data-slot="term"></dt>
         <dd data-slot="value"></dd>
       </div>
+    </template>
+    <template id="tpl-task-item">
+      <li data-slot="text"></li>
     </template>
     <script src="/portal/shared/info-icon.js" type="module"></script>
     <script src="/portal/shared/icon.js" type="module"></script>

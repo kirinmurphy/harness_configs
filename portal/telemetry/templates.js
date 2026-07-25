@@ -1,8 +1,58 @@
 // Markup construction for the Telemetry page: template-clone + slot-fill only, no fetches, no
 // orchestration. Mirrors portal/plans/templates.js and portal/config/templates.js.
 
-import { portalTpl as tpl } from "/portal/shared/api.js";
+import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
 import { fmt } from "./state.js";
+
+// One-off status/message line (e.g. "computing…", "no result", an error). variant matches a CSS
+// class already defined for this page's message styling ("hl", "dim", "spike", "accent"); omit for
+// the plain default.
+export function msgLine(text, variant) {
+  const node = fill(tpl("tpl-msg-line"), { text });
+  if (variant) node.classList.add(variant);
+  return node;
+}
+
+// A ".note" line in the session-detail modal's extra region (spool facts, loading/error states).
+export function noteLine(text, variant) {
+  const node = fill(tpl("tpl-note"), { text });
+  if (variant) node.classList.add(variant);
+  return node;
+}
+
+// The before/after/change/confidence stat-tile row in the marker-comparison panel (renders.js's
+// renderMarkerComparison). ev/sampleSize/confidence come straight off the finding contract.
+export function markerComparisonStats({ ev, sampleSize, confidence, deltaSign, deltaLabel, isRegression }) {
+  const node = fill(tpl("tpl-marker-comparison-stats"), {
+    "before-value": ev.before.value,
+    "before-sub": sampleSize.before + " sessions",
+    "after-value": ev.after.value,
+    "after-sub": sampleSize.after + " sessions",
+    "change-value": deltaLabel,
+    "confidence-value": confidence,
+  });
+  const changeValue = node.querySelector("[data-slot=change-value]");
+  changeValue.classList.toggle("msg-spike", isRegression);
+  return node;
+}
+
+// One "N data quality issue(s)" collapsible list.
+export function qualityIssues(issues) {
+  const node = fill(tpl("tpl-quality-issues"), {
+    summary: issues.length + " data quality " + (issues.length === 1 ? "issue" : "issues"),
+  });
+  const items = node.querySelector("[data-slot=items]");
+  items.append(...issues.map((issue) => fill(tpl("tpl-quality-issue-item"), { text: issue })));
+  return node;
+}
+
+// "open analysis ›" link button; filterState is stashed on the dataset for app.js's delegated
+// click handler to read and hand to the Analysis explorer.
+export function openAnalysisBtn(filterState) {
+  const node = tpl("tpl-open-analysis-btn");
+  node.dataset.filterState = JSON.stringify(filterState);
+  return node;
+}
 
 // One button in the harness filter row (app.js's updateHarnessFilter). harness is "all" or a
 // harness name; both the dataset key and label text.

@@ -4,7 +4,6 @@
 // and back into state.
 
 import {
-  portalEl as el,
   portalTpl as tpl,
   portalFillSlots as fill,
 } from "/portal/shared/api.js";
@@ -43,8 +42,13 @@ export function filterChipDescriptors(filters, defaults, optionLabelFor) {
   return chips;
 }
 
+// <select> children are trivial and a <template> adds no value here, so this builds the native
+// element directly rather than through tpl()/fill() — mirrors telemetry/templates.js's selectOption.
 export function selectOption([value, label]) {
-  return el("option", { value }, label);
+  const opt = document.createElement("option");
+  opt.value = value;
+  opt.textContent = label;
+  return opt;
 }
 
 export function emptyState(snapshot) {
@@ -64,15 +68,15 @@ export function emptyState(snapshot) {
 }
 
 export function warningLine(text) {
-  return el("div", {}, text);
+  return fill(tpl("tpl-warning-line"), { text });
 }
 
 export function listItem(text) {
-  return el("li", {}, text);
+  return fill(tpl("tpl-list-item"), { text });
 }
 
 export function spinner() {
-  return el("span", { class: "spinner" });
+  return tpl("tpl-spinner");
 }
 
 export function packageBanner(pkg, onEnable, skillModal) {
@@ -89,16 +93,11 @@ export function packageBanner(pkg, onEnable, skillModal) {
 }
 
 export function lifecycleTab(lifecycle, count, isSelected, onSelect) {
-  const btn = el(
-    "button",
-    {
-      type: "button",
-      class: "lifecycle-tab" + (isSelected ? " selected" : ""),
-      role: "tab",
-      "aria-selected": String(isSelected),
-    },
-    `${LIFECYCLE_LABELS[lifecycle] || lifecycle} (${count})`,
-  );
+  const btn = fill(tpl("tpl-lifecycle-tab"), {
+    label: `${LIFECYCLE_LABELS[lifecycle] || lifecycle} (${count})`,
+  });
+  btn.classList.toggle("selected", isSelected);
+  btn.setAttribute("aria-selected", String(isSelected));
   btn.addEventListener("click", () => onSelect(lifecycle));
   return btn;
 }
@@ -185,17 +184,13 @@ function recommendedCta(plan) {
 // One clickable menu item (icon + label + optional description) that runs copyFn on click. `run`
 // wraps copyFn so a copy failure surfaces via onError instead of an unhandled rejection.
 function menuItem({ icon = "copy", label, description, run }) {
-  const item = el(
-    "button",
-    { type: "button", class: "menu-button-item" },
-    el("portal-icon", { name: icon, width: "14", height: "14", class: "menu-button-item-icon" }),
-    el(
-      "div",
-      { class: "menu-button-item-body" },
-      el("span", {}, label),
-      description ? el("span", { class: "menu-button-item-desc" }, description) : null,
-    ),
-  );
+  const item = fill(tpl("tpl-menu-item"), { label });
+  item.querySelector("[data-slot=icon]").setAttribute("name", icon);
+  const descSlot = item.querySelector("[data-slot=description]");
+  if (description) {
+    descSlot.textContent = description;
+    descSlot.hidden = false;
+  }
   item.addEventListener("click", async (event) => {
     event.stopPropagation();
     await run();
@@ -213,7 +208,7 @@ function menuItem({ icon = "copy", label, description, run }) {
 // api: { installed, lifecycle, recommendedMode, planDocsPackage, skillModal, onError,
 //        copyPath, copyPrompt(mode, {portable}), copyRepoPrompt, copyPortablePrompt, onEnablePackage }
 function planMenuBody(api) {
-  const wrap = el("div", { class: "plan-menu" });
+  const wrap = tpl("tpl-plan-menu");
   const run = (fn) => async () => {
     try {
       await fn();
@@ -222,41 +217,47 @@ function planMenuBody(api) {
     }
   };
 
+  const note = wrap.querySelector("[data-slot=note]");
+  const group = wrap.querySelector("[data-slot=group]");
+  const fallbackActions = wrap.querySelector("[data-slot=fallback-actions]");
+
   if (api.installed) {
-    wrap.append(
-      el("p", { class: "menu-button-item-desc plan-menu-note" },
-        "Copies a /plan-docs prompt to your clipboard — paste it into an agent chat to run."),
-    );
-    const group = el("div", { class: "plan-menu-group" });
+    note.textContent = "Copies a /plan-docs prompt to your clipboard — paste it into an agent chat to run.";
+    group.hidden = false;
     for (const [mode, label, description] of actionsForLifecycle(api.lifecycle)) {
       const isRecommended = mode === api.recommendedMode;
-      const row = el("div", { class: "plan-menu-action" + (isRecommended ? " is-recommended" : "") });
-      row.append(menuItem({ icon: "agent-prompt", label, description, run: run(() => api.copyPrompt(mode, { portable: false })) }));
+      const row = tpl("tpl-plan-menu-action");
+      row.classList.toggle("is-recommended", isRecommended);
+      row.querySelector("[data-slot=item]").append(
+        menuItem({ icon: "agent-prompt", label, description, run: run(() => api.copyPrompt(mode, { portable: false })) }),
+      );
       // Review is a read/decide action, so a portable (repo-less) variant is useful; the file-
       // editing actions need repo access, so they get no portable variant.
       if (mode === "review") {
-        const portable = el("button", { type: "button", class: "plan-menu-variant" }, "portable");
+        const portable = row.querySelector("[data-slot=portable]");
+        portable.hidden = false;
         portable.title = "Self-contained prompt — works in a chat without repo access";
         portable.addEventListener("click", (event) => { event.stopPropagation(); run(() => api.copyPrompt(mode, { portable: true }))(); });
-        row.append(portable);
       }
       group.append(row);
     }
-    wrap.append(group);
   } else {
     // No lifecycle actions available — offer the generic prompts the actions would otherwise cover.
-    wrap.append(
-      el("p", { class: "menu-button-item-desc plan-menu-note" },
-        "Enable the Plan Docs skill for lifecycle actions (start, sync, review…). For now, copy a generic prompt:"),
+    note.textContent = "Enable the Plan Docs skill for lifecycle actions (start, sync, review…). For now, copy a generic prompt:";
+    fallbackActions.append(
       menuItem({ icon: "agent-prompt", label: "Repo-aware prompt", description: "For an agent that already has this repo open", run: run(() => api.copyRepoPrompt()) }),
       menuItem({ icon: "agent-prompt", label: "Portable prompt", description: "Self-contained — works without repo access", run: run(() => api.copyPortablePrompt()) }),
     );
   }
 
-  wrap.append(menuItem({ icon: "copy", label: "Copy path", run: run(() => api.copyPath()) }));
+  wrap.querySelector("[data-slot=copy-path]").append(
+    menuItem({ icon: "copy", label: "Copy path", run: run(() => api.copyPath()) }),
+  );
 
   if (api.installed === false && api.planDocsPackage) {
-    wrap.append(packageBanner(api.planDocsPackage, api.onEnablePackage, api.skillModal));
+    wrap.querySelector("[data-slot=package-banner]").append(
+      packageBanner(api.planDocsPackage, api.onEnablePackage, api.skillModal),
+    );
   }
   return wrap;
 }
@@ -307,7 +308,7 @@ export function drawerContent(doc, drawerActions) {
 export function cardActionMenu(record, cardActions) {
   const plan = record.plan;
   const menu = document.createElement("portal-menu-button");
-  menu.setAttribute("label", "⋯");
+  menu.setAttribute("icon", "copy");
   menu.setAttribute("aria-label", "Plan actions");
   menu.panelContent = planMenuBody({
     installed: Boolean(cardActions.planDocsEnabled),
@@ -330,7 +331,7 @@ export function cardActionMenu(record, cardActions) {
 export function cardRecommendedCta(record, cardActions) {
   const cta = recommendedCta(record.plan);
   if (!cta) return null;
-  const btn = el("button", { type: "button", class: "recommended-cta", "data-btn": "cta" }, cta.label);
+  const btn = fill(tpl("tpl-recommended-cta"), { label: cta.label });
   btn.addEventListener("click", async (event) => {
     event.stopPropagation();
     try {
@@ -343,14 +344,12 @@ export function cardRecommendedCta(record, cardActions) {
 }
 
 export function drawerTaskItems(tasks) {
-  if (!tasks.length) return [el("li", {}, "none")];
-  return tasks.map((task) =>
-    el(
-      "li",
-      { class: task.done ? "task-done" : "task-open" },
-      `${task.done ? "[x]" : "[ ]"} ${task.text}`,
-    ),
-  );
+  if (!tasks.length) return [fill(tpl("tpl-task-item"), { text: "none" })];
+  return tasks.map((task) => {
+    const node = fill(tpl("tpl-task-item"), { text: `${task.done ? "[x]" : "[ ]"} ${task.text}` });
+    node.classList.add(task.done ? "task-done" : "task-open");
+    return node;
+  });
 }
 
 export function dtdd(term, value) {

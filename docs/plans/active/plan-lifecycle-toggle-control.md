@@ -735,6 +735,43 @@ Also run any repository-native portal test command added during implementation.
 - Unclassified is treated as a recoverable placement warning, never a selectable destination.
 - `npm run test:plans` and `git diff --check` pass.
 
+## Implementation Report
+
+Implemented across 11 commits (`5f69b0e`..`bedfdb5`) on `plan-lifecycle-toggle-control`. Not yet merged to `main` or pushed.
+
+### What shipped, per phase
+
+- **Domain** (`aa4c88b`): `movePlanLifecycle()`, stable-ID lookup (`findPlanById`), the 11-step move validation order, structured `domainError`/`STALE_PLAN` contract, destination lifecycle rules for `active`/`completed`/`archived`, and `updatePlanPriority()` refactored to return a full rebuilt record.
+- **CLI/route wiring** (`45a4a32`): `updatePlanLifecycle()` in `plans.mjs`, `POST /api/plans/lifecycle`, shared `sendDomainError()` serialization.
+- **API layer** (`a8a49de`): `portalPostJson` preserves `code`/`resolution`/`details` instead of collapsing to a message string; `portal/plans/api.js` gains `updatePlanLifecycle()` and the expanded priority request shape.
+- **Shared status element** (`b1b3c9d`): `<plan-status>` extracted from `<plan-card>` — lifecycle dropdown (always visible), priority dropdown (hidden for completed/archived), readiness/blocked/review chips, progress, next action. Emits bubbling `plan-change`.
+- **Dialog/toast markup + drawer split** (`0b3438c`): `#lifecycle-event-modal`, template-backed toast body, `#drawer-status-mount`, surface-neutral `.status-section` base with card/drawer chrome modifiers.
+- **State helpers** (`3aee81d`): `isVisible`, `replaceRecord`, `filteredListActionFor` — pure functions, no filter-logic duplication.
+- **Dialog/toast controllers** (`7295cfa`): `createLifecycleEventDialog` (declarative `lifecycleEvents` config, transition vs. no-mutation content, guarded Revert), `createOutcomeToast` (7s auto-dismiss, pauses on hover/focus, real buttons not `innerHTML`).
+- **Orchestrator wiring** (`832b2c2`): `handlePlanChange()` replaces dirty-card tracking; `presentChangeOutcome()` routes to dialog or toast; Start/Archive card shortcuts; stale-conflict auto-refresh recovery. Two bugs found and fixed during manual Playwright testing against a live portal instance — see below.
+- **Rollout migration** (`7dd3cec`): moved all 13 root-level unclassified plans into `backlog/` via `movePlanLifecycle`'s `skipDestinationValidation` path (already covered by a domain test) rather than gating the migration on Backlog destination validation passing for every file. Zero unclassified plans remain; the Unclassified tab now stays hidden by its existing zero-count rule.
+- **Portal state tests** (`bedfdb5`): `scripts/test/plans-portal-state-check.mjs`, wired as `npm run test:plans-portal-state`.
+
+### Bugs found and fixed during manual testing
+
+Both surfaced via Playwright against a live portal instance, not by the unit suites:
+
+1. **Error banner overwritten by `render()`.** `render()` unconditionally rebuilds the warnings banner from snapshot data on every call. `handlePlanChange`'s failure path was calling `showError()` before the re-render that clears loading state, so the error message was immediately stomped. Fixed by sequencing `refreshMountedStatus(record)` (which calls `render()`) strictly before `showError(err)` — see the ordering comment at `portal/plans/app.js:288-295`.
+2. **Drawer's mounted `<plan-status>` stuck loading after a successful mutation.** The card grid's `render()` mounts fresh `<plan-status>` instances, but the open drawer isn't part of that render pass, so its dropdown never received the new record and sat at `loading: true` indefinitely. Fixed in `handlePlanChange()` (`portal/plans/app.js:301-309`) by explicitly re-setting `.record` on the drawer's mounted status element when the drawer is still open for the same plan.
+
+### Implementation-level decisions made that the doc left open
+
+- **`<plan-status>` mutation-loading-state contract** (doc left unspecified). No explicit ack channel exists between a dropdown's `onSelect` and the mutation settling. Loading/error state is a pure function of the last `record` property set: `onSelect` sets `loading = true` and repaints immediately; the *next* `record` set — the same record on failure, the new one on success — clears it. `app.js` is responsible for always re-setting `record` once a mutation settles (see `portal/plans/elements/plan-status.js:8-12` and the two bugfixes above, both consequences of a surface not receiving that re-set). This keeps the element a pure function of its prop rather than needing an imperative callback into it.
+- **Completed's "verification evidence" destination check** implements as **heading presence only**, not "non-empty body" as one might assume from the doc's prose ("require verification evidence or an explicit verification limitation"). `validateParsedPlan()`'s `has("verification")` (`modules/plan-docs/index.mjs:649`) checks only that a heading named "Verification" (case/whitespace-normalized) exists in the parsed heading list — it does not inspect whether any content follows that heading before the next one. A `## Verification` heading with an empty body currently satisfies the Completed destination check. No test in `plan-docs-check.mjs` exercises the empty-body case; the one Completed-destination fixture (`movable.md`) always gives the section a non-empty sentence.
+- **Rollout migration bypassed Backlog destination validation.** `7dd3cec` moved all 13 root-level plans into `backlog/` using `skipDestinationValidation: true` rather than requiring every file to already satisfy Backlog's readiness rules (a `next_action` under the actionable-lifecycle rule). User decision: fix up individual plans in place afterward rather than gating the one-off migration on it.
+- **Active's "Start" CTA reuses the Completed/Active dialog controller without a mutation.** `lifecycleEventDialog.open({ change: null, record, isTransition: false })` — the doc specified this behavior but left the exact call shape open; `isTransition` is what gates the transition-confirmation copy and Revert action inside a single dialog controller rather than needing a second dialog variant.
+- **`showError()` fully replaces `warningsEl.textContent`** rather than appending — a second concurrent failure (e.g. a stale-conflict recovery message racing a dropdown error) will still silently replace an unread one. Not identified as a bug during manual testing since concurrent failures didn't come up, but worth flagging for the code-review pass below.
+
+### Not done in this milestone
+
+- Contextual next-step content for the Completed lifecycle-event dialog — still just confirmation + View Plan + muted Revert (see Open Question below, unchanged).
+- The follow-up "Lifecycle Validation Assistance" milestone (readiness warnings before a move, **Generate prompt to resolve warnings**) — tracked separately in `docs/plans/backlog/plan-lifecycle-readiness-validation-and-repair-prompts.md`.
+
 ## Open Question
 
 - Define the contextual next-step content for the Completed lifecycle-event dialog. Until then, it contains confirmation, View Plan, and muted Revert only.

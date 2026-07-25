@@ -434,25 +434,29 @@
             <div class="chips" data-slot="chips"></div>
           </footer>
         </div>
-        <div class="status-section" data-slot="status">
-          <div class="status-state-row">
-            <div class="status-state-chips" data-slot="status-chips">
-              <div class="priority-slot" data-slot="priority"></div>
-              <span class="state-badge" data-slot="state-badge" hidden></span>
-            </div>
-            <span class="meta-line" data-slot="meta"></span>
-          </div>
-          <div class="status-implementation" data-slot="implementation">
-            <div class="status-progress-row">
-              <div class="progress-bar">
-                <div class="progress-fill" data-slot="progress-fill"></div>
-              </div>
-              <span class="progress-label" data-slot="progress-label"></span>
-            </div>
-            <div class="next-line" data-slot="next"></div>
-          </div>
-        </div>
+        <div data-slot="status-mount"></div>
       </article>
+    </template>
+    <template id="tpl-plan-status">
+      <div class="status-section">
+        <div class="status-state-row">
+          <div class="status-state-chips" data-slot="status-chips">
+            <div class="lifecycle-slot" data-slot="lifecycle"></div>
+            <div class="priority-slot" data-slot="priority"></div>
+            <span class="state-badge" data-slot="state-badge" hidden></span>
+          </div>
+          <span class="meta-line" data-slot="meta"></span>
+        </div>
+        <div class="status-implementation" data-slot="implementation">
+          <div class="status-progress-row">
+            <div class="progress-bar">
+              <div class="progress-fill" data-slot="progress-fill"></div>
+            </div>
+            <span class="progress-label" data-slot="progress-label"></span>
+          </div>
+          <div class="next-line" data-slot="next"></div>
+        </div>
+      </div>
     </template>
     <template id="tpl-dtdd-row">
       <div class="dtdd-row">

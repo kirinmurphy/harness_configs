@@ -1,9 +1,8 @@
 ---
 id: plan-unclassified-plan-recovery
 priority: low
-next_action: Inventory root-level plan files and define the explicit migration confirmation flow after lifecycle controls ship.
-blocked_by:
-  - plan-lifecycle-controls-and-filter-aware-toast
+next_action: Define the explicit migration confirmation flow. The one-off rollout (plan-lifecycle-controls-and-filter-aware-toast's commit 7dd3cec) already moved all 13 root-level unclassified plans into backlog/ via movePlanLifecycle's skipDestinationValidation path, so no unclassified plans currently remain — this plan is about building the recoverable-warning UI/flow for if one reappears, not the initial inventory.
+blocked_by: []
 depends_on:
   - plan-lifecycle-controls-and-filter-aware-toast
 related:

@@ -1,9 +1,8 @@
 ---
 id: plan-lifecycle-readiness-validation-and-repair-prompts
 priority: medium
-next_action: Implement this after plan-lifecycle-controls-and-filter-aware-toast establishes the shared lifecycle mutation and outcome contracts.
-blocked_by:
-  - plan-lifecycle-controls-and-filter-aware-toast
+next_action: Implement lifecycle-readiness validation and repair prompts now that plan-lifecycle-controls-and-filter-aware-toast has shipped.
+blocked_by: []
 depends_on:
   - plan-lifecycle-controls-and-filter-aware-toast
 related:

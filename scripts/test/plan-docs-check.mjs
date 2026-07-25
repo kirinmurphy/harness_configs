@@ -403,6 +403,83 @@ Run targeted checks.
   }, /Couldn't move/);
   assert.ok(fs.existsSync(path.join(repo, "docs", "plans", "backlog", "no-priority.md")), "failed validation leaves source file unmoved");
 
+  // Completed's Verification requirement checks for real content, not just a bare heading. A plan
+  // that otherwise satisfies every Completed requirement (all tasks checked, no next_action, no
+  // blockers) but whose "## Verification" section has nothing under it before the next heading
+  // must still be rejected — heading presence alone used to be sufficient here.
+  fs.writeFileSync(path.join(repo, "docs", "plans", "backlog", "empty-verification.md"), `---
+id: empty-verification-plan
+priority: medium
+next_action:
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+# Empty Verification Plan
+
+## Summary
+
+Exercises the empty-Verification-body rejection.
+
+## Context
+
+Used only by plan-docs-check.mjs.
+
+## Goals
+
+Prove an empty Verification section fails Completed validation.
+
+## Proposed design
+
+N/A.
+
+## Implementation plan
+
+- [x] Nothing left to do
+
+## Verification
+
+## Validation
+
+N/A.
+`);
+  const emptyVerificationSnapshot = buildPlanSnapshot({ stateRoot, packageState: { available: true, enabled: false, status: "disabled" } });
+  const emptyVerificationSource = emptyVerificationSnapshot.plans.find((item) => item.plan.id === "empty-verification-plan");
+  assert.throws(() => {
+    try {
+      movePlanLifecycle(emptyVerificationSnapshot, {
+        id: emptyVerificationSource.plan.id,
+        key: emptyVerificationSource.key,
+        lifecycle: "completed",
+        expectedLifecycle: "backlog",
+        mtimeMs: emptyVerificationSource.mtimeMs,
+      });
+    } catch (err) {
+      assert.equal(err.code, "LIFECYCLE_REQUIREMENTS");
+      assert.ok(err.details.some((d) => /Verification/.test(d)), `expected a Verification requirement failure, got: ${JSON.stringify(err.details)}`);
+      throw err;
+    }
+  }, /Couldn't move/);
+  assert.ok(fs.existsSync(path.join(repo, "docs", "plans", "backlog", "empty-verification.md")), "failed validation leaves source file unmoved");
+
+  // Filling in real content under the same heading is now sufficient to pass.
+  fs.writeFileSync(
+    path.join(repo, "docs", "plans", "backlog", "empty-verification.md"),
+    fs.readFileSync(path.join(repo, "docs", "plans", "backlog", "empty-verification.md"), "utf8")
+      .replace("## Verification\n\n## Validation", "## Verification\n\nVerified manually by the test itself.\n\n## Validation"),
+  );
+  const filledVerificationSnapshot = buildPlanSnapshot({ stateRoot, packageState: { available: true, enabled: false, status: "disabled" } });
+  const filledVerificationSource = filledVerificationSnapshot.plans.find((item) => item.plan.id === "empty-verification-plan");
+  const filledVerificationResult = movePlanLifecycle(filledVerificationSnapshot, {
+    id: filledVerificationSource.plan.id,
+    key: filledVerificationSource.key,
+    lifecycle: "completed",
+    expectedLifecycle: "backlog",
+    mtimeMs: filledVerificationSource.mtimeMs,
+  });
+  assert.equal(filledVerificationResult.record.plan.lifecycle, "completed");
+
   const portalFacing = spawnSync(process.execPath, [
     "-e",
     "import('./scripts/cli/plans.mjs').then((m) => { const snap = m.loadPlansSnapshot(); process.stdout.write(JSON.stringify(snap)); })",

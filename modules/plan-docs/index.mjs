@@ -409,6 +409,13 @@ export function parsePlanMarkdown(markdown, context = {}) {
     const t = /^\s*[-*]\s+\[([ xX])\]\s+(.+?)\s*$/.exec(line);
     if (t) tasks.push({ done: t[1].toLowerCase() === "x", text: t[2].trim(), line: index + 1 });
   });
+  // A heading "has content" when at least one non-blank line sits between it and the next
+  // heading (or EOF) — used to distinguish a real section from a bare, empty heading (e.g. an
+  // empty "## Verification" that satisfies has("verification") by name alone).
+  headings.forEach((heading, index) => {
+    const sectionEnd = headings[index + 1]?.line ?? lines.length + 1;
+    heading.hasContent = lines.slice(heading.line, sectionEnd - 1).some((line) => line.trim().length > 0);
+  });
   return {
     context,
     frontmatter,
@@ -624,6 +631,10 @@ function validateParsedPlan(parsed, { lifecycle }) {
   const headingNames = new Set(parsed.headings.map((h) => normalizeHeading(h.text)));
   const warnings = [];
   const has = (...names) => names.some((name) => headingNames.has(name));
+  // Presence alone isn't evidence — a bare heading with nothing under it (before the next
+  // heading or EOF) doesn't count as having real content.
+  const hasContent = (...names) =>
+    parsed.headings.some((h) => names.includes(normalizeHeading(h.text)) && h.hasContent);
   if (!parsed.title) warnings.push("Missing H1 title.");
   if (!parsed.frontmatter.id) warnings.push("Missing frontmatter id.");
   if (!parsed.frontmatter.priority) warnings.push("Missing frontmatter priority.");
@@ -646,7 +657,7 @@ function validateParsedPlan(parsed, { lifecycle }) {
     if (parsed.taskCounts.remaining > 0) warnings.push("Completed plan has unchecked tasks.");
     if (parsed.frontmatter.next_action) warnings.push("Completed plan still has next_action.");
     if (parsed.frontmatter.blocked_by?.length) warnings.push("Completed plan still has blockers.");
-    if (!has("verification")) warnings.push("Missing Verification section describing evidence or a stated limitation.");
+    if (!hasContent("verification")) warnings.push("Missing Verification section describing evidence or a stated limitation.");
   }
   if (lifecycle === "archived" && parsed.frontmatter.next_action) warnings.push("Archived plan still has next_action.");
   return { ready: warnings.length === 0, warnings };

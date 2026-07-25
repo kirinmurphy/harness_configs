@@ -132,11 +132,21 @@ class PlanStatusElement extends HTMLElement {
       next: plan.nextAction || "No next action",
     });
     node.querySelector("[data-slot=meta]").title = new Date(plan.modifiedAt).toLocaleString();
-    const stateBadge = node.querySelector("[data-slot=state-badge]");
+    const stateBadgeSlot = node.querySelector("[data-slot=state-badge]");
     if (isBlocked) {
-      stateBadge.textContent = "blocked";
-      stateBadge.classList.add("warn");
-      stateBadge.hidden = false;
+      const badgeBtn = document.createElement("button");
+      badgeBtn.type = "button";
+      badgeBtn.className = "state-badge warn state-badge-blocked";
+      badgeBtn.textContent = `blocked by ${plan.blockers.length}`;
+      badgeBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.dispatchEvent(new CustomEvent("blocked-click", {
+          bubbles: true,
+          composed: true,
+          detail: { record, anchor: badgeBtn },
+        }));
+      });
+      stateBadgeSlot.replaceWith(badgeBtn);
     }
     node.querySelector("[data-slot=implementation]").hidden = !isActive;
     node.querySelector("[data-slot=progress-fill]").style.width = `${percentComplete}%`;

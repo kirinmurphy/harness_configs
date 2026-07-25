@@ -14,6 +14,7 @@ import * as tmpl from "./templates.js";
 import { createRootsPanel, createInfoModal, createPromptModal } from "./panels.js";
 import { createLifecycleEventDialog, lifecycleEvents } from "./lifecycle-event-dialog.js";
 import { createOutcomeToast } from "./toast-controller.js";
+import { createBlockersPopover } from "./blockers-popover.js";
 import {
   FILTER_IDS,
   FILTER_DEFAULTS,
@@ -24,6 +25,8 @@ import {
   isVisible,
   replaceRecord,
   filteredListActionFor,
+  resolveBlockers,
+  resolveBlocking,
   optionCounts,
   optionLabel,
   repositoryContext,
@@ -67,6 +70,9 @@ createInfoModal();
 const skillModal = createSkillDetailModal(document.getElementById("skill-modal"));
 const promptModal = createPromptModal(document.getElementById("prompt-modal"));
 const outcomeToast = createOutcomeToast(toastEl);
+const blockersPopover = createBlockersPopover(document.getElementById("blockers-popover"), {
+  onOpenPlan: (key) => openPlan(key),
+});
 const lifecycleEventDialog = createLifecycleEventDialog(document.getElementById("lifecycle-event-modal"), {
   onCopyPrompt: (record) => copyPrompt("start", [record.key], "repository-aware"),
   onViewPlan: (record) => openPlan(record.key),
@@ -111,6 +117,13 @@ function bindStaticControls() {
   // mutation orchestrator.
   groupsEl.addEventListener("plan-change", (event) => handlePlanChange(event.detail));
   document.getElementById("drawer-status-mount").addEventListener("plan-change", (event) => handlePlanChange(event.detail));
+  // Same delegation for the "blocked by N" badge — card and drawer both mount <plan-status>.
+  groupsEl.addEventListener("blocked-click", (event) => openBlockersPopover(event.detail));
+  document.getElementById("drawer-status-mount").addEventListener("blocked-click", (event) => openBlockersPopover(event.detail));
+}
+
+function openBlockersPopover({ record, anchor }) {
+  blockersPopover.open({ blockers: resolveBlockers(record, state.snapshot.plans), anchor });
 }
 
 function setFiltersExpanded(expanded) {
@@ -503,6 +516,7 @@ function renderDrawer(doc) {
   document.getElementById("drawer-warnings-section").hidden =
     content.warnings.length === 0;
   document.getElementById("drawer-tasks").replaceChildren(...tmpl.drawerTaskItems(content.tasks));
+  renderDrawerBlockers(doc.plan);
   const statusEl = document.createElement("plan-status");
   statusEl.record = doc.plan;
   document.getElementById("drawer-status-mount").replaceChildren(statusEl);
@@ -518,6 +532,19 @@ function renderDrawer(doc) {
   }
   document.getElementById("drawer-menu").panelContent = content.menu;
   drawer.showModal();
+}
+
+// Blocked by (this plan's own blocked_by, resolved) and Blocking (other plans that list this one)
+// render as two independent warning-styled sections above the drawer's main content — each hidden
+// when empty. Every resolved entry is a link that closes to the same drawer re-opened for the
+// target plan; unresolved blocked_by ids render as plain text (see resolveBlockers).
+function renderDrawerBlockers(record) {
+  const blockedBy = resolveBlockers(record, state.snapshot.plans);
+  const blocking = resolveBlocking(record, state.snapshot.plans);
+  document.getElementById("drawer-blocked-by-section").hidden = blockedBy.length === 0;
+  document.getElementById("drawer-blocked-by-links").replaceChildren(...blockedBy.map((b) => tmpl.blockerLink(b, openPlan)));
+  document.getElementById("drawer-blocking-section").hidden = blocking.length === 0;
+  document.getElementById("drawer-blocking-links").replaceChildren(...blocking.map((b) => tmpl.blockerLink(b, openPlan)));
 }
 
 async function copyPrompt(actionName, keys, mode = "repository-aware") {

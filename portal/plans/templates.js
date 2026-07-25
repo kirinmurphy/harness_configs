@@ -371,3 +371,13 @@ export function drawerTaskItems(tasks) {
 export function dtdd(term, value) {
   return fill(tpl("tpl-dtdd-row"), { term, value });
 }
+
+// One entry in the drawer's Blocked by / Blocking sections (see state.js's resolveBlockers /
+// resolveBlocking) — a link for a resolved blocker, plain unclickable text otherwise. Shares the
+// same tpl-blocker-link/tpl-blocker-unresolved templates as blockers-popover.js's card popup.
+export function blockerLink(blocker, onOpenPlan) {
+  if (!blocker.resolved) return fill(tpl("tpl-blocker-unresolved"), { title: blocker.title });
+  const link = fill(tpl("tpl-blocker-link"), { title: blocker.title });
+  link.addEventListener("click", () => onOpenPlan(blocker.key));
+  return link;
+}

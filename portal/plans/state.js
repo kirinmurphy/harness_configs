@@ -231,3 +231,34 @@ export function filteredListActionFor(change, state) {
   }
   return null;
 }
+
+// --- blocker/blocking resolution -------------------------------------------------------------
+// Resolved live from the current snapshot on every call (not cached on the record) so a mutation
+// that only rebuilds one record (see updatePlanPriority/movePlanLifecycle) never leaves stale
+// blocker/blocking data behind — the next render always recomputes from state.snapshot.plans.
+// Plan ids are only unique within one repository (see modules/plan-docs/index.mjs's
+// relationshipWarnings), so matches are scoped to the same repository.id as the referencing plan.
+
+// Every blocked_by id, resolved to its plan record when one exists in the same repository.
+// Unresolvable ids (typo, wrong repo, deleted plan) come back with resolved: false and no record.
+export function resolveBlockers(record, allPlans) {
+  return (record.plan.blockers || []).map((id) => {
+    const target = allPlans.find((item) => item.plan.id === id && item.repository.id === record.repository.id);
+    return target
+      ? { id, title: target.plan.title, key: target.key, resolved: true }
+      : { id, title: id, key: null, resolved: false };
+  });
+}
+
+// The reverse of resolveBlockers: every other plan in the same repository whose blocked_by lists
+// this plan's id — i.e. what this plan is currently blocking. Always resolved, since these are
+// found by scanning the snapshot rather than looked up by a possibly-stale id.
+export function resolveBlocking(record, allPlans) {
+  if (!record.plan.id) return [];
+  return allPlans
+    .filter((item) =>
+      item.key !== record.key &&
+      item.repository.id === record.repository.id &&
+      (item.plan.blockers || []).includes(record.plan.id))
+    .map((item) => ({ id: item.plan.id, title: item.plan.title, key: item.key, resolved: true }));
+}

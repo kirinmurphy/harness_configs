@@ -5,6 +5,8 @@ import {
   replaceRecord,
   filteredListActionFor,
   matchesFilters,
+  resolveBlockers,
+  resolveBlocking,
   FILTER_DEFAULTS,
 } from "../../portal/plans/state.js";
 
@@ -24,13 +26,19 @@ testFilteredListActionForLifecycleNullWhenFilterDoesNotMatch();
 testFilteredListActionForPriorityWhenFilterMatchesPreviousValue();
 testFilteredListActionForPriorityNullWhenFilterDoesNotMatch();
 testFilteredListActionForUnrelatedPropertyReturnsNull();
+testResolveBlockersResolvesMatchingId();
+testResolveBlockersMarksUnresolvedId();
+testResolveBlockersScopedToSameRepository();
+testResolveBlockingFindsReverseReferences();
+testResolveBlockingEmptyWhenNoId();
+testResolveBlockingExcludesSelf();
 console.log("ok: plans portal state (mutation orchestration helpers) checks passed");
 
-function record({ key = "k1", lifecycle = "backlog", priority = "high", id = "plan-1" } = {}) {
+function record({ key = "k1", lifecycle = "backlog", priority = "high", id = "plan-1", repositoryId = "r1", blockers = [] } = {}) {
   return {
     key,
     mtimeMs: 1,
-    repository: { id: "r1", name: "repo" },
+    repository: { id: repositoryId, name: "repo" },
     plan: {
       id,
       title: "Plan " + id,
@@ -38,7 +46,7 @@ function record({ key = "k1", lifecycle = "backlog", priority = "high", id = "pl
       priority,
       relativePath: `docs/plans/${lifecycle}/${id}.md`,
       nextAction: "",
-      blockers: [],
+      blockers,
       dependencies: [],
       related: [],
       reviewedCommit: "",
@@ -146,3 +154,51 @@ function testFilteredListActionForUnrelatedPropertyReturnsNull() {
 // Sanity: matchesFilters is re-exported and used by isVisible internally — confirm the import
 // itself resolves (would throw at module load if state.js's exports changed shape).
 assert.equal(typeof matchesFilters, "function");
+
+function testResolveBlockersResolvesMatchingId() {
+  const blocker = record({ key: "b", id: "plan-b" });
+  const blocked = record({ key: "a", id: "plan-a", blockers: ["plan-b"] });
+  const resolved = resolveBlockers(blocked, [blocker, blocked]);
+  assert.equal(resolved.length, 1);
+  assert.equal(resolved[0].resolved, true);
+  assert.equal(resolved[0].key, "b");
+  assert.equal(resolved[0].title, "Plan plan-b");
+}
+
+function testResolveBlockersMarksUnresolvedId() {
+  const blocked = record({ key: "a", id: "plan-a", blockers: ["missing-plan"] });
+  const resolved = resolveBlockers(blocked, [blocked]);
+  assert.equal(resolved.length, 1);
+  assert.equal(resolved[0].resolved, false);
+  assert.equal(resolved[0].key, null);
+  assert.equal(resolved[0].title, "missing-plan", "unresolved entries fall back to the raw id as display text");
+}
+
+function testResolveBlockersScopedToSameRepository() {
+  // Plan ids are only unique within one repository — a same-id match in a different repository
+  // must not resolve.
+  const otherRepoPlan = record({ key: "other-repo-b", id: "plan-b", repositoryId: "r2" });
+  const blocked = record({ key: "a", id: "plan-a", repositoryId: "r1", blockers: ["plan-b"] });
+  const resolved = resolveBlockers(blocked, [otherRepoPlan, blocked]);
+  assert.equal(resolved[0].resolved, false, "a same-id plan in a different repository must not resolve");
+}
+
+function testResolveBlockingFindsReverseReferences() {
+  const blocker = record({ key: "b", id: "plan-b" });
+  const blocked = record({ key: "a", id: "plan-a", blockers: ["plan-b"] });
+  const blocking = resolveBlocking(blocker, [blocker, blocked]);
+  assert.equal(blocking.length, 1);
+  assert.equal(blocking[0].key, "a");
+  assert.equal(blocking[0].resolved, true, "reverse-lookup entries are always resolved since they're found by scanning the snapshot");
+}
+
+function testResolveBlockingEmptyWhenNoId() {
+  const noIdPlan = record({ key: "x", id: "" });
+  assert.deepEqual(resolveBlocking(noIdPlan, [noIdPlan]), [], "a plan with no frontmatter id can't be referenced by others, so blocking is always empty");
+}
+
+function testResolveBlockingExcludesSelf() {
+  // A plan that (incorrectly) lists its own id in blocked_by must not appear in its own Blocking list.
+  const selfBlocked = record({ key: "a", id: "plan-a", blockers: ["plan-a"] });
+  assert.deepEqual(resolveBlocking(selfBlocked, [selfBlocked]), []);
+}

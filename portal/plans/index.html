@@ -126,6 +126,10 @@
       <p class="toast-message" data-slot="message"></p>
       <div class="toast-actions" data-slot="actions"></div>
     </div>
+    <div id="blockers-popover" class="blockers-popover" hidden role="menu">
+      <p class="blockers-popover-title" data-slot="title"></p>
+      <div class="blockers-popover-list" data-slot="list"></div>
+    </div>
     <main class="inner">
       {{LOADING}}
       <div class="settings" id="settings">
@@ -298,6 +302,28 @@
           ></portal-menu-button>
         </div>
         <section
+          class="drawer-warnings-section drawer-blockers-section"
+          id="drawer-blocked-by-section"
+          hidden
+        >
+          <h3>
+            <portal-icon name="warning" width="14" height="14"></portal-icon>
+            Blocked by
+          </h3>
+          <div class="drawer-blocker-links" id="drawer-blocked-by-links"></div>
+        </section>
+        <section
+          class="drawer-warnings-section drawer-blockers-section"
+          id="drawer-blocking-section"
+          hidden
+        >
+          <h3>
+            <portal-icon name="warning" width="14" height="14"></portal-icon>
+            Blocking
+          </h3>
+          <div class="drawer-blocker-links" id="drawer-blocking-links"></div>
+        </section>
+        <section
           class="drawer-warnings-section"
           id="drawer-warnings-section"
           hidden
@@ -400,6 +426,12 @@
         class="secondary-action"
         data-slot="label"
       ></button>
+    </template>
+    <template id="tpl-blocker-link">
+      <button type="button" class="blockers-popover-item" data-slot="title"></button>
+    </template>
+    <template id="tpl-blocker-unresolved">
+      <span class="blockers-popover-item blockers-popover-item-unresolved" data-slot="title"></span>
     </template>
     <template id="tpl-menu-item">
       <button type="button" class="menu-button-item">

@@ -744,6 +744,17 @@ plan-card {
   color: var(--warn);
   border-color: var(--warn-line);
 }
+/* .state-badge is a <span> for readiness/review chips but a real <button> when it's the
+   blocked-by trigger (plan-status.js) — reset button chrome so it keeps the chip's look. */
+.state-badge-blocked {
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+.state-badge-blocked:hover,
+.state-badge-blocked:focus-visible {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
 .status-state-row .meta-line {
   font-size: var(--text-2xs);
   min-width: 0;
@@ -963,6 +974,64 @@ dialog#drawer::backdrop {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+/* Blocked by / Blocking share .drawer-warnings-section's warning-box chrome; only the link-row
+   layout below is section-specific. */
+.drawer-blocker-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.drawer-blocker-links .blockers-popover-item {
+  font-size: var(--text-xs);
+}
+
+/* Card/drawer "blocked by N" popup — anchored via popover-position.js, same fixed-panel pattern
+   as option-dropdown/menu-button's menus. */
+.blockers-popover {
+  position: fixed;
+  z-index: 30;
+  min-width: 200px;
+  max-width: min(320px, calc(100vw - 16px));
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px var(--modal-shadow);
+  overflow-y: auto;
+}
+.blockers-popover[hidden] {
+  display: none;
+}
+.blockers-popover-title {
+  margin: 0 0 6px;
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  color: var(--warn);
+}
+.blockers-popover-list {
+  display: grid;
+  gap: 4px;
+}
+.blockers-popover-item {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  text-align: left;
+}
+.blockers-popover-item:hover {
+  color: var(--ink);
+}
+.blockers-popover-item-unresolved {
+  color: var(--dim);
+  text-decoration: none;
+  cursor: default;
 }
 .task-done {
   color: var(--dim);

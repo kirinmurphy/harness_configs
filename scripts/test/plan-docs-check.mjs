@@ -9,6 +9,7 @@ import {
   buildPlanSnapshot,
   buildPrompt,
   discoverRepositories,
+  movePlanLifecycle,
   parseFrontmatter,
   readPlanDocument,
   updatePlanPriority,
@@ -22,7 +23,9 @@ try {
   const projects = path.join(tempRoot, "projects");
   const repo = path.join(projects, "sample");
   fs.mkdirSync(path.join(repo, "docs", "plans", "backlog"), { recursive: true });
+  fs.mkdirSync(path.join(repo, "docs", "plans", "active"), { recursive: true });
   fs.mkdirSync(path.join(repo, "docs", "plans", "completed"), { recursive: true });
+  fs.mkdirSync(path.join(repo, "docs", "plans", "archived"), { recursive: true });
   fs.writeFileSync(path.join(repo, ".git"), "gitdir: nowhere\n");
   fs.writeFileSync(path.join(repo, "docs", "plans", "backlog", "ready.md"), `---
 id: ready-plan
@@ -59,6 +62,49 @@ Use Markdown as source of truth.
 ## Validation
 
 Run targeted checks.
+`);
+  // Fully-ready plan: satisfies backlog, active, completed, and archived destination
+  // requirements at once (all tasks checked, has a Verification section, next_action can be
+  // cleared before the archived-destination assertion) — used to exercise movePlanLifecycle
+  // across every canonical source/destination pair without hand-writing 12 fixtures.
+  fs.writeFileSync(path.join(repo, "docs", "plans", "backlog", "movable.md"), `---
+id: movable-plan
+priority: medium
+next_action: Move this plan around in tests.
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+# Movable Plan
+
+## Summary
+
+Exercises lifecycle movement.
+
+## Context
+
+Used only by plan-docs-check.mjs.
+
+## Goals
+
+Prove movePlanLifecycle works for every canonical destination.
+
+## Proposed design
+
+N/A.
+
+## Implementation plan
+
+- [x] Nothing left to do
+
+## Verification
+
+Verified manually by the test itself.
+
+## Validation
+
+N/A.
 `);
   fs.writeFileSync(path.join(repo, "docs", "plans", "root.md"), "# Root Plan\n");
   fs.writeFileSync(path.join(repo, "docs", "plans", "backlog", "no-priority.md"), `---
@@ -100,7 +146,7 @@ Run targeted checks.
 
   const snapshot = buildPlanSnapshot({ stateRoot, packageState: { available: true, enabled: false, status: "disabled" } });
   assert.equal(snapshot.repositories.length, 1);
-  assert.equal(snapshot.plans.length, 3);
+  assert.equal(snapshot.plans.length, 4);
   const ready = snapshot.plans.find((item) => item.plan.id === "ready-plan");
   assert.ok(ready);
   assert.equal(ready.plan.lifecycle, "backlog");
@@ -152,33 +198,210 @@ Run targeted checks.
   assert.equal(readyRecord.plan.priority, "high");
   assert.ok(Number.isFinite(readyRecord.mtimeMs), "expected mtimeMs on the public plan record");
 
-  const priorityResult = updatePlanPriority(readySnapshot, readyRecord.key, "low", readyRecord.mtimeMs);
-  assert.equal(priorityResult.priority, "low");
-  assert.ok(Number.isFinite(priorityResult.mtimeMs));
+  const priorityResult = updatePlanPriority(readySnapshot, {
+    id: readyRecord.plan.id,
+    key: readyRecord.key,
+    priority: "low",
+    expectedPriority: readyRecord.plan.priority,
+    mtimeMs: readyRecord.mtimeMs,
+  });
+  assert.equal(priorityResult.change.property, "priority");
+  assert.equal(priorityResult.change.previousValue, "high");
+  assert.equal(priorityResult.change.newValue, "low");
+  assert.equal(priorityResult.record.plan.priority, "low", "priority returns a complete rebuilt record, not just {priority, mtimeMs}");
+  assert.equal(priorityResult.record.plan.id, "ready-plan");
+  assert.ok(Number.isFinite(priorityResult.record.mtimeMs));
   const onDisk = fs.readFileSync(path.join(repo, "docs", "plans", "backlog", "ready.md"), "utf8");
   assert.match(onDisk, /priority: low/);
   assert.match(onDisk, /## Implementation plan/); // body untouched
 
-  assert.throws(() => updatePlanPriority(readySnapshot, readyRecord.key, "not-a-priority", priorityResult.mtimeMs), /invalid priority/);
+  assert.throws(
+    () => updatePlanPriority(readySnapshot, { id: readyRecord.plan.id, key: readyRecord.key, priority: "not-a-priority", expectedPriority: "low", mtimeMs: priorityResult.record.mtimeMs }),
+    /invalid priority/,
+  );
 
-  // Conflict: stale mtime (as if another process/editor touched the file since it was loaded).
+  // Stale conflict: mtime (as if another process/editor touched the file since it was loaded).
   assert.throws(() => {
     try {
-      updatePlanPriority(readySnapshot, readyRecord.key, "high", readyRecord.mtimeMs /* stale, already advanced above */);
+      updatePlanPriority(readySnapshot, {
+        id: readyRecord.plan.id,
+        key: readyRecord.key,
+        priority: "high",
+        expectedPriority: "low",
+        mtimeMs: readyRecord.mtimeMs, // stale, already advanced above
+      });
     } catch (err) {
-      assert.equal(err.code, "CONFLICT");
+      assert.equal(err.code, "STALE_PLAN");
+      assert.equal(err.status, 409);
       throw err;
     }
-  }, /changed since it was loaded/);
+  }, /changed outside the portal/);
+
+  // Stale conflict: expectedPriority mismatch alone (mtime happens to still match current disk
+  // state — e.g. a concurrent request raced and won, then this one arrives with a now-wrong
+  // expectation but a fresh mtime it never actually read).
+  assert.throws(() => {
+    try {
+      updatePlanPriority(readySnapshot, {
+        id: readyRecord.plan.id,
+        key: readyRecord.key,
+        priority: "high",
+        expectedPriority: "medium", // wrong: current on-disk priority is "low"
+        mtimeMs: priorityResult.record.mtimeMs,
+      });
+    } catch (err) {
+      assert.equal(err.code, "STALE_PLAN");
+      throw err;
+    }
+  }, /changed outside the portal/);
 
   // Regression: a plan with no `priority:` frontmatter key at all (displays as "none" via
   // buildPlanRecord's `|| "none"` fallback) must still be settable, not throw "key not found".
   const noPriorityRecord = readySnapshot.plans.find((item) => item.plan.id === "no-priority-plan");
   assert.equal(noPriorityRecord.plan.priority, "none");
-  const noPriorityResult = updatePlanPriority(readySnapshot, noPriorityRecord.key, "high", noPriorityRecord.mtimeMs);
-  assert.equal(noPriorityResult.priority, "high");
+  const noPriorityResult = updatePlanPriority(readySnapshot, {
+    id: noPriorityRecord.plan.id,
+    key: noPriorityRecord.key,
+    priority: "high",
+    expectedPriority: noPriorityRecord.plan.priority,
+    mtimeMs: noPriorityRecord.mtimeMs,
+  });
+  assert.equal(noPriorityResult.record.plan.priority, "high");
   const noPriorityOnDisk = fs.readFileSync(path.join(repo, "docs", "plans", "backlog", "no-priority.md"), "utf8");
   assert.match(noPriorityOnDisk, /priority: high/);
+
+  // --- movePlanLifecycle: file movement, validation, and stale-conflict handling -----------------
+  const moveSnapshot = buildPlanSnapshot({ stateRoot, packageState: { available: true, enabled: false, status: "disabled" } });
+  const movable = moveSnapshot.plans.find((item) => item.plan.id === "movable-plan");
+  assert.equal(movable.plan.lifecycle, "backlog");
+
+  // Unclassified is never a valid destination.
+  assert.throws(() => movePlanLifecycle(moveSnapshot, {
+    id: movable.plan.id, key: movable.key, lifecycle: "unclassified", expectedLifecycle: "backlog", mtimeMs: movable.mtimeMs,
+  }), (err) => err.code === "INVALID_CHANGE");
+
+  // Same-lifecycle move is rejected rather than treated as a silent no-op.
+  assert.throws(() => movePlanLifecycle(moveSnapshot, {
+    id: movable.plan.id, key: movable.key, lifecycle: "backlog", expectedLifecycle: "backlog", mtimeMs: movable.mtimeMs,
+  }), (err) => err.code === "INVALID_CHANGE");
+
+  // Full tour: backlog -> active -> completed -> archived -> backlog. Each move rebuilds the
+  // snapshot from disk first, mirroring how the CLI layer re-resolves cachedSnapshot per request
+  // (movePlanLifecycle never mutates the snapshot object it's given — the caller is expected to
+  // treat it as a point-in-time read, exactly like a real portal request cycle).
+  let current = movable;
+  const tour = ["active", "completed", "archived", "backlog"];
+  for (const destination of tour) {
+    const before = current;
+    // Completed forbids next_action; archived forbids it too. Backlog/active require it. Patch
+    // the on-disk field immediately before each hop so the fixture satisfies whichever
+    // destination is next, mirroring a real user editing the doc between lifecycle moves.
+    const currentPath = path.join(repo, "docs", "plans", before.plan.lifecycle, "movable.md");
+    const currentMarkdown = fs.readFileSync(currentPath, "utf8");
+    const needsNextAction = destination === "active" || destination === "backlog";
+    fs.writeFileSync(currentPath, writeFrontmatterField(currentMarkdown, "next_action", needsNextAction ? "Move this plan around in tests." : ""));
+    const tourSnapshot = buildPlanSnapshot({ stateRoot, packageState: { available: true, enabled: false, status: "disabled" } });
+    const refreshedBefore = tourSnapshot.plans.find((item) => item.plan.id === "movable-plan");
+    const moveResult = movePlanLifecycle(tourSnapshot, {
+      id: refreshedBefore.plan.id,
+      key: refreshedBefore.key,
+      lifecycle: destination,
+      expectedLifecycle: refreshedBefore.plan.lifecycle,
+      mtimeMs: refreshedBefore.mtimeMs,
+      repositoryId: refreshedBefore.repository.id,
+    });
+    assert.equal(moveResult.change.property, "lifecycle");
+    assert.equal(moveResult.change.previousValue, before.plan.lifecycle);
+    assert.equal(moveResult.change.newValue, destination);
+    assert.equal(moveResult.record.plan.lifecycle, destination);
+    assert.equal(moveResult.record.plan.id, "movable-plan", "stable id unchanged after movement");
+    assert.notEqual(moveResult.record.key, before.key, "key changed after movement");
+    assert.match(moveResult.record.plan.relativePath, new RegExp(`^docs/plans/${destination}/movable\\.md$`));
+    assert.ok(!fs.existsSync(path.join(repo, "docs", "plans", before.plan.lifecycle, "movable.md")), "source removed");
+    assert.ok(fs.existsSync(path.join(repo, "docs", "plans", destination, "movable.md")), "destination created");
+    const movedOnDisk = fs.readFileSync(path.join(repo, "docs", "plans", destination, "movable.md"), "utf8");
+    assert.match(movedOnDisk, /id: movable-plan/, "frontmatter unchanged by lifecycle movement");
+    current = moveResult.record;
+  }
+
+  // Unclassified source -> canonical destination.
+  const rootPlanBefore = moveSnapshot.plans.find((item) => item.plan.relativePath.endsWith("root.md"));
+  assert.equal(rootPlanBefore.plan.lifecycle, "unclassified");
+  const rootMoveResult = movePlanLifecycle(moveSnapshot, {
+    id: rootPlanBefore.plan.id || undefined,
+    key: rootPlanBefore.key,
+    lifecycle: "backlog",
+    expectedLifecycle: "unclassified",
+    mtimeMs: rootPlanBefore.mtimeMs,
+    skipDestinationValidation: true, // root.md has no frontmatter/headings at all
+  });
+  assert.equal(rootMoveResult.record.plan.lifecycle, "backlog");
+  assert.ok(fs.existsSync(path.join(repo, "docs", "plans", "backlog", "root.md")));
+
+  // Destination collision: pre-occupy the target path, confirm neither file moves.
+  fs.writeFileSync(path.join(repo, "docs", "plans", "backlog", "collide-active.md"), "# placeholder\n");
+  fs.mkdirSync(path.join(repo, "docs", "plans", "active"), { recursive: true });
+  fs.writeFileSync(path.join(repo, "docs", "plans", "active", "collide-active.md"), "# occupies destination\n");
+  const collisionSnapshot = buildPlanSnapshot({ stateRoot, packageState: { available: true, enabled: false, status: "disabled" } });
+  const collideSource = collisionSnapshot.plans.find((item) => item.plan.relativePath.endsWith("collide-active.md") && item.plan.lifecycle === "backlog");
+  assert.throws(() => movePlanLifecycle(collisionSnapshot, {
+    id: collideSource.plan.id || undefined,
+    key: collideSource.key,
+    lifecycle: "active",
+    expectedLifecycle: "backlog",
+    mtimeMs: collideSource.mtimeMs,
+    skipDestinationValidation: true,
+  }), (err) => err.code === "DESTINATION_EXISTS");
+  assert.ok(fs.existsSync(path.join(repo, "docs", "plans", "backlog", "collide-active.md")), "source untouched after rejected collision");
+  assert.match(fs.readFileSync(path.join(repo, "docs", "plans", "active", "collide-active.md"), "utf8"), /occupies destination/, "destination untouched after rejected collision");
+
+  // Stale conflicts: mtime, lifecycle, and key/path (via a wrong id+key combo) all rejected.
+  const staleSnapshot = buildPlanSnapshot({ stateRoot, packageState: { available: true, enabled: false, status: "disabled" } });
+  const staleSource = staleSnapshot.plans.find((item) => item.plan.id === "ready-plan");
+  assert.throws(() => movePlanLifecycle(staleSnapshot, {
+    id: staleSource.plan.id, key: staleSource.key, lifecycle: "active", expectedLifecycle: "backlog", mtimeMs: staleSource.mtimeMs - 1,
+  }), (err) => err.code === "STALE_PLAN");
+  assert.throws(() => movePlanLifecycle(staleSnapshot, {
+    id: staleSource.plan.id, key: staleSource.key, lifecycle: "active", expectedLifecycle: "active" /* wrong: it's backlog */, mtimeMs: staleSource.mtimeMs,
+  }), (err) => err.code === "STALE_PLAN");
+
+  // File moved externally (outside the portal) between snapshot build and the mutation request:
+  // the mtime/path check must catch it and report STALE_PLAN, not a generic filesystem error.
+  const externalSnapshot = buildPlanSnapshot({ stateRoot, packageState: { available: true, enabled: false, status: "disabled" } });
+  const externalSource = externalSnapshot.plans.find((item) => item.plan.id === "ready-plan");
+  fs.renameSync(
+    path.join(repo, "docs", "plans", "backlog", "ready.md"),
+    path.join(repo, "docs", "plans", "archived", "ready.md"),
+  );
+  assert.throws(() => movePlanLifecycle(externalSnapshot, {
+    id: externalSource.plan.id, key: externalSource.key, lifecycle: "active", expectedLifecycle: "backlog", mtimeMs: externalSource.mtimeMs,
+  }), (err) => err.code === "STALE_PLAN");
+  // Restore for subsequent assertions to keep fixture state predictable.
+  fs.renameSync(
+    path.join(repo, "docs", "plans", "archived", "ready.md"),
+    path.join(repo, "docs", "plans", "backlog", "ready.md"),
+  );
+
+  // Lifecycle requirement errors are returned together, not fail-fast on the first violation.
+  const requirementsSnapshot = buildPlanSnapshot({ stateRoot, packageState: { available: true, enabled: false, status: "disabled" } });
+  const requirementsSource = requirementsSnapshot.plans.find((item) => item.plan.id === "no-priority-plan");
+  assert.throws(() => {
+    try {
+      movePlanLifecycle(requirementsSnapshot, {
+        id: requirementsSource.plan.id,
+        key: requirementsSource.key,
+        lifecycle: "completed",
+        expectedLifecycle: "backlog",
+        mtimeMs: requirementsSource.mtimeMs,
+      });
+    } catch (err) {
+      assert.equal(err.code, "LIFECYCLE_REQUIREMENTS");
+      assert.equal(err.status, 422);
+      assert.ok(err.details.length > 1, `expected multiple accumulated requirement failures, got: ${JSON.stringify(err.details)}`);
+      throw err;
+    }
+  }, /Couldn't move/);
+  assert.ok(fs.existsSync(path.join(repo, "docs", "plans", "backlog", "no-priority.md")), "failed validation leaves source file unmoved");
 
   const portalFacing = spawnSync(process.execPath, [
     "-e",

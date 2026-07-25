@@ -187,6 +187,64 @@ export function findPlanByKey(snapshot, key) {
   return plan;
 }
 
+// Stable-identity lookup: plan `id` (frontmatter) survives a lifecycle move even though `key`
+// (hashed from repo root + relative path) does not. `id` uniqueness is only enforced within a
+// single repository (see relationshipWarnings' `${repository.root}:${plan.id}` dedup key), so a
+// `repositoryId` is required to disambiguate when the same id could exist in two repos. An empty
+// id ("" — the buildPlanRecord fallback for plans with no frontmatter id) never matches.
+export function findPlanById(snapshot, id, repositoryId) {
+  if (!id) return null;
+  return snapshot.plans.find((item) => item.plan.id === id && (!repositoryId || item.repository.id === repositoryId)) || null;
+}
+
+// Builds a structured domain error every mutation throw site uses, so the CLI/route layer has one
+// shape to serialize instead of pattern-matching ad hoc `.code` properties.
+function domainError(code, message, { resolution, details, status } = {}) {
+  const err = new Error(message);
+  err.code = code;
+  if (resolution !== undefined) err.resolution = resolution;
+  if (details !== undefined) err.details = details;
+  err.status = status ?? DOMAIN_ERROR_STATUS[code] ?? 400;
+  return err;
+}
+
+const DOMAIN_ERROR_STATUS = {
+  INVALID_CHANGE: 400,
+  STALE_PLAN: 409,
+  DESTINATION_EXISTS: 409,
+  LIFECYCLE_REQUIREMENTS: 422,
+  PLAN_NOT_FOUND: 404,
+  MOVE_FAILED: 500,
+};
+
+// Two-stage resolution shared by every mutation: locate the record the client expects by `key`
+// first (the common case — nothing has moved), then re-resolve by stable `id` when the key no
+// longer exists, since a lifecycle move changes `key` but not `id`. Throws PLAN_NOT_FOUND only
+// when neither resolves.
+function resolvePlanForMutation(snapshot, { id, key, repositoryId }) {
+  const byKey = snapshot.plans.find((item) => item.key === key);
+  if (byKey) return byKey;
+  const byId = findPlanById(snapshot, id, repositoryId);
+  if (byId) return byId;
+  throw domainError("PLAN_NOT_FOUND", "This plan can no longer be found. Refresh and try again, or restore the file if it was deleted.");
+}
+
+// Validates the resolved record still matches what the client last saw. A key/lifecycle/path
+// mismatch while the stable id still resolves means the file moved since the client loaded it
+// (report where it is now); a straight mtime/priority mismatch means it was edited in place.
+function assertExpectedState(record, { key, expectedLifecycle, expectedPriority, mtimeMs }) {
+  const mismatches = [];
+  if (key !== undefined && record.key !== key) mismatches.push(`moved to ${record.plan.relativePath}`);
+  if (expectedLifecycle !== undefined && record.plan.lifecycle !== expectedLifecycle) mismatches.push(`lifecycle is now ${record.plan.lifecycle}`);
+  if (expectedPriority !== undefined && record.plan.priority !== expectedPriority) mismatches.push(`priority is now ${record.plan.priority}`);
+  if (mtimeMs !== undefined && record.mtimeMs !== mtimeMs) mismatches.push("file changed on disk");
+  if (mismatches.length === 0) return;
+  throw domainError("STALE_PLAN", "This plan changed outside the portal, so the update wasn't applied.", {
+    resolution: "The page will refresh to show the current state.",
+    details: [...mismatches, `current lifecycle: ${record.plan.lifecycle}`, `current path: ${record.plan.relativePath}`],
+  });
+}
+
 export function readPlanDocument(snapshot, key) {
   const publicRecord = findPlanByKey(snapshot, key);
   if (!publicRecord.absolutePath) throw new Error("plan file path unavailable");
@@ -432,26 +490,121 @@ export function writeFrontmatterField(markdown, key, value) {
   return `---\n${updated.join("\n")}${bodyAndClose}`;
 }
 
-export function updatePlanPriority(snapshot, key, priority, expectedMtimeMs) {
-  if (!PRIORITIES.has(priority)) throw new Error("invalid priority");
-  const publicRecord = findPlanByKey(snapshot, key);
-  if (!publicRecord.absolutePath) throw new Error("plan file path unavailable");
-  const repoRoot = publicRecord.repository.root;
-  const realRepo = fs.realpathSync(repoRoot);
-  const realFile = fs.realpathSync(publicRecord.absolutePath);
-  if (!inside(realRepo, realFile)) throw new Error("plan file escaped repository boundary");
-  const stat = fs.statSync(realFile);
-  if (stat.mtimeMs !== expectedMtimeMs) {
-    const err = new Error("plan file changed since it was loaded");
-    err.code = "CONFLICT";
+// Pure path builder for a lifecycle move destination. Filename is preserved unchanged — lifecycle
+// moves never rename the file.
+function resolveDestinationPath(repositoryRoot, lifecycle, filename) {
+  return path.join(repositoryRoot, "docs", "plans", lifecycle, filename);
+}
+
+// Resolves the real (symlink-followed) path of a plan file expected to still be at
+// `absolutePath`. Translates a missing file into STALE_PLAN rather than leaking a raw ENOENT —
+// the file may have moved externally (the stable id could still resolve elsewhere on a rescan)
+// or been deleted; either way it's a stale-state conflict, not a generic filesystem error.
+function realpathOrStale(absolutePath) {
+  try {
+    return fs.realpathSync(absolutePath);
+  } catch (err) {
+    if (err?.code === "ENOENT") {
+      throw domainError("STALE_PLAN", "This plan changed outside the portal, so the update wasn't applied.", {
+        resolution: "The page will refresh to show the current state.",
+        details: ["the file is no longer at its last known location"],
+      });
+    }
     throw err;
   }
+}
+
+// Rebuilds and caches a full public plan record for a file already on disk at `absolutePath`,
+// reusing the same buildPlanRecord/readPlanRecord path the snapshot scanner uses, so mutation
+// results have the identical shape (and warnings/readiness/etc are freshly derived) as a record
+// that came from a normal scan.
+function rebuildPlanRecordAt(repository, absolutePath) {
+  const relativePath = relative(repository.root, absolutePath);
+  const stat = fs.statSync(absolutePath);
+  const record = buildPlanRecord(repository, absolutePath, relativePath, stat);
+  planRecordCache.set(absolutePath, { mtimeMs: stat.mtimeMs, repositoryRoot: repository.root, record });
+  return publicPlan(record);
+}
+
+export function updatePlanPriority(snapshot, { id, key, priority, expectedPriority, mtimeMs, repositoryId }) {
+  if (!PRIORITIES.has(priority)) throw domainError("INVALID_CHANGE", "invalid priority");
+  const record = resolvePlanForMutation(snapshot, { id, key, repositoryId });
+  assertExpectedState(record, { key, expectedPriority, mtimeMs });
+  if (!record.absolutePath) throw domainError("PLAN_NOT_FOUND", "plan file path unavailable");
+  const repoRoot = record.repository.root;
+  const realRepo = fs.realpathSync(repoRoot);
+  const realFile = realpathOrStale(record.absolutePath);
+  if (!inside(realRepo, realFile)) throw domainError("MOVE_FAILED", "plan file escaped repository boundary");
   const markdown = fs.readFileSync(realFile, "utf8");
   const updated = writeFrontmatterField(markdown, "priority", priority);
   fs.writeFileSync(realFile, updated);
-  const newStat = fs.statSync(realFile);
-  planRecordCache.delete(publicRecord.absolutePath);
-  return { priority, mtimeMs: newStat.mtimeMs };
+  planRecordCache.delete(record.absolutePath);
+  const rebuilt = rebuildPlanRecordAt(record.repository, realFile);
+  return {
+    change: { property: "priority", previousValue: record.plan.priority, newValue: priority },
+    record: rebuilt,
+  };
+}
+
+// Implements the doc's 11-step lifecycle-move validation order: enum check, stable-identity
+// resolution, stale-state check, repository-boundary confirmation, destination construction,
+// collision check, destination-requirement validation, then the atomic rename.
+export function movePlanLifecycle(snapshot, { id, key, lifecycle, expectedLifecycle, mtimeMs, repositoryId, skipDestinationValidation = false }) {
+  if (!LIFECYCLES.has(lifecycle)) throw domainError("INVALID_CHANGE", `invalid lifecycle: ${lifecycle}`);
+  const record = resolvePlanForMutation(snapshot, { id, key, repositoryId });
+  if (record.plan.lifecycle === lifecycle) throw domainError("INVALID_CHANGE", `plan is already ${lifecycle}`);
+  assertExpectedState(record, { key, expectedLifecycle, mtimeMs });
+  if (!record.absolutePath) throw domainError("PLAN_NOT_FOUND", "plan file path unavailable");
+
+  const repoRoot = record.repository.root;
+  const realRepo = fs.realpathSync(repoRoot);
+  const realFile = realpathOrStale(record.absolutePath);
+  if (!inside(realRepo, realFile)) throw domainError("MOVE_FAILED", "plan file escaped repository boundary");
+
+  const filename = path.basename(realFile);
+  const destination = resolveDestinationPath(realRepo, lifecycle, filename);
+  if (!inside(realRepo, destination)) throw domainError("MOVE_FAILED", "destination escaped repository boundary");
+
+  const destinationOccupied = (() => {
+    try {
+      fs.lstatSync(destination);
+      return true;
+    } catch (err) {
+      if (err?.code === "ENOENT") return false;
+      throw err;
+    }
+  })();
+  if (destinationOccupied) throw domainError("DESTINATION_EXISTS", "A file already exists at the destination.");
+
+  if (!skipDestinationValidation) {
+    const markdown = fs.readFileSync(realFile, "utf8");
+    const parsed = parsePlanMarkdown(markdown, { repository: stripRepositoryRoot(record.repository), relativePath: record.plan.relativePath });
+    const destinationValidation = validateParsedPlan(parsed, { lifecycle });
+    if (!destinationValidation.ready) {
+      throw domainError("LIFECYCLE_REQUIREMENTS", `Couldn't move "${record.plan.title}" to ${capitalize(lifecycle)}.`, {
+        resolution: "Complete or remove the listed items, then try again.",
+        details: destinationValidation.warnings,
+      });
+    }
+  }
+
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  try {
+    fs.renameSync(realFile, destination);
+  } catch {
+    throw domainError("MOVE_FAILED", "Couldn't move the plan file. Nothing was changed.");
+  }
+
+  planRecordCache.delete(realFile);
+  const rebuilt = rebuildPlanRecordAt(record.repository, destination);
+  return {
+    change: { property: "lifecycle", previousValue: record.plan.lifecycle, newValue: lifecycle },
+    record: rebuilt,
+  };
+}
+
+function capitalize(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function normalizeFrontmatter(frontmatter, warnings) {
@@ -482,11 +635,20 @@ function validateParsedPlan(parsed, { lifecycle }) {
   if (!has("proposed design", "implementation plan", "implementation")) warnings.push("Missing proposed design or implementation approach.");
   if (!has("validation", "acceptance criteria", "success criteria")) warnings.push("Missing Validation or acceptance criteria.");
   if ((lifecycle === "active" || lifecycle === "backlog") && !parsed.frontmatter.next_action) warnings.push("Missing next_action for actionable lifecycle.");
+  if (lifecycle === "active") {
+    if (!has("proposed design", "implementation plan", "implementation")) warnings.push("Missing implementation context for an active plan.");
+    if (!has("validation", "acceptance criteria", "success criteria")) warnings.push("Missing success criteria for an active plan.");
+    if (parsed.frontmatter.blocked_by?.length && parsed.frontmatter.blocked_by.some((item) => !item || !item.trim())) {
+      warnings.push("blocked_by lists a blocker with no value.");
+    }
+  }
   if (lifecycle === "completed") {
     if (parsed.taskCounts.remaining > 0) warnings.push("Completed plan has unchecked tasks.");
     if (parsed.frontmatter.next_action) warnings.push("Completed plan still has next_action.");
     if (parsed.frontmatter.blocked_by?.length) warnings.push("Completed plan still has blockers.");
+    if (!has("verification")) warnings.push("Missing Verification section describing evidence or a stated limitation.");
   }
+  if (lifecycle === "archived" && parsed.frontmatter.next_action) warnings.push("Archived plan still has next_action.");
   return { ready: warnings.length === 0, warnings };
 }
 

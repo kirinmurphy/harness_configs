@@ -285,16 +285,11 @@ export function drawerContent(doc, drawerActions) {
     title: plan.title,
     path: `${doc.plan.repository.name} / ${plan.relativePath}`,
     html: doc.html,
+    // Lifecycle, priority, next action, review, and task progress now render in the shared
+    // <plan-status> section mounted alongside this metadata list, not as static rows here.
     meta: [
       dtdd("id", plan.id || "(missing)"),
-      dtdd("lifecycle", plan.lifecycle),
-      dtdd("priority", plan.priority),
-      dtdd("next action", plan.nextAction || "(none)"),
-      dtdd("review", plan.reviewState),
-      dtdd(
-        "tasks",
-        `${plan.taskCounts.complete}/${plan.taskCounts.total} complete`,
-      ),
+      dtdd("repository", doc.plan.repository.name),
     ],
     warnings: plan.validation.warnings,
     tasks: doc.parsed?.tasks || [],

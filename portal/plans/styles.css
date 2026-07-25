@@ -413,6 +413,34 @@ dialog#skill-modal::backdrop {
 #prompt-modal .modalactions {
   margin-top: 12px;
 }
+#lifecycle-event-modal {
+  width: min(480px, 100%);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px var(--modal-shadow);
+  padding: 18px;
+}
+#lifecycle-event-modal::backdrop {
+  background: var(--backdrop);
+}
+#lifecycle-event-modal .modalactions {
+  margin-top: 12px;
+}
+.revert-action {
+  display: block;
+  margin-top: 14px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--dim);
+  font-size: var(--text-xs);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.revert-action:hover {
+  color: var(--ink);
+}
 /* Full-width banner, flush to the viewport edges — a sibling of <main> (not a child), so it can
  * break out of main's padding. Scrolls normally with the page (no sticky/fixed). */
 /* Full-width mount for the not-installed callout. Callout chrome (border/bg/padding) is owned by
@@ -525,7 +553,8 @@ plan-card {
   min-width: 0;
 }
 
-.plan-card > .status-section {
+.plan-card > plan-status {
+  display: block;
   min-width: 0;
 }
 /* Wide screens: status (blocked badge / progress / next-action) moves to a fixed right column
@@ -538,7 +567,7 @@ plan-card {
     grid-template-columns: 1fr 360px;
   }
 
-  .plan-card.is-active > .status-section {
+  .plan-card.is-active > plan-status .status-section {
     margin: 0;
     border-top: none;
     border-left: 1px solid var(--warn-line);
@@ -602,8 +631,17 @@ plan-card {
   border-color: var(--danger);
   color: var(--danger);
 }
-.plan-card.dirty {
-  border-left: 2px solid var(--accent);
+.lifecycle-slot {
+  display: flex;
+  flex: 0 0 auto;
+}
+.lifecycle-slot .dropdown-trigger {
+  font-size: var(--text-sm);
+  padding: 3px 9px;
+}
+.lifecycle-slot option-dropdown.dropdown-error .dropdown-trigger {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 .chips {
   display: flex;
@@ -660,14 +698,24 @@ plan-card {
   width: 18px;
   height: 18px;
 }
+/* Surface-neutral base: layout only, no chrome assumptions — <plan-status> renders inside both
+ * the card (bottom of a rounded/bordered box) and the drawer (plain top border, no rounding), so
+ * background/border/radius live in the modifiers below instead of here. */
 .status-section {
   padding: 8px 12px;
-  border-top: 1px solid var(--warn-line);
-  border-radius: 0 0 7px 7px;
-  background: color-mix(in srgb, var(--warn) 10%, var(--panel));
   display: grid;
   gap: 6px;
   overflow-wrap: anywhere;
+}
+.plan-card plan-status .status-section {
+  border-top: 1px solid var(--warn-line);
+  border-radius: 0 0 7px 7px;
+  background: color-mix(in srgb, var(--warn) 10%, var(--panel));
+}
+#drawer-status-mount .status-section {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
 }
 .status-state-row {
   display: flex;
@@ -748,16 +796,43 @@ plan-card {
   bottom: 20px;
   right: 20px;
   z-index: 20;
+  max-width: min(360px, calc(100vw - 40px));
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 8px 14px;
+  padding: 10px 14px;
   font-size: var(--text-xs);
   color: var(--ink);
   box-shadow: 0 8px 24px var(--modal-shadow);
+  display: grid;
+  gap: 6px;
 }
 .toast[hidden] {
   display: none;
+}
+.toast-message {
+  margin: 0;
+}
+.toast-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.toast-actions button,
+.toast-actions a {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.toast-actions button:hover,
+.toast-actions a:hover {
+  color: var(--ink);
 }
 dialog#drawer {
   width: min(980px, 100vw);

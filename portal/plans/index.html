@@ -121,7 +121,10 @@
         ></div>
       </div>
     </div>
-    <div id="toast" class="toast" hidden></div>
+    <div id="toast" class="toast" hidden>
+      <p class="toast-message" data-slot="message"></p>
+      <div class="toast-actions" data-slot="actions"></div>
+    </div>
     <main class="inner">
       {{LOADING}}
       <div class="settings" id="settings">
@@ -239,6 +242,30 @@
         </div>
       </div>
     </dialog>
+    <dialog id="lifecycle-event-modal" aria-labelledby="lifecycle-event-modal-title">
+      <div class="modal-head">
+        <span
+          class="modal-title"
+          id="lifecycle-event-modal-title"
+          data-slot="title"
+        ></span>
+        <portal-close-button
+          data-slot="close"
+          aria-label="Close"
+        ></portal-close-button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-note" data-slot="transition-note" hidden></p>
+        <p class="modal-note" data-slot="explanation"></p>
+        <div class="modalactions">
+          <button type="button" data-btn="cta" data-slot="copy-prompt">
+            Copy Start Prompt
+          </button>
+          <button type="button" data-slot="view-plan">View Plan</button>
+        </div>
+        <button type="button" class="revert-action" data-slot="revert" hidden></button>
+      </div>
+    </dialog>
     <dialog id="drawer">
       <div class="drawer-head">
         <div>
@@ -280,6 +307,7 @@
           </h3>
           <ul id="drawer-warnings"></ul>
         </section>
+        <div id="drawer-status-mount"></div>
         <div class="drawer-grid">
           <section>
             <h3>Metadata</h3>

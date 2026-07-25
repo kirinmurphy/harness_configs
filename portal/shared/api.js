@@ -25,8 +25,18 @@ export async function portalPostJson(path, body) {
   });
   const data = await res.json();
   if (!res.ok || data.ok === false) {
-    const err = new Error(data.error || data.message || "request failed");
+    // Structured errors (see plan-docs' domainError / portal-routes-plans' sendDomainError)
+    // arrive as { error: { code, message, resolution, details } }; older/unmigrated routes still
+    // send a flat string. Preserve whichever shape came back instead of collapsing both to a
+    // plain message, so callers can branch on err.code (e.g. STALE_PLAN) without parsing text.
+    const isStructured = data.error && typeof data.error === "object";
+    const err = new Error(isStructured ? data.error.message : data.error || data.message || "request failed");
     err.status = res.status;
+    if (isStructured) {
+      err.code = data.error.code;
+      err.resolution = data.error.resolution;
+      err.details = data.error.details;
+    }
     throw err;
   }
   return data;

@@ -103,24 +103,19 @@ export function lifecycleTab(lifecycle, count, isSelected, onSelect) {
 }
 
 // cardActions: { onOpen, onCopyPath, onCopyContext, onCopyPortableContext, onPlanDocsAction,
-//                 onPriorityChange, planDocsEnabled, planDocsPackage, skillModal, onEnablePackage,
-//                 onError }
-export function cardGrid(plans, cardActions, dirtyKeys) {
+//                 onStart, onArchive, planDocsEnabled, planDocsPackage, skillModal,
+//                 onEnablePackage, onError }
+export function cardGrid(plans, cardActions) {
   const grid = document.createElement("div");
   grid.className = "card-grid";
-  grid.append(
-    ...plans.map((record) =>
-      planCardElement(record, cardActions, dirtyKeys.has(record.key)),
-    ),
-  );
+  grid.append(...plans.map((record) => planCardElement(record, cardActions)));
   return grid;
 }
 
-function planCardElement(record, cardActions, isDirty) {
+function planCardElement(record, cardActions) {
   const node = document.createElement("plan-card");
   node.record = record;
   node.actions = cardActions;
-  node.dirty = isDirty;
   return node;
 }
 
@@ -336,6 +331,34 @@ export function cardRecommendedCta(record, cardActions) {
     }
   });
   return btn;
+}
+
+// Start/Archive lifecycle-mutation shortcuts (see docs/plans/active/plan-lifecycle-toggle-control.md
+// "Actions by current state"). These call the shared lifecycle mutation directly rather than
+// copying a prompt — Start moves Backlog into Active (opening the Active lifecycle-event dialog)
+// or, when already Active, opens the same dialog without mutating. Archive moves Active into
+// Archived with default (non-CTA) button styling since it doesn't open an event dialog.
+export function cardLifecycleActions(record, cardActions) {
+  const lifecycle = record.plan.lifecycle;
+  if (lifecycle !== "backlog" && lifecycle !== "active") return [];
+  const buttons = [];
+  const startBtn = fill(tpl("tpl-recommended-cta"), { label: "Start" });
+  startBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    cardActions.onStart(record);
+  });
+  buttons.push(startBtn);
+  if (lifecycle === "active") {
+    const archiveBtn = document.createElement("button");
+    archiveBtn.type = "button";
+    archiveBtn.textContent = "Archive";
+    archiveBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      cardActions.onArchive(record);
+    });
+    buttons.push(archiveBtn);
+  }
+  return buttons;
 }
 
 export function drawerTaskItems(tasks) {

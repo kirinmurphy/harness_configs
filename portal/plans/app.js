@@ -12,6 +12,8 @@ import { createSkillDetailModal } from "/portal/shared/skill-detail-modal.js";
 import * as api from "./api.js";
 import * as tmpl from "./templates.js";
 import { createRootsPanel, createInfoModal, createPromptModal } from "./panels.js";
+import { createLifecycleEventDialog, lifecycleEvents } from "./lifecycle-event-dialog.js";
+import { createOutcomeToast } from "./toast-controller.js";
 import {
   FILTER_IDS,
   FILTER_DEFAULTS,
@@ -19,10 +21,11 @@ import {
   LIFECYCLE_LABELS,
   filteredPlans,
   actionablePlans,
-  matchesFilters,
+  isVisible,
+  replaceRecord,
+  filteredListActionFor,
   optionCounts,
   optionLabel,
-  planSort,
   repositoryContext,
   lifecycleFromSearchParams,
   urlForLifecycle,
@@ -35,12 +38,8 @@ const state = {
   filters: { ...FILTER_DEFAULTS },
   filtersExpanded: false,
   selectedLifecycle: lifecycleFromSearchParams(new URLSearchParams(location.search)),
+  openDrawerKey: null,
 };
-
-// Plan keys whose displayed field(s) changed via an in-card action (e.g. priority dropdown)
-// since the last filter/tab flush — force-included in render() even if they'd now be excluded
-// by the active filters, so the user doesn't lose the card they were just acting on.
-const dirtyKeys = new Set();
 
 const toastEl = document.getElementById("toast");
 const groupsEl = document.getElementById("groups");
@@ -67,7 +66,16 @@ const rootsPanel = createRootsPanel({
 createInfoModal();
 const skillModal = createSkillDetailModal(document.getElementById("skill-modal"));
 const promptModal = createPromptModal(document.getElementById("prompt-modal"));
+const outcomeToast = createOutcomeToast(toastEl);
+const lifecycleEventDialog = createLifecycleEventDialog(document.getElementById("lifecycle-event-modal"), {
+  onCopyPrompt: (record) => copyPrompt("start", [record.key], "repository-aware"),
+  onViewPlan: (record) => openPlan(record.key),
+  onRevert: (record, previousValue) => handlePlanChange({ property: "lifecycle", value: previousValue, record }),
+});
 portalWireBackdropClose(drawer, () => drawer.close());
+// Fires however the dialog closes (button, backdrop, Escape, or a programmatic .close() call
+// from presentChangeOutcome) — one place to clear which plan the drawer was showing.
+drawer.addEventListener("close", () => { state.openDrawerKey = null; });
 
 bindStaticControls();
 load();
@@ -92,13 +100,17 @@ function bindStaticControls() {
     const node = document.getElementById(id);
     node.addEventListener(id === "search" ? "input" : "change", () => {
       state.filters[id] = node.value;
-      flushDirtyState();
       render();
     });
   }
   filtersToggleEl.addEventListener("click", () => setFiltersExpanded(filtersBodyEl.hidden));
   document.getElementById("filters-done").addEventListener("click", () => setFiltersExpanded(false));
   filterChipsEl.addEventListener("chip-remove", (event) => resetFilter(event.detail));
+  // One delegated listener each for cards (bubbles through groupsEl) and the drawer's mounted
+  // <plan-status> — both dispatch the same `plan-change` event, so both route through the same
+  // mutation orchestrator.
+  groupsEl.addEventListener("plan-change", (event) => handlePlanChange(event.detail));
+  document.getElementById("drawer-status-mount").addEventListener("plan-change", (event) => handlePlanChange(event.detail));
 }
 
 function setFiltersExpanded(expanded) {
@@ -111,12 +123,7 @@ function resetFilter(id) {
   state.filters[id] = FILTER_DEFAULTS[id];
   const node = document.getElementById(id);
   if (node) node.value = FILTER_DEFAULTS[id];
-  flushDirtyState();
   render();
-}
-
-function flushDirtyState() {
-  dirtyKeys.clear();
 }
 
 async function load() {
@@ -131,7 +138,6 @@ async function load() {
 
 function applySnapshot(snapshot) {
   state.snapshot = snapshot;
-  flushDirtyState();
   portalSetUpdatedAt();
   rootsPanel.render(snapshot.settings.discoveryRoots);
   plansHeaderEl.hidden = snapshot.settings.discoveryRoots.length === 0;
@@ -181,10 +187,9 @@ function render() {
   const allMatchingCurrentFilters = filteredPlans(snapshot.plans, state.filters);
   renderLifecycleTabs(allMatchingCurrentFilters);
   nextPrompt.hidden = !snapshot.planDocsPackage.enabled;
-  const currentLifecyclePlans = allMatchingCurrentFilters.filter(
+  const visiblePlans = allMatchingCurrentFilters.filter(
     (record) => record.plan.lifecycle === state.selectedLifecycle,
   );
-  const visiblePlans = includeDirtyCards(currentLifecyclePlans);
   if (visiblePlans.length === 0) {
     const empty = tmpl.emptyState(snapshot);
     groupsEl.replaceChildren(...(empty ? [empty] : []));
@@ -197,28 +202,15 @@ function render() {
     onCopyPortableContext: (key) => copyPrompt("review", [key], "portable"),
     onPlanDocsAction: (key, mode, { portable } = {}) =>
       copyPrompt(mode, [key], portable ? "portable" : "repository-aware"),
-    onPriorityChange: handlePriorityChange,
+    onStart: startPlan,
+    onArchive: (record) => handlePlanChange({ property: "lifecycle", value: "archived", record }),
     planDocsEnabled: snapshot.planDocsPackage.enabled,
     planDocsPackage: snapshot.planDocsPackage,
     skillModal,
     onEnablePackage: enablePackage,
     onError: showError,
   };
-  groupsEl.replaceChildren(tmpl.cardGrid(visiblePlans, cardActions, dirtyKeys));
-}
-
-// Dirty cards are force-included only within their OWN lifecycle tab — a card that was
-// priority-filtered-out stays visible in whichever tab it already belongs to.
-function includeDirtyCards(currentLifecyclePlans) {
-  if (dirtyKeys.size === 0) return currentLifecyclePlans;
-  const present = new Set(currentLifecyclePlans.map((record) => record.key));
-  const forced = state.snapshot.plans.filter(
-    (record) =>
-      dirtyKeys.has(record.key) &&
-      record.plan.lifecycle === state.selectedLifecycle &&
-      !present.has(record.key),
-  );
-  return forced.length ? [...currentLifecyclePlans, ...forced].sort(planSort) : currentLifecyclePlans;
+  groupsEl.replaceChildren(tmpl.cardGrid(visiblePlans, cardActions));
 }
 
 function renderLifecycleTabs(plansMatchingOtherFilters) {
@@ -258,7 +250,6 @@ function ensureLifecycleDropdown() {
 
 function selectLifecycle(life) {
   state.selectedLifecycle = life;
-  flushDirtyState();
   history.pushState(null, "", urlForLifecycle(life));
   render();
 }
@@ -267,19 +258,140 @@ function selectLifecycle(life) {
 // without a full reload — pushState above is what makes this fire in the first place.
 window.addEventListener("popstate", () => {
   state.selectedLifecycle = lifecycleFromSearchParams(new URLSearchParams(location.search));
-  flushDirtyState();
   render();
 });
 
-async function handlePriorityChange(record, newPriority) {
-  const result = await api.updatePlanPriority(record.key, newPriority, record.mtimeMs);
-  record.plan.priority = result.priority;
-  record.mtimeMs = result.mtimeMs;
-  if (!matchesFilters(record, state.filters, null)) {
-    dirtyKeys.add(record.key);
-    render(); // repaint immediately so the dirty indicator shows without waiting for a refilter
+// mutations: property -> (record, value) => Promise<{change, record}>. Both call through the
+// same shared result contract (see docs/plans/active/plan-lifecycle-toggle-control.md's "Shared
+// domain mutation result"), so handlePlanChange doesn't need to know which one ran.
+const mutations = {
+  priority: (record, value) =>
+    api.updatePlanPriority(record.plan.id, record.key, value, record.plan.priority, record.mtimeMs),
+  lifecycle: (record, value) =>
+    api.updatePlanLifecycle(record.plan.id, record.key, value, record.plan.lifecycle, record.mtimeMs),
+};
+
+// The one page-level mutation orchestrator, shared by card dropdowns, the drawer's mounted
+// <plan-status>, and the Start/Archive/Revert/Undo shortcuts. Filesystem truth controls UI truth:
+// the snapshot is only updated after the server confirms success, and the full record it returns
+// replaces the old one outright rather than patching individual fields in place.
+async function handlePlanChange({ property, value, record }) {
+  const wasVisible = isVisible(record, state.selectedLifecycle, state.filters);
+  let result;
+  try {
+    result = await mutations[property](record, value);
+  } catch (err) {
+    if (err.code === "STALE_PLAN") {
+      await recoverFromStaleConflict(record);
+      return null;
+    }
+    // The mutating control (a dropdown inside <plan-status>) is stuck showing a loading state
+    // until it receives a fresh `record` property set — re-set the unchanged record so it clears
+    // loading and reverts to the last-known-good value instead of hanging. render() (called by
+    // refreshMountedStatus) rebuilds the warnings banner from snapshot data, so showError must run
+    // AFTER it or its message gets immediately overwritten.
+    refreshMountedStatus(record);
+    showError(err);
+    return null;
   }
-  return result;
+  state.snapshot.plans = replaceRecord(state.snapshot.plans, record.key, result.record);
+  const nowVisible = isVisible(result.record, state.selectedLifecycle, state.filters);
+  const previousKey = record.key;
+  render();
+  // The card grid's render() mounts fresh <plan-status> instances, but the drawer isn't part of
+  // that render pass — its mounted <plan-status> would otherwise sit stuck at loading:true
+  // (dropdown spinner) forever, since it never receives the new record. presentChangeOutcome may
+  // close the drawer for a lifecycle move (a stale key by then); re-set only when it's still open
+  // for this same plan.
+  if (drawer.open && state.openDrawerKey === previousKey) {
+    const drawerStatus = document.getElementById("drawer-status-mount").querySelector("plan-status");
+    if (drawerStatus) drawerStatus.record = result.record;
+  }
+  presentChangeOutcome({ result, wasVisible, nowVisible, previousKey });
+  return result.record;
+}
+
+// Re-renders whichever mounted <plan-status> instance(s) still reference this record — the card
+// grid (full render()) or the open drawer — so a failed mutation's dropdown clears its loading
+// state even though nothing about the underlying record actually changed.
+function refreshMountedStatus(record) {
+  render();
+  if (!drawer.open) return;
+  const drawerStatus = document.getElementById("drawer-status-mount").querySelector("plan-status");
+  if (drawerStatus && drawerStatus.record?.key === record.key) drawerStatus.record = record;
+}
+
+async function recoverFromStaleConflict(record) {
+  try {
+    applySnapshot(await api.fetchSnapshot());
+  } catch (err) {
+    showError(err);
+    return;
+  }
+  const current = state.snapshot.plans.find((item) => item.plan.id && item.plan.id === record.plan.id) ||
+    state.snapshot.plans.find((item) => item.key === record.key);
+  if (drawer.open && state.openDrawerKey === record.key) {
+    if (current) {
+      showError({ message: `This plan changed outside the portal, so the update wasn't applied. The page has been refreshed. Current lifecycle: ${current.plan.lifecycle}.` });
+      openPlan(current.key);
+    } else {
+      drawer.close();
+      showError({ message: "This plan was removed or renamed outside the portal." });
+    }
+  } else {
+    showError({ message: "This plan changed outside the portal, so the update wasn't applied. The page has been refreshed." });
+  }
+}
+
+// Decides which outcome surface (if any) to show after a successful mutation. Lifecycle moves
+// into a configured lifecycleEvents destination (Active, Completed) always get the event dialog,
+// regardless of current visibility. Everything else gets the passive toast, but only when the
+// mutation actually removed the record from view — an unrelated field change that keeps the
+// record visible needs no notification.
+function presentChangeOutcome({ result, wasVisible, nowVisible, previousKey }) {
+  const { change, record } = result;
+  // A lifecycle move invalidates the open drawer's key/path/actions — close it before showing
+  // either outcome surface rather than leaving a stale detail view open behind the dialog/toast.
+  if (change.property === "lifecycle" && drawer.open && state.openDrawerKey === previousKey) {
+    drawer.close();
+  }
+  if (change.property === "lifecycle" && lifecycleEvents[change.newValue]) {
+    lifecycleEventDialog.open({ change, record, isTransition: true });
+    return;
+  }
+  if (!(wasVisible && !nowVisible)) return;
+  const filteredAction = filteredListActionFor(change, state);
+  const label = change.property === "lifecycle" ? LIFECYCLE_LABELS[change.newValue] : change.newValue;
+  outcomeToast.show({
+    message: `"${record.plan.title}" ${change.property} was set to ${label}.`,
+    actions: [
+      { label: "Undo", run: () => handlePlanChange({ property: change.property, value: change.previousValue, record }) },
+      { label: "View plan", run: () => openPlan(record.key) },
+      ...(filteredAction ? [{ label: filteredAction.label, run: () => applyFilteredListAction(filteredAction) }] : []),
+    ],
+  });
+}
+
+function applyFilteredListAction(action) {
+  if (action.type === "lifecycle") {
+    selectLifecycle(action.value);
+  } else if (action.type === "priority") {
+    state.filters.priority = action.value;
+    document.getElementById("priority").value = action.value;
+    render();
+  }
+}
+
+// Backlog Start: move the plan into Active through the shared mutation, then the Active dialog
+// opens automatically via presentChangeOutcome (Active is a configured lifecycleEvents
+// destination). Active Start: no mutation — open the same dialog content directly, since the plan
+// is already where it needs to be.
+async function startPlan(record) {
+  if (record.plan.lifecycle === "active") {
+    lifecycleEventDialog.open({ change: null, record, isTransition: false });
+    return;
+  }
+  await handlePlanChange({ property: "lifecycle", value: "active", record });
 }
 
 function renderFilterChips(snapshot) {
@@ -351,6 +463,7 @@ async function openPlan(key) {
 }
 
 function renderDrawer(doc) {
+  state.openDrawerKey = doc.plan.key;
   const content = tmpl.drawerContent(doc, {
     onCopyPath: copyText,
     onCopyRepoContext: (record) => copyText(repositoryContext(record)),
@@ -374,6 +487,9 @@ function renderDrawer(doc) {
   document.getElementById("drawer-warnings-section").hidden =
     content.warnings.length === 0;
   document.getElementById("drawer-tasks").replaceChildren(...tmpl.drawerTaskItems(content.tasks));
+  const statusEl = document.createElement("plan-status");
+  statusEl.record = doc.plan;
+  document.getElementById("drawer-status-mount").replaceChildren(statusEl);
   // Recommended-next CTA (hidden when there's no clear recommendation) + the unified ⋯ menu.
   const ctaEl = document.getElementById("drawer-cta");
   if (content.cta) {
@@ -393,17 +509,7 @@ async function copyPrompt(actionName, keys, mode = "repository-aware") {
 }
 
 async function copyText(text) {
-  await portalCopyText(text, () => showToast("copied"));
-}
-
-let toastTimer;
-function showToast(text) {
-  clearTimeout(toastTimer);
-  toastEl.textContent = text;
-  toastEl.hidden = false;
-  toastTimer = setTimeout(() => {
-    toastEl.hidden = true;
-  }, 1200);
+  await portalCopyText(text, () => outcomeToast.show({ message: "copied" }));
 }
 
 function setPluralCount(node, count, noun) {
@@ -414,5 +520,8 @@ function setPluralCount(node, count, noun) {
 
 function showError(err) {
   warningsEl.hidden = false;
-  warningsEl.textContent = String(err?.message || err);
+  const parts = [String(err?.message || err)];
+  if (err?.resolution) parts.push(err.resolution);
+  if (err?.details?.length) parts.push(err.details.join("; "));
+  warningsEl.textContent = parts.join(" — ");
 }

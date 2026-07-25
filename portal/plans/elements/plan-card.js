@@ -6,7 +6,7 @@
 // controls, readiness/review chips, progress, and next-action live in the mounted <plan-status>
 // element (shared with the detail drawer) rather than being rendered here.
 import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
-import { cardActionMenu, cardRecommendedCta } from "/portal/plans/templates.js";
+import { cardActionMenu, cardRecommendedCta, cardLifecycleActions } from "/portal/plans/templates.js";
 
 // Card shows a shortened preview; full text (up to 500 chars) still lives in plan.excerpt
 // for copy-context/drawer use — only the on-card display is truncated further here.
@@ -45,14 +45,6 @@ class PlanCardElement extends HTMLElement {
     return this._actions;
   }
 
-  set dirty(value) {
-    this._dirty = Boolean(value);
-    if (this.isConnected && this.record && this.actions) this.render();
-  }
-  get dirty() {
-    return Boolean(this._dirty);
-  }
-
   render() {
     const record = this._record;
     const cardActions = this._actions;
@@ -72,11 +64,17 @@ class PlanCardElement extends HTMLElement {
       warnings ? chip(`${warnings} warnings`, "warn") : chip("valid", "ok"),
     );
     node.querySelector("[data-slot=title-link]").textContent = plan.title;
-    // Recommended-next CTA (when there's a clear next step) + the unified ⋯ menu — the same menu the
-    // drawer uses, scoped to this plan's lifecycle. One component, no overlapping loose buttons.
-    const cta = cardRecommendedCta(record, cardActions);
+    // Backlog/Active get the Start(/Archive) lifecycle shortcuts instead of the generic
+    // recommended-prompt CTA — everywhere else keeps the recommended-prompt CTA, when there's a
+    // clear next step. Either way, the unified ⋯ menu (shared with the drawer) always follows.
+    const lifecycleActions = cardLifecycleActions(record, cardActions);
+    const cta = lifecycleActions.length ? [] : (() => {
+      const recommended = cardRecommendedCta(record, cardActions);
+      return recommended ? [recommended] : [];
+    })();
     node.querySelector("[data-slot=actions]").append(
-      ...(cta ? [cta] : []),
+      ...lifecycleActions,
+      ...cta,
       cardActionMenu(record, cardActions),
     );
     // doc-details (title/description/footer) is the click surface — status-section (progress/

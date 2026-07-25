@@ -1,4 +1,4 @@
-import { portalCopyText, portalEl as el, portalFillSlots as fill, portalTpl as tpl } from "/portal/shared/api.js";
+import { portalCopyText, portalFillSlots as fill, portalTpl as tpl } from "/portal/shared/api.js";
 import { statusText } from "./state.js";
 
 const OTHER_INSTANCES = "Other instances";
@@ -8,13 +8,11 @@ export function emptyState(title, body) {
 }
 
 export function notice(text) {
-  return el("p", {}, text);
+  return fill(tpl("tpl-notice"), { text });
 }
 
 export function noticeWithDoc(text) {
-  const node = el("p", {}, text, " ");
-  node.append(el("a", { href: "/docs/reference/services/localhoster.md", target: "_blank", rel: "noreferrer" }, "Localhoster docs"));
-  return node;
+  return fill(tpl("tpl-notice-with-doc"), { text });
 }
 
 export function group(title, headerEnd, nodes) {
@@ -69,10 +67,11 @@ export function instanceCard(project, instance, actions) {
   }
   const links = node.querySelector("[data-slot=links]");
   for (const link of instance.app?.links || []) {
-    const a = el("a", { href: link.url, target: "_blank", rel: "noreferrer", class: "quick-link" }, link.label);
+    const a = fill(tpl("tpl-quick-link"), { label: link.label });
+    a.href = link.url;
     links.append(a);
   }
-  if (!links.childElementCount) links.append(el("span", { class: "no-links" }, "No saved links"));
+  if (!links.childElementCount) links.append(fill(tpl("tpl-no-links"), { text: "No saved links" }));
   wireCardActions(node, project, instance, actions);
   return node;
 }
@@ -104,14 +103,14 @@ export function linkRow(link = {}) {
 }
 
 export function linkEmpty() {
-  return el("p", { class: "no-links", "data-empty": "true" }, "No saved links. Add a row to create one.");
+  return tpl("tpl-link-empty");
 }
 
 export function settingsSection(title, rows) {
   const node = fill(tpl("tpl-settings-section"), { title });
   const container = node.querySelector("[data-slot=rows]");
   if (rows.length) container.append(...rows);
-  else container.append(el("p", { class: "no-links" }, "None"));
+  else container.append(fill(tpl("tpl-no-links"), { text: "None" }));
   return node;
 }
 

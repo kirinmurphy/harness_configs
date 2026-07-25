@@ -1,10 +1,11 @@
 ---
 id: localhoster-git-health-history
-priority: high
-next_action: Implement Git provider, health-state normalization, and bounded JSONL history
+priority: low
+next_action: Implement Git provider, health-state normalization, and bounded JSONL history, consuming the shared resolver from canonical-repository-identity-plan-v2 Phase 1
 blocked_by: []
 depends_on:
   - localhoster-final
+  - canonical-repository-identity-plan-v2
 related:
   - localhoster-docker-process-providers
   - localhoster-metadata-suggestions
@@ -22,6 +23,27 @@ apps while preserving the no-repository-config requirement.
 
 `localhoster-final` emits current instances with stable project/app identity, quick links, health
 configuration settings, and opaque instance keys. Persisted history is explicitly deferred.
+
+## Dependency on Canonical Repository Identity (v2)
+
+Do this work **after** `canonical-repository-identity-plan-v2` Phase 1 lands. That phase extracts
+Git-root resolution, worktree/common-directory handling, and a per-scan resolution cache out of
+`modules/localhoster/identity.mjs` into the shared `modules/repositories/` module. This plan must
+consume that resolver instead of building its own:
+
+- **Git root + per-scan caching:** Use the shared resolver's root resolution and resolution cache.
+  Do not add an independent "cache Git results by repository root per scan" implementation — v2
+  owns it, and building a second one creates the duplicate resolver code v2's migration explicitly
+  removes.
+- **Branch / HEAD / dirty / ahead-behind:** These become runtime metadata attached to the canonical
+  repository record and its local root, not Localhoster-only state. A worktree process resolves to
+  the underlying canonical repository (shared remote) while retaining its worktree-specific branch
+  and root.
+- **`repositoryId` on history events:** Bounded JSONL events should carry the canonical
+  `repositoryId` (and local `rootId` where location matters) so history joins the shared registry.
+
+If this plan is scheduled before v2 Phase 1 instead, treat any root-resolution and per-scan cache
+code as intentionally throwaway to be replaced during v2's resolver migration, and say so here.
 
 ## Goals
 

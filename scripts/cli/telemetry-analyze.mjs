@@ -613,13 +613,14 @@ function dataQualityWarnings(events) {
   const byHarness = new Map();
   for (const event of events) {
     const harness = event.harness || "unknown";
-    const cur = byHarness.get(harness) || { events: 0, tokenRecords: 0, nonzeroTokenRecords: 0, unsupported: 0 };
+    const cur = byHarness.get(harness) || { events: 0, tokenRecords: 0, nonzeroTokenRecords: 0, unsupported: 0, rateLimited: 0 };
     cur.events += 1;
     if (hasTokens(event)) {
       cur.tokenRecords += 1;
       if ((event.tokens?.total || 0) > 0) cur.nonzeroTokenRecords += 1;
     }
     if (event.details?.unsupported_usage_seen) cur.unsupported += 1;
+    if (harness === "codex" && event.details?.codex_rate_limits) cur.rateLimited += 1;
     byHarness.set(harness, cur);
   }
   for (const [harness, cur] of byHarness) {
@@ -638,6 +639,14 @@ function dataQualityWarnings(events) {
         harness,
         events: cur.unsupported,
         hint: "transcript usage records were present but not in a supported schema",
+      });
+    }
+    if (harness === "codex" && cur.nonzeroTokenRecords > 0 && cur.rateLimited === 0) {
+      warnings.push({
+        type: "rate_limit_unavailable",
+        harness,
+        events: cur.nonzeroTokenRecords,
+        hint: "Codex token data present but no provider rate-limit records were captured",
       });
     }
   }

@@ -1,13 +1,13 @@
 ---
 id: telemetry-immediate-correctness
 priority: high
-next_action: Implement Codex token parsing and repeated-read warnings before broader telemetry experiments work
+next_action:
 blocked_by: []
 depends_on: []
 related:
   - roborepo-telemetry-events-experiments
   - roborepo-usage-statusline
-reviewed_commit:
+reviewed_commit: cbc30c73a60d7cfaa9bb367f09c2b6b6bcc49644
 ---
 
 # Telemetry Immediate Correctness
@@ -169,30 +169,69 @@ Codex read/search waste.
 
 ## Implementation Plan
 
-- [ ] Add representative Claude and Codex transcript fixtures, including Codex `event_msg.token_count`
-      and `event_msg.mcp_tool_call_end`.
-- [ ] Introduce harness transcript adapters while preserving the current public stats shape.
-- [ ] Implement Codex token mapping and delta-token behavior.
-- [ ] Add data-quality warnings for missing or unusable token records.
-- [ ] Add repeated document-read and mixed lookup analyzers.
-- [ ] Render the new warnings in terminal report output.
-- [ ] Render the new warnings in `/telemetry` with session-context actions.
-- [ ] Update jdocmunch and jcodemunch package rules/hooks with advisory anti-reread guidance.
-- [ ] Add focused tests for Claude compatibility, Codex token parsing, repeated-read warnings, and
-      Codex jcodemunch/read-like shell attribution.
+- [x] Add representative Claude and Codex transcript fixtures, including Codex `event_msg.token_count`
+      and `event_msg.mcp_tool_call_end`. Checked-in as `.jsonl` files under
+      `scripts/test/fixtures/telemetry/` (`claude-basic`, `claude-failure`, `codex-basic`,
+      `codex-turn-context-model`), read directly by
+      `scripts/test/telemetry-correctness-check.mjs` instead of built inline.
+- [x] Introduce harness transcript adapters while preserving the current public stats shape.
+      Implemented as type-sniffing branches in `scripts/cli/telemetry-transcript.mjs`
+      (`applyCodexEntry()`) rather than separate adapter modules — Claude and Codex entry shapes are
+      structurally disjoint so this does not collide; formalizing separate adapter files was not
+      necessary to meet the goal.
+- [x] Implement Codex token mapping and delta-token behavior (`scripts/cli/telemetry-transcript.mjs`,
+      `applyCodexEntry()`), matching the plan's `max(0, input_tokens - cached_input_tokens)` and
+      `cached_input_tokens -> cache_read` mapping exactly.
+- [x] Add data-quality warnings for missing or unusable token records
+      (`dataQualityWarnings()` in `scripts/cli/telemetry-analyze.mjs`): `missing_token_data`,
+      `unsupported_usage_schema`, and `rate_limit_unavailable` (added — Codex token data present but
+      no `codex_rate_limits` observed in any event for that harness).
+- [x] Add repeated document-read and mixed lookup analyzers (`readWarnings()` in
+      `scripts/cli/telemetry-analyze.mjs`): `repeated_document_read`, `large_document_read`,
+      `stale_doc_lookup`, `mixed_code_lookup`.
+- [x] Render the new warnings in terminal report output (`printDataQualityWarnings`,
+      `printReadWarnings` in `scripts/cli/telemetry.mjs`).
+- [x] Render the new warnings in `/telemetry` with session-context actions
+      (`renderDataQualityWarnings`, `renderReadWarnings` in `portal/telemetry/renders.js`; both are
+      generic over `{type, harness, events, hint}` so the new `rate_limit_unavailable` type required
+      no portal changes).
+- [x] Update jdocmunch and jcodemunch package rules/hooks with advisory anti-reread guidance.
+      `globals/packages/jdocmunch/rules.md` and `hooks-codex.json`/`hooks-claude.json` now agree on
+      both the `index_local` MCP tool and the `roborepo index docs docs/` CLI form.
+- [x] Add focused tests for Claude compatibility, Codex token parsing, repeated-read warnings, and
+      Codex jcodemunch/read-like shell attribution. `scripts/test/telemetry-correctness-check.mjs`
+      covers all of this plus a new `rate_limit_unavailable` case; wired into
+      `scripts/test/test-roborepo.sh`.
 
 ## Validation
 
 - `roborepo telemetry report` shows nonzero Codex token totals when Codex transcripts contain
-  `event_msg.token_count`.
+  `event_msg.token_count`. Verified via `testCodexTranscript` in
+  `scripts/test/telemetry-correctness-check.mjs`.
 - `/telemetry` timeline, sessions, usage windows, and top-token contributors include Codex token
-  deltas.
-- Existing Claude fixture outputs remain stable.
+  deltas. Verified via `testAnalyzerIndexedSummaries`.
+- Existing Claude fixture outputs remain stable. Verified via `testClaudeTranscript` and
+  `testClaudeTranscriptFailureText` against checked-in fixtures.
 - A fixture with repeated reads of the same Markdown file produces `repeated_document_read`.
 - A fixture with one large Markdown read produces `large_document_read`.
 - A fixture with jcodemunch plus many read-like shell commands produces `mixed_code_lookup`.
 - Privacy checks confirm warnings do not expose raw paths, full document text, or full command
-  output.
+  output (evidence fields are limited to `file_ext`, `file_path_hash`, counts, and char/token
+  approximations — see `readWarningRow()` in `scripts/cli/telemetry-analyze.mjs`).
+- `node scripts/test/telemetry-correctness-check.mjs` passes (2026-07-23), including the new
+  `rate_limit_unavailable` warning case.
+
+## Open Questions — resolved
+
+- Codex rate-limit `used_percent`: shown in `/telemetry` and `roborepo telemetry report` today via
+  `codex_provider_rate_limits`; the new `rate_limit_unavailable` data-quality warning covers the case
+  where it's absent. A future usage-statusline package can still add glanceable surfacing without
+  conflicting with this.
+- Document-read thresholds: kept fixed (`LARGE_DOCUMENT_READ_CHARS = 20000`,
+  `REPEATED_DOCUMENT_READ_COUNT = 2`, `MIXED_CODE_LOOKUP_NATIVE_READS = 4` in
+  `telemetry-analyze.mjs`). No evidence yet that they're wrong; revisit only if warnings prove noisy.
+- Codex hook noise: `hooks-codex.json`/`hooks-claude.json` SessionStart hooks are single-line,
+  conditional on `docs/` existing, and advisory only — no reported noise issues.
 
 ## Risks
 

@@ -1,6 +1,6 @@
 ---
 id: localhoster-docker-process-providers
-priority: high
+priority: low
 next_action: Implement Docker/Compose and process-metrics providers behind Localhoster capability reporting
 blocked_by: []
 depends_on:
@@ -8,6 +8,7 @@ depends_on:
 related:
   - localhoster-git-health-history
   - localhoster-metadata-suggestions
+  - canonical-repository-identity-plan-v2
 reviewed_commit:
 ---
 
@@ -23,6 +24,16 @@ changing the existing settings, quick-link, or portal mutation contracts.
 `localhoster-final` split the provider foundation into capability, listener, origin, probe,
 identity, snapshot, and API boundaries. Docker and process metrics are visible as unsupported
 provider capabilities.
+
+## Relation to Canonical Repository Identity (v2)
+
+Not a hard blocker, but this plan should land after `canonical-repository-identity-plan-v2` so
+Docker/process observations feed the shared repository registry rather than a parallel identity
+path. A container or process working directory that resolves to a Git root is another local root
+of a canonical repository; multiple processes and published endpoints for one repository should
+associate with one `repositoryId`. Keep the "merge Docker/listener observations by normalized host
+endpoint" logic Localhoster-internal — that is endpoint deduplication, not repository identity.
+Include `repositoryId` (and local `rootId` where relevant) on merged provider observations.
 
 ## Goals
 

@@ -3,7 +3,7 @@
   {{HEAD}}
   <body>
     {{CHROME}}
-    <main>
+    <main class="inner">
       {{LOADING}}
       <section id="warnings" class="notice warn" hidden></section>
       <section id="content" class="localhoster-content"></section>
@@ -13,14 +13,7 @@
       <form method="dialog" id="link-form">
         <div class="modal-head">
           <h2 id="link-dialog-title">Edit links</h2>
-          <button
-            type="button"
-            class="modal-close"
-            data-close
-            aria-label="Close"
-          >
-            x
-          </button>
+          <portal-close-button data-close aria-label="Close"></portal-close-button>
         </div>
         <div class="modal-body">
           <input type="hidden" id="link-project" />
@@ -39,14 +32,7 @@
       <form method="dialog" id="app-form">
         <div class="modal-head">
           <h2 id="app-dialog-title">App association</h2>
-          <button
-            type="button"
-            class="modal-close"
-            data-close
-            aria-label="Close"
-          >
-            x
-          </button>
+          <portal-close-button data-close aria-label="Close"></portal-close-button>
         </div>
         <div class="modal-body">
           <input type="hidden" id="app-association" />
@@ -132,14 +118,7 @@
       <form method="dialog" id="alias-form">
         <div class="modal-head">
           <h2 id="alias-dialog-title">Confirm alias</h2>
-          <button
-            type="button"
-            class="modal-close"
-            data-close
-            aria-label="Close"
-          >
-            x
-          </button>
+          <portal-close-button data-close aria-label="Close"></portal-close-button>
         </div>
         <div class="modal-body">
           <label>
@@ -165,13 +144,12 @@
     <dialog id="settings-dialog" aria-labelledby="settings-dialog-title">
       <div class="modal-head">
         <h2 id="settings-dialog-title">Localhost settings</h2>
-        <button type="button" class="modal-close" data-close aria-label="Close">
-          x
-        </button>
+        <portal-close-button data-close aria-label="Close"></portal-close-button>
       </div>
       <div class="modal-body settings-body" id="settings-body"></div>
     </dialog>
 
+    <!-- Instance grouping & toolbar -->
     <template id="tpl-group">
       <section class="instance-group">
         <header>
@@ -184,12 +162,7 @@
     <template id="tpl-toolbar-actions">
       <div class="toolbar-actions">
         <button id="refresh" type="button" class="icon-button" title="Refresh" aria-label="Refresh">
-          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M8 2.5a5.5 5.5 0 1 0 5.163 3.588.75.75 0 0 1 1.406-.526A7 7 0 1 1 8 1v-.5a.5.5 0 0 1 .82-.385l2.25 1.875a.5.5 0 0 1 0 .77L8.82 4.635A.5.5 0 0 1 8 4.25V2.5Z"
-            />
-          </svg>
+          <portal-icon name="refresh"></portal-icon>
           <span class="spinner" hidden></span>
         </button>
         <button id="settings" type="button">Settings</button>
@@ -210,6 +183,7 @@
         <div class="instance-grid" data-slot="items"></div>
       </details>
     </template>
+    <!-- Instance card + quick links -->
     <template id="tpl-card">
       <article class="instance-card">
         <div class="card-head">
@@ -269,11 +243,28 @@
         <div class="quick-links" data-slot="links" hidden></div>
       </article>
     </template>
+    <!-- Generic primitives -->
     <template id="tpl-empty">
       <section class="empty-state">
         <h2 data-slot="title"></h2>
         <p data-slot="body"></p>
       </section>
+    </template>
+    <template id="tpl-notice">
+      <p data-slot="text"></p>
+    </template>
+    <template id="tpl-notice-with-doc">
+      <p><span data-slot="text"></span> <a href="/docs/reference/services/localhoster.md" target="_blank" rel="noreferrer">Localhoster docs</a></p>
+    </template>
+    <template id="tpl-quick-link">
+      <a class="quick-link" target="_blank" rel="noreferrer" data-slot="label"></a>
+    </template>
+    <template id="tpl-no-links">
+      <span class="no-links" data-slot="text"></span>
+    </template>
+    <!-- Settings dialog: link editor rows + settings sections -->
+    <template id="tpl-link-empty">
+      <p class="no-links" data-empty="true">No saved links. Add a row to create one.</p>
     </template>
     <template id="tpl-link-row">
       <div class="link-row">
@@ -315,6 +306,8 @@
       </div>
     </template>
     <script type="module" src="/portal/shared/info-icon.js"></script>
+    <script type="module" src="/portal/shared/icon.js"></script>
+    <script type="module" src="/portal/shared/close-button.js"></script>
     <script type="module" src="/portal/shared/theme.js"></script>
     <script type="module" src="/portal/localhoster/app.js"></script>
   </body>

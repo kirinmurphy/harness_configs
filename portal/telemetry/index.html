@@ -3,8 +3,8 @@
   {{HEAD}}
   <body>
     {{CHROME}}
-    <div class="control-panel filterbar">
-      <div class="filterbar-rows">
+    <div class="control-panel">
+      <div class="inner filterbar-rows">
         <div class="control-panel-row filter-row" id="ranges">
           <span class="flabel">range</span>
           <button data-range="3600000">1h</button>
@@ -16,6 +16,18 @@
           <div id="harnessfilt">
             <span class="flabel">source</span>
           </div>
+          <!-- Info icon rides at the end of the range row, after source. No fixed-width gutter column
+               anymore — that inset the filter rows' right edge past every other page's content edge.
+               Inline here keeps the rows stretching the full .inner width, matching Plans' control bar. -->
+          <portal-info-icon
+            id="filters-info"
+            class="filterbar-info"
+            data-doc-anchor="global-filters"
+            aria-haspopup="dialog"
+            aria-expanded="false"
+            aria-label="about these filters"
+            title="about these filters"
+          ></portal-info-icon>
         </div>
         <!-- Phase 6 global filter bar: model/repo/marker on top of the existing time/harness window.
              Compact selectors + active-filter-count + clear, per the plan's "Hybrid filtering" design
@@ -30,36 +42,26 @@
           </span>
         </div>
       </div>
-      <!-- Fixed-width gutter, bottom-aligned to the cohort row: the filter bar no longer has a
-           "Filters" heading to anchor the info icon to (both rows ARE filters), so it lives in its
-           own column instead of inline in either row. Fixed width keeps the two filter rows' own
-           wrap width stable as the viewport shrinks — the gutter never grows to eat their space. -->
-      <div class="filterbar-info">
-        <portal-info-icon
-          id="filters-info"
-          data-doc-anchor="global-filters"
-          aria-haspopup="dialog"
-          aria-expanded="false"
-          aria-label="about these filters"
-          title="about these filters"
-        ></portal-info-icon>
-      </div>
     </div>
     <!-- Marker creation lives outside the filter bar — it's a data-entry action ("I changed
          something, mark it"), not a way of narrowing the current view, so grouping it with the
          filter controls above misrepresented what it does. -->
-    <div class="page-actions">
+    <!-- Frame-of-reference count line (left) + the "I changed something, mark it" data-entry action
+         (right), on one flex-row. Stacks on mobile. The counts stay deliberately low-prominence —
+         the action-items panel and the chart carry the actionable load. -->
+    <div class="page-frame inner">
+      <div class="frame-counts" id="meta"></div>
       <button data-btn="cta" id="openmarkermodal" type="button">+ mark change</button>
     </div>
-    <div class="page-meta stat-row" id="meta"></div>
-    <main>
+    <main class="inner">
       {{LOADING}}
       <!-- TIER 1 — conclusions & action items (the headline; always first) -->
       <section class="panel" id="insightspanel">
-        <h2>① what this means · action items <portal-info-icon data-doc-anchor="panel-map" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
+        <h2>Action Items <portal-info-icon data-doc-anchor="panel-map" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
         <div id="insights"></div>
         <div class="modalactions">
           <button class="linkbtn" id="deepread">deeper read ›</button>
+          <button class="linkbtn" id="openanalysis">open analysis explorer ›</button>
         </div>
         <div class="modalextra" id="deepreadout"></div>
         <div id="deepreadcopy" style="display: none; margin-top: 6px">
@@ -89,7 +91,7 @@
 
       <!-- TIER 2 — visualize (the chart) -->
       <section class="panel">
-        <h2>② token usage over time</h2>
+        <h2>token usage over time</h2>
         <div class="ranges" id="chartmodes">
           <span class="flabel">view</span>
           <button data-mode="cumulative" class="active">
@@ -119,7 +121,7 @@
 
       <!-- TIER 3 — warnings & abnormalities (spikes, loops, causes) -->
       <h2 class="sectionhead">
-        ③ warnings &amp; abnormalities
+        warnings &amp; abnormalities
         <span class="sub"
           >spikes, loops, and the patterns behind them — click any row to open
           the chat</span
@@ -179,7 +181,7 @@
       <!-- TIER 4 — details (collapsed by default; summaries lead, raw is on-demand) -->
       <details class="detailsblock">
         <summary>
-          ④ cost analysis
+          cost analysis
           <span class="sub"
             >what each tool/package puts into context, and what changed</span
           >
@@ -216,7 +218,7 @@
 
       <details class="detailsblock">
         <summary>
-          ⑤ sessions
+          sessions
           <span class="sub"
             >every session by tokens — click a row to open its chat</span
           >
@@ -284,12 +286,7 @@
         </section>
       </details>
     </main>
-    <template id="tpl-stat">
-      <div class="stat-item">
-        <div class="stat-label" data-slot="label"></div>
-        <div class="stat-value" data-slot="value"></div>
-      </div>
-    </template>
+    <!-- Data table (tmpl.table): panel body shared by causes/sessions/spikes/cost/etc -->
     <template id="tpl-datatable">
       <table><thead><tr data-slot="headrow"></tr></thead><tbody data-slot="body"></tbody></table>
     </template>
@@ -302,15 +299,28 @@
     <template id="tpl-datatable-td">
       <td></td>
     </template>
+    <!-- Insights panel + marker-comparison finding contract -->
     <template id="tpl-insight">
       <div class="insight">
         <span class="dot"></span>
         <div class="body">
           <div class="hl" data-slot="headline"></div>
-          <div class="dt" data-slot="detail"></div>
+          <div class="dt detail-line">
+            <span data-slot="detail"></span
+            ><button
+              type="button"
+              class="badge confidence-badge"
+              data-slot="confidence"
+              hidden
+            ></button>
+          </div>
+          <div class="dt next-line" data-slot="next-line" hidden>
+            <span class="next-action" data-slot="next-action"></span>
+          </div>
         </div>
       </div>
     </template>
+    <!-- Session/chat-context detail: modal extra region, dtdd rows, sessions-table cell -->
     <template id="tpl-turn">
       <div class="turn">
         <div class="th">
@@ -332,6 +342,7 @@
         <span class="sub" data-slot="sub"></span>
       </span>
     </template>
+    <!-- Chart legend + hover tooltip (chart.js) -->
     <template id="tpl-harness-btn">
       <button></button>
     </template>
@@ -381,8 +392,51 @@
     <template id="tpl-tooltip-row">
       <div class="t-row"><span data-slot="term"></span> <span data-slot="value"></span></div>
     </template>
+    <!-- Generic one-off message/status lines -->
+    <template id="tpl-msg-line">
+      <p data-slot="text"></p>
+    </template>
+    <template id="tpl-note">
+      <div class="note" data-slot="text"></div>
+    </template>
+
+    <!-- Marker-comparison finding contract (renders.js renderMarkerComparison) -->
+    <template id="tpl-marker-comparison-stats">
+      <div class="stat-row">
+        <div class="stat-item">
+          <span class="stat-label">before</span>
+          <span class="stat-value" data-slot="before-value"></span>
+          <span class="msg-dim" style="font-size:var(--text-2xs)" data-slot="before-sub"></span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">after</span>
+          <span class="stat-value" data-slot="after-value"></span>
+          <span class="msg-dim" style="font-size:var(--text-2xs)" data-slot="after-sub"></span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">change</span>
+          <span class="stat-value" data-slot="change-value"></span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">confidence</span>
+          <span class="stat-value" style="font-size:var(--text-xs)" data-slot="confidence-value"></span>
+        </div>
+      </div>
+    </template>
+    <template id="tpl-quality-issues">
+      <details class="quality-issues">
+        <summary data-slot="summary"></summary>
+        <ul data-slot="items"></ul>
+      </details>
+    </template>
+    <template id="tpl-quality-issue-item">
+      <li data-slot="text"></li>
+    </template>
+    <template id="tpl-open-analysis-btn">
+      <button class="linkbtn open-analysis" type="button">open analysis ›</button>
+    </template>
     <dialog id="telemetry-modal">
-      <button class="closebtn" id="modalclose">×</button>
+      <portal-close-button id="modalclose"></portal-close-button>
       <h3 id="modaltitle"></h3>
       <div class="sub" id="modalsub"></div>
       <dl id="modalbody"></dl>
@@ -394,7 +448,7 @@
          no client-side marker logic, the CLI's validation rules are re-enforced server-side by
          createMarkerFromPortalRequest in telemetry.mjs. -->
     <dialog id="marker-modal">
-      <button class="closebtn" id="markermodalclose">×</button>
+      <portal-close-button id="markermodalclose"></portal-close-button>
       <h3>create marker <portal-info-icon data-doc-anchor="markers" aria-haspopup="dialog" aria-expanded="false" aria-label="how markers work" title="how markers work"></portal-info-icon></h3>
       <div class="sub">markers appear on the timeline and can drive before/after comparisons</div>
       <form id="markerform" method="dialog">
@@ -441,7 +495,7 @@
           <div class="modal-title" data-slot="title">Telemetry Walkthrough</div>
           <div class="modal-path" data-slot="path"></div>
         </div>
-        <button class="modal-close" data-slot="close" type="button">close</button>
+        <portal-close-button data-slot="close"></portal-close-button>
       </div>
       <div class="modal-body">
         <div class="markdown" data-slot="content"></div>
@@ -449,6 +503,10 @@
     </dialog>
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/shared/info-icon.js" type="module"></script>
+    <script src="/portal/shared/icon.js" type="module"></script>
+    <script src="/portal/shared/notice.js" type="module"></script>
+    <script src="/portal/shared/tooltip.js" type="module"></script>
+    <script src="/portal/shared/close-button.js" type="module"></script>
     <script src="/portal/telemetry/app.js" type="module"></script>
   </body>
 </html>

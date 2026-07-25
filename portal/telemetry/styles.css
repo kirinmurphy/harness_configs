@@ -1,8 +1,25 @@
   /* Palette, reset, and header/nav/footer/theme-toggle chrome live in /portal/shared/base.css.
      This file holds only telemetry-page-specific styles. */
+  /* Generic message-line color variants (tpl-msg-line / templates.js msgLine) — .hl is already the
+     headline weight used elsewhere on this page. */
+  .msg-dim { color:var(--dim); } .msg-spike { color:var(--spike); } .msg-accent { color:var(--accent); }
   header .meta { color:var(--dim); font-size:var(--text-xs); }
-  /* Meta stat row: label/value pairs, replacing the old single dot-separated status string. */
-  .stat-row { display:flex; flex-wrap:wrap; gap:20px; padding:12px 20px; }
+  /* Stat-tile row: label/value pairs, used only nested inside a panel now (renders.js's
+     marker-comparison tiles). Vertical padding only (longhand) so it never zeroes a horizontal
+     gutter; nested in a panel it has no .inner and correctly gets 0 side inset from here. */
+  .stat-row { display:flex; flex-wrap:wrap; gap:20px; padding-top:12px; padding-bottom:12px; }
+  /* Page frame: subtle count line (left) + mark-change CTA (right) on one row. .inner carries the
+     side gutter. Wraps to stacked on narrow screens, CTA below the counts. */
+  .page-frame { display:flex; align-items:center; justify-content:space-between; gap:var(--space-md);
+    flex-wrap:wrap; padding-top:12px; padding-bottom:12px; }
+  .frame-counts { color:var(--dim); font-size:var(--text-2xs); font-variant-numeric:tabular-nums;
+    letter-spacing:.02em; }
+  @media (max-width: 560px) {
+    /* Stack counts over a full-width CTA — same clear tap-target intent the old .page-actions
+       block had for #openmarkermodal at narrow widths. */
+    .page-frame { flex-direction:column; align-items:stretch; }
+    .page-frame [data-btn="cta"] { width:100%; }
+  }
   .stat-item { display:flex; flex-direction:column; gap:2px; }
   .stat-label { color:var(--dim); font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.06em; }
   .stat-value { color:var(--ink); font-size:var(--text-md); font-variant-numeric:tabular-nums; }
@@ -19,7 +36,7 @@
   .quality-issues summary:hover { color:var(--ink); }
   .quality-issues ul { margin:6px 0 0; padding-left:1.2em; color:var(--dim); font-size:var(--text-2xs); }
   .quality-issues li { margin:2px 0; }
-  main { padding:20px; display:grid; gap:20px; max-width:1200px; margin:0 auto; }
+  main { padding-top:20px; padding-bottom:20px; display:grid; gap:20px; }
   .panel h2 { font-size:var(--text-xs); text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 12px; }
   .sectionhead { font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.1em; color:var(--accent); margin:18px 0 0; font-weight:700; padding-top:14px; border-top:1px solid var(--line); }
   .sectionhead:first-of-type { border-top:none; padding-top:0; margin-top:0; }
@@ -32,16 +49,27 @@
   .linkbtn:hover { color:var(--ink); }
   .sesschip { display:inline-flex; align-items:center; margin:2px 6px 2px 0; text-decoration:none; border:1px solid var(--line); border-radius:5px; padding:2px 8px; }
   .sesschip:hover { border-color:var(--accent); }
-  #insightspanel { border-color:var(--accent); }
+  /* Softened from the old hard --accent border: a lightened border + a background a touch sharper
+     than a default section, so it still reads as a called-out panel without shouting. */
+  #insightspanel { border-color:color-mix(in srgb, var(--accent) 40%, var(--line)); background:color-mix(in srgb, var(--accent) 5%, var(--panel)); }
   .insight { display:flex; gap:10px; padding:7px 0; border-top:1px solid var(--line); }
   .insight:first-child { border-top:none; }
-  .insight .dot { flex:none; width:8px; height:8px; border-radius:50%; margin-top:5px; }
+  .insight .dot { flex:none; width:8px; height:8px; border-radius:50%; margin-top:6px; }
+  /* Industry-convention severity coloring: alert (red) / warning (orange) / neutral (gray). Keys
+     stay high/warn/info so the CLI + insight tests are unaffected — only the color mapping changed. */
   .insight.high .dot { background:var(--spike); }
-  .insight.warn .dot { background:var(--accent); }
+  .insight.warn .dot { background:var(--warn); }
   .insight.info .dot { background:var(--dim); }
   .insight .body .hl { color:var(--ink); }
-  .insight .body .dt { color:var(--dim); font-size:var(--text-2xs); margin-top:2px; }
-  .insight .body .dt.next-action { color:var(--accent); }
+  /* Detail + next lines bumped one step up the type scale (2xs -> xs) for readability. */
+  .insight .body .dt { color:var(--dim); font-size:var(--text-xs); margin-top:3px; }
+  /* Detail line carries the confidence badge inline at its end. The badge's data-tip is shown by the
+     shared JS tooltip (portal/shared/tooltip.js), which positions itself inside the viewport. */
+  .insight .detail-line { display:inline; }
+  .insight .confidence-badge { display:inline-block; margin-left:8px; padding:1px 7px; border-radius:999px; border:1px solid var(--line); background:var(--chip-muted-bg); color:var(--dim); font-size:var(--text-2xs); cursor:help; white-space:nowrap; }
+  .insight .confidence-badge.conf-strong-signal { color:var(--ink); border-color:color-mix(in srgb, var(--ok) 50%, var(--line)); }
+  .insight .next-line { display:block; }
+  .insight .next-action { color:var(--next-ink); }
   #deepreadout { white-space:pre-wrap; font-size:var(--text-xs); color:var(--ink); }
   .detailsblock { border-top:1px solid var(--line); padding-top:8px; }
   .detailsblock > summary { font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.1em; color:var(--dim); font-weight:700; cursor:pointer; padding:6px 0; list-style:none; }
@@ -80,20 +108,18 @@
   .viewmore { background:none; border:none; color:var(--accent); font:inherit; font-size:var(--text-2xs); cursor:pointer; padding:3px 0; text-decoration:underline dotted; margin-top:4px; display:block; }
   .viewmore:hover { color:var(--ink); }
   .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:4px; flex:none; }
-  /* Background/border/padding come from the shared .control-panel (portal/shared/base.css) — same
-     "this strip is a control surface" treatment as Plans' Plans/Repos/Filters row. Telemetry
-     overrides .control-panel's default grid with its own flex row so a fixed-width info-icon gutter
-     (.filterbar-info) can sit beside the stacked filter rows rather than inside either one — there's
-     no "Filters" heading left to anchor the icon to now that both rows read as filters on their own. */
-  .filterbar { position:sticky; top:0; z-index:10; display:flex; align-items:flex-end; gap:14px; }
-  .filterbar-rows { display:grid; gap:14px; flex:1; min-width:0; }
-  /* Fixed to the info icon's own footprint (portal/shared/base.css's .info-icon is 15px) so the
-     gutter never grows/shrinks with viewport width — it stays a constant-size column while
-     .filterbar-rows does all the wrapping/shrinking. align-items:flex-end on .filterbar (above)
-     bottom-aligns it to the cohort row, the last and shortest of the two stacked rows. */
-  .filterbar-info { flex:none; width:15px; display:flex; justify-content:center; margin-bottom:3px; }
+  /* Sticky/background/border/padding come from the shared .control-panel (portal/shared/base.css)
+     — same "this strip is a control surface" treatment as Plans' Plans/Repos/Filters row. This is
+     the .inner-wrapped column: it just stacks the two filter rows, so their left AND right edges
+     land on the shared 1200px content box, matching every other page's content column. */
+  .filterbar-rows { display:grid; gap:14px; }
+  /* Info icon rides at the far right end of the range row (margin-left:auto so it holds that edge
+     even when #harnessfilt/source is hidden and there's nothing else pushing it right). No fixed
+     gutter column anymore — that used to inset the filter rows' right edge ~49px past the panels
+     below, which read as ragged/uneven width. */
+  .filterbar-info { margin-left:auto; flex:none; }
   .flabel { color:var(--dim); font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.06em; margin-right:4px; flex:none; }
-  .ranges { display:flex; gap:6px; flex-wrap:wrap; align-items:center; max-width:1200px; }
+  .ranges { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
   .ranges button { background:var(--bg); color:var(--dim); border:1px solid var(--line); border-radius:5px; padding:3px 10px; font:inherit; font-size:var(--text-2xs); cursor:pointer; }
   .ranges button:hover { color:var(--ink); border-color:var(--accent); }
   .ranges button.active { color:var(--bg); background:var(--accent); border-color:var(--accent); font-weight:600; }
@@ -104,7 +130,7 @@
      wrapping onto its own line WITHIN a row (e.g. source, below) reads with the same spacing
      rhythm as the gap BETWEEN the two filter rows — otherwise the wrapped line sits noticeably
      closer to its row than the rows sit to each other. */
-  .filter-row { display:flex; gap:14px 10px; flex-wrap:wrap; align-items:center; max-width:1200px; }
+  .filter-row { display:flex; gap:14px 10px; flex-wrap:wrap; align-items:center; }
   /* :not(.info-icon) so this generic rule never reaches into <portal-info-icon>'s own internal
      button (portal/shared/info-icon.js renders it into the light DOM) and overrides its round "i"
      badge shape from base.css with a rectangular filter-button look. */
@@ -136,11 +162,9 @@
   .filter-count-group { display:inline-flex; align-items:center; gap:8px; margin-left:auto; }
   .filter-count { color:var(--dim); font-size:var(--text-2xs); font-variant-numeric:tabular-nums; }
   #cohortfilt #cohortclear { margin-left:0; }
-  /* Marker creation is a data-entry action, not a filter — deliberately outside .filterbar so it
-     never reads as "part of narrowing the view." Not sticky, so it scrolls away with the page body
-     like any other page action, while the filter bar above stays pinned. */
-  .page-actions { max-width:1200px; padding:10px 20px 0; display:flex; justify-content:flex-end; }
-  /* CTA chrome for #openmarkermodal comes from data-btn="cta" in shared/base.css. */
+  /* Marker creation (#openmarkermodal) lives in .page-frame, not .filterbar, so it never reads as
+     "part of narrowing the view." Layout + responsive stacking come from .page-frame above; CTA
+     chrome comes from data-btn="cta" in shared/base.css. */
   /* Medium: cohort row's selects shrink so model/repo/marker keep fitting on one line longer.
      Source's own wrap-to-own-line behavior is defined next to its base #harnessfilt rule above. */
   @media (max-width:980px) {
@@ -156,8 +180,6 @@
        once the group is the only thing on its line (nothing left of it to push against), so the
        group instead takes the full row width and aligns its own content to the end. */
     .filter-count-group { flex-basis:100%; justify-content:flex-end; margin-left:0; }
-    .page-actions { justify-content:stretch; }
-    #openmarkermodal { width:100%; }
   }
   .copybtn { background:var(--bg); color:var(--dim); border:1px solid var(--line); border-radius:5px; padding:3px 10px; font:inherit; font-size:var(--text-2xs); cursor:pointer; }
   .copybtn:hover { color:var(--ink); border-color:var(--accent); }
@@ -166,16 +188,16 @@
   tr.clickable:hover td { background:var(--row-hover); }
   dialog#telemetry-modal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px 22px; max-width:560px; width:90%; max-height:80vh; overflow:auto; box-shadow:0 12px 48px var(--modal-shadow); }
   dialog#telemetry-modal::backdrop { background:var(--backdrop); }
+  dialog#telemetry-modal portal-close-button { float:right; }
   dialog#telemetry-modal h3 { margin:0 0 4px; font-size:var(--text-md); }
   dialog#telemetry-modal .sub { color:var(--dim); font-size:var(--text-xs); margin-bottom:14px; }
   dialog#telemetry-modal dl { display:grid; grid-template-columns:auto 1fr; gap:6px 16px; margin:0; font-size:var(--text-xs); }
   dialog#telemetry-modal dt { color:var(--dim); }
   dialog#telemetry-modal dd { margin:0; font-variant-numeric:tabular-nums; word-break:break-word; }
-  dialog#telemetry-modal .closebtn { float:right; background:none; border:none; color:var(--dim); font-size:var(--text-md); cursor:pointer; line-height:1; }
-  dialog#telemetry-modal .closebtn:hover { color:var(--ink); }
   /* "view docs" popup: wider/taller than #telemetry-modal since it holds a full guide document,
-     not a single detail card. Shares .modal-head/.modal-body/.modal-title/.modal-path/.modal-close
-     from portal/shared/base.css (same chrome as /config's #config-modal and /plans' #skill-modal). */
+     not a single detail card. Shares .modal-head/.modal-body/.modal-title/.modal-path and
+     <portal-close-button> from portal/shared/base.css (same chrome as /config's #config-modal and
+     /plans' #skill-modal). */
   dialog#docmodal { background:var(--panel); border:1px solid var(--line); border-radius:8px; max-width:820px; width:100%; max-height:85vh; padding:0; box-shadow:0 12px 48px var(--modal-shadow); }
   dialog#docmodal[open] { display:flex; flex-direction:column; }
   dialog#docmodal::backdrop { background:var(--backdrop); }
@@ -194,8 +216,7 @@
   dialog#marker-modal::backdrop { background:var(--backdrop); }
   dialog#marker-modal h3 { margin:0 0 4px; font-size:var(--text-md); }
   dialog#marker-modal .sub { color:var(--dim); font-size:var(--text-xs); margin-bottom:14px; }
-  dialog#marker-modal .closebtn { float:right; background:none; border:none; color:var(--dim); font-size:var(--text-md); cursor:pointer; line-height:1; }
-  dialog#marker-modal .closebtn:hover { color:var(--ink); }
+  dialog#marker-modal portal-close-button { float:right; }
   #markerform { display:flex; flex-direction:column; gap:10px; }
   #markerform label { display:flex; flex-direction:column; gap:3px; font-size:var(--text-2xs); color:var(--dim); }
   #markerform input, #markerform select { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:5px 8px; font:inherit; font-size:var(--text-xs); }

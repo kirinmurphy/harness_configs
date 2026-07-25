@@ -1,6 +1,6 @@
 ---
 id: portal-telemetry-web-components-plan
-priority: none
+priority: high
 next_action: Fill in the next concrete task.
 blocked_by: []
 depends_on: []

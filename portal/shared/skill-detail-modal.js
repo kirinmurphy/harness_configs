@@ -3,9 +3,9 @@
 // for why this is a factory (like createInfoModal/createConfigModal) and not a custom element:
 // the dialog is a page singleton, declared once as static markup in the host page's index.html,
 // never cloned or instantiated more than once. Caller passes the dialog element it owns;
-// this only wires behavior onto it. Depends on the shared .modal-head/.modal-close/.modal-body
-// classes (each page's own styles.css) and .skill-source-view (portal/shared/skill-source-view.css)
-// for the fetched content's own markup.
+// this only wires behavior onto it. Depends on the shared .modal-head/<portal-close-button>/
+// .modal-body chrome (each page's own styles.css) and .skill-source-view
+// (portal/shared/skill-source-view.css) for the fetched content's own markup.
 import { portalGetJson, portalWireBackdropClose } from "./api.js";
 
 export function createSkillDetailModal(dialogEl) {

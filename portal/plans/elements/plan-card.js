@@ -1,8 +1,10 @@
 // <plan-card> — set .record (plan record) and .actions (cardActions bag: onOpen, onCopyPath,
-// onCopyContext, onPlanDocsStart, planDocsEnabled, onError) as properties right after creation,
-// then append to the DOM. Title text is a link that triggers onOpen; builds the chip row and
-// action-button row from the two properties.
+// onCopyContext, onCopyPortableContext, onPlanDocsAction, onPriorityChange, planDocsEnabled,
+// planDocsPackage, skillModal, onEnablePackage, onError) as properties right after creation, then
+// append to the DOM. The whole card triggers onOpen on click, except interactive widgets (priority
+// dropdown, the recommended-next CTA, and the ⋯ actions menu) inside it.
 import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
+import { cardActionMenu, cardRecommendedCta } from "/portal/plans/templates.js";
 
 // Card shows a shortened preview; full text (up to 500 chars) still lives in plan.excerpt
 // for copy-context/drawer use — only the on-card display is truncated further here.
@@ -56,20 +58,16 @@ function chip(text, cls = "") {
   return node;
 }
 
-function actionButton(label, onClick, onError) {
-  const button = document.createElement("action-button");
-  button.setAttribute("label", label);
-  button.onClick = onClick;
-  button.onError = onError;
-  return button;
-}
-
 const PRIORITY_OPTIONS = [
   ["high", "high"],
   ["medium", "medium"],
   ["low", "low"],
   ["none", "none"],
 ];
+
+// Priority no longer applies once a plan is done — completed/archived plans keep the field on
+// the record for history, but the card shouldn't offer to edit it.
+const LIFECYCLES_WITHOUT_PRIORITY = new Set(["completed", "archived"]);
 
 function renderPriorityDropdown(record, cardActions) {
   const dropdown = document.createElement("option-dropdown");
@@ -146,6 +144,7 @@ class PlanCardElement extends HTMLElement {
       next: plan.nextAction || "No next action",
     });
     node.classList.toggle("dirty", this.dirty);
+    node.classList.toggle("is-active", isActive);
     node.querySelector("[data-slot=meta]").title = new Date(plan.modifiedAt).toLocaleString();
     const stateBadge = node.querySelector("[data-slot=state-badge]");
     if (isBlocked) {
@@ -163,22 +162,41 @@ class PlanCardElement extends HTMLElement {
         : []),
       chip(plan.reviewState, plan.reviewState === "possibly-stale" ? "warn" : ""),
     );
-    node.querySelector("[data-slot=priority]").append(renderPriorityDropdown(record, cardActions));
+    if (!LIFECYCLES_WITHOUT_PRIORITY.has(plan.lifecycle)) {
+      node.querySelector("[data-slot=priority]").append(renderPriorityDropdown(record, cardActions));
+    }
     node.querySelector("[data-slot=chips]").append(
       warnings ? chip(`${warnings} warnings`, "warn") : chip("valid", "ok"),
     );
-    const titleLink = node.querySelector("[data-slot=title-link]");
-    titleLink.textContent = plan.title;
-    titleLink.addEventListener("click", () => cardActions.onOpen(record.key));
-    const descriptionEl = node.querySelector("[data-slot=description]");
-    descriptionEl.addEventListener("click", () => cardActions.onOpen(record.key));
+    node.querySelector("[data-slot=title-link]").textContent = plan.title;
+    // Recommended-next CTA (when there's a clear next step) + the unified ⋯ menu — the same menu the
+    // drawer uses, scoped to this plan's lifecycle. One component, no overlapping loose buttons.
+    const cta = cardRecommendedCta(record, cardActions);
     node.querySelector("[data-slot=actions]").append(
-      actionButton("Copy path", () => cardActions.onCopyPath(plan.relativePath), onError),
-      actionButton("Copy Context", () => cardActions.onCopyContext(record), onError),
-      ...(cardActions.planDocsEnabled
-        ? [actionButton("/plan-docs start", () => cardActions.onPlanDocsStart(record.key), onError)]
-        : []),
+      ...(cta ? [cta] : []),
+      cardActionMenu(record, cardActions),
     );
+    // doc-details (title/description/footer) is the click surface — status-section (progress/
+    // next-action) sits outside it as its own sibling now, so it's naturally excluded rather than
+    // needing a manual closest() exclusion. Clicks/keypresses landing on an interactive widget
+    // inside doc-details (priority dropdown, action buttons) are still ignored so they only do
+    // their own thing. tabindex+role make doc-details itself keyboard-reachable now that
+    // title/description are plain text, not buttons.
+    const docDetails = node.querySelector(".doc-details");
+    docDetails.tabIndex = 0;
+    docDetails.setAttribute("role", "button");
+    const isInteractiveTarget = (event) =>
+      event.target.closest("button, option-dropdown, portal-menu-button, a, input, select");
+    docDetails.addEventListener("click", (event) => {
+      if (isInteractiveTarget(event)) return;
+      cardActions.onOpen(record.key);
+    });
+    docDetails.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (isInteractiveTarget(event)) return;
+      event.preventDefault();
+      cardActions.onOpen(record.key);
+    });
     this.replaceChildren(node);
   }
 }

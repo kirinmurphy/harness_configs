@@ -1,6 +1,6 @@
 ---
 id: localhoster-metadata-suggestions
-priority: medium
+priority: low
 next_action: Implement safe same-origin metadata discovery and quick-link suggestions
 blocked_by: []
 depends_on:
@@ -8,6 +8,7 @@ depends_on:
 related:
   - localhoster-docker-process-providers
   - localhoster-git-health-history
+  - canonical-repository-identity-plan-v2
 reviewed_commit:
 ---
 
@@ -23,6 +24,12 @@ routes as suggestions, never as automatic quick links.
 `localhoster-final` has key-validated `/api/localhoster/metadata?key=<opaque-key>` returning an
 explicitly deferred empty result. HTTP probing already extracts title and favicon with loopback,
 redirect, body-size, and timeout protections.
+
+## Relation to Canonical Repository Identity (v2)
+
+No dependency. This plan does same-origin HTTP metadata discovery and touches no repository
+identity or Git-root resolution, so it is unaffected by `canonical-repository-identity-plan-v2` and
+can ship before or after it. Listed as `related` only for sibling-plan awareness.
 
 ## Goals
 

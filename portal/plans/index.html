@@ -6,109 +6,123 @@
     <section id="package-banner" class="package-banner" hidden></section>
     <div id="plans-header" hidden>
       <section class="control-panel control-bar" id="control-bar">
-        <div class="control-panel-row control-bar-row">
-          <span class="repo-count">
-            Monitoring
-            <span id="plans-count-text"><strong>0</strong> Plans</span>
-            in
-            <span id="repos-count-text"><strong>0</strong> Repos</span>
-            <button type="button" data-btn="text" id="roots-toggle">
-              update
-            </button>
-          </span>
-          <div class="control-toggle-group">
-            <button
-              type="button"
-              data-btn="secondary"
-              class="control-item-action"
-              id="filters-toggle"
-            >
-              <svg
-                class="control-icon"
-                viewBox="0 0 16 16"
-                fill="none"
-                aria-hidden="true"
+        <div class="inner">
+          <div class="control-panel-row control-bar-row">
+            <span class="repo-count">
+              Monitoring
+              <span id="plans-count-text"><strong>0</strong> Plans</span>
+              in
+              <span id="repos-count-text"><strong>0</strong> Repos</span>
+              <span class="control-toggle-group">
+                <button
+                  type="button"
+                  data-btn="secondary"
+                  class="control-item-action"
+                  id="roots-toggle"
+                  aria-label="Update project folders"
+                  title="Update project folders"
+                >
+                  <portal-icon
+                    name="pencil"
+                    width="20"
+                    height="20"
+                  ></portal-icon>
+                </button>
+                <button
+                  type="button"
+                  data-btn="secondary"
+                  class="control-item-action"
+                  id="refresh"
+                  aria-label="Refresh"
+                  title="Refresh"
+                >
+                  <portal-icon
+                    name="refresh"
+                    width="20"
+                    height="20"
+                  ></portal-icon>
+                  <span class="spinner" hidden></span>
+                </button>
+              </span>
+            </span>
+            <div class="control-toggle-group">
+              <button
+                type="button"
+                data-btn="secondary"
+                class="control-item-action"
+                id="filters-toggle"
               >
-                <path
-                  d="M2 3h12L9.5 8.2v4.3L6.5 14V8.2L2 3Z"
-                  stroke="currentColor"
-                  stroke-width="1.3"
-                  stroke-linejoin="round"
-                />
-              </svg>
-              Filters
-            </button>
-            <button
-              type="button"
-              data-btn="secondary"
-              class="control-item-action"
-              id="next-prompt"
-              hidden
-              aria-label="Agent prompts"
-              title="Agent prompts"
-            >
-              <svg
-                class="control-icon"
-                viewBox="0 0 16 16"
-                fill="none"
-                aria-hidden="true"
+                <portal-icon name="filter" width="20" height="20"></portal-icon>
+                Filters
+              </button>
+              <button
+                type="button"
+                data-btn="secondary"
+                class="control-item-action"
+                id="next-prompt"
+                hidden
+                aria-label="Agent prompts"
+                title="Agent prompts"
               >
-                <path
-                  d="M2 2.5h12a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8.8L5.5 13.8V10.5H2a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z"
-                  stroke="currentColor"
-                  stroke-width="1.3"
-                  stroke-linejoin="round"
-                />
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div id="roots-panel-mount" hidden></div>
-        <div class="filter-chips" id="filter-chips"></div>
-        <div class="filters-body" id="filters-body" hidden>
-          <div class="filter-row filter-row-search">
-            <label for="search">Search</label>
-            <div class="search-field">
-              <input id="search" type="search" placeholder="search plans" />
+                <portal-icon
+                  name="agent-prompt"
+                  width="20"
+                  height="20"
+                ></portal-icon>
+              </button>
             </div>
           </div>
-          <div class="filter-row-grid">
-            <div class="filter-row">
-              <label for="repository">Repository</label>
-              <select id="repository"></select>
+          <div id="roots-panel-mount" hidden></div>
+          <div class="filter-chips" id="filter-chips"></div>
+          <div class="filters-body" id="filters-body" hidden>
+            <div class="filter-row-grid">
+              <div class="filter-row filter-row-search">
+                <label for="search">Search</label>
+                <div class="search-field">
+                  <input id="search" type="search" placeholder="search plans" />
+                </div>
+              </div>
+              <div class="filter-row">
+                <label for="repository">Repository</label>
+                <select id="repository"></select>
+              </div>
+              <div class="filter-row">
+                <label for="priority">Priority</label>
+                <select id="priority"></select>
+              </div>
+              <div class="filter-row">
+                <label for="blocked">Blocked</label>
+                <select id="blocked"></select>
+              </div>
+              <div class="filter-row">
+                <label for="readiness">Readiness</label>
+                <select id="readiness"></select>
+              </div>
+              <div class="filter-row">
+                <label for="review">Review</label>
+                <select id="review"></select>
+              </div>
+              <div class="filter-row">
+                <label for="health">Health</label>
+                <select id="health"></select>
+              </div>
             </div>
-            <div class="filter-row">
-              <label for="priority">Priority</label>
-              <select id="priority"></select>
+            <div class="filter-row filter-row-actions">
+              <button id="filters-done" type="button">Done</button>
             </div>
-            <div class="filter-row">
-              <label for="blocked">Blocked</label>
-              <select id="blocked"></select>
-            </div>
-            <div class="filter-row">
-              <label for="readiness">Readiness</label>
-              <select id="readiness"></select>
-            </div>
-            <div class="filter-row">
-              <label for="review">Review</label>
-              <select id="review"></select>
-            </div>
-            <div class="filter-row">
-              <label for="health">Health</label>
-              <select id="health"></select>
-            </div>
-          </div>
-          <div class="filter-row filter-row-actions">
-            <button id="refresh" type="button" data-btn="cta">Refresh</button>
-            <button id="filters-done" type="button">Done</button>
           </div>
         </div>
       </section>
-      <nav class="lifecycle-tabs" id="lifecycle-tabs" role="tablist"></nav>
-      <div class="lifecycle-dropdown-mount" id="lifecycle-dropdown-mount"></div>
+      <div class="inner">
+        <nav class="lifecycle-tabs" id="lifecycle-tabs" role="tablist"></nav>
+        <div
+          class="lifecycle-dropdown-mount"
+          id="lifecycle-dropdown-mount"
+        ></div>
+      </div>
     </div>
     <div id="toast" class="toast" hidden></div>
-    <main>
+    <main class="inner">
       {{LOADING}}
       <div class="settings" id="settings">
         <span class="settings-label" id="settings-label"
@@ -119,7 +133,11 @@
           <form id="root-form">
             <div class="root-form-label-row">
               <label for="root-input" id="root-form-label"
-                >Look for all /docs/plans folders in:</label
+                ><span id="root-form-label-empty"
+                  >Look for all <b>/docs/plans</b> folders in:</span
+                ><span id="root-form-label-populated" hidden
+                  >Look for more /docs/plans folders in:</span
+                ></label
               >
               <portal-info-icon
                 id="info-icon"
@@ -132,7 +150,9 @@
                 id="root-input"
                 placeholder="/path/to/repo or /path/to/projects"
               />
-              <button type="submit" id="root-submit" data-btn="cta">Add Folder</button>
+              <button type="submit" id="root-submit" data-btn="cta">
+                Add Folder
+              </button>
               <button id="roots-done" type="button" hidden>Done</button>
             </div>
             <div class="item-err" id="root-form-err"></div>
@@ -145,14 +165,10 @@
     <dialog id="info-modal" aria-labelledby="info-modal-title">
       <div class="modal-head">
         <h2 id="info-modal-title">How folder scanning works</h2>
-        <button
-          type="button"
+        <portal-close-button
           id="info-modal-close"
-          class="modal-close"
           aria-label="Close"
-        >
-          ×
-        </button>
+        ></portal-close-button>
       </div>
       <div class="modal-body">
         <pre class="folder-tree"><span class="tree-root">projects/</span>
@@ -192,14 +208,10 @@
           data-slot="title"
         ></span>
         <span class="modal-path" data-slot="path"></span>
-        <button
-          type="button"
-          class="modal-close"
+        <portal-close-button
           data-slot="close"
           aria-label="Close"
-        >
-          ×
-        </button>
+        ></portal-close-button>
       </div>
       <div class="modal-body">
         <div class="markdown" data-slot="content"></div>
@@ -212,41 +224,66 @@
           id="prompt-modal-title"
           data-slot="title"
         ></span>
-        <button
-          type="button"
-          class="modal-close"
+        <portal-close-button
           data-slot="close"
           aria-label="Close"
-        >
-          ×
-        </button>
+        ></portal-close-button>
       </div>
       <div class="modal-body">
         <p class="modal-note" data-slot="objective"></p>
         <p class="modal-note" data-slot="scope"></p>
         <div class="modalactions">
-          <button type="button" data-btn="cta" data-slot="copy">Copy prompt</button>
+          <button type="button" data-btn="cta" data-slot="copy">
+            Copy prompt
+          </button>
         </div>
       </div>
     </dialog>
-    <plan-drawer id="drawer" hidden>
-      <aside class="drawer-panel">
-        <div class="drawer-head">
-          <div>
-            <h2 id="drawer-title"></h2>
+    <dialog id="drawer">
+      <div class="drawer-head">
+        <div>
+          <h2 id="drawer-title"></h2>
+          <div class="drawer-path-row">
             <p id="drawer-path"></p>
+            <portal-copy-button
+              id="drawer-path-copy"
+              icon="copy"
+              aria-label="Copy path"
+            ></portal-copy-button>
           </div>
-          <button id="drawer-close" type="button">Close</button>
         </div>
-        <div class="drawer-actions" id="drawer-actions"></div>
+        <portal-close-button id="drawer-close"></portal-close-button>
+      </div>
+      <div class="drawer-body">
+        <div class="drawer-actions" id="drawer-actions">
+          <button
+            type="button"
+            class="recommended-cta"
+            id="drawer-cta"
+            data-btn="cta"
+            hidden
+          ></button>
+          <portal-menu-button
+            id="drawer-menu"
+            icon="copy"
+            aria-label="Plan actions"
+          ></portal-menu-button>
+        </div>
+        <section
+          class="drawer-warnings-section"
+          id="drawer-warnings-section"
+          hidden
+        >
+          <h3>
+            <portal-icon name="warning" width="14" height="14"></portal-icon>
+            Warnings
+          </h3>
+          <ul id="drawer-warnings"></ul>
+        </section>
         <div class="drawer-grid">
           <section>
             <h3>Metadata</h3>
             <dl id="drawer-meta"></dl>
-          </section>
-          <section>
-            <h3>Warnings</h3>
-            <ul id="drawer-warnings"></ul>
           </section>
           <section>
             <h3>Tasks</h3>
@@ -254,24 +291,27 @@
           </section>
         </div>
         <article class="markdown" id="drawer-doc"></article>
-      </aside>
-    </plan-drawer>
-    <template id="tpl-package-banner">
-      <div id="package-not-installed-banner">
-        <header>
-          <strong>/plan-docs workflows are not enabled </strong
-          ><span data-slot="text"></span>
-        </header>
-        <div class="banner-links">
-          <button type="button" data-btn="text" data-slot="details">
-            View Skill Details
-          </button>
-          <span class="banner-sep">|</span>
-          <button type="button" data-btn="cta" data-slot="action">
-            Enable Skill
-          </button>
-        </div>
       </div>
+    </dialog>
+    <!-- Discovery roots: enable-skill banner + one chip per configured root path -->
+    <template id="tpl-package-banner">
+      <portal-notice class="package-not-installed-banner" variant="info">
+        <div class="package-not-installed-body">
+          <header>
+            <strong>/plan-docs workflows are not enabled </strong
+            ><span data-slot="text"></span>
+          </header>
+          <div class="banner-links">
+            <button type="button" data-btn="text" data-slot="details">
+              View Skill Details
+            </button>
+            <span class="banner-sep">|</span>
+            <button type="button" data-btn="cta" data-slot="action">
+              Enable Skill
+            </button>
+          </div>
+        </div>
+      </portal-notice>
     </template>
     <template id="tpl-root-chip">
       <span class="root-chip">
@@ -286,6 +326,7 @@
         </button>
       </span>
     </template>
+    <!-- Generic primitives: reused across panels, no single owner -->
     <template id="tpl-empty-state">
       <section class="empty-state">
         <h2 data-slot="title"></h2>
@@ -295,6 +336,76 @@
     <template id="tpl-chip">
       <span class="chip"></span>
     </template>
+    <template id="tpl-warning-line">
+      <div data-slot="text"></div>
+    </template>
+    <template id="tpl-list-item">
+      <li data-slot="text"></li>
+    </template>
+    <template id="tpl-spinner">
+      <span class="spinner"></span>
+    </template>
+
+    <!-- Filters & lifecycle tabs -->
+    <template id="tpl-lifecycle-tab">
+      <button
+        type="button"
+        class="lifecycle-tab"
+        role="tab"
+        data-slot="label"
+      ></button>
+    </template>
+
+    <!-- Plan action menu (⋯): shared by the card and the drawer -->
+    <template id="tpl-recommended-cta">
+      <button
+        type="button"
+        class="recommended-cta"
+        data-btn="cta"
+        data-slot="label"
+      ></button>
+    </template>
+    <template id="tpl-menu-item">
+      <button type="button" class="menu-button-item">
+        <portal-icon
+          data-slot="icon"
+          width="14"
+          height="14"
+          class="menu-button-item-icon"
+        ></portal-icon>
+        <div class="menu-button-item-body">
+          <span data-slot="label"></span>
+          <span
+            class="menu-button-item-desc"
+            data-slot="description"
+            hidden
+          ></span>
+        </div>
+      </button>
+    </template>
+    <template id="tpl-plan-menu">
+      <div class="plan-menu">
+        <p class="menu-button-item-desc plan-menu-note" data-slot="note"></p>
+        <div class="plan-menu-group" data-slot="group" hidden></div>
+        <div data-slot="fallback-actions"></div>
+        <div data-slot="copy-path"></div>
+        <div data-slot="package-banner"></div>
+      </div>
+    </template>
+    <template id="tpl-plan-menu-action">
+      <div class="plan-menu-action">
+        <div data-slot="item"></div>
+        <button
+          type="button"
+          class="plan-menu-variant"
+          data-slot="portable"
+          hidden
+        >
+          portable
+        </button>
+      </div>
+    </template>
+    <!-- Active-filter chips (control bar) -->
     <template id="tpl-filter-chip">
       <span class="filter-chip">
         <span class="filter-chip-label" data-slot="label"></span>
@@ -309,26 +420,24 @@
         </button>
       </span>
     </template>
+
+    <!-- Plan card & drawer -->
     <template id="tpl-plan-card">
       <article class="plan-card">
-        <h3 class="card-header-row">
-          <button
-            type="button"
-            class="title-link"
-            data-slot="title-link"
-          ></button>
-          <div class="priority-slot" data-slot="priority"></div>
-        </h3>
-        <button
-          type="button"
-          class="description-line"
-          data-slot="description"
-        ></button>
-        <div class="chips" data-slot="chips"></div>
-        <div class="card-actions" data-slot="actions"></div>
+        <div class="doc-details">
+          <h3 class="card-header-row">
+            <span class="title-link" data-slot="title-link"></span>
+          </h3>
+          <p class="description-line" data-slot="description"></p>
+          <footer>
+            <div class="card-actions" data-slot="actions"></div>
+            <div class="chips" data-slot="chips"></div>
+          </footer>
+        </div>
         <div class="status-section" data-slot="status">
           <div class="status-state-row">
             <div class="status-state-chips" data-slot="status-chips">
+              <div class="priority-slot" data-slot="priority"></div>
               <span class="state-badge" data-slot="state-badge" hidden></span>
             </div>
             <span class="meta-line" data-slot="meta"></span>
@@ -351,7 +460,15 @@
         <dd data-slot="value"></dd>
       </div>
     </template>
+    <template id="tpl-task-item">
+      <li data-slot="text"></li>
+    </template>
     <script src="/portal/shared/info-icon.js" type="module"></script>
+    <script src="/portal/shared/icon.js" type="module"></script>
+    <script src="/portal/shared/notice.js" type="module"></script>
+    <script src="/portal/shared/close-button.js" type="module"></script>
+    <script src="/portal/shared/copy-button.js" type="module"></script>
+    <script src="/portal/shared/menu-button.js" type="module"></script>
     <script src="/portal/plans/elements/index.js" type="module"></script>
     <script src="/portal/shared/theme.js" type="module"></script>
     <script src="/portal/plans/app.js" type="module"></script>

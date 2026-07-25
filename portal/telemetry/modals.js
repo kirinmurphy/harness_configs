@@ -3,12 +3,12 @@
 // session, a spike, a loop. renders.js calls into these; app.js wires createModalOpeners() once
 // at startup and hands the result to both renders.js and its own event-delegation handlers.
 
-import { portalCopyText, portalEl as el } from "/portal/shared/api.js";
+import { portalCopyText } from "/portal/shared/api.js";
 import * as api from "./api.js";
 import * as tmpl from "./templates.js";
 import { fmt, short, durLabel } from "./state.js";
 
-const note = (text) => el("div", { class: "note" }, text);
+const note = (text) => tmpl.noteLine(text);
 
 // getThreshold: () => number — read fresh each call since curThreshold updates on every load().
 export function createModalOpeners({ modal, getThreshold }) {
@@ -26,25 +26,25 @@ export function createModalOpeners({ modal, getThreshold }) {
   function spoolContextNodes(ctx) {
     if (!ctx) return [];
     const nodes = [note("session facts:")];
-    if (ctx.model_history?.length) nodes.push(el("div", { class: "note" }, "models: " + ctx.model_history.join(" → ")));
+    if (ctx.model_history?.length) nodes.push(note("models: " + ctx.model_history.join(" → ")));
     if (ctx.config_snapshot) {
-      nodes.push(el("div", { class: "note" }, "config snapshot: " + ctx.config_snapshot.snapshot_id
+      nodes.push(note("config snapshot: " + ctx.config_snapshot.snapshot_id
         + (ctx.config_snapshot.packages?.length ? " · packages: " + ctx.config_snapshot.packages.join(", ") : "")));
     }
     if (ctx.phase_timeline?.length) {
-      nodes.push(el("div", { class: "note" }, "phases: " + ctx.phase_timeline.map((p) => p.name).join(" → ")));
+      nodes.push(note("phases: " + ctx.phase_timeline.map((p) => p.name).join(" → ")));
     }
     const opEntries = Object.entries(ctx.operation_totals || {});
     if (opEntries.length) {
-      nodes.push(el("div", { class: "note" }, "operations: " + opEntries.map(([k, n]) => `${k}×${n}`).join(", ")));
+      nodes.push(note("operations: " + opEntries.map(([k, n]) => `${k}×${n}`).join(", ")));
     }
-    nodes.push(el("div", { class: "note" }, "outcome: " + ctx.outcome.status
+    nodes.push(note("outcome: " + ctx.outcome.status
       + (ctx.outcome.task_category ? ` · task: ${ctx.outcome.task_category} (${ctx.outcome.task_category_source || ctx.outcome.source})` : "")));
     if (ctx.nearby_markers?.length) {
-      nodes.push(el("div", { class: "note" }, "nearby markers: " + ctx.nearby_markers.map((m) => m.title).join("; ")));
+      nodes.push(note("nearby markers: " + ctx.nearby_markers.map((m) => m.title).join("; ")));
     }
     if (ctx.data_quality_flags?.length) {
-      nodes.push(el("div", { class: "note", style: "color:var(--dim)" }, "data quality: " + ctx.data_quality_flags.join("; ")));
+      nodes.push(tmpl.noteLine("data quality: " + ctx.data_quality_flags.join("; "), "msg-dim"));
     }
     return nodes;
   }

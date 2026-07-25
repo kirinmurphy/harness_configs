@@ -1,14 +1,14 @@
 /* Breakpoints used on this page — kept to these two values everywhere below (no build step here,
  * so no @custom-media/var() substitution in media queries; consolidating to a fixed pair and
  * reusing them is the plain-CSS equivalent):
- *   680px  — narrow: lifecycle tabs collapse to a dropdown selector.
+ *   765px  — narrow: lifecycle tabs collapse to a dropdown selector. Set ~50px above the point
+ *            tabs would wrap to 2 lines, so the dropdown swap happens before wrapping occurs.
  *   960px  — wide: drawer/root-form/filter-row go single-column below it; the plan card's status
  *            section becomes a fixed 200px right-side column at/above it.
  */
 main {
-  padding: 18px;
-  max-width: 1200px;
-  margin: 0 auto;
+  padding-top: 18px;
+  padding-bottom: 18px;
   display: grid;
   gap: 14px;
 }
@@ -26,6 +26,31 @@ main {
   background: color-mix(in srgb, var(--accent) 6%, var(--panel));
   /* border-color: var(--accent); */
 }
+/* Whole-page sticky header block: control-bar + lifecycle tabs ride together and stay pinned for
+ * the entire scroll, not just the ~2 rows of their old short wrapper. #plans-header is a direct
+ * child of <body> (the page scroll container), so a sticky here tracks the full page. It pins to
+ * the very top of the viewport and rides OVER the shared .portal-header (z-index above the header's
+ * 10) as you scroll — same behavior as the Tokens page's control bar, not fixed to its default
+ * on-page position. A solid background keeps scrolled card content from showing through. */
+#plans-header {
+  position: sticky;
+  top: 0;
+  z-index: 11;
+  background: var(--bg);
+}
+/* The control-bar no longer sticks on its own — #plans-header owns the stickiness now, so the
+ * shared .control-panel sticky would just fight it. Neutralize position here (keeps its
+ * background/border/padding from base.css). */
+#plans-header .control-panel.control-bar {
+  position: static;
+  top: auto;
+}
+/* Lifecycle-tabs row needs its own solid background + a little breathing room now that it's part of
+ * the pinned block sitting over scrolling cards. */
+#plans-header > .inner {
+  background: var(--bg);
+  padding-top: 8px;
+}
 /* Control bar: Plans/Repos/Filters row + persistent chips + whichever panel is open. Background/
  * border/outer spacing come from the shared .control-panel (portal/shared/base.css) — this only
  * adds what's specific to Plans: the row's items spread to the edges (space-between) rather than
@@ -37,22 +62,24 @@ main {
 .control-bar-row strong {
   color: var(--ink);
 }
-/* Layout only — button chrome (border/background/padding) now comes from data-btn, not this
- * class. Two of these sit side by side (Filters, Agent prompts), so they're grouped in a shared
- * wrapper for consistent screen positioning. */
-.control-toggle-group {
-  display: flex;
+.repo-count {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+}
+/* Layout only — button chrome (border/background/padding) now comes from data-btn, not this
+ * class. Groups paired icon buttons (update/refresh; Filters/Agent prompts) for consistent
+ * screen positioning. */
+.control-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }
 .control-item-action {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-.control-icon {
-  width: 17px;
-  height: 17px;
-  flex: 0 0 auto;
 }
 .filter-chips {
   display: flex;
@@ -105,7 +132,7 @@ main {
   margin-top: 10px;
   padding: 10px 0 0;
   border-top: 1px solid var(--line);
-  background: color-mix(in srgb, #808080 8%, var(--panel));
+  background: color-mix(in srgb, var(--neutral-tint) 8%, var(--panel));
   margin-left: -20px;
   margin-right: -20px;
   padding-left: 20px;
@@ -117,9 +144,10 @@ main {
   gap: 10px;
 }
 @media (min-width: 960px) {
-  /* 6 select filters split 4/3 across two columns: column-major auto-flow fills the left column
-   * top-to-bottom first (4 rows), then the right column (remaining rows) — a plain
-   * grid-template-columns:1fr 1fr would instead interleave items row-by-row across both columns. */
+  /* Search + 6 select filters (7 items) split 4/4 across two columns: column-major auto-flow
+   * fills the left column top-to-bottom first (4 rows, starting with search), then the right
+   * column (remaining rows) — a plain grid-template-columns:1fr 1fr would instead interleave
+   * items row-by-row across both columns. */
   .filter-row-grid {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: repeat(4, auto);
@@ -200,7 +228,7 @@ main {
   margin-top: 0;
   padding: 10px 20px 12px;
   border-top: 1px solid var(--line);
-  background: color-mix(in srgb, #808080 8%, var(--panel));
+  background: color-mix(in srgb, var(--neutral-tint) 8%, var(--panel));
   margin-left: -20px;
   margin-right: -20px;
 }
@@ -286,16 +314,8 @@ dialog#info-modal::backdrop {
   margin: 0;
   font-size: var(--text-md);
 }
-#info-modal .modal-close {
+#info-modal portal-close-button {
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--text-md);
-  line-height: 1;
   margin-left: 0;
 }
 #info-modal .modal-body {
@@ -395,16 +415,13 @@ dialog#skill-modal::backdrop {
 }
 /* Full-width banner, flush to the viewport edges — a sibling of <main> (not a child), so it can
  * break out of main's padding. Scrolls normally with the page (no sticky/fixed). */
+/* Full-width mount for the not-installed callout. Callout chrome (border/bg/padding) is owned by
+   the shared <portal-notice> inside it now; this just spans the page width and pads the edges. */
 .package-banner {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  color: var(--dim);
+  display: block;
   width: 100%;
+  color: var(--dim);
   padding: 12px 20px;
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
-  border-bottom: 1px solid var(--line);
 }
 .package-banner strong {
   color: var(--ink);
@@ -460,52 +477,68 @@ dialog#skill-modal::backdrop {
 }
 .card-grid {
   display: grid;
-  gap: 8px;
+  gap: 1rem;
 }
-.plan-card {
-  border: 1px solid var(--line);
-  background: var(--panel);
-  border-radius: 8px;
-  padding: 10px 12px;
-  display: grid;
-  grid-template-areas:
-    "title"
-    "description"
-    "chips"
-    "actions"
-    "status";
-  row-gap: 4px;
-}
-.plan-card h3 {
-  grid-area: title;
+plan-card {
+  display: block;
   min-width: 0;
 }
-.plan-card > .description-line {
-  grid-area: description;
+.plan-card {
+  display: grid;
+  grid-template-columns: 1fr;
+  min-width: 0;
 }
-.plan-card > .chips {
-  grid-area: chips;
+/* doc-details is the click surface (see plan-card.js) — hover feedback lives here instead of on
+ * the title/description individually. Title still underlines on hover so it keeps reading as the
+ * primary link; description doesn't need its own underline since it's not link-styled text.
+ * :hover:not(:has(...)) suppresses the feedback when the pointer is over a nested interactive
+ * widget (priority dropdown, action buttons) — those don't open the card, so they shouldn't look
+ * like they will. status-section is a sibling of doc-details now (not a descendant), so it's
+ * excluded automatically and needs no :has() clause here. */
+.plan-card .doc-details:hover:not(:has(button:hover, option-dropdown:hover)) {
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel));
 }
-.plan-card > .card-actions {
-  grid-area: actions;
+
+.plan-card
+  .doc-details:hover:not(:has(button:hover, option-dropdown:hover))
+  .title-link {
+  text-decoration: underline;
 }
+
+.plan-card .doc-details:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.plan-card .doc-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.plan-card h3 {
+  min-width: 0;
+}
+
 .plan-card > .status-section {
-  grid-area: status;
   min-width: 0;
 }
 /* Wide screens: status (blocked badge / progress / next-action) moves to a fixed right column
- * instead of stacking under the card's main content — see breakpoint note at top of file. */
+ * instead of stacking under the card's main content — see breakpoint note at top of file.
+ * Active-lifecycle cards only: progress/next-action only apply while a plan is in flight, so the
+ * dedicated column is wasted space on every other lifecycle — those keep the narrow-screen
+ * stacked layout regardless of viewport width. */
 @media (min-width: 960px) {
-  .plan-card {
+  .plan-card.is-active {
     grid-template-columns: 1fr 360px;
-    grid-template-areas:
-      "title       status"
-      "description status"
-      "chips       status"
-      "actions     status";
-    column-gap: 12px;
   }
-  .plan-card > .status-section {
+
+  .plan-card.is-active > .status-section {
     margin: 0;
     border-top: none;
     border-left: 1px solid var(--warn-line);
@@ -514,7 +547,7 @@ dialog#skill-modal::backdrop {
     align-self: start;
   }
 }
-.plan-card h3 {
+.plan-card .doc-details h3 {
   margin: 0;
   font-size: var(--text-md);
 }
@@ -523,24 +556,19 @@ dialog#skill-modal::backdrop {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
 }
 .title-link {
-  all: unset;
-  cursor: pointer;
   color: inherit;
   font: inherit;
-  flex: 1 1 auto;
+  display: block;
+  flex: 1 1 0;
+  max-width: 100%;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.title-link:hover {
-  text-decoration: underline;
-}
-.title-link:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 .meta-line,
 .description-line {
@@ -550,21 +578,8 @@ dialog#skill-modal::backdrop {
 }
 .description-line {
   color: var(--ink);
-  background: none;
-  border: none;
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-  padding: 0;
-  display: block;
+  margin: 0;
   width: 100%;
-}
-.description-line:hover {
-  text-decoration: underline;
-}
-.description-line:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 .priority-slot {
   display: flex;
@@ -610,11 +625,42 @@ dialog#skill-modal::backdrop {
   color: var(--ok);
   border-color: var(--ok);
 }
-.plan-card .card-actions {
+
+.plan-card .doc-details footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.plan-card .doc-details .card-actions {
   margin-top: 2px;
+  align-items: stretch;
+}
+/* Card's ⋯/copy menu trigger sits beside the recommended-cta button and should match its height
+ * (both share [data-btn="cta"]-equivalent padding, but a bare icon has a shorter line-box than
+ * text) — align-items: stretch above plus box-sizing here closes that gap. Icon bumped up from the
+ * component's 14px default since it's the row's only visual affordance now (no label text). Shared
+ * with .drawer-actions below — same portal-menu-button widget, same trigger face, on both surfaces. */
+.plan-card .card-actions portal-menu-button,
+.drawer-actions portal-menu-button {
+  display: inline-flex;
+  align-self: stretch;
+}
+.plan-card .card-actions .menu-button-trigger,
+.drawer-actions .menu-button-trigger {
+  box-sizing: border-box;
+  height: 100%;
+}
+.plan-card
+  .card-actions
+  .menu-button-trigger
+  portal-icon:not(.menu-button-chevron)
+  svg,
+.drawer-actions .menu-button-trigger portal-icon:not(.menu-button-chevron) svg {
+  width: 18px;
+  height: 18px;
 }
 .status-section {
-  margin: 6px -12px -10px;
   padding: 8px 12px;
   border-top: 1px solid var(--warn-line);
   border-radius: 0 0 7px 7px;
@@ -713,41 +759,47 @@ dialog#skill-modal::backdrop {
 .toast[hidden] {
   display: none;
 }
-plan-drawer {
-  position: fixed;
-  inset: 0;
-  background: var(--backdrop);
-  display: flex;
-  justify-content: flex-end;
-  z-index: 10;
-}
-plan-drawer[hidden] {
-  display: none;
-}
-.drawer-panel {
+dialog#drawer {
   width: min(980px, 100vw);
-  height: 100vh;
+  max-height: 85vh;
   overflow: auto;
   background: var(--bg);
-  border-left: 1px solid var(--line);
-  box-shadow: -20px 0 40px var(--modal-shadow);
-  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px var(--modal-shadow);
+  padding: 0;
+}
+dialog#drawer::backdrop {
+  background: var(--backdrop);
 }
 .drawer-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: start;
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
-  padding-bottom: 12px;
+  padding: 18px 18px 12px;
+}
+.drawer-body {
+  padding: 0 18px 18px;
 }
 .drawer-head h2 {
   margin: 0;
   font-size: var(--text-lg);
 }
-.drawer-head p {
+.drawer-path-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+}
+.drawer-path-row p {
   color: var(--dim);
-  margin: 3px 0 0;
+  margin: 0;
   overflow-wrap: anywhere;
 }
 .drawer-actions {
@@ -758,7 +810,7 @@ plan-drawer[hidden] {
 }
 .drawer-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 .drawer-grid section {
@@ -772,6 +824,70 @@ plan-drawer[hidden] {
   color: var(--dim);
   font-size: var(--text-xs);
   text-transform: uppercase;
+}
+/* Unified plan ⋯ menu (drawer-menu / card ⋯ panel content, built in templates.js#planMenuBody) plus
+   the recommended-next CTA that sits beside the ⋯ trigger. */
+.recommended-cta {
+  white-space: nowrap;
+}
+.plan-menu {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.plan-menu-note {
+  margin: 0 0 2px;
+}
+.plan-menu-group {
+  display: grid;
+  gap: 2px;
+}
+/* Each action row: the action item takes the width; the optional portable variant sits at the end. */
+.plan-menu-action {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  border-radius: 6px;
+}
+.plan-menu-action .menu-button-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.plan-menu-action.is-recommended {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.plan-menu-variant {
+  flex: none;
+  align-self: center;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--dim);
+  font: inherit;
+  font-size: var(--text-2xs);
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin-right: 4px;
+  cursor: pointer;
+}
+.plan-menu-variant:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+.drawer-warnings-section {
+  border: 1px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, var(--panel));
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.drawer-warnings-section h3 {
+  margin: 0 0 8px;
+  color: var(--warn);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .task-done {
   color: var(--dim);
@@ -803,9 +919,6 @@ plan-drawer[hidden] {
   overflow: auto;
 }
 @media (max-width: 960px) {
-  .drawer-grid {
-    grid-template-columns: 1fr;
-  }
   #root-form {
     display: grid;
   }
@@ -829,13 +942,13 @@ plan-drawer[hidden] {
   vertical-align: -1px;
 }
 
-#package-not-installed-banner {
+.package-not-installed-body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-#package-not-installed-banner header {
+.package-not-installed-banner header {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -894,6 +1007,10 @@ option-dropdown {
   box-shadow: 0 8px 24px var(--modal-shadow);
   padding: 4px;
   min-width: 100px;
+  /* max-height is set inline by positionPopoverPanel (popover-position.js) to keep the far edge
+     on-screen; scroll internally past that instead of overflowing the viewport. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .dropdown-option {
   border: none;
@@ -968,7 +1085,7 @@ option-dropdown {
 .lifecycle-dropdown-mount .dropdown-menu {
   width: 100%;
 }
-@media (max-width: 680px) {
+@media (max-width: 765px) {
   .lifecycle-tabs {
     display: none;
   }

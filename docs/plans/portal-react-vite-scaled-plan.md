@@ -1,6 +1,6 @@
 ---
 id: portal-react-vite-scaled-plan
-priority: none
+priority: low
 next_action: Fill in the next concrete task.
 blocked_by: []
 depends_on: []

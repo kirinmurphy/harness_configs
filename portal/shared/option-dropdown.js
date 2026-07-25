@@ -9,6 +9,7 @@
 //   .onSelect  async (value) => {}
 //   .loading   boolean — disables the trigger, shows a spinner instead of the chevron, closes menu
 //   .disabled  boolean — disables the trigger without implying an in-flight write
+import { positionPopoverPanel } from "/portal/shared/popover-position.js";
 
 class OptionDropdownElement extends HTMLElement {
   connectedCallback() {
@@ -112,24 +113,10 @@ class OptionDropdownElement extends HTMLElement {
     const menu = this.querySelector(".dropdown-menu");
     const trigger = this.querySelector(".dropdown-trigger");
     if (!menu || !trigger) return;
-    const rect = trigger.getBoundingClientRect();
-    const openAbove = window.innerHeight - rect.bottom < 200;
-    if (openAbove) {
-      menu.style.top = "auto";
-      menu.style.bottom = window.innerHeight - rect.top + 4 + "px";
-    } else {
-      menu.style.bottom = "auto";
-      menu.style.top = rect.bottom + 4 + "px";
-    }
-    const rightAligned = rect.left + rect.width / 2 > window.innerWidth / 2;
-    if (rightAligned) {
-      menu.style.right = window.innerWidth - rect.right + "px";
-      menu.style.left = "auto";
-    } else {
-      menu.style.left = rect.left + "px";
-      menu.style.right = "auto";
-    }
-    menu.style.minWidth = rect.width + "px";
+    // Shared positioner clamps max-height so the far edge stays on-screen and the list scrolls
+    // internally when it's taller than the room on either side.
+    positionPopoverPanel(menu, trigger);
+    menu.style.minWidth = trigger.getBoundingClientRect().width + "px";
   }
 
   moveHighlight(delta) {

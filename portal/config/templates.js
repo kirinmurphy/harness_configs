@@ -37,31 +37,14 @@ function applyWarningTokenChip(chipEl, spec) {
 
 // Builds a "Label: [chip]" pair for the popup cost row / row-level warning chips.
 export function labeledTokenChip({ label, spec }) {
-  const wrap = document.createElement("span");
-  wrap.className = "cost-row-item";
-  const labelEl = document.createElement("span");
-  labelEl.className = "cost-row-label";
-  labelEl.textContent = label + ":";
-  const chip = document.createElement("token-chip");
-  applyTokenChip(chip, spec);
-  wrap.append(labelEl, chip);
+  const wrap = fill(tpl("tpl-labeled-token-chip"), { label: label + ":" });
+  applyTokenChip(wrap.querySelector("[data-slot=chip]"), spec);
   return wrap;
 }
 
 function warningInfoIcon(info) {
-  const wrap = document.createElement("span");
-  wrap.className = "token-warning-info";
-  wrap.tabIndex = 0;
-  wrap.setAttribute("role", "button");
-  wrap.setAttribute("aria-label", "Skill discovery description details");
-  wrap.setAttribute("aria-expanded", "false");
-  wrap.textContent = "ⓘ";
-
-  const tip = document.createElement("span");
-  tip.className = "token-warning-tip";
-  tip.hidden = true;
-  tip.textContent = info;
-  wrap.append(tip);
+  const wrap = fill(tpl("tpl-warning-info-icon"), { tip: info });
+  const tip = wrap.querySelector("[data-slot=tip]");
 
   const show = () => {
     tip.hidden = false;
@@ -83,19 +66,9 @@ function warningInfoIcon(info) {
 }
 
 function tokenWarningItem({ name, suffix, spec, info }) {
-  const row = document.createElement("div");
-  row.className = "token-warning-item";
-  const labelEl = document.createElement("span");
-  labelEl.className = "token-warning-label";
-  const nameEl = document.createElement("strong");
-  nameEl.textContent = name;
-  labelEl.append(nameEl);
-  if (suffix) labelEl.append(document.createTextNode(suffix));
-  labelEl.append(":");
-  if (info) labelEl.append(warningInfoIcon(info));
-  const chip = document.createElement("token-chip");
-  applyTokenChip(chip, spec);
-  row.append(labelEl, chip);
+  const row = fill(tpl("tpl-token-warning-item"), { name, suffix: suffix || "" });
+  if (info) row.querySelector("[data-slot=info]").append(warningInfoIcon(info));
+  applyTokenChip(row.querySelector("[data-slot=chip]"), spec);
   return row;
 }
 
@@ -260,6 +233,9 @@ export function contextWarnings(snap) {
   if (!entries.length) return null;
   const panel = tpl("tpl-context-warnings");
   const hasHigh = entries.some((entry) => entry.spec.level === "high");
+  // <portal-notice> owns the callout chrome now; escalate to the alert (red) variant when any
+  // element is in high token use, otherwise the default warning (amber) tint.
+  panel.setAttribute("variant", hasHigh ? "alert" : "warning");
   panel.querySelector('[data-slot="title"]').textContent = hasHigh
     ? "The following elements have a high token use:"
     : "The following elements have elevated token use:";

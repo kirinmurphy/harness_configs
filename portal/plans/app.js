@@ -6,6 +6,7 @@ import {
   portalSetUpdatedAt,
   portalHideLoading,
   portalCopyText,
+  portalWireBackdropClose,
 } from "/portal/shared/api.js";
 import { createSkillDetailModal } from "/portal/shared/skill-detail-modal.js";
 import * as api from "./api.js";
@@ -66,14 +67,25 @@ const rootsPanel = createRootsPanel({
 createInfoModal();
 const skillModal = createSkillDetailModal(document.getElementById("skill-modal"));
 const promptModal = createPromptModal(document.getElementById("prompt-modal"));
+portalWireBackdropClose(drawer, () => drawer.close());
 
 bindStaticControls();
 load();
 
 function bindStaticControls() {
-  document
-    .getElementById("refresh")
-    .addEventListener("click", () => api.refreshSnapshot().then(applySnapshot).catch(showError));
+  const refreshEl = document.getElementById("refresh");
+  const refreshIconEl = refreshEl.querySelector("portal-icon");
+  const refreshSpinnerEl = refreshEl.querySelector(".spinner");
+  refreshEl.addEventListener("click", () => {
+    refreshEl.disabled = true;
+    refreshIconEl.hidden = true;
+    refreshSpinnerEl.hidden = false;
+    api.refreshSnapshot().then(applySnapshot).catch(showError).finally(() => {
+      refreshEl.disabled = false;
+      refreshIconEl.hidden = false;
+      refreshSpinnerEl.hidden = true;
+    });
+  });
   nextPrompt.addEventListener("click", openNextPrompt);
   document.getElementById("drawer-close").addEventListener("click", () => drawer.close());
   for (const id of FILTER_IDS) {
@@ -182,9 +194,14 @@ function render() {
     onOpen: openPlan,
     onCopyPath: copyText,
     onCopyContext: (record) => copyText(repositoryContext(record)),
-    onPlanDocsStart: (key) => copyPrompt("start", [key]),
+    onCopyPortableContext: (key) => copyPrompt("review", [key], "portable"),
+    onPlanDocsAction: (key, mode, { portable } = {}) =>
+      copyPrompt(mode, [key], portable ? "portable" : "repository-aware"),
     onPriorityChange: handlePriorityChange,
     planDocsEnabled: snapshot.planDocsPackage.enabled,
+    planDocsPackage: snapshot.planDocsPackage,
+    skillModal,
+    onEnablePackage: enablePackage,
     onError: showError,
   };
   groupsEl.replaceChildren(tmpl.cardGrid(visiblePlans, cardActions, dirtyKeys));
@@ -335,24 +352,40 @@ async function openPlan(key) {
 
 function renderDrawer(doc) {
   const content = tmpl.drawerContent(doc, {
-    onCopyMarkdown: copyText,
     onCopyPath: copyText,
     onCopyRepoContext: (record) => copyText(repositoryContext(record)),
     onCopyPortableContext: (key) => copyPrompt("review", [key], "portable"),
-    onPlanDocsAction: (mode, key) => copyPrompt(mode, [key]),
-    planDocsEnabled: state.snapshot.planDocsPackage.enabled,
+    onPlanDocsAction: (key, mode, { portable } = {}) =>
+      copyPrompt(mode, [key], portable ? "portable" : "repository-aware"),
+    onEnablePackage: enablePackage,
+    planDocsPackage: state.snapshot.planDocsPackage,
+    skillModal,
     onError: showError,
   });
   document.getElementById("drawer-title").textContent = content.title;
   document.getElementById("drawer-path").textContent = content.path;
+  const pathCopyEl = document.getElementById("drawer-path-copy");
+  pathCopyEl.copySource = () => doc.plan.plan.relativePath;
   document.getElementById("drawer-doc").innerHTML = content.html;
   document.getElementById("drawer-meta").replaceChildren(...content.meta);
   document
     .getElementById("drawer-warnings")
     .replaceChildren(...content.warnings.map(tmpl.listItem));
+  document.getElementById("drawer-warnings-section").hidden =
+    content.warnings.length === 0;
   document.getElementById("drawer-tasks").replaceChildren(...tmpl.drawerTaskItems(content.tasks));
-  document.getElementById("drawer-actions").replaceChildren(...content.actions);
-  drawer.open();
+  // Recommended-next CTA (hidden when there's no clear recommendation) + the unified ⋯ menu.
+  const ctaEl = document.getElementById("drawer-cta");
+  if (content.cta) {
+    ctaEl.textContent = content.cta.label;
+    ctaEl.hidden = false;
+    ctaEl.onclick = () => copyPrompt(content.cta.mode, [doc.plan.key], "repository-aware");
+  } else {
+    ctaEl.hidden = true;
+    ctaEl.onclick = null;
+  }
+  document.getElementById("drawer-menu").panelContent = content.menu;
+  drawer.showModal();
 }
 
 async function copyPrompt(actionName, keys, mode = "repository-aware") {

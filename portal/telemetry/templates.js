@@ -1,8 +1,58 @@
 // Markup construction for the Telemetry page: template-clone + slot-fill only, no fetches, no
 // orchestration. Mirrors portal/plans/templates.js and portal/config/templates.js.
 
-import { portalTpl as tpl } from "/portal/shared/api.js";
+import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
 import { fmt } from "./state.js";
+
+// One-off status/message line (e.g. "computing…", "no result", an error). variant matches a CSS
+// class already defined for this page's message styling ("hl", "dim", "spike", "accent"); omit for
+// the plain default.
+export function msgLine(text, variant) {
+  const node = fill(tpl("tpl-msg-line"), { text });
+  if (variant) node.classList.add(variant);
+  return node;
+}
+
+// A ".note" line in the session-detail modal's extra region (spool facts, loading/error states).
+export function noteLine(text, variant) {
+  const node = fill(tpl("tpl-note"), { text });
+  if (variant) node.classList.add(variant);
+  return node;
+}
+
+// The before/after/change/confidence stat-tile row in the marker-comparison panel (renders.js's
+// renderMarkerComparison). ev/sampleSize/confidence come straight off the finding contract.
+export function markerComparisonStats({ ev, sampleSize, confidence, deltaSign, deltaLabel, isRegression }) {
+  const node = fill(tpl("tpl-marker-comparison-stats"), {
+    "before-value": ev.before.value,
+    "before-sub": sampleSize.before + " sessions",
+    "after-value": ev.after.value,
+    "after-sub": sampleSize.after + " sessions",
+    "change-value": deltaLabel,
+    "confidence-value": confidence,
+  });
+  const changeValue = node.querySelector("[data-slot=change-value]");
+  changeValue.classList.toggle("msg-spike", isRegression);
+  return node;
+}
+
+// One "N data quality issue(s)" collapsible list.
+export function qualityIssues(issues) {
+  const node = fill(tpl("tpl-quality-issues"), {
+    summary: issues.length + " data quality " + (issues.length === 1 ? "issue" : "issues"),
+  });
+  const items = node.querySelector("[data-slot=items]");
+  items.append(...issues.map((issue) => fill(tpl("tpl-quality-issue-item"), { text: issue })));
+  return node;
+}
+
+// "open analysis ›" link button; filterState is stashed on the dataset for app.js's delegated
+// click handler to read and hand to the Analysis explorer.
+export function openAnalysisBtn(filterState) {
+  const node = tpl("tpl-open-analysis-btn");
+  node.dataset.filterState = JSON.stringify(filterState);
+  return node;
+}
 
 // One button in the harness filter row (app.js's updateHarnessFilter). harness is "all" or a
 // harness name; both the dataset key and label text.
@@ -11,13 +61,6 @@ export function harnessBtn(harness, active) {
   node.dataset.harness = harness;
   node.textContent = harness;
   node.classList.toggle("active", active);
-  return node;
-}
-
-export function statItem(label, value) {
-  const node = tpl("tpl-stat");
-  node.querySelector("[data-slot=label]").textContent = label;
-  node.querySelector("[data-slot=value]").textContent = value;
   return node;
 }
 
@@ -43,39 +86,49 @@ export function detailRows(rows) {
   });
 }
 
-// Phase 7 upgrade: each insight now also carries confidence + next_action (the actionable finding
-// contract's remaining two layers on top of headline=observation/detail=evidence), plus an optional
-// "open analysis" affordance when the finding has a reproducible analysis_filter_state (plan: "open
-// analysis" action; "reproduces the alert's exact cohort and metric"). All render as extra lines/
-// button under detail so existing severity/headline/detail consumers (CLI's printInsights,
-// insightsSummary) are unaffected — this is additive DOM, not a template replacement. The button
-// carries its filter state on a dataset attribute (JSON) so app.js's delegated click handler can read
-// it without insightRow needing to import the explorer itself.
+// Deterministic reason behind each confidence label, surfaced as the badge's hover tooltip so
+// "strong signal" vs "emerging pattern" is explained where the user reads it. Mirrors deriveInsights'
+// STRONG_SIGNAL_MIN_CALLS threshold (telemetry-insights.mjs): confidence is derived from sample size
+// alone (the finding already passed its rule's evidence bar to appear at all), never LLM judgement.
+const CONFIDENCE_TOOLTIP = {
+  "strong signal":
+    "Strong signal: 40+ contributing calls/sessions back this finding — enough sample to act on it directly.",
+  "emerging pattern":
+    "Emerging pattern: the finding cleared its detection threshold but on fewer than 40 samples — a real lead worth watching, not yet a firm conclusion.",
+};
+
+// Each insight carries the actionable finding contract's layers: headline=observation,
+// detail=evidence, confidence (badge, inline at the end of the detail line), next_action. There is
+// deliberately NO per-row "open analysis" link: the insight findings' analysis_filter_state is only
+// `{ kind }`, which the Analysis explorer's openWithFilterState ignores (it prefills only from
+// metric/marker_id), so a per-row link would just scroll to the same explorer for every row with no
+// per-issue context. A single "open analysis explorer" link lives in the panel footer instead.
+// (Marker-comparison findings in renders.js DO carry metric/marker_id and keep their inline link.)
+// All structure lives in the #tpl-insight <template>; this only clones it and fills/toggles slots.
+// severity/headline/detail still drive the CLI consumers (printInsights, insightsSummary) unchanged.
 export function insightRow(f) {
   const row = tpl("tpl-insight");
   row.classList.add(f.severity);
   row.querySelector("[data-slot=headline]").textContent = f.headline;
   row.querySelector("[data-slot=detail]").textContent = f.detail;
-  const body = row.querySelector(".body");
+
+  const badge = row.querySelector("[data-slot=confidence]");
   if (f.confidence) {
-    const conf = document.createElement("div");
-    conf.className = "dt confidence";
-    conf.textContent = "confidence: " + f.confidence;
-    body.appendChild(conf);
+    const tip = CONFIDENCE_TOOLTIP[f.confidence] || "";
+    badge.textContent = f.confidence;
+    // data-tip drives the JS-positioned hover tooltip (tooltip.js); aria-label carries the same
+    // text for assistive tech. No native `title` — it would stack a second, slower tooltip.
+    badge.dataset.tip = tip;
+    badge.setAttribute("aria-label", tip);
+    badge.classList.add("conf-" + f.confidence.replace(/\s+/g, "-"));
+    badge.hidden = false;
   }
-  if (f.next_action) {
-    const action = document.createElement("div");
-    action.className = "dt next-action";
-    action.textContent = "next: " + f.next_action;
-    body.appendChild(action);
-  }
-  if (f.analysis_filter_state) {
-    const btn = document.createElement("button");
-    btn.className = "linkbtn open-analysis";
-    btn.textContent = "open analysis ›";
-    btn.dataset.filterState = JSON.stringify(f.analysis_filter_state);
-    body.appendChild(btn);
-  }
+
+  const nextLine = row.querySelector("[data-slot=next-line]");
+  const hasNext = Boolean(f.next_action);
+  if (hasNext) row.querySelector("[data-slot=next-action]").textContent = f.next_action;
+  nextLine.hidden = !hasNext;
+
   return row;
 }
 

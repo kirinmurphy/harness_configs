@@ -12,7 +12,6 @@
 
 import * as api from "./api.js";
 import * as tmpl from "./templates.js";
-import { portalEl as el } from "/portal/shared/api.js";
 
 export function createAnalysisExplorer() {
   const metricSelect = document.getElementById("explorer-metric");
@@ -66,7 +65,7 @@ export function createAnalysisExplorer() {
       const next = currentMarkers.map((m) => m.marker_id).join(",");
       if (cur !== next) {
         markerSelect.replaceChildren(
-          el("option", { value: "" }, "select a marker…"),
+          tmpl.selectOption("", "select a marker…"),
           ...currentMarkers.map((m) => tmpl.markerOption(m)),
         );
       }
@@ -89,13 +88,13 @@ export function createAnalysisExplorer() {
 
   async function run() {
     const metric = metricSelect.value;
-    if (!metric) { resultEl.replaceChildren(el("p", { style: "color:var(--dim)" }, "choose a metric first")); return; }
-    resultEl.replaceChildren(el("p", { style: "color:var(--dim)" }, "computing…"));
+    if (!metric) { resultEl.replaceChildren(tmpl.msgLine("choose a metric first", "msg-dim")); return; }
+    resultEl.replaceChildren(tmpl.msgLine("computing…", "msg-dim"));
     try {
       let response;
       if (mode === "marker") {
         const markerId = markerSelect.value;
-        if (!markerId) { resultEl.replaceChildren(el("p", { style: "color:var(--dim)" }, "choose a marker first")); return; }
+        if (!markerId) { resultEl.replaceChildren(tmpl.msgLine("choose a marker first", "msg-dim")); return; }
         response = await api.fetchTelemetryAnalysis({ metric, markerId });
       } else {
         const cohortA = aHarnessSelect.value ? { harnesses: [aHarnessSelect.value] } : {};
@@ -104,7 +103,7 @@ export function createAnalysisExplorer() {
       }
       renderResult(response.finding);
     } catch (err) {
-      resultEl.replaceChildren(el("p", { style: "color:var(--spike)" }, "analysis failed: " + ((err && err.message) || err)));
+      resultEl.replaceChildren(tmpl.msgLine("analysis failed: " + ((err && err.message) || err), "msg-spike"));
     }
   }
 
@@ -112,23 +111,23 @@ export function createAnalysisExplorer() {
   // contract (observation/evidence/confidence/interpretation/next_action), or the simpler two-cohort
   // value+sample-size comparison (no marker to split around, so no before/after language applies).
   function renderResult(finding) {
-    if (!finding) { resultEl.replaceChildren(el("p", { style: "color:var(--dim)" }, "no result")); return; }
+    if (!finding) { resultEl.replaceChildren(tmpl.msgLine("no result", "msg-dim")); return; }
     const rows = [];
     if (finding.observation) {
       // Marker-relative shape: same contract renderMarkerComparison() already knows how to show —
       // reuse the same plain-text layout here so the two panels read consistently.
-      rows.push(el("p", { class: "hl" }, finding.observation));
-      rows.push(el("p", { style: "color:var(--dim)" },
+      rows.push(tmpl.msgLine(finding.observation, "hl"));
+      rows.push(tmpl.msgLine(
         "confidence: " + finding.confidence
         + " · before: " + finding.sample_size.before + " sessions"
-        + " · after: " + finding.sample_size.after + " sessions"));
-      if (finding.interpretation) rows.push(el("p", {}, "interpretation (inference): " + finding.interpretation.text));
-      if (finding.next_action) rows.push(el("p", { style: "color:var(--accent)" }, "next action: " + finding.next_action));
-      if (finding.data_quality_issues?.length) rows.push(el("p", { style: "color:var(--dim)" }, "data quality: " + finding.data_quality_issues.join("; ")));
+        + " · after: " + finding.sample_size.after + " sessions", "msg-dim"));
+      if (finding.interpretation) rows.push(tmpl.msgLine("interpretation (inference): " + finding.interpretation.text));
+      if (finding.next_action) rows.push(tmpl.msgLine("next action: " + finding.next_action, "msg-accent"));
+      if (finding.data_quality_issues?.length) rows.push(tmpl.msgLine("data quality: " + finding.data_quality_issues.join("; "), "msg-dim"));
     } else {
       // Two-cohort shape: metric value + sample size per cohort, correlation-only.
-      rows.push(el("p", { class: "hl" }, `${finding.metric}: cohort A = ${fmtValue(finding.cohort_a.value)} (${finding.cohort_a.sessions} sessions), cohort B = ${fmtValue(finding.cohort_b.value)} (${finding.cohort_b.sessions} sessions)`));
-      rows.push(el("p", { style: "color:var(--dim)" }, "correlation only — no causal claim"));
+      rows.push(tmpl.msgLine(`${finding.metric}: cohort A = ${fmtValue(finding.cohort_a.value)} (${finding.cohort_a.sessions} sessions), cohort B = ${fmtValue(finding.cohort_b.value)} (${finding.cohort_b.sessions} sessions)`, "hl"));
+      rows.push(tmpl.msgLine("correlation only — no causal claim", "msg-dim"));
     }
     resultEl.replaceChildren(...rows);
   }

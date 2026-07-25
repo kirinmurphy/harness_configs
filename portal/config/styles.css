@@ -1,11 +1,10 @@
 /* Palette, reset, and header/nav/footer/theme-toggle chrome live in /portal/shared/base.css.
  * This file holds only config-page-specific styles. */
 main {
-  padding: 20px;
+  padding-top: 20px;
+  padding-bottom: 20px;
   display: grid;
   gap: 16px;
-  max-width: 960px;
-  margin: 0 auto;
   grid-template-columns: 1fr;
 }
 .panel.wide {
@@ -123,14 +122,12 @@ main {
   gap: 8px;
   flex-wrap: wrap;
 }
-/* token-cost warnings above the agent files grid */
-.token-warnings {
+/* token-cost warnings above the agent files grid. Callout chrome (border/bg/padding/icon) is now
+   owned by the shared <portal-notice> wrapper (portal/shared/base.css); this only lays out the
+   title + list inside it. */
+.token-warnings-body {
   display: grid;
   gap: 8px;
-  padding: 12px 14px;
-  border: 1px solid var(--warn-line, var(--warn));
-  border-radius: 6px;
-  background: var(--warn-bg, transparent);
 }
 .token-warnings-title {
   margin: 0;
@@ -710,9 +707,10 @@ main {
 .text-link:hover {
   color: var(--ink);
 }
-/* modal — chrome classes (.modal-head/.modal-title/.modal-path/.modal-close/.modal-body) live in
- * base.css, shared with /plans' #skill-modal. dialog#config-modal box styling and .modal-footer
- * stay here — footer is Config-only (skill-modal has no footer actions). */
+/* modal — chrome classes (.modal-head/.modal-title/.modal-path/.modal-body) and
+ * <portal-close-button> live in base.css, shared with /plans' #skill-modal. dialog#config-modal
+ * box styling and .modal-footer stay here — footer is Config-only (skill-modal has no footer
+ * actions). */
 dialog#config-modal {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -739,7 +737,7 @@ dialog#config-modal .modal-head {
   gap: 8px;
   flex-wrap: wrap;
 }
-.modal-head-main .modal-close {
+.modal-head-main portal-close-button {
   margin-left: auto;
 }
 dialog#config-modal .modal-path {

@@ -9,9 +9,14 @@
  */
 :root {
   color-scheme: dark;
-  --bg: #0d1117;
-  --panel: #12171e;
-  --line: #2d333b;
+  /* Background layer scale: --bg (page base) < --panel (cards/sections) < --raised (hover/
+   * highlight/nested-within-a-panel surfaces). Each step must read as visually distinct from its
+   * neighbor at a glance — don't reach for a bare color-mix() tint when one of these three fits. */
+  --bg: #0b0f14;
+  --panel: #1a212b;
+  --raised: #262f3c;
+  --neutral-tint: #7c8794;
+  --line: #37404b;
   --ink: #e6edf3;
   --dim: #a3adb8;
   --desc-dim: #c3cad3;
@@ -34,8 +39,19 @@
   --badge-cmd-line: #238636;
   --badge-cmd-bg: #0d2214;
   --knob: #fff;
-  --warn-line: #5a4a1a;
-  --warn-bg: #17150d;
+  --warn-line: #7a641f;
+  --warn-bg: #241f0e;
+  /* Notice/callout tints — subtle border+bg pairs per severity, tuned like --warn-line/--warn-bg
+   * so the shared <portal-notice> frames content without shouting. warning reuses --warn-*. */
+  --alert-line: #6e2420;
+  --alert-bg: #2a1110;
+  --info-line: #37404b;
+  --info-bg: #141a22;
+  --success-line: #1f5c2e;
+  --success-bg: #0e2113;
+  /* "next action" text on the tokens insight rows — a lightened accent, pushed toward white in
+   * dark mode (and toward dark in light mode below) so it reads as a soft emphasis, not a link. */
+  --next-ink: #c7dbff;
   --code-bg: #010409;
   --code-ink: #d2a8ff;
   --code-inline-bg: rgba(255, 255, 255, 0.04);
@@ -77,9 +93,14 @@
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #ffffff;
-  --panel: #f6f8fa;
-  --line: #d0d7de;
+  /* Light mode shifts the dark-mode layer order (bg darkest → panel → highlight), it does not
+     invert it: the page base is a soft gray, content sections sit LIGHTER (white) on top, and
+     warning surfaces are the most prominent. --raised is a touch darker than the page for hover. */
+  --bg: #e7eaee;
+  --panel: #ffffff;
+  --raised: #dbe0e6;
+  --neutral-tint: #6e7781;
+  --line: #c2cad2;
   --ink: #1f2328;
   --dim: #656d76;
   --desc-dim: #454f58;
@@ -101,7 +122,14 @@
   --badge-cmd-bg: #dafbe1;
   --knob: #ffffff;
   --warn-line: #d4a72c;
-  --warn-bg: #fff8c5;
+  --warn-bg: #fdf3b8;
+  --alert-line: #ffcecb;
+  --alert-bg: #ffebe9;
+  --info-line: #c2cad2;
+  --info-bg: #f2f4f7;
+  --success-line: #aceebb;
+  --success-bg: #e6f6eb;
+  --next-ink: #0a3977;
   --code-bg: #f6f8fa;
   --code-ink: #8250df;
   --code-inline-bg: rgba(27, 31, 36, 0.05);
@@ -155,7 +183,7 @@ select {
 button,
 [data-btn="secondary"] {
   color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 6%, var(--bg));
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 5px;
   padding: var(--space-xs) var(--space-sm);
@@ -164,7 +192,7 @@ button,
 button:hover,
 [data-btn="secondary"]:hover {
   border-color: var(--dim);
-  background: color-mix(in srgb, var(--ink) 10%, var(--bg));
+  background: var(--raised);
 }
 [data-btn="cta"] {
   color: var(--on-cta);
@@ -215,10 +243,17 @@ body {
 }
 
 /* Shared centering wrapper — keeps content readable-width on very wide screens while the parent
- * (header/footer background, page body) stays full-bleed. */
+ * (header/footer background, page body) stays full-bleed. Owns side padding too, so every page's
+ * content column lines up at the same 1200px+20px box instead of each page inventing its own
+ * max-width/padding pair. Elements that already sit inside a padded parent (e.g. .control-panel)
+ * should not add another .inner layer — use .inner directly on the padded parent instead. */
 .inner {
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
+  padding-left: 20px;
+  padding-right: 20px;
+  box-sizing: border-box;
 }
 
 .portal-header .inner {
@@ -231,6 +266,7 @@ body {
 .portal-header .logo-wrapper {
   min-width: 0;
   padding: 0.5rem 1.25rem;
+  padding-left: 0;
 }
 
 .portal-header h1 {
@@ -274,7 +310,7 @@ nav a.active {
 }
 .portal-footer {
   margin-top: 24px;
-  padding: 12px 20px;
+  padding: 12px 0;
   border-top: 1px solid var(--line);
   color: var(--dim);
   font-size: var(--text-2xs);
@@ -300,8 +336,10 @@ nav a.active {
   color: var(--ink);
   border-color: var(--line);
 }
-portal-info-icon {
+portal-info-icon,
+portal-icon {
   display: inline-flex;
+  flex: 0 0 auto;
 }
 .info-icon {
   display: inline-flex;
@@ -574,18 +612,122 @@ dd {
    * text */
   color: var(--dim);
 }
-.modal-close {
+/* <portal-close-button> — the shared X-icon close control (portal/shared/close-button.js). One
+ * component used by every dialog/drawer head instead of each page hand-rolling its own ×/✕/Close
+ * button and CSS class. */
+portal-close-button {
   margin-left: auto;
+  flex-shrink: 0;
+}
+.close-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: 1px solid var(--line);
   color: var(--dim);
   border-radius: 5px;
-  padding: 3px 9px;
+  padding: 5px;
   cursor: pointer;
 }
-.modal-close:hover {
+.close-button:hover {
   color: var(--ink);
   border-color: var(--dim);
+  background: var(--raised);
+}
+/* <portal-copy-button> — the shared copy-to-clipboard control (portal/shared/copy-button.js).
+ * Idle and "Copied!" contents are stacked in the same grid cell (grid-area) so both are always
+ * laid out and the button's intrinsic width already fits the wider of the two — swapping which
+ * one is visible never resizes the button. */
+.copy-button {
+  display: inline-grid;
+  cursor: pointer;
+}
+.copy-button-state {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.copy-button-idle {
+  visibility: visible;
+}
+.copy-button-copied {
+  visibility: hidden;
+  color: var(--ok);
+}
+.copy-button-showing-copied .copy-button-idle {
+  visibility: hidden;
+}
+.copy-button-showing-copied .copy-button-copied {
+  visibility: visible;
+}
+.copy-button:disabled {
+  opacity: 1;
+}
+.copy-button-showing-copied {
+  border-color: var(--ok);
+}
+/* <portal-menu-button> — shared anchored-popover trigger (portal/shared/menu-button.js). Panel
+ * content is caller-supplied (unlike option-dropdown's fixed option list), used for the plan
+ * drawer's Copy menu and Actions popup. */
+portal-menu-button {
+  display: inline-block;
+  position: relative;
+}
+.menu-button-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.menu-button-chevron {
+  color: var(--dim);
+}
+.menu-button-panel {
+  position: fixed;
+  z-index: 30;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px var(--modal-shadow);
+  padding: 6px;
+  min-width: 220px;
+  max-width: min(420px, 90vw);
+  /* max-height is set inline by positionPopoverPanel (popover-position.js) so the far edge stays
+     on-screen; scroll internally past that. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.menu-button-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  padding: 7px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.menu-button-item:hover {
+  background: var(--raised);
+}
+.menu-button-item-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--dim);
+}
+.menu-button-item-body {
+  display: grid;
+  gap: 2px;
+}
+.menu-button-item-desc {
+  color: var(--desc-dim);
+  font-size: var(--text-2xs);
 }
 .modal-body {
   overflow: auto;
@@ -604,14 +746,17 @@ dd {
  * A page's own stylesheet still owns everything INSIDE a .control-panel-row — this only owns the
  * strip's background/border/outer spacing. */
 .control-panel {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   border: none;
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, #808080 16%, var(--panel));
+  background: color-mix(in srgb, var(--neutral-tint) 16%, var(--panel));
   border-radius: 0;
   width: 100%;
   display: grid;
   gap: 10px;
-  padding: 12px 20px;
+  padding: 12px 0;
 }
 .control-panel-row {
   display: flex;
@@ -633,4 +778,74 @@ dd {
   .portal-updated {
     margin-left: auto;
   } */
+}
+
+/* Shared JS-positioned tooltip bubble (portal/shared/tooltip.js). Fixed to the viewport; tooltip.js
+ * sets top/left clamped so it never crosses the screen edges. */
+.portal-tooltip {
+  position: fixed;
+  z-index: 60;
+  max-width: 260px;
+  background: var(--tooltip-bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  box-shadow: 0 4px 16px var(--tooltip-shadow);
+  pointer-events: none;
+}
+.portal-tooltip[hidden] {
+  display: none;
+}
+
+/* Shared notification chrome — the <portal-notice> wrapper (portal/shared/notice.js). Theme only:
+ * a subtle per-variant border + background tint and an optional leading icon. Content is slotted by
+ * the caller. Variant class (.notice-alert/-warning/-info/-success) is set by the element. */
+.portal-notice {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-start;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--info-line);
+  background: var(--info-bg);
+  border-radius: 6px;
+  color: var(--ink);
+}
+.portal-notice > [data-notice-icon] {
+  flex: none;
+  display: inline-flex;
+  margin-top: 1px;
+}
+/* The slotted content should take the remaining width so multi-line bodies wrap cleanly next to
+ * the icon rather than being squeezed. Direct children other than our own icon node. */
+.portal-notice > :not([data-notice-icon]) {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.portal-notice.notice-alert {
+  border-color: var(--alert-line);
+  background: var(--alert-bg);
+}
+.portal-notice.notice-alert > [data-notice-icon] {
+  color: var(--spike);
+}
+.portal-notice.notice-warning {
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+}
+.portal-notice.notice-warning > [data-notice-icon] {
+  color: var(--warn);
+}
+.portal-notice.notice-info {
+  border-color: var(--info-line);
+  background: var(--info-bg);
+}
+.portal-notice.notice-success {
+  border-color: var(--success-line);
+  background: var(--success-bg);
+}
+.portal-notice.notice-success > [data-notice-icon] {
+  color: var(--ok);
 }

@@ -1,6 +1,6 @@
 ---
 id: user-managed-packages-and-add-workflows
-priority: none
+priority: low
 next_action: Fill in the next concrete task.
 blocked_by: []
 depends_on: []

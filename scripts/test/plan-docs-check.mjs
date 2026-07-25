@@ -421,6 +421,36 @@ Run targeted checks.
   assert.equal(portalSnapshot.plans[0].absolutePath, undefined);
   assert.equal(portalSnapshot.plans[0].repository.root, undefined);
 
+  // CLI-boundary check: updatePlanLifecycle/updatePlanPriority via scripts/cli/plans.mjs (not the
+  // domain module directly) must strip absolutePath/repository.root from the returned record,
+  // exactly like a full snapshot does — the doc's "public responses do not expose absolute paths"
+  // requirement applies at this boundary, not just to buildPlanSnapshot's output.
+  const noPriorityCliRecord = portalSnapshot.plans.find((item) => item.plan.id === "no-priority-plan");
+  const lifecycleCliCheck = spawnSync(process.execPath, [
+    "-e",
+    `import('./scripts/cli/plans.mjs').then(async (m) => {
+      const result = m.updatePlanLifecycle({
+        id: ${JSON.stringify(noPriorityCliRecord.plan.id)},
+        key: ${JSON.stringify(noPriorityCliRecord.key)},
+        lifecycle: "active",
+        expectedLifecycle: ${JSON.stringify(noPriorityCliRecord.plan.lifecycle)},
+        mtimeMs: ${noPriorityCliRecord.mtimeMs},
+      });
+      process.stdout.write(JSON.stringify(result));
+    })`,
+  ], {
+    cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".."),
+    env: { ...process.env, ROBOREPO_STATE_ROOT: stateRoot, ROBOREPO_PLAN_ROOTS: projects },
+    encoding: "utf8",
+  });
+  assert.equal(lifecycleCliCheck.status, 0, lifecycleCliCheck.stderr);
+  const lifecycleCliResult = JSON.parse(lifecycleCliCheck.stdout);
+  assert.equal(lifecycleCliResult.change.newValue, "active");
+  assert.equal(lifecycleCliResult.record.plan.lifecycle, "active");
+  assert.equal(lifecycleCliResult.record.absolutePath, undefined, "CLI-layer lifecycle result must not expose absolutePath");
+  assert.equal(lifecycleCliResult.record.repository.root, undefined, "CLI-layer lifecycle result must not expose repository.root");
+  assert.ok(fs.existsSync(path.join(repo, "docs", "plans", "active", "no-priority.md")));
+
   // Regression: planDocsPackage.enabled must track the package's real live-enabled state
   // (buildPackageLiveState, same source config.mjs's readConfigSnapshot uses), not the raw
   // catalog entry — the catalog entry never carries a `.status`/`.catalogStatus` field at all, so

@@ -4,8 +4,25 @@
 // buildPlansPrompt, updatePlanSettings, refreshPlans come from telemetry.mjs's wiring).
 import { send, readJsonBody } from "./portal-routes-http.mjs";
 
+// Serializes a domain error (see modules/plan-docs/index.mjs's domainError helper) into the
+// structured { error: { code, message, resolution, details } } shape the client's portalPostJson
+// preserves. Falls back to a plain 400 for any error that isn't domain-shaped (shouldn't happen
+// once every plan-docs throw site uses domainError, but keeps the route defensive).
+function sendDomainError(res, error) {
+  const status = Number.isInteger(error?.status) ? error.status : 400;
+  const body = {
+    error: {
+      code: error?.code || "INVALID_CHANGE",
+      message: String(error?.message || error),
+      resolution: error?.resolution,
+      details: error?.details,
+    },
+  };
+  send(res, status, "application/json", JSON.stringify(body));
+}
+
 export function handlePlansApi(req, res, urlPath, qs, handlers) {
-  const { loadPlans, loadPlanDocument, buildPlansPrompt, updatePlanSettings, updatePlanPriority, refreshPlans } = handlers;
+  const { loadPlans, loadPlanDocument, buildPlansPrompt, updatePlanSettings, updatePlanPriority, updatePlanLifecycle, refreshPlans } = handlers;
 
   if (urlPath === "/api/plans") {
     send(res, 200, "application/json", JSON.stringify(loadPlans()));
@@ -48,8 +65,18 @@ export function handlePlansApi(req, res, urlPath, qs, handlers) {
       try {
         send(res, 200, "application/json", JSON.stringify(updatePlanPriority(body || {})));
       } catch (error) {
-        const status = error?.code === "CONFLICT" ? 409 : 400;
-        send(res, status, "application/json", JSON.stringify({ error: String(error?.message || error) }));
+        sendDomainError(res, error);
+      }
+    });
+    return true;
+  }
+  if (req.method === "POST" && urlPath === "/api/plans/lifecycle") {
+    readJsonBody(req, (body, err) => {
+      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
+      try {
+        send(res, 200, "application/json", JSON.stringify(updatePlanLifecycle(body || {})));
+      } catch (error) {
+        sendDomainError(res, error);
       }
     });
     return true;

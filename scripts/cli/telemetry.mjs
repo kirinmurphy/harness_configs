@@ -20,7 +20,7 @@ import { readAppendedLines } from "./jsonl-tail.mjs";
 import { startPortalServer } from "./portal-server.mjs";
 import { readConfigSnapshot, loadConfigSource } from "./config.mjs";
 import { mutatePackage, setSkillInstalled, setBehaviorBucket, setCommandBucket } from "./config-mutate.mjs";
-import { loadPlansSnapshot, loadPlanDocument, buildPlansPrompt, updatePlanSettings, updatePlanPriority, refreshPlans } from "./plans.mjs";
+import { loadPlansSnapshot, loadPlanDocument, buildPlansPrompt, updatePlanSettings, updatePlanPriority, updatePlanLifecycle, refreshPlans } from "./plans.mjs";
 import {
   loadLocalhosterSnapshot,
   loadLocalhosterHistory,
@@ -764,6 +764,7 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     buildPlansPrompt: (params) => buildPlansPrompt(params),
     updatePlanSettings: (params) => updatePlanSettings(params),
     updatePlanPriority: (params) => updatePlanPriority(params),
+    updatePlanLifecycle: (params) => updatePlanLifecycle(params),
     refreshPlans: () => refreshPlans(),
     loadLocalhoster: () => loadLocalhosterSnapshot(),
     refreshLocalhoster: () => refreshLocalhosterSnapshot(),

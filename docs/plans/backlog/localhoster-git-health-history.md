@@ -1,6 +1,6 @@
 ---
 id: localhoster-git-health-history
-priority: low
+priority: high
 next_action: Implement Git provider, health-state normalization, and bounded JSONL history, consuming the shared resolver from canonical-repository-identity-plan-v2 Phase 1
 blocked_by: []
 depends_on:

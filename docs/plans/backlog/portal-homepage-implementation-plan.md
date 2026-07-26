@@ -1,6 +1,6 @@
 ---
 id: portal-homepage-implementation-plan
-priority: high
+priority: low
 next_action: Fill in the next concrete task.
 blocked_by: []
 depends_on: []

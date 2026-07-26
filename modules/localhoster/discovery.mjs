@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { capabilityForPlatform } from "./capabilities.mjs";
 import { resolveProjectIdentity } from "./identity.mjs";
+import { canonicalRepositoryId, rootId as computeRootId } from "../repositories/identity.mjs";
 import { defaultRunCommand, discoverListenerRecords } from "./listeners.mjs";
 import { originCandidatesForListener } from "./origin.mjs";
 import { probeHttpCandidate } from "./http-probe.mjs";
@@ -30,7 +31,7 @@ export async function discoverInstances(options = {}) {
   const instances = [];
 
   for (const { listener, cwd } of listenerProvider.records) {
-    const identity = cwd
+    const identity = withRepositoryFields(cwd
       ? resolveIdentity(cwd, listener.command, options)
       : {
         identity: `process:unknown:${listener.command}`,
@@ -38,7 +39,7 @@ export async function discoverInstances(options = {}) {
         confidence: "low",
         projectRoot: null,
         evidence: "missing process working directory",
-      };
+      });
     const appSettings = appSettingsForIdentity(settings, identity.identity);
     const candidates = originCandidatesForListener(listener, appSettings?.originPreference);
     pending.push({ listener, identity, candidates, cwd });
@@ -55,6 +56,19 @@ export async function discoverInstances(options = {}) {
   disambiguateAssociationKeys(instances);
 
   return { capabilities, warnings, instances };
+}
+
+// Attach canonical repository fields alongside the existing identity contract. repositoryId is the
+// portable git id (or opaque local id) for git/path roots; null for process-only observations. A
+// worktree resolves to the same repositoryId as its primary clone (readGitRemote reads commondir)
+// while keeping its own rootId so worktree-specific metadata is retained. Additive — existing
+// consumers of {identity, identityKind, confidence, projectRoot, evidence} are unaffected.
+function withRepositoryFields(identity) {
+  return {
+    ...identity,
+    repositoryId: canonicalRepositoryId(identity),
+    rootId: identity.projectRoot ? computeRootId(identity.projectRoot) : null,
+  };
 }
 
 function appSettingsForIdentity(settings, identity) {

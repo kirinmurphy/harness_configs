@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { resolveProjectIdentity, canonicalRepositoryId, providerUrlForRepositoryId } from "../repositories/index.mjs";
 
 export const LIFECYCLES = new Set(["backlog", "active", "completed", "archived"]);
 export const PRIORITIES = new Set(["high", "medium", "low", "none"]);
@@ -294,10 +295,18 @@ function candidateRepository(dir) {
   if (!hasGit && !hasPlans) return null;
   const root = fs.realpathSync(dir);
   const git = gitInfo(root);
+  // Canonical repository identity shared with Localhoster/Telemetry. git repos resolve to their
+  // portable git: id; non-git plan roots get an opaque local: id. The existing content-hash `id`
+  // is retained for back-compat during the migration window (browser filters still key on it until
+  // Phase 4's global scope lands).
+  const resolved = resolveProjectIdentity(root, "plan-docs");
+  const repositoryId = canonicalRepositoryId(resolved);
   return {
     id: stableKey(root),
+    repositoryId,
     name: path.basename(root),
     root,
+    providerUrl: providerUrlForRepositoryId(repositoryId),
     gitHead: git.head,
     branch: git.branch,
     gitAvailable: git.available,
@@ -777,8 +786,10 @@ function stripRepositoryRoot(repository) {
 function publicRepository(repo) {
   return {
     id: repo.id,
+    repositoryId: repo.repositoryId ?? null,
     name: repo.name,
     root: repo.root,
+    providerUrl: repo.providerUrl ?? null,
     gitHead: repo.gitHead,
     branch: repo.branch,
     gitAvailable: repo.gitAvailable,

@@ -37,12 +37,14 @@ export function handleTelemetryApi(req, res, urlPath, qs, handlers) {
     const harness = params.get("harness") || null;
     const model = params.get("model") || null;
     const repo = params.get("repo") || null;
+    // Global repository scope: canonical repository id, orthogonal to the legacy ?repo= label.
+    const repository = params.get("repository") || null;
     const markerId = params.get("marker_id") || null;
     const window = Number.isFinite(rangeMs) && rangeMs > 0 ? { rangeMs, end: Number.isFinite(end) ? end : null } : null;
     // loadAnalysisJson returns the already-serialized report (cached per signature+window+harness+
     // cohort — see telemetry.mjs's cachedAnalysisEntry), so the ~10MB default view is not
     // re-stringified on every request — just written through.
-    send(res, 200, "application/json", loadAnalysisJson(window, harness, { model, repo, markerId }));
+    send(res, 200, "application/json", loadAnalysisJson(window, harness, { model, repo, repository, markerId }));
     return true;
   }
   if (urlPath === "/api/session") {

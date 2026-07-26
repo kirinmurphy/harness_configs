@@ -34,9 +34,9 @@ const SOURCE_EXTS = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".jso
 //     exploratory fallback when no marker is selected").
 //   - compareMetric: metric id for the marker-relative comparison (only used when markerId is set).
 export function analyzeTelemetry(events, options = {}) {
-  const { cohortFilter = null, markers = [], markerId = null, compareMetric = "tokens.total" } = options;
+  const { cohortFilter = null, markers = [], markerId = null, compareMetric = "tokens.total", repositoryHashIndex = null } = options;
   const normalizedFilter = cohortFilter ? normalizeCohortFilter(cohortFilter) : null;
-  const scopedEvents = normalizedFilter ? applyCohortFilter(events, normalizedFilter, { markers }) : events;
+  const scopedEvents = normalizedFilter ? applyCohortFilter(events, normalizedFilter, { markers, repositoryHashIndex }) : events;
   const scopedIndex = indexScopedEvents(scopedEvents);
   const captures = scopedIndex.captures;
   const captureIndex = indexCaptures(captures);

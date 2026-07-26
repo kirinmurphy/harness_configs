@@ -9,6 +9,7 @@ import { handleConfigApi } from "./portal-routes-config.mjs";
 import { handlePlansApi } from "./portal-routes-plans.mjs";
 import { handleLocalhosterApi } from "./portal-routes-localhoster.mjs";
 import { handleTelemetryApi } from "./portal-routes-telemetry.mjs";
+import { handleRepositoriesApi } from "./portal-routes-repositories.mjs";
 
 // Tiny local-only portal server. Binds to loopback only so telemetry/config data never leaves the
 // machine. Stdlib `http` keeps the install dependency-free, matching the rest of the CLI.
@@ -173,13 +174,20 @@ function mutationTokenAllowed(req, token) {
   return req.headers["x-roborepo-portal-token"] === token;
 }
 
+// Any non-read method mutates and must clear the origin+token guard. Today only POST endpoints
+// exist; PATCH was added with the repository API (Phase 4), so the guard covers it too.
+const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
+function isMutation(req) {
+  return MUTATING_METHODS.has(req.method);
+}
+
 // Each handleXApi/handlePortalX function returns true once it has written a response, false if the
 // URL/method didn't match so route() can try the next domain. route() itself only does URL parsing,
 // the origin+token guard, dispatch in order, and the final 404 — no domain-specific logic here.
 function route(req, res, handlers, mutationToken) {
   const [urlPath, qs = ""] = (req.url || "/").split("?");
 
-  if (req.method === "POST" && !originAllowed(req)) {
+  if (isMutation(req) && !originAllowed(req)) {
     return send(
       res,
       403,
@@ -187,7 +195,7 @@ function route(req, res, handlers, mutationToken) {
       JSON.stringify({ error: "cross-origin request rejected" }),
     );
   }
-  if (req.method === "POST" && !mutationTokenAllowed(req, mutationToken)) {
+  if (isMutation(req) && !mutationTokenAllowed(req, mutationToken)) {
     return send(
       res,
       403,
@@ -199,6 +207,7 @@ function route(req, res, handlers, mutationToken) {
   if (handleConfigApi(req, res, urlPath, qs, handlers)) return;
   if (handlePlansApi(req, res, urlPath, qs, handlers)) return;
   if (handleLocalhosterApi(req, res, urlPath, qs, handlers)) return;
+  if (handleRepositoriesApi(req, res, urlPath, qs, handlers)) return;
   if (handlePortalPage(req, res, urlPath, mutationToken)) return;
   if (handlePortalAsset(req, res, urlPath)) return;
   if (handleDocsAsset(req, res, urlPath)) return;

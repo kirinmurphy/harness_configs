@@ -8,6 +8,7 @@ import { classifyCommand, failureSignature } from "./telemetry-classify.mjs";
 import { generateCaptureId } from "./telemetry-schemas/capture-schema-v3.mjs";
 import { inferPhase } from "./telemetry-phase-infer.mjs";
 import { categorizeFile } from "./telemetry-task-infer.mjs";
+import { normalizeGitRemote, localRepositoryIdForRoot } from "../../modules/repositories/index.mjs";
 
 // Minimal-import capture path, split out of telemetry.mjs so the hot hook (fires on every
 // PreToolUse/PostToolUse) doesn't pay to load portal-server/config/presets/telemetry-analyze/
@@ -163,19 +164,40 @@ function parseCaptureArgs(args) {
   return options;
 }
 
+// Cache repo metadata by cwd for the life of the capture process. A single capture resolves one
+// cwd, but the cache keeps the capture path cheap if that ever changes and documents intent (doc
+// §Telemetry capture: "cache working-directory-to-repository resolution").
+const repoMetadataCache = new Map();
+
 function repoMetadata(cwd) {
+  if (repoMetadataCache.has(cwd)) return repoMetadataCache.get(cwd);
   const root = git(cwd, ["rev-parse", "--show-toplevel"]);
   const branch = git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"]);
   const remote = git(cwd, ["remote", "get-url", "origin"]);
   const sha = git(cwd, ["rev-parse", "--short", "HEAD"]);
-  return {
+
+  // Canonical, cross-domain repository reference. Normalizing the remote BEFORE hashing means
+  // equivalent SSH and HTTPS remotes produce the same normalized_remote_hash and the same
+  // repository_id — the correlation the legacy raw remote_hash could never provide. repository_id
+  // is credential- and path-free (git: id, or an opaque local: id derived from the root), so it is
+  // safe to store in the clear. Legacy git_root_hash/remote_hash stay for the migration window.
+  // The local: id realpaths the root so it agrees with resolveProjectIdentity (Localhoster/Plans)
+  // for symlinked repos. The legacy git_root_hash below stays on the RAW toplevel for back-compat.
+  const normalizedRemote = remote ? normalizeGitRemote(remote) : null;
+  const repositoryId = normalizedRemote || (root ? localRepositoryIdForRoot(root) : null);
+
+  const result = {
     label: root ? path.basename(root) : path.basename(cwd),
+    repository_id: repositoryId,
+    normalized_remote_hash: normalizedRemote ? hash(normalizedRemote) : null,
     git_root_hash: root ? hash(root) : null,
     remote_hash: remote ? hash(remote) : null,
     branch: branch || null,
     // Short SHA correlates a spike to the code state it happened on; safe to keep in the clear.
     sha: sha || null,
   };
+  repoMetadataCache.set(cwd, result);
+  return result;
 }
 
 // Tool names whose PostToolUse counts as an "edit completed" for phase inference and intervening-work

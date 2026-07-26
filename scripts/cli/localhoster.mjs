@@ -8,6 +8,7 @@ import {
   loadSettings,
   updateSettings,
 } from "../../modules/localhoster/index.mjs";
+import { recordRepositoryDiscovery } from "./repositories.mjs";
 
 const FRESHNESS_MS = 8000;
 
@@ -42,6 +43,7 @@ export async function refreshLocalhosterSnapshot() {
         discovery.instances = discovery.instances.filter((instance) => !isPortalDuplicate(instance, portal));
         discovery.instances.unshift(portal);
       }
+      recordDiscoveredRepositories(discovery.instances);
       lastSnapshot = buildSnapshot({ discovery, settings, refresh: { state: "idle", startedAt: null, error: null, generation } });
       return lastSnapshot;
     } catch (err) {
@@ -173,6 +175,43 @@ export function printLocalhosterTable(snapshot) {
   console.log(padRow(["Project", "App", "Origin", "Status"], widths));
   console.log(padRow(widths.map((width) => "-".repeat(width)), widths));
   for (const row of rows) console.log(padRow(row, widths));
+}
+
+// Register repositories owning running processes into the shared registry (localhost tracking only
+// — NEVER enables Plans, per the discovery/enrollment separation). Best-effort: a registry failure
+// must never break Localhoster discovery, so each write is guarded and errors are swallowed.
+function recordDiscoveredRepositories(instances) {
+  const seen = new Set();
+  for (const instance of instances || []) {
+    const project = instance.project;
+    const repositoryId = project?.repositoryId;
+    if (!repositoryId || seen.has(repositoryId)) continue;
+    seen.add(repositoryId);
+    try {
+      recordRepositoryDiscovery({
+        repositoryId,
+        kind: repositoryId.startsWith("git:") ? "git" : "local",
+        displayName: displayNameForProject(project),
+        source: "localhoster",
+        evidence: project.identityKind === "git" ? "git-remote" : "cwd-in-git-root",
+        confidence: project.confidence || "medium",
+        localRoot: project.rootId || null,
+        stateRoot,
+      });
+    } catch {
+      // Registry unavailable/corrupt — Localhoster keeps working; the failure surfaces elsewhere
+      // (Phase 4 reports registry errors as a structured health finding).
+    }
+  }
+}
+
+function displayNameForProject(project) {
+  const id = project.repositoryId || "";
+  if (id.startsWith("git:")) return id.split("/").pop() || id;
+  // local: id — fall back to the last path segment of the resolved root when available.
+  const root = project.projectRoot;
+  if (typeof root === "string" && root) return root.replace(/\/+$/, "").split("/").pop() || "repository";
+  return "repository";
 }
 
 function scheduleRefresh() {

@@ -211,7 +211,7 @@ function printUpdateReport(before, after, { verbose = false, installOutput = "" 
 function compareScalar(before, after, label) {
   return before === after
     ? { changed: [], unchanged: [label] }
-    : { changed: [label], unchanged: [] };
+    : { changed: [{ label, verb: "updated" }], unchanged: [] };
 }
 
 function compareEntries(beforeEntries, afterEntries) {
@@ -221,11 +221,12 @@ function compareEntries(beforeEntries, afterEntries) {
   const unchanged = [];
   for (const [key, entry] of after) {
     const previous = before.get(key);
-    if (!previous || previous.digest !== entry.digest) changed.push(entry.label);
+    if (!previous) changed.push({ label: entry.label, verb: "added" });
+    else if (previous.digest !== entry.digest) changed.push({ label: entry.label, verb: "updated" });
     else unchanged.push(entry.label);
   }
   for (const [key, entry] of before) {
-    if (!after.has(key)) changed.push(entry.label);
+    if (!after.has(key)) changed.push({ label: entry.label, verb: "removed" });
   }
   return { changed, unchanged };
 }
@@ -261,9 +262,14 @@ function notableLines(output) {
 }
 
 function printReportGroups(groups, { verbose }) {
-  const changed = unique(groups.flatMap(([, group]) => group.changed));
+  const changed = uniqueChanges(groups.flatMap(([, group]) => group.changed));
   const unchanged = unique(groups.flatMap(([, group]) => group.unchanged));
-  console.log(`  changed: ${changed.length ? changed.join(", ") : "none"}`);
+  if (changed.length) {
+    console.log("  changed:");
+    for (const { label, verb } of changed) console.log(`    - ${verb} ${label}`);
+  } else {
+    console.log("  changed: none");
+  }
   if (verbose && unchanged.length) {
     console.log(`  unchanged: ${unchanged.join(", ")}`);
   } else if (!verbose && unchanged.length) {
@@ -273,6 +279,11 @@ function printReportGroups(groups, { verbose }) {
 
 function unique(values) {
   return [...new Set(values)].sort();
+}
+
+function uniqueChanges(entries) {
+  const byLabel = new Map(entries.map((entry) => [entry.label, entry]));
+  return [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function printLocalConfigRepairHint() {

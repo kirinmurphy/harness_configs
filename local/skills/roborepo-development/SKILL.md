@@ -33,7 +33,7 @@ schema, resource-type validation depth, apply/reconcile behavior, and the comple
 | Question | Doc |
 |----------|-----|
 | Symlink map, sync flow, two skill layers, client utilities | `docs/reference/services/architecture.md` |
-| The current `roborepo` CLI surface | `docs/reference/services/roborepo-cli.md`, `manifests/platform/cli-commands.json` |
+| The current `roborepo` CLI surface | `docs/reference/services/roborepo-cli.md`, `manifests/platform/cli/command-definitions/**`, `manifests/platform/cli/removed.json` |
 | Detailed CLI internals and install/PATH notes | `docs/reference/services/roborepo.md` |
 | Conflict / collision behavior on install | `docs/reference/internal/config-collision-handling.md` |
 | Rules generation + layering | `docs/reference/internal/rules-parity-and-layering.md` |
@@ -108,12 +108,14 @@ Everything else (the two symlink levels, the layer table) lives in
 
 ## The `roborepo` CLI (the single consumer front door)
 
-`roborepo` is the ONE command a consumer runs. `scripts/cli/main.mjs` is a thin orchestrator
-(usage, menu, dispatch); user-facing command/menu text lives in
-`manifests/platform/cli-commands.json`. Subcommand impls live under `scripts/cli/`; `paths.mjs`
-defines app/workspace/state roots and package mode, while `skill-lib.mjs` holds shared Node
-primitives (zip, prompts, symlink helpers). Bash shim is `bin/roborepo`. No-arg = interactive menu
-(arrow keys + numbered fallback via `selectMenu` in `cli/skill-lib.mjs`).
+`roborepo` is the ONE command a consumer runs. `scripts/cli/main.mjs` is a thin composition root:
+load catalog, resolve command, run adapter. User-facing command metadata lives in schema v2 catalog
+files under `manifests/platform/cli/command-definitions/**`; retired command guidance lives in
+`manifests/platform/cli/removed.json`. Prefer fixing catalog definitions or docs over command
+execution code unless behavior is actually wrong. Subcommand impls live under `scripts/cli/`;
+`paths.mjs` defines app/workspace/state roots and package mode, while `skill-lib.mjs` holds shared
+Node primitives (zip, prompts, symlink helpers). Bash shim is `bin/roborepo`. No-arg = interactive
+menu (arrow keys + numbered fallback via `selectMenu` in `cli/skill-lib.mjs`).
 Subcommands, grouped by category:
 
 - `skill new` / `skill adopt` / `skill export-to-project` / `skill link-project` / `skill inspect` /
@@ -147,16 +149,24 @@ Client skill behavior details:
   plugin/skill escape hatch). Read only the shared /
   client-local layer — never `local/skills/`.
 
-Adding a new `roborepo` subcommand: write/extend the module under `scripts/cli/`, export the
-handler, then wire it in `cli/main.mjs` (import + `dispatch()` case + usage line + menu item). Only
-ONE global command exists (`roborepo`), so the old per-command 3-place wiring is gone —
-`install-global-commands.sh`, `doctor.sh`, `verify-install.sh` each reference only `roborepo`.
-MAINTAINER scripts (`render-rules.sh`, `link-skills.sh`, `test-*.sh`) stay OUT of `roborepo`.
+Adding a new `roborepo` subcommand: add or extend the command definition under
+`manifests/platform/cli/command-definitions/**`, point it at the existing execution adapter where
+possible, and only write module code under `scripts/cli/` when the behavior is new. Add replaced or
+removed public commands to `manifests/platform/cli/removed.json` with direct replacement guidance.
+Run `node scripts/test/cli-command-catalog-check.mjs` after catalog edits and
+`node scripts/test/cli-surface-integration-check.mjs` after resolver, adapter, help, menu, or
+retired-command behavior changes. Only ONE global command exists (`roborepo`), so the old
+per-command 3-place wiring is gone — `install-global-commands.sh`, `doctor.sh`,
+`verify-install.sh` each reference only `roborepo`. MAINTAINER scripts (`render-rules.sh`,
+`link-skills.sh`, `test-*.sh`) stay OUT of `roborepo`.
 
-**Tests:** `scripts/test/test-roborepo.sh` smoke-tests the subcommands (skill link-project/prune/
+**Tests:** `scripts/test/cli-command-catalog-check.mjs` validates schema v2 command catalog
+definitions and removed-command mappings. `scripts/test/cli-surface-integration-check.mjs` exercises
+help, namespace fallbacks, retired command guidance, concise/verbose doctor output, and detached
+portal routing. `scripts/test/test-roborepo.sh` smoke-tests the subcommands (skill link-project/prune/
 uninstall/conflict, export-to-project/override/firewall/self-pollution guard, sync-global, inspect,
 native, trigger checks, run, `mcp add/apply`, lifecycle dispatch, menu fallback, package/workspace
-paths) against throwaway temp repos. Run it after touching `cli/main.mjs` or anything under
-`scripts/cli/`. `doctor.sh` also asserts `skill-lib.sh` and `cli/skill-lib.mjs` agree on the skill
-list (parity guard). Use `scripts/test/test-install-collisions.sh --quiet` after installer,
-root-config, link, or collision-flow edits.
+paths) against throwaway temp repos. Run it after behavior changes under `scripts/cli/`. `doctor.sh`
+also asserts `skill-lib.sh` and `cli/skill-lib.mjs` agree on the skill list (parity guard). Use
+`scripts/test/test-install-collisions.sh --quiet` after installer, root-config, link, or
+collision-flow edits.

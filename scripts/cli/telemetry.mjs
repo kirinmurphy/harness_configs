@@ -18,6 +18,7 @@ import { normalizeCohortFilter, applyCohortFilter } from "./telemetry-cohort.mjs
 import { compareAcrossMarker, describeMarkerComparison } from "./telemetry-compare.mjs";
 import { readAppendedLines } from "./jsonl-tail.mjs";
 import { startPortalServer } from "./portal-server.mjs";
+import { computePortalSourceHash } from "./portal-source-hash.mjs";
 import { readConfigSnapshot, loadConfigSource } from "./config.mjs";
 import { mutatePackage, setSkillInstalled, setBehaviorBucket, setCommandBucket } from "./config-mutate.mjs";
 import { loadPlansSnapshot, loadPlanDocument, buildPlansPrompt, updatePlanSettings, updatePlanPriority, updatePlanLifecycle, refreshPlans } from "./plans.mjs";
@@ -1586,6 +1587,15 @@ async function resolvePortalPort(port, { allowPortFallback = false, portExplicit
   const existing = await probePortal(port);
   if (existing.current) return { port, reuse: true, pid: existing.pid };
 
+  if (existing.stale && Number.isInteger(existing.pid)) {
+    if (warn) {
+      console.error(`port ${port} is running a stale portal (pid ${existing.pid}, code changed since it started) — restarting it.`);
+    }
+    try { process.kill(existing.pid, "SIGTERM"); } catch {}
+    await waitForPortToFree(port);
+    return { port, reuse: false };
+  }
+
   if (allowPortFallback || !portExplicit) {
     if (warn) {
       console.error(
@@ -1597,6 +1607,17 @@ async function resolvePortalPort(port, { allowPortFallback = false, portExplicit
 
   console.error(`port ${port} is occupied by a non-current or unhealthy process; stop it or pass --port <n>.`);
   process.exit(1);
+}
+
+// After SIGTERM-ing a stale portal, the socket doesn't necessarily free immediately — poll briefly
+// rather than assuming the very next bind attempt succeeds.
+async function waitForPortToFree(port, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await canBindPort(port)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
 }
 
 function canBindPort(port) {
@@ -1619,10 +1640,15 @@ async function probePortal(port) {
     const data = await res.json();
     const currentPortalDir = path.join(repoRoot, "portal");
     const pid = Number(data?.pid);
-    return {
-      current: data?.ok === true && data?.appRoot === repoRoot && data?.portalDir === currentPortalDir && Number.isInteger(pid),
-      pid,
-    };
+    const samePath = data?.ok === true && data?.appRoot === repoRoot && data?.portalDir === currentPortalDir && Number.isInteger(pid);
+    if (!samePath) return { current: false };
+    // Same repo path, but is it running the code that's actually on disk right now? A detached
+    // server outlives the CLI invocation that spawned it on purpose, so it can easily still be
+    // alive from before a `git pull`/merge changed portal-server.mjs or anything under portal/ —
+    // Node never re-reads those files once loaded. Reusing a stale process would silently keep
+    // serving old code with no visible sign anything is wrong.
+    const stale = typeof data?.sourceHash === "string" && data.sourceHash !== computePortalSourceHash();
+    return { current: !stale, stale, pid };
   } catch {
     return { current: false };
   } finally {

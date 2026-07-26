@@ -3,6 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import crypto from "node:crypto";
 import { repoRoot } from "./paths.mjs";
+import { computePortalSourceHash } from "./portal-source-hash.mjs";
 import { send } from "./portal-routes-http.mjs";
 import { handleConfigApi } from "./portal-routes-config.mjs";
 import { handlePlansApi } from "./portal-routes-plans.mjs";
@@ -13,6 +14,11 @@ import { handleTelemetryApi } from "./portal-routes-telemetry.mjs";
 // machine. Stdlib `http` keeps the install dependency-free, matching the rest of the CLI.
 const LOOPBACK = "127.0.0.1";
 const PORTAL_DIR = path.join(repoRoot, "portal");
+
+// Computed once at startup so a new `serve`/`web` invocation can detect "a portal is already
+// running at this path, but its code is now stale" and restart it instead of reusing it (see
+// resolvePortalPort in telemetry.mjs). See portal-source-hash.mjs for why this exists.
+const SOURCE_HASH = computePortalSourceHash();
 const STATIC_TYPES = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -231,6 +237,7 @@ function handlePortalStatus(req, res, urlPath) {
       pid: process.pid,
       appRoot: repoRoot,
       portalDir: PORTAL_DIR,
+      sourceHash: SOURCE_HASH,
       pages: pageManifest(),
     }),
   );

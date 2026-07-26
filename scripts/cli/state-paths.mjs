@@ -30,6 +30,9 @@ export const roborepoSkillsDir = path.join(roborepoStateDir, "skills");
 // personal choice; the portal/onboard read paths merge this on top before displaying anything.
 export const commandOverridesPath = path.join(roborepoStateDir, "command-overrides.json");
 export const experimentalStatePath = path.join(roborepoStateDir, "experimental.json");
+// Canonical repository registry — machine-local, versioned. modules/repositories owns the atomic
+// read/write; this is just the resolved path (respects ROBOREPO_STATE_DIR).
+export const repositoriesRegistryPath = path.join(roborepoStateDir, "repositories", "registry.json");
 export const telemetryDir = path.join(roborepoStateDir, "telemetry");
 export const telemetryDbPath = path.join(telemetryDir, "telemetry.sqlite");
 export const telemetrySpoolDir = path.join(telemetryDir, "spool");

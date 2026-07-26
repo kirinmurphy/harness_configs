@@ -8,7 +8,8 @@
 //   time: { range_ms, end },      // same semantics as telemetry.mjs's filterByWindow window
 //   harnesses: string[],
 //   models: string[],
-//   repos: string[],
+//   repos: string[],              // legacy label match (event.repo.label) — preserved as-is
+//   repository_ids: string[],     // canonical repository ids; composes with repos (Phase 2+)
 //   packages: [{ id, state }],    // state: "active" — matched against config_snapshot's packages
 //   skills: [{ id, state }],      // state: "active" — matched against config_snapshot's skills
 //   operations: string[],         // operation.category values
@@ -19,6 +20,7 @@
 // }
 
 import { readSnapshot } from "./telemetry-schemas/persistence.mjs";
+import { repositoryRefForEvent } from "./telemetry-repository.mjs";
 
 export function emptyCohortFilter() {
   return {
@@ -26,6 +28,7 @@ export function emptyCohortFilter() {
     harnesses: [],
     models: [],
     repos: [],
+    repository_ids: [],
     packages: [],
     skills: [],
     operations: [],
@@ -46,6 +49,7 @@ export function normalizeCohortFilter(partial) {
     harnesses: stringArray(partial.harnesses),
     models: stringArray(partial.models),
     repos: stringArray(partial.repos),
+    repository_ids: stringArray(partial.repository_ids),
     packages: packageStateArray(partial.packages),
     skills: packageStateArray(partial.skills),
     operations: stringArray(partial.operations),
@@ -91,7 +95,7 @@ function snapshotLookup() {
 // match against otherwise) — callers filtering by outcome must pass `markers` so session_id -> status
 // can be resolved; omitting markers while filtering by outcome degrades to "no restriction" rather
 // than silently dropping every capture, since the plan requires never inferring outcomes.
-export function applyCohortFilter(captures, filter, { markers = [] } = {}) {
+export function applyCohortFilter(captures, filter, { markers = [], repositoryHashIndex = null } = {}) {
   const f = filter || emptyCohortFilter();
   const lookupSnapshot = snapshotLookup();
   // An outcomes/task_categories filter with no marker data to check against degrades to "no
@@ -104,6 +108,13 @@ export function applyCohortFilter(captures, filter, { markers = [] } = {}) {
     if (f.harnesses.length && !f.harnesses.includes(event.harness)) return false;
     if (f.models.length && !f.models.includes(event.session?.model)) return false;
     if (f.repos.length && !f.repos.includes(event.repo?.label)) return false;
+    // Canonical repository scope (composes with the legacy label filter). Resolves each event to a
+    // canonical id at read time, preferring the record's own repository_id and falling back to
+    // legacy-hash matching against the registry. Unresolved events never match a specific scope.
+    if (f.repository_ids.length) {
+      const ref = repositoryRefForEvent(event, repositoryHashIndex);
+      if (!ref.repositoryId || !f.repository_ids.includes(ref.repositoryId)) return false;
+    }
     if (f.operations.length && !f.operations.includes(event.operation?.category)) return false;
     if (f.phases.length && !f.phases.includes(event.phase?.name)) return false;
     if (f.snapshot_ids.length && !f.snapshot_ids.includes(event.config_snapshot_id)) return false;
@@ -174,6 +185,7 @@ export function describeCohortFilter(filter) {
   if (f.harnesses.length) parts.push(f.harnesses.join("/"));
   if (f.models.length) parts.push(f.models.join("/"));
   if (f.repos.length) parts.push(f.repos.join("/"));
+  if (f.repository_ids.length) parts.push("repos: " + f.repository_ids.join("/"));
   if (f.packages.length) parts.push("packages: " + f.packages.map((p) => p.id).join(","));
   if (f.skills.length) parts.push("skills: " + f.skills.map((s) => s.id).join(","));
   if (f.operations.length) parts.push("ops: " + f.operations.join(","));
@@ -190,6 +202,7 @@ export function activeFilterCount(filter) {
   count += f.harnesses.length > 0 ? 1 : 0;
   count += f.models.length > 0 ? 1 : 0;
   count += f.repos.length > 0 ? 1 : 0;
+  count += f.repository_ids.length > 0 ? 1 : 0;
   count += f.packages.length > 0 ? 1 : 0;
   count += f.skills.length > 0 ? 1 : 0;
   count += f.operations.length > 0 ? 1 : 0;

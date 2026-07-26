@@ -5,8 +5,8 @@ import path from "node:path";
 import net from "node:net";
 import { spawnSync, spawn } from "node:child_process";
 import { markTelemetrySelected } from "./presets.mjs";
-import { repoRoot } from "./paths.mjs";
-import { portalPidPathForPort, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir } from "./state-paths.mjs";
+import { repoRoot, stateRoot } from "./paths.mjs";
+import { portalPidPathForPort, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir, repositoriesRegistryPath } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { readMarkers, readSnapshot, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
 import { readSourceFile } from "./config-source-lookup.mjs";
@@ -19,9 +19,10 @@ import { normalizeCohortFilter, applyCohortFilter } from "./telemetry-cohort.mjs
 import { compareAcrossMarker, describeMarkerComparison } from "./telemetry-compare.mjs";
 import { readAppendedLines } from "./jsonl-tail.mjs";
 import { startPortalServer } from "./portal-server.mjs";
+import { computePortalSourceHash } from "./portal-source-hash.mjs";
 import { readConfigSnapshot, loadConfigSource } from "./config.mjs";
 import { mutatePackage, setSkillInstalled, setBehaviorBucket, setCommandBucket } from "./config-mutate.mjs";
-import { loadPlansSnapshot, loadPlanDocument, buildPlansPrompt, updatePlanSettings, updatePlanPriority, refreshPlans } from "./plans.mjs";
+import { loadPlansSnapshot, loadPlanDocument, buildPlansPrompt, updatePlanSettings, updatePlanPriority, updatePlanLifecycle, refreshPlans } from "./plans.mjs";
 import {
   loadLocalhosterSnapshot,
   loadLocalhosterHistory,
@@ -30,6 +31,16 @@ import {
   updateLocalhosterSettings,
   setLocalhosterPortalInfo,
 } from "./localhoster.mjs";
+import {
+  loadRepositoriesPayload,
+  loadRepositoryPayload,
+  loadRepositoryAssociations,
+  enrollRepositoryInPlans,
+  patchRepository,
+} from "./repositories.mjs";
+import { loadRegistry, updateRegistry, upsertRepository, recordDiscovery } from "../../modules/repositories/index.mjs";
+import { buildRepositoryHashIndex } from "./telemetry-repository.mjs";
+import { createHash } from "node:crypto";
 import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
 import { mergeHooksInto } from "./hook-composition.mjs";
@@ -765,12 +776,18 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     buildPlansPrompt: (params) => buildPlansPrompt(params),
     updatePlanSettings: (params) => updatePlanSettings(params),
     updatePlanPriority: (params) => updatePlanPriority(params),
+    updatePlanLifecycle: (params) => updatePlanLifecycle(params),
     refreshPlans: () => refreshPlans(),
     loadLocalhoster: () => loadLocalhosterSnapshot(),
     refreshLocalhoster: () => refreshLocalhosterSnapshot(),
     updateLocalhosterSettings: (params) => updateLocalhosterSettings(params),
     loadLocalhosterHistory: (key) => loadLocalhosterHistory(key),
     loadLocalhosterMetadata: (key) => loadLocalhosterMetadata(key),
+    loadRepositories: () => { reconcileTelemetryRepositories(); return loadRepositoriesPayload(); },
+    loadRepository: (params) => loadRepositoryPayload(params),
+    loadRepositoryAssociations: (params) => loadRepositoryAssociations(params),
+    enrollRepositoryInPlans: (params) => enrollRepositoryInPlans(params),
+    patchRepository: (params) => patchRepository(params),
     mutatePackage: (id, enabled) => mutatePackage(id, enabled),
     mutateSkill: (id, enabled) => setSkillInstalled(id, enabled),
     mutateBehavior: (behaviorId, bucket) => setBehaviorBucket(behaviorId, bucket),
@@ -1051,14 +1068,81 @@ const ANALYSIS_CACHE_MAX = 32;
 // Phase 6 additions (model/repo/markerId) layer a normalized cohort filter on top of the existing
 // time/harness window; folded into the cache key so a cohort-filtered view gets its own cached
 // entry instead of colliding with (or evicting) the unfiltered default view.
-function analysisKey(window, harness, { model = null, repo = null, markerId = null } = {}) {
-  return `${spoolSignature()}|${window ? `${window.rangeMs}:${window.end ?? ""}` : "all"}|${harness || "all"}|${model || "all"}|${repo || "all"}|${markerId || "none"}`;
+function analysisKey(window, harness, { model = null, repo = null, repository = null, markerId = null } = {}) {
+  return `${spoolSignature()}|${window ? `${window.rangeMs}:${window.end ?? ""}` : "all"}|${harness || "all"}|${model || "all"}|${repo || "all"}|${repository || "all"}|${markerId || "none"}`;
 }
 
 // Returns the cache entry { json } for the given view, computing (and caching) it on a miss.
+// Registry-derived hash index for read-time legacy telemetry association, cached by spool signature
+// so it is rebuilt only when the spool changes (the registry is small; loading it is cheap, and a
+// missing/corrupt registry degrades to an empty index rather than throwing). Uses the SAME hash as
+// telemetry-capture.mjs (sha256, first 24 hex) so normalized_remote_hash values line up.
+let _repositoryHashIndex = null;
+let _repositoryHashIndexSig = null;
+function captureRepositoryHash(value) {
+  return createHash("sha256").update(String(value)).digest("hex").slice(0, 24);
+}
+// Reconcile telemetry-observed repositories into the registry so `capabilities.telemetry` can be
+// true. Runs at portal repo-list load (NOT on the capture hot path): scans the spool's distinct
+// repository_ids and records one `telemetry` discovery each, batched into a single registry write.
+// Cached by spool signature so it only does work when new events have arrived. Best-effort — a
+// registry failure never breaks the repositories list.
+let _telemetryReconcileSig = null;
+export function reconcileTelemetryRepositories() {
+  const sig = spoolSignature();
+  if (_telemetryReconcileSig === sig) return;
+  _telemetryReconcileSig = sig;
+  const seen = new Map(); // repository_id -> label
+  for (const event of readSpoolEventsCached()) {
+    const id = event?.repo?.repository_id;
+    if (id && !seen.has(id)) seen.set(id, event.repo.label || null);
+  }
+  if (seen.size === 0) return;
+  try {
+    updateRegistry({
+      stateRoot,
+      mutate: (registry) => {
+        let changed = false;
+        for (const [id, label] of seen) {
+          upsertRepository(registry, { id, kind: id.startsWith("git:") ? "git" : "local", displayName: label || id });
+          if (recordDiscovery(registry, id, { source: "telemetry", evidence: "telemetry-session", confidence: id.startsWith("git:") ? "high" : "medium" })) changed = true;
+        }
+        return changed;
+      },
+    });
+  } catch {
+    // Registry unavailable — telemetry capability just stays unreported; not fatal.
+  }
+}
+
+// Signature of the registry file itself (mtime+size), so the hash index is rebuilt only when the
+// REGISTRY changes — not on every spool change (the index is derived from the registry, not the
+// spool). Missing file -> "none" so a first write invalidates.
+function registrySignature() {
+  try {
+    const st = fs.statSync(repositoriesRegistryPath);
+    return `${st.mtimeMs}:${st.size}`;
+  } catch {
+    return "none";
+  }
+}
+function repositoryHashIndexCached() {
+  const sig = registrySignature();
+  if (_repositoryHashIndex && _repositoryHashIndexSig === sig) return _repositoryHashIndex;
+  let registry;
+  try {
+    registry = loadRegistry({ stateRoot });
+  } catch {
+    registry = { repositories: {} };
+  }
+  _repositoryHashIndex = buildRepositoryHashIndex(registry, captureRepositoryHash);
+  _repositoryHashIndexSig = sig;
+  return _repositoryHashIndex;
+}
+
 function cachedAnalysisEntry(window, harness, extra = {}) {
-  const { model = null, repo = null, markerId = null } = extra;
-  const key = analysisKey(window, harness, { model, repo, markerId });
+  const { model = null, repo = null, repository = null, markerId = null } = extra;
+  const key = analysisKey(window, harness, { model, repo, repository, markerId });
   const hit = _analysisCache.get(key);
   if (hit) return hit;
   const allEvents = readSpoolEventsCached();
@@ -1073,8 +1157,14 @@ function cachedAnalysisEntry(window, harness, extra = {}) {
   const availableModels = [...new Set(events.map((e) => e.session?.model).filter(Boolean))].sort();
   const availableRepos = [...new Set(events.map((e) => e.repo?.label).filter(Boolean))].sort();
   const windowed = filterByWindow(events, window);
-  const cohortFilter = (model || repo) ? { models: model ? [model] : [], repos: repo ? [repo] : [] } : null;
-  const report = analyzeTelemetry(windowed, { cohortFilter, markers, markerId, compareMetric: "tokens.total" });
+  // The global repository scope (?repository=<canonical-id>) composes with the legacy per-page
+  // ?repo=<label> filter. When set, legacy events are resolved to a canonical id at read time via a
+  // registry-derived hash index (built lazily; absent/broken registry -> unresolved, never a crash).
+  const cohortFilter = (model || repo || repository)
+    ? { models: model ? [model] : [], repos: repo ? [repo] : [], repository_ids: repository ? [repository] : [] }
+    : null;
+  const repositoryHashIndex = repository ? repositoryHashIndexCached() : null;
+  const report = analyzeTelemetry(windowed, { cohortFilter, markers, markerId, compareMetric: "tokens.total", repositoryHashIndex });
   // Backfill session titles from transcripts: the transcript always has the first user message
   // (turn 1), whereas the spool only captures prompts when hooks fired — so new sessions or
   // sessions started before telemetry was enabled may have no spool title or a mid-chat title.
@@ -1586,6 +1676,15 @@ async function resolvePortalPort(port, { allowPortFallback = false, portExplicit
   const existing = await probePortal(port);
   if (existing.current) return { port, reuse: true, pid: existing.pid };
 
+  if (existing.stale && Number.isInteger(existing.pid)) {
+    if (warn) {
+      console.error(`port ${port} is running a stale portal (pid ${existing.pid}, code changed since it started) — restarting it.`);
+    }
+    try { process.kill(existing.pid, "SIGTERM"); } catch {}
+    await waitForPortToFree(port);
+    return { port, reuse: false };
+  }
+
   if (allowPortFallback || !portExplicit) {
     if (warn) {
       console.error(
@@ -1597,6 +1696,17 @@ async function resolvePortalPort(port, { allowPortFallback = false, portExplicit
 
   console.error(`port ${port} is occupied by a non-current or unhealthy process; stop it or pass --port <n>.`);
   process.exit(1);
+}
+
+// After SIGTERM-ing a stale portal, the socket doesn't necessarily free immediately — poll briefly
+// rather than assuming the very next bind attempt succeeds.
+async function waitForPortToFree(port, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await canBindPort(port)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
 }
 
 function canBindPort(port) {
@@ -1615,10 +1725,15 @@ async function probePortal(port) {
     const data = await getPortalStatus(port);
     const currentPortalDir = path.join(repoRoot, "portal");
     const pid = Number(data?.pid);
-    return {
-      current: data?.ok === true && data?.appRoot === repoRoot && data?.portalDir === currentPortalDir && Number.isInteger(pid),
-      pid,
-    };
+    const samePath = data?.ok === true && data?.appRoot === repoRoot && data?.portalDir === currentPortalDir && Number.isInteger(pid);
+    if (!samePath) return { current: false };
+    // Same repo path, but is it running the code that's actually on disk right now? A detached
+    // server outlives the CLI invocation that spawned it on purpose, so it can easily still be
+    // alive from before a `git pull`/merge changed portal-server.mjs or anything under portal/ —
+    // Node never re-reads those files once loaded. Reusing a stale process would silently keep
+    // serving old code with no visible sign anything is wrong.
+    const stale = typeof data?.sourceHash === "string" && data.sourceHash !== computePortalSourceHash();
+    return { current: !stale, stale, pid };
   } catch {
     return { current: false };
   }

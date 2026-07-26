@@ -714,7 +714,7 @@ portal-menu-button {
   cursor: pointer;
 }
 .menu-button-item:hover {
-  background: var(--raised);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
 }
 .menu-button-item-icon {
   flex-shrink: 0;

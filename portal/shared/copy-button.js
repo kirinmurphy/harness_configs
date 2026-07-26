@@ -9,7 +9,7 @@
 // Both the idle and "Copied!" contents are always in the DOM, stacked in the same grid cell (one
 // hidden via visibility, not `display:none`) so the button's own intrinsic width already accounts
 // for the wider of the two labels — swapping state never reflows or resizes the button.
-import { portalCopyText } from "./api.js";
+import { portalCopyText, portalTpl as tpl, portalFillSlots as fill } from "./api.js";
 
 const COPIED_DURATION_MS = 5000;
 
@@ -24,25 +24,10 @@ class PortalCopyButton extends HTMLElement {
     const label = this.getAttribute("label");
     const iconName = this.getAttribute("icon") || "copy";
 
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "copy-button";
-
-    const idle = document.createElement("span");
-    idle.className = "copy-button-state copy-button-idle";
-    const icon = document.createElement("portal-icon");
-    icon.setAttribute("name", iconName);
-    icon.setAttribute("width", "14");
-    icon.setAttribute("height", "14");
-    idle.append(icon);
-    if (label) idle.append(document.createTextNode(label));
-
-    const copied = document.createElement("span");
-    copied.className = "copy-button-state copy-button-copied";
-    copied.textContent = "Copied!";
-    copied.setAttribute("aria-hidden", "true");
-
-    button.append(idle, copied);
+    const button = fill(tpl("tpl-copy-button"), {
+      icon: { name: iconName },
+      label: label || "",
+    });
     button.addEventListener("click", () => this.#handleClick());
 
     this.button = button;

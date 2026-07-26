@@ -7,6 +7,7 @@
 // face — set as plain HTML attributes for static markup, or as JS properties to change them later.
 // The panel is only mounted while open, matching option-dropdown's re-render-on-toggle approach.
 import { positionPopoverPanel } from "/portal/shared/popover-position.js";
+import { portalTpl as tpl } from "/portal/shared/api.js";
 
 class PortalMenuButton extends HTMLElement {
   connectedCallback() {
@@ -87,10 +88,7 @@ class PortalMenuButton extends HTMLElement {
   }
 
   render() {
-    const trigger = document.createElement("button");
-    trigger.type = "button";
-    trigger.className = "menu-button-trigger";
-    trigger.setAttribute("aria-haspopup", "true");
+    const trigger = tpl("tpl-menu-button-trigger");
     trigger.setAttribute("aria-expanded", String(this._open));
     if (this._icon) {
       const icon = document.createElement("portal-icon");
@@ -114,8 +112,7 @@ class PortalMenuButton extends HTMLElement {
 
     const nodes = [trigger];
     if (this._open && this._panelContent) {
-      const panel = document.createElement("div");
-      panel.className = "menu-button-panel";
+      const panel = tpl("tpl-menu-button-panel");
       panel.append(this._panelContent);
       nodes.push(panel);
     }

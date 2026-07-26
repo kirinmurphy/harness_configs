@@ -1,7 +1,7 @@
 ---
 id: canonical-repository-identity-plan-v2
-priority: high
-next_action: Phase 1 — extract the shared resolver from modules/localhoster/identity.mjs into modules/repositories/ with behavior-equivalence tests
+priority: none
+next_action: Complete — all 4 phases delivered on branch canonical-repository-identity (shared resolver + registry, Plans/Telemetry canonical IDs, discovery + Plans enrollment, browser-safe repository API + global scope contract). Deferred repository UI (global selector, detail page, homepage cards) is out of scope for this plan.
 blocked_by: []
 depends_on: []
 related:

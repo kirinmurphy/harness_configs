@@ -357,8 +357,12 @@ id, heaviest turns surfaced, plus a copy-paste analysis prompt).
 `roborepo web [--detach] [--no-open] [--port <n>]` (default `4317`) starts a dependency-free local
 web portal on `127.0.0.1` and opens `/config` by default (`--detach` forks it into the background and
 writes the PID file; this is what `roborepo web` uses under the hood). Before binding, it probes an
-occupied port through `/api/portal/status`: a current portal is reused/adopted, while an old or
-unhealthy listener on the default port causes the new server to pick an available fallback port.
+occupied port through `/api/portal/status`, which reports a content hash of the served portal
+source: a portal running current code is reused/adopted; one that's still alive but running code
+from before a `git pull`/merge (a detached server outlives the CLI invocation that started it, and
+Node never re-reads changed `.mjs` files) is killed and restarted on the same port instead of
+silently kept; an unhealthy or otherwise-unrecognized listener on the default port causes the new
+server to pick an available fallback port instead.
 It serves the same analysis as JSON and renders it with a self-contained `<canvas>`
 UI: a "what's causing spikes" panel leads with the spike-cause breakdown (each row a behavior to
 change), the recent-usage estimate shows in the header, and the token-delta timeline buckets to one

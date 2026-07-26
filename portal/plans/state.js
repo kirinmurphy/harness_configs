@@ -38,11 +38,22 @@ export const FILTER_LABELS = {
   health: "health",
 };
 
+// Canonical repository key for filtering: prefer the shared canonical repositoryId (so two local
+// clones of one remote resolve to a single filter option), falling back to the legacy content-hash
+// id for any record that has no canonical id yet.
+export function repositoryFilterKey(repo) {
+  return repo.repositoryId || repo.id;
+}
+
 export const FILTER_OPTION_DEFS = {
-  repository: (snapshot) => [
-    ["all", "all repositories"],
-    ...snapshot.repositories.map((repo) => [repo.id, repo.name]),
-  ],
+  repository: (snapshot) => {
+    const seen = new Map();
+    for (const repo of snapshot.repositories) {
+      const key = repositoryFilterKey(repo);
+      if (!seen.has(key)) seen.set(key, repo.name);
+    }
+    return [["all", "all repositories"], ...seen.entries()];
+  },
   priority: () => [
     ["all", "all priority"],
     ...["high", "medium", "low", "none"].map((v) => [v, v]),
@@ -76,7 +87,7 @@ export const FILTER_OPTION_DEFS = {
 // the one being counted, for facet-style "N remaining if you pick this" counts).
 export const FIELD_MATCHERS = {
   repository: (record, value) =>
-    value === "all" || record.repository.id === value,
+    value === "all" || repositoryFilterKey(record.repository) === value,
   priority: (record, value) =>
     value === "all" || record.plan.priority === value,
   blocked: (record, value) => {
@@ -195,4 +206,70 @@ export function urlForLifecycle(lifecycle) {
   const params = new URLSearchParams(location.search);
   params.set(LIFECYCLE_QUERY_KEY, lifecycle);
   return `${location.pathname}?${params.toString()}`;
+}
+
+// --- mutation orchestration helpers ---------------------------------------------------------
+// Pure functions the app.js mutation orchestrator uses to decide what a successful lifecycle or
+// priority change should do to the visible list and which outcome surface (if any) to show.
+
+// A record is visible when it's on the currently selected lifecycle tab AND matches every active
+// filter. Used both before a mutation (to know if a toast/dialog needs to explain a disappearance)
+// and after (to know whether the mutated record is still on screen).
+export function isVisible(record, selectedLifecycle, filters) {
+  return record.plan.lifecycle === selectedLifecycle && matchesFilters(record, filters, null);
+}
+
+// Replaces the record at `oldKey` with `newRecord` in a plans array, returning a new array. A
+// lifecycle move changes `key` (it's derived from the file's path), so this can't be a simple
+// in-place field mutation — the old key must be looked up once, then the whole record swapped for
+// the server's rebuilt one.
+export function replaceRecord(plans, oldKey, newRecord) {
+  return plans.map((record) => (record.key === oldKey ? newRecord : record));
+}
+
+// Determines whether the passive toast's "View {value} plans" filtered-list shortcut should
+// appear: only when the specific filter dimension that changed currently equals the *previous*
+// value (i.e. the mutation is what caused the plan to leave that filtered view). Returns a
+// descriptor the toast controller can render, or null when the shortcut doesn't apply.
+export function filteredListActionFor(change, state) {
+  if (change.property === "lifecycle") {
+    if (state.selectedLifecycle !== change.previousValue) return null;
+    return { type: "lifecycle", value: change.newValue, label: `View ${LIFECYCLE_LABELS[change.newValue]} plans` };
+  }
+  if (change.property === "priority") {
+    if (state.filters.priority !== change.previousValue) return null;
+    return { type: "priority", value: change.newValue, label: `View ${change.newValue} priority plans` };
+  }
+  return null;
+}
+
+// --- blocker/blocking resolution -------------------------------------------------------------
+// Resolved live from the current snapshot on every call (not cached on the record) so a mutation
+// that only rebuilds one record (see updatePlanPriority/movePlanLifecycle) never leaves stale
+// blocker/blocking data behind — the next render always recomputes from state.snapshot.plans.
+// Plan ids are only unique within one repository (see modules/plan-docs/index.mjs's
+// relationshipWarnings), so matches are scoped to the same repository.id as the referencing plan.
+
+// Every blocked_by id, resolved to its plan record when one exists in the same repository.
+// Unresolvable ids (typo, wrong repo, deleted plan) come back with resolved: false and no record.
+export function resolveBlockers(record, allPlans) {
+  return (record.plan.blockers || []).map((id) => {
+    const target = allPlans.find((item) => item.plan.id === id && item.repository.id === record.repository.id);
+    return target
+      ? { id, title: target.plan.title, key: target.key, resolved: true }
+      : { id, title: id, key: null, resolved: false };
+  });
+}
+
+// The reverse of resolveBlockers: every other plan in the same repository whose blocked_by lists
+// this plan's id — i.e. what this plan is currently blocking. Always resolved, since these are
+// found by scanning the snapshot rather than looked up by a possibly-stale id.
+export function resolveBlocking(record, allPlans) {
+  if (!record.plan.id) return [];
+  return allPlans
+    .filter((item) =>
+      item.key !== record.key &&
+      item.repository.id === record.repository.id &&
+      (item.plan.blockers || []).includes(record.plan.id))
+    .map((item) => ({ id: item.plan.id, title: item.plan.title, key: item.key, resolved: true }));
 }

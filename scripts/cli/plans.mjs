@@ -5,6 +5,7 @@ import {
   buildPlanSnapshot,
   buildPrompt,
   findPlanByKey,
+  movePlanLifecycle as movePlanLifecycleInDocs,
   normalizeRootInput,
   readPlanDocument,
   readPlanSettings,
@@ -41,11 +42,26 @@ export function updatePlanSettings({ discoveryRoots }) {
   return loadPlansSnapshot();
 }
 
-export function updatePlanPriority({ key, priority, mtimeMs }) {
+export function updatePlanPriority({ id, key, priority, expectedPriority, mtimeMs, repositoryId }) {
   const snapshot = cachedSnapshot || buildPlanSnapshot({ stateRoot, packageState: planDocsPackageState() });
-  const result = updatePlanPriorityInDocs(snapshot, key, priority, mtimeMs);
+  const result = updatePlanPriorityInDocs(snapshot, { id, key, priority, expectedPriority, mtimeMs, repositoryId });
   cachedSnapshot = null;
-  return result;
+  return publicMutationResult(result);
+}
+
+export function updatePlanLifecycle({ id, key, lifecycle, expectedLifecycle, mtimeMs, repositoryId, skipDestinationValidation }) {
+  const snapshot = cachedSnapshot || buildPlanSnapshot({ stateRoot, packageState: planDocsPackageState() });
+  const result = movePlanLifecycleInDocs(snapshot, { id, key, lifecycle, expectedLifecycle, mtimeMs, repositoryId, skipDestinationValidation });
+  cachedSnapshot = null;
+  return publicMutationResult(result);
+}
+
+// Strips the same private fields (absolutePath, repository.root) from a mutation result's record
+// that publicSnapshot() strips from every plan in a full snapshot — the domain layer's record
+// shape always carries them internally, but they must never cross the HTTP boundary.
+function publicMutationResult(result) {
+  const { absolutePath, repository, ...plan } = result.record;
+  return { change: result.change, record: { ...plan, repository: stripRepositoryRoot(repository) } };
 }
 
 export function refreshPlans() {

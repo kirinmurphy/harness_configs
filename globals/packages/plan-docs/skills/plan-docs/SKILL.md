@@ -7,6 +7,11 @@ description: Use when creating, validating, prioritizing, starting, syncing, rev
 
 Use this skill for managed repository plans stored as Markdown under `docs/plans`.
 
+This skill owns frontmatter, lifecycle folders, and the required-section schema for plan
+documents. For prose quality inside a plan doc's sections — ordering, anti-patterns, how to write
+each section's content — pair with `technical-writing`; it does not know about lifecycle or
+frontmatter, only how to write the words once the shape is known.
+
 ## Mode Selection
 
 If invoked as `/plan-docs` with no mode, return this compact help and stop:

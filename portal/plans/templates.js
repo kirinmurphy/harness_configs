@@ -103,24 +103,19 @@ export function lifecycleTab(lifecycle, count, isSelected, onSelect) {
 }
 
 // cardActions: { onOpen, onCopyPath, onCopyContext, onCopyPortableContext, onPlanDocsAction,
-//                 onPriorityChange, planDocsEnabled, planDocsPackage, skillModal, onEnablePackage,
-//                 onError }
-export function cardGrid(plans, cardActions, dirtyKeys) {
+//                 onStart, onArchive, planDocsEnabled, planDocsPackage, skillModal,
+//                 onEnablePackage, onError }
+export function cardGrid(plans, cardActions) {
   const grid = document.createElement("div");
   grid.className = "card-grid";
-  grid.append(
-    ...plans.map((record) =>
-      planCardElement(record, cardActions, dirtyKeys.has(record.key)),
-    ),
-  );
+  grid.append(...plans.map((record) => planCardElement(record, cardActions)));
   return grid;
 }
 
-function planCardElement(record, cardActions, isDirty) {
+function planCardElement(record, cardActions) {
   const node = document.createElement("plan-card");
   node.record = record;
   node.actions = cardActions;
-  node.dirty = isDirty;
   return node;
 }
 
@@ -199,13 +194,15 @@ function menuItem({ icon = "copy", label, description, run }) {
 }
 
 // The unified ⋯ menu body, shared by the drawer and the card. When plan-docs is installed it shows
-// the lifecycle-valid actions (each copies its prompt), with the recommended one marked and Review
-// carrying a "portable" variant (a self-contained summary for a chat without repo access — the one
-// place portable is meaningful, since the other actions edit repo files). Copy path is always last.
+// the lifecycle-valid actions (each copies its prompt), with Review carrying a "portable" variant
+// (a self-contained summary for a chat without repo access — the one place portable is meaningful,
+// since the other actions edit repo files). Copy path is always last. The recommended action gets
+// its own dedicated CTA button outside this menu (see recommendedCta/cardRecommendedCta) — it is
+// deliberately not called out again inside the menu, to avoid a second, redundant highlight.
 // When plan-docs is NOT installed there are no lifecycle actions, so it falls back to the generic
 // repo-aware / portable prompts plus the enable-skill banner.
 //
-// api: { installed, lifecycle, recommendedMode, planDocsPackage, skillModal, onError,
+// api: { installed, lifecycle, planDocsPackage, skillModal, onError,
 //        copyPath, copyPrompt(mode, {portable}), copyRepoPrompt, copyPortablePrompt, onEnablePackage }
 function planMenuBody(api) {
   const wrap = tpl("tpl-plan-menu");
@@ -222,12 +219,10 @@ function planMenuBody(api) {
   const fallbackActions = wrap.querySelector("[data-slot=fallback-actions]");
 
   if (api.installed) {
-    note.textContent = "Copies a /plan-docs prompt to your clipboard — paste it into an agent chat to run.";
+    note.textContent = "Copies a prompt to run in an agent chat.";
     group.hidden = false;
     for (const [mode, label, description] of actionsForLifecycle(api.lifecycle)) {
-      const isRecommended = mode === api.recommendedMode;
       const row = tpl("tpl-plan-menu-action");
-      row.classList.toggle("is-recommended", isRecommended);
       row.querySelector("[data-slot=item]").append(
         menuItem({ icon: "agent-prompt", label, description, run: run(() => api.copyPrompt(mode, { portable: false })) }),
       );
@@ -243,7 +238,8 @@ function planMenuBody(api) {
     }
   } else {
     // No lifecycle actions available — offer the generic prompts the actions would otherwise cover.
-    note.textContent = "Enable the Plan Docs skill for lifecycle actions (start, sync, review…). For now, copy a generic prompt:";
+    note.textContent = "Enable Plan Docs for lifecycle actions. For now:";
+    fallbackActions.hidden = false;
     fallbackActions.append(
       menuItem({ icon: "agent-prompt", label: "Repo-aware prompt", description: "For an agent that already has this repo open", run: run(() => api.copyRepoPrompt()) }),
       menuItem({ icon: "agent-prompt", label: "Portable prompt", description: "Self-contained — works without repo access", run: run(() => api.copyPortablePrompt()) }),
@@ -255,9 +251,9 @@ function planMenuBody(api) {
   );
 
   if (api.installed === false && api.planDocsPackage) {
-    wrap.querySelector("[data-slot=package-banner]").append(
-      packageBanner(api.planDocsPackage, api.onEnablePackage, api.skillModal),
-    );
+    const banner = wrap.querySelector("[data-slot=package-banner]");
+    banner.hidden = false;
+    banner.append(packageBanner(api.planDocsPackage, api.onEnablePackage, api.skillModal));
   }
   return wrap;
 }
@@ -271,7 +267,6 @@ export function drawerContent(doc, drawerActions) {
   const menu = planMenuBody({
     installed: Boolean(pkg.enabled),
     lifecycle: plan.lifecycle,
-    recommendedMode: recommendedPlanDocsMode(plan),
     planDocsPackage: pkg,
     skillModal: drawerActions.skillModal,
     onError: drawerActions.onError,
@@ -285,16 +280,11 @@ export function drawerContent(doc, drawerActions) {
     title: plan.title,
     path: `${doc.plan.repository.name} / ${plan.relativePath}`,
     html: doc.html,
+    // Lifecycle, priority, next action, review, and task progress now render in the shared
+    // <plan-status> section mounted alongside this metadata list, not as static rows here.
     meta: [
       dtdd("id", plan.id || "(missing)"),
-      dtdd("lifecycle", plan.lifecycle),
-      dtdd("priority", plan.priority),
-      dtdd("next action", plan.nextAction || "(none)"),
-      dtdd("review", plan.reviewState),
-      dtdd(
-        "tasks",
-        `${plan.taskCounts.complete}/${plan.taskCounts.total} complete`,
-      ),
+      dtdd("repository", doc.plan.repository.name),
     ],
     warnings: plan.validation.warnings,
     tasks: doc.parsed?.tasks || [],
@@ -313,7 +303,6 @@ export function cardActionMenu(record, cardActions) {
   menu.panelContent = planMenuBody({
     installed: Boolean(cardActions.planDocsEnabled),
     lifecycle: plan.lifecycle,
-    recommendedMode: recommendedPlanDocsMode(plan),
     planDocsPackage: cardActions.planDocsPackage,
     skillModal: cardActions.skillModal,
     onError: cardActions.onError,
@@ -343,6 +332,32 @@ export function cardRecommendedCta(record, cardActions) {
   return btn;
 }
 
+// Start/Archive lifecycle-mutation shortcuts (see docs/plans/active/plan-lifecycle-toggle-control.md
+// "Actions by current state"). These call the shared lifecycle mutation directly rather than
+// copying a prompt — Start moves Backlog into Active (opening the Active lifecycle-event dialog)
+// or, when already Active, opens the same dialog without mutating. Archive moves Active into
+// Archived with default (non-CTA) button styling since it doesn't open an event dialog.
+export function cardLifecycleActions(record, cardActions) {
+  const lifecycle = record.plan.lifecycle;
+  if (lifecycle !== "backlog" && lifecycle !== "active") return [];
+  const buttons = [];
+  const startBtn = fill(tpl("tpl-recommended-cta"), { label: "Start" });
+  startBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    cardActions.onStart(record);
+  });
+  buttons.push(startBtn);
+  if (lifecycle === "active") {
+    const archiveBtn = fill(tpl("tpl-secondary-action"), { label: "Archive" });
+    archiveBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      cardActions.onArchive(record);
+    });
+    buttons.push(archiveBtn);
+  }
+  return buttons;
+}
+
 export function drawerTaskItems(tasks) {
   if (!tasks.length) return [fill(tpl("tpl-task-item"), { text: "none" })];
   return tasks.map((task) => {
@@ -354,4 +369,14 @@ export function drawerTaskItems(tasks) {
 
 export function dtdd(term, value) {
   return fill(tpl("tpl-dtdd-row"), { term, value });
+}
+
+// One entry in the drawer's Blocked by / Blocking sections (see state.js's resolveBlockers /
+// resolveBlocking) — a link for a resolved blocker, plain unclickable text otherwise. Shares the
+// same tpl-blocker-link/tpl-blocker-unresolved templates as blockers-popover.js's card popup.
+export function blockerLink(blocker, onOpenPlan) {
+  if (!blocker.resolved) return fill(tpl("tpl-blocker-unresolved"), { title: blocker.title });
+  const link = fill(tpl("tpl-blocker-link"), { title: blocker.title });
+  link.addEventListener("click", () => onOpenPlan(blocker.key));
+  return link;
 }

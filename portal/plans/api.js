@@ -15,8 +15,12 @@ export function saveDiscoveryRoots(discoveryRoots) {
   return portalPostJson("/api/plans/settings", { discoveryRoots });
 }
 
-export function updatePlanPriority(key, priority, mtimeMs) {
-  return portalPostJson("/api/plans/priority", { key, priority, mtimeMs });
+export function updatePlanPriority(id, key, priority, expectedPriority, mtimeMs, repositoryId) {
+  return portalPostJson("/api/plans/priority", { id, key, priority, expectedPriority, mtimeMs, repositoryId });
+}
+
+export function updatePlanLifecycle(id, key, lifecycle, expectedLifecycle, mtimeMs, repositoryId, skipDestinationValidation) {
+  return portalPostJson("/api/plans/lifecycle", { id, key, lifecycle, expectedLifecycle, mtimeMs, repositoryId, skipDestinationValidation });
 }
 
 export function fetchPlanDocument(key) {

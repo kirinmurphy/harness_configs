@@ -41,7 +41,25 @@ export function validateCaptureV3(record) {
   if (record.operation != null) validateOperation(record.operation);
   if (record.phase != null) validatePhase(record.phase);
   if (record.intervening != null) validateIntervening(record.intervening);
+  if (record.repo != null) validateRepo(record.repo);
   return record;
+}
+
+// Repository-identity sub-object (telemetry-capture.mjs repoMetadata). All fields optional and
+// privacy-safe: repository_id is a canonical git:/local: id (credential- and path-free);
+// normalized_remote_hash correlates equivalent SSH/HTTPS remotes; git_root_hash/remote_hash are the
+// legacy raw hashes kept for the migration window. Adding the two new fields to the allow-list is
+// what makes strict validation accept them; older records lacking them still validate.
+const REPO_FIELDS = ["label", "repository_id", "normalized_remote_hash", "git_root_hash", "remote_hash", "branch", "sha"];
+function validateRepo(repo) {
+  if (typeof repo !== "object" || Array.isArray(repo)) throw new Error("capture repo must be an object");
+  validateObjectKeys(repo, REPO_FIELDS, "capture repo");
+  if (repo.repository_id != null && (typeof repo.repository_id !== "string" || !/^(git|local):/.test(repo.repository_id))) {
+    throw new Error(`invalid capture repo repository_id: ${repo.repository_id}`);
+  }
+  for (const field of ["label", "normalized_remote_hash", "git_root_hash", "remote_hash", "branch", "sha"]) {
+    if (repo[field] != null && typeof repo[field] !== "string") throw new Error(`capture repo ${field} must be a string`);
+  }
 }
 
 function validateOperation(operation) {

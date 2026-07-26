@@ -3,6 +3,7 @@
   {{HEAD}}
   <body>
     {{CHROME}}
+    {{WIDGET_TEMPLATES}}
     <section id="package-banner" class="package-banner" hidden></section>
     <div id="plans-header" hidden>
       <section class="control-panel control-bar" id="control-bar">
@@ -121,7 +122,14 @@
         ></div>
       </div>
     </div>
-    <div id="toast" class="toast" hidden></div>
+    <div id="toast" class="toast" hidden>
+      <p class="toast-message" data-slot="message"></p>
+      <div class="toast-actions" data-slot="actions"></div>
+    </div>
+    <div id="blockers-popover" class="blockers-popover" hidden role="menu">
+      <p class="blockers-popover-title" data-slot="title"></p>
+      <div class="blockers-popover-list" data-slot="list"></div>
+    </div>
     <main class="inner">
       {{LOADING}}
       <div class="settings" id="settings">
@@ -239,6 +247,50 @@
         </div>
       </div>
     </dialog>
+    <dialog id="lifecycle-event-modal" aria-labelledby="lifecycle-event-modal-title">
+      <div class="modal-head">
+        <span
+          class="modal-title"
+          id="lifecycle-event-modal-title"
+          data-slot="title"
+        ></span>
+        <portal-close-button
+          data-slot="close"
+          aria-label="Close"
+        ></portal-close-button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-note" data-slot="transition-note" hidden></p>
+        <p class="modal-note" data-slot="explanation"></p>
+        <div class="modalactions">
+          <button type="button" data-btn="cta" data-slot="copy-prompt">
+            Copy Start Prompt
+          </button>
+          <button type="button" data-slot="view-plan">View Plan</button>
+        </div>
+        <button type="button" class="revert-action" data-slot="revert" hidden></button>
+      </div>
+    </dialog>
+    <dialog id="lifecycle-error-modal" aria-labelledby="lifecycle-error-modal-title">
+      <div class="modal-head">
+        <span class="modal-title lifecycle-error-title" id="lifecycle-error-modal-title">
+          <portal-icon name="warning" width="20" height="20"></portal-icon>
+          <span data-slot="title"></span>
+        </span>
+        <portal-close-button
+          data-slot="close"
+          aria-label="Close"
+        ></portal-close-button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-note" data-slot="resolution"></p>
+        <ul class="lifecycle-error-details" data-slot="details"></ul>
+        <div class="modalactions">
+          <button type="button" data-btn="cta" data-slot="confirm-action" hidden>Move anyway</button>
+          <button type="button" data-slot="close-action">Cancel</button>
+        </div>
+      </div>
+    </dialog>
     <dialog id="drawer">
       <div class="drawer-head">
         <div>
@@ -270,6 +322,28 @@
           ></portal-menu-button>
         </div>
         <section
+          class="drawer-warnings-section drawer-blockers-section"
+          id="drawer-blocked-by-section"
+          hidden
+        >
+          <h3>
+            <portal-icon name="warning" width="14" height="14"></portal-icon>
+            Blocked by
+          </h3>
+          <div class="drawer-blocker-links" id="drawer-blocked-by-links"></div>
+        </section>
+        <section
+          class="drawer-warnings-section drawer-blockers-section"
+          id="drawer-blocking-section"
+          hidden
+        >
+          <h3>
+            <portal-icon name="warning" width="14" height="14"></portal-icon>
+            Blocking
+          </h3>
+          <div class="drawer-blocker-links" id="drawer-blocking-links"></div>
+        </section>
+        <section
           class="drawer-warnings-section"
           id="drawer-warnings-section"
           hidden
@@ -280,6 +354,7 @@
           </h3>
           <ul id="drawer-warnings"></ul>
         </section>
+        <div id="drawer-status-mount"></div>
         <div class="drawer-grid">
           <section>
             <h3>Metadata</h3>
@@ -365,6 +440,19 @@
         data-slot="label"
       ></button>
     </template>
+    <template id="tpl-secondary-action">
+      <button
+        type="button"
+        class="secondary-action"
+        data-slot="label"
+      ></button>
+    </template>
+    <template id="tpl-blocker-link">
+      <button type="button" class="blockers-popover-item" data-slot="title"></button>
+    </template>
+    <template id="tpl-blocker-unresolved">
+      <span class="blockers-popover-item blockers-popover-item-unresolved" data-slot="title"></span>
+    </template>
     <template id="tpl-menu-item">
       <button type="button" class="menu-button-item">
         <portal-icon
@@ -385,11 +473,11 @@
     </template>
     <template id="tpl-plan-menu">
       <div class="plan-menu">
-        <p class="menu-button-item-desc plan-menu-note" data-slot="note"></p>
+        <p class="plan-menu-note" data-slot="note"></p>
         <div class="plan-menu-group" data-slot="group" hidden></div>
-        <div data-slot="fallback-actions"></div>
+        <div data-slot="fallback-actions" hidden></div>
         <div data-slot="copy-path"></div>
-        <div data-slot="package-banner"></div>
+        <div data-slot="package-banner" hidden></div>
       </div>
     </template>
     <template id="tpl-plan-menu-action">
@@ -434,25 +522,29 @@
             <div class="chips" data-slot="chips"></div>
           </footer>
         </div>
-        <div class="status-section" data-slot="status">
-          <div class="status-state-row">
-            <div class="status-state-chips" data-slot="status-chips">
-              <div class="priority-slot" data-slot="priority"></div>
-              <span class="state-badge" data-slot="state-badge" hidden></span>
-            </div>
-            <span class="meta-line" data-slot="meta"></span>
-          </div>
-          <div class="status-implementation" data-slot="implementation">
-            <div class="status-progress-row">
-              <div class="progress-bar">
-                <div class="progress-fill" data-slot="progress-fill"></div>
-              </div>
-              <span class="progress-label" data-slot="progress-label"></span>
-            </div>
-            <div class="next-line" data-slot="next"></div>
-          </div>
-        </div>
+        <div data-slot="status-mount"></div>
       </article>
+    </template>
+    <template id="tpl-plan-status">
+      <div class="status-section">
+        <div class="status-state-row">
+          <div class="status-state-chips" data-slot="status-chips">
+            <div class="lifecycle-slot" data-slot="lifecycle"></div>
+            <div class="priority-slot" data-slot="priority"></div>
+            <span class="state-badge" data-slot="state-badge" hidden></span>
+          </div>
+          <span class="meta-line" data-slot="meta"></span>
+        </div>
+        <div class="status-implementation" data-slot="implementation">
+          <div class="status-progress-row">
+            <div class="progress-bar">
+              <div class="progress-fill" data-slot="progress-fill"></div>
+            </div>
+            <span class="progress-label" data-slot="progress-label"></span>
+          </div>
+          <div class="next-line" data-slot="next"></div>
+        </div>
+      </div>
     </template>
     <template id="tpl-dtdd-row">
       <div class="dtdd-row">

@@ -3,16 +3,23 @@ import http from "node:http";
 import path from "node:path";
 import crypto from "node:crypto";
 import { repoRoot } from "./paths.mjs";
+import { computePortalSourceHash } from "./portal-source-hash.mjs";
 import { send } from "./portal-routes-http.mjs";
 import { handleConfigApi } from "./portal-routes-config.mjs";
 import { handlePlansApi } from "./portal-routes-plans.mjs";
 import { handleLocalhosterApi } from "./portal-routes-localhoster.mjs";
 import { handleTelemetryApi } from "./portal-routes-telemetry.mjs";
+import { handleRepositoriesApi } from "./portal-routes-repositories.mjs";
 
 // Tiny local-only portal server. Binds to loopback only so telemetry/config data never leaves the
 // machine. Stdlib `http` keeps the install dependency-free, matching the rest of the CLI.
 const LOOPBACK = "127.0.0.1";
 const PORTAL_DIR = path.join(repoRoot, "portal");
+
+// Computed once at startup so a new `serve`/`web` invocation can detect "a portal is already
+// running at this path, but its code is now stale" and restart it instead of reusing it (see
+// resolvePortalPort in telemetry.mjs). See portal-source-hash.mjs for why this exists.
+const SOURCE_HASH = computePortalSourceHash();
 const STATIC_TYPES = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -84,12 +91,23 @@ const LOADING_PARTIAL_PATH = path.join(
 );
 const renderLoading = () => fs.readFileSync(LOADING_PARTIAL_PATH, "utf8");
 
+// <template>s for shared/*.js custom elements (option-dropdown, token-chip, menu-button,
+// copy-button, close-button, notice) — same one-partial-many-pages pattern as {{CHROME}}, since
+// those elements are cloned/instantiated across every page, not just one.
+const WIDGET_TEMPLATES_PARTIAL_PATH = path.join(
+  PORTAL_DIR,
+  "shared",
+  "widget-templates-partial.html",
+);
+const renderWidgetTemplates = () => fs.readFileSync(WIDGET_TEMPLATES_PARTIAL_PATH, "utf8");
+
 const pageHtml = (page, token) =>
   fs
     .readFileSync(path.join(PORTAL_DIR, page.dir, "index.html"), "utf8")
     .replace("{{HEAD}}", renderHead(page))
     .replace("{{CHROME}}", renderChrome())
     .replace("{{LOADING}}", renderLoading())
+    .replace("{{WIDGET_TEMPLATES}}", renderWidgetTemplates())
     .replace(
       "</head>",
       `<meta name="roborepo-portal-token" content="${token}" />\n` +
@@ -156,13 +174,20 @@ function mutationTokenAllowed(req, token) {
   return req.headers["x-roborepo-portal-token"] === token;
 }
 
+// Any non-read method mutates and must clear the origin+token guard. Today only POST endpoints
+// exist; PATCH was added with the repository API (Phase 4), so the guard covers it too.
+const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
+function isMutation(req) {
+  return MUTATING_METHODS.has(req.method);
+}
+
 // Each handleXApi/handlePortalX function returns true once it has written a response, false if the
 // URL/method didn't match so route() can try the next domain. route() itself only does URL parsing,
 // the origin+token guard, dispatch in order, and the final 404 — no domain-specific logic here.
 function route(req, res, handlers, mutationToken) {
   const [urlPath, qs = ""] = (req.url || "/").split("?");
 
-  if (req.method === "POST" && !originAllowed(req)) {
+  if (isMutation(req) && !originAllowed(req)) {
     return send(
       res,
       403,
@@ -170,7 +195,7 @@ function route(req, res, handlers, mutationToken) {
       JSON.stringify({ error: "cross-origin request rejected" }),
     );
   }
-  if (req.method === "POST" && !mutationTokenAllowed(req, mutationToken)) {
+  if (isMutation(req) && !mutationTokenAllowed(req, mutationToken)) {
     return send(
       res,
       403,
@@ -182,6 +207,7 @@ function route(req, res, handlers, mutationToken) {
   if (handleConfigApi(req, res, urlPath, qs, handlers)) return;
   if (handlePlansApi(req, res, urlPath, qs, handlers)) return;
   if (handleLocalhosterApi(req, res, urlPath, qs, handlers)) return;
+  if (handleRepositoriesApi(req, res, urlPath, qs, handlers)) return;
   if (handlePortalPage(req, res, urlPath, mutationToken)) return;
   if (handlePortalAsset(req, res, urlPath)) return;
   if (handleDocsAsset(req, res, urlPath)) return;
@@ -220,6 +246,7 @@ function handlePortalStatus(req, res, urlPath) {
       pid: process.pid,
       appRoot: repoRoot,
       portalDir: PORTAL_DIR,
+      sourceHash: SOURCE_HASH,
       pages: pageManifest(),
     }),
   );

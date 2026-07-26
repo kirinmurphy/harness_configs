@@ -10,6 +10,7 @@
 //   .loading   boolean — disables the trigger, shows a spinner instead of the chevron, closes menu
 //   .disabled  boolean — disables the trigger without implying an in-flight write
 import { positionPopoverPanel } from "/portal/shared/popover-position.js";
+import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
 
 class OptionDropdownElement extends HTMLElement {
   connectedCallback() {
@@ -127,24 +128,15 @@ class OptionDropdownElement extends HTMLElement {
   }
 
   render() {
-    const trigger = document.createElement("button");
-    trigger.type = "button";
-    trigger.className = "dropdown-trigger";
+    const trigger = tpl("tpl-dropdown-trigger");
     trigger.disabled = this._loading || this._disabled;
-    trigger.setAttribute("aria-haspopup", "listbox");
     trigger.setAttribute("aria-expanded", String(this._open));
 
     if (this._loading) {
-      const spinner = document.createElement("span");
-      spinner.className = "spinner";
-      trigger.append(spinner);
+      trigger.append(tpl("tpl-dropdown-spinner"));
     } else {
       trigger.append(this.currentLabel());
-      const chevron = document.createElement("span");
-      chevron.className = "dropdown-chevron";
-      chevron.setAttribute("aria-hidden", "true");
-      chevron.textContent = "▾";
-      trigger.append(chevron);
+      trigger.append(tpl("tpl-dropdown-chevron"));
     }
 
     trigger.addEventListener("click", () => {
@@ -173,16 +165,11 @@ class OptionDropdownElement extends HTMLElement {
     const nodes = [trigger];
 
     if (this._open) {
-      const menu = document.createElement("div");
-      menu.className = "dropdown-menu";
-      menu.setAttribute("role", "listbox");
+      const menu = tpl("tpl-dropdown-menu");
       this.options.forEach(([value, label], index) => {
-        const item = document.createElement("button");
-        item.type = "button";
-        item.className = "dropdown-option" + (index === this._highlighted ? " highlighted" : "");
-        item.setAttribute("role", "option");
+        const item = fill(tpl("tpl-dropdown-option"), { label });
+        item.classList.toggle("highlighted", index === this._highlighted);
         item.setAttribute("aria-selected", String(value === this._value));
-        item.textContent = label;
         item.addEventListener("click", (event) => {
           event.stopPropagation();
           this.select(value);

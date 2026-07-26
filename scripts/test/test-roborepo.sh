@@ -764,7 +764,7 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
   assert "localhoster: GET /localhoster served with token" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/localhoster' | grep -q 'roborepo-portal-token'"
   assert "localhoster: notice template includes docs link target" \
-    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/portal/localhoster/templates.js' | grep -q '/docs/reference/services/localhoster.md'"
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/localhoster' | grep -q '/docs/reference/services/localhoster.md'"
   assert "localhoster: docs markdown route is served" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/docs/reference/services/localhoster.md' | grep -q '^# Localhoster'"
   assert "localhoster: GET snapshot works without token" \
@@ -1451,6 +1451,23 @@ assert "mcp: enabling a built-in MCP package does not record it into the workspa
 
 assert "workspace: built-in conflicts require a typed replace override" \
   node "${repo_root}/scripts/test/workspace-resources-check.mjs"
+
+# Canonical repository identity (modules/repositories): shared resolver extraction, normalization
+# equivalence, worktree/clone roots, versioned registry persistence, aliases, associations,
+# Plans source coverage. See docs/plans/backlog/canonical-repository-identity-plan-v2.md.
+assert "repositories: canonical identity + registry + associations" \
+  node "${repo_root}/scripts/test/repositories-check.mjs"
+
+# Cross-domain discovery recording + server-side Plans enrollment (Phase 3): idempotent discovery,
+# multiple clones/worktrees collapsing to one canonical repo, exact-root enrollment default,
+# enrollment failure leaving the repo unmonitored.
+assert "repositories: discovery recording + Plans enrollment" \
+  node "${repo_root}/scripts/test/repositories-service-check.mjs"
+
+# Browser-safe repository API (Phase 4): summary/detail payloads carry no absolute paths or
+# credentials; route handler dispatches list/detail/associations/patch and 404s unknown ids.
+assert "repositories: browser-safe API contracts" \
+  node "${repo_root}/scripts/test/repositories-api-check.mjs"
 
 # Root config drift VIEW (buildRootConfigView in root-config-view.mjs): the per-harness state the terminal
 # `config root inspect` report and the web /config drift chip both render from — not-installed /

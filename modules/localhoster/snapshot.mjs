@@ -152,6 +152,8 @@ function ensureProject(map, identity, settings, instance) {
       identityKind: instance.project.identityKind,
       confidence: instance.project.confidence,
       evidence: instance.project.evidence,
+      repositoryId: instance.project.repositoryId ?? null,
+      rootId: instance.project.rootId ?? null,
       instances: [],
     });
   }

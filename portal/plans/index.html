@@ -271,6 +271,26 @@
         <button type="button" class="revert-action" data-slot="revert" hidden></button>
       </div>
     </dialog>
+    <dialog id="lifecycle-error-modal" aria-labelledby="lifecycle-error-modal-title">
+      <div class="modal-head">
+        <span class="modal-title lifecycle-error-title" id="lifecycle-error-modal-title">
+          <portal-icon name="warning" width="20" height="20"></portal-icon>
+          <span data-slot="title"></span>
+        </span>
+        <portal-close-button
+          data-slot="close"
+          aria-label="Close"
+        ></portal-close-button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-note" data-slot="resolution"></p>
+        <ul class="lifecycle-error-details" data-slot="details"></ul>
+        <div class="modalactions">
+          <button type="button" data-btn="cta" data-slot="confirm-action" hidden>Move anyway</button>
+          <button type="button" data-slot="close-action">Cancel</button>
+        </div>
+      </div>
+    </dialog>
     <dialog id="drawer">
       <div class="drawer-head">
         <div>
@@ -453,11 +473,11 @@
     </template>
     <template id="tpl-plan-menu">
       <div class="plan-menu">
-        <p class="menu-button-item-desc plan-menu-note" data-slot="note"></p>
+        <p class="plan-menu-note" data-slot="note"></p>
         <div class="plan-menu-group" data-slot="group" hidden></div>
-        <div data-slot="fallback-actions"></div>
+        <div data-slot="fallback-actions" hidden></div>
         <div data-slot="copy-path"></div>
-        <div data-slot="package-banner"></div>
+        <div data-slot="package-banner" hidden></div>
       </div>
     </template>
     <template id="tpl-plan-menu-action">

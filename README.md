@@ -93,6 +93,7 @@ Use these when you want to intentionally start a named workflow.
 | `/plan-docs`          | Create, manage, review, and continue repository plan documents.                     |
 | `/tighten`            | Clean up code against this project's own patterns with specific, anchored callouts. |
 | `/wrap-up`            | End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff prompt for the next chat. |
+| `/technical-writing` | General technical writing guidance for reader-facing docs: doc shapes, section-writing guidance, anti-patterns, and a prose review loop |
 
 **Plain-Language Triggers**: Some named workflows can also be started in ordinary chat: "capture this", "write a case study about this", "make this a durable technical plan", or "tighten this."
 

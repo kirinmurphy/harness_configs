@@ -761,7 +761,7 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
   assert "localhoster: GET /localhoster served with token" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/localhoster' | grep -q 'roborepo-portal-token'"
   assert "localhoster: notice template includes docs link target" \
-    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/portal/localhoster/templates.js' | grep -q '/docs/reference/services/localhoster.md'"
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/localhoster' | grep -q '/docs/reference/services/localhoster.md'"
   assert "localhoster: docs markdown route is served" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/docs/reference/services/localhoster.md' | grep -q '^# Localhoster'"
   assert "localhoster: GET snapshot works without token" \

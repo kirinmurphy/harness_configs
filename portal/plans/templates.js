@@ -194,13 +194,15 @@ function menuItem({ icon = "copy", label, description, run }) {
 }
 
 // The unified ⋯ menu body, shared by the drawer and the card. When plan-docs is installed it shows
-// the lifecycle-valid actions (each copies its prompt), with the recommended one marked and Review
-// carrying a "portable" variant (a self-contained summary for a chat without repo access — the one
-// place portable is meaningful, since the other actions edit repo files). Copy path is always last.
+// the lifecycle-valid actions (each copies its prompt), with Review carrying a "portable" variant
+// (a self-contained summary for a chat without repo access — the one place portable is meaningful,
+// since the other actions edit repo files). Copy path is always last. The recommended action gets
+// its own dedicated CTA button outside this menu (see recommendedCta/cardRecommendedCta) — it is
+// deliberately not called out again inside the menu, to avoid a second, redundant highlight.
 // When plan-docs is NOT installed there are no lifecycle actions, so it falls back to the generic
 // repo-aware / portable prompts plus the enable-skill banner.
 //
-// api: { installed, lifecycle, recommendedMode, planDocsPackage, skillModal, onError,
+// api: { installed, lifecycle, planDocsPackage, skillModal, onError,
 //        copyPath, copyPrompt(mode, {portable}), copyRepoPrompt, copyPortablePrompt, onEnablePackage }
 function planMenuBody(api) {
   const wrap = tpl("tpl-plan-menu");
@@ -217,12 +219,10 @@ function planMenuBody(api) {
   const fallbackActions = wrap.querySelector("[data-slot=fallback-actions]");
 
   if (api.installed) {
-    note.textContent = "Copies a /plan-docs prompt to your clipboard — paste it into an agent chat to run.";
+    note.textContent = "Copies a prompt to run in an agent chat.";
     group.hidden = false;
     for (const [mode, label, description] of actionsForLifecycle(api.lifecycle)) {
-      const isRecommended = mode === api.recommendedMode;
       const row = tpl("tpl-plan-menu-action");
-      row.classList.toggle("is-recommended", isRecommended);
       row.querySelector("[data-slot=item]").append(
         menuItem({ icon: "agent-prompt", label, description, run: run(() => api.copyPrompt(mode, { portable: false })) }),
       );
@@ -238,7 +238,8 @@ function planMenuBody(api) {
     }
   } else {
     // No lifecycle actions available — offer the generic prompts the actions would otherwise cover.
-    note.textContent = "Enable the Plan Docs skill for lifecycle actions (start, sync, review…). For now, copy a generic prompt:";
+    note.textContent = "Enable Plan Docs for lifecycle actions. For now:";
+    fallbackActions.hidden = false;
     fallbackActions.append(
       menuItem({ icon: "agent-prompt", label: "Repo-aware prompt", description: "For an agent that already has this repo open", run: run(() => api.copyRepoPrompt()) }),
       menuItem({ icon: "agent-prompt", label: "Portable prompt", description: "Self-contained — works without repo access", run: run(() => api.copyPortablePrompt()) }),
@@ -250,9 +251,9 @@ function planMenuBody(api) {
   );
 
   if (api.installed === false && api.planDocsPackage) {
-    wrap.querySelector("[data-slot=package-banner]").append(
-      packageBanner(api.planDocsPackage, api.onEnablePackage, api.skillModal),
-    );
+    const banner = wrap.querySelector("[data-slot=package-banner]");
+    banner.hidden = false;
+    banner.append(packageBanner(api.planDocsPackage, api.onEnablePackage, api.skillModal));
   }
   return wrap;
 }
@@ -266,7 +267,6 @@ export function drawerContent(doc, drawerActions) {
   const menu = planMenuBody({
     installed: Boolean(pkg.enabled),
     lifecycle: plan.lifecycle,
-    recommendedMode: recommendedPlanDocsMode(plan),
     planDocsPackage: pkg,
     skillModal: drawerActions.skillModal,
     onError: drawerActions.onError,
@@ -303,7 +303,6 @@ export function cardActionMenu(record, cardActions) {
   menu.panelContent = planMenuBody({
     installed: Boolean(cardActions.planDocsEnabled),
     lifecycle: plan.lifecycle,
-    recommendedMode: recommendedPlanDocsMode(plan),
     planDocsPackage: cardActions.planDocsPackage,
     skillModal: cardActions.skillModal,
     onError: cardActions.onError,

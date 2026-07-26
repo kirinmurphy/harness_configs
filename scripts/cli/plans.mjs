@@ -49,9 +49,9 @@ export function updatePlanPriority({ id, key, priority, expectedPriority, mtimeM
   return publicMutationResult(result);
 }
 
-export function updatePlanLifecycle({ id, key, lifecycle, expectedLifecycle, mtimeMs, repositoryId }) {
+export function updatePlanLifecycle({ id, key, lifecycle, expectedLifecycle, mtimeMs, repositoryId, skipDestinationValidation }) {
   const snapshot = cachedSnapshot || buildPlanSnapshot({ stateRoot, packageState: planDocsPackageState() });
-  const result = movePlanLifecycleInDocs(snapshot, { id, key, lifecycle, expectedLifecycle, mtimeMs, repositoryId });
+  const result = movePlanLifecycleInDocs(snapshot, { id, key, lifecycle, expectedLifecycle, mtimeMs, repositoryId, skipDestinationValidation });
   cachedSnapshot = null;
   return publicMutationResult(result);
 }

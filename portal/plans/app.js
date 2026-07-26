@@ -13,6 +13,7 @@ import * as api from "./api.js";
 import * as tmpl from "./templates.js";
 import { createRootsPanel, createInfoModal, createPromptModal } from "./panels.js";
 import { createLifecycleEventDialog, lifecycleEvents } from "./lifecycle-event-dialog.js";
+import { createLifecycleErrorDialog } from "./lifecycle-error-dialog.js";
 import { createOutcomeToast } from "./toast-controller.js";
 import { createBlockersPopover } from "./blockers-popover.js";
 import {
@@ -78,6 +79,7 @@ const lifecycleEventDialog = createLifecycleEventDialog(document.getElementById(
   onViewPlan: (record) => openPlan(record.key),
   onRevert: (record, previousValue) => handlePlanChange({ property: "lifecycle", value: previousValue, record }),
 });
+const lifecycleErrorDialog = createLifecycleErrorDialog(document.getElementById("lifecycle-error-modal"));
 portalWireBackdropClose(drawer, () => drawer.close());
 // Fires however the dialog closes (button, backdrop, Escape, or a programmatic .close() call
 // from presentChangeOutcome) — one place to clear which plan the drawer was showing.
@@ -280,8 +282,8 @@ window.addEventListener("popstate", () => {
 const mutations = {
   priority: (record, value) =>
     api.updatePlanPriority(record.plan.id, record.key, value, record.plan.priority, record.mtimeMs, record.repository.id),
-  lifecycle: (record, value) =>
-    api.updatePlanLifecycle(record.plan.id, record.key, value, record.plan.lifecycle, record.mtimeMs, record.repository.id),
+  lifecycle: (record, value, { skipDestinationValidation } = {}) =>
+    api.updatePlanLifecycle(record.plan.id, record.key, value, record.plan.lifecycle, record.mtimeMs, record.repository.id, skipDestinationValidation),
 };
 
 // Plan keys currently mid-mutation. Guards against two overlapping handlePlanChange calls for the
@@ -294,7 +296,7 @@ const pendingMutationKeys = new Set();
 // <plan-status>, and the Start/Archive/Revert/Undo shortcuts. Filesystem truth controls UI truth:
 // the snapshot is only updated after the server confirms success, and the full record it returns
 // replaces the old one outright rather than patching individual fields in place.
-async function handlePlanChange({ property, value, record }) {
+async function handlePlanChange({ property, value, record }, mutationOptions) {
   if (pendingMutationKeys.has(record.key)) return null;
   pendingMutationKeys.add(record.key);
   // Captured once up front so the outcome this mutation reports (visibility, tab, filters) always
@@ -304,7 +306,7 @@ async function handlePlanChange({ property, value, record }) {
   const wasVisible = isVisible(record, viewAtRequestTime.selectedLifecycle, viewAtRequestTime.filters);
   let result;
   try {
-    result = await mutations[property](record, value);
+    result = await mutations[property](record, value, mutationOptions);
   } catch (err) {
     if (err.code === "STALE_PLAN") {
       await recoverFromStaleConflict(record);
@@ -316,7 +318,14 @@ async function handlePlanChange({ property, value, record }) {
     // refreshMountedStatus) rebuilds the warnings banner from snapshot data, so showError must run
     // AFTER it or its message gets immediately overwritten.
     refreshMountedStatus(record);
-    showError(err);
+    if (err.code === "LIFECYCLE_REQUIREMENTS") {
+      // Validation is a soft warning, not a hard gate (see movePlanLifecycle's comment) — offer
+      // "move anyway," which re-enters this same function with the bypass flag so the retry gets
+      // the exact same snapshot-replace/outcome handling as any other successful mutation.
+      lifecycleErrorDialog.open(err, () => handlePlanChange({ property, value, record }, { skipDestinationValidation: true }));
+    } else {
+      showError(err);
+    }
     return null;
   } finally {
     pendingMutationKeys.delete(record.key);

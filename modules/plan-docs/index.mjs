@@ -232,12 +232,16 @@ function resolvePlanForMutation(snapshot, { id, key, repositoryId }) {
 
 // Validates the resolved record still matches what the client last saw. A key/lifecycle/path
 // mismatch while the stable id still resolves means the file moved since the client loaded it
-// (report where it is now); a straight mtime/priority mismatch means it was edited in place.
-function assertExpectedState(record, { key, expectedLifecycle, expectedPriority, mtimeMs }) {
+// (report where it is now); a straight mtime/field mismatch means it was edited in place.
+// `expectedField`/`expectedValue` is the generic form any mutated scalar property can use
+// (see updatePlanField); expectedLifecycle/expectedPriority stay as named params since
+// movePlanLifecycle and updatePlanPriority's public contracts already key off those exact names.
+function assertExpectedState(record, { key, expectedLifecycle, expectedPriority, expectedField, expectedValue, mtimeMs }) {
   const mismatches = [];
   if (key !== undefined && record.key !== key) mismatches.push(`moved to ${record.plan.relativePath}`);
   if (expectedLifecycle !== undefined && record.plan.lifecycle !== expectedLifecycle) mismatches.push(`lifecycle is now ${record.plan.lifecycle}`);
   if (expectedPriority !== undefined && record.plan.priority !== expectedPriority) mismatches.push(`priority is now ${record.plan.priority}`);
+  if (expectedField !== undefined && record.plan[expectedField] !== expectedValue) mismatches.push(`${expectedField} is now ${record.plan[expectedField]}`);
   if (mtimeMs !== undefined && record.mtimeMs !== mtimeMs) mismatches.push("file changed on disk");
   if (mismatches.length === 0) return;
   throw domainError("STALE_PLAN", "This plan changed outside the portal, so the update wasn't applied.", {
@@ -542,24 +546,41 @@ function rebuildPlanRecordAt(repository, absolutePath) {
   return publicPlan(record);
 }
 
-export function updatePlanPriority(snapshot, { id, key, priority, expectedPriority, mtimeMs, repositoryId }) {
-  if (!PRIORITIES.has(priority)) throw domainError("INVALID_CHANGE", "invalid priority");
+// Per-field validators for the generic scalar frontmatter mutation below. Only fields meant to be
+// human-edited via the portal belong here — see plan-schema.md's field-by-field rules for which
+// frontmatter keys are UI-editable vs. author/automated-tooling-only (id and reviewed_commit are
+// never UI-edited; blocked_by/depends_on/related are arrays writeFrontmatterField can't touch).
+const FIELD_VALIDATORS = {
+  priority: (value) => PRIORITIES.has(value),
+};
+
+// Generic scalar frontmatter field mutation: validate the new value, confirm the record hasn't
+// gone stale, patch the one frontmatter line, and return the same { change, record } shape every
+// mutation in this module returns. Only fields listed in FIELD_VALIDATORS are accepted.
+export function updatePlanField(snapshot, { id, key, property, value, expectedValue, mtimeMs, repositoryId }) {
+  const validate = FIELD_VALIDATORS[property];
+  if (!validate) throw domainError("INVALID_CHANGE", `field not editable: ${property}`);
+  if (!validate(value)) throw domainError("INVALID_CHANGE", `invalid ${property}`);
   const record = resolvePlanForMutation(snapshot, { id, key, repositoryId });
-  assertExpectedState(record, { key, expectedPriority, mtimeMs });
+  assertExpectedState(record, { key, expectedField: property, expectedValue, mtimeMs });
   if (!record.absolutePath) throw domainError("PLAN_NOT_FOUND", "plan file path unavailable");
   const repoRoot = record.repository.root;
   const realRepo = fs.realpathSync(repoRoot);
   const realFile = realpathOrStale(record.absolutePath);
   if (!inside(realRepo, realFile)) throw domainError("MOVE_FAILED", "plan file escaped repository boundary");
   const markdown = fs.readFileSync(realFile, "utf8");
-  const updated = writeFrontmatterField(markdown, "priority", priority);
+  const updated = writeFrontmatterField(markdown, property, value);
   fs.writeFileSync(realFile, updated);
   planRecordCache.delete(record.absolutePath);
   const rebuilt = rebuildPlanRecordAt(record.repository, realFile);
   return {
-    change: { property: "priority", previousValue: record.plan.priority, newValue: priority },
+    change: { property, previousValue: record.plan[property], newValue: value },
     record: rebuilt,
   };
+}
+
+export function updatePlanPriority(snapshot, { id, key, priority, expectedPriority, mtimeMs, repositoryId }) {
+  return updatePlanField(snapshot, { id, key, property: "priority", value: priority, expectedValue: expectedPriority, mtimeMs, repositoryId });
 }
 
 // Implements the doc's 11-step lifecycle-move validation order: enum check, stable-identity
@@ -592,13 +613,19 @@ export function movePlanLifecycle(snapshot, { id, key, lifecycle, expectedLifecy
   })();
   if (destinationOccupied) throw domainError("DESTINATION_EXISTS", "A file already exists at the destination.");
 
+  // Non-blocking by design for now: the first call always validates and, if incomplete, throws
+  // LIFECYCLE_REQUIREMENTS so the client can show what's missing. The client re-submits with
+  // skipDestinationValidation once the user confirms "move anyway" — this is a soft warning, not
+  // a hard gate, because most existing plan docs predate the plan-docs schema and can't cleanly
+  // satisfy every section/next_action/verification check without a dedicated backfill pass.
+  // Revisit tightening this back to a hard block once plan-docs-originated docs are the norm.
   if (!skipDestinationValidation) {
     const markdown = fs.readFileSync(realFile, "utf8");
     const parsed = parsePlanMarkdown(markdown, { repository: stripRepositoryRoot(record.repository), relativePath: record.plan.relativePath });
     const destinationValidation = validateParsedPlan(parsed, { lifecycle });
     if (!destinationValidation.ready) {
       throw domainError("LIFECYCLE_REQUIREMENTS", `Couldn't move "${record.plan.title}" to ${capitalize(lifecycle)}.`, {
-        resolution: "Complete or remove the listed items, then try again.",
+        resolution: "Complete or remove the listed items, then try again — or move anyway.",
         details: destinationValidation.warnings,
       });
     }

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "technical-writing",
+  "label": "Technical Writing",
+  "description": "General technical writing guidance for reader-facing docs: doc shapes, section-writing guidance, anti-patterns, and a prose review loop",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "commands",
+    "order": 100
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "technical-writing",
+      "source": "skills/technical-writing",
+      "invocation": "manual",
+      "risk": "low",
+      "entrypoints": [
+        {
+          "type": "slash-command",
+          "name": "technical-writing",
+          "description": "General technical writing guidance for reader-facing docs: doc shapes, section-writing guidance, anti-patterns, and a prose review loop",
+          "harnesses": [
+            "claude",
+            "codex"
+          ]
+        }
+      ]
+    }
+  ]
+}

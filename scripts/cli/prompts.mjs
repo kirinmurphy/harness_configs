@@ -164,6 +164,139 @@ export function clipTerminalLine(text, width) {
     : text.slice(0, Math.max(0, width - 1)) + "…";
 }
 
+export function moveListCursor(selectablePositions, cursor, direction, { wrap = false } = {}) {
+  if (selectablePositions.length === 0) return -1;
+  const at = selectablePositions.indexOf(cursor);
+  if (at < 0) return selectablePositions[0];
+  const next = at + direction;
+  if (wrap) {
+    return selectablePositions[(next + selectablePositions.length) % selectablePositions.length];
+  }
+  return selectablePositions[Math.max(0, Math.min(selectablePositions.length - 1, next))];
+}
+
+export function scrollListWindow({
+  rowCount,
+  selectedRow,
+  viewportSize,
+  scrollOffset = 0,
+}) {
+  const visibleSize = Math.max(0, Math.min(rowCount, viewportSize));
+  if (rowCount === 0 || visibleSize === 0) {
+    return { start: 0, end: 0, scrollOffset: 0, hasHiddenAbove: false, hasHiddenBelow: false };
+  }
+
+  let start = Math.max(0, Math.min(scrollOffset, rowCount - visibleSize));
+  if (selectedRow >= 0 && selectedRow < start) start = selectedRow;
+  if (selectedRow >= 0 && selectedRow >= start + visibleSize) {
+    start = selectedRow - visibleSize + 1;
+  }
+  start = Math.max(0, Math.min(start, rowCount - visibleSize));
+
+  return {
+    start,
+    end: start + visibleSize,
+    scrollOffset: start,
+    hasHiddenAbove: start > 0,
+    hasHiddenBelow: start + visibleSize < rowCount,
+  };
+}
+
+export function shouldUseScrollableBody({
+  headerLineCount,
+  bodyLineCount,
+  footerLineCount,
+  terminalHeight,
+}) {
+  const bodyViewportSize = Math.max(1, terminalHeight - headerLineCount - footerLineCount);
+  return bodyLineCount > bodyViewportSize;
+}
+
+function bodyViewportSize({ headerLineCount, footerLineCount, terminalHeight }) {
+  return Math.max(1, terminalHeight - headerLineCount - footerLineCount);
+}
+
+export function chooseWizardBodyLayout({
+  maxSeparateRows,
+  maxInlineRows,
+  maxCompactRows,
+  viewportSize,
+}) {
+  if (maxSeparateRows + 2 <= viewportSize) {
+    return { compact: false, separateDescriptions: true };
+  }
+  if (maxInlineRows <= viewportSize) {
+    return { compact: false, separateDescriptions: false };
+  }
+  return { compact: true, separateDescriptions: false, scroll: maxCompactRows > viewportSize };
+}
+
+function padViewportLines(lines, viewportSize) {
+  const next = lines.slice(0, viewportSize);
+  while (next.length < viewportSize) next.push("");
+  return next;
+}
+
+function scrollableRows({
+  rows,
+  selectedRow,
+  viewportSize,
+  scrollOffset = 0,
+  width,
+}) {
+  if (rows.length <= viewportSize) {
+    return {
+      lines: padViewportLines(rows.map((row) => row.line), viewportSize),
+      scrollOffset: 0,
+      hasHiddenAbove: false,
+      hasHiddenBelow: false,
+    };
+  }
+
+  if (viewportSize < 3) {
+    const window = scrollListWindow({ rowCount: rows.length, selectedRow, viewportSize, scrollOffset });
+    return {
+      lines: padViewportLines(rows.slice(window.start, window.end).map((row) => row.line), viewportSize),
+      scrollOffset: window.scrollOffset,
+      hasHiddenAbove: window.hasHiddenAbove,
+      hasHiddenBelow: window.hasHiddenBelow,
+    };
+  }
+
+  let window = scrollListWindow({ rowCount: rows.length, selectedRow, viewportSize, scrollOffset });
+  for (;;) {
+    const indicatorCount = (window.hasHiddenAbove ? 1 : 0) + (window.hasHiddenBelow ? 1 : 0);
+    const itemSlots = Math.max(1, viewportSize - indicatorCount);
+    const next = scrollListWindow({
+      rowCount: rows.length,
+      selectedRow,
+      viewportSize: itemSlots,
+      scrollOffset: window.scrollOffset,
+    });
+    if (
+      next.start === window.start &&
+      next.end === window.end &&
+      next.hasHiddenAbove === window.hasHiddenAbove &&
+      next.hasHiddenBelow === window.hasHiddenBelow
+    ) {
+      window = next;
+      break;
+    }
+    window = next;
+  }
+
+  const lines = [];
+  if (window.hasHiddenAbove) lines.push(`${SUBTLE_STYLE}${clipTerminalLine("  ↑ more", width)}${RESET_STYLE}`);
+  lines.push(...rows.slice(window.start, window.end).map((row) => row.line));
+  if (window.hasHiddenBelow) lines.push(`${SUBTLE_STYLE}${clipTerminalLine("  ↓ more", width)}${RESET_STYLE}`);
+  return {
+    lines: padViewportLines(lines, viewportSize),
+    scrollOffset: window.scrollOffset,
+    hasHiddenAbove: window.hasHiddenAbove,
+    hasHiddenBelow: window.hasHiddenBelow,
+  };
+}
+
 export function createRepaintRegion(out = process.stdout) {
   let saved = false;
 
@@ -176,7 +309,10 @@ export function createRepaintRegion(out = process.stdout) {
         out.write("\x1b8\r");
       }
       out.write("\x1b[J");
-      for (const line of lines) out.write(`\r\x1b[2K${line}\n`);
+      lines.forEach((line, i) => {
+        const suffix = i === lines.length - 1 ? "" : "\n";
+        out.write(`\r\x1b[2K${line}${suffix}`);
+      });
     },
   };
 }
@@ -192,8 +328,7 @@ function sectionTabs(steps, stepIdx, width) {
 }
 
 function stepNavFooter(steps, stepIdx) {
-  const prev =
-    stepIdx > 0 ? `<- back to \x1b[1m${steps[stepIdx - 1].title}\x1b[0m` : "";
+  const prev = stepIdx > 0 ? "<- back" : "";
   const next =
     stepIdx < steps.length - 1
       ? `next to \x1b[1m${steps[stepIdx + 1].title}\x1b[0m ->`
@@ -248,12 +383,18 @@ export function createStepWizardTemplate(options = {}) {
       return [
         "",
         clipTerminalLine("  --------------------", width),
-        `  ${stepNavFooter(steps, stepIdx)}`,
+        clipTerminalLine(`  ${stepNavFooter(steps, stepIdx)}`, width),
         "",
         `${SUBTLE_STYLE}  Run ${RESET_STYLE}\x1b[1m${browserCommand}\x1b[0m${SUBTLE_STYLE} ${browserHint}${RESET_STYLE}`,
       ];
     },
   };
+}
+
+export function terminalRenderHeight(out = process.stdout) {
+  // Keep one spare row. Some terminals scroll when repainting the bottom row even without a trailing
+  // newline, especially after an inherited interactive command starts below a prior menu frame.
+  return Math.max(8, (out.rows || 24) - 1);
 }
 
 // Multi-step toggle wizard. One step (section) shown at a time; ←/→/Tab move between steps, ↑/↓ move
@@ -282,6 +423,7 @@ export async function wizard(steps, onFinish, options = {}) {
   const template = options.template || createStepWizardTemplate(options);
   let stepIdx = 0;
   let cursor = 0;
+  let scrollOffset = 0;
 
   const cursorablePositions = (step) =>
     step.items
@@ -292,9 +434,86 @@ export async function wizard(steps, onFinish, options = {}) {
     const sel = cursorablePositions(step);
     if (sel.length === 0) {
       cursor = -1;
+      scrollOffset = 0;
       return;
     }
     if (cursor < 0 || !sel.includes(cursor)) cursor = sel[0];
+  };
+
+  const itemMark = (step, it) =>
+    !it.toggleable || step.readonly
+      ? "   "
+      : it.states
+        ? `[${it.state}]`.padEnd(
+            Math.max(...it.states.map((s) => s.length)) + 2,
+          )
+        : it.active
+          ? "[x]"
+          : "[ ]";
+
+  const itemLine = (step, it, i, width, { includeDescription = true } = {}) => {
+    const sel = i === cursor;
+    const mark = itemMark(step, it);
+    // Compose the plain line first, truncate to width, then re-apply color — measuring plain text
+    // keeps the visible length correct (ANSI escapes are zero-width).
+    const head = `${sel ? "> " : "  "}${mark} ${it.label}`;
+    const descSep = includeDescription && it.description ? "  " : "";
+    const plain = clipTerminalLine(
+      `${head}${descSep}${includeDescription ? it.description || "" : ""}`,
+      width,
+    );
+    // Split back so the description stays dim and the selected row stays cyan.
+    const headPart = plain.slice(0, head.length);
+    const descPart = plain.slice(head.length);
+    return sel
+      ? `${SELECTED_TEXT_STYLE}${headPart}${RESET_STYLE}${descPart ? `${DIM_STYLE}${descPart}${RESET_STYLE}` : ""}`
+      : `${headPart}${descPart ? `${DIM_STYLE}${descPart}${RESET_STYLE}` : ""}`;
+  };
+
+  const itemDescriptionIndent = (step, it, i) => {
+    const marker = i === cursor ? "> " : "  ";
+    return " ".repeat(`${marker}${itemMark(step, it)} `.length);
+  };
+
+  const buildBodyRows = (step, width, { compact = false, separateDescriptions = false } = {}) => {
+    const rows = [];
+    if (step.description) {
+      rows.push({
+        line: `\x1b[38;5;245m${clipTerminalLine(`  ${step.description}`, width)}\x1b[0m`,
+      });
+      if (!compact) rows.push({ line: "" });
+    }
+    if (step.notice) {
+      rows.push({
+        line: `\x1b[1m${clipTerminalLine(`  ${step.notice}`, width)}\x1b[0m`,
+      });
+      if (!compact) rows.push({ line: "" });
+    }
+    if (step.itemHeader && step.itemHeader !== step.title) {
+      rows.push({
+        line: `\x1b[1m${clipTerminalLine(`  ${step.itemHeader}`, width)}\x1b[0m`,
+      });
+      if (!compact) rows.push({ line: "" });
+    }
+    step.items.forEach((it, i) => {
+      rows.push({
+        line: itemLine(step, it, i, width, { includeDescription: !separateDescriptions }),
+        itemIndex: i,
+      });
+      if (separateDescriptions && it.description) {
+        rows.push({
+          line: `${DIM_STYLE}${clipTerminalLine(`${itemDescriptionIndent(step, it, i)}${it.description}`, width)}${RESET_STYLE}`,
+        });
+      }
+      if (!compact && i < step.items.length - 1) rows.push({ line: "" });
+    });
+    if (step.footnote) {
+      if (!compact) rows.push({ line: "" });
+      rows.push({
+        line: `\x1b[38;5;245m${clipTerminalLine(`  ${step.footnote}`, width)}\x1b[0m`,
+      });
+    }
+    return rows;
   };
 
   // Clip plain text to fit the terminal width so each rendered line occupies exactly one row; the
@@ -302,62 +521,49 @@ export async function wizard(steps, onFinish, options = {}) {
   const render = () => {
     const step = steps[stepIdx];
     const width = terminalRenderWidth(out);
+    const footer = template.footerLines({ steps, stepIdx, width });
     const lines = template.headerLines({ steps, stepIdx, width });
-    if (step.description) {
-      lines.push(
-        `\x1b[38;5;245m${clipTerminalLine(`  ${step.description}`, width)}\x1b[0m`,
-      );
-      lines.push("");
-    }
-    if (step.notice) {
-      lines.push(
-        `\x1b[1m${clipTerminalLine(`  ${step.notice}`, width)}\x1b[0m`,
-      );
-      lines.push("");
-    }
-    if (step.itemHeader && step.itemHeader !== step.title) {
-      lines.push(
-        `\x1b[1m${clipTerminalLine(`  ${step.itemHeader}`, width)}\x1b[0m`,
-      );
-      lines.push("");
-    }
-    step.items.forEach((it, i) => {
-      const sel = i === cursor;
-      const mark =
-        !it.toggleable || step.readonly
-          ? "   "
-          : it.states
-            ? `[${it.state}]`.padEnd(
-                Math.max(...it.states.map((s) => s.length)) + 2,
-              )
-            : it.active
-              ? "[x]"
-              : "[ ]";
-      // Compose the plain line first, truncate to width, then re-apply color — measuring plain text
-      // keeps the visible length correct (ANSI escapes are zero-width).
-      const head = `${sel ? "> " : "  "}${mark} ${it.label}`;
-      const descSep = it.description ? "  " : "";
-      const plain = clipTerminalLine(
-        `${head}${descSep}${it.description || ""}`,
-        width,
-      );
-      // Split back so the description stays dim and the selected row stays cyan.
-      const headPart = plain.slice(0, head.length);
-      const descPart = plain.slice(head.length);
-      const colored = sel
-        ? `${SELECTED_TEXT_STYLE}${headPart}${RESET_STYLE}${descPart ? `${DIM_STYLE}${descPart}${RESET_STYLE}` : ""}`
-        : `${headPart}${descPart ? `${DIM_STYLE}${descPart}${RESET_STYLE}` : ""}`;
-      lines.push(colored);
-      // Blank spacer between items for legibility; skip after the last so the footnote/footer hugs.
-      if (i < step.items.length - 1) lines.push("");
+    const terminalHeight = terminalRenderHeight(out);
+    const viewportSize = bodyViewportSize({
+      headerLineCount: lines.length,
+      footerLineCount: footer.length,
+      terminalHeight,
     });
-    if (step.footnote) {
-      lines.push("");
-      lines.push(
-        `\x1b[38;5;245m${clipTerminalLine(`  ${step.footnote}`, width)}\x1b[0m`,
-      );
+    const rowCounts = {
+      maxSeparateRows: Math.max(...steps.map((candidate) =>
+        buildBodyRows(candidate, width, { compact: false, separateDescriptions: true }).length
+      )),
+      maxInlineRows: Math.max(...steps.map((candidate) =>
+        buildBodyRows(candidate, width, { compact: false, separateDescriptions: false }).length
+      )),
+      maxCompactRows: Math.max(...steps.map((candidate) =>
+        buildBodyRows(candidate, width, { compact: true, separateDescriptions: false }).length
+      )),
+      viewportSize,
+    };
+    const layout = chooseWizardBodyLayout(rowCounts);
+    const bodyRows = buildBodyRows(step, width, layout);
+    const selectedRow = bodyRows.findIndex((row) => row.itemIndex === cursor);
+    if (shouldUseScrollableBody({
+      headerLineCount: lines.length,
+      bodyLineCount: bodyRows.length,
+      footerLineCount: footer.length,
+      terminalHeight,
+    })) {
+      const body = scrollableRows({
+        rows: bodyRows,
+        selectedRow,
+        viewportSize,
+        scrollOffset,
+        width,
+      });
+      scrollOffset = body.scrollOffset;
+      lines.push(...body.lines);
+    } else {
+      scrollOffset = 0;
+      lines.push(...padViewportLines(bodyRows.map((row) => row.line), viewportSize));
     }
-    lines.push(...template.footerLines({ steps, stepIdx, width }));
+    lines.push(...footer);
 
     repaint.render(lines);
   };
@@ -365,19 +571,25 @@ export async function wizard(steps, onFinish, options = {}) {
   clampCursor(steps[stepIdx]);
 
   return new Promise((resolve) => {
+    let finished = false; // guard against double-finish (Enter then a queued key)
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
     process.stdin.resume();
     render();
 
+    const onResize = () => {
+      if (!finished) render();
+    };
+    out.on?.("resize", onResize);
+
     const cleanup = () => {
       process.stdin.setRawMode(false);
       process.stdin.pause();
       process.stdin.removeListener("keypress", onKey);
+      out.removeListener?.("resize", onResize);
       out.write("\n");
     };
 
-    let finished = false; // guard against double-finish (Enter then a queued key)
     const finish = async ({ apply }) => {
       if (finished) return;
       finished = true;
@@ -393,6 +605,7 @@ export async function wizard(steps, onFinish, options = {}) {
 
       if (key.name === "left" || key.name === "h") {
         stepIdx = (stepIdx - 1 + steps.length) % steps.length;
+        scrollOffset = 0;
         clampCursor(steps[stepIdx]);
         render();
       } else if (
@@ -401,18 +614,17 @@ export async function wizard(steps, onFinish, options = {}) {
         key.name === "l"
       ) {
         stepIdx = (stepIdx + 1) % steps.length;
+        scrollOffset = 0;
         clampCursor(steps[stepIdx]);
         render();
       } else if (key.name === "up" || key.name === "k") {
         if (sel.length) {
-          const at = sel.indexOf(cursor);
-          cursor = sel[(at - 1 + sel.length) % sel.length];
+          cursor = moveListCursor(sel, cursor, -1, { wrap: false });
           render();
         }
       } else if (key.name === "down" || key.name === "j") {
         if (sel.length) {
-          const at = sel.indexOf(cursor);
-          cursor = sel[(at + 1) % sel.length];
+          cursor = moveListCursor(sel, cursor, 1, { wrap: false });
           render();
         }
       } else if (key.name === "space") {

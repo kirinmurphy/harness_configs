@@ -235,7 +235,7 @@ export function pendingWizardChanges(steps) {
   return pending;
 }
 
-async function applyWizardChanges(steps) {
+export async function applyWizardChanges(steps) {
   const pending = pendingWizardChanges(steps);
   if (pending.length === 0) {
     console.log("\nNo changes.");

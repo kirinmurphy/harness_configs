@@ -2,10 +2,11 @@
   "tui": {
     "status_line": [
       "model-with-reasoning",
-      "context-remaining",
+      "context-used",
       "five-hour-limit",
       "weekly-limit",
       "git-branch"
-    ]
+    ],
+    "status_line_use_colors": false
   }
 }

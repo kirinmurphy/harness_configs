@@ -35,6 +35,15 @@ function firstNonblankLine(relPath) {
   return content.split("\n").find((line) => line.trim()) || "";
 }
 
+// True when a boolean scalar under [tui] equals `value` in live Codex config. Mirrors the writer in
+// package-harness-config.mjs (setTomlScalar) — scoped to the [tui] block so an unrelated same-named
+// key elsewhere can't produce a false match.
+function codexScalarMatches(configText, key, value) {
+  const block = configText.match(/^\[tui\]\s*\n([\s\S]*?)(?=^\[|\s*$)/m);
+  if (!block) return false;
+  return new RegExp(`^${key}\\s*=\\s*${value ? "true" : "false"}\\b`, "m").test(block[1]);
+}
+
 function targetHarnesses(component) {
   if (component.harness === "both" || !component.harness) return ["claude", "codex"];
   return [component.harness];
@@ -217,12 +226,20 @@ function probeHarnessConfig(component, desired, settings, pkg) {
   if (component.harness === "codex") {
     const configText = readText(CODEX_CONFIG, "");
     const desiredItems = config.tui?.status_line || [];
-    const observed = desiredItems.every((item) => codexStatusLineIncludes(configText, item));
+    const itemsPresent = desiredItems.every((item) => codexStatusLineIncludes(configText, item));
+    // When the package owns a scalar (e.g. status_line_use_colors), the probe must verify it too —
+    // array items alone would report "present" while an owned scalar silently failed to apply.
+    const wantsColorScalar = typeof config.tui?.status_line_use_colors === "boolean";
+    const scalarPresent = !wantsColorScalar
+      || codexScalarMatches(configText, "status_line_use_colors", config.tui.status_line_use_colors);
+    const observed = itemsPresent && scalarPresent;
     return componentResult(component, {
       desired,
       observed,
       owner: observed ? "roborepo" : null,
-      detail: observed ? "Codex status_line contains package fields" : "Codex status_line missing package fields",
+      detail: observed
+        ? "Codex status_line contains package fields"
+        : !itemsPresent ? "Codex status_line missing package fields" : "Codex status_line color scalar not applied",
     });
   }
   return componentResult(component, { desired, observed: false, detail: "unknown harness-config harness", blocked: desired });

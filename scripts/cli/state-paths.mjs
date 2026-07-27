@@ -33,6 +33,12 @@ export const experimentalStatePath = path.join(roborepoStateDir, "experimental.j
 // Canonical repository registry — machine-local, versioned. modules/repositories owns the atomic
 // read/write; this is just the resolved path (respects ROBOREPO_STATE_DIR).
 export const repositoriesRegistryPath = path.join(roborepoStateDir, "repositories", "registry.json");
+// Latest normalized usage snapshots, one file per harness (usage/latest/<harness>.json). Written
+// best-effort by the status-line command (Claude) / app-server collector (Codex); read by the
+// /api/usage portal route. See globals/packages/usage-statusline/scripts/usage-snapshot-store.mjs,
+// which resolves this same path independently because it also runs as a copied runtime asset.
+export const usageDir = path.join(roborepoStateDir, "usage");
+export const usageLatestDir = path.join(usageDir, "latest");
 export const telemetryDir = path.join(roborepoStateDir, "telemetry");
 export const telemetryDbPath = path.join(telemetryDir, "telemetry.sqlite");
 export const telemetrySpoolDir = path.join(telemetryDir, "spool");
@@ -70,3 +76,9 @@ export const enabledPackagesPath = path.join(roborepoStateDir, "enabled-packages
 // harness. Lets update/repair tell "unchanged since we last wrote it" apart from "something else
 // touched this file" without attempting to merge. See docs/plans/completed/root-config-layered-inheritance.md.
 export const rootConfigStatePath = path.join(roborepoStateDir, "config-state", "root-config.json");
+// Provenance for individual owned scalars a package sets inside a harness config (e.g. Codex's
+// tui.status_line_use_colors). Content-hash drift (rootConfigStatePath) tracks whole-file writes; a
+// scalar needs its own record of "did this key exist before roborepo set it, and if so, what was
+// its value" so disable can restore an unmanaged prior value or remove a key roborepo introduced.
+// Keyed by "<harness>.<table>.<key>". Lives in roborepo state, not a package-side backup file.
+export const ownedScalarsStatePath = path.join(roborepoStateDir, "config-state", "owned-scalars.json");

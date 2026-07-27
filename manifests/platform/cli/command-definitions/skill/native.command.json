@@ -1,0 +1,14 @@
+{
+  "path": ["skill", "native"],
+  "kind": "command",
+  "title": "Native entrypoints",
+  "description": "Show native Claude/Codex skill and plugin entrypoints",
+  "menuSection": "Inspection",
+  "order": 50,
+  "usage": "roborepo skill native [--full]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/skills.mjs",
+    "export": "skillNative"
+  }
+}

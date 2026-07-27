@@ -203,12 +203,12 @@ The portal should reflect everything created above. It binds to loopback only.
 ```sh
 rr web            # starts detached server, opens the default page in a browser
 # or, to see the URL without opening a browser:
-rr serve --detach --no-open
+rr web --detach --no-open
 ```
 
-`serve` prints the bound URL — loopback host, dynamic port, e.g.
-`roborepo portal: http://127.0.0.1:4317  (detached · use: roborepo telemetry stop)`. Open
-`/` or `/config` there. Stop the detached server with `rr telemetry stop`.
+`web` prints the bound URL — loopback host, dynamic port, e.g.
+`roborepo portal: http://127.0.0.1:4317  (detached · use: roborepo web stop)`. Open
+`/` or `/config` there. Stop the detached server with `rr web stop`.
 
 ### 8. Check the config page
 

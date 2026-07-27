@@ -7,6 +7,13 @@
 // test-install-collisions.sh (test_onboarding_wizard_toggles_and_applies).
 import assert from "node:assert/strict";
 import { pendingWizardChanges } from "../cli/presets.mjs";
+import {
+  chooseWizardBodyLayout,
+  moveListCursor,
+  scrollListWindow,
+  shouldUseScrollableBody,
+  terminalRenderHeight,
+} from "../cli/prompts.mjs";
 
 const row = (id, { active, wasActive, toggleable = true, category = "Token Optimization" }) => ({
   label: id,
@@ -73,5 +80,102 @@ const readonlySkipped = pendingWizardChanges([
   { title: "x", readonly: true, items: [row("frozen", { active: false, wasActive: true })] },
 ]);
 assert.equal(readonlySkipped.length, 0, "a readonly step's items are never pending, even if changed");
+
+assert.equal(
+  moveListCursor([2, 5, 8], 2, -1),
+  2,
+  "wizard list navigation clamps at the first row",
+);
+assert.equal(
+  moveListCursor([2, 5, 8], 8, 1),
+  8,
+  "wizard list navigation clamps at the last row",
+);
+assert.equal(
+  moveListCursor([2, 5, 8], 2, -1, { wrap: true }),
+  8,
+  "reusable list navigation still supports explicit wraparound",
+);
+
+assert.deepEqual(
+  scrollListWindow({ rowCount: 10, selectedRow: 0, viewportSize: 4, scrollOffset: 0 }),
+  { start: 0, end: 4, scrollOffset: 0, hasHiddenAbove: false, hasHiddenBelow: true },
+  "scroll window reports hidden rows below the first viewport",
+);
+assert.deepEqual(
+  scrollListWindow({ rowCount: 10, selectedRow: 7, viewportSize: 4, scrollOffset: 0 }),
+  { start: 4, end: 8, scrollOffset: 4, hasHiddenAbove: true, hasHiddenBelow: true },
+  "scroll window follows selection downward",
+);
+assert.deepEqual(
+  scrollListWindow({ rowCount: 10, selectedRow: 2, viewportSize: 4, scrollOffset: 6 }),
+  { start: 2, end: 6, scrollOffset: 2, hasHiddenAbove: true, hasHiddenBelow: true },
+  "scroll window follows selection upward",
+);
+assert.equal(
+  shouldUseScrollableBody({
+    headerLineCount: 7,
+    bodyLineCount: 10,
+    footerLineCount: 5,
+    terminalHeight: 22,
+  }),
+  false,
+  "wizard uses static rendering when header, body, and footer fit",
+);
+assert.equal(
+  shouldUseScrollableBody({
+    headerLineCount: 7,
+    bodyLineCount: 11,
+    footerLineCount: 5,
+    terminalHeight: 22,
+  }),
+  true,
+  "wizard scrolls only when the full frame would overflow",
+);
+assert.equal(
+  terminalRenderHeight({ rows: 16 }),
+  15,
+  "wizard keeps one spare row so the header stays visible at the terminal boundary",
+);
+assert.equal(
+  shouldUseScrollableBody({
+    headerLineCount: 7,
+    bodyLineCount: 5,
+    footerLineCount: 5,
+    terminalHeight: terminalRenderHeight({ rows: 16 }),
+  }),
+  true,
+  "a step change that exceeds the pinned body viewport uses scroll mode",
+);
+assert.deepEqual(
+  chooseWizardBodyLayout({
+    maxSeparateRows: 12,
+    maxInlineRows: 8,
+    maxCompactRows: 6,
+    viewportSize: 16,
+  }),
+  { compact: false, separateDescriptions: true },
+  "wizard uses separate description rows only when every section has spare room",
+);
+assert.deepEqual(
+  chooseWizardBodyLayout({
+    maxSeparateRows: 18,
+    maxInlineRows: 8,
+    maxCompactRows: 6,
+    viewportSize: 10,
+  }),
+  { compact: false, separateDescriptions: false },
+  "wizard keeps inline descriptions for every section when the largest separate layout is too tall",
+);
+assert.deepEqual(
+  chooseWizardBodyLayout({
+    maxSeparateRows: 20,
+    maxInlineRows: 14,
+    maxCompactRows: 11,
+    viewportSize: 10,
+  }),
+  { compact: true, separateDescriptions: false, scroll: true },
+  "wizard uses the same compact scrolling layout for all sections when the largest list overflows",
+);
 
 console.log("wizard-diff ok");

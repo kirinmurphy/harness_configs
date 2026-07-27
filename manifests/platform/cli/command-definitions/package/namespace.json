@@ -1,0 +1,7 @@
+{
+  "path": ["package"],
+  "kind": "namespace",
+  "title": "Packages",
+  "description": "Manage and develop RoboRepo packages",
+  "order": 100
+}

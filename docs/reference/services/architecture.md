@@ -243,8 +243,8 @@ list). For the dual-harness skill model it offers:
 
 This is purely in-repo and never touches global `~/.claude` or `~/.codex`.
 
-`roborepo` also folds in `mcp add`/`mcp apply`/`index`/`watch`/`run` and dispatches the lifecycle
-verbs `update`/`sync`/`doctor`/`verify` to the existing bash scripts (the first install is the
+`roborepo` also folds in `mcp add`/`mcp apply`/`index`/`run` and dispatches the lifecycle
+verbs `update`/`doctor` to the existing bash scripts (the first install is the
 shell bootstrap `install/main.sh`, so there is no root-level `install` verb). Shared skill logic
 lives in `scripts/cli/skill-lib.mjs`.
 

@@ -39,21 +39,21 @@ for (const pkgId of packageIds) {
   const tmp = makeHome();
   const env = { ...process.env, HOME: tmp, ROBOREPO_STATE_DIR: path.join(tmp, ".roborepo"), ROBOREPO_SKIP_MCP: "1" };
   try {
-    const enable1 = spawnSync(process.execPath, [cli, "enable", pkgId], { env, encoding: "utf8" });
+    const enable1 = spawnSync(process.execPath, [cli, "package", "enable", pkgId], { env, encoding: "utf8" });
     assert.equal(enable1.status, 0, `${pkgId}: enable should succeed\n${enable1.stderr}`);
     assert.ok(readRegistry(tmp).includes(pkgId), `${pkgId}: registry should list package enabled after enable`);
 
-    const enable2 = spawnSync(process.execPath, [cli, "enable", pkgId], { env, encoding: "utf8" });
+    const enable2 = spawnSync(process.execPath, [cli, "package", "enable", pkgId], { env, encoding: "utf8" });
     assert.equal(enable2.status, 0, `${pkgId}: re-enable should be idempotent\n${enable2.stderr}`);
 
-    const disable1 = spawnSync(process.execPath, [cli, "disable", pkgId], { env, encoding: "utf8" });
+    const disable1 = spawnSync(process.execPath, [cli, "package", "disable", pkgId], { env, encoding: "utf8" });
     assert.equal(disable1.status, 0, `${pkgId}: disable should succeed\n${disable1.stderr}`);
     assert.ok(!readRegistry(tmp).includes(pkgId), `${pkgId}: registry should not list package enabled after disable`);
 
-    const disable2 = spawnSync(process.execPath, [cli, "disable", pkgId], { env, encoding: "utf8" });
+    const disable2 = spawnSync(process.execPath, [cli, "package", "disable", pkgId], { env, encoding: "utf8" });
     assert.equal(disable2.status, 0, `${pkgId}: re-disable should be idempotent\n${disable2.stderr}`);
 
-    const enable3 = spawnSync(process.execPath, [cli, "enable", pkgId], { env, encoding: "utf8" });
+    const enable3 = spawnSync(process.execPath, [cli, "package", "enable", pkgId], { env, encoding: "utf8" });
     assert.equal(enable3.status, 0, `${pkgId}: re-enable after disable should succeed\n${enable3.stderr}`);
     assert.ok(readRegistry(tmp).includes(pkgId), `${pkgId}: registry should list package enabled after re-enable`);
   } finally {

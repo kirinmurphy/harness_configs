@@ -1,0 +1,14 @@
+{
+  "path": ["run"],
+  "kind": "command",
+  "title": "Run command",
+  "description": "Run a command with trimmed output",
+  "order": 950,
+  "advanced": true,
+  "usage": "roborepo run <cmd> [args...]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/index.mjs",
+    "export": "runCmd"
+  }
+}

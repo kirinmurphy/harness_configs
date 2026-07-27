@@ -201,8 +201,7 @@ spawn env HOME=$env(HC_HOME) ROBOREPO_STATE_DIR=$env(HC_HOME)/.roborepo node $en
 expect "Step 1"
 send " "
 send "\033"
-expect "Launch the local web portal now?"
-send "n\r"
+expect "Onboarding complete"
 expect eof
 EOF
 

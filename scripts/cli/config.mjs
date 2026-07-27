@@ -272,6 +272,7 @@ function sectionContextCost(items) {
 
 function packagePresentationItem(item, tool, contextCost = null) {
   const command = tool?.command || null;
+  const showCommandLabel = command && item.presentation?.category === "commands";
   const resources = item.resources || item.components || [];
   const inspect = command
     ? {
@@ -288,7 +289,7 @@ function packagePresentationItem(item, tool, contextCost = null) {
         : null;
   return {
     id: item.id,
-    label: command ? `/${command}` : item.label,
+    label: showCommandLabel ? `/${command}` : item.label,
     description: item.description,
     order: item.presentation?.order || 0,
     active: item.enabled,
@@ -301,7 +302,7 @@ function packagePresentationItem(item, tool, contextCost = null) {
     resources,
     inspect,
     contextCost,
-    hint: item.id === "telemetry" && (item.enabled || item.status === "configured") ? "roborepo serve" : null,
+    hint: item.id === "telemetry" && (item.enabled || item.status === "configured") ? "roborepo web" : null,
   };
 }
 

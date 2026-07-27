@@ -133,6 +133,23 @@ deliverable of a "wrap up."
 - Scan the session for open threads: explicit TODOs left in code/docs, questions the
   user deferred, follow-ups mentioned but not started, or the next unstarted step in
   an agreed plan.
+- Classify open threads before writing the handoff:
+  - **Must-fix / clear continuation:** concrete bugs, incomplete promised work, validation
+    blockers, or follow-ups the user clearly asked to continue. These always go in the
+    handoff prompt when one is produced.
+  - **Ambiguous priority / maybe-later:** ideas, optional polish, speculative improvements,
+    or deferred questions where the user has not committed to continuing.
+- After committing but before writing the handoff prompt, review the open-thread list:
+  - Add every must-fix / clear continuation item to the handoff prompt.
+  - For ambiguous priority items, ask the user what to do with each item before including it.
+    Offer exactly these choices: **include details in a handoff prompt**, **add it to the
+    backlog as a new task**, or **forget about it**.
+  - If the user chooses backlog, load `plan-docs` and create a backlog plan for that issue
+    before committing. Stage that plan with the same wrap-up/session commit, not a separate
+    follow-up commit. Include the new plan path in the status summary.
+  - If the user chooses forget, omit it from the handoff and do not create a plan.
+  - After handling each selected option, complete with the normal handoff/status response;
+    do not stop at the prompt.
 - If nothing is outstanding, say so plainly rather than inventing a next step.
 - Produce a short status summary (for the chat, not the pasted prompt): what shipped
   this session, what's still open.

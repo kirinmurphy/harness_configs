@@ -1,0 +1,7 @@
+{
+  "path": ["skill"],
+  "kind": "namespace",
+  "title": "Skills",
+  "description": "Inspect and integrate skills",
+  "order": 200
+}

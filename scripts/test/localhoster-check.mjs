@@ -24,6 +24,7 @@ import {
 import { markLocalhosterRefreshFailed } from "../cli/localhoster.mjs";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-localhoster-"));
+const cloneJson = (value) => JSON.parse(JSON.stringify(value));
 try {
   assert.equal(capabilityForPlatform("win32").discovery, "unsupported");
   assert.match(capabilityForPlatform("win32").message, /Windows/);
@@ -305,7 +306,7 @@ try {
   assert.match(associatedSnapshot.unmatchedInstances[0].opaqueKey, /^lk_/);
   assert.equal(associatedSnapshot.projects[0].instances[0].app.links[0].url, "http://127.0.0.1:5173/resume");
   assert.equal(associatedSnapshot.inactiveProjects.length, 0);
-  const aliasedDiscovery = structuredClone(discovery);
+  const aliasedDiscovery = cloneJson(discovery);
   aliasedDiscovery.instances[0].project.identity = "path:/tmp/visa_planner";
   const aliasSnapshot = buildLocalhosterSnapshot({
     discovery: aliasedDiscovery,
@@ -313,7 +314,7 @@ try {
     now: new Date("2026-07-18T18:00:00.000Z"),
   });
   assert.equal(aliasSnapshot.projects[0].identity, "git:github.com/kirinmurphy/visa_planner");
-  const hiddenSettings = structuredClone(associated);
+  const hiddenSettings = cloneJson(associated);
   hiddenSettings.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.hidden = true;
   const hiddenSnapshot = buildLocalhosterSnapshot({
     discovery,

@@ -14,10 +14,10 @@ subcommand implementations live under `scripts/cli/`, one module per category:
 | --- | --- |
 | `scripts/cli/skills.mjs` | `skill adopt`, `skill inspect`, `skill native`, `skill export-to-project`, `skill link-project` |
 | `scripts/cli/skill-inventory.mjs` | read-only skill inventory used by `skill inspect` and `/config` source popups |
-| `scripts/cli/index.mjs` | `index code\|docs`, `watch code`, `run` |
+| `scripts/cli/index.mjs` | `index code\|docs`, `index code --watch`, `run` |
 | `scripts/cli/mcp.mjs` | `mcp add` (Claude + Codex registration) |
-| `scripts/cli/presets.mjs` | `onboard`, `bundle status\|apply\|check\|remove` |
-| `scripts/cli/telemetry.mjs` | `telemetry install\|start\|stop\|enable\|disable\|status\|report\|export\|serve\|backup\|purge\|capture` |
+| `scripts/cli/presets.mjs` | `package manage`, `bundle status\|apply\|check\|remove` |
+| `scripts/cli/telemetry.mjs` | `web`, `telemetry install\|start\|stop\|enable\|disable\|status\|report\|export\|backup\|purge\|capture` |
 | `scripts/cli/telemetry-transcript.mjs` | parse harness transcript -> token/tool/MCP session stats + tool-result sizes |
 | `scripts/cli/telemetry-analyze.mjs` | sessions, spikes, spike causes, token contributors, usage windows, spike-vs-normal |
 | `scripts/cli/portal-server.mjs` + `portal/` | loopback-only web portal routes and static assets |
@@ -81,11 +81,11 @@ roborepo — choose an action:
   index code     index this repo's code with the enabled package-owned indexer
   index docs     index this repo's docs with the enabled package-owned docs indexer
   mcp add        register an MCP server with Claude + Codex
-  watch code     live-index code as files change via the enabled package-owned watcher
-  onboard         run the onboarding wizard (choose behaviors per section)
-  serve           open the local web portal
+  index code --watch live-index code as files change via the enabled package-owned watcher
+  package manage choose package behavior per section
+  web             open the local web portal
   telemetry enable  enable telemetry capture
-  telemetry stop    stop the portal server + capture
+  web stop          stop the detached local web portal
   telemetry status  show telemetry capture state
   run            run a command with trimmed output
 
@@ -103,7 +103,7 @@ roborepo — choose an action:
 
   Maintenance
   doctor         health check
-  verify         post-install verification
+  doctor --installed post-install verification
   rules          render/check generated agent rules
 
   Other
@@ -128,7 +128,7 @@ roborepo skill render-commands [--check]
 roborepo index code  [path]
 roborepo index docs  [path]
 roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--dry-run] [--only-claude|--only-codex] [--skip-claude-permission]
-roborepo watch code  [path]
+roborepo index code [path] --watch
 roborepo setup [--dry-run]
 roborepo apply [--dry-run]
 roborepo version
@@ -136,8 +136,8 @@ roborepo workspace status
 roborepo workspace use <path>
 roborepo workspace validate
 roborepo workspace import <path> [--dry-run]
-roborepo onboard
-roborepo serve [--detach] [--no-open] [--port <n>]
+roborepo package manage
+roborepo web [--detach] [--no-open] [--port <n>]
 roborepo telemetry install|start|stop|enable|disable|status|report|export|backup|purge
 
 roborepo run <cmd> [args...]
@@ -145,8 +145,8 @@ roborepo run <cmd> [args...]
 roborepo update  [--dry-run] [--verbose]
 roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]
 roborepo repair local-config [--dry-run|--apply]
-roborepo doctor  [--installed]
-roborepo verify [--verbose]
+roborepo doctor  [--installed] [--verbose]
+roborepo doctor --installed [--verbose]
 roborepo rules   [--check]
 roborepo permissions [--check]
 
@@ -165,7 +165,7 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   rendered rules, root config export, command install, and shell install to pick up new config).
   The *first* install is the shell bootstrap `scripts/install/main.sh` — that is what puts
   `roborepo` on `PATH` — so the CLI has no separate `install` verb; once `roborepo` exists you only
-  ever `update`. After that, `onboard` runs the wizard to choose the optional behaviors for this
+  ever `update`. After that, `package manage` runs the wizard to choose the optional behaviors for this
   machine.
 - `version` prints the package version plus resolved `appRoot`, `workspaceRoot`, and `stateRoot`.
   `workspace status` prints the same roots plus workspace manifest state. `workspace use <path>`
@@ -174,14 +174,14 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   reports changed built-ins separately without modifying the source checkout.
 - `repair` relinks stale symlinks after the checkout was moved or renamed. It does not re-copy
   managed content files/dirs; those stay put. `repair local-config --dry-run` inspects recoverable
-  Claude/Codex local settings when `update`, `doctor`, or `verify` reports local config repair
+  Claude/Codex local settings when `update` or `doctor --installed` reports local config repair
   candidates; `--apply` writes the repaired active files after creating repair backups. Use
   `--on-conflict` only for noninteractive command
   recovery.
-- **Day to day** — `index code|docs` are one-shot indexers owned by packages; `watch code` runs a live indexer (and
+- **Day to day** — `index code|docs` are one-shot indexers owned by packages; `index code --watch` runs a live indexer (and
   writes the pidfile the Claude SessionStart hook reads to report watcher status); `mcp add`
   registers MCP servers with Claude + Codex; `bundle` manages the optional bundle selections;
-  `telemetry enable`/`disable` turn capture on and off, `web` or `serve --detach` opens the
+  `telemetry enable`/`disable` turn capture on and off, `web --detach` opens the
   detached portal, and `telemetry install` handles a telemetry-only install; `run` executes a
   command and prints only a trimmed tail of its output.
 - **Skills** — `skill new` scaffolds a package-owned automatic helper, skill-backed command, or
@@ -201,7 +201,7 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   `skill render-commands` renders generated slash commands from package `slash-command` resources,
   and `--check` verifies without changing files. See
   [roborepo Skills Interface](roborepo-skills.md).
-- **Maintenance** — `doctor` and `verify` are health and post-install checks; `rules` renders
+- **Maintenance** — `doctor` is the health and post-install check; `rules` renders
   generated Claude/Codex global instruction files, or verifies them with `--check`; `permissions`
   renders Claude/Codex permission outputs from `manifests/inventory/agent-permissions.json`.
 
@@ -224,17 +224,17 @@ workspace package config:
 ```
 
 Use this pattern when the front-door command should stay stable but the implementation belongs to
-an enabled package. `roborepo index code`, `roborepo watch code`, and `roborepo index docs` follow
+an enabled package. `roborepo index code`, `roborepo index code --watch`, and `roborepo index docs` follow
 this pattern. Running one of these commands resolves the enabled package owner first; if no owning
 package is enabled, the CLI tells the user which package to enable.
 
 Lifecycle behavior:
 
-- `roborepo enable <package-id>` records command ownership in `~/.roborepo/enabled-packages.json`
+- `roborepo package enable <package-id>` records command ownership in `~/.roborepo/enabled-packages.json`
   for packages with `cli-command` or `rule` resources.
-- `roborepo disable <package-id>` removes that ownership.
+- `roborepo package disable <package-id>` removes that ownership.
 - `roborepo doctor` validates command resource shape and duplicate ownership inside package
-  dependency closures; `roborepo verify` runs doctor, so it inherits the same guard.
+  dependency closures; `roborepo doctor --installed` checks live install links too.
 - `roborepo repair` relinks moved install paths and preserves package command state because the
   command registry is path-independent runtime state. `roborepo repair local-config --dry-run`
   handles the separate case where local Claude/Codex settings can be safely recovered from backup.
@@ -249,7 +249,7 @@ documented maintainer workflows.
 
 ## Preset Onboarding
 
-`roborepo onboard` is the machine-level chooser for global harness behaviors. Interactive install
+`roborepo package manage` is the machine-level chooser for global harness behaviors. Interactive install
 starts it after the core install completes; the CLI also gates normal commands until onboarding has
 completed at least once, unless you bypass the gate for automation. Re-running it shows enabled
 options checked and disabled options unchecked so you can turn a behavior on or off later.
@@ -275,11 +275,11 @@ bounded, each `<harness>.jsonl` is size-capped
 chronological), so the file can't fill the disk.
 
 **Lifecycle — capture and portal.** `roborepo telemetry enable` turns capture on;
-`roborepo telemetry disable` turns capture off; `roborepo web` or `roborepo serve --detach`
-opens the detached portal. `roborepo telemetry stop` remains a cleanup command: it kills the
-detached server if present and disables capture. The detached server's PID is tracked in
+`roborepo telemetry disable` turns capture off; `roborepo web`
+opens the detached portal. `roborepo web stop` stops the detached server without changing
+capture state. The detached server's PID is tracked in
 `~/.local/state/roborepo/portal-server.pid`; a stale PID file (process gone) is detected and
-cleaned up. `serve` alone can browse historical spool data with capture off.
+cleaned up. `web` can browse historical spool data with capture off.
 
 **Telemetry-only install.** `roborepo telemetry install` formalizes a standalone telemetry setup
 without the rest of roborepo: it symlinks `~/.local/bin/roborepo` (if not already present), writes
@@ -354,7 +354,7 @@ id, heaviest turns surfaced, plus a copy-paste analysis prompt).
 > bare tool names Codex sometimes logs (e.g. `search_symbols`), via a known-tool table in
 > `telemetry-transcript.mjs` — without it, Codex MCP usage is undercounted.
 
-`roborepo serve [--detach] [--no-open] [--port <n>]` (default `4317`) starts a dependency-free local
+`roborepo web [--detach] [--no-open] [--port <n>]` (default `4317`) starts a dependency-free local
 web portal on `127.0.0.1` and opens `/config` by default (`--detach` forks it into the background and
 writes the PID file; this is what `roborepo web` uses under the hood). Before binding, it probes an
 occupied port through `/api/portal/status`, which reports a content hash of the served portal
@@ -418,7 +418,7 @@ touching anything.
 
 `scripts/test/test-roborepo.sh` smoke-tests the subcommands (skill link-project/sync-global/inspect/prune/uninstall/
 conflict, `skill new` scaffolds, native escape-hatch guide, audit check, export/override/firewall/self-pollution guard, slash-command render checks,
-`onboard`/`bundle` onboarding/apply/remove/status, `telemetry` enable/status/report, run, `mcp add` dry-runs + real
+`package manage`/`bundle` onboarding/apply/remove/status, `telemetry` enable/status/report, run, `mcp add` dry-runs + real
 Codex/Claude writes against a throwaway harness root, lifecycle/rules dispatch, menu fallback) against throwaway
 temp repos.
 It touches no global state.

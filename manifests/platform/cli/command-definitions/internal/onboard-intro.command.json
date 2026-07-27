@@ -1,0 +1,13 @@
+{
+  "path": ["onboard-intro"],
+  "kind": "internal",
+  "title": "Onboard intro",
+  "description": "Install-time welcome flow",
+  "usage": "roborepo onboard-intro",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/presets.mjs",
+    "export": "presetsCommand",
+    "prependArgs": ["intro"]
+  }
+}

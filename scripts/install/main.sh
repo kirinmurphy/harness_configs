@@ -176,7 +176,7 @@ try {
 }
 
 # After core install, apply the minimal default bundle set (just `base`), then hand off to the
-# onboarding wizard so the user opts into the rest. The wizard (`roborepo onboard`) is interactive on
+# onboarding wizard so the user opts into the rest. The wizard (`roborepo package manage`) is interactive on
 # a TTY and falls back to a headless default apply when not — so noninteractive and skipped installs
 # still land a working baseline without prompting.
 run_post_install_onboarding() {
@@ -195,7 +195,7 @@ run_post_install_onboarding() {
   [[ $has_codex  -eq 1 ]] && export_user_config codex generated/codex/config.toml "${HOME}/.codex/config.toml"
 
   if presets_onboarded; then
-    echo "Already onboarded. Run 'roborepo onboard' to change which behaviors are enabled."
+    echo "Already onboarded. Run 'roborepo package manage' to change which behaviors are enabled."
     return 0
   fi
 
@@ -204,7 +204,7 @@ run_post_install_onboarding() {
     # path (record onboardedAt only — defaults already applied above), so later commands don't
     # re-prompt and the welcome page never shows.
     node "${repo_root}/scripts/cli/main.mjs" onboard-intro < /dev/null >/dev/null 2>&1 || true
-    echo "Onboarding skipped. Choose optional behaviors later with: roborepo onboard"
+    echo "Onboarding skipped. Choose optional behaviors later with: roborepo package manage"
     return 0
   fi
 
@@ -220,7 +220,7 @@ install_section "Core Install Complete"
 echo "  ${RR_BOLD}Claude${RR_RESET}  $([ $has_claude -eq 1 ] && echo "${RR_GREEN}available${RR_RESET}" || echo "${RR_DIM}not installed${RR_RESET}")"
 echo "  ${RR_BOLD}Codex${RR_RESET}   $([ $has_codex  -eq 1 ] && echo "${RR_GREEN}available${RR_RESET}" || echo "${RR_DIM}not installed${RR_RESET}")"
 echo ""
-echo "  ${RR_BOLD}Web portal${RR_RESET}  run ${RR_CYAN}roborepo serve --detach${RR_RESET} to manage behavior in the UI"
+echo "  ${RR_BOLD}Web portal${RR_RESET}  run ${RR_CYAN}roborepo web${RR_RESET} to manage behavior in the UI"
 run_post_install_onboarding
 if [[ "${package_mode}" == "1" ]]; then
   install_section "Workspace"
@@ -232,5 +232,5 @@ if [[ "${package_mode}" == "1" ]]; then
 fi
 if [[ $has_claude -eq 0 || $has_codex -eq 0 ]]; then
   echo ""
-  echo "To add another harness later: install it, then run roborepo onboard again."
+  echo "To add another harness later: install it, then run roborepo package manage again."
 fi

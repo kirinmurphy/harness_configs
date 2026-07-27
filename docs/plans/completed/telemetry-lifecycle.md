@@ -25,13 +25,11 @@ Consolidate into high-level commands with composable primitives underneath:
 | command | does |
 |---|---|
 | `roborepo telemetry start` | retired; use `roborepo telemetry enable` plus `roborepo web` |
-| `roborepo telemetry stop` | stop detached server + disable capture |
+| `roborepo web stop` | stop detached server |
 | `roborepo telemetry serve [--detach]` | just the server (historical browsing with capture off) |
 | `roborepo telemetry enable` / `disable` | just the capture toggle (power-user escape hatch) |
 
-`start` was later retired. `web`/`serve` and `enable`/`disable` are the composable primitives.
-
-`stop` is unambiguous: it stops the whole system, not just one layer.
+`web`/`web stop` and `enable`/`disable` are the composable primitives.
 
 ### Why not merge enable into serve entirely?
 
@@ -51,10 +49,9 @@ One real use case for running serve without enable: inspecting historical spool 
 3. Fork `roborepo telemetry serve --detach`, write PID file
 4. Print: `telemetry: capturing · dashboard: http://127.0.0.1:4317`
 
-### `telemetry stop`
+### `web stop`
 1. Read PID file, kill the server process (SIGTERM), remove PID file
-2. Run `telemetry disable`
-3. Print: `telemetry: disabled · server stopped`
+2. Print: `roborepo portal: stopped`
 
 ### `serve --detach`
 - Double-fork (or `child_process.spawn` with `detached: true`, `stdio: 'ignore'`, `unref()`)
@@ -64,10 +61,10 @@ One real use case for running serve without enable: inspecting historical spool 
 
 ### Stale PID handling
 - On `start` or `serve --detach`: if PID file exists but process is not running, remove stale file and proceed
-- On `stop`: if PID file missing or process not running, print a note and still run `disable`
+- On `web stop`: if PID file missing or process not running, print a note.
 
 ## CLI manifest changes
-- Add `telemetry start` and `telemetry stop` to usage and menu. `start` was retired later.
+- Add `web stop` to usage and menu.
 - Keep `serve`, `enable`, `disable` in usage.
 
 ## Telemetry-only install mode
@@ -85,12 +82,12 @@ A `--telemetry-only` install formalizes what the shim does today — reproducibl
 3. Wire only the 5 capture hooks into `~/.claude/settings.json` and `~/.codex/hooks.json` (not the full operational hook set)
 4. Print the URL and instructions
 
-**Historical note:** `telemetry start` called `telemetry enable` and launched the portal. It was retired so enabling capture and opening the portal stay separate.
+**Historical note:** capture and portal serving were split so each lifecycle can be controlled independently.
 
 ## Status
 - [x] implement `serve --detach` with PID file
 - [x] implement `telemetry start` (retired later)
-- [x] implement `telemetry stop`
+- [x] implement `web stop`
 - [x] decide and implement `--telemetry-only` install mode (`roborepo telemetry install`)
 - [x] update CLI manifest
 - [x] test orphan detection / stale PID cleanup (`scripts/test/test-telemetry-pid.sh`, 6/6)

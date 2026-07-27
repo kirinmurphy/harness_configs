@@ -1,0 +1,14 @@
+{
+  "path": ["version"],
+  "kind": "command",
+  "title": "Version",
+  "description": "Show version and resolved roots",
+  "order": 900,
+  "advanced": true,
+  "usage": "roborepo version",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/workspace.mjs",
+    "export": "versionCommand"
+  }
+}

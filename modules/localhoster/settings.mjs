@@ -69,7 +69,7 @@ export function updateSettings({ stateRoot, input, fsApi = fs } = {}) {
     throw error;
   }
 
-  const next = structuredClone(current);
+  const next = cloneJson(current);
   applyMutation(next, input);
   next.revision += 1;
   writeSettings({ stateRoot, settings: next, fsApi });
@@ -220,10 +220,14 @@ function mergeAppSettings(target, source, appId) {
 }
 
 function mergeOptionalObject(target, source, label) {
-  if (target == null) return source == null ? undefined : structuredClone(source);
+  if (target == null) return source == null ? undefined : cloneJson(source);
   if (source == null) return target;
   if (JSON.stringify(target) !== JSON.stringify(source)) throw new Error(`alias merge conflict for ${label}`);
   return target;
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 function mergeLinks(targetLinks, sourceLinks, appId) {

@@ -1,0 +1,11 @@
+{
+  "path": ["telemetry", "mark"],
+  "kind": "command",
+  "title": "Record marker",
+  "description": "Record a marker event",
+  "advanced": true,
+  "order": 100,
+  "menuSection": "Advanced",
+  "usage": "roborepo telemetry mark --type <type> --title <title> [...]",
+  "execution": { "adapter": "module", "module": "scripts/cli/telemetry.mjs", "export": "telemetryCommand", "prependArgs": ["mark"] }
+}

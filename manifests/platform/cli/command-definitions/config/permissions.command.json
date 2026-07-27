@@ -1,0 +1,9 @@
+{
+  "path": ["config", "permissions"],
+  "kind": "command",
+  "title": "Permissions",
+  "description": "Render or check agent permission outputs",
+  "order": 40,
+  "usage": "roborepo config permissions [--check]",
+  "execution": { "adapter": "repoScript", "script": "permissions" }
+}

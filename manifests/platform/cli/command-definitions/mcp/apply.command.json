@@ -1,0 +1,15 @@
+{
+  "path": ["mcp", "apply"],
+  "kind": "command",
+  "title": "Apply MCPs",
+  "description": "Apply registered MCP servers",
+  "order": 20,
+  "usage": "roborepo mcp apply [--dry-run]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/mcp.mjs",
+    "export": "mcpApply",
+    "argv": "object",
+    "objectFlags": [{ "name": "dryRun", "arg": "--dry-run" }]
+  }
+}

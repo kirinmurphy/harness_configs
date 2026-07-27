@@ -1,0 +1,18 @@
+{
+  "path": ["package", "inspect"],
+  "kind": "command",
+  "title": "Inspect package",
+  "description": "Inspect a package and its resources",
+  "order": 30,
+  "usage": "roborepo package inspect <package-id>",
+  "arguments": [{ "name": "package-id", "required": true, "interactive": { "prompt": "Choose package", "source": "packages" } }],
+  "onComplete": "returnToSubmenu",
+  "loadingMessage": "Inspecting package...",
+  "continuePrompt": "Press any key to return to packages",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/packages.mjs",
+    "export": "packageCommand",
+    "prependArgs": ["inspect"]
+  }
+}

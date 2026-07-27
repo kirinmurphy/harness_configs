@@ -195,10 +195,10 @@ For exact update, backup, staged-candidate, and uninstall behavior, see
 **What they do:** define which behavior groups are turned on for a machine after the core install.
 
 **Parity model:** one bundle manifest drives the onboarding chooser and the lower-level bundle
-apply/remove commands. It is the source of truth for what `roborepo onboard` can show.
+apply/remove commands. It is the source of truth for what `roborepo package manage` can show.
 
 **To change bundle selection behavior:** edit `manifests/platform/presets.json`, then run
-`roborepo onboard` on a machine that should pick up the new default selection.
+`roborepo package manage` on a machine that should pick up the new default selection.
 
 **To apply baseline changes to a machine:**
 

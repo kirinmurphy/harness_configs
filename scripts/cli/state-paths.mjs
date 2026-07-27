@@ -49,7 +49,7 @@ export const telemetryBackupDir = path.join(roborepoStateDir, "telemetry-backups
 export const legacyTelemetryPidPath = process.env.ROBOREPO_TELEMETRY_PID_PATH
   || path.join(os.homedir(), ".local", "state", "roborepo", "telemetry-server.pid");
 // Keyed by port, not a single fixed path: the portal server is inherently per-repo (it serves
-// whatever repoRoot the invoking `roborepo serve` resolves to), so two different checkouts/
+// whatever repoRoot the invoking `roborepo web` resolves to), so two different checkouts/
 // worktrees running on two different ports are legitimately two independent servers, not one
 // "the" portal. A single shared PID file meant the most-recently-started instance's
 // killExistingServer() would SIGTERM whichever OTHER repo's server happened to be recorded there,

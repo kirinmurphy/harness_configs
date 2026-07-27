@@ -1,0 +1,12 @@
+{
+  "path": ["presets"],
+  "kind": "internal",
+  "title": "Presets",
+  "description": "Internal preset command",
+  "usage": "roborepo presets ...",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/presets.mjs",
+    "export": "presetsCommand"
+  }
+}

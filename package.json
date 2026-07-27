@@ -29,6 +29,7 @@
     "docs/reference/internal/config-collision-handling.md"
   ],
   "scripts": {
+    "build": "npm run --silent pack:dry-run",
     "test": "scripts/test/test-roborepo.sh --quiet",
     "test:context-cost": "node scripts/test/context-cost-check.mjs",
     "test:localhoster": "node scripts/test/localhoster-check.mjs",

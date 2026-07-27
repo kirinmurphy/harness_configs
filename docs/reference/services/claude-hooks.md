@@ -67,7 +67,7 @@ These act on tools or output protocols that exist only on Claude.
 
 **Trigger:** every new session or resume.
 
-Checks whether the code watcher (`roborepo watch code`) is running for the current
+Checks whether the code watcher (`roborepo index code --watch`) is running for the current
 directory by looking for a pidfile at `/tmp/jcmwatch-<md5-of-pwd>.pid` and verifying
 the pid is alive. Injects a system message telling the model either:
 
@@ -76,7 +76,7 @@ the pid is alive. Injects a system message telling the model either:
 
 Also reminds the model to use jcodemunch tools (`resolve_repo`, `search_symbols`,
 etc.) for code exploration instead of `Grep`/`Read`. (Codex has no equivalent
-session hook; it relies on its rules file.) The `index code` and `watch code`
+session hook; it relies on its rules file.) The `index code` and `index code --watch`
 commands are package-owned; enable `jcodemunch` first if the CLI reports that no
 owning package is enabled. This hook is authored at
 `globals/packages/jcodemunch/hooks-claude.json` and composed into the live

@@ -45,7 +45,7 @@ str_contains() { [[ "$1" == *"$2"* ]]; }
 # --- stale PID detection ---
 # Write a PID that no real process holds (high enough to be safe on macOS + Linux).
 echo "9999999" > "${pidfile}"
-node "${cli}" serve --detach --no-open --port 14317 > /dev/null 2>&1 || true
+node "${cli}" web --detach --no-open --port 14317 > /dev/null 2>&1 || true
 
 new_pid=$(cat "${pidfile}" 2>/dev/null || echo "")
 assert "stale PID cleared: PID file updated to new value" test "${new_pid}" != "9999999"
@@ -53,7 +53,7 @@ assert "stale PID cleared: PID file exists" test -f "${pidfile}"
 assert "stale PID cleared: new PID is a live process" pid_running "${new_pid}"
 
 # --- clean stop ---
-node "${cli}" telemetry stop > /dev/null 2>&1 || true
+node "${cli}" web stop > /dev/null 2>&1 || true
 # Give the process a moment to exit after SIGTERM.
 sleep 0.3
 
@@ -61,7 +61,7 @@ assert "stop: PID file removed" test ! -f "${pidfile}"
 assert "stop: server process exited" pid_gone "${new_pid}"
 
 # --- stop with no server is graceful (no crash) ---
-output=$(node "${cli}" telemetry stop 2>&1 || true)
+output=$(node "${cli}" web stop 2>&1 || true)
 assert "stop with no server: exits cleanly" str_contains "${output}" "no server"
 
 # --- detached start refuses an explicit port owned by a FOREIGN (non-roborepo) process ---
@@ -77,7 +77,7 @@ for _ in $(seq 1 25); do
   sleep 0.2
 done
 echo "9999999" > "${pidfile}"
-conflict_output=$(node "${cli}" serve --detach --no-open --port "${conflict_port}" 2>&1 || true)
+conflict_output=$(node "${cli}" web --detach --no-open --port "${conflict_port}" 2>&1 || true)
 assert "foreign-occupied explicit port: refused with actionable message" \
   str_contains "${conflict_output}" "stop it or pass --port"
 assert "foreign-occupied explicit port: stale PID cleared, port left untouched" test ! -f "${pidfile}"
@@ -96,11 +96,11 @@ unset ROBOREPO_PORTAL_PID_PATH
 
 port_a=14319
 port_b=14320
-node "${cli}" serve --detach --no-open --port "${port_a}" > /dev/null 2>&1 || true
+node "${cli}" web --detach --no-open --port "${port_a}" > /dev/null 2>&1 || true
 pid_a_file="${ROBOREPO_STATE_DIR}/portal/server-${port_a}.pid"
 pid_a="$(cat "${pid_a_file}" 2>/dev/null || echo "")"
 
-node "${cli}" serve --detach --no-open --port "${port_b}" > /dev/null 2>&1 || true
+node "${cli}" web --detach --no-open --port "${port_b}" > /dev/null 2>&1 || true
 pid_b_file="${ROBOREPO_STATE_DIR}/portal/server-${port_b}.pid"
 pid_b="$(cat "${pid_b_file}" 2>/dev/null || echo "")"
 
@@ -108,12 +108,12 @@ assert "two ports: server A still running after server B starts" pid_running "${
 assert "two ports: server A's PID file untouched by server B's start" test -f "${pid_a_file}"
 assert "two ports: server B started successfully" pid_running "${pid_b}"
 
-node "${cli}" telemetry stop --port "${port_a}" > /dev/null 2>&1 || true
+node "${cli}" web stop --port "${port_a}" > /dev/null 2>&1 || true
 sleep 0.3
 assert "two ports: stopping server A leaves server B running" pid_running "${pid_b}"
 assert "two ports: server B's PID file untouched by stopping A" test -f "${pid_b_file}"
 
-node "${cli}" telemetry stop --port "${port_b}" > /dev/null 2>&1 || true
+node "${cli}" web stop --port "${port_b}" > /dev/null 2>&1 || true
 sleep 0.3
 
 export ROBOREPO_PORTAL_PID_PATH="${saved_pid_path}"

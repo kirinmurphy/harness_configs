@@ -1,0 +1,15 @@
+{
+  "path": ["package", "dev", "create"],
+  "kind": "command",
+  "title": "Create package",
+  "description": "Scaffold a package",
+  "order": 10,
+  "usage": "roborepo package dev create <package-id> [options]",
+  "arguments": [{ "name": "package-id", "required": true, "interactive": { "prompt": "Package id" } }],
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/packages.mjs",
+    "export": "packageCommand",
+    "prependArgs": ["create"]
+  }
+}

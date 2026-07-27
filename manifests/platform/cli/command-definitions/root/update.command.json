@@ -1,0 +1,17 @@
+{
+  "path": ["update"],
+  "kind": "command",
+  "title": "Update",
+  "description": "Update and re-apply RoboRepo",
+  "order": 30,
+  "usage": "roborepo update [--dry-run] [--verbose] [--on-conflict overwrite|keep|abort]",
+  "onComplete": "returnToSubmenu",
+  "loadingMessage": "Updating RoboRepo...",
+  "continuePrompt": "Press any key to return to menu",
+  "execution": {
+    "adapter": "updateReport",
+    "script": "update",
+    "packageModeAlias": ["config", "apply"],
+    "packageModeMessage": "package mode: `roborepo update` is an alias for `roborepo config apply`; it does not download packages."
+  }
+}

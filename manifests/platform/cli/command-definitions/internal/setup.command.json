@@ -1,0 +1,12 @@
+{
+  "path": ["setup"],
+  "kind": "internal",
+  "title": "Setup",
+  "description": "Initialize workspace/state for package mode",
+  "usage": "roborepo setup [--dry-run]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/workspace.mjs",
+    "export": "setupCommand"
+  }
+}

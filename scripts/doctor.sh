@@ -10,7 +10,7 @@ source "${repo_root}/scripts/lib/manifests-data.sh"  # provides source_files (re
 
 failed=0
 check_installed=0
-quiet=0
+quiet=1
 passed=0
 drift_detected=0
 reported_skill_cache_drift=""
@@ -18,12 +18,14 @@ reported_skill_cache_drift=""
 # Flags may appear in any order:
 #   --installed  also check the global ~/.claude and ~/.codex install links
 #   --quiet|-q   suppress per-check "ok:" lines; still print every failure + a summary
+#   --verbose    print every passing "ok:" line
 for arg in "$@"; do
   case "${arg}" in
     --installed) check_installed=1 ;;
     --quiet|-q)  quiet=1 ;;
+    --verbose)   quiet=0 ;;
     *)
-      echo "usage: $0 [--installed] [--quiet|-q]" >&2
+      echo "usage: $0 [--installed] [--quiet|-q] [--verbose]" >&2
       exit 2
       ;;
   esac

@@ -1,0 +1,15 @@
+{
+  "path": ["package", "reconcile"],
+  "kind": "command",
+  "title": "Reconcile packages",
+  "description": "Re-apply enabled package state",
+  "order": 70,
+  "advanced": true,
+  "usage": "roborepo package reconcile",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/packages.mjs",
+    "export": "packageCommand",
+    "prependArgs": ["reconcile"]
+  }
+}

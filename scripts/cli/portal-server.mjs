@@ -32,7 +32,7 @@ const STATIC_TYPES = {
 // browser nav (portal/shared/theme.js) reads this list from window.ROBOREPO_PORTAL, injected by
 // pageHtml() below, so there is nothing to hand-sync client-side. See docs/reference/services/portal.md.
 // Each page's HTML is just its index.html read from disk (mirrors static assets). `default: true`
-// marks the page served at "/" (what `roborepo serve` opens). Keep "/config" as a stable alias for
+// marks the page served at "/" (what `roborepo web` opens). Keep "/config" as a stable alias for
 // existing docs, tests, and saved browser links.
 export const PAGES = [
   { path: "/plans", id: "plans", title: "Plans", dir: "plans" },

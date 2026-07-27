@@ -1,0 +1,7 @@
+{
+  "path": ["telemetry"],
+  "kind": "namespace",
+  "title": "Telemetry",
+  "description": "Manage local telemetry",
+  "order": 500
+}

@@ -3,10 +3,11 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { claudeJsonPath, repoRoot, rootConfigActive, harnessHome, workspacePackagesDir, packageMode, initializeWorkspace } from "./paths.mjs";
 import { setPackageEnabled, renderHomeRules, effectiveEnabledIds } from "./rules-render.mjs";
-import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog, BUILT_IN_PACKAGES_DIR } from "./package-catalog.mjs";
+import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog, BUILT_IN_PACKAGES_DIR, readPackageCategories } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 import { buildPackageLiveState } from "./package-probes.mjs";
-import { removeCodexMcp } from "./mcp-codex.mjs";
+import { ensureCodexMcp, removeCodexMcp } from "./mcp-codex.mjs";
+import { loadMcpPresets } from "./mcp-presets.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
 import { hookFilePath, mergeHooksInto, unmergeHooksFrom, installHookScripts, removeHookScripts } from "./hook-composition.mjs";
 import { installRuntimeAsset, mergeHarnessConfig, removeRuntimeAsset, unmergeHarnessConfig } from "./package-harness-config.mjs";
@@ -15,6 +16,16 @@ import { SLASH_COMMAND_HARNESS_NAMES } from "./skill-command-config.mjs";
 
 export const USER_CLAUDE_SETTINGS = rootConfigActive.claude;
 export const USER_CODEX_CONFIG = rootConfigActive.codex;
+
+// Lazy: packages.mjs is imported by every CLI command (version, setup, rules, ...), not just ones
+// that touch MCP presets. Loading eagerly at module scope meant any environment missing
+// manifests/inventory/mcp-presets.json (e.g. a stripped-down package-mode app root) would exit(1)
+// before an unrelated command even ran.
+let mcpPresetsCache = null;
+function getMcpPresets() {
+  if (!mcpPresetsCache) mcpPresetsCache = loadMcpPresets();
+  return mcpPresetsCache;
+}
 
 
 export function findPackage(pkgId) {
@@ -154,10 +165,30 @@ function commandBody(name, description) {
 
 function listPackages() {
   const catalog = loadPackageCatalog({ includeUnavailable: true });
+  const states = buildPackageLiveState(catalog);
+  const categories = readPackageCategories();
+  const byCategory = new Map(categories.map((category) => [category.id, { ...category, packages: [] }]));
   for (const pkg of catalog) {
-    const state = buildPackageLiveState(catalog).get(pkg.id);
-    console.log(`${pkg.id}\t${state?.status || "disabled"}\t${pkg.presentation.category}\t${pkg.label}`);
+    const category = pkg.presentation.category;
+    if (!byCategory.has(category)) byCategory.set(category, { id: category, label: titleize(category), order: 999, packages: [] });
+    byCategory.get(category).packages.push(pkg);
   }
+
+  console.log("Packages");
+  for (const category of [...byCategory.values()].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))) {
+    if (category.packages.length === 0) continue;
+    console.log(`\n${category.label}`);
+    for (const pkg of category.packages.sort((a, b) => (a.presentation.order ?? 0) - (b.presentation.order ?? 0) || a.id.localeCompare(b.id))) {
+      const status = states.get(pkg.id)?.status || "disabled";
+      console.log(`  ${status.padEnd(8)} ${packageListLabel(pkg)}`);
+    }
+  }
+}
+
+function packageListLabel(pkg) {
+  return pkg.label.toLowerCase() === titleize(pkg.id).toLowerCase()
+    ? pkg.id
+    : `${pkg.id} - ${pkg.label}`;
 }
 
 function inspectPackage(rest) {
@@ -283,29 +314,39 @@ function mcpAlreadyPresent(serverName) {
 }
 
 function installMcpPreset(presetId) {
-  // Wires a built-in package's own MCP preset. `mcp add` shells out to the real `claude` CLI and
-  // writes the active Codex config; `--builtin` skips the workspace record because this preset
-  // already lives in the app's manifests/inventory/mcp-servers.json (recording it would duplicate a
-  // built-in into user workspace content and trip assertMcpRecordAllowed in package mode). Tests set
-  // ROBOREPO_SKIP_MCP=1 to exercise the rest of enable/disable without the live registration.
+  // Wires a built-in package's own MCP preset. Registers Claude and Codex independently (mirroring
+  // removeMcpPreset below) instead of delegating to a single `mcp add` subprocess: that combined path
+  // treats Claude CLI registration and the Codex config write as all-or-nothing (see mcpAdd), so an
+  // environment without the `claude` binary (e.g. CI) would silently skip the Codex write too, even
+  // though it has no external CLI dependency of its own.
   if (process.env.ROBOREPO_SKIP_MCP === "1") { console.log(`skip: mcp ${presetId} (ROBOREPO_SKIP_MCP)`); return; }
-  if (mcpAlreadyPresent(presetId)) { console.log(`ok: mcp ${presetId} already present`); return; }
-  // Delegate to `roborepo mcp add` subprocess: handles Claude CLI, Codex config, and preset
-  // resolution. mcpAdd calls process.exit(0) directly, so we can't call it inline.
-  const result = spawnSync(
-    process.execPath,
-    [path.join(repoRoot, "scripts", "cli", "main.mjs"), "mcp", "add", "--builtin", presetId],
-    { encoding: "utf8", stdio: "inherit" }
-  );
-  if (result.status !== 0 && result.status !== null) {
-    throw new Error(`mcp add failed for preset: ${presetId}`);
+  const spec = getMcpPresets().get(presetId.toLowerCase());
+  if (!spec) throw new Error(`mcp add failed for preset: ${presetId} (unknown preset)`);
+
+  if (spawnSync("claude", ["--version"], { encoding: "utf8" }).status === 0) {
+    if (mcpAlreadyPresent(spec.name)) {
+      console.log(`  ok: claude mcp ${spec.name} already present`);
+    } else {
+      const result = spawnSync(
+        process.execPath,
+        [path.join(repoRoot, "scripts", "cli", "main.mjs"), "mcp", "add", "--builtin", "--only-claude", presetId],
+        { encoding: "utf8", stdio: "inherit" }
+      );
+      if (result.status !== 0 && result.status !== null) {
+        throw new Error(`mcp add failed for preset: ${presetId}`);
+      }
+    }
+  } else {
+    console.log(`  ok: claude CLI unavailable for mcp ${presetId}`);
   }
+
+  ensureCodexMcp(spec);
 }
 
 export async function enablePackage(rest, _seen = new Set()) {
   const [pkgId, ...flags] = rest;
   if (!pkgId) {
-    console.error("usage: roborepo enable <package-id>");
+    console.error("usage: roborepo package enable <package-id>");
     const catalog = loadPackageCatalog();
     console.error(`available: ${catalog.map((p) => p.id).join(", ")}`);
     process.exit(2);
@@ -545,7 +586,7 @@ function removeMcpPreset(presetId, dryRun) {
 export async function disablePackage(rest) {
   const [pkgId, ...flags] = rest;
   if (!pkgId) {
-    console.error("usage: roborepo disable <package-id>");
+    console.error("usage: roborepo package disable <package-id>");
     console.error(`available: ${loadPackageCatalog().map((p) => p.id).join(", ")}`);
     process.exit(2);
   }

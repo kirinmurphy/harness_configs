@@ -1,0 +1,8 @@
+{
+  "path": ["telemetry", "capture"],
+  "kind": "internal",
+  "title": "Capture",
+  "description": "Append a capture event",
+  "advanced": true,
+  "execution": { "adapter": "module", "module": "scripts/cli/telemetry-capture.mjs", "export": "telemetryCaptureCommand" }
+}

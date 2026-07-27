@@ -1,0 +1,13 @@
+{
+  "path": ["bundle"],
+  "kind": "internal",
+  "title": "Bundle",
+  "description": "Install-time preset bundle command",
+  "usage": "roborepo bundle status|apply|check|remove",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/presets.mjs",
+    "export": "presetsCommand",
+    "prependArgs": ["bundle"]
+  }
+}

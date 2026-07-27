@@ -1,0 +1,14 @@
+{
+  "path": ["skill", "triggers"],
+  "kind": "command",
+  "title": "Check skill triggers",
+  "description": "Check skill trigger fixtures",
+  "menuSection": "Repository Data",
+  "order": 70,
+  "usage": "roborepo skill triggers [--check]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/skill-trigger-check.mjs",
+    "export": "skillTriggerCheck"
+  }
+}

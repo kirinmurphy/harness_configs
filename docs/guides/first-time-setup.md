@@ -37,7 +37,7 @@ turn it on). Noninteractive installs skip the wizard and apply the baseline head
 wizard any time to change your choices:
 
 ```sh
-roborepo onboard
+roborepo package manage
 ```
 
 After the first install, use `roborepo` from anywhere. `roborepo update` re-runs the same installer
@@ -47,7 +47,7 @@ to pick up new or changed config (there is no separate `install` verb):
 roborepo
 roborepo update
 roborepo doctor
-roborepo verify
+roborepo doctor --installed
 ```
 
 ## Choose Collision Behavior

@@ -39,7 +39,7 @@ try {
 
   // The regression: this used to throw "MCP server 'jcodemunch' is built in; add a typed mcp-server
   // replace override" after already writing the MCP, exiting non-zero and leaving partial state.
-  const result = spawnSync(process.execPath, [cli, "enable", "jcodemunch"], { env, encoding: "utf8" });
+  const result = spawnSync(process.execPath, [cli, "package", "enable", "jcodemunch"], { env, encoding: "utf8" });
   assert.equal(
     result.status,
     0,

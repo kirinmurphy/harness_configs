@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "id": "telemetry",
-  "label": "Telemetry",
-  "description": "Capture and visualize token usage across harnesses. The web portal is started separately with roborepo serve.",
+  "label": "Token Monitoring",
+  "description": "Capture and visualize token usage across harnesses. The web portal is started separately with roborepo web.",
   "lifecycle": "optional",
   "presentation": {
     "category": "token-optimization",

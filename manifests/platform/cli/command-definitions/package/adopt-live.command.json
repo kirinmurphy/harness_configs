@@ -1,0 +1,15 @@
+{
+  "path": ["package", "adopt-live"],
+  "kind": "command",
+  "title": "Adopt live packages",
+  "description": "Record externally present package resources as enabled",
+  "order": 80,
+  "advanced": true,
+  "usage": "roborepo package adopt-live [--dry-run]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/packages.mjs",
+    "export": "packageCommand",
+    "prependArgs": ["adopt-live"]
+  }
+}

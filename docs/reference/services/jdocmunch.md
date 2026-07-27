@@ -10,7 +10,7 @@ Complements jcodemunch: jcodemunch handles code, jdocmunch handles docs.
 
 ## Key Difference from jcodemunch: No Watch Mode
 
-jcodemunch has a continuous watch daemon (`roborepo watch code`). jdocmunch does not — the index updates passively via `mtime`-based cache invalidation when tool calls are made. For new or deleted files, re-run `roborepo index docs`.
+jcodemunch has a continuous watch daemon (`roborepo index code --watch`). jdocmunch does not — the index updates passively via `mtime`-based cache invalidation when tool calls are made. For new or deleted files, re-run `roborepo index docs`.
 
 ## Components
 
@@ -38,7 +38,7 @@ writes a `.jdm-indexed` marker file to the target directory so hooks can detect 
 without calling the MCP server.
 
 ```
-roborepo enable jdocmunch
+roborepo package enable jdocmunch
 roborepo index docs docs/   # index a specific docs folder
 roborepo index docs         # indexes the current dir
 ```

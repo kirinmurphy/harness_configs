@@ -68,7 +68,7 @@ Use this as the target ownership model. Each row should have one primary doc, wi
 
 | Status | File | Issue | Resolution |
 | --- | --- | --- | --- |
-| Fixed | `docs/guides/setup-and-daily-use.md` | The permissions section taught old `--profile` / `--permissions` flows. | Replaced with flat behavior buckets, `roborepo onboard` / `roborepo web`, and `roborepo permissions [--check]`. |
+| Fixed | `docs/guides/setup-and-daily-use.md` | The permissions section taught old `--profile` / `--permissions` flows. | Replaced with flat behavior buckets, `roborepo package manage` / `roborepo web`, and `roborepo permissions [--check]`. |
 | Fixed | `manifests/inventory/README.md` | Described `agent-permissions.json` as permission profiles. | Updated to flat permission behaviors and arbitrary command buckets. |
 | Fixed | `docs/reference/services/architecture.md` | Root config examples used old `archived/`, `not_adopted/`, and copied/adopted wording. | Replaced with current `*_original_TIMESTAMP`, `*_update_TIMESTAMP`, and drift-aware root config behavior. |
 | Fixed | `docs/reference/services/architecture.md` | Materialization map said skills were copied into harness dirs. | Updated to `~/.roborepo/skills/<name>` cache plus harness symlinks. |

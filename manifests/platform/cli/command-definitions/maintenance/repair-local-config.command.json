@@ -1,0 +1,13 @@
+{
+  "path": ["maintenance", "repair", "local-config"],
+  "kind": "command",
+  "title": "Repair local config",
+  "description": "Recover local Claude/Codex settings from safe backups",
+  "order": 20,
+  "usage": "roborepo maintenance repair local-config [--dry-run|--apply]",
+  "execution": {
+    "adapter": "repoScript",
+    "script": "repair",
+    "prependArgs": ["local-config"]
+  }
+}

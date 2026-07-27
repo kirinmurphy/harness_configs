@@ -187,7 +187,7 @@ function probeService(component, desired, telemetryState) {
     detail: observed
       ? "service state enabled"
       : inactive
-        ? "service installed but capture is turned off (roborepo serve to start)"
+        ? "service installed but capture is turned off (roborepo web to start)"
         : "service state missing",
   });
 }

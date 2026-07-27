@@ -12,9 +12,9 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `roborepo update [--verbose]` | Applies this repo's harness config to this machine: copied files, rendered rules, root config export, global command install, and shell wiring. Use after pulling repo changes; `--verbose` includes unchanged items in the report. |
 | `roborepo repair [--dry-run] [--on-conflict ...]` | Repairs a moved or renamed checkout by relinking stale symlinks against the current path; it leaves copied config content alone. |
-| `roborepo repair local-config [--dry-run or --apply]` | Recovers safe local Claude/Codex settings from recent backups when `update`, `doctor`, or `verify` reports local config repair candidates. |
+| `roborepo repair local-config [--dry-run or --apply]` | Recovers safe local Claude/Codex settings from recent backups when `update` or `doctor --installed` reports local config repair candidates. |
 | `roborepo doctor`          | Runs harness health checks for config files, links, helper commands, dependencies, and generated outputs.                                                        |
-| `roborepo verify [--verbose]` | Runs post-install verification that the installed harness paths resolve correctly; default output is concise.                                                   |
+| `roborepo doctor --installed [--verbose]` | Runs post-install verification that the installed harness paths resolve correctly; default output is concise.                                      |
 | `roborepo rules [--check]` | Renders generated Claude/Codex global instruction files, or verifies them with `--check`.                                                                        |
 | `roborepo config root inspect` | Read-only report of each harness root config (`~/.claude/settings.json`, `~/.codex/config.toml`): baseline vs. active file and its drift state — `in sync`, `drifted` (edited since roborepo's last write), `staged update pending`, or untracked. |
 
@@ -23,11 +23,11 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 |                                            |                                                                                                                      |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | `roborepo package create <id> [--kind=empty\|auto-skill\|skill-command\|standalone-command] [--description=...] [--default-enabled=true]` | Scaffolds a new package under `globals/packages/<id>/` (dev checkout) or the workspace packages dir (package mode). Refuses to overwrite an existing package. |
-| `roborepo package list`                    | Lists every package with live enabled/disabled status, category, and label.                                          |
+| `roborepo package list`                    | Lists packages grouped by category with concise live enabled/disabled status.                                        |
 | `roborepo package inspect <id>`            | Prints the full manifest for one package.                                                                             |
 | `roborepo package validate [id]`           | Validates one package or the whole catalog against the current manifest schema.                                      |
-| `roborepo enable <id>` / `roborepo package enable <id>` | Enables a package and applies it live immediately — permissions, hooks, rules, MCP, and commands install without a separate `roborepo update`. |
-| `roborepo disable <id>` / `roborepo package disable <id>` | Disables a package and removes its owned contributions live immediately.                                             |
+| `roborepo package enable <id>` | Enables a package and applies it live immediately — permissions, hooks, rules, MCP, and commands install without a separate `roborepo update`. |
+| `roborepo package disable <id>` | Disables a package and removes its owned contributions live immediately.                                             |
 | `roborepo package reconcile`               | Re-applies every currently-enabled package and drops any enabled-but-unknown stale entries — the full-reconciliation entry point. |
 | `roborepo package adopt-live [--dry-run]`  | Detects externally-installed package behavior and marks it enabled in the registry without reinstalling it.          |
 
@@ -37,7 +37,7 @@ See [Package Development](../../../local/skills/roborepo-development/references/
 
 | | |
 | --- | --- |
-| `roborepo serve` | Starts the local portal. `/config` manages packages/permissions, `/plans` browses plan docs, `/localhoster` lists local web apps, and `/tokens` shows token usage when telemetry has data. |
+| `roborepo web` | Starts the local portal. `/config` manages packages/permissions, `/plans` browses plan docs, `/localhoster` lists local web apps, and `/telemetry` shows token usage when telemetry has data. |
 | `roborepo web` | Starts the same portal detached and opens it in the browser. |
 | `roborepo localhoster [--json] [--open]` | Lists active localhost HTTP apps, prints the portal snapshot as JSON, or opens `/localhoster`. |
 
@@ -54,7 +54,7 @@ the RoboRepo state root, and reports per-provider capability limits. See [Localh
 | ---------------------------- | ------------------------------------------------------------------------------------ |
 | `roborepo index code [path]` | Runs the enabled package-owned code indexer for the current directory or `[path]`.         |
 | `roborepo index docs [path]` | Runs the enabled package-owned documentation indexer for the current directory or `[path]`. |
-| `roborepo watch code [path]` | Keeps the enabled package-owned code index live while files change.                             |
+| `roborepo index code [path] --watch` | Keeps the enabled package-owned code index live while files change.                       |
 
 ## Skills
 
@@ -99,15 +99,15 @@ Code indexing is package-owned, so the indexer package can be swapped later with
 the code index and watch commands:
 
 ```sh
-roborepo enable jcodemunch
+roborepo package enable jcodemunch
 roborepo index code
-roborepo watch code
+roborepo index code --watch
 ```
 
 Documentation indexing is owned by the current `jdocmunch` package:
 
 ```sh
-roborepo enable jdocmunch
+roborepo package enable jdocmunch
 roborepo index docs
 ```
 

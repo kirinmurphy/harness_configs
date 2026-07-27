@@ -1,0 +1,13 @@
+{
+  "path": ["skill", "adopt"],
+  "kind": "internal",
+  "title": "Adopt skill",
+  "description": "Legacy package-development import entrypoint",
+  "advanced": true,
+  "usage": "roborepo skill adopt <name>",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/skills.mjs",
+    "export": "skillAdopt"
+  }
+}

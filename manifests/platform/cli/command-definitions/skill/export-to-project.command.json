@@ -1,0 +1,16 @@
+{
+  "path": ["skill", "export-to-project"],
+  "kind": "command",
+  "title": "Export skills to project",
+  "description": "Copy shared skills into this project",
+  "menuSection": "Project Skills",
+  "order": 10,
+  "usage": "roborepo skill export-to-project [--yes] [--on-conflict=skip|override]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/skills.mjs",
+    "export": "skillExport",
+    "argv": "set",
+    "commandName": "skill export-to-project"
+  }
+}

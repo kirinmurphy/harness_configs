@@ -158,7 +158,7 @@ roborepo permissions --check
 ```
 
 Edit behaviors and arbitrary commands via the web portal (`roborepo web`) — the only
-place per-command overrides are editable; `roborepo onboard`'s Permissions step offers
+place per-command overrides are editable; `roborepo package manage`'s Permissions step offers
 the 5 named behaviors as a direct toggle, `roborepo config status` is read-only.
 
 The renderer writes the generated permission block in `generated/codex/config.toml`
@@ -182,7 +182,7 @@ directly in `permissions.ask`.
 Once diverged, `roborepo update` does not silently overwrite it — reinstall only
 overwrites on an explicit "overwrite" collision choice, so a diverged live file persists
 indefinitely with no automated drift check today. Treat the live file as
-possibly-stale relative to repo intent; `roborepo doctor`/`verify` only check repo-source
+possibly-stale relative to repo intent; `roborepo doctor` only checks repo-source
 render drift (manifest vs. `generated/codex/rules/default.rules`), not live-machine drift.
 
 `~/.codex/config.toml` is similar: it is an active local root config file, not a

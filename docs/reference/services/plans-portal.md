@@ -33,7 +33,7 @@ Root-level `docs/plans/*.md` files are reported as `unclassified`.
 
 ## Runtime Behavior
 
-`roborepo serve` starts the shared loopback portal server. `/plans` is registered directly in
+`roborepo web` starts the shared loopback portal server. `/plans` is registered directly in
 `scripts/cli/portal-server.mjs`, alongside Config and Telemetry.
 
 The page uses:

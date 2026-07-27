@@ -1,0 +1,7 @@
+{
+  "path": ["maintenance"],
+  "kind": "namespace",
+  "title": "Maintenance",
+  "description": "Diagnose and repair RoboRepo",
+  "order": 700
+}

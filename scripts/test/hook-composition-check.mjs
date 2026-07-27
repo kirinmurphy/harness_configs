@@ -78,7 +78,7 @@ function codexHookCommands() {
 try {
   // --- enable: both harnesses' hooks land ---
   {
-    const enable = run(["enable", "hook-composition-fixture"]);
+    const enable = run(["package", "enable", "hook-composition-fixture"]);
     assert.equal(enable.status, 0, `enable failed: ${enable.stderr}`);
     assert.ok(claudeHookCommands().includes("echo hook-composition-fixture-claude"), "Claude hook installed on enable");
     assert.ok(codexHookCommands().includes("echo hook-composition-fixture-codex"), "Codex hook installed on enable");
@@ -86,7 +86,7 @@ try {
 
   // --- reapply: idempotent, no duplicates ---
   {
-    const reenable = run(["enable", "hook-composition-fixture"]);
+    const reenable = run(["package", "enable", "hook-composition-fixture"]);
     assert.equal(reenable.status, 0, `reapply failed: ${reenable.stderr}`);
     const claudeCount = claudeHookCommands().filter((c) => c === "echo hook-composition-fixture-claude").length;
     const codexCount = codexHookCommands().filter((c) => c === "echo hook-composition-fixture-codex").length;
@@ -108,7 +108,7 @@ try {
 
   // --- disable: both harnesses' owned hooks removed, user hooks survive ---
   {
-    const disable = run(["disable", "hook-composition-fixture"]);
+    const disable = run(["package", "disable", "hook-composition-fixture"]);
     assert.equal(disable.status, 0, `disable failed: ${disable.stderr}`);
     assert.ok(!claudeHookCommands().includes("echo hook-composition-fixture-claude"), "Claude hook removed on disable");
     assert.ok(!codexHookCommands().includes("echo hook-composition-fixture-codex"), "Codex hook removed on disable");
@@ -118,7 +118,7 @@ try {
 
   // --- reapply after disable: stays removed ---
   {
-    const redisable = run(["disable", "hook-composition-fixture"]);
+    const redisable = run(["package", "disable", "hook-composition-fixture"]);
     assert.equal(redisable.status, 0, `re-disable failed: ${redisable.stderr}`);
     assert.ok(!claudeHookCommands().includes("echo hook-composition-fixture-claude"), "Claude hook stays removed after re-disable");
     assert.ok(!codexHookCommands().includes("echo hook-composition-fixture-codex"), "Codex hook stays removed after re-disable");

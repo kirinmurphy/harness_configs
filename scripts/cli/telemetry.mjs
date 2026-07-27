@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import net from "node:net";
@@ -49,8 +50,6 @@ export async function telemetryCommand(rest) {
   switch (sub) {
     case "install":
       return telemetryInstall(args);
-    case "stop":
-      return telemetryStop(args);
     case "enable":
       return telemetryEnable(args);
     case "disable":
@@ -79,7 +78,7 @@ export async function telemetryCommand(rest) {
     }
     default:
       console.error("usage: roborepo telemetry install|stop|enable|disable|status|report|export|backup|purge|mark|experiment");
-      console.error("portal: roborepo serve [--detach] [--no-open] [--port <n>]");
+      console.error("portal: roborepo web [--detach] [--no-open] [--port <n>]");
       process.exit(2);
   }
 }
@@ -325,7 +324,7 @@ function telemetryInstall(args) {
   }
   console.log("telemetry-only install complete.");
   console.log("capture is enabled.");
-  console.log("open the portal:       roborepo serve");
+  console.log("open the portal:       roborepo web");
   console.log("view reports:          roborepo telemetry report");
   console.log("upgrade to full suite: re-run the roborepo install script");
 }
@@ -360,32 +359,6 @@ function wireCaptureHooks(settingsPath, harness) {
   const fragmentPath = path.join(repoRoot, "globals", "packages", "telemetry", `hooks-${harness}.json`);
   const fragment = JSON.parse(fs.readFileSync(fragmentPath, "utf8"));
   mergeHooksInto(harness, settingsPath, fragment);
-}
-
-function telemetryStop(args) {
-  const port = parseStopArgs(args);
-  const stopped = stopServer(port);
-  ensureTelemetryDirs();
-  writeTelemetryState({ enabled: false });
-  markTelemetrySelected(false);
-  console.log(stopped ? "telemetry: disabled · server stopped" : "telemetry: disabled · no server was running");
-}
-
-// PID tracking is per-port (see the "PID management" section below), so stopping the right server
-// needs to know which port — defaults to the same 4317 `serve` itself defaults to.
-function parseStopArgs(args) {
-  let port = 4317;
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--port") port = Number(args[++i]);
-    else if (arg.startsWith("--port=")) port = Number(arg.slice("--port=".length));
-    else rejectArgs([arg]);
-  }
-  if (!Number.isInteger(port) || port < 0) {
-    console.error("usage: roborepo telemetry stop [--port <n>]");
-    process.exit(2);
-  }
-  return port;
 }
 
 async function telemetryEnable(args) {
@@ -717,7 +690,7 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
   if (options.detach) {
     const port = await startDetachedPortal(options.port, { allowPortFallback, portExplicit: options.portExplicit });
     const detachedPortalUrl = `http://127.0.0.1:${port}`;
-    console.log(`roborepo portal: ${detachedPortalUrl}  (detached · use: roborepo telemetry stop)`);
+    console.log(`roborepo portal: ${detachedPortalUrl}  (detached · use: roborepo web stop)`);
     if (options.open) openLocalUrl(`${detachedPortalUrl}${openPath}`);
     return;
   }
@@ -798,6 +771,12 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
   });
 }
 
+export function webStopCommand(args) {
+  const port = parsePortalStopArgs(args);
+  const stopped = stopServer(port);
+  console.log(stopped ? "roborepo portal: stopped" : "roborepo portal: no server was running");
+}
+
 function parseServeArgs(args) {
   const options = { port: 4317, portExplicit: false, detach: false, open: true, allowZeroPort: false };
   for (let i = 0; i < args.length; i++) {
@@ -816,10 +795,25 @@ function parseServeArgs(args) {
     else rejectArgs([arg]);
   }
   if (!Number.isInteger(options.port) || options.port < 0 || (options.port === 0 && !options.allowZeroPort)) {
-    console.error("usage: roborepo serve [--detach] [--no-open] [--port <n>]");
+    console.error("usage: roborepo web [--detach] [--no-open] [--port <n>]");
     process.exit(2);
   }
   return options;
+}
+
+function parsePortalStopArgs(args) {
+  let port = 4317;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--port") port = Number(args[++i]);
+    else if (arg.startsWith("--port=")) port = Number(arg.slice("--port=".length));
+    else rejectArgs([arg]);
+  }
+  if (!Number.isInteger(port) || port < 0) {
+    console.error("usage: roborepo web stop [--port <n>]");
+    process.exit(2);
+  }
+  return port;
 }
 
 function telemetryPurge(args) {
@@ -1720,12 +1714,8 @@ function canBindPort(port) {
 }
 
 async function probePortal(port) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 500);
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/portal/status`, { signal: controller.signal });
-    if (!res.ok) return { current: false };
-    const data = await res.json();
+    const data = await getPortalStatus(port);
     const currentPortalDir = path.join(repoRoot, "portal");
     const pid = Number(data?.pid);
     const samePath = data?.ok === true && data?.appRoot === repoRoot && data?.portalDir === currentPortalDir && Number.isInteger(pid);
@@ -1739,16 +1729,46 @@ async function probePortal(port) {
     return { current: !stale, stale, pid };
   } catch {
     return { current: false };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
-// Spawn a new foreground `serve` process in the background. The caller writes the PID only after the
+function getPortalStatus(port) {
+  return new Promise((resolve, reject) => {
+    const req = http.get(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/portal/status",
+        timeout: 500,
+      },
+      (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          reject(new Error(`portal status returned ${res.statusCode}`));
+          return;
+        }
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => { body += chunk; });
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch (err) {
+            reject(err);
+          }
+        });
+      },
+    );
+    req.on("timeout", () => req.destroy(new Error("portal status timed out")));
+    req.on("error", reject);
+  });
+}
+
+// Spawn a new foreground `web` process in the background. The caller writes the PID only after the
 // child writes its ready-file from server.listen(), so a failed bind never leaves a stale "running" PID.
 function spawnDetachedServer(port) {
   const readyFile = path.join(os.tmpdir(), `roborepo-portal-${process.pid}-${Date.now()}.ready`);
-  const child = spawn(process.execPath, [process.argv[1], "serve", "--no-open", "--port", String(port), "--allow-zero-port"], {
+  const child = spawn(process.execPath, [process.argv[1], "web", "--no-open", "--port", String(port), "--allow-zero-port"], {
     detached: true,
     stdio: "ignore",
     env: { ...process.env, ROBOREPO_PORTAL_READY_FILE: readyFile },

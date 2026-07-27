@@ -1,0 +1,8 @@
+{
+  "path": ["config", "root"],
+  "kind": "namespace",
+  "title": "Root config",
+  "description": "Inspect root configuration state",
+  "order": 50,
+  "collapseInMenu": true
+}

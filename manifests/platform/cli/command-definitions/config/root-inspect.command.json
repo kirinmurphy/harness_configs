@@ -1,0 +1,14 @@
+{
+  "path": ["config", "root", "inspect"],
+  "kind": "command",
+  "title": "Inspect root config",
+  "description": "Report root config baseline, active, and drift state",
+  "order": 10,
+  "usage": "roborepo config root inspect",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/config.mjs",
+    "export": "configCommand",
+    "prependArgs": ["root", "inspect"]
+  }
+}

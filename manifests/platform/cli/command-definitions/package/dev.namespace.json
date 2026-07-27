@@ -1,0 +1,7 @@
+{
+  "path": ["package", "dev"],
+  "kind": "namespace",
+  "title": "Package development",
+  "description": "Create and validate package resources",
+  "order": 100
+}

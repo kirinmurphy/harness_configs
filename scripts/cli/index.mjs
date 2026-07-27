@@ -23,6 +23,9 @@ function requireUvx() {
 }
 
 export function indexCode(rest) {
+  if (rest.includes("--watch")) {
+    return watchCode(rest.filter((arg) => arg !== "--watch"));
+  }
   requireUvx();
   return runPackageCommand("index code", rest);
 }

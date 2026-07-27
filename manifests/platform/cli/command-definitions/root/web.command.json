@@ -1,0 +1,14 @@
+{
+  "path": ["web"],
+  "kind": "command",
+  "title": "Open web portal",
+  "description": "Open the local web portal",
+  "order": 10,
+  "usage": "roborepo web [--detach] [--no-open] [--port <n>]",
+  "interactiveArgs": ["--detach"],
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/telemetry.mjs",
+    "export": "serveCommand"
+  }
+}

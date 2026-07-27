@@ -1,12 +1,16 @@
 {
   "path": ["package", "manage"],
   "kind": "command",
-  "title": "Manage packages and features",
-  "description": "Choose which packages and behaviors are enabled",
+  "title": "Package Library",
+  "description": "Browse and enable packages",
   "order": 20,
   "rootOrder": 20,
   "promoteToRoot": true,
   "usage": "roborepo package manage",
+  "interactiveArgs": ["--menu"],
+  "onComplete": "returnToSubmenu",
+  "interactiveStdio": true,
+  "noticeOnComplete": false,
   "execution": {
     "adapter": "module",
     "module": "scripts/cli/presets.mjs",

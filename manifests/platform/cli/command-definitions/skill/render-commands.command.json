@@ -3,6 +3,7 @@
   "kind": "command",
   "title": "Render slash commands",
   "description": "Render or check slash commands",
+  "menuSection": "Repository Data",
   "order": 80,
   "usage": "roborepo skill render-commands [--check]",
   "execution": { "adapter": "repoScript", "script": "skill render-commands" }

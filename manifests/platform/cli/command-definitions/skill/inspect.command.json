@@ -3,6 +3,7 @@
   "kind": "command",
   "title": "Inspect skill",
   "description": "Show source, ownership, and harness install state",
+  "menuSection": "Inspection",
   "order": 40,
   "usage": "roborepo skill inspect <name>",
   "arguments": [{ "name": "name", "required": true, "interactive": { "prompt": "Skill name" } }],

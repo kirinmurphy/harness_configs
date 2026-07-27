@@ -1,10 +1,11 @@
 {
   "path": ["telemetry", "experiment"],
   "kind": "namespace",
-  "title": "Telemetry experiments",
-  "description": "Start, end, or inspect telemetry experiments",
+  "title": "Experiments",
+  "description": "Start, end, or inspect experiments",
   "advanced": true,
   "order": 110,
+  "menuSection": "Advanced",
   "usage": "roborepo telemetry experiment start|end|status [<id>]",
   "execution": { "adapter": "module", "module": "scripts/cli/telemetry.mjs", "export": "telemetryCommand", "prependArgs": ["experiment"] }
 }

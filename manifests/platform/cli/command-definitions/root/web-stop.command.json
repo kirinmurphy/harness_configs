@@ -1,0 +1,13 @@
+{
+  "path": ["web", "stop"],
+  "kind": "command",
+  "title": "Stop web portal",
+  "description": "Stop the detached local web portal",
+  "order": 11,
+  "usage": "roborepo web stop [--port <n>]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/telemetry.mjs",
+    "export": "webStopCommand"
+  }
+}

@@ -3,6 +3,7 @@
   "kind": "command",
   "title": "Audit skills",
   "description": "Render or check shared skill invocation audit",
+  "menuSection": "Repository Data",
   "order": 60,
   "usage": "roborepo skill audit [--check]",
   "execution": {

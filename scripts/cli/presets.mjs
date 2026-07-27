@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { repoRoot, harnessHome } from "./paths.mjs";
 import { installStatePath, presetsStatePath } from "./state-paths.mjs";
 import { readConfigSnapshot, buildBehaviorView } from "./config.mjs";
-import { mutatePackage, setSkillInstalled, setBehaviorBucket } from "./config-mutate.mjs";
+import { mutatePackage, setBehaviorBucket } from "./config-mutate.mjs";
 import { renderHomeRules, removeHomeRules, isRenderedRulesOutput } from "./rules-render.mjs";
 import { confirmYesNo, makePrompter, selectMenu, wizard } from "./skill-lib.mjs";
 import { pathExists, findSiblingArtifact, copyTree, stageCandidate, backupOriginal } from "./staging-lib.mjs";
@@ -74,7 +74,8 @@ export async function bundleCommand(args) {
 // endpoints use, so terminal and web stay in lockstep. Permissions are read-only here (Phase 2).
 // Non-TTY (headless) keeps applying the default configuration, the same set install wires up.
 export async function presetsOnboard(args) {
-  rejectUnknownFlags(args, new Set());
+  rejectUnknownFlags(args, new Set(["--menu", "--launch-portal"]));
+  const launchPortal = args.includes("--launch-portal");
 
   const tty = process.stdin.isTTY && process.stdout.isTTY;
   if (!tty) {
@@ -84,7 +85,7 @@ export async function presetsOnboard(args) {
     return;
   }
 
-  await runInteractiveOnboard();
+  await runInteractiveOnboard({ launchPortal, source: "library" });
   markOnboarded();
 }
 
@@ -105,6 +106,7 @@ function markOnboarded() {
 // flipped the in-memory flag; here we persist it). Telemetry is imported lazily to avoid a static
 // import cycle (telemetry.mjs → presets.mjs). Returns { ok, message }.
 async function applyItemToggle(section, item, enabled) {
+  if (item.toggle === "package") return mutatePackage(item.id, enabled);
   if (section.category === "Token Optimization") {
     // jcodemunch / jdocmunch / caveman / telemetry are all packages now (telemetry via a service
     // component), so they route through the one generic package mutate.
@@ -114,9 +116,6 @@ async function applyItemToggle(section, item, enabled) {
   if (section.category === "Chat-Time Output") {
     // The three inline chat-note behaviors are rules packages; route through the generic mutate.
     return mutatePackage(item.id, enabled);
-  }
-  if (section.category === "Commands" || section.category === "Code Conventions") {
-    return setSkillInstalled(item.id, enabled);
   }
   return { ok: false, message: `${section.category} is read-only in onboarding` };
 }
@@ -148,7 +147,7 @@ function isToggleableItem(section, item) {
 // Translate the live /config behavior view into wizard steps, in the user-facing order: token
 // optimization first, then commands, code conventions, chat-time output, and finally a read-only
 // Permissions panel. The wizard re-reads state after each toggle, so marks always reflect truth.
-function buildOnboardSteps() {
+function buildOnboardSteps({ showWebNotice = false } = {}) {
   const view = buildBehaviorView(readConfigSnapshot());
   const byCategory = (name) => view.find((s) => s.category === name);
   const steps = [];
@@ -169,10 +168,16 @@ function buildOnboardSteps() {
         item,
       }));
     if (items.length === 0) continue;
-    steps.push({ title: name, description: section.description, footnote: section.footnote, items });
+    steps.push({
+      title: name,
+      description: section.description,
+      itemHeader: name === "Commands" ? "Commands" : "",
+      footnote: section.footnote,
+      items,
+    });
   }
 
-  if (steps[0]) {
+  if (showWebNotice && steps[0]) {
     steps[0].notice = "Prefer a web UI? Run: roborepo web";
   }
 
@@ -234,31 +239,54 @@ async function applyWizardChanges(steps) {
   const pending = pendingWizardChanges(steps);
   if (pending.length === 0) {
     console.log("\nNo changes.");
-    return;
+    return { applied: true, changed: false };
   }
   console.log("\nApplying changes…");
+  let failed = 0;
   for (const row of pending) {
     if (row.states) {
       const result = await applyBehaviorBucket(row.item.id, row.state);
       const status = result.ok ? "ok" : `failed: ${result.message}`;
+      if (!result.ok) failed += 1;
       console.log(`  ${row.state} ${row.item.id ?? row.label} — ${status}`);
       continue;
     }
     const verb = row.active ? "enable" : "disable";
     const result = await applyItemToggle(row.section, row.item, row.active);
     const status = result.ok ? "ok" : `failed: ${result.message}`;
+    if (!result.ok) failed += 1;
     console.log(`  ${verb} ${row.item.id ?? row.label} — ${status}`);
   }
+  return { applied: true, changed: true, failed };
 }
 
-async function runInteractiveOnboard({ launchPortal = true } = {}) {
-  console.log("roborepo onboarding — toggle behavior across the sections, then press Enter on the last step.\n");
-  console.log("Web UI: roborepo web\n");
-  await wizard(buildOnboardSteps(), applyWizardChanges);
+async function runInteractiveOnboard({ launchPortal = false, source = "library" } = {}) {
+  if (source === "install") {
+    console.log("roborepo onboarding — toggle behavior across the sections, then press Enter on the last step.\n");
+    console.log("Web UI: roborepo web\n");
+  }
+  const result = await wizard(
+    buildOnboardSteps({ showWebNotice: source === "install" }),
+    applyWizardChanges,
+    { title: source === "install" ? "Onboarding" : "Package Library" },
+  );
+  writeInteractiveResult(result, source === "install" ? "Onboarding" : "Package Library");
   // The first-install intro owns the "open web?" nudge, so it runs the wizard with launchPortal=false
   // to avoid a duplicate portal prompt.
   if (launchPortal) await maybeLaunchPortal();
-  console.log("Onboarding complete.");
+  if (source === "install") console.log("Onboarding complete.");
+}
+
+function writeInteractiveResult(result, title) {
+  const resultFile = process.env.ROBOREPO_INTERACTIVE_RESULT_FILE;
+  if (!resultFile) return;
+  const payload = result?.changed
+    ? { notice: { text: `${title} updated`, level: result.failed ? "warning" : "success" } }
+    : {};
+  try {
+    fs.mkdirSync(path.dirname(resultFile), { recursive: true });
+    fs.writeFileSync(resultFile, JSON.stringify(payload) + "\n");
+  } catch {}
 }
 
 // First-install welcome page + 4-option menu. A property of the INSTALL workflow only: install calls
@@ -289,7 +317,7 @@ export async function presetsIntro(args) {
   switch (choice) {
     case "tools":
       // Run the onboarding wizard inline; the intro owns the web nudge, so skip the portal prompt.
-      await runInteractiveOnboard({ launchPortal: false });
+      await runInteractiveOnboard({ launchPortal: false, source: "install" });
       break;
     case "web":
       spawnSync(process.execPath, [path.join(repoRoot, "scripts", "cli", "main.mjs"), "web"], { stdio: "inherit" });

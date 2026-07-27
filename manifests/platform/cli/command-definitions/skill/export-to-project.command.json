@@ -3,6 +3,7 @@
   "kind": "command",
   "title": "Export skills to project",
   "description": "Copy shared skills into this project",
+  "menuSection": "Project Skills",
   "order": 10,
   "usage": "roborepo skill export-to-project [--yes] [--on-conflict=skip|override]",
   "execution": {

@@ -23,7 +23,7 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 |                                            |                                                                                                                      |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | `roborepo package create <id> [--kind=empty\|auto-skill\|skill-command\|standalone-command] [--description=...] [--default-enabled=true]` | Scaffolds a new package under `globals/packages/<id>/` (dev checkout) or the workspace packages dir (package mode). Refuses to overwrite an existing package. |
-| `roborepo package list`                    | Lists every package with live enabled/disabled status, category, and label.                                          |
+| `roborepo package list`                    | Lists packages grouped by category with concise live enabled/disabled status.                                        |
 | `roborepo package inspect <id>`            | Prints the full manifest for one package.                                                                             |
 | `roborepo package validate [id]`           | Validates one package or the whole catalog against the current manifest schema.                                      |
 | `roborepo package enable <id>` | Enables a package and applies it live immediately — permissions, hooks, rules, MCP, and commands install without a separate `roborepo update`. |

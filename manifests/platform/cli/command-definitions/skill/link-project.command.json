@@ -3,6 +3,7 @@
   "kind": "command",
   "title": "Link project skills",
   "description": "Link this project's Codex skills into Claude",
+  "menuSection": "Project Skills",
   "order": 20,
   "usage": "roborepo skill link-project [--dry-run] [--uninstall]",
   "execution": {

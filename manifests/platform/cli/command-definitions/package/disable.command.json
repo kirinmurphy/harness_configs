@@ -5,7 +5,7 @@
   "description": "Disable a package and remove owned contributions live",
   "order": 50,
   "usage": "roborepo package disable <package-id> [--dry-run] [--cascade]",
-  "arguments": [{ "name": "package-id", "required": true, "interactive": { "prompt": "Package id" } }],
+  "arguments": [{ "name": "package-id", "required": true, "interactive": { "prompt": "Choose package", "source": "packages" } }],
   "execution": {
     "adapter": "module",
     "module": "scripts/cli/packages.mjs",

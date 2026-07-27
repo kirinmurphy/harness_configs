@@ -2,6 +2,6 @@
   "path": ["maintenance"],
   "kind": "namespace",
   "title": "Maintenance",
-  "description": "Repair or uninstall RoboRepo",
+  "description": "Diagnose and repair RoboRepo",
   "order": 700
 }

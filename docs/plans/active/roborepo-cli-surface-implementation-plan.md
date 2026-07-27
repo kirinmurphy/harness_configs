@@ -159,12 +159,12 @@ Packaging does not need to imply complexity. A package containing one skill is v
 
 Resource commands must distinguish where a resource comes from:
 
-| Scope | Meaning | Ownership |
-| --- | --- | --- |
-| Package | Resource declared by a RoboRepo or user package | Package manifest is authoritative |
-| User global | Standalone resource available across projects | External/user-owned source is authoritative |
-| Project local | Resource stored in the current repository | Project is authoritative |
-| Native harness | Resource discovered directly through Claude or Codex | Harness/external tool is authoritative |
+| Scope          | Meaning                                              | Ownership                                   |
+| -------------- | ---------------------------------------------------- | ------------------------------------------- |
+| Package        | Resource declared by a RoboRepo or user package      | Package manifest is authoritative           |
+| User global    | Standalone resource available across projects        | External/user-owned source is authoritative |
+| Project local  | Resource stored in the current repository            | Project is authoritative                    |
+| Native harness | Resource discovered directly through Claude or Codex | Harness/external tool is authoritative      |
 
 These are filters over resource inventory, not separate package managers.
 
@@ -198,7 +198,7 @@ RoboRepo
 
   Open web portal
   Manage packages and features
-  Update RoboRepo
+  Update
   Doctor
 
   Packages
@@ -216,7 +216,7 @@ Notes:
 
 - `Open web portal` invokes `roborepo web --detach`.
 - `Manage packages and features` opens the same management workflow as `roborepo package manage`.
-- `Update RoboRepo` invokes `roborepo update`.
+- `Update` invokes `roborepo update`.
 - `Doctor` invokes `roborepo doctor`.
 - Selecting a namespace opens a submenu rather than running a command.
 - `Help` renders the concise root help inside the menu and returns the user to the root menu.
@@ -335,7 +335,6 @@ roborepo telemetry install
 roborepo telemetry status
 roborepo telemetry enable
 roborepo telemetry disable
-roborepo telemetry stop
 roborepo telemetry report
 roborepo telemetry export
 roborepo telemetry backup
@@ -390,17 +389,17 @@ flowchart LR
 
 ### Invocation behavior
 
-| Invocation | Behavior |
-| --- | --- |
-| `roborepo` | Open root interactive menu |
-| `roborepo package` | Open Package submenu |
-| `roborepo package dev` | Open Package Development submenu |
-| `roborepo help` | Print concise root help |
-| `roborepo --help` | Print concise root help |
-| `roborepo help package dev` | Print Package Development help |
-| `roborepo package dev help` | Print identical scoped help |
-| `roborepo package dev --help` | Print identical scoped help |
-| Invalid command | Print concise error, suggestions, and scoped help hint |
+| Invocation                    | Behavior                                               |
+| ----------------------------- | ------------------------------------------------------ |
+| `roborepo`                    | Open root interactive menu                             |
+| `roborepo package`            | Open Package submenu                                   |
+| `roborepo package dev`        | Open Package Development submenu                       |
+| `roborepo help`               | Print concise root help                                |
+| `roborepo --help`             | Print concise root help                                |
+| `roborepo help package dev`   | Print Package Development help                         |
+| `roborepo package dev help`   | Print identical scoped help                            |
+| `roborepo package dev --help` | Print identical scoped help                            |
+| Invalid command               | Print concise error, suggestions, and scoped help hint |
 
 The parser must normalize all help forms to a single namespace path before rendering.
 
@@ -612,24 +611,24 @@ Then:
 
 No compatibility aliases are retained.
 
-| Current command | Target |
-| --- | --- |
-| `roborepo onboard` | `roborepo package manage` |
-| `roborepo serve` | `roborepo web` |
-| `roborepo web` as implicit detached alias | `roborepo web`; pass `--detach` explicitly |
-| `roborepo enable <id>` | `roborepo package enable <id>` |
-| `roborepo disable <id>` | `roborepo package disable <id>` |
-| `roborepo watch code` | `roborepo index code --watch` |
-| `roborepo skill new` | `roborepo package dev add skill` |
-| `roborepo skill adopt` | `roborepo package dev import skill` |
-| `roborepo workspace ...` | Internal only for this iteration |
-| `roborepo setup` | Internal/install flow unless inventory proves a public use case |
-| `roborepo apply` | `roborepo config apply` |
-| `roborepo rules ...` | `roborepo config rules ...` |
-| `roborepo permissions ...` | `roborepo config permissions ...` |
-| `roborepo repair ...` | `roborepo maintenance repair ...` |
-| `roborepo uninstall` | `roborepo maintenance uninstall` |
-| `roborepo verify` | `roborepo doctor --installed` or internal verifier |
+| Current command                           | Target                                                          |
+| ----------------------------------------- | --------------------------------------------------------------- |
+| `roborepo onboard`                        | `roborepo package manage`                                       |
+| `roborepo serve`                          | `roborepo web`                                                  |
+| `roborepo web` as implicit detached alias | `roborepo web`; pass `--detach` explicitly                      |
+| `roborepo enable <id>`                    | `roborepo package enable <id>`                                  |
+| `roborepo disable <id>`                   | `roborepo package disable <id>`                                 |
+| `roborepo watch code`                     | `roborepo index code --watch`                                   |
+| `roborepo skill new`                      | `roborepo package dev add skill`                                |
+| `roborepo skill adopt`                    | `roborepo package dev import skill`                             |
+| `roborepo workspace ...`                  | Internal only for this iteration                                |
+| `roborepo setup`                          | Internal/install flow unless inventory proves a public use case |
+| `roborepo apply`                          | `roborepo config apply`                                         |
+| `roborepo rules ...`                      | `roborepo config rules ...`                                     |
+| `roborepo permissions ...`                | `roborepo config permissions ...`                               |
+| `roborepo repair ...`                     | `roborepo maintenance repair ...`                               |
+| `roborepo uninstall`                      | `roborepo maintenance uninstall`                                |
+| `roborepo verify`                         | `roborepo doctor --installed` or internal verifier              |
 
 Internal install-time verbs such as `bundle`, `presets`, `onboard-intro`, telemetry capture, reconcile, and live-state adoption must be explicitly marked internal in the catalog or moved outside the public command tree. Do not preserve public aliases merely because internal callers currently use the same path; update those callers.
 
@@ -847,16 +846,16 @@ Run:
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| --- | --- |
-| Recursive catalog becomes an oversized framework | Keep schema focused on discovery, arguments, visibility, and handler IDs; domain logic stays in modules |
-| Renaming breaks internal scripts | Complete command-call inventory before route deletion and test install/package modes |
-| Package and resource concepts remain confusing | Use package for lifecycle ownership; use resource namespaces for typed inventory and integration; show scope explicitly |
-| Interactive and direct behavior diverge | Route both through typed domain functions and shared validation |
-| Removing workspace commands breaks package mode | Preserve internal root resolution and test both layouts before removing public routing |
-| Doctor becomes slow or noisy | Keep concise default output, add `--verbose`, and separate quick checks from details without splitting public commands |
-| Documentation regresses after later additions | Generate reference content and discovery tests from the command tree |
-| Imported resources acquire two authoritative copies | Require an explicit copy/move/link decision and record package ownership |
+| Risk                                                | Mitigation                                                                                                              |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Recursive catalog becomes an oversized framework    | Keep schema focused on discovery, arguments, visibility, and handler IDs; domain logic stays in modules                 |
+| Renaming breaks internal scripts                    | Complete command-call inventory before route deletion and test install/package modes                                    |
+| Package and resource concepts remain confusing      | Use package for lifecycle ownership; use resource namespaces for typed inventory and integration; show scope explicitly |
+| Interactive and direct behavior diverge             | Route both through typed domain functions and shared validation                                                         |
+| Removing workspace commands breaks package mode     | Preserve internal root resolution and test both layouts before removing public routing                                  |
+| Doctor becomes slow or noisy                        | Keep concise default output, add `--verbose`, and separate quick checks from details without splitting public commands  |
+| Documentation regresses after later additions       | Generate reference content and discovery tests from the command tree                                                    |
+| Imported resources acquire two authoritative copies | Require an explicit copy/move/link decision and record package ownership                                                |
 
 ## Explicit Non-Goals
 
@@ -878,14 +877,14 @@ This problem applies whether the user creates packages manually, through AI, or 
 
 ### Options
 
-| Option | Strengths | Limitations | Best use |
-| --- | --- | --- | --- |
-| Local snapshots/exports | Simple, portable, easy to understand | Manual, weak history, no automatic conflict handling | Baseline backup and transfer |
-| Dropbox/iCloud-synced directory | Low setup, automatic cross-Mac file sync, version recovery from provider | Sync conflicts, no semantic package versions, concurrent edits can corrupt intent | Single-user latest-state synchronization |
-| Dedicated private Git repository | Real history, branches, diffs, rollback, conflicts, remote backup, works across machines | Requires Git concepts and credentials | Recommended durable personal collection |
-| One Git repository per package | Independent releases and sharing | High repository-management overhead | Public/reusable packages with separate ownership |
-| Remote registry | Installable versions, dependency resolution, discovery | Significant service, trust, publishing, and compatibility work | Future ecosystem, not near-term |
-| Library/object-storage backup | Managed backup and restore without exposing Git | Requires a storage integration and does not automatically provide merge semantics | Future managed backup UX |
+| Option                           | Strengths                                                                                | Limitations                                                                       | Best use                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Local snapshots/exports          | Simple, portable, easy to understand                                                     | Manual, weak history, no automatic conflict handling                              | Baseline backup and transfer                     |
+| Dropbox/iCloud-synced directory  | Low setup, automatic cross-Mac file sync, version recovery from provider                 | Sync conflicts, no semantic package versions, concurrent edits can corrupt intent | Single-user latest-state synchronization         |
+| Dedicated private Git repository | Real history, branches, diffs, rollback, conflicts, remote backup, works across machines | Requires Git concepts and credentials                                             | Recommended durable personal collection          |
+| One Git repository per package   | Independent releases and sharing                                                         | High repository-management overhead                                               | Public/reusable packages with separate ownership |
+| Remote registry                  | Installable versions, dependency resolution, discovery                                   | Significant service, trust, publishing, and compatibility work                    | Future ecosystem, not near-term                  |
+| Library/object-storage backup    | Managed backup and restore without exposing Git                                          | Requires a storage integration and does not automatically provide merge semantics | Future managed backup UX                         |
 
 ### Recommended progression
 

@@ -1,7 +1,7 @@
 {
   "path": ["config"],
   "kind": "namespace",
-  "title": "Configuration",
-  "description": "Inspect and apply configuration",
-  "order": 600
+  "title": "Agent Files",
+  "description": "Inspect rules, permissions, and root files",
+  "order": 110
 }

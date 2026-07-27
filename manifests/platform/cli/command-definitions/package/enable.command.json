@@ -5,7 +5,7 @@
   "description": "Enable a package and apply it live",
   "order": 40,
   "usage": "roborepo package enable <package-id> [--dry-run]",
-  "arguments": [{ "name": "package-id", "required": true, "interactive": { "prompt": "Package id" } }],
+  "arguments": [{ "name": "package-id", "required": true, "interactive": { "prompt": "Choose package", "source": "packages" } }],
   "execution": {
     "adapter": "module",
     "module": "scripts/cli/packages.mjs",

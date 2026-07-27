@@ -3,7 +3,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { claudeJsonPath, repoRoot, rootConfigActive, harnessHome, workspacePackagesDir, packageMode, initializeWorkspace } from "./paths.mjs";
 import { setPackageEnabled, renderHomeRules, effectiveEnabledIds } from "./rules-render.mjs";
-import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog, BUILT_IN_PACKAGES_DIR } from "./package-catalog.mjs";
+import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog, BUILT_IN_PACKAGES_DIR, readPackageCategories } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 import { buildPackageLiveState } from "./package-probes.mjs";
 import { removeCodexMcp } from "./mcp-codex.mjs";
@@ -154,10 +154,30 @@ function commandBody(name, description) {
 
 function listPackages() {
   const catalog = loadPackageCatalog({ includeUnavailable: true });
+  const states = buildPackageLiveState(catalog);
+  const categories = readPackageCategories();
+  const byCategory = new Map(categories.map((category) => [category.id, { ...category, packages: [] }]));
   for (const pkg of catalog) {
-    const state = buildPackageLiveState(catalog).get(pkg.id);
-    console.log(`${pkg.id}\t${state?.status || "disabled"}\t${pkg.presentation.category}\t${pkg.label}`);
+    const category = pkg.presentation.category;
+    if (!byCategory.has(category)) byCategory.set(category, { id: category, label: titleize(category), order: 999, packages: [] });
+    byCategory.get(category).packages.push(pkg);
   }
+
+  console.log("Packages");
+  for (const category of [...byCategory.values()].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))) {
+    if (category.packages.length === 0) continue;
+    console.log(`\n${category.label}`);
+    for (const pkg of category.packages.sort((a, b) => (a.presentation.order ?? 0) - (b.presentation.order ?? 0) || a.id.localeCompare(b.id))) {
+      const status = states.get(pkg.id)?.status || "disabled";
+      console.log(`  ${status.padEnd(8)} ${packageListLabel(pkg)}`);
+    }
+  }
+}
+
+function packageListLabel(pkg) {
+  return pkg.label.toLowerCase() === titleize(pkg.id).toLowerCase()
+    ? pkg.id
+    : `${pkg.id} - ${pkg.label}`;
 }
 
 function inspectPackage(rest) {

@@ -50,8 +50,6 @@ export async function telemetryCommand(rest) {
   switch (sub) {
     case "install":
       return telemetryInstall(args);
-    case "stop":
-      return telemetryStop(args);
     case "enable":
       return telemetryEnable(args);
     case "disable":
@@ -361,32 +359,6 @@ function wireCaptureHooks(settingsPath, harness) {
   const fragmentPath = path.join(repoRoot, "globals", "packages", "telemetry", `hooks-${harness}.json`);
   const fragment = JSON.parse(fs.readFileSync(fragmentPath, "utf8"));
   mergeHooksInto(harness, settingsPath, fragment);
-}
-
-function telemetryStop(args) {
-  const port = parseStopArgs(args);
-  const stopped = stopServer(port);
-  ensureTelemetryDirs();
-  writeTelemetryState({ enabled: false });
-  markTelemetrySelected(false);
-  console.log(stopped ? "telemetry: disabled · server stopped" : "telemetry: disabled · no server was running");
-}
-
-// PID tracking is per-port (see the "PID management" section below), so stopping the right server
-// needs to know which port — defaults to the same 4317 `serve` itself defaults to.
-function parseStopArgs(args) {
-  let port = 4317;
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--port") port = Number(args[++i]);
-    else if (arg.startsWith("--port=")) port = Number(arg.slice("--port=".length));
-    else rejectArgs([arg]);
-  }
-  if (!Number.isInteger(port) || port < 0) {
-    console.error("usage: roborepo telemetry stop [--port <n>]");
-    process.exit(2);
-  }
-  return port;
 }
 
 async function telemetryEnable(args) {
@@ -718,7 +690,7 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
   if (options.detach) {
     const port = await startDetachedPortal(options.port, { allowPortFallback, portExplicit: options.portExplicit });
     const detachedPortalUrl = `http://127.0.0.1:${port}`;
-    console.log(`roborepo portal: ${detachedPortalUrl}  (detached · use: roborepo telemetry stop)`);
+    console.log(`roborepo portal: ${detachedPortalUrl}  (detached · use: roborepo web stop)`);
     if (options.open) openLocalUrl(`${detachedPortalUrl}${openPath}`);
     return;
   }
@@ -799,6 +771,12 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
   });
 }
 
+export function webStopCommand(args) {
+  const port = parsePortalStopArgs(args);
+  const stopped = stopServer(port);
+  console.log(stopped ? "roborepo portal: stopped" : "roborepo portal: no server was running");
+}
+
 function parseServeArgs(args) {
   const options = { port: 4317, portExplicit: false, detach: false, open: true, allowZeroPort: false };
   for (let i = 0; i < args.length; i++) {
@@ -821,6 +799,21 @@ function parseServeArgs(args) {
     process.exit(2);
   }
   return options;
+}
+
+function parsePortalStopArgs(args) {
+  let port = 4317;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--port") port = Number(args[++i]);
+    else if (arg.startsWith("--port=")) port = Number(arg.slice("--port=".length));
+    else rejectArgs([arg]);
+  }
+  if (!Number.isInteger(port) || port < 0) {
+    console.error("usage: roborepo web stop [--port <n>]");
+    process.exit(2);
+  }
+  return port;
 }
 
 function telemetryPurge(args) {

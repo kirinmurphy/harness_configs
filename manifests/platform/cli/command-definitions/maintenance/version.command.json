@@ -3,7 +3,7 @@
   "kind": "command",
   "title": "Version",
   "description": "Show version and resolved roots",
-  "order": 30,
+  "order": 80,
   "usage": "roborepo maintenance version",
   "execution": {
     "adapter": "module",

@@ -186,7 +186,7 @@ accurate `package.config.json` automatically renders a complete portal card.
 | Command | What it does |
 | --- | --- |
 | `roborepo package create <id> [--kind=empty\|auto-skill\|skill-command\|standalone-command] [--description=...] [--command=...] [--default-enabled=true]` | Scaffolds a new package into `globals/packages/<id>/` (dev checkout) or the user workspace packages dir (package mode). Refuses to overwrite an existing package. Prints the created path. |
-| `roborepo package list` | Lists all packages with live enabled/disabled status, category, label. |
+| `roborepo package list` | Lists packages grouped by category with concise live enabled/disabled status. |
 | `roborepo package inspect <id>` | Prints full manifest JSON for one package. |
 | `roborepo package validate [id]` | Runs `validatePackageCatalog`; scope to one package or the whole catalog. |
 | `roborepo package enable <id>` | Enables a package and **applies live immediately** — see Apply behavior below. |

@@ -1,8 +1,9 @@
 {
   "path": ["telemetry", "report"],
   "kind": "command",
-  "title": "Telemetry report",
-  "description": "Show telemetry report",
+  "title": "Report",
+  "description": "Show report",
   "order": 60,
+  "menuSection": "Monitoring",
   "execution": { "adapter": "module", "module": "scripts/cli/telemetry.mjs", "export": "telemetryCommand", "prependArgs": ["report"] }
 }

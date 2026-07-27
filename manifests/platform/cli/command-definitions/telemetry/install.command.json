@@ -1,8 +1,9 @@
 {
   "path": ["telemetry", "install"],
   "kind": "command",
-  "title": "Install telemetry",
-  "description": "Wire telemetry capture hooks",
+  "title": "Install",
+  "description": "Wire capture hooks",
   "order": 10,
+  "menuSection": "Lifecycle",
   "execution": { "adapter": "module", "module": "scripts/cli/telemetry.mjs", "export": "telemetryCommand", "prependArgs": ["install"] }
 }

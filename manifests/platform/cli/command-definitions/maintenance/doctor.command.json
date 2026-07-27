@@ -1,0 +1,12 @@
+{
+  "path": ["maintenance", "doctor"],
+  "kind": "command",
+  "title": "Doctor",
+  "description": "Check health before repair",
+  "order": 10,
+  "usage": "roborepo maintenance doctor [--installed] [--verbose]",
+  "onComplete": "returnToSubmenu",
+  "loadingMessage": "Running doctor...",
+  "continuePrompt": "Press any key to return to maintenance",
+  "execution": { "adapter": "repoScript", "script": "doctor" }
+}

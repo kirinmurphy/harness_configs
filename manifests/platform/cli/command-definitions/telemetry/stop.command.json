@@ -1,8 +1,0 @@
-{
-  "path": ["telemetry", "stop"],
-  "kind": "command",
-  "title": "Stop telemetry",
-  "description": "Stop detached dashboard and disable capture",
-  "order": 50,
-  "execution": { "adapter": "module", "module": "scripts/cli/telemetry.mjs", "export": "telemetryCommand", "prependArgs": ["stop"] }
-}

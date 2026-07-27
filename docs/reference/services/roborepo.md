@@ -85,7 +85,7 @@ roborepo — choose an action:
   package manage choose package behavior per section
   web             open the local web portal
   telemetry enable  enable telemetry capture
-  telemetry stop    stop the portal server + capture
+  web stop          stop the detached local web portal
   telemetry status  show telemetry capture state
   run            run a command with trimmed output
 
@@ -276,8 +276,8 @@ chronological), so the file can't fill the disk.
 
 **Lifecycle — capture and portal.** `roborepo telemetry enable` turns capture on;
 `roborepo telemetry disable` turns capture off; `roborepo web`
-opens the detached portal. `roborepo telemetry stop` remains a cleanup command: it kills the
-detached server if present and disables capture. The detached server's PID is tracked in
+opens the detached portal. `roborepo web stop` stops the detached server without changing
+capture state. The detached server's PID is tracked in
 `~/.local/state/roborepo/portal-server.pid`; a stale PID file (process gone) is detected and
 cleaned up. `web` can browse historical spool data with capture off.
 

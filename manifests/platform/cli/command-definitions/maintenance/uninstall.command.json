@@ -3,7 +3,7 @@
   "kind": "command",
   "title": "Uninstall",
   "description": "Remove repo-owned files and install state",
-  "order": 20,
+  "order": 90,
   "advanced": true,
   "usage": "roborepo maintenance uninstall [--dry-run]",
   "execution": { "adapter": "repoScript", "script": "uninstall" }

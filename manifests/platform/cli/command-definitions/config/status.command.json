@@ -5,6 +5,8 @@
   "description": "Show enabled behaviors and packages",
   "order": 10,
   "usage": "roborepo config status",
+  "onComplete": "returnToSubmenu",
+  "loadingMessage": "Checking agent files...",
   "execution": {
     "adapter": "module",
     "module": "scripts/cli/config.mjs",

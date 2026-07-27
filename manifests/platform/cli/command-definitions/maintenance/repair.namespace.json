@@ -2,9 +2,8 @@
   "path": ["maintenance", "repair"],
   "kind": "namespace",
   "title": "Repair",
-  "description": "Repair moved checkout links or local settings",
-  "order": 10,
-  "advanced": true,
+  "description": "Use after doctor recommends a repair",
+  "order": 20,
   "usage": "roborepo maintenance repair [--dry-run] [--on-conflict overwrite|keep|abort]",
   "execution": { "adapter": "repoScript", "script": "repair" }
 }

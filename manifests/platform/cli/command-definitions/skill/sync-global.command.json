@@ -3,6 +3,7 @@
   "kind": "command",
   "title": "Synchronize global skills",
   "description": "Refresh shared skill cache and harness links",
+  "menuSection": "Global Skills",
   "order": 30,
   "usage": "roborepo skill sync-global",
   "execution": { "adapter": "repoScript", "script": "skill sync-global" }

@@ -40,6 +40,11 @@ assert.match(packageHelp, /roborepo package - Manage and develop RoboRepo packag
 assert.match(packageHelp, /package dev/);
 assert.doesNotMatch(packageHelp, /telemetry status/);
 
+const maintenanceHelp = renderHelp(catalog, catalog.nodes.maintenance, ["maintenance"]);
+assert.match(maintenanceHelp, /maintenance doctor/);
+assert.match(maintenanceHelp, /maintenance repair/);
+assert.doesNotMatch(maintenanceHelp, /maintenance uninstall/);
+
 assert.deepEqual(resolveCommand(catalog, ["help", "package", "dev"]), {
   kind: "help",
   node: catalog.nodes.package.children.dev,

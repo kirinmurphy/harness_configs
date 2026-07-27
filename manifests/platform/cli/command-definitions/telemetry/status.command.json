@@ -1,8 +1,9 @@
 {
   "path": ["telemetry", "status"],
   "kind": "command",
-  "title": "Telemetry status",
-  "description": "Show local telemetry capture state",
+  "title": "Status",
+  "description": "Show local capture state",
   "order": 20,
+  "menuSection": "Monitoring",
   "execution": { "adapter": "module", "module": "scripts/cli/telemetry.mjs", "export": "telemetryCommand", "prependArgs": ["status"] }
 }

@@ -5,5 +5,8 @@
   "description": "Diagnose installation and configuration problems",
   "order": 40,
   "usage": "roborepo doctor [--installed] [--verbose]",
+  "onComplete": "returnToSubmenu",
+  "loadingMessage": "Running doctor...",
+  "continuePrompt": "Press any key to return to menu",
   "execution": { "adapter": "repoScript", "script": "doctor" }
 }

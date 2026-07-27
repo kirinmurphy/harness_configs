@@ -1206,7 +1206,8 @@ assert "lifecycle: roborepo rules --check dispatches render verifier" \
 menu_out="${work}/menu.txt"
 printf '\n' | node "${cli}" > "${menu_out}" 2>&1 || true
 assert "menu: shows promoted web action" grep -q "Open web portal" "${menu_out}"
-assert "menu: shows promoted package manager action" grep -q "Manage packages and features" "${menu_out}"
+assert "menu: shows promoted package manager action" grep -q "Package Library" "${menu_out}"
+assert "menu: shows agent config section" grep -q "Agent Config" "${menu_out}"
 assert "menu: shows package namespace" grep -q "Packages" "${menu_out}"
 assert "menu: shows indexing namespace" grep -q "Indexing" "${menu_out}"
 assert "menu: shows skills namespace" grep -q "Skills" "${menu_out}"

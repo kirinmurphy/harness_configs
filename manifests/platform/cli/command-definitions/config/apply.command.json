@@ -5,5 +5,6 @@
   "description": "Re-render and apply enabled packages and harness configuration",
   "order": 20,
   "usage": "roborepo config apply [--dry-run]",
+  "loadingMessage": "Applying agent files...",
   "execution": { "adapter": "configApply", "script": "update" }
 }

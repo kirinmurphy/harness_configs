@@ -24,21 +24,26 @@ function latestPath(harness) {
   return path.join(stateRoot(), "usage", "latest", `${harness}.json`);
 }
 
-// Timestamps live as epoch-ms inside the snapshot for calculation; convert to ISO only here, at the
-// persistence boundary, matching the plan's on-disk contract. Never persists raw provider payloads.
-function toWire(snapshot) {
-  const wire = { ...snapshot, collectedAt: new Date(snapshot.collectedAt).toISOString() };
+// Timestamps live as epoch-ms inside the snapshot for calculation but are stored as ISO strings (the
+// plan's on-disk contract). Both directions touch exactly the same fields — collectedAt and each
+// window's resetsAt — so one helper maps them through a converter, and toWire/fromWire just supply
+// the direction. Keeping the ISO<->epoch contract in one module means no consumer re-implements it.
+function mapTimestamps(snapshot, convert) {
+  const next = { ...snapshot, collectedAt: convert(snapshot.collectedAt) };
   if (snapshot.windows) {
-    wire.windows = Object.fromEntries(
+    next.windows = Object.fromEntries(
       Object.entries(snapshot.windows).map(([name, window]) => {
-        const next = { ...window };
-        if (window.resetsAt !== undefined) next.resetsAt = new Date(window.resetsAt).toISOString();
-        return [name, next];
+        const w = { ...window };
+        if (window.resetsAt !== undefined) w.resetsAt = convert(window.resetsAt);
+        return [name, w];
       }),
     );
   }
-  return wire;
+  return next;
 }
+
+const toWire = (snapshot) => mapTimestamps(snapshot, (v) => new Date(v).toISOString());
+const fromWire = (wire) => mapTimestamps(wire, (v) => Date.parse(v));
 
 // Serialized identity for dedup — everything except collectedAt, so an unchanged usage picture does
 // not rewrite the file every render.
@@ -85,7 +90,9 @@ function classifyFreshness(ageMs) {
 }
 
 // Read the persisted snapshot plus freshness metadata. Never throws — a missing or corrupt file
-// yields { available: false } so the portal can render "not collected" instead of crashing.
+// yields { available: false } so the portal can render "not collected" instead of crashing. The
+// returned snapshot is in the same epoch-ms form the domain layer expects (ISO is only the on-disk
+// shape), so consumers assess it directly without re-parsing timestamps.
 export function readLatestSnapshot(harness, { now = Date.now() } = {}) {
   let wire;
   try {
@@ -93,8 +100,9 @@ export function readLatestSnapshot(harness, { now = Date.now() } = {}) {
   } catch {
     return { available: false, reason: "not-collected" };
   }
-  const ageMs = now - Date.parse(wire.collectedAt);
+  const snapshot = fromWire(wire);
+  const ageMs = now - snapshot.collectedAt;
   const state = classifyFreshness(ageMs);
   if (state === "unavailable") return { available: false, reason: "invalid" };
-  return { available: true, snapshot: wire, freshness: { state, ageMs } };
+  return { available: true, snapshot, freshness: { state, ageMs } };
 }

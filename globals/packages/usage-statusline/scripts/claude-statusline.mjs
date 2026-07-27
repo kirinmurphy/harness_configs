@@ -13,7 +13,10 @@ import { writeLatestSnapshot } from "./usage-snapshot-store.mjs";
 export function formatStatusLine(data, { now = Date.now(), color } = {}) {
   const snapshot = adaptClaudeStatusPayload(data, { now });
   const assessed = assessUsage(snapshot, { now });
-  return { snapshot, text: renderStatusLine(assessed, color === undefined ? {} : { color }) };
+  return {
+    snapshot,
+    text: renderStatusLine(assessed, color === undefined ? {} : { color }),
+  };
 }
 
 async function readStdin() {

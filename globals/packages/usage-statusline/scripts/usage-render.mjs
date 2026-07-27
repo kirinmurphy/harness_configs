@@ -4,7 +4,7 @@
 // final join, and only in color mode; NO_COLOR yields byte-identical text minus escapes.
 
 export const ANSI = {
-  normalPercent: "[97m", // explicit bright white — normal percentages are never left muted (plan decision 10)
+  normalPercent: "[0m", // explicit bright white — normal percentages are never left muted (plan decision 10)
   warning: "[38;5;208m", // orange
   critical: "[91m", // bright red
   reset: "[0m",
@@ -13,14 +13,18 @@ export const ANSI = {
 // Tones that receive an ANSI color. label/unavailable stay terminal-default (no escape).
 const TONED = new Set(["normalPercent", "warning", "critical"]);
 
-const SEVERITY_TONE = { normal: "normalPercent", warning: "warning", critical: "critical" };
+const SEVERITY_TONE = {
+  normal: "normalPercent",
+  warning: "warning",
+  critical: "critical",
+};
 
 function severityTone(severity) {
   return SEVERITY_TONE[severity] || "label";
 }
 
 function usedFragment(usedPercent, usedSeverity) {
-  return { text: `${usedPercent}% used`, tone: severityTone(usedSeverity) };
+  return { text: `${usedPercent}%`, tone: severityTone(usedSeverity) };
 }
 
 // Weekly fragments. With elapsed known we emit the pacing form (debt/surplus/balanced) plus the
@@ -29,28 +33,38 @@ function usedFragment(usedPercent, usedSeverity) {
 function weeklyFragments(weekly) {
   if (!weekly.available) return [{ text: "Weekly: —", tone: "unavailable" }];
   if (weekly.elapsedPercent === undefined) {
-    return [{ text: "Weekly: ", tone: "label" }, usedFragment(weekly.usedPercent, weekly.usedSeverity)];
+    return [
+      { text: "Weekly: ", tone: "label" },
+      usedFragment(weekly.usedPercent, weekly.usedSeverity),
+    ];
   }
   const { balance, usedPercent, elapsedPercent, usedSeverity } = weekly;
   const lead =
     balance.state === "balanced"
-      ? { text: "Balanced", tone: "normalPercent" }
-      : { text: `${balance.magnitude}% ${balance.state}`, tone: severityTone(balance.debtSeverity) };
+      ? { text: "balanced", tone: "normalPercent" }
+      : {
+          text: `${balance.magnitude}% ${balance.state}`,
+          tone: severityTone(balance.debtSeverity),
+        };
   return [
     { text: "Weekly: ", tone: "label" },
-    lead,
-    { text: " (", tone: "label" },
     usedFragment(usedPercent, usedSeverity),
-    { text: " / ", tone: "label" },
-    { text: `${elapsedPercent}% elapsed`, tone: "normalPercent" },
+    { text: " (", tone: "label" },
+    lead,
     { text: ")", tone: "label" },
+    // { text: " / ", tone: "label" },
+    // { text: `${elapsedPercent}% elapsed`, tone: "normalPercent" },
   ];
 }
 
 // Five-hour and context keep the compact used-only display (plan: five-hour pacing not approved yet).
 function usedOnlyFragments(label, assessed) {
-  if (!assessed.available) return [{ text: `${label}: —`, tone: "unavailable" }];
-  return [{ text: `${label}: `, tone: "label" }, usedFragment(assessed.usedPercent, assessed.usedSeverity)];
+  if (!assessed.available)
+    return [{ text: `${label}: —`, tone: "unavailable" }];
+  return [
+    { text: `${label}: `, tone: "label" },
+    usedFragment(assessed.usedPercent, assessed.usedSeverity),
+  ];
 }
 
 function renderFragment(fragment, color) {
@@ -60,11 +74,16 @@ function renderFragment(fragment, color) {
 
 function joinSegments(segments, color) {
   return segments
-    .map((fragments) => fragments.map((fragment) => renderFragment(fragment, color)).join(""))
+    .map((fragments) =>
+      fragments.map((fragment) => renderFragment(fragment, color)).join(""),
+    )
     .join(" · ");
 }
 
-export function renderStatusLine(assessed, { color = !Object.hasOwn(process.env, "NO_COLOR") } = {}) {
+export function renderStatusLine(
+  assessed,
+  { color = !Object.hasOwn(process.env, "NO_COLOR") } = {},
+) {
   const segments = [
     usedOnlyFragments("Context", assessed.context),
     usedOnlyFragments("5h", assessed.windows.fiveHour),

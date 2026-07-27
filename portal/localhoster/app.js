@@ -2,6 +2,11 @@ import { portalHideLoading, portalSetUpdatedAt } from "/portal/shared/api.js";
 import * as api from "./api.js";
 import * as state from "./state.js";
 import * as tmpl from "./templates.js";
+import { createHistoryView } from "./history-view.js";
+
+// A stale opaque key (the app moved ports since this render) resolves by reloading the snapshot
+// rather than surfacing an error.
+const historyView = createHistoryView({ onStale: () => load({ force: true }) });
 
 // Built once and reused across every render/reconcile — the Active apps header holds this same
 // node for the page's lifetime so refresh/settings listeners and live spinner state never get
@@ -288,6 +293,7 @@ function cardActions() {
     onHide: hideInstance,
     onToggleMenu: toggleActionMenu,
     onCloseMenus: closeActionMenus,
+    onHistory: (project, instance) => historyView.open(project, instance),
   };
 }
 

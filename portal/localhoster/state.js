@@ -12,10 +12,35 @@ export function snapshotHash(snapshot) {
   });
 }
 
+const HEALTH_LABELS = {
+  healthy: "Healthy",
+  degraded: "Degraded",
+  unhealthy: "Unhealthy",
+  starting: "Starting",
+  unknown: "Unknown",
+  inactive: "Inactive",
+};
+
+// The normalized health state is the headline; the raw HTTP code moves to the tooltip detail below,
+// since "Healthy" answers the question a dashboard is actually asked.
 export function statusText(instance) {
+  const state = instance.health?.state;
+  if (state && HEALTH_LABELS[state]) return HEALTH_LABELS[state];
   if (instance.tls === "untrusted") return "TLS untrusted";
   if (instance.status) return `HTTP ${instance.status}`;
   return "Unknown";
+}
+
+export function statusDetail(instance) {
+  const parts = [];
+  if (instance.tls === "untrusted") parts.push("TLS untrusted");
+  else if (instance.status) parts.push(`HTTP ${instance.status}`);
+  if (instance.health?.reason) parts.push(instance.health.reason.replace(/-/g, " "));
+  return parts.join(" · ") || "no probe result";
+}
+
+export function healthState(instance) {
+  return instance.health?.state || null;
 }
 
 export function currentLinks(snapshot, projectIdentity, appId) {

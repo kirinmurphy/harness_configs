@@ -1,4 +1,4 @@
-const FUTURE_PROVIDERS = ["docker", "processMetrics", "git", "history", "metadata"];
+const FUTURE_PROVIDERS = ["docker", "processMetrics", "metadata"];
 
 export function capabilityForPlatform(platform = process.platform) {
   const providers = providerCapabilitiesForPlatform(platform);
@@ -39,6 +39,11 @@ function providerCapabilitiesForPlatform(platform) {
     processWorkingDirectory: provider("processWorkingDirectory", coreState, ["processWorkingDirectory"], coreMessage),
     httpProbe: provider("httpProbe", coreState, ["httpProbe"], coreMessage),
     projectIdentity: provider("projectIdentity", coreState, ["projectIdentity"], coreMessage),
+    // Git and history are gated on the same coreState as the rest: both are platform-neutral in
+    // themselves, but nothing calls them where discovery is unsupported, and claiming support there
+    // would put entries in `available` that no instance ever carries.
+    git: provider("git", coreState, ["gitBranch", "gitCommit", "gitDirty", "gitAheadBehind"], coreMessage),
+    history: provider("history", coreState, ["historyEvents"], coreMessage),
     ...Object.fromEntries(FUTURE_PROVIDERS.map((name) => [
       name,
       provider(name, "unsupported", [], "Planned in a follow-up Localhoster provider plan."),

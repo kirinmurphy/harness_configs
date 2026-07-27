@@ -1,7 +1,7 @@
 ---
 id: plan-lifecycle-readiness-validation-and-repair-prompts
 priority: medium
-next_action: Implement lifecycle-readiness validation and repair prompts now that plan-lifecycle-controls-and-filter-aware-toast has shipped.
+next_action: Decide whether universal section rules should stop applying to Backlog and Archived destinations, the one acceptance criterion not met.
 blocked_by: []
 depends_on:
   - plan-lifecycle-controls-and-filter-aware-toast
@@ -263,3 +263,60 @@ git diff --check
 - The lifecycle-controls milestone remains independently implementable without this plan.
 - Readiness findings appear after a submitted move is blocked; stale browser warnings do not disable lifecycle controls.
 - Backlog and Archived remain semantically ungated in this milestone.
+
+## Implementation Status
+
+Implemented on `feat/lifecycle-readiness-findings` (2026-07-27). Verified with `npm test`
+(343 passed, 0 failed), `scripts/doctor.sh --quiet` (99 checks), and `git diff --check`.
+
+Much of the original scope was already shipped by the lifecycle-controls milestone:
+`movePlanLifecycle` already validated fresh disk content immediately before `rename`, ordered
+after identity, stale-state, boundary, and collision checks, and already threw
+`LIFECYCLE_REQUIREMENTS` (422). The work below covers what was actually missing.
+
+### Shipped
+
+- [x] Structured findings replacing flat warning strings — `modules/plan-docs/findings.mjs`
+      holds the catalog; each finding carries a stable code, message, resolution, kind,
+      severity, and optional count/metadata.
+- [x] `plan.validation` carries both `findings` and a derived `warnings`, so the five existing
+      string consumers were untouched while the dialog and prompt read structure.
+- [x] Declarative destination-policy map — `modules/plan-docs/lifecycle-policy.mjs`, one
+      validator per lifecycle, pure and filesystem-free.
+- [x] Heading synonyms extracted to `modules/plan-docs/section-synonyms.mjs` as a data-only
+      module, then expanded to cover the vocabulary the corpus actually uses. Measured over 62
+      documents: `MISSING_DESIGN` 45 to 25, `MISSING_SUMMARY` 40 to 15, `MISSING_CONTEXT` 40 to
+      30, `MISSING_CRITERIA` 22 to 21 — 57 false warnings removed.
+- [x] Repair-prompt builder — `modules/plan-docs/repair-prompt.mjs`, pure, generated server-side
+      from the same fresh validation and returned with the 422 rather than via a second endpoint.
+- [x] `findings` and `repair` serialized through both whitelisting boundaries
+      (`sendDomainError`, `portalPostJson`).
+- [x] Dialog renders each finding as problem plus resolution, grouped blocking-first to match the
+      prompt's ordering, with **Copy prompt to resolve warnings** and **View Plan**.
+- [x] Decision logic extracted to `portal/plans/state.js` (`lifecycleFindingGroups`,
+      `canRepairLifecycleError`) so it is testable without a DOM.
+- [x] Domain tests in `scripts/test/plan-docs-findings-check.mjs`; mutation and wire-contract
+      tests in `plan-docs-check.mjs`; portal-state tests extended.
+- [x] All four plans checks registered in `scripts/test/test-roborepo.sh` — they had npm scripts
+      but were unreachable from `npm test`, so plans regressions could pass CI unnoticed.
+- [x] `plan-schema.md` and `docs/reference/services/plans-portal.md` updated.
+
+### Deviations from the plan as written
+
+- **The gate stays soft.** `skipDestinationValidation` and "Move anyway" were retained rather
+  than removed. Measured against this repo's own 62 documents, a hard gate would reject 24 plans
+  on `NEXT_ACTION_REMAINS` alone and make Completed effectively unreachable. The repair prompt is
+  offered alongside the bypass rather than replacing it.
+- **Severity does not gate anything.** Each finding carries `blocking` or `advisory`, but with
+  the soft gate these only drive display and prompt ordering.
+
+### Not done
+
+- [ ] Backlog and Archived are not semantically ungated. Universal section rules
+      (Summary/Goals/Context/Design/Criteria) still apply to every destination, so moving a
+      thin document into Backlog or Archived can still raise a 422 dialog. This is pre-existing
+      behavior, deliberately preserved by the byte-identical refactor rather than changed
+      silently. Resolving it means deciding whether those rules should produce findings that
+      never gate those two destinations — the `lifecyclePolicies` map is the place to express
+      that, and `plan.readiness` (which drives a portal filter) would need checking, since it is
+      derived from the same validation.

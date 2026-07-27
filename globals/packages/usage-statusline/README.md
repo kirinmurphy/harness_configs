@@ -70,15 +70,17 @@ all ANSI and prints the exact same text.
 
 ## Codex
 
-Codex uses native `tui.status_line` fields. This package migrates context to the used-direction
-`context-used` item and disables Codex's decorative category colors (`status_line_use_colors =
-false`, an owned scalar restored on disable).
+Codex uses its **native** `tui.status_line` fields, **unchanged** by this package. Codex has no
+command-backed footer hook (Claude's extension point), so there is no supported way to render the
+used-direction, pacing-aware line in the Codex footer. Rather than ship a mixed footer (some values
+"used", some native "remaining"), the package leaves the Codex footer fully native until such a hook
+exists.
 
-> **Full Codex parity is not complete.** Matching used-direction rate limits, weekly pacing text,
-> and independent semantic coloring in the Codex footer requires an upstream Codex (Rust) footer
-> capability that has not yet landed. Until it does, Codex still shows its native five-hour / weekly
-> _remaining_ limit items, and the `/api/usage` portal endpoint reports Codex as `not-collected`.
-> See `docs/plans/active/usage-statusline-enhancement-plan.md` (Phase 4).
+> **Codex footer parity is intentionally deferred, not partially applied.** When Codex gains a
+> footer-command hook (or an equivalent capability), roborepo can render the exact same line there
+> using the Codex adapter and shared rules already in this package. Until then the `/api/usage`
+> portal endpoint reports Codex as `not-collected`. See
+> `docs/plans/backlog/usage-statusline-codex-hook-parity.md`.
 
 ## Portal data surface
 
@@ -102,8 +104,8 @@ signals. They remain a separate follow-up feature.
 - **Claude Code** — any version whose command `statusLine` payload includes `context_window` and
   `rate_limits` (`five_hour`, `seven_day`) with `used_percentage`; `resets_at` enables weekly
   pacing (usage-only fallback without it).
-- **Codex** — a version supporting the `context-used` status-line item. Full pacing parity requires
-  the not-yet-released upstream footer capability (Phase 4).
+- **Codex** — no minimum; the Codex footer is left native. Parity depends on a future upstream
+  footer-command hook, tracked separately.
 
 ## Preview
 

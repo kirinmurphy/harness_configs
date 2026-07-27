@@ -1,14 +1,44 @@
 ---
 id: usage-statusline-enhancement-plan
 priority: medium
-next_action: Fill in the next concrete task.
-blocked_by: []
+next_action: Land the upstream Codex (Rust) used/pacing footer capability (Phase 4), then complete Phase 5's Codex config migration and clear the release gate.
+blocked_by: ["upstream Codex Rust footer capability (codex-rs) — repo not available in this environment"]
 depends_on: []
-related: []
+related: [usage-statusline-claude-refresh]
 reviewed_commit:
 ---
 
 # RoboRepo Usage Statusline Enhancement — Implementation Plan
+
+## Implementation status (JavaScript boundary complete; Codex Rust blocked)
+
+The RoboRepo JavaScript boundary is implemented and tested on branch
+`feat/usage-statusline-enhancement`:
+
+- **Phase 2 — done.** `usage-adapters.mjs`, `usage-domain.mjs`, `usage-render.mjs`, and the reduced
+  `claude-statusline.mjs` orchestration entrypoint. Fragment-level semantic styling; `NO_COLOR` and
+  error guarantees preserved.
+- **Phase 3 — done.** Atomic, bounded, user-only `usage-snapshot-store.mjs`; usage state paths;
+  read-only `GET /api/usage`; `POST /api/usage/refresh` reserved (returns a controlled
+  `codex-collector-not-implemented`).
+- **Phase 5 (JS parts) — done.** All runtime modules registered; Codex `context-remaining →
+  context-used`; owned `status_line_use_colors` scalar with record/preserve/restore/probe lifecycle.
+- **Shared fixtures + tests — done.** `fixtures/usage-cases.json`; `test:usage-domain` and expanded
+  `test:usage-statusline` (`Verified: test:usage-domain, test:usage-statusline, test:packages,
+  test:package-lifecycle, test:package-default-enabled, test:plans, pack:dry-run → pass`).
+
+**Blocked / not done:**
+
+- **Phase 4 — blocked.** The upstream Codex (Rust) `codex-rs` repository is not available in this
+  environment, so native used-direction rate limits, weekly-pacing footer items, and fragment-level
+  semantic styling cannot be implemented here. Codex therefore still shows native _remaining_ limit
+  items, and `/api/usage` reports Codex `not-collected`.
+- **Claude idle-refresh property — deferred** to a separate low-priority plan
+  (`usage-statusline-claude-refresh`, in `docs/plans/backlog/`), pending verification of the exact
+  Claude config property and minimum version against official docs.
+
+The **release gate stays unmet** until the Codex capability lands in a released version; per the
+plan's release policy the enhanced package is not "complete" while Codex parity is incomplete.
 
 ## Document status
 

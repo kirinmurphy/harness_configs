@@ -14,6 +14,22 @@
       "source": "scripts/claude-statusline.mjs"
     },
     {
+      "type": "runtime-asset",
+      "source": "scripts/usage-adapters.mjs"
+    },
+    {
+      "type": "runtime-asset",
+      "source": "scripts/usage-domain.mjs"
+    },
+    {
+      "type": "runtime-asset",
+      "source": "scripts/usage-render.mjs"
+    },
+    {
+      "type": "runtime-asset",
+      "source": "scripts/usage-snapshot-store.mjs"
+    },
+    {
       "type": "harness-config",
       "source": "claude/statusline.json",
       "harness": "claude"

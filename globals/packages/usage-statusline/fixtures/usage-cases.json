@@ -1,0 +1,21 @@
+{
+  "comment": "Language-neutral conformance cases. Consumed by RoboRepo Node tests today and by the Codex Rust footer tests when that upstream work lands, so both implementations agree on balance state, magnitude, severities, and the exact weekly text. usedPercent/elapsedPercent are already display-rounded whole points (the plan's chosen policy: display-rounded inputs drive the assessment). weeklyText is the plain (no-color) render of the weekly segment only.",
+  "pacing": [
+    { "name": "balanced under tolerance", "usedPercent": 68, "elapsedPercent": 72, "state": "balanced", "usedSeverity": "normal", "debtSeverity": "normal", "weeklyText": "Weekly: Balanced (68% used / 72% elapsed)" },
+    { "name": "surplus exactly five", "usedPercent": 70, "elapsedPercent": 75, "state": "surplus", "magnitude": 5, "usedSeverity": "normal", "debtSeverity": "normal", "weeklyText": "Weekly: 5% surplus (70% used / 75% elapsed)" },
+    { "name": "debt exactly five is orange", "usedPercent": 75, "elapsedPercent": 70, "state": "debt", "magnitude": 5, "usedSeverity": "warning", "debtSeverity": "warning", "weeklyText": "Weekly: 5% debt (75% used / 70% elapsed)" },
+    { "name": "debt nineteen still orange", "usedPercent": 89, "elapsedPercent": 70, "state": "debt", "magnitude": 19, "usedSeverity": "critical", "debtSeverity": "warning", "weeklyText": "Weekly: 19% debt (89% used / 70% elapsed)" },
+    { "name": "debt twenty is red", "usedPercent": 90, "elapsedPercent": 70, "state": "debt", "magnitude": 20, "usedSeverity": "critical", "debtSeverity": "critical", "weeklyText": "Weekly: 20% debt (90% used / 70% elapsed)" },
+    { "name": "equal is balanced", "usedPercent": 70, "elapsedPercent": 70, "state": "balanced", "usedSeverity": "normal", "debtSeverity": "normal", "weeklyText": "Weekly: Balanced (70% used / 70% elapsed)" },
+    { "name": "both zero balanced", "usedPercent": 0, "elapsedPercent": 0, "state": "balanced", "usedSeverity": "normal", "debtSeverity": "normal", "weeklyText": "Weekly: Balanced (0% used / 0% elapsed)" },
+    { "name": "both full balanced red used", "usedPercent": 100, "elapsedPercent": 100, "state": "balanced", "usedSeverity": "critical", "debtSeverity": "normal", "weeklyText": "Weekly: Balanced (100% used / 100% elapsed)" },
+    { "name": "large surplus stays normal", "usedPercent": 75, "elapsedPercent": 90, "state": "surplus", "magnitude": 15, "usedSeverity": "warning", "debtSeverity": "normal", "weeklyText": "Weekly: 15% surplus (75% used / 90% elapsed)" }
+  ],
+  "usageSeverity": [
+    { "usedPercent": 70, "usedSeverity": "normal" },
+    { "usedPercent": 71, "usedSeverity": "warning" },
+    { "usedPercent": 85, "usedSeverity": "warning" },
+    { "usedPercent": 86, "usedSeverity": "critical" },
+    { "usedPercent": 100, "usedSeverity": "critical" }
+  ]
+}

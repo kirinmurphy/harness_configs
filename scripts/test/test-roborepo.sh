@@ -964,37 +964,45 @@ assert "bundle remove: adopt overwrite policy restores backed up item" \
 # ---------------------------------------------------------------------------
 # roborepo mcp add
 # ---------------------------------------------------------------------------
-mcp_jdoc="$( node "${cli}" mcp add jdocmunch --dry-run )"
+# Dedicated HOME with jdocmunch/jcodemunch pre-registered in Codex config: the assertions below
+# check the dry-run print format for "already present" presets, which must not depend on whether
+# the machine actually running the suite happens to have these MCP servers configured for real.
+mcp_dry_home="${work}/mcp-dry-home"
+mkdir -p "${mcp_dry_home}/.codex"
+printf '[mcp_servers.jdocmunch]\ncommand = "uvx"\nargs = ["jdocmunch-mcp"]\n\n[mcp_servers.jcodemunch]\ncommand = "uvx"\nargs = ["jcodemunch-mcp"]\n' > "${mcp_dry_home}/.codex/config.toml"
+mcp_dry_env="HOME='${mcp_dry_home}' ROBOREPO_STATE_DIR='${mcp_dry_home}/.roborepo'"
+
+mcp_jdoc="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run" )"
 assert "mcp add: jdocmunch preset maps to Claude user-scope uvx command" \
   test "${mcp_jdoc}" = $'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp\nwould add permission: mcp__jdocmunch -> generated/claude/settings.json\ncodex MCP already present: jdocmunch'
 
-mcp_jcode="$( node "${cli}" mcp add jcodemunch --dry-run )"
+mcp_jcode="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jcodemunch --dry-run" )"
 assert "mcp add: jcodemunch preset maps to Claude user-scope uvx command" \
   test "${mcp_jcode}" = $'claude mcp add --scope user jcodemunch -- uvx jcodemunch-mcp\nwould add permission: mcp__jcodemunch -> generated/claude/settings.json\ncodex MCP already present: jcodemunch'
 
 assert "mcp add: addMCP alias removed" \
   bash -c "! node '${cli}' addMCP jdocmunch --dry-run >/dev/null 2>&1"
 
-mcp_dry_home="${work}/mcp-dry-home"
-mkdir -p "${mcp_dry_home}/.codex"
-printf '' > "${mcp_dry_home}/.codex/config.toml"
-mcp_pkg="$( HOME="${mcp_dry_home}" ROBOREPO_STATE_DIR="${mcp_dry_home}/.roborepo" node "${cli}" mcp add example-mcp --name=example --dry-run -- --flag value )"
+mcp_pkg_home="${work}/mcp-pkg-home"
+mkdir -p "${mcp_pkg_home}/.codex"
+printf '' > "${mcp_pkg_home}/.codex/config.toml"
+mcp_pkg="$( HOME="${mcp_pkg_home}" ROBOREPO_STATE_DIR="${mcp_pkg_home}/.roborepo" node "${cli}" mcp add example-mcp --name=example --dry-run -- --flag value )"
 assert "mcp add: generic package supports name override and passthrough args" \
   bash -c "echo '${mcp_pkg}' | grep -q 'claude mcp add --scope user example -- uvx example-mcp --flag value' && echo '${mcp_pkg}' | grep -q 'would add Codex MCP: example -> .*/\\.codex/config.toml' && echo '${mcp_pkg}' | grep -q 'args = \\[\"example-mcp\", \"--flag\", \"value\"\\]'"
 
-mcp_url="$( HOME="${mcp_dry_home}" ROBOREPO_STATE_DIR="${mcp_dry_home}/.roborepo" node "${cli}" mcp add https://mcp.example.com/mcp --name=example --dry-run )"
+mcp_url="$( HOME="${mcp_pkg_home}" ROBOREPO_STATE_DIR="${mcp_pkg_home}/.roborepo" node "${cli}" mcp add https://mcp.example.com/mcp --name=example --dry-run )"
 assert "mcp add: URL defaults to http transport" \
   bash -c "echo '${mcp_url}' | grep -q 'claude mcp add --scope user --transport http example https://mcp.example.com/mcp' && echo '${mcp_url}' | grep -q 'would add Codex MCP: example -> .*/\\.codex/config.toml' && echo '${mcp_url}' | grep -q 'url = \"https://mcp.example.com/mcp\"'"
 
-mcp_skip_permission="$( node "${cli}" mcp add jdocmunch --dry-run --skip-claude-permission )"
+mcp_skip_permission="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --skip-claude-permission" )"
 assert "mcp add: --skip-claude-permission skips settings update" \
   test "${mcp_skip_permission}" = $'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp\ncodex MCP already present: jdocmunch'
 
-mcp_only_claude="$( node "${cli}" mcp add jdocmunch --dry-run --only-claude )"
+mcp_only_claude="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --only-claude" )"
 assert "mcp add: --only-claude skips Codex config update" \
   test "${mcp_only_claude}" = $'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp\nwould add permission: mcp__jdocmunch -> generated/claude/settings.json'
 
-mcp_only_codex="$( node "${cli}" mcp add jdocmunch --dry-run --only-codex )"
+mcp_only_codex="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --only-codex" )"
 assert "mcp add: --only-codex skips Claude registration and settings update" \
   test "${mcp_only_codex}" = "codex MCP already present: jdocmunch"
 
@@ -1143,7 +1151,7 @@ ln -s "${repo_root}/generated/codex/rules" "${update_home}/.codex/rules"
 # Skills and commands are linked/composed per-package by the installer's enumerate-step, not as
 # dir-level links (Phase 7 of the ownership plan moved commands off the old whole-directory copy).
 assert "lifecycle: setup package skills before update" \
-  bash -c "HOME='${update_home}' ROBOREPO_STATE_DIR='${update_home}/.roborepo' node '${cli}' package enable jcodemunch >/dev/null 2>&1 && HOME='${update_home}' ROBOREPO_STATE_DIR='${update_home}/.roborepo' node '${cli}' package enable case-study-pack >/dev/null 2>&1 && test -L '${update_home}/.claude/skills/case-study' && test -L '${update_home}/.codex/skills/case-study'"
+  bash -c "HOME='${update_home}' ROBOREPO_STATE_DIR='${update_home}/.roborepo' ROBOREPO_SKIP_MCP=1 node '${cli}' package enable jcodemunch >/dev/null 2>&1 && HOME='${update_home}' ROBOREPO_STATE_DIR='${update_home}/.roborepo' ROBOREPO_SKIP_MCP=1 node '${cli}' package enable case-study-pack >/dev/null 2>&1 && test -L '${update_home}/.claude/skills/case-study' && test -L '${update_home}/.codex/skills/case-study'"
 
 # The mcp-add tests above intentionally exercise source mutation for Claude permissions. Normalize
 # generated permission output before lifecycle doctor, which checks generated source drift.

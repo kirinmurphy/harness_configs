@@ -6,7 +6,8 @@ import { setPackageEnabled, renderHomeRules, effectiveEnabledIds } from "./rules
 import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog, BUILT_IN_PACKAGES_DIR, readPackageCategories } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 import { buildPackageLiveState } from "./package-probes.mjs";
-import { removeCodexMcp } from "./mcp-codex.mjs";
+import { ensureCodexMcp, removeCodexMcp } from "./mcp-codex.mjs";
+import { loadMcpPresets } from "./mcp-presets.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
 import { hookFilePath, mergeHooksInto, unmergeHooksFrom, installHookScripts, removeHookScripts } from "./hook-composition.mjs";
 import { installRuntimeAsset, mergeHarnessConfig, removeRuntimeAsset, unmergeHarnessConfig } from "./package-harness-config.mjs";
@@ -15,6 +16,16 @@ import { SLASH_COMMAND_HARNESS_NAMES } from "./skill-command-config.mjs";
 
 export const USER_CLAUDE_SETTINGS = rootConfigActive.claude;
 export const USER_CODEX_CONFIG = rootConfigActive.codex;
+
+// Lazy: packages.mjs is imported by every CLI command (version, setup, rules, ...), not just ones
+// that touch MCP presets. Loading eagerly at module scope meant any environment missing
+// manifests/inventory/mcp-presets.json (e.g. a stripped-down package-mode app root) would exit(1)
+// before an unrelated command even ran.
+let mcpPresetsCache = null;
+function getMcpPresets() {
+  if (!mcpPresetsCache) mcpPresetsCache = loadMcpPresets();
+  return mcpPresetsCache;
+}
 
 
 export function findPackage(pkgId) {
@@ -303,23 +314,33 @@ function mcpAlreadyPresent(serverName) {
 }
 
 function installMcpPreset(presetId) {
-  // Wires a built-in package's own MCP preset. `mcp add` shells out to the real `claude` CLI and
-  // writes the active Codex config; `--builtin` skips the workspace record because this preset
-  // already lives in the app's manifests/inventory/mcp-servers.json (recording it would duplicate a
-  // built-in into user workspace content and trip assertMcpRecordAllowed in package mode). Tests set
-  // ROBOREPO_SKIP_MCP=1 to exercise the rest of enable/disable without the live registration.
+  // Wires a built-in package's own MCP preset. Registers Claude and Codex independently (mirroring
+  // removeMcpPreset below) instead of delegating to a single `mcp add` subprocess: that combined path
+  // treats Claude CLI registration and the Codex config write as all-or-nothing (see mcpAdd), so an
+  // environment without the `claude` binary (e.g. CI) would silently skip the Codex write too, even
+  // though it has no external CLI dependency of its own.
   if (process.env.ROBOREPO_SKIP_MCP === "1") { console.log(`skip: mcp ${presetId} (ROBOREPO_SKIP_MCP)`); return; }
-  if (mcpAlreadyPresent(presetId)) { console.log(`ok: mcp ${presetId} already present`); return; }
-  // Delegate to `roborepo mcp add` subprocess: handles Claude CLI, Codex config, and preset
-  // resolution. mcpAdd calls process.exit(0) directly, so we can't call it inline.
-  const result = spawnSync(
-    process.execPath,
-    [path.join(repoRoot, "scripts", "cli", "main.mjs"), "mcp", "add", "--builtin", presetId],
-    { encoding: "utf8", stdio: "inherit" }
-  );
-  if (result.status !== 0 && result.status !== null) {
-    throw new Error(`mcp add failed for preset: ${presetId}`);
+  const spec = getMcpPresets().get(presetId.toLowerCase());
+  if (!spec) throw new Error(`mcp add failed for preset: ${presetId} (unknown preset)`);
+
+  if (spawnSync("claude", ["--version"], { encoding: "utf8" }).status === 0) {
+    if (mcpAlreadyPresent(spec.name)) {
+      console.log(`  ok: claude mcp ${spec.name} already present`);
+    } else {
+      const result = spawnSync(
+        process.execPath,
+        [path.join(repoRoot, "scripts", "cli", "main.mjs"), "mcp", "add", "--builtin", "--only-claude", presetId],
+        { encoding: "utf8", stdio: "inherit" }
+      );
+      if (result.status !== 0 && result.status !== null) {
+        throw new Error(`mcp add failed for preset: ${presetId}`);
+      }
+    }
+  } else {
+    console.log(`  ok: claude CLI unavailable for mcp ${presetId}`);
   }
+
+  ensureCodexMcp(spec);
 }
 
 export async function enablePackage(rest, _seen = new Set()) {

@@ -72,31 +72,35 @@ const scaffoldWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-packag
 try {
   const cliPath = path.resolve("scripts/cli/main.mjs");
   const env = { ...process.env, ROBOREPO_MODE: "package", ROBOREPO_WORKSPACE_ROOT: scaffoldWorkspace, ROBOREPO_STATE_DIR: path.join(scaffoldWorkspace, "state") };
-  const create = spawnSync(process.execPath, [cliPath, "package", "create", "scaffold-check", "--kind=auto-skill"], { env, encoding: "utf8" });
-  assert(create.status === 0, `package create should succeed: ${create.stderr}\n${create.stdout}`);
+  const create = spawnSync(process.execPath, [cliPath, "package", "dev", "create", "scaffold-check", "--kind=auto-skill"], { env, encoding: "utf8" });
+  assert(create.status === 0, `package dev create should succeed: ${create.stderr}\n${create.stdout}`);
   assert(create.stdout.includes("next: roborepo package validate scaffold-check"), "create should print the next validate command");
   assert(fs.existsSync(path.join(scaffoldWorkspace, "packages", "scaffold-check", "package.config.json")), "scaffolded package.config.json should exist in the workspace");
 
   const validate = spawnSync(process.execPath, [cliPath, "package", "validate", "scaffold-check"], { env, encoding: "utf8" });
   assert(validate.status === 0, `scaffolded package should validate clean: ${validate.stderr}\n${validate.stdout}`);
 
-  const collision = spawnSync(process.execPath, [cliPath, "package", "create", "scaffold-check", "--kind=auto-skill"], { env, encoding: "utf8" });
-  assert(collision.status !== 0, "package create should refuse to overwrite an existing package");
+  const collision = spawnSync(process.execPath, [cliPath, "package", "dev", "create", "scaffold-check", "--kind=auto-skill"], { env, encoding: "utf8" });
+  assert(collision.status !== 0, "package dev create should refuse to overwrite an existing package");
 } finally {
   fs.rmSync(scaffoldWorkspace, { recursive: true, force: true });
 }
 
-// Development-checkout mode: `roborepo package create` must scaffold directly into
+// Development-checkout mode: `roborepo package dev create` must scaffold directly into
 // globals/packages/ (the real shared source), not a workspace dir — mirrors skill-new.mjs's
 // packageMode ? workspaceSkillsDir : sharedSkillsDir branch.
 const devRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-package-scaffold-dev-"));
 try {
   fs.mkdirSync(path.join(devRoot, ".git"), { recursive: true });
   fs.cpSync(path.resolve("manifests"), path.join(devRoot, "manifests"), { recursive: true });
+  // module-loader.mjs resolves "module" adapter commands (package dev create, ...) relative to
+  // appRoot, mirroring the real npm package layout (scripts/cli/ ships under the install root) — so
+  // a spawned CLI subprocess under a fake appRoot needs scripts/ too, not just manifests/.
+  fs.cpSync(path.resolve("scripts"), path.join(devRoot, "scripts"), { recursive: true });
   const cliPath = path.resolve("scripts/cli/main.mjs");
   const env = { ...process.env, ROBOREPO_MODE: "development", ROBOREPO_APP_ROOT: devRoot, ROBOREPO_STATE_DIR: path.join(devRoot, "state") };
-  const create = spawnSync(process.execPath, [cliPath, "package", "create", "dev-scaffold-check", "--kind=empty"], { env, encoding: "utf8" });
-  assert(create.status === 0, `dev-mode package create should succeed: ${create.stderr}\n${create.stdout}`);
+  const create = spawnSync(process.execPath, [cliPath, "package", "dev", "create", "dev-scaffold-check", "--kind=empty"], { env, encoding: "utf8" });
+  assert(create.status === 0, `dev-mode package dev create should succeed: ${create.stderr}\n${create.stdout}`);
   assert(
     fs.existsSync(path.join(devRoot, "globals", "packages", "dev-scaffold-check", "package.config.json")),
     "dev-mode scaffold should write into globals/packages/, not a workspace dir",

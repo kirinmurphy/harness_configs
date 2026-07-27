@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { finding, messagesOf, sortBySeverity, FINDING_CODES } from "../../modules/plan-docs/findings.mjs";
 import { validateForLifecycle, lifecyclePolicies } from "../../modules/plan-docs/lifecycle-policy.mjs";
 import { SECTION_SYNONYMS, SECTION_FINDING_CODES } from "../../modules/plan-docs/section-synonyms.mjs";
+import { buildRepairPrompt } from "../../modules/plan-docs/repair-prompt.mjs";
 import { parsePlanMarkdown } from "../../modules/plan-docs/index.mjs";
 
 // The validation layer is pure — it reads a parsed document and returns findings, touching no
@@ -34,6 +35,13 @@ testFindingsAreDeterministic();
 testValidationDoesNotMutateInput();
 testSectionSynonymsAreInterchangeable();
 testAcceptedHeadingsTravelOnSectionFindings();
+testRepairPromptCarriesIdentityAndLifecycles();
+testRepairPromptListsEveryFindingAndResolution();
+testRepairPromptCarriesRequiredInstructions();
+testRepairPromptLeaksNoAbsolutePath();
+testRepairPromptOrdersBlockingFirst();
+testRepairPromptListsAcceptedHeadings();
+testRepairPromptHandlesMissingPlanId();
 console.log("ok: plan docs findings and lifecycle policy checks passed");
 
 // --- helpers ----------------------------------------------------------------------------------
@@ -259,4 +267,110 @@ function testAcceptedHeadingsTravelOnSectionFindings() {
     .find((item) => item.code === "MISSING_SUMMARY");
   assert.deepEqual(found.meta.accepted, SECTION_SYNONYMS.summary,
     "a missing-section finding carries the accepted heading names so the repair prompt can list them");
+}
+
+// --- repair prompt ----------------------------------------------------------------------------
+
+// Declared as functions, not consts: the test calls at the top of this file run before module-
+// scope const initializers would have evaluated.
+function repository() {
+  return { name: "sample-repo", id: "abc123" };
+}
+
+function planRecord() {
+  return { id: "my-plan", title: "My Plan", relativePath: "docs/plans/active/my-plan.md" };
+}
+
+function promptFor(parsed, { source = "active", destination = "completed" } = {}) {
+  return buildRepairPrompt({
+    repository: repository(),
+    plan: planRecord(),
+    sourceLifecycle: source,
+    destinationLifecycle: destination,
+    findings: validate(parsed, destination).findings,
+  });
+}
+
+function blockedDoc() {
+  return doc({
+    frontmatter: "id: my-plan\npriority: high\nnext_action: Still going\n",
+    sections: ["Summary", "Goals", "Context"],
+    extra: "## Work\n\n- [ ] one\n- [ ] two\n",
+  });
+}
+
+function testRepairPromptCarriesIdentityAndLifecycles() {
+  const prompt = promptFor(blockedDoc());
+  assert.match(prompt, /^\/plan-docs validate/, "the prompt opens with the slash command that scopes the work");
+  assert.ok(prompt.includes("sample-repo"), "the prompt names the repository");
+  assert.ok(prompt.includes("my-plan"), "the prompt names the stable plan id");
+  assert.ok(prompt.includes("docs/plans/active/my-plan.md"), "the prompt gives the repository-relative path");
+  assert.ok(prompt.includes("Current lifecycle: Active"), "the prompt states where the plan is now");
+  assert.ok(prompt.includes("Requested lifecycle: Completed"), "the prompt states where it was headed");
+}
+
+// The prompt is the only thing the agent sees, so a finding that never made it in is a problem
+// the agent cannot know about.
+function testRepairPromptListsEveryFindingAndResolution() {
+  const parsed = blockedDoc();
+  const findings = validate(parsed, "completed").findings;
+  const prompt = promptFor(parsed);
+  assert.ok(findings.length >= 4, "the fixture must produce several findings for this to be meaningful");
+  for (const item of findings) {
+    assert.ok(prompt.includes(item.message), `prompt omits the finding message: ${item.code}`);
+    assert.ok(prompt.includes(item.resolution), `prompt omits the resolution for: ${item.code}`);
+  }
+}
+
+function testRepairPromptCarriesRequiredInstructions() {
+  const prompt = promptFor(blockedDoc());
+  assert.ok(prompt.includes("`/plan-docs`"), "instructs the agent to work through /plan-docs");
+  assert.ok(prompt.includes("Do not move the file"), "instructs the agent not to move the file");
+  assert.ok(prompt.includes("docs/plans/active/"), "names the source folder the file must stay in");
+  assert.ok(prompt.includes("Preserve the stable plan ID `my-plan`"), "instructs the agent to keep the id stable");
+  assert.ok(prompt.includes("Validate the edited document"), "instructs the agent to validate its own work");
+}
+
+// The record this is built from carries an absolute path internally; the caller strips it, and
+// this asserts the stripping actually held, since the prompt gets pasted outside the machine.
+function testRepairPromptLeaksNoAbsolutePath() {
+  const prompt = buildRepairPrompt({
+    repository: { name: "sample-repo" },
+    plan: planRecord(),
+    sourceLifecycle: "active",
+    destinationLifecycle: "completed",
+    findings: validate(blockedDoc(), "completed").findings,
+  });
+  assert.ok(!/\/Users\//.test(prompt), "no home-directory path may appear in a prompt the user pastes elsewhere");
+  assert.ok(!/^\s*\//m.test(prompt.replace(/^\/plan-docs validate$/m, "")),
+    "no line may start with an absolute filesystem path");
+}
+
+function testRepairPromptOrdersBlockingFirst() {
+  const prompt = promptFor(blockedDoc());
+  const firstProblem = prompt.split("Problems to fix:")[1].trim().split("\n")[0];
+  assert.match(firstProblem, /^1\./, "problems are numbered for unambiguous reference");
+  assert.ok(!firstProblem.includes("Missing Verification"),
+    "advisory findings sort after blocking ones, so Verification is not the lead problem");
+}
+
+function testRepairPromptListsAcceptedHeadings() {
+  const prompt = promptFor(doc({ frontmatter: "id: my-plan\npriority: high\n", sections: ["Goals"] }),
+    { source: "backlog", destination: "active" });
+  assert.ok(prompt.includes('Accepted headings: "summary", "purpose", "overview"'),
+    "a missing section tells the agent every heading that would satisfy it, not just one example");
+}
+
+function testRepairPromptHandlesMissingPlanId() {
+  const prompt = buildRepairPrompt({
+    repository: repository(),
+    plan: { id: "", title: "Untitled Plan", relativePath: "docs/plans/backlog/untitled.md" },
+    sourceLifecycle: "backlog",
+    destinationLifecycle: "active",
+    findings: validate(doc({ frontmatter: "priority: high\n" }), "active").findings,
+  });
+  assert.ok(prompt.includes("Untitled Plan"), "falls back to the title when there is no id to name the plan by");
+  assert.ok(prompt.includes("Add a stable, lowercase-slug plan ID"),
+    "asks for an id to be created rather than telling the agent to preserve one that doesn't exist");
+  assert.ok(!prompt.includes("Preserve the stable plan ID ``"), "never emits an empty id placeholder");
 }

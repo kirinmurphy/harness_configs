@@ -150,12 +150,10 @@ function applyGitBadge(node, git) {
     tracking.title = `${git.ahead || 0} ahead, ${git.behind || 0} behind ${git.upstream || "upstream"}`;
   }
 
-  badge.title = gitTooltip(git);
-  const detail = node.querySelector("[data-slot=git-detail]");
-  if (detail) {
-    detail.hidden = false;
-    node.querySelector("[data-slot=git-detail-text]").textContent = gitTooltip(git);
-  }
+  const tooltip = gitTooltip(git);
+  badge.title = tooltip;
+  node.querySelector("[data-slot=git-detail]").hidden = false;
+  node.querySelector("[data-slot=git-detail-text]").textContent = tooltip;
 }
 
 function gitTooltip(git) {

@@ -54,7 +54,9 @@ export async function discoverInstances(options = {}) {
       });
     const appSettings = appSettingsForIdentity(settings, identity.identity);
     const candidates = originCandidatesForListener(listener, appSettings?.originPreference);
-    pending.push({ listener, identity, candidates, cwd });
+    // appSettings is retained (not just its originPreference) so health classification reuses this
+    // alias-resolved lookup rather than re-deriving it with a different rule.
+    pending.push({ listener, identity, candidates, cwd, appSettings });
   }
 
   // Git collection is a separate pass over unique repository roots rather than work threaded into
@@ -69,21 +71,27 @@ export async function discoverInstances(options = {}) {
       : Promise.resolve(new Map()),
   ]);
 
+  // instance -> the probe and app settings that produced it. Health is classified in a later pass
+  // (association keys must be final first), and this carries the inputs across rather than having
+  // that pass rebuild them from the flattened instance.
+  const context = new Map();
   for (const item of pending) {
     const probe = probeHttp ? probes.get(item) : null;
     if (probeHttp && !probe) continue;
-    instances.push(toInstance({
+    const instance = toInstance({
       listener: item.listener,
       identity: item.identity,
       candidates: item.candidates,
       probe,
       cwd: item.cwd,
       git: gitByRoot.get(item.identity.projectRoot) || null,
-    }));
+    });
+    context.set(instance, { probe, appSettings: item.appSettings });
+    instances.push(instance);
   }
   disambiguateAssociationKeys(instances);
   // After disambiguation, so the previous-health lookup uses each instance's final key.
-  attachHealth(instances, { previousHealth, settings, now });
+  attachHealth(instances, { previousHealth, context, now });
 
   return { capabilities, warnings, instances };
 }

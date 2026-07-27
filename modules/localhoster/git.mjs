@@ -96,11 +96,14 @@ async function readGitContext(projectRoot, options) {
 // via commonDir, so both locations are checked.
 function resolveRefSha(ref, resolved, { fsApi, pathApi }) {
   if (!ref) return null;
-  for (const dir of uniqueDirs(resolved)) {
+  // Loose refs in either directory beat packed-refs in either, so these are two ordered passes
+  // rather than one interleaved loop.
+  const dirs = uniqueDirs(resolved);
+  for (const dir of dirs) {
     const loose = readText(fsApi, pathApi.join(dir, ref));
     if (loose && /^[0-9a-f]{40}$/i.test(loose.trim())) return loose.trim().toLowerCase();
   }
-  for (const dir of uniqueDirs(resolved)) {
+  for (const dir of dirs) {
     const packed = readText(fsApi, pathApi.join(dir, "packed-refs"));
     if (!packed) continue;
     const sha = parsePackedRefs(packed).get(ref);

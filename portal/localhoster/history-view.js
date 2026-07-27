@@ -75,8 +75,7 @@ function detailText(event) {
 }
 
 function formatValue(value) {
-  if (value == null) return "";
-  return typeof value === "number" ? String(value) : String(value);
+  return value == null ? "" : String(value);
 }
 
 function relativeTime(iso) {

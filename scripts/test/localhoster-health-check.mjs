@@ -2,10 +2,12 @@
 // Health-state normalization. classifyHealth is pure, so every check here is a sequence of probe
 // results fed through it — no filesystem, no processes, no timers.
 import assert from "node:assert/strict";
+import { realpathSync } from "node:fs";
 import {
   DEFAULT_HEALTH_POLICY,
   HEALTH_STATES,
   classifyHealth,
+  discoverInstances,
   healthIndexFromSnapshot,
 } from "../../modules/localhoster/index.mjs";
 
@@ -119,6 +121,47 @@ assert.equal(healthIndexFromSnapshot(null).size, 0);
 console.log("ok  health index from snapshot");
 
 assert.equal(DEFAULT_HEALTH_POLICY.failureThreshold, 2);
+
+// ---- Wiring: the real discovery pipeline, not classifyHealth in isolation ----
+// These exist because an earlier version rebuilt a probe-shaped object from the flattened instance
+// inside attachHealth. That reconstruction silently dropped `tls` and `errorCode`, so the states
+// asserted above were unreachable in production even though every unit check passed. Only an
+// end-to-end assertion catches that class of defect.
+const listeners = async (_cmd, args) =>
+  args.includes("-iTCP") ? { stdout: "p1\ncnode\nn127.0.0.1:9000\n" } : { stdout: "n/tmp\n" };
+
+const tlsRun = await discoverInstances({
+  platform: "darwin",
+  runCommand: listeners,
+  collectGit: null,
+  probeHttp: async () => ({ http: true, status: null, latencyMs: 5, protocol: "https", tls: "untrusted" }),
+});
+assert.equal(tlsRun.instances[0].tls, "untrusted", "the instance record must carry tls");
+assert.equal(tlsRun.instances[0].health.state, "degraded");
+assert.equal(
+  tlsRun.instances[0].health.reason,
+  "tls-untrusted",
+  "a self-signed cert must read degraded, not debounce into unhealthy",
+);
+
+// Health config must be found through an alias, matching how origin preference is already resolved.
+const aliasRun = await discoverInstances({
+  platform: "darwin",
+  runCommand: listeners,
+  collectGit: null,
+  probeHttp: async () => ({ http: true, status: 401, latencyMs: 1, protocol: "http" }),
+  settings: {
+    aliases: { [`process:${realpathSync("/tmp")}:node`]: "git:github.com/o/r" },
+    projects: { "git:github.com/o/r": { apps: { web: { health: { acceptedStatuses: [401] } } } } },
+  },
+});
+assert.equal(
+  aliasRun.instances[0].health.state,
+  "healthy",
+  "acceptedStatuses reached through an alias must be honored",
+);
+console.log("ok  health wiring carries tls and alias-resolved config");
+
 console.log("\nlocalhoster-health checks passed");
 
 function at(offsetMs) {

@@ -99,15 +99,22 @@ export function compactHistory({
   const cutoff = toMillis(now) - Math.max(1, retentionDays) * 24 * 60 * 60 * 1000;
   let kept = events.filter((event) => Date.parse(event.at) >= cutoff);
 
-  let serialized = serialize(kept);
-  while (kept.length > 1 && Buffer.byteLength(serialized, "utf8") > HISTORY_MAX_BYTES) {
-    // Drop the oldest 30% at a time so a file that blew past the cap does not need one rewrite per
-    // surplus line (mirrors SPOOL_KEEP_FRACTION's intent in telemetry-capture.mjs).
-    kept = kept.slice(Math.max(1, Math.floor(kept.length * 0.3)));
-    serialized = serialize(kept);
+  // Size the retained set without serializing it. Each line's byte length is computed once, then a
+  // suffix walk finds how many of the oldest events must go — serializing inside a trim loop would
+  // re-stringify the whole array on every iteration, which dominates the cost on a large file.
+  const lengths = kept.map((event) => Buffer.byteLength(JSON.stringify(event), "utf8") + 1);
+  let total = lengths.reduce((sum, length) => sum + length, 0);
+  let dropped = 0;
+  while (dropped < lengths.length - 1 && total > HISTORY_MAX_BYTES) {
+    total -= lengths[dropped];
+    dropped += 1;
   }
+  if (dropped) kept = kept.slice(dropped);
 
+  // Nothing aged out and nothing had to be trimmed: leave the file alone rather than rewriting it
+  // byte-for-byte. This is the steady state on every append once the file clears the compact floor.
   if (kept.length === events.length) return false;
+  const serialized = serialize(kept);
   try {
     const dir = path.dirname(filePath);
     const temp = path.join(dir, `.history.${process.pid}.${Date.now()}.tmp`);
@@ -119,6 +126,10 @@ export function compactHistory({
   }
 }
 
+// Gate compaction on two cheap checks before paying for a full read+parse. Above the floor there is
+// usually still nothing to do — retention only bites once a day's worth of events has aged out — so
+// the oldest line is sampled first and the file is only fully read when that line is actually
+// expired or the hard cap is breached.
 function maybeCompact({ stateRoot, fsApi, now, retentionDays }) {
   let size = 0;
   try {
@@ -127,7 +138,32 @@ function maybeCompact({ stateRoot, fsApi, now, retentionDays }) {
     return false;
   }
   if (size <= HISTORY_COMPACT_FLOOR_BYTES) return false;
+  if (size <= HISTORY_MAX_BYTES && !oldestEventExpired({ stateRoot, fsApi, now, retentionDays })) {
+    return false;
+  }
   return compactHistory({ stateRoot, fsApi, now, retentionDays });
+}
+
+// Parse only the first line. Events are appended in time order, so if the oldest one is still inside
+// the retention window, nothing else can be outside it either.
+function oldestEventExpired({ stateRoot, fsApi, now, retentionDays }) {
+  let head;
+  try {
+    const fd = fsApi.openSync(historyPathFor(stateRoot), "r");
+    try {
+      const buffer = Buffer.alloc(512);
+      const read = fsApi.readSync(fd, buffer, 0, 512, 0);
+      head = buffer.subarray(0, read).toString("utf8").split("\n", 1)[0];
+    } finally {
+      fsApi.closeSync(fd);
+    }
+  } catch {
+    return true;
+  }
+  const first = parseEvent(head);
+  if (!first) return true;
+  const cutoff = toMillis(now) - Math.max(1, retentionDays) * 24 * 60 * 60 * 1000;
+  return Date.parse(first.at) < cutoff;
 }
 
 function serialize(events) {

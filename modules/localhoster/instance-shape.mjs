@@ -27,6 +27,9 @@ export function toInstance({ listener, identity, candidates, probe, cwd, git = n
     status: probe?.status ?? null,
     latencyMs: probe?.latencyMs ?? null,
     protocol: probe?.protocol ?? "http",
+    // Carried because a trust failure is the one case where http is true but status is null, and
+    // both statusLabel (CLI) and statusText (portal) already read it.
+    tls: probe?.tls ?? null,
     title: probe?.title ?? null,
     health,
     process: { pid: listener.pid, command: listener.command },
@@ -36,11 +39,17 @@ export function toInstance({ listener, identity, candidates, probe, cwd, git = n
 
 // Health is classified after association keys are final, because the previous health record is
 // looked up by associationKey and disambiguateAssociationKeys can still swap in the titleKey.
-export function attachHealth(instances, { previousHealth = new Map(), settings = null, now = new Date() } = {}) {
+//
+// `context` carries the real probe result and the already-alias-resolved app settings for each
+// instance, both of which discovery.mjs holds during its scan. Reconstructing either here would
+// silently lose fields — an earlier version rebuilt a probe from the flattened instance and dropped
+// `tls`/`errorCode`, which turned a self-signed cert into `unhealthy` instead of `degraded`.
+export function attachHealth(instances, { previousHealth = new Map(), context = null, now = new Date() } = {}) {
   for (const instance of instances) {
+    const entry = context?.get(instance) || null;
     instance.health = classifyHealth({
-      probe: probeViewOf(instance),
-      config: healthConfigFor(settings, instance),
+      probe: entry?.probe ?? null,
+      config: entry?.appSettings?.health ?? null,
       previous: previousHealth.get(instance.associationKey) || null,
       now,
     });
@@ -81,20 +90,6 @@ export function buildMatchSignature(identity, command, cwd, title) {
     .digest("hex")
     .slice(0, 24);
   return { key, titleKey, ...parts, title: safeTitle };
-}
-
-// Reconstruct the probe-shaped view classifyHealth expects from the fields toInstance kept. An
-// instance only exists when a probe succeeded (discovery drops the rest), so http is true here.
-function probeViewOf(instance) {
-  if (instance.status === null && instance.protocol === "http" && !instance.origin) return null;
-  return { http: true, status: instance.status, tls: instance.tls ?? null };
-}
-
-function healthConfigFor(settings, instance) {
-  const identity = instance.project?.identity;
-  const project = identity ? settings?.projects?.[identity] : null;
-  const app = project?.apps?.web || Object.values(project?.apps || {})[0] || null;
-  return app?.health || null;
 }
 
 function safeCommand(value) {

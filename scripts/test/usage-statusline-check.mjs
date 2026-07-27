@@ -67,10 +67,15 @@ function runFormatter(input, env = {}) {
     const settings = JSON.parse(fs.readFileSync(path.join(home, ".claude", "settings.json"), "utf8"));
     assert.equal(settings.statusLine.command, `node "${entrypoint}"`, "Claude command references managed entrypoint");
 
+    // Codex footer stays fully native until an upstream footer-command hook exists (see
+    // docs/plans/backlog/usage-statusline-codex-hook-parity). No used-direction / pacing / scalar
+    // changes are applied to Codex, so the enhancement never ships a mixed used/remaining footer.
     const codexConfig = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
-    assert.match(codexConfig, /"context-used"/, "Codex migrated to context-used");
-    assert.doesNotMatch(codexConfig, /"context-remaining"/, "old context-remaining is gone");
-    assert.match(codexConfig, /status_line_use_colors\s*=\s*false/, "decorative colors disabled via owned scalar");
+    for (const item of ["model-with-reasoning", "context-remaining", "five-hour-limit", "weekly-limit", "git-branch"]) {
+      assert.match(codexConfig, new RegExp(JSON.stringify(item)), `Codex status_line contains native ${item}`);
+    }
+    assert.doesNotMatch(codexConfig, /"context-used"/, "Codex is not migrated to context-used (deferred to hook)");
+    assert.doesNotMatch(codexConfig, /status_line_use_colors/, "Codex decorative-color scalar is not touched (deferred to hook)");
 
     // Idempotent re-enable.
     const reEnable = spawnSync(process.execPath, [cli, "package", "enable", "usage-statusline"], { env, encoding: "utf8" });
@@ -84,30 +89,9 @@ function runFormatter(input, env = {}) {
       assert.ok(!fs.existsSync(path.join(home, ".roborepo", "runtime", "usage-statusline", mod)), `disable removes ${mod}`);
     }
     const afterCodex = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
-    assert.doesNotMatch(afterCodex, /"context-used"/, "disable removes context-used");
-    // The scalar roborepo introduced is removed on disable (nothing to restore — it was absent before).
-    assert.doesNotMatch(afterCodex, /status_line_use_colors/, "disable removes the owned color scalar");
-  } finally {
-    fs.rmSync(home, { recursive: true, force: true });
-  }
-}
-
-// --- owned scalar: an unmanaged prior value is preserved and restored -------
-{
-  const home = makeHome();
-  try {
-    // User already set colors on before enabling — roborepo must not corrupt it, and must restore it.
-    fs.writeFileSync(path.join(home, ".codex", "config.toml"), "[tui]\nstatus_line_use_colors = true\n");
-    const env = { ...process.env, HOME: home, ROBOREPO_STATE_DIR: path.join(home, ".roborepo"), ROBOREPO_SKIP_MCP: "1" };
-    const enable = spawnSync(process.execPath, [cli, "package", "enable", "usage-statusline"], { env, encoding: "utf8" });
-    assert.equal(enable.status, 0, `enable should succeed:\n${enable.stderr}\n${enable.stdout}`);
-    const codex = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
-    assert.match(codex, /status_line_use_colors\s*=\s*true/, "unmanaged prior scalar value is preserved (not overwritten)");
-
-    const disable = spawnSync(process.execPath, [cli, "package", "disable", "usage-statusline"], { env, encoding: "utf8" });
-    assert.equal(disable.status, 0, "disable succeeds");
-    const afterCodex = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
-    assert.match(afterCodex, /status_line_use_colors\s*=\s*true/, "prior scalar value restored after disable");
+    for (const item of ["model-with-reasoning", "context-remaining", "five-hour-limit", "weekly-limit", "git-branch"]) {
+      assert.doesNotMatch(afterCodex, new RegExp(JSON.stringify(item)), `disable removes native ${item}`);
+    }
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

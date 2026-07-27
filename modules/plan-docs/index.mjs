@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { resolveProjectIdentity, canonicalRepositoryId, providerUrlForRepositoryId } from "../repositories/index.mjs";
 import { finding, messagesOf } from "./findings.mjs";
 import { validateForLifecycle } from "./lifecycle-policy.mjs";
+import { buildRepairPrompt } from "./repair-prompt.mjs";
 
 export const LIFECYCLES = new Set(["backlog", "active", "completed", "archived"]);
 export const PRIORITIES = new Set(["high", "medium", "low", "none"]);
@@ -204,11 +205,16 @@ export function findPlanById(snapshot, id, repositoryId) {
 
 // Builds a structured domain error every mutation throw site uses, so the CLI/route layer has one
 // shape to serialize instead of pattern-matching ad hoc `.code` properties.
-function domainError(code, message, { resolution, details, status } = {}) {
+function domainError(code, message, { resolution, details, findings, repair, status } = {}) {
   const err = new Error(message);
   err.code = code;
   if (resolution !== undefined) err.resolution = resolution;
   if (details !== undefined) err.details = details;
+  // Structured findings and the generated repair prompt ride along on readiness failures. Both
+  // must also be listed in portal-routes-plans' sendDomainError and portalPostJson, which
+  // whitelist error keys explicitly.
+  if (findings !== undefined) err.findings = findings;
+  if (repair !== undefined) err.repair = repair;
   err.status = status ?? DOMAIN_ERROR_STATUS[code] ?? 400;
   return err;
 }
@@ -633,20 +639,39 @@ export function movePlanLifecycle(snapshot, { id, key, lifecycle, expectedLifecy
   })();
   if (destinationOccupied) throw domainError("DESTINATION_EXISTS", "A file already exists at the destination.");
 
-  // Non-blocking by design for now: the first call always validates and, if incomplete, throws
+  // Non-blocking by design: the first call always validates and, if incomplete, throws
   // LIFECYCLE_REQUIREMENTS so the client can show what's missing. The client re-submits with
   // skipDestinationValidation once the user confirms "move anyway" — this is a soft warning, not
   // a hard gate, because most existing plan docs predate the plan-docs schema and can't cleanly
   // satisfy every section/next_action/verification check without a dedicated backfill pass.
-  // Revisit tightening this back to a hard block once plan-docs-originated docs are the norm.
+  //
+  // Validation reads the file from disk rather than trusting the snapshot record, so the findings
+  // (and the repair prompt generated from them) always describe the document as it is right now.
+  // An edit made since the page loaded is picked up here.
   if (!skipDestinationValidation) {
     const markdown = fs.readFileSync(realFile, "utf8");
-    const parsed = parsePlanMarkdown(markdown, { repository: stripRepositoryRoot(record.repository), relativePath: record.plan.relativePath });
+    const publicRepository = stripRepositoryRoot(record.repository);
+    const parsed = parsePlanMarkdown(markdown, { repository: publicRepository, relativePath: record.plan.relativePath });
     const destinationValidation = validateParsedPlan(parsed, { lifecycle });
     if (!destinationValidation.ready) {
       throw domainError("LIFECYCLE_REQUIREMENTS", `Couldn't move "${record.plan.title}" to ${capitalize(lifecycle)}.`, {
         resolution: "Complete or remove the listed items, then try again — or move anyway.",
         details: destinationValidation.warnings,
+        findings: destinationValidation.findings,
+        // Generated here, from this same fresh validation, rather than exposing a second endpoint
+        // the client could call with its own findings — the prompt can then never describe
+        // requirements different from the ones currently on screen.
+        repair: {
+          prompt: buildRepairPrompt({
+            repository: publicRepository,
+            plan: record.plan,
+            sourceLifecycle: record.plan.lifecycle,
+            destinationLifecycle: lifecycle,
+            findings: destinationValidation.findings,
+          }),
+          planKey: record.key,
+          planId: record.plan.id,
+        },
       });
     }
   }

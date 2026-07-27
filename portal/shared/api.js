@@ -36,6 +36,10 @@ export async function portalPostJson(path, body) {
       err.code = data.error.code;
       err.resolution = data.error.resolution;
       err.details = data.error.details;
+      // Readiness failures add structured findings and a server-generated repair prompt. Mirrors
+      // the key list in portal-routes-plans' sendDomainError — both sides whitelist explicitly.
+      err.findings = data.error.findings;
+      err.repair = data.error.repair;
     }
     throw err;
   }

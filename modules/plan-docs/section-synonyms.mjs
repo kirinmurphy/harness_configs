@@ -16,11 +16,15 @@
 // After editing, run: npm run test:plans-findings
 
 export const SECTION_SYNONYMS = {
-  summary: ["summary"],
+  summary: ["summary", "purpose", "overview"],
   goals: ["goals", "goal", "desired outcome", "desired outcomes"],
-  context: ["current state", "context"],
-  design: ["proposed design", "implementation plan", "implementation"],
-  criteria: ["validation", "acceptance criteria", "success criteria"],
+  context: ["current state", "context", "current behavior", "background"],
+  design: [
+    "proposed design", "implementation plan", "implementation",
+    "implementation checklist", "implementation sequence", "implementation phases",
+    "proposed behavior",
+  ],
+  criteria: ["validation", "acceptance criteria", "success criteria", "exit criteria"],
 };
 
 // Which finding each section reports when absent. Kept beside the synonyms so adding a section

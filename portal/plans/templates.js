@@ -380,3 +380,14 @@ export function blockerLink(blocker, onOpenPlan) {
   link.addEventListener("click", () => onOpenPlan(blocker.key));
   return link;
 }
+
+// One problem in the blocked-move dialog: what is wrong, and how to fix it. Findings that predate
+// the structured shape carry only a message, so the resolution line is dropped rather than
+// rendered empty.
+export function lifecycleFinding(item) {
+  const node = fill(tpl("tpl-lifecycle-finding"), { message: item.message });
+  const resolution = node.querySelector("[data-slot=resolution]");
+  if (item.resolution) resolution.textContent = item.resolution;
+  else resolution.remove();
+  return node;
+}

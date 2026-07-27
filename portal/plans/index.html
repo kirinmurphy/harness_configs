@@ -284,8 +284,17 @@
       </div>
       <div class="modal-body">
         <p class="modal-note" data-slot="resolution"></p>
+        <p class="lifecycle-findings-label" data-slot="blocking-label" hidden>Must fix before moving</p>
         <ul class="lifecycle-error-details" data-slot="details"></ul>
+        <p class="lifecycle-findings-label" data-slot="advisory-label" hidden>Also worth fixing</p>
+        <ul class="lifecycle-error-details" data-slot="advisory-details" hidden></ul>
         <div class="modalactions">
+          <portal-copy-button
+            data-slot="copy-prompt"
+            label="Copy prompt to resolve warnings"
+            hidden
+          ></portal-copy-button>
+          <button type="button" data-slot="view-plan">View Plan</button>
           <button type="button" data-btn="cta" data-slot="confirm-action" hidden>Move anyway</button>
           <button type="button" data-slot="close-action">Cancel</button>
         </div>
@@ -493,6 +502,14 @@
         </button>
       </div>
     </template>
+    <!-- Lifecycle readiness findings (blocked-move dialog) -->
+    <template id="tpl-lifecycle-finding">
+      <li class="lifecycle-finding">
+        <p class="lifecycle-finding-message" data-slot="message"></p>
+        <p class="lifecycle-finding-resolution" data-slot="resolution"></p>
+      </li>
+    </template>
+
     <!-- Active-filter chips (control bar) -->
     <template id="tpl-filter-chip">
       <span class="filter-chip">

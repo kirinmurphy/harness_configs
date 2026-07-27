@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   isVisible,
   replaceRecord,
@@ -7,6 +8,8 @@ import {
   matchesFilters,
   resolveBlockers,
   resolveBlocking,
+  lifecycleFindingGroups,
+  canRepairLifecycleError,
   FILTER_DEFAULTS,
 } from "../../portal/plans/state.js";
 
@@ -32,6 +35,12 @@ testResolveBlockersScopedToSameRepository();
 testResolveBlockingFindsReverseReferences();
 testResolveBlockingEmptyWhenNoId();
 testResolveBlockingExcludesSelf();
+testFindingGroupsPartitionWithoutLoss();
+testFindingGroupsFallBackToDetailStrings();
+testFindingGroupsHandleAnErrorWithNeither();
+testEveryDisplayedFindingAppearsInTheRepairPrompt();
+testCanRepairRequiresANonEmptyPrompt();
+testLifecycleOptionsAreNeverDisabled();
 console.log("ok: plans portal state (mutation orchestration helpers) checks passed");
 
 function record({ key = "k1", lifecycle = "backlog", priority = "high", id = "plan-1", repositoryId = "r1", blockers = [] } = {}) {
@@ -201,4 +210,82 @@ function testResolveBlockingExcludesSelf() {
   // A plan that (incorrectly) lists its own id in blocked_by must not appear in its own Blocking list.
   const selfBlocked = record({ key: "a", id: "plan-a", blockers: ["plan-a"] });
   assert.deepEqual(resolveBlocking(selfBlocked, [selfBlocked]), []);
+}
+
+// --- lifecycle readiness errors ---------------------------------------------------------------
+
+// The dialog renders these two groups and nothing else, so a finding that falls out of both would
+// silently never reach the user.
+function testFindingGroupsPartitionWithoutLoss() {
+  const err = {
+    findings: [
+      { code: "UNCHECKED_REQUIRED_TASKS", message: "3 remain.", severity: "blocking" },
+      { code: "MISSING_VERIFICATION", message: "No verification.", severity: "advisory" },
+      { code: "NEXT_ACTION_REMAINS", message: "Still has next_action.", severity: "blocking" },
+    ],
+  };
+  const { blocking, advisory } = lifecycleFindingGroups(err);
+  assert.equal(blocking.length + advisory.length, err.findings.length,
+    "every finding lands in exactly one group — the dialog shows nothing else");
+  assert.deepEqual(blocking.map((item) => item.code), ["UNCHECKED_REQUIRED_TASKS", "NEXT_ACTION_REMAINS"],
+    "blocking findings keep their original relative order");
+  assert.deepEqual(advisory.map((item) => item.code), ["MISSING_VERIFICATION"],
+    "advisory findings are separated out rather than dropped");
+}
+
+// Older routes and non-plans domain errors still send plain strings; those must render too.
+function testFindingGroupsFallBackToDetailStrings() {
+  const { blocking, advisory } = lifecycleFindingGroups({ details: ["Something is wrong.", "So is this."] });
+  assert.equal(blocking.length, 2, "detail strings are shown rather than discarded when findings are absent");
+  assert.equal(advisory.length, 0, "unclassified detail strings default to the must-fix group");
+  assert.equal(blocking[0].message, "Something is wrong.", "the string becomes the finding's message");
+}
+
+function testFindingGroupsHandleAnErrorWithNeither() {
+  const { blocking, advisory } = lifecycleFindingGroups({ message: "boom" });
+  assert.deepEqual([blocking, advisory], [[], []], "an error with no findings or details renders no list at all");
+}
+
+// The plan doc's "copies a prompt matching the current findings" — the actual invariant behind
+// that check, testable here even though the clipboard call itself is not.
+function testEveryDisplayedFindingAppearsInTheRepairPrompt() {
+  const err = {
+    findings: [
+      { code: "UNCHECKED_REQUIRED_TASKS", message: "3 required tasks remain unchecked.", severity: "blocking" },
+      { code: "MISSING_VERIFICATION", message: "Missing Verification section.", severity: "advisory" },
+    ],
+    repair: {
+      prompt: [
+        "/plan-docs validate",
+        "1. 3 required tasks remain unchecked.",
+        "2. Missing Verification section.",
+      ].join("\n"),
+    },
+  };
+  const { blocking, advisory } = lifecycleFindingGroups(err);
+  for (const item of [...blocking, ...advisory]) {
+    assert.ok(err.repair.prompt.includes(item.message),
+      `the copied prompt must describe every finding on screen; missing: ${item.code}`);
+  }
+}
+
+function testCanRepairRequiresANonEmptyPrompt() {
+  assert.equal(canRepairLifecycleError({ repair: { prompt: "/plan-docs validate" } }), true,
+    "a usable prompt enables the copy button");
+  assert.equal(canRepairLifecycleError({ repair: { prompt: "" } }), false,
+    "an empty prompt must not offer a copy button that yields nothing");
+  assert.equal(canRepairLifecycleError({ details: ["x"] }), false,
+    "errors without a repair descriptor (stale, collision) offer no prompt");
+  assert.equal(canRepairLifecycleError(undefined), false, "a missing error is not repairable");
+}
+
+// The plan doc requires lifecycle options to stay selectable until the server rejects a submitted
+// move, so a stale browser snapshot can never pre-empt the authoritative finding set. Nothing
+// disables them today; this asserts it stays that way, since the regression would be invisible
+// in every other test here.
+function testLifecycleOptionsAreNeverDisabled() {
+  const source = fs.readFileSync(new URL("../../portal/plans/elements/plan-status.js", import.meta.url), "utf8");
+  const dropdown = source.slice(source.indexOf("renderLifecycleDropdown"));
+  assert.ok(!/\bdisabled\b/.test(dropdown.slice(0, dropdown.indexOf("\n  }"))),
+    "the lifecycle dropdown must never disable itself from snapshot warnings — only a submitted move may be rejected");
 }

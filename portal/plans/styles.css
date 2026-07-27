@@ -1266,3 +1266,36 @@ option-dropdown {
   margin-bottom: 2px;
   padding-left: var(--space-xs);
 }
+/* Group headings for the blocked-move dialog. Only shown when both groups are present, so they
+ * always appear as a contrasting pair rather than labelling a single list. */
+.lifecycle-findings-label {
+  margin: var(--space-sm) 0 var(--space-xs);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+}
+.lifecycle-findings-label:first-of-type {
+  margin-top: 0;
+}
+.lifecycle-finding {
+  margin-bottom: var(--space-xs);
+}
+.lifecycle-finding-message {
+  margin: 0;
+}
+/* Indented and dimmed so the problem reads first and the fix reads as its follow-up. */
+.lifecycle-finding-resolution {
+  margin: 2px 0 0;
+  font-size: var(--text-2xs);
+  color: var(--dim);
+}
+/* The advisory list is deliberately quieter — these do not prevent the move. */
+[data-slot="advisory-details"] {
+  border-left-color: var(--line);
+}
+/* Copy sits left of the decision buttons: it is the alternative to deciding, not one of the
+ * choices. `gap` on .modalactions already spaces the rest. */
+#lifecycle-error-modal .modalactions portal-copy-button {
+  margin-right: auto;
+}

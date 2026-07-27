@@ -1,14 +1,23 @@
 ---
 id: portal-config-web-components-plan
 priority: none
-next_action: Fill in the next concrete task.
+next_action:
 blocked_by: []
 depends_on: []
 related: []
-reviewed_commit:
+reviewed_commit: b8684ef
 ---
 
 # portal/config/ Web Components + `<dialog>` Refactor
+
+## Status
+
+**Complete.** Shipped in `main`. The full five-file split
+(`portal/config/state.js`, `api.js`, `templates.js`, `panels.js`, `app.js`),
+all three custom elements (`portal/config/elements/bucket-control.js`,
+`config-item.js`, `config-toggle.js`), and the `<dialog>` migration
+(`portal/config/panels.js`, `portal/config/index.html`) landed as designed.
+Retained as a record of the file-split map and custom-element verdicts.
 
 ## Context
 

@@ -1,18 +1,49 @@
 ---
 id: plan-docs-and-plans-portal-plan
 priority: none
-next_action: Fill in the next concrete task.
+next_action:
 blocked_by: []
 depends_on: []
-related: []
-reviewed_commit:
+related: [plans-portal-live-refresh-and-static-preflight]
+reviewed_commit: b8684ef
 ---
 
 # Plan Docs and Plans Portal Implementation Plan
 
 ## Status
 
-Proposed
+**Complete.** The core of this plan shipped in `main`:
+
+- Built-in Plans portal at `/plans` — `portal/plans/` (app.js, plan cards,
+  filters, lifecycle dialogs, blockers popover, toast controller).
+- Portable plan-domain module — `modules/plan-docs/` (`index.mjs`, `repair.mjs`).
+- CLI adapter — `scripts/cli/plans.mjs`.
+- Optional `plan-docs` package + unified skill —
+  `globals/packages/plan-docs/` with `package.config.json` and
+  `skills/plan-docs/references/*.md` (workflow-create/next/start/sync/validate/
+  review/handoff, plan-schema, lifecycle, writing-guidelines, prompt-contracts).
+- Reference docs — `docs/guides/plan-docs.md`, `docs/reference/services/plans-portal.md`.
+
+The plan-domain model is isolated from portal/harness details, lifecycle is
+folder-derived, the previous planning-doc skill and legacy slash command were
+retired, and no database or standalone service was introduced — matching the
+acceptance criteria below.
+
+**Shipped beyond this plan's stated non-goals:** the plan declared the first
+portal release would *not* mutate plan files. That boundary was later crossed —
+the portal now moves plans between lifecycle folders and edits priority via
+`POST /api/plans/lifecycle` and `POST /api/plans/priority`
+(`portal/plans/api.js`, `modules/plan-docs/index.mjs::movePlanLifecycle` /
+`updatePlanPriority`). See the shipped `plan-lifecycle-toggle-control` and
+lifecycle-move work.
+
+**Ancillary follow-up split out:** the two optional enhancements that were never
+built — live refresh / SSE (Phase 6, `GET /api/plans/events`) and the static
+no-argument slash-command preflight (Phase 4b) — plus the deferred-enhancements
+list at the bottom, now live in
+[`backlog/plans-portal-live-refresh-and-static-preflight.md`](../backlog/plans-portal-live-refresh-and-static-preflight.md).
+The phase breakdown below describes the original plan as executed; consult the
+follow-up for remaining optional scope.
 
 ## Summary
 

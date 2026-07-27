@@ -1,18 +1,22 @@
 ---
 id: native-skill-tools-boundary
 priority: none
-next_action: Fill in the next concrete task.
+next_action:
 blocked_by: []
 depends_on: []
-related: []
-reviewed_commit:
+related: [native-skill-tooling-followups]
+reviewed_commit: b8684ef
 ---
 
 # Native Skill Tools Boundary
 
-> Status: active. The first read-only inventory pass has shipped: `roborepo skill inspect <name>`
-> and the `/config` skill popup now share a native-aware inventory model. Remaining work covers
-> doctor metadata reporting, adoption reporting, and optional managed-skill pinning.
+> Status: complete. The boundary decision below is settled and the read-only
+> inventory pass shipped: `roborepo skill inspect <name>` and the `/config` skill
+> popup share a native-aware inventory model (`scripts/cli/skills.mjs` →
+> `skill-inventory.mjs`). The remaining additive tooling — doctor native-metadata
+> reporting, `skill adopt` native-feature report, and optional managed-skill
+> pinning (checklist items 5–7) — split out to
+> [`backlog/native-skill-tooling-followups.md`](../backlog/native-skill-tooling-followups.md).
 >
 > This records the product boundary for roborepo's skill tooling:
 > preserve native Claude/Codex capability, and only abstract the parts where roborepo adds

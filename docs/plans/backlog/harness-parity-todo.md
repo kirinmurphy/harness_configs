@@ -1,11 +1,11 @@
 ---
 id: harness-parity-todo
-priority: none
-next_action: Fill in the next concrete task.
+priority: low
+next_action: Resolve the local-vs-global override policy decision (item 2)
 blocked_by: []
 depends_on: []
-related: []
-reviewed_commit:
+related: [skills-vs-commands-invocation-policy, package-registry-live-state-reconciliation]
+reviewed_commit: b8684ef
 ---
 
 # Harness Parity Todo
@@ -89,14 +89,14 @@ Delivered across all three install paths (`presets.mjs`, `install-lib.sh`,
 a `/config` portal drift chip, and Codex native-profile docs as the recommended path
 for a permanent personal config slice (Claude has no native equivalent).
 
-### 1. Local-vs-global override policy (open decision)
+### 2. Local-vs-global override policy (open decision)
 
 How much should repo-local config override global behavior automatically versus by
 explicit user opt-in? This also overlaps the per-repo skill story
 (`skill link-project`), which already lets a repo add skills without overriding
 global ones.
 
-### 2. Stack-specific context shape (largely decided — confirm and close)
+### 3. Stack-specific context shape (largely decided — confirm and close)
 
 Original open question: should stack-specific context be skills, rules, or rules that
 trigger skills? The de-facto answer is now **auto-invokable helper skills, gated by

@@ -1,11 +1,11 @@
 ---
 id: package-registry-live-state-reconciliation
-priority: none
-next_action: Fill in the next concrete task.
+priority: medium
+next_action: Introduce the versioned package-state file (scripts/cli/package-state.mjs) with migration from enabled-packages.json
 blocked_by: []
 depends_on: []
 related: []
-reviewed_commit:
+reviewed_commit: b8684ef
 ---
 
 # Package Registry vs Live State Reconciliation

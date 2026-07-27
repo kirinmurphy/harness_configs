@@ -1,19 +1,24 @@
 ---
 id: roborepo-packaging-distribution-plan
-priority: none
-next_action: Fill in the next concrete task.
+priority: medium
+next_action: Build the Phase E npm beta publish workflow and CI tarball-install test
 blocked_by: []
 depends_on: []
 related: []
-reviewed_commit:
+reviewed_commit: b8684ef
 ---
 
 # RoboRepo Packaging and Distribution Plan
 
-## Implementation status (2026-07-14)
+## Implementation status (updated 2026-07-27)
 
 Partially implemented. Phases B–D of the path/workspace split are shipped; npm publish and Homebrew
 (Phases E–G) are not started. This plan stays active until all three install channels ship.
+
+The npm package skeleton exists but is unpublished: root `package.json` is
+`@kirin/roborepo` at `0.1.0-beta.0` with `bin`, a `files` allowlist, and a CI
+workflow (`.github/workflows/ci.yml`) — no publish workflow, no Homebrew formula
+(`*.rb`) in the tree.
 
 **Shipped:**
 
@@ -38,11 +43,13 @@ Partially implemented. Phases B–D of the path/workspace split are shipped; npm
   `source-files.tsv`, skipped in package mode).
 
 **Open:** remaining Phase A hardening (upgrade/downgrade/uninstall/moved-checkout across package
-mode); Phase C `workspace import` / migration from a repo-resident checkout (only the
-`workspace use <path>` pointer exists via `workspace-root.json`); Phase D PATH-dedup +
-shell-helper relocation; Phases E–F (npm beta/stable publish workflow + CI tarball install)
-and G (Homebrew tap). The manual packed-install smoke test above passes; the automated
-publish/upgrade pipeline is not built.
+mode); Phase D PATH-dedup + shell-helper relocation; Phases E–F (npm beta/stable publish workflow +
+CI tarball install) and G (Homebrew tap). The manual packed-install smoke test above passes; the
+automated publish/upgrade pipeline is not built.
+
+Phase C `workspace import` has since shipped — `roborepo workspace import <path>`
+exists (`scripts/cli/workspace.mjs::workspaceImport` → `importLegacyWorkspace` in
+`workspace-resources.mjs`), alongside the earlier `workspace use <path>` pointer.
 
 **Workspace location:** the shipped default `workspaceRoot` is `~/.roborepo/workspace`
 (`stateRoot/workspace`, `paths.mjs:53`). An earlier draft of this plan proposed `~/.config/roborepo`;

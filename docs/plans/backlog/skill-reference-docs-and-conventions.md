@@ -1,11 +1,11 @@
 ---
 id: skill-reference-docs-and-conventions
-priority: none
-next_action: Fill in the next concrete task.
+priority: low
+next_action: Do one more reference-doc extraction to test the code-style-umbrella pattern before deciding whether stack skills become references
 blocked_by: []
 depends_on: []
 related: []
-reviewed_commit:
+reviewed_commit: b8684ef
 ---
 
 # Skill Reference Docs & Portal Conventions
@@ -18,8 +18,8 @@ reviewed_commit:
 ## Purpose
 
 Two things surfaced while doing the `portal/config/` web-components refactor
-(see `docs/plans/portal-config-web-components-plan.md` and
-`docs/plans/portal-web-components-dialog-plan.md`):
+(now shipped — see `docs/plans/completed/portal-config-web-components-plan.md`;
+the earlier `plans/` refactor doc it references has since been removed):
 
 1. The `javascript-typescript` skill's "Building Markup" guidance was wrong
    for a framework-less project in a way that would have flagged the correct
@@ -197,11 +197,9 @@ require guessing a shared shape from only one migrated page).
 
 ## References
 
-- `docs/plans/portal-config-web-components-plan.md` — the plan this session
-  executed; contains the concrete file-split map and custom-element verdicts
-  that motivated this doc.
-- `docs/plans/portal-web-components-dialog-plan.md` — the earlier `plans/`
-  refactor that established the pattern first.
+- `docs/plans/completed/portal-config-web-components-plan.md` — the config
+  refactor (shipped); contains the concrete file-split map and custom-element
+  verdicts that motivated this doc.
 - `docs/reference/internal/skills-and-commands.md` — skill vs. rule vs. hook
   decision model; source for the always-on-rule call on the validation
   persona and the reference-doc mechanism explanation.

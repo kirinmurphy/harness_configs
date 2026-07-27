@@ -1,6 +1,6 @@
 ---
 id: usage-statusline-enhancement-plan
-priority: low
+priority: medium
 next_action: Fill in the next concrete task.
 blocked_by: []
 depends_on: []

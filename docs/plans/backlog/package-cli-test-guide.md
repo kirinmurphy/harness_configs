@@ -1,11 +1,11 @@
 ---
 id: package-cli-test-guide
 priority: none
-next_action: Fill in the next concrete task.
+next_action: Wire Playwright into the repo so the browser half of the walkthrough can be automated and video-recorded
 blocked_by: []
-depends_on: []
+depends_on: [user-managed-packages-and-add-workflows]
 related: []
-reviewed_commit:
+reviewed_commit: b8684ef
 ---
 
 # Package & User-Content CLI Test Guide
@@ -259,7 +259,7 @@ Playwright can open the portal URL, drive the page, and save a video of the sess
 The intended shape:
 
 ```js
-// scratch script, run against a portal started with `rr serve --detach --no-open`
+// scratch script, run against a portal started with `rr web --detach --no-open`
 const { chromium } = require("playwright");
 const browser = await chromium.launch();
 const context = await browser.newContext({ recordVideo: { dir: "portal-video/" } });
@@ -280,8 +280,8 @@ URL `serve` emitted (capture it into `PORTAL_URL`).
 - **`config root inspect` shows `drifted`** — a file under `~/.claude`/`~/.codex` changed
   outside roborepo. In the sandbox this usually means a step wrote the active file directly;
   re-seed the sandbox and re-run from step 1.
-- **Portal shows nothing / connection refused** — `serve` may have failed to bind; re-run
-  `rr serve --detach --no-open` and use the URL it prints. The port is dynamic, so do not
+- **Portal shows nothing / connection refused** — the server may have failed to bind; re-run
+  `rr web --detach --no-open` and use the URL it prints. The port is dynamic, so do not
   assume a fixed one.
 - **Skill not found after `skill new`** — expected in package mode until you run `apply`
   (step 6). `skill new` writes workspace source only; `apply` materializes and links it.

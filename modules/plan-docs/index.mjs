@@ -4,6 +4,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { resolveProjectIdentity, canonicalRepositoryId, providerUrlForRepositoryId } from "../repositories/index.mjs";
+import { finding, messagesOf } from "./findings.mjs";
+import { validateForLifecycle } from "./lifecycle-policy.mjs";
 
 export const LIFECYCLES = new Set(["backlog", "active", "completed", "archived"]);
 export const PRIORITIES = new Set(["high", "medium", "low", "none"]);
@@ -166,10 +168,12 @@ export function buildPlanSnapshot({ stateRoot, env = process.env, packageState =
       errors.push({ repository: repo.name, root: repo.root, error: String(err?.message || err) });
     }
   }
-  const relationships = relationshipWarnings(plans);
+  const relationships = relationshipFindings(plans);
   for (const plan of plans) {
-    plan.plan.validation.warnings.push(...(relationships.get(plan.key) || []));
-    plan.plan.validation.valid = plan.plan.validation.warnings.length === 0;
+    const validation = plan.plan.validation;
+    validation.findings.push(...(relationships.get(plan.key) || []));
+    validation.warnings = messagesOf(validation.findings);
+    validation.valid = validation.findings.length === 0;
   }
   return {
     ok: true,
@@ -371,12 +375,13 @@ function readPlanRecord(repository, absolutePath) {
 function buildPlanRecord(repository, absolutePath, relativePath, stat) {
   const tooLarge = stat.size > MAX_DOC_BYTES;
   const markdown = tooLarge ? "" : fs.readFileSync(absolutePath, "utf8");
-  const parsed = tooLarge ? emptyParsed("Document is over 1 MiB and was not parsed.") : parsePlanMarkdown(markdown, { repository, relativePath });
+  const parsed = tooLarge ? emptyParsed("DOCUMENT_TOO_LARGE") : parsePlanMarkdown(markdown, { repository, relativePath });
   const lifecycle = lifecycleFromPath(relativePath);
   const git = gitFileInfo(repository.root, relativePath, parsed.frontmatter.reviewed_commit);
   const validation = validateParsedPlan(parsed, { lifecycle });
-  const warnings = [...parsed.warnings, ...validation.warnings];
-  if (tooLarge) warnings.push("Document is over 1 MiB and was not rendered or embedded in prompts.");
+  const findings = [...parsed.findings, ...validation.findings];
+  if (tooLarge) findings.push(finding("DOCUMENT_TOO_LARGE_TO_RENDER"));
+  const warnings = messagesOf(findings);
   return {
     key: stableKey(`${repository.root}:${relativePath}`),
     absolutePath,
@@ -401,13 +406,16 @@ function buildPlanRecord(repository, absolutePath, relativePath, stat) {
       taskCounts: parsed.taskCounts,
       headings: parsed.headings,
       excerpt: excerpt(markdown),
-      validation: { valid: warnings.length === 0, warnings },
+      // `warnings` is the display-string projection of `findings`, derived here so the two can
+      // never drift. Existing consumers (search corpus, health filter, card badge, drawer list,
+      // portable prompt summary) read the strings; the dialog and repair prompt read the findings.
+      validation: { valid: findings.length === 0, findings, warnings },
     },
   };
 }
 
 export function parsePlanMarkdown(markdown, context = {}) {
-  const { frontmatter, body, warnings } = parseFrontmatter(markdown);
+  const { frontmatter, body, warnings, findings } = parseFrontmatter(markdown);
   const lines = body.split("\n");
   const headings = [];
   const tasks = [];
@@ -432,6 +440,7 @@ export function parsePlanMarkdown(markdown, context = {}) {
   return {
     context,
     frontmatter,
+    findings,
     warnings,
     title,
     headings,
@@ -445,13 +454,17 @@ export function parsePlanMarkdown(markdown, context = {}) {
 }
 
 export function parseFrontmatter(markdown) {
-  if (!markdown.startsWith("---\n")) return { frontmatter: {}, body: markdown, warnings: ["Missing frontmatter."] };
+  const bail = (code) => {
+    const findings = [finding(code)];
+    return { frontmatter: {}, body: markdown, findings, warnings: messagesOf(findings) };
+  };
+  if (!markdown.startsWith("---\n")) return bail("MISSING_FRONTMATTER");
   const end = markdown.indexOf("\n---", 4);
-  if (end === -1) return { frontmatter: {}, body: markdown, warnings: ["Unclosed frontmatter."] };
+  if (end === -1) return bail("UNCLOSED_FRONTMATTER");
   const raw = markdown.slice(4, end).split("\n");
   const body = markdown.slice(end + 4).replace(/^\n/, "");
   const frontmatter = {};
-  const warnings = [];
+  const findings = [];
   let current = null;
   raw.forEach((line, index) => {
     if (!line.trim()) return;
@@ -462,12 +475,14 @@ export function parseFrontmatter(markdown) {
     }
     const match = /^([a-zA-Z_][a-zA-Z0-9_-]*):(?:\s*(.*))?$/.exec(line);
     if (!match) {
-      warnings.push(`Unsupported frontmatter syntax on line ${index + 1}.`);
+      findings.push(finding("UNSUPPORTED_FRONTMATTER_SYNTAX", { meta: { line: index + 1 } }));
       current = null;
       return;
     }
     const [, key, value = ""] = match;
-    if (Object.prototype.hasOwnProperty.call(frontmatter, key)) warnings.push(`Duplicate frontmatter key: ${key}.`);
+    if (Object.prototype.hasOwnProperty.call(frontmatter, key)) {
+      findings.push(finding("DUPLICATE_FRONTMATTER_KEY", { meta: { key } }));
+    }
     if (value === "[]") {
       frontmatter[key] = [];
       current = null;
@@ -475,7 +490,7 @@ export function parseFrontmatter(markdown) {
       frontmatter[key] = arrayField(key) ? [] : "";
       current = arrayField(key) ? key : null;
     } else if (/^\[.+\]$/.test(value)) {
-      warnings.push(`Unsupported inline array for ${key}; use block list or [].`);
+      findings.push(finding("UNSUPPORTED_INLINE_ARRAY", { meta: { key } }));
       frontmatter[key] = [];
       current = null;
     } else {
@@ -483,7 +498,12 @@ export function parseFrontmatter(markdown) {
       current = null;
     }
   });
-  return { frontmatter: normalizeFrontmatter(frontmatter, warnings), body, warnings };
+  return {
+    frontmatter: normalizeFrontmatter(frontmatter, findings),
+    body,
+    findings,
+    warnings: messagesOf(findings),
+  };
 }
 
 // Narrow scalar-only frontmatter writer: patches one `key: value` line in place, preserving key
@@ -650,56 +670,34 @@ function capitalize(text) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-function normalizeFrontmatter(frontmatter, warnings) {
+function normalizeFrontmatter(frontmatter, findings) {
   for (const key of ["blocked_by", "depends_on", "related"]) {
     if (frontmatter[key] === undefined) frontmatter[key] = [];
     if (!Array.isArray(frontmatter[key])) {
-      warnings.push(`${key} must be an array.`);
+      findings.push(finding("NON_ARRAY_FIELD", { meta: { key } }));
       frontmatter[key] = [];
     }
   }
-  if (frontmatter.priority && !PRIORITIES.has(frontmatter.priority)) warnings.push(`Invalid priority: ${frontmatter.priority}.`);
-  if (frontmatter.id && !/^[a-z0-9][a-z0-9-]*$/.test(frontmatter.id)) warnings.push(`Invalid id: ${frontmatter.id}.`);
+  if (frontmatter.priority && !PRIORITIES.has(frontmatter.priority)) {
+    findings.push(finding("INVALID_PRIORITY_VALUE", { meta: { value: frontmatter.priority } }));
+  }
+  if (frontmatter.id && !/^[a-z0-9][a-z0-9-]*$/.test(frontmatter.id)) {
+    findings.push(finding("INVALID_ID", { meta: { value: frontmatter.id } }));
+  }
   return frontmatter;
 }
 
+// Thin adapter over the destination-policy module — the rules themselves live in
+// lifecycle-policy.mjs, which is pure and filesystem-free so the same evaluation runs from the
+// scanner, from movePlanLifecycle, and from tests.
 function validateParsedPlan(parsed, { lifecycle }) {
-  const headingNames = new Set(parsed.headings.map((h) => normalizeHeading(h.text)));
-  const warnings = [];
-  const has = (...names) => names.some((name) => headingNames.has(name));
-  // Presence alone isn't evidence — a bare heading with nothing under it (before the next
-  // heading or EOF) doesn't count as having real content.
-  const hasContent = (...names) =>
-    parsed.headings.some((h) => names.includes(normalizeHeading(h.text)) && h.hasContent);
-  if (!parsed.title) warnings.push("Missing H1 title.");
-  if (!parsed.frontmatter.id) warnings.push("Missing frontmatter id.");
-  if (!parsed.frontmatter.priority) warnings.push("Missing frontmatter priority.");
-  if (parsed.frontmatter.priority && !PRIORITIES.has(parsed.frontmatter.priority)) warnings.push("Priority must be high, medium, low, or none.");
-  if (lifecycle === "unclassified") warnings.push("Plan file is unclassified; move it into a lifecycle folder.");
-  if (!has("summary")) warnings.push("Missing Summary section.");
-  if (!has("goals", "goal", "desired outcome", "desired outcomes")) warnings.push("Missing Goals or desired outcome section.");
-  if (!has("current state", "context")) warnings.push("Missing Current state or Context section.");
-  if (!has("proposed design", "implementation plan", "implementation")) warnings.push("Missing proposed design or implementation approach.");
-  if (!has("validation", "acceptance criteria", "success criteria")) warnings.push("Missing Validation or acceptance criteria.");
-  if ((lifecycle === "active" || lifecycle === "backlog") && !parsed.frontmatter.next_action) warnings.push("Missing next_action for actionable lifecycle.");
-  if (lifecycle === "active") {
-    if (!has("proposed design", "implementation plan", "implementation")) warnings.push("Missing implementation context for an active plan.");
-    if (!has("validation", "acceptance criteria", "success criteria")) warnings.push("Missing success criteria for an active plan.");
-    if (parsed.frontmatter.blocked_by?.length && parsed.frontmatter.blocked_by.some((item) => !item || !item.trim())) {
-      warnings.push("blocked_by lists a blocker with no value.");
-    }
-  }
-  if (lifecycle === "completed") {
-    if (parsed.taskCounts.remaining > 0) warnings.push("Completed plan has unchecked tasks.");
-    if (parsed.frontmatter.next_action) warnings.push("Completed plan still has next_action.");
-    if (parsed.frontmatter.blocked_by?.length) warnings.push("Completed plan still has blockers.");
-    if (!hasContent("verification")) warnings.push("Missing Verification section describing evidence or a stated limitation.");
-  }
-  if (lifecycle === "archived" && parsed.frontmatter.next_action) warnings.push("Archived plan still has next_action.");
-  return { ready: warnings.length === 0, warnings };
+  const { ready, findings } = validateForLifecycle(parsed, { lifecycle, priorities: PRIORITIES, normalizeHeading });
+  return { ready, findings, warnings: messagesOf(findings) };
 }
 
-function relationshipWarnings(plans) {
+// Cross-plan problems, which can only be evaluated once every plan in the snapshot is known —
+// hence a separate pass from the per-document validators. Returns findings keyed by plan key.
+function relationshipFindings(plans) {
   const byRepoAndId = new Map();
   for (const record of plans) {
     if (!record.plan.id) continue;
@@ -707,18 +705,22 @@ function relationshipWarnings(plans) {
     if (!byRepoAndId.has(key)) byRepoAndId.set(key, []);
     byRepoAndId.get(key).push(record);
   }
-  const warnings = new Map();
+  const findings = new Map();
   for (const matches of byRepoAndId.values()) {
     if (matches.length < 2) continue;
-    for (const record of matches) addWarning(warnings, record.key, `Duplicate plan id: ${record.plan.id}.`);
+    for (const record of matches) {
+      addFinding(findings, record.key, finding("DUPLICATE_PLAN_ID", { meta: { id: record.plan.id } }));
+    }
   }
   for (const record of plans) {
     for (const dep of record.plan.dependencies || []) {
-      if (dep === record.plan.id) addWarning(warnings, record.key, "Plan depends on itself.");
-      if (!byRepoAndId.has(`${record.repository.root}:${dep}`)) addWarning(warnings, record.key, `Dependency not found: ${dep}.`);
+      if (dep === record.plan.id) addFinding(findings, record.key, finding("SELF_DEPENDENCY"));
+      if (!byRepoAndId.has(`${record.repository.root}:${dep}`)) {
+        addFinding(findings, record.key, finding("DEPENDENCY_NOT_FOUND", { meta: { dependency: dep } }));
+      }
     }
   }
-  return warnings;
+  return findings;
 }
 
 function gitInfo(root) {
@@ -858,17 +860,26 @@ function excerpt(markdown) {
     .slice(0, 500);
 }
 
-function emptyParsed(warning) {
-  return { frontmatter: {}, warnings: [warning], title: "", headings: [], tasks: [], taskCounts: { total: 0, complete: 0, remaining: 0 } };
+function emptyParsed(code) {
+  const findings = [finding(code)];
+  return {
+    frontmatter: {},
+    findings,
+    warnings: messagesOf(findings),
+    title: "",
+    headings: [],
+    tasks: [],
+    taskCounts: { total: 0, complete: 0, remaining: 0 },
+  };
 }
 
 function arrayField(key) {
   return ["blocked_by", "depends_on", "related"].includes(key);
 }
 
-function addWarning(map, key, warning) {
+function addFinding(map, key, item) {
   if (!map.has(key)) map.set(key, []);
-  map.get(key).push(warning);
+  map.get(key).push(item);
 }
 
 function relative(root, target) {

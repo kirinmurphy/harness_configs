@@ -34,11 +34,11 @@ export function scaffoldFrontmatter(absolutePath) {
 }
 
 // A file has zero frontmatter only when it doesn't start with `---\n` at all — the same check
-// parseFrontmatter uses to emit "Missing frontmatter." Files with an opening `---` but no closing
-// `---` ("Unclosed frontmatter.") are a different, out-of-scope failure mode and are left alone.
+// parseFrontmatter uses to emit MISSING_FRONTMATTER. Files with an opening `---` but no closing
+// `---` (UNCLOSED_FRONTMATTER) are a different, out-of-scope failure mode and are left alone.
 export function hasNoFrontmatter(markdown) {
-  const { warnings } = parseFrontmatter(markdown);
-  return warnings.includes("Missing frontmatter.");
+  const { findings } = parseFrontmatter(markdown);
+  return findings.some((item) => item.code === "MISSING_FRONTMATTER");
 }
 
 function walkPlanFiles(dir, files) {

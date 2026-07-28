@@ -1,4 +1,5 @@
-import { stateRoot } from "./paths.mjs";
+import { appRoot, stateRoot } from "./paths.mjs";
+import { collectGitContext } from "../../modules/localhoster/git.mjs";
 import {
   appendHistoryEvents,
   buildLocalhosterSnapshot,
@@ -46,12 +47,17 @@ export async function refreshLocalhosterSnapshot() {
     try {
       const settings = loadSettings({ stateRoot });
       const previous = lastSnapshot;
-      const discovery = await discoverInstances({
-        settings,
-        // Carrying the prior health records forward is what makes failure debouncing work: the
-        // classifier is pure, so the consecutive-failure count has to travel with the snapshot.
-        previousHealth: healthIndexFromSnapshot(previous),
-      });
+      // Independent of discovery, so pay for one round of latency rather than two. Both must settle
+      // before portalInstance() runs below, since it reads the collected git context synchronously.
+      const [discovery] = await Promise.all([
+        discoverInstances({
+          settings,
+          // Carrying the prior health records forward is what makes failure debouncing work: the
+          // classifier is pure, so the consecutive-failure count has to travel with the snapshot.
+          previousHealth: healthIndexFromSnapshot(previous),
+        }),
+        refreshPortalGit(),
+      ]);
       if (generation !== refreshGeneration && lastSnapshot) return withRefreshState(lastSnapshot);
       const portal = portalInstance();
       if (portal) {
@@ -298,6 +304,24 @@ function snapshotDiscovery(snapshot) {
   };
 }
 
+// Git context for roborepo's own checkout, refreshed alongside every discovery pass. The portal is
+// synthesized rather than discovered, so it has no probed cwd to resolve a repository from — appRoot
+// is the honest answer and the only one available. Cached because portalInstance() is called from
+// sync paths (setLocalhosterPortalInfo, emptyDiscovery) that cannot await a subprocess.
+//
+// undefined means "never collected" (git context omitted); null means collected and unavailable,
+// which is what a package-mode install with no .git correctly reports.
+let portalGit;
+
+async function refreshPortalGit() {
+  try {
+    portalGit = await collectGitContext(appRoot);
+  } catch {
+    // A failed collection must not cost us the refresh — the card simply renders without a badge.
+    portalGit = null;
+  }
+}
+
 function portalInstance() {
   const port = portalInfo?.port || null;
   if (!port) return null;
@@ -318,7 +342,7 @@ function portalInstance() {
     // healthTransition path instead of flapping between null and a state.
     health: { state: "healthy", reason: null, consecutiveFailures: 0, since: null, firstSeenAt: null, lastProbeAt: null },
     process: { pid: process.pid, command: "roborepo" },
-    project: { identity: "roborepo:portal", identityKind: "roborepo", confidence: "high", projectRoot: null, evidence: "built-in portal", git: null },
+    project: { identity: "roborepo:portal", identityKind: "roborepo", confidence: "high", projectRoot: appRoot, evidence: "built-in portal", git: portalGit ?? null },
   };
 }
 

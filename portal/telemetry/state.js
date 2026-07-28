@@ -4,12 +4,16 @@
 
 export const fmt = (n) => Number(n || 0).toLocaleString("en-US");
 
-export const short = (id) => (id && id !== "unknown" ? String(id).slice(0, 8) : "unknown");
+export const short = (id) =>
+  id && id !== "unknown" ? String(id).slice(0, 8) : "unknown";
 
 // Escape user-derived text (prompt previews, paths) before it goes into innerHTML. The spool is
 // local and self-authored, but prompts can contain </>/& that would otherwise break rendering.
 export const esc = (s) =>
-  String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  String(s == null ? "" : s).replace(
+    /[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+  );
 
 // Compact token label: 1.5M / 120k / 850. Keeps the y-axis legible without the full comma form.
 export function tokShort(n) {
@@ -19,18 +23,30 @@ export function tokShort(n) {
   return String(Math.round(n));
 }
 
-export function clockLabel(ts) {
-  const d = new Date(ts);
-  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
-}
-
 // Plot margins leave room for the y-axis token labels (left) and x-axis time labels (bottom).
 export const M = { left: 56, right: 12, top: 10, bottom: 22 };
 
 // Distinct colors for per-session lines in the cumulative views.
-export const SESSION_COLORS = ["#58a6ff", "#3fb950", "#f0883e", "#bc8cff", "#f85149", "#56d4dd", "#e3b341", "#ff7b72"];
+export const SESSION_COLORS = [
+  "#58a6ff",
+  "#3fb950",
+  "#f0883e",
+  "#bc8cff",
+  "#f85149",
+  "#56d4dd",
+  "#e3b341",
+  "#ff7b72",
+];
 // Tool-group colors for the cumulative-by-group view.
-export const GROUP_COLORS = { "native-read": "#58a6ff", "mcp-code": "#3fb950", "mcp-docs": "#56d4dd", "mcp-other": "#bc8cff", bash: "#f0883e", edit: "#e3b341", other: "#8b949e" };
+export const GROUP_COLORS = {
+  "native-read": "#58a6ff",
+  "mcp-code": "#3fb950",
+  "mcp-docs": "#56d4dd",
+  "mcp-other": "#bc8cff",
+  bash: "#f0883e",
+  edit: "#e3b341",
+  other: "#8b949e",
+};
 
 // Group for a timeline point. The server now computes group (with bare-MCP-name resolution) and puts
 // it on each point, so prefer that; fall back to a local guess only for older payloads.
@@ -58,7 +74,13 @@ export function perSessionSeries(points) {
   }
   const series = [...by.entries()].map(([id, pts]) => {
     pts.sort((a, b) => a.ts.localeCompare(b.ts));
-    return { id, pts, total: pts[pts.length - 1].total || 0, first: Date.parse(pts[0].ts), last: Date.parse(pts[pts.length - 1].ts) };
+    return {
+      id,
+      pts,
+      total: pts[pts.length - 1].total || 0,
+      first: Date.parse(pts[0].ts),
+      last: Date.parse(pts[pts.length - 1].ts),
+    };
   });
   return series.sort((a, b) => b.total - a.total);
 }
@@ -90,7 +112,14 @@ export function sessionById(id, sessions) {
 // restored after reload"). Keys are terse (matching the server's own ?range/&end/&harness query
 // params) so a bookmarked URL and the fetch querystring share the same vocabulary.
 
-const VIEW_URL_KEYS = { rangeMs: "range", panEnd: "end", harness: "harness", model: "model", repo: "repo", markerId: "marker_id" };
+const VIEW_URL_KEYS = {
+  rangeMs: "range",
+  panEnd: "end",
+  harness: "harness",
+  model: "model",
+  repo: "repo",
+  markerId: "marker_id",
+};
 
 export function viewToSearchParams(view) {
   const params = new URLSearchParams();
@@ -130,5 +159,7 @@ export function syncViewToUrl(view) {
 // filter bar requires. Excludes rangeMs/panEnd (those have their own always-visible range buttons)
 // and counts only the Phase 6 additions: harness/model/repo/markerId.
 export function activeFilterCountFromView(view) {
-  return ["harness", "model", "repo", "markerId"].filter((key) => view[key] != null && view[key] !== "").length;
+  return ["harness", "model", "repo", "markerId"].filter(
+    (key) => view[key] != null && view[key] !== "",
+  ).length;
 }

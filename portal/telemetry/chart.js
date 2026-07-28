@@ -9,10 +9,39 @@
 // that must stay app.js-owned: chart.js takes callbacks (onBarClick, onSessionClick) rather than
 // importing the modal directly, keeping the dependency direction one-way.
 
-import { M, SESSION_COLORS, GROUP_COLORS, tokShort, clockLabel, pointGroup, perSessionSeries, fmt, short, clip } from "./state.js";
-import { legendDeltas, legendCumulativeHead, legendGroupHead, legendSessionItem, legendGroupItem, legendList, tooltipHead, tooltipRow } from "./templates.js";
-
-export function createChart({ onBarClick, onSessionClick, getSessionById, onMarkerClick }) {
+import {
+  M,
+  SESSION_COLORS,
+  GROUP_COLORS,
+  tokShort,
+  pointGroup,
+  perSessionSeries,
+  fmt,
+  short,
+  clip,
+} from "./state.js";
+import {
+  legendDeltas,
+  legendCumulativeHead,
+  legendGroupHead,
+  legendSessionItem,
+  legendGroupItem,
+  legendList,
+  tooltipHead,
+  tooltipRow,
+} from "./templates.js";
+import {
+  clockLabel,
+  timeAxisLabel,
+  timeAxisScale,
+  timeAxisTicks,
+} from "./time-axis.js";
+export function createChart({
+  onBarClick,
+  onSessionClick,
+  getSessionById,
+  onMarkerClick,
+}) {
   const canvas = document.getElementById("timeline");
   const legend = document.getElementById("chartlegend");
   const tip = document.getElementById("tooltip");
@@ -23,8 +52,15 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
   // :root vars once per draw (refreshed in chartSetup) and read them into the ctx below. This
   // keeps the chart following the light/dark toggle. Data-series colors (SESSION_COLORS/
   // GROUP_COLORS) stay fixed — those are series identity, not theme.
-  const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-  let theme = { line: "#2d333b", dim: "#8b949e", ink: "#e6edf3", accent: "#58a6ff", spike: "#f85149" };
+  const cssVar = (n) =>
+    getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  let theme = {
+    line: "#2d333b",
+    dim: "#8b949e",
+    ink: "#e6edf3",
+    accent: "#58a6ff",
+    spike: "#f85149",
+  };
   function refreshTheme() {
     theme = {
       line: cssVar("--line"),
@@ -74,36 +110,66 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
   }
 
   function updatePanHint(view) {
-    if (view.rangeMs == null || !curPoints.length) { hint.textContent = ""; return; }
-    hint.textContent = clockLabel(curPoints[0].ts) + " → " + clockLabel(curPoints[curPoints.length - 1].ts)
-      + (view.panEnd == null ? " · live" : " · drag to move");
+    if (view.rangeMs == null || !curPoints.length) {
+      hint.textContent = "";
+      return;
+    }
+    hint.textContent =
+      clockLabel(curPoints[0].ts) +
+      " → " +
+      clockLabel(curPoints[curPoints.length - 1].ts) +
+      (view.panEnd == null ? " · live" : " · drag to move");
   }
 
   // Set up the canvas + return drawing context and plot geometry shared by all three views.
   function chartSetup() {
     refreshTheme();
     const dpr = window.devicePixelRatio || 1;
-    const W = canvas.clientWidth, H = canvas.clientHeight;
-    canvas.width = W * dpr; canvas.height = H * dpr;
-    const ctx = canvas.getContext("2d"); ctx.scale(dpr, dpr);
+    const W = canvas.clientWidth,
+      H = canvas.clientHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, W, H);
     ctx.font = "10px ui-monospace,Menlo,monospace";
     ctx.textBaseline = "alphabetic";
-    return { canvas, ctx, W, H, plotW: W - M.left - M.right, plotH: H - M.top - M.bottom };
+    return {
+      canvas,
+      ctx,
+      W,
+      H,
+      plotW: W - M.left - M.right,
+      plotH: H - M.top - M.bottom,
+    };
   }
 
   // Draw y-axis token gridlines + x-axis time labels for a given value-max and time-span.
   function drawAxes(ctx, geo, maxV, t0, span) {
     const { W, H, plotW, plotH } = geo;
     const yOf = (v) => M.top + plotH - (v / maxV) * plotH;
-    ctx.strokeStyle = theme.line; ctx.fillStyle = theme.dim; ctx.textAlign = "right";
+    ctx.strokeStyle = theme.line;
+    ctx.fillStyle = theme.dim;
+    ctx.textAlign = "right";
     for (const frac of [0, 0.5, 1]) {
       const y = yOf(maxV * frac);
-      ctx.beginPath(); ctx.moveTo(M.left, y); ctx.lineTo(W - M.right, y); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(M.left, y);
+      ctx.lineTo(W - M.right, y);
+      ctx.stroke();
       ctx.fillText(tokShort(maxV * frac), M.left - 6, y + 3);
     }
     ctx.textAlign = "center";
-    for (const frac of [0, 0.5, 1]) ctx.fillText(clockLabel(t0 + span * frac), M.left + frac * plotW, H - 6);
+    const ticks = timeAxisTicks(
+      t0,
+      span,
+      Math.max(2, Math.min(8, Math.floor(plotW / 90))),
+    );
+    const scale = timeAxisScale(span);
+    ticks.forEach((tick, index) => {
+      const x = M.left + ((tick - t0) / span) * plotW;
+      ctx.fillText(timeAxisLabel(tick, scale, { first: index === 0 }), x, H - 6);
+    });
     return yOf;
   }
 
@@ -112,7 +178,12 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
     chartBars = [];
     markerHitAreas = [];
     const geo = chartSetup();
-    if (!points.length) { geo.ctx.fillStyle = theme.dim; geo.ctx.fillText("no token data yet", M.left, geo.H / 2); legend.replaceChildren(); return; }
+    if (!points.length) {
+      geo.ctx.fillStyle = theme.dim;
+      geo.ctx.fillText("no token data yet", M.left, geo.H / 2);
+      legend.replaceChildren();
+      return;
+    }
     if (chartMode === "cumulative") drawCumulative(points, geo);
     else if (chartMode === "bygroup") drawCumulativeByGroup(points, geo);
     else drawDeltas(points, threshold, geo);
@@ -131,12 +202,16 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
   function drawMarkerOverlay(points, geo) {
     if (!curMarkers.length || !points.length) return;
     const { ctx, W, plotW, plotH } = geo;
-    const t0 = Date.parse(points[0].ts), tN = Date.parse(points[points.length - 1].ts);
+    const t0 = Date.parse(points[0].ts),
+      tN = Date.parse(points[points.length - 1].ts);
     const span = Math.max(1, tN - t0);
     const xOf = (ts) => M.left + ((Date.parse(ts) - t0) / span) * plotW;
     const sorted = [...curMarkers]
       .map((m) => ({ marker: m, x: xOf(m.ts) }))
-      .filter((m) => Number.isFinite(m.x) && m.x >= M.left - 1 && m.x <= W - M.right + 1)
+      .filter(
+        (m) =>
+          Number.isFinite(m.x) && m.x >= M.left - 1 && m.x <= W - M.right + 1,
+      )
       .sort((a, b) => a.x - b.x);
     // Cluster markers whose x positions land within MARKER_CLUSTER_PX of each other so overlapping
     // markers don't become an unreadable stack of lines (plan: "overlapping markers cluster rather
@@ -144,7 +219,8 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
     const clusters = [];
     for (const entry of sorted) {
       const last = clusters[clusters.length - 1];
-      if (last && entry.x - last.x <= MARKER_CLUSTER_PX) last.items.push(entry.marker);
+      if (last && entry.x - last.x <= MARKER_CLUSTER_PX)
+        last.items.push(entry.marker);
       else clusters.push({ x: entry.x, items: [entry.marker] });
     }
     for (const cluster of clusters) {
@@ -160,7 +236,13 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
       ctx.restore();
       ctx.fillStyle = style.color;
       ctx.beginPath();
-      ctx.arc(cluster.x, M.top, cluster.items.length > 1 ? 4 : 3, 0, Math.PI * 2);
+      ctx.arc(
+        cluster.x,
+        M.top,
+        cluster.items.length > 1 ? 4 : 3,
+        0,
+        Math.PI * 2,
+      );
       ctx.fill();
       markerHitAreas.push({ x: cluster.x, y: M.top, items: cluster.items });
     }
@@ -170,11 +252,16 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
   function markerAt(clientX, clientY) {
     if (!markerHitAreas.length) return null;
     const rect = canvas.getBoundingClientRect();
-    const cx = clientX - rect.left, cy = clientY - rect.top;
-    let best = null, bestD = Infinity;
+    const cx = clientX - rect.left,
+      cy = clientY - rect.top;
+    let best = null,
+      bestD = Infinity;
     for (const m of markerHitAreas) {
       const d = Math.sqrt((m.x - cx) ** 2 + (m.y - cy) ** 2);
-      if (d < bestD) { bestD = d; best = m; }
+      if (d < bestD) {
+        bestD = d;
+        best = m;
+      }
     }
     return best && bestD <= 8 ? best : null;
   }
@@ -185,46 +272,83 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
   // and are interactive; "show all" reveals everything.
   function drawDeltas(points, threshold, geo) {
     const { ctx, W, plotW, plotH } = geo;
-    const t0 = Date.parse(points[0].ts), tN = Date.parse(points[points.length - 1].ts);
+    const t0 = Date.parse(points[0].ts),
+      tN = Date.parse(points[points.length - 1].ts);
     const span = Math.max(1, tN - t0);
     // Baseline = median positive delta; below it is "noise" we hide unless show-all.
-    const positives = points.map((p) => p.delta).filter((d) => d > 0).sort((a, b) => a - b);
-    const baseline = positives.length ? positives[Math.floor(positives.length / 2)] : 0;
-    const shown = showAllDeltas ? points : points.filter((p) => p.delta >= baseline);
+    const positives = points
+      .map((p) => p.delta)
+      .filter((d) => d > 0)
+      .sort((a, b) => a - b);
+    const baseline = positives.length
+      ? positives[Math.floor(positives.length / 2)]
+      : 0;
+    const shown = showAllDeltas
+      ? points
+      : points.filter((p) => p.delta >= baseline);
     const cols = Math.max(1, Math.floor(plotW));
     const buckets = new Array(cols).fill(null);
     for (const p of shown) {
-      const c = Math.min(cols - 1, Math.floor(((Date.parse(p.ts) - t0) / span) * (cols - 1)));
+      const c = Math.min(
+        cols - 1,
+        Math.floor(((Date.parse(p.ts) - t0) / span) * (cols - 1)),
+      );
       if (!buckets[c] || p.delta > buckets[c].delta) buckets[c] = p;
     }
     const drawn = buckets.map((p, c) => (p ? { p, c } : null)).filter(Boolean);
     // Bar width: wide when sparse (≤ a column per several pixels), down to 1px when dense.
     // Gap of 1px between bars for visual separation; applied only when bars are wider than 2px.
-    const barW = Math.max(1, Math.min(24, Math.floor(plotW / Math.max(1, drawn.length)) - 1));
+    const barW = Math.max(
+      1,
+      Math.min(24, Math.floor(plotW / Math.max(1, drawn.length)) - 1),
+    );
     const barGap = barW > 2 ? 1 : 0;
     const max = Math.max(threshold || 0, ...points.map((p) => p.delta)) || 1;
     const yOf = drawAxes(ctx, geo, max, t0, span);
 
     drawn.forEach((d, i) => {
-      const x = M.left + d.c, y = yOf(d.p.delta), h = M.top + plotH - y;
+      const x = M.left + d.c,
+        y = yOf(d.p.delta),
+        h = M.top + plotH - y;
       const w = barW - barGap;
       const hovered = i === hoverIdx;
-      ctx.fillStyle = theme.accent; ctx.globalAlpha = hovered ? 1 : 0.82;
+      ctx.fillStyle = theme.accent;
+      ctx.globalAlpha = hovered ? 1 : 0.82;
       if (h > 0) ctx.fillRect(x, y, w, h);
       ctx.globalAlpha = 1;
       if (hovered) {
-        ctx.strokeStyle = theme.ink; ctx.lineWidth = 1; ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
-        ctx.save(); ctx.globalAlpha = 0.25; ctx.strokeStyle = theme.ink; ctx.beginPath(); ctx.moveTo(x + w / 2, M.top); ctx.lineTo(x + w / 2, M.top + plotH); ctx.stroke(); ctx.restore();
+        ctx.strokeStyle = theme.ink;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
+        ctx.save();
+        ctx.globalAlpha = 0.25;
+        ctx.strokeStyle = theme.ink;
+        ctx.beginPath();
+        ctx.moveTo(x + w / 2, M.top);
+        ctx.lineTo(x + w / 2, M.top + plotH);
+        ctx.stroke();
+        ctx.restore();
       }
       chartBars.push({ x: x + w / 2, y, h, w, idx: i, point: d.p });
     });
     if (threshold > 0) {
       const y = yOf(threshold);
-      ctx.strokeStyle = theme.spike; ctx.setLineDash([4, 3]); ctx.beginPath();
-      ctx.moveTo(M.left, y); ctx.lineTo(W - M.right, y); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = theme.spike;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(M.left, y);
+      ctx.lineTo(W - M.right, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
     const hidden = points.length - shown.length;
-    const filterLabel = (showAllDeltas ? "showing all" : "showing notable (≥ " + tokShort(baseline) + " tok)" + (hidden > 0 ? " — " + hidden + " hidden" : "")) + " · toggle";
+    const filterLabel =
+      (showAllDeltas
+        ? "showing all"
+        : "showing notable (≥ " +
+          tokShort(baseline) +
+          " tok)" +
+          (hidden > 0 ? " — " + hidden + " hidden" : "")) + " · toggle";
     legend.replaceChildren(legendDeltas(filterLabel));
   }
 
@@ -234,39 +358,77 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
   function drawCumulative(points, geo) {
     const { ctx, W, plotW } = geo;
     const series = perSessionSeries(points);
-    const t0 = Math.min(...series.map((s) => s.first)), tN = Math.max(...series.map((s) => s.last));
+    const t0 = Math.min(...series.map((s) => s.first)),
+      tN = Math.max(...series.map((s) => s.last));
     const span = Math.max(1, tN - t0);
-    const max = Math.max(curCumulativeConcern, ...points.map((p) => p.total || 0));
+    const max = Math.max(
+      curCumulativeConcern,
+      ...points.map((p) => p.total || 0),
+    );
     const yOf = drawAxes(ctx, geo, max, t0, span);
     const xOf = (ts) => M.left + ((Date.parse(ts) - t0) / span) * plotW;
     const drawnSeries = series.slice(0, SESSION_COLORS.length);
     drawnSeries.forEach((s, i) => {
-      ctx.strokeStyle = SESSION_COLORS[i]; ctx.lineWidth = 1.5; ctx.beginPath();
+      ctx.strokeStyle = SESSION_COLORS[i];
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
       s.pts.forEach((p, j) => {
-        const x = xOf(p.ts), y = yOf(p.total || 0);
+        const x = xOf(p.ts),
+          y = yOf(p.total || 0);
         j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
         // Store hit areas for hover/click on line chart points.
-        chartBars.push({ x, y, w: 8, h: 8, idx: chartBars.length, point: p, sessId: s.id, color: SESSION_COLORS[i], mode: "cumulative" });
+        chartBars.push({
+          x,
+          y,
+          w: 8,
+          h: 8,
+          idx: chartBars.length,
+          point: p,
+          sessId: s.id,
+          color: SESSION_COLORS[i],
+          mode: "cumulative",
+        });
       });
       ctx.stroke();
       // Draw small dots at each data point for visual hit affordance.
       for (const p of s.pts) {
-        const x = xOf(p.ts), y = yOf(p.total || 0);
-        ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fillStyle = SESSION_COLORS[i]; ctx.fill();
+        const x = xOf(p.ts),
+          y = yOf(p.total || 0);
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = SESSION_COLORS[i];
+        ctx.fill();
       }
     });
     // Concern line.
     const cy = yOf(curCumulativeConcern);
-    ctx.strokeStyle = theme.spike; ctx.setLineDash([4, 3]); ctx.beginPath();
-    ctx.moveTo(M.left, cy); ctx.lineTo(W - M.right, cy); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = theme.spike; ctx.textAlign = "left"; ctx.fillText("concern " + tokShort(curCumulativeConcern), M.left + 4, cy - 4);
+    ctx.strokeStyle = theme.spike;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(M.left, cy);
+    ctx.lineTo(W - M.right, cy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = theme.spike;
+    ctx.textAlign = "left";
+    ctx.fillText(
+      "concern " + tokShort(curCumulativeConcern),
+      M.left + 4,
+      cy - 4,
+    );
     // Hover highlight: larger ring around the hovered point.
     if (hoverIdx >= 0 && chartBars[hoverIdx]) {
       const b = chartBars[hoverIdx];
-      ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, Math.PI * 2);
-      ctx.strokeStyle = theme.ink; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, Math.PI * 2);
-      ctx.strokeStyle = b.color || theme.ink; ctx.lineWidth = 1; ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 6, 0, Math.PI * 2);
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 6, 0, Math.PI * 2);
+      ctx.strokeStyle = b.color || theme.ink;
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
     // Paginated legend: top N sessions with "view more" if there are more.
     const shown = legendShown.cumulative;
@@ -282,8 +444,18 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
       });
     });
     const moreCount = drawnSeries.length - shown;
-    const moreLabel = moreCount > 0 ? "show " + Math.min(moreCount, 10) + " more (" + moreCount + " remaining)" : null;
-    legend.replaceChildren(legendCumulativeHead(), legendList(legendItems, moreLabel, "viewmore-cumulative"));
+    const moreLabel =
+      moreCount > 0
+        ? "show " +
+          Math.min(moreCount, 10) +
+          " more (" +
+          moreCount +
+          " remaining)"
+        : null;
+    legend.replaceChildren(
+      legendCumulativeHead(),
+      legendList(legendItems, moreLabel, "viewmore-cumulative"),
+    );
   }
 
   // Cumulative tokens BY TOOL GROUP within the window: a running total line per functional group
@@ -291,9 +463,17 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
   // context climb — the subset breakdown of the cumulative chat curve.
   function drawCumulativeByGroup(points, geo) {
     const { ctx, plotW } = geo;
-    const withResult = points.filter((p) => p.result_chars != null && p.tool).sort((a, b) => a.ts.localeCompare(b.ts));
-    if (!withResult.length) { ctx.fillStyle = theme.dim; ctx.fillText("no tool-result data in this window", M.left, geo.H / 2); legend.replaceChildren(); return; }
-    const t0 = Date.parse(withResult[0].ts), tN = Date.parse(withResult[withResult.length - 1].ts);
+    const withResult = points
+      .filter((p) => p.result_chars != null && p.tool)
+      .sort((a, b) => a.ts.localeCompare(b.ts));
+    if (!withResult.length) {
+      ctx.fillStyle = theme.dim;
+      ctx.fillText("no tool-result data in this window", M.left, geo.H / 2);
+      legend.replaceChildren();
+      return;
+    }
+    const t0 = Date.parse(withResult[0].ts),
+      tN = Date.parse(withResult[withResult.length - 1].ts);
     const span = Math.max(1, tN - t0);
     // Build a cumulative running total per group over time.
     const groups = {};
@@ -307,38 +487,77 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
     const max = Math.max(1, ...Object.values(running));
     const yOf = drawAxes(ctx, geo, max, t0, span);
     const xOf = (ts) => M.left + ((Date.parse(ts) - t0) / span) * plotW;
-    const order = Object.keys(groups).sort((a, b) => (running[b] || 0) - (running[a] || 0));
+    const order = Object.keys(groups).sort(
+      (a, b) => (running[b] || 0) - (running[a] || 0),
+    );
     for (const g of order) {
       const color = GROUP_COLORS[g] || theme.dim;
-      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
       groups[g].forEach((pt, j) => {
-        const x = xOf(pt.ts), y = yOf(pt.total);
+        const x = xOf(pt.ts),
+          y = yOf(pt.total);
         j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-        chartBars.push({ x, y, w: 8, h: 8, idx: chartBars.length, point: pt, group: g, color, mode: "bygroup" });
+        chartBars.push({
+          x,
+          y,
+          w: 8,
+          h: 8,
+          idx: chartBars.length,
+          point: pt,
+          group: g,
+          color,
+          mode: "bygroup",
+        });
       });
       ctx.stroke();
       // Small dots at data points.
       for (const pt of groups[g]) {
-        const x = xOf(pt.ts), y = yOf(pt.total);
-        ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+        const x = xOf(pt.ts),
+          y = yOf(pt.total);
+        ctx.beginPath();
+        ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
       }
     }
     // Hover highlight for bygroup.
     if (hoverIdx >= 0 && chartBars[hoverIdx]) {
       const b = chartBars[hoverIdx];
-      ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
-      ctx.strokeStyle = theme.ink; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
-      ctx.strokeStyle = b.color || theme.ink; ctx.lineWidth = 1; ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
+      ctx.strokeStyle = b.color || theme.ink;
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
     const shown = legendShown.bygroup;
     const legendItems = order.slice(0, shown).map((g) => {
       const color = GROUP_COLORS[g] || theme.dim;
-      return legendGroupItem({ color, group: g, tokenLabel: tokShort(running[g]) });
+      return legendGroupItem({
+        color,
+        group: g,
+        tokenLabel: tokShort(running[g]),
+      });
     });
     const moreCount = order.length - shown;
-    const moreLabel = moreCount > 0 ? "show " + Math.min(moreCount, 10) + " more (" + moreCount + " remaining)" : null;
-    legend.replaceChildren(legendGroupHead(), legendList(legendItems, moreLabel, "viewmore-bygroup"));
+    const moreLabel =
+      moreCount > 0
+        ? "show " +
+          Math.min(moreCount, 10) +
+          " more (" +
+          moreCount +
+          " remaining)"
+        : null;
+    legend.replaceChildren(
+      legendGroupHead(),
+      legendList(legendItems, moreLabel, "viewmore-bygroup"),
+    );
   }
 
   // Nearest drawn bar/point to a cursor position, or null if none within hit tolerance.
@@ -349,14 +568,18 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
     const cx = clientX - rect.left;
     const cy = clientY != null ? clientY - rect.top : null;
     const isLine = chartMode !== "deltas";
-    let best = null, bestD = Infinity;
+    let best = null,
+      bestD = Infinity;
     for (const b of chartBars) {
       const dx = Math.abs(b.x - cx);
       const dy = cy != null ? Math.abs(b.y - cy) : 0;
       const d = isLine ? Math.sqrt(dx * dx + dy * dy) : dx;
-      if (d < bestD) { bestD = d; best = b; }
+      if (d < bestD) {
+        bestD = d;
+        best = b;
+      }
     }
-    const tol = isLine ? 18 : (best ? Math.max(6, (best.w || 1) / 2 + 2) : 6);
+    const tol = isLine ? 18 : best ? Math.max(6, (best.w || 1) / 2 + 2) : 6;
     return best && bestD <= tol ? best : null;
   }
 
@@ -373,25 +596,39 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
   // priority over data-bar hover when both are near the cursor, since a marker hover is a more
   // deliberate hit (small fixed-size dot) than the wide data-bar hit area.
   function onTimelineHover(e) {
-    if (panState.dragging) { tip.style.display = "none"; markertip.style.display = "none"; return; }
+    if (panState.dragging) {
+      tip.style.display = "none";
+      markertip.style.display = "none";
+      return;
+    }
     const rect = canvas.getBoundingClientRect();
     const markerHit = markerAt(e.clientX, e.clientY);
     if (markerHit) {
       tip.style.display = "none";
-      if (hoverIdx !== -1) { hoverIdx = -1; drawTimeline(curPoints, curThreshold); }
+      if (hoverIdx !== -1) {
+        hoverIdx = -1;
+        drawTimeline(curPoints, curThreshold);
+      }
       showMarkerTip(markerHit, rect);
       return;
     }
     markertip.style.display = "none";
     const best = barAt(e.clientX, e.clientY);
     const newIdx = best ? best.idx : -1;
-    if (newIdx !== hoverIdx) { hoverIdx = newIdx; drawTimeline(curPoints, curThreshold); }
-    if (!best) { tip.style.display = "none"; return; }
+    if (newIdx !== hoverIdx) {
+      hoverIdx = newIdx;
+      drawTimeline(curPoints, curThreshold);
+    }
+    if (!best) {
+      tip.style.display = "none";
+      return;
+    }
     const p = best.point;
     let tipNodes;
     if (chartMode === "cumulative") {
       const sess = getSessionById(best.sessId);
-      const label = sess && sess.title ? clip(sess.title, 40) : short(best.sessId);
+      const label =
+        sess && sess.title ? clip(sess.title, 40) : short(best.sessId);
       tipNodes = [
         tooltipHead(label, { color: best.color || "var(--accent)" }),
         tooltipRow("total:", fmt(p.total || 0) + " tok"),
@@ -400,19 +637,28 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
       ];
     } else if (chartMode === "bygroup") {
       tipNodes = [
-        tooltipHead(best.group || "group", { color: best.color || "var(--accent)" }),
+        tooltipHead(best.group || "group", {
+          color: best.color || "var(--accent)",
+        }),
         tooltipRow("cumulative:", fmt(p.total || 0) + " tok"),
         tooltipRow("when:", clockLabel(p.ts) + " · " + p.ts.slice(0, 10)),
       ];
     } else {
-      const spike = p.delta && document.body.dataset.threshold && p.delta >= Number(document.body.dataset.threshold);
-      const tool = p.mcp_tool ? p.tool + " (" + p.mcp_tool + ")" : p.tool || p.event || "—";
+      const spike =
+        p.delta &&
+        document.body.dataset.threshold &&
+        p.delta >= Number(document.body.dataset.threshold);
+      const tool = p.mcp_tool
+        ? p.tool + " (" + p.mcp_tool + ")"
+        : p.tool || p.event || "—";
       const rows = [
         ["when:", clockLabel(p.ts) + " · " + p.ts.slice(0, 10)],
         ["event:", p.event || "—"],
         ["tool:", tool],
         p.file_ext ? ["file:", "." + p.file_ext] : null,
-        p.result_chars != null ? ["result:", fmt(p.result_chars) + " chars"] : null,
+        p.result_chars != null
+          ? ["result:", fmt(p.result_chars) + " chars"]
+          : null,
         p.duration_ms != null ? ["took:", p.duration_ms + " ms"] : null,
         ["cause:", p.cause || "—"],
         ["repo:", p.repo + (p.session_id ? " / " + short(p.session_id) : "")],
@@ -425,9 +671,11 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
     tip.replaceChildren(...tipNodes);
     tip.style.display = "block";
     const tipW = tip.offsetWidth;
-    const left = best.x + tipW + 14 > rect.width ? best.x - tipW - 8 : best.x + 8;
+    const left =
+      best.x + tipW + 14 > rect.width ? best.x - tipW - 8 : best.x + 8;
     tip.style.left = Math.max(0, left) + "px";
-    tip.style.top = Math.max(0, Math.min(best.y, rect.height - tip.offsetHeight - 4)) + "px";
+    tip.style.top =
+      Math.max(0, Math.min(best.y, rect.height - tip.offsetHeight - 4)) + "px";
   }
 
   // Marker hover tooltip: title, timestamp, SHA, packages/skills, and expected metric (plan: "hover
@@ -441,9 +689,20 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
       nodes.push(tooltipRow("type:", marker.type));
       nodes.push(tooltipRow("when:", marker.ts.slice(0, 19).replace("T", " ")));
       if (marker.sha) nodes.push(tooltipRow("sha:", marker.sha));
-      if (marker.packages?.length) nodes.push(tooltipRow("packages:", marker.packages.join(", ")));
-      if (marker.skills?.length) nodes.push(tooltipRow("skills:", marker.skills.join(", ")));
-      if (marker.metric) nodes.push(tooltipRow("metric:", marker.metric + (marker.expected_direction ? " (expect " + marker.expected_direction + ")" : "")));
+      if (marker.packages?.length)
+        nodes.push(tooltipRow("packages:", marker.packages.join(", ")));
+      if (marker.skills?.length)
+        nodes.push(tooltipRow("skills:", marker.skills.join(", ")));
+      if (marker.metric)
+        nodes.push(
+          tooltipRow(
+            "metric:",
+            marker.metric +
+              (marker.expected_direction
+                ? " (expect " + marker.expected_direction + ")"
+                : ""),
+          ),
+        );
     }
     nodes.push(tooltipRow("click", "for marker detail"));
     markertip.replaceChildren(...nodes);
@@ -458,14 +717,23 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
   // Dragging only makes sense when a finite range is selected (otherwise the whole series is shown).
   // Translating cursor pixels → time keeps the drag proportional to the visible span. distMoved
   // distinguishes a click (open detail) from a drag (pan) on mouseup.
-  const panState = { dragging: false, startX: 0, startEnd: 0, distMoved: 0, pressedOnCanvas: false };
+  const panState = {
+    dragging: false,
+    startX: 0,
+    startEnd: 0,
+    distMoved: 0,
+    pressedOnCanvas: false,
+  };
   let onPan = null;
 
   // Throttle the refetch during a drag so panning stays responsive without flooding the server.
   let panLoadTimer = null;
   function panLoad() {
     if (panLoadTimer) return;
-    panLoadTimer = setTimeout(() => { panLoadTimer = null; onPan?.(); }, 120);
+    panLoadTimer = setTimeout(() => {
+      panLoadTimer = null;
+      onPan?.();
+    }, 120);
   }
 
   function onTimelineDown(e, view) {
@@ -483,10 +751,14 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
   }
   function onTimelineMove(e, view) {
     if (!panState.dragging) return;
-    panState.distMoved = Math.max(panState.distMoved, Math.abs(e.clientX - panState.startX));
+    panState.distMoved = Math.max(
+      panState.distMoved,
+      Math.abs(e.clientX - panState.startX),
+    );
     const plotW = canvas.clientWidth - M.left - M.right;
     // Drag right → move window earlier (show older data), like dragging a filmstrip.
-    const dt = ((e.clientX - panState.startX) / Math.max(1, plotW)) * view.rangeMs;
+    const dt =
+      ((e.clientX - panState.startX) / Math.max(1, plotW)) * view.rangeMs;
     let end = panState.startEnd - dt;
     // At/after the live edge, snap back to follow-latest; otherwise pin the explicit edge and refetch
     // the window (server scopes every panel to it).
@@ -526,7 +798,10 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
   canvas.addEventListener("mouseleave", () => {
     tip.style.display = "none";
     markertip.style.display = "none";
-    if (hoverIdx !== -1) { hoverIdx = -1; drawTimeline(curPoints, curThreshold); }
+    if (hoverIdx !== -1) {
+      hoverIdx = -1;
+      drawTimeline(curPoints, curThreshold);
+    }
   });
 
   function setMode(mode) {
@@ -558,6 +833,8 @@ export function createChart({ onBarClick, onSessionClick, getSessionById, onMark
     onTimelineDown,
     onTimelineMove,
     onTimelineUp,
-    setPanHandler: (fn) => { onPan = fn; },
+    setPanHandler: (fn) => {
+      onPan = fn;
+    },
   };
 }

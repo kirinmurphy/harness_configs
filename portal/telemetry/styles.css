@@ -250,7 +250,7 @@
   .markdown p { margin:.45em 0; line-height:1.5; }
   .markdown ul, .markdown ol { margin:.45em 0; padding-left:1.4em; }
   .markdown li { margin:.2em 0; }
-  .markdown code { font:inherit; color:var(--code-ink); background:var(--code-inline-bg); padding:.08em .3em; border-radius:4px; }
+  .markdown code { font-size:inherit; color:var(--code-ink); background:var(--code-inline-bg); padding:.08em .3em; border-radius:4px; }
   .markdown pre { margin:.65em 0; padding:.8em; overflow:auto; background:var(--code-bg); border:1px solid var(--line); border-radius:6px; }
   .markdown pre code { display:block; padding:0; background:none; color:var(--ink); }
   .markdown hr { border:none; border-top:1px solid var(--line); margin:.8em 0; }

@@ -2,6 +2,12 @@ import { portalHideLoading, portalSetUpdatedAt } from "/portal/shared/api.js";
 import * as api from "./api.js";
 import * as state from "./state.js";
 import * as tmpl from "./templates.js";
+import * as fields from "./form-fields.js";
+import { createHistoryView } from "./history-view.js";
+
+// A stale opaque key (the app moved ports since this render) resolves by reloading the snapshot
+// rather than surfacing an error.
+const historyView = createHistoryView({ onStale: () => load({ force: true }) });
 
 // Built once and reused across every render/reconcile — the Active apps header holds this same
 // node for the page's lifetime so refresh/settings listeners and live spinner state never get
@@ -88,7 +94,7 @@ function render(snapshot, { reconcile }) {
     {
       id: "active",
       kind: "group",
-      title: "Localhosting",
+      title: "Running now",
       headerEnd: toolbarActionsNode,
       // Refresh/Settings live in this header, so it must always render even with zero active
       // apps — otherwise those controls would vanish along with the empty-state fallback.
@@ -104,14 +110,17 @@ function render(snapshot, { reconcile }) {
     {
       id: "unmatched",
       kind: "collapsible",
-      title: "Other instances",
+      title: "Unrecognized listeners",
       meta: (n) => `${n} other hidden/noisy listeners`,
       cards: snapshot.unmatchedInstances.map((instance) => ({
         key: instance.associationKey,
         hash: JSON.stringify(instance),
         build: () =>
           tmpl.instanceCard(
-            { name: "Other instances", identity: instance.project?.identity },
+            {
+              name: state.UNMATCHED_PROJECT_NAME,
+              identity: instance.project?.identity,
+            },
             instance,
             cardActions(),
           ),
@@ -288,6 +297,7 @@ function cardActions() {
     onHide: hideInstance,
     onToggleMenu: toggleActionMenu,
     onCloseMenus: closeActionMenus,
+    onHistory: (project, instance) => historyView.open(project, instance),
   };
 }
 
@@ -297,22 +307,18 @@ function openAddLinkDialog(project, instance) {
 
 function openLinkDialog(project, instance, { addBlank = false } = {}) {
   const appId = instance.app?.id || "web";
-  document.getElementById("link-project").value =
-    project.identity || instance.project?.identity;
-  document.getElementById("link-app").value = appId;
-  document.getElementById("link-error").textContent = "";
-  const links = state.currentLinks(
-    lastSnapshot,
-    project.identity || instance.project?.identity,
-    appId,
-  );
+  const projectIdentity = project.identity || instance.project?.identity;
+  fields.setValue("link-project", projectIdentity);
+  fields.setValue("link-app", appId);
+  fields.setText("link-error", "");
+  const links = state.currentLinks(lastSnapshot, projectIdentity, appId);
   renderLinkRows(addBlank ? [...links, { label: "", path: "" }] : links);
   refs.linkDialog.showModal();
 }
 
 function openAppDialog(project, instance) {
   fillAppDialog(project, instance);
-  document.getElementById("app-error").textContent = "";
+  fields.setText("app-error", "");
   refs.appDialog.showModal();
 }
 
@@ -325,48 +331,34 @@ function fillAppDialog(project, instance) {
     state.currentAppSettings(lastSnapshot, projectIdentity, appId) ||
     instance.app ||
     {};
-  document.getElementById("app-association").value =
-    instance.associationKey || "";
-  document.getElementById("app-project").value = projectIdentity;
-  document.getElementById("app-project-name").value =
-    project.name === "Other instances"
+  fields.setValue("app-association", instance.associationKey);
+  fields.setValue("app-project", projectIdentity);
+  fields.setValue(
+    "app-project-name",
+    project.name === state.UNMATCHED_PROJECT_NAME
       ? ""
-      : projectSettings.name || project.name || "";
-  document.getElementById("app-id").value = appId;
-  document.getElementById("app-name").value = appSettings.name || "Web";
-  document.getElementById("app-origin").value =
-    appSettings.originPreference || "localhost";
-  document.getElementById("app-project-favorite").checked =
-    projectSettings.favorite === true;
-  document.getElementById("app-project-hidden").checked =
-    projectSettings.hidden === true;
-  document.getElementById("app-favorite").checked =
-    appSettings.favorite === true;
-  document.getElementById("app-hidden").checked = appSettings.hidden === true;
-  document.getElementById("app-health-path").value =
-    appSettings.health?.path || "";
-  document.getElementById("app-health-statuses").value = state.csvList(
-    appSettings.health?.acceptedStatuses,
+      : projectSettings.name || project.name,
   );
-  document.getElementById("app-match-process").value = state.csvList(
-    appSettings.match?.process,
-  );
-  document.getElementById("app-match-title").value = state.csvList(
-    appSettings.match?.title,
-  );
-  document.getElementById("app-match-path").value = state.csvList(
-    appSettings.match?.path,
-  );
+  fields.setValue("app-id", appId);
+  fields.setValue("app-name", appSettings.name || "Web");
+  fields.setValue("app-origin", appSettings.originPreference || "localhost");
+  fields.setChecked("app-project-favorite", projectSettings.favorite);
+  fields.setChecked("app-project-hidden", projectSettings.hidden);
+  fields.setChecked("app-favorite", appSettings.favorite);
+  fields.setChecked("app-hidden", appSettings.hidden);
+  fields.setValue("app-health-path", appSettings.health?.path);
+  fields.setCsv("app-health-statuses", appSettings.health?.acceptedStatuses);
+  fields.setCsv("app-match-process", appSettings.match?.process);
+  fields.setCsv("app-match-title", appSettings.match?.title);
+  fields.setCsv("app-match-path", appSettings.match?.path);
   refs.appRemoveAssociation.hidden = !instance.associationKey;
 }
 
 function openAliasDialog(project, instance) {
-  document.getElementById("alias-from").value =
-    instance.project?.identity || "";
-  document.getElementById("alias-to").value =
-    project.identity || instance.project?.identity || "";
-  document.getElementById("alias-confirmed").checked = false;
-  document.getElementById("alias-error").textContent = "";
+  fields.setValue("alias-from", instance.project?.identity);
+  fields.setValue("alias-to", project.identity || instance.project?.identity);
+  fields.setChecked("alias-confirmed", false);
+  fields.setText("alias-error", "");
   refs.aliasDialog.showModal();
 }
 
@@ -381,13 +373,11 @@ document.addEventListener("keydown", (event) => {
 });
 refs.linkForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const projectIdentity = document.getElementById("link-project").value;
-  const appId = document.getElementById("link-app").value;
   await mutateDialog(refs.linkDialog, "link-error", () =>
     api.updateLinks({
       revision: lastSnapshot.settingsRevision,
-      projectIdentity,
-      appId,
+      projectIdentity: fields.readValue("link-project"),
+      appId: fields.readValue("link-app"),
       links: serializeLinkRows(),
     }),
   );
@@ -397,10 +387,10 @@ refs.linkAdd.addEventListener("click", () =>
 );
 refs.appForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const projectIdentity = document.getElementById("app-project").value;
-  const appId = document.getElementById("app-id").value;
+  const projectIdentity = fields.readValue("app-project");
+  const appId = fields.readValue("app-id");
   await mutateDialog(refs.appDialog, "app-error", async () => {
-    const assoc = document.getElementById("app-association").value;
+    const assoc = fields.readValue("app-association");
     let revision = lastSnapshot.settingsRevision;
     if (assoc) {
       const associationResult = await api.updateAssociation({
@@ -412,25 +402,25 @@ refs.appForm.addEventListener("submit", async (event) => {
       lastSnapshot = associationResult.localhoster || associationResult;
       revision = lastSnapshot.settingsRevision;
     }
-    const name = document.getElementById("app-project-name").value.trim();
+    const name = fields.readValue("app-project-name").trim();
     return api.updateProject({
       revision,
       projectIdentity,
       ...(name ? { name } : {}),
-      favorite: document.getElementById("app-project-favorite").checked,
-      hidden: document.getElementById("app-project-hidden").checked,
+      favorite: fields.readChecked("app-project-favorite"),
+      hidden: fields.readChecked("app-project-hidden"),
       appId,
-      appName: document.getElementById("app-name").value,
-      appFavorite: document.getElementById("app-favorite").checked,
-      appHidden: document.getElementById("app-hidden").checked,
-      originPreference: document.getElementById("app-origin").value,
-      health: serializeHealth(),
-      match: serializeMatch(),
+      appName: fields.readValue("app-name"),
+      appFavorite: fields.readChecked("app-favorite"),
+      appHidden: fields.readChecked("app-hidden"),
+      originPreference: fields.readValue("app-origin"),
+      health: fields.readHealth(),
+      match: fields.readMatch(),
     });
   });
 });
 refs.appRemoveAssociation.addEventListener("click", async () => {
-  const associationKey = document.getElementById("app-association").value;
+  const associationKey = fields.readValue("app-association");
   if (!associationKey) return;
   await mutateDialog(refs.appDialog, "app-error", () =>
     api.updateAssociation({
@@ -445,9 +435,9 @@ refs.aliasForm.addEventListener("submit", async (event) => {
   await mutateDialog(refs.aliasDialog, "alias-error", () =>
     api.updateAlias({
       revision: lastSnapshot.settingsRevision,
-      from: document.getElementById("alias-from").value,
-      to: document.getElementById("alias-to").value,
-      confirmed: document.getElementById("alias-confirmed").checked,
+      from: fields.readValue("alias-from"),
+      to: fields.readValue("alias-to"),
+      confirmed: fields.readChecked("alias-confirmed"),
     }),
   );
 });
@@ -463,13 +453,13 @@ document.addEventListener("visibilitychange", () => {
 });
 
 async function mutateDialog(dialog, errorId, mutate) {
-  document.getElementById(errorId).textContent = "";
+  fields.setText(errorId, "");
   try {
     const result = await mutate();
     applySnapshot(result.localhoster || result);
     dialog.close();
   } catch (err) {
-    document.getElementById(errorId).textContent = err.message;
+    fields.setText(errorId, err.message);
   }
 }
 
@@ -658,27 +648,6 @@ function serializeLinkRows() {
       path: row.querySelector("[data-field=path]").value,
     };
   });
-}
-
-function serializeHealth() {
-  const path = document.getElementById("app-health-path").value.trim();
-  const acceptedStatuses = state
-    .parseCsvList(document.getElementById("app-health-statuses").value)
-    .map((value) => Number(value));
-  return {
-    ...(path ? { path } : {}),
-    ...(acceptedStatuses.length ? { acceptedStatuses } : {}),
-  };
-}
-
-function serializeMatch() {
-  return {
-    process: state.parseCsvList(
-      document.getElementById("app-match-process").value,
-    ),
-    title: state.parseCsvList(document.getElementById("app-match-title").value),
-    path: state.parseCsvList(document.getElementById("app-match-path").value),
-  };
 }
 
 function showError(message) {

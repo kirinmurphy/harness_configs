@@ -5,10 +5,50 @@ export {
   discoverInstances,
 } from "./discovery.mjs";
 export {
+  collectGitContext,
+  collectGitForRoots,
+} from "./git.mjs";
+export {
+  parseAheadBehind,
+  parseHeadRef,
+  parsePackedRefs,
+  parseUpstreamFromConfig,
+  shortSha,
+} from "./git-refs.mjs";
+export {
+  HEALTH_STATES,
+  classifyHealth,
+  healthIndexFromSnapshot,
+} from "./health.mjs";
+export {
+  DEFAULT_HEALTH_POLICY,
+  FAILURE_THRESHOLD,
+  STARTING_GRACE_MS,
+} from "./health-policy.mjs";
+export {
+  DEFAULT_RETENTION_DAYS,
+  HISTORY_EVENT_TYPES,
+  HISTORY_EVENT_VERSION,
+  HISTORY_MAX_BYTES,
+  appendHistoryEvents,
+  compactHistory,
+  historyPathFor,
+  readHistoryEvents,
+} from "./history.mjs";
+export {
+  diffSnapshots,
+} from "./history-diff.mjs";
+export {
   normalizeGitRemote,
   findProjectRoot,
   resolveProjectIdentity,
 } from "./identity.mjs";
+export {
+  attachHealth,
+  buildMatchSignature,
+  disambiguateAssociationKeys,
+  toInstance,
+} from "./instance-shape.mjs";
 export {
   defaultRunCommand,
   discoverListenerRecords,

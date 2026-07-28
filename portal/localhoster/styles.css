@@ -57,10 +57,17 @@ main {
   display: flex;
   align-items: center;
 }
-.instance-group h2,
 .instance-card h3 {
   margin: 0;
   font-size: var(--text-lg);
+}
+/* Section headings sit at body size, bold — the page-level <h1> title owns the large type, so a
+ * group label only needs to read as a boundary between card lists, not compete with it. */
+.instance-group h2,
+.expanded-head h2 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: 700;
 }
 .collapsed-group summary {
   display: flex;
@@ -91,10 +98,6 @@ main {
 }
 .collapsed-group[open] .expanded-head {
   display: flex;
-}
-.expanded-head h2 {
-  margin: 0;
-  font-size: var(--text-lg);
 }
 .expanded-head [data-btn="text"] {
   margin-left: auto;
@@ -152,8 +155,11 @@ main {
 .card-title h3 {
   font-size: var(--text-md);
 }
+/* The origin is a URL with a port — mono keeps the digits legible and aligned across stacked
+ * cards, where a sans face makes 1/l and 0/O ambiguous at this size. */
 .card-title a {
   color: var(--accent);
+  font-family: var(--mono);
 }
 .title-separator {
   color: var(--dim);
@@ -354,9 +360,84 @@ dialog::backdrop {
   color: var(--dim);
   font-size: var(--text-xs);
 }
+/* Git context badge in the card title row. Reuses the shared semantic tokens rather than
+   introducing colors, so light and dark themes both track base.css. */
+.git-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: var(--text-2xs);
+  color: var(--dim);
+  white-space: nowrap;
+}
+.git-commit {
+  font-family: var(--mono, monospace);
+  opacity: 0.75;
+}
+/* Only ever rendered for an explicit dirty:true — an unknown dirty state draws nothing at all. */
+.git-dirty {
+  color: var(--warn);
+  font-weight: 700;
+}
+.git-tracking {
+  color: var(--desc-dim);
+}
+
+/* Health state accents the card's status text. `unknown` deliberately gets no color: an
+   unconfigured listener answering 4xx is not a fault worth flagging. */
+.instance-card[data-health="healthy"] [data-slot="status"] {
+  color: var(--ok);
+}
+.instance-card[data-health="degraded"] [data-slot="status"],
+.instance-card[data-health="starting"] [data-slot="status"] {
+  color: var(--warn);
+}
+.instance-card[data-health="unhealthy"] [data-slot="status"] {
+  color: var(--danger);
+}
+
+.history-subject {
+  margin: 0 0 0.75rem;
+  color: var(--desc-dim);
+  font-size: var(--text-xs);
+}
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+.history-row {
+  display: grid;
+  grid-template-columns: 5rem 11rem 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-xs);
+}
+.history-row:last-child {
+  border-bottom: none;
+}
+.history-when {
+  color: var(--dim);
+}
+.history-type {
+  font-weight: 600;
+}
+.history-detail {
+  color: var(--desc-dim);
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 720px) {
   .card-head {
     align-items: stretch;
+  }
+  .history-row {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
   }
   .menu-panel {
     left: auto;

@@ -10,6 +10,7 @@ import { handlePlansApi } from "./portal-routes-plans.mjs";
 import { handleLocalhosterApi } from "./portal-routes-localhoster.mjs";
 import { handleTelemetryApi } from "./portal-routes-telemetry.mjs";
 import { handleRepositoriesApi } from "./portal-routes-repositories.mjs";
+import { handleUsageApi } from "./portal-routes-usage.mjs";
 
 // Tiny local-only portal server. Binds to loopback only so telemetry/config data never leaves the
 // machine. Stdlib `http` keeps the install dependency-free, matching the rest of the CLI.
@@ -208,6 +209,7 @@ function route(req, res, handlers, mutationToken) {
   if (handlePlansApi(req, res, urlPath, qs, handlers)) return;
   if (handleLocalhosterApi(req, res, urlPath, qs, handlers)) return;
   if (handleRepositoriesApi(req, res, urlPath, qs, handlers)) return;
+  if (handleUsageApi(req, res, urlPath)) return;
   if (handlePortalPage(req, res, urlPath, mutationToken)) return;
   if (handlePortalAsset(req, res, urlPath)) return;
   if (handleDocsAsset(req, res, urlPath)) return;

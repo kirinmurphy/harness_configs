@@ -154,6 +154,9 @@ function ensureProject(map, identity, settings, instance) {
       evidence: instance.project.evidence,
       repositoryId: instance.project.repositoryId ?? null,
       rootId: instance.project.rootId ?? null,
+      // Git context is per-root, so every instance under one project reports the same value; take it
+      // from the first instance that has one rather than duplicating it on each.
+      git: instance.project.git ?? null,
       instances: [],
     });
   }

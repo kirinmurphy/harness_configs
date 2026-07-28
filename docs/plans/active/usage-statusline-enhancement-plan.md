@@ -1,14 +1,61 @@
 ---
 id: usage-statusline-enhancement-plan
-priority: medium
-next_action: Fill in the next concrete task.
+priority: none
+next_action:
 blocked_by: []
 depends_on: []
-related: []
-reviewed_commit:
+related: [usage-statusline-codex-hook-parity, usage-statusline-claude-refresh]
+reviewed_commit: 3d217585
 ---
 
 # RoboRepo Usage Statusline Enhancement — Implementation Plan
+
+## Completion summary (RoboRepo scope complete)
+
+**This plan is complete.** The RoboRepo work — a normalized usage model, weekly pacing, semantic
+fragment styling, and a reusable data surface — is implemented, tested, and committed on branch
+`feat/usage-statusline-enhancement`.
+
+The plan's original Claude/Codex-parity scope was **re-cut** during implementation. Two pieces were
+split into their own plans so this one could complete cleanly instead of being gated indefinitely on
+an external dependency:
+
+- **Codex footer parity** → `docs/plans/backlog/usage-statusline-codex-hook-parity.md`. Codex has no
+  command-backed footer hook, so parity cannot be reached without either an upstream Codex change or a
+  private Codex fork. We chose **not** to fork or patch Codex source. Instead the Codex footer is
+  left **fully native** (no partial/mixed used-vs-remaining footer is shipped), and parity is pursued
+  by requesting an upstream footer-command hook. The RoboRepo Codex **adapter**, shared fixtures, and
+  owned-scalar lifecycle machinery are already built and waiting for that hook.
+- **Claude idle-refresh property** → `docs/plans/backlog/usage-statusline-claude-refresh.md` (low
+  priority), pending verification of the exact Claude config property and minimum version.
+
+### Delivered (RoboRepo JavaScript boundary)
+
+- **Domain layer.** `usage-adapters.mjs` (Claude + Codex source → normalized snapshot),
+  `usage-domain.mjs` (clamp, elapsed, balance, severity), `usage-render.mjs` (fragment-level semantic
+  tones), and the reduced `claude-statusline.mjs` orchestration entrypoint. All percentages mean
+  "used"; weekly shows debt/surplus/balanced with independent debt- and usage-severity styling;
+  normal percentages render explicit white; `NO_COLOR` and error guarantees preserved.
+- **Snapshot + portal API.** Atomic, bounded, user-only `usage-snapshot-store.mjs`; usage state
+  paths; read-only `GET /api/usage` with per-harness availability and freshness; `POST
+  /api/usage/refresh` reserved. Codex reports `not-collected` until the hook plan lands.
+- **Lifecycle + shared fixtures.** All runtime modules registered; owned-scalar lifecycle machinery
+  (`owned-scalars-state.mjs` + scalar merge/preserve/restore/probe) built and retained for the future
+  hook; `tableBlockPattern` fixed to round-trip a table body containing both an array and a scalar;
+  `fixtures/usage-cases.json` shared conformance data.
+- **Codex footer.** Left fully native by decision (see above) — the enhancement applies no
+  used-direction, pacing, or color change to the Codex footer.
+
+### Verification
+
+`Verified: test:usage-domain, test:usage-statusline, test:packages, test:package-lifecycle,
+test:package-default-enabled, test:plans → pass; npm test → 339 passed, 0 failed; pack:dry-run →
+pass`. Live smoke of `GET /api/usage` → 200, `Cache-Control: no-store`, correct per-harness shape.
+
+> The remainder of this document is the **original plan as written**, preserved as the historical
+> record of intent. Where it treats complete Codex parity as a release gate for *this* plan, that
+> scope now lives in the Codex-hook-parity plan linked above; it does not block this plan's
+> completion.
 
 ## Document status
 
@@ -18,6 +65,11 @@ reviewed_commit:
 - **Scope:** usage normalization, weekly pacing, semantic styling, Claude/Codex parity, and a reusable data surface for the future homepage
 - **Implementation language:** JavaScript for RoboRepo; Rust only where an upstream Codex change is required
 - **Release policy:** do not release the enhancement with an intentionally incomplete Codex experience
+
+> **Superseded by the completion summary above.** The "release policy" below was written when Codex
+> parity was in this plan's scope. That scope moved to `usage-statusline-codex-hook-parity`; this
+> plan ships with the Codex footer left fully native (not partially changed), which honors the
+> spirit of the policy — no mixed/incomplete Codex footer is shipped.
 
 ## Executive summary
 
@@ -1036,7 +1088,13 @@ Perform a manual macOS smoke test in both harnesses:
 
 ## Release gates
 
-Do not mark the plan complete or release the enhanced package until all are true:
+> **Re-scoped — see the completion summary at the top.** The Codex-parity gates below (both harnesses
+> show used direction / pacing / independent styling in the footer, Codex capability released, older
+> Codex versions blocked) now belong to `usage-statusline-codex-hook-parity`. For *this* plan, the
+> RoboRepo gates below are met and the Codex-footer gates are deliberately deferred by shipping a
+> fully-native Codex footer rather than a partial one.
+
+Original release-gate list (do not mark complete or release the enhanced package until all are true):
 
 - Claude and Codex context values both show percentage used.
 - Claude and Codex rate limits both show percentage used.

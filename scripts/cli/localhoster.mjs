@@ -1,21 +1,31 @@
-import { stateRoot } from "./paths.mjs";
+import { appRoot, stateRoot } from "./paths.mjs";
+import { collectGitContext } from "../../modules/localhoster/git.mjs";
 import {
+  appendHistoryEvents,
   buildLocalhosterSnapshot,
   capabilityForPlatform,
   defaultSettings,
+  diffSnapshots,
   discoverInstances,
   findCurrentInstanceByOpaqueKey,
+  healthIndexFromSnapshot,
   loadSettings,
+  readHistoryEvents,
   updateSettings,
 } from "../../modules/localhoster/index.mjs";
 import { recordRepositoryDiscovery } from "./repositories.mjs";
 
 const FRESHNESS_MS = 8000;
+const HISTORY_API_LIMIT = 200;
 
 let lastSnapshot = null;
 let inFlightRefresh = null;
 let refreshGeneration = 0;
 let portalInfo = null;
+// associationKeys already present in the history file, read once. Without it, the first refresh
+// after a portal restart has no previous snapshot to compare against and would emit a firstSeen for
+// every running app — every restart, forever.
+let knownHistoryKeys = null;
 
 export function loadLocalhosterSnapshot() {
   const now = new Date();
@@ -36,7 +46,18 @@ export async function refreshLocalhosterSnapshot() {
   inFlightRefresh = (async () => {
     try {
       const settings = loadSettings({ stateRoot });
-      const discovery = await discoverInstances({ settings });
+      const previous = lastSnapshot;
+      // Independent of discovery, so pay for one round of latency rather than two. Both must settle
+      // before portalInstance() runs below, since it reads the collected git context synchronously.
+      const [discovery] = await Promise.all([
+        discoverInstances({
+          settings,
+          // Carrying the prior health records forward is what makes failure debouncing work: the
+          // classifier is pure, so the consecutive-failure count has to travel with the snapshot.
+          previousHealth: healthIndexFromSnapshot(previous),
+        }),
+        refreshPortalGit(),
+      ]);
       if (generation !== refreshGeneration && lastSnapshot) return withRefreshState(lastSnapshot);
       const portal = portalInstance();
       if (portal) {
@@ -45,6 +66,11 @@ export async function refreshLocalhosterSnapshot() {
       }
       recordDiscoveredRepositories(discovery.instances);
       lastSnapshot = buildSnapshot({ discovery, settings, refresh: { state: "idle", startedAt: null, error: null, generation } });
+      // Only refreshes produce events. updateLocalhosterSettings also rebuilds a snapshot, but from
+      // cached discovery with no fresh probe, so any diff there would be a settings artifact rather
+      // than a real transition. Recorded after lastSnapshot is assigned so a history failure can
+      // never cost us a good snapshot.
+      recordHistoryEvents(previous, lastSnapshot, settings);
       return lastSnapshot;
     } catch (err) {
       const error = String(err?.message || err);
@@ -64,15 +90,30 @@ export async function refreshLocalhosterSnapshot() {
   return inFlightRefresh;
 }
 
-export function loadLocalhosterHistory(key) {
-  const instance = findCurrentInstanceByOpaqueKey(loadLocalhosterSnapshot(), key);
+// Resolution is deliberately two-step. The opaque key only ever resolves against the CURRENT
+// snapshot, which is the SSRF/enumeration guard on this tokenless GET route — a browser can never
+// hand the server a key the server did not itself mint. But the opaque key includes the origin, so
+// it changes whenever an app's port changes; history is keyed by the port-free associationKey
+// instead. Hence: opaque key -> current instance -> its associationKey -> events.
+//
+// Consequence: an app that has stopped has no current instance and therefore no readable history,
+// even though its events remain on disk. Surfacing those needs a port-free handle for inactive
+// entries, which belongs with the portal's inactive-card work.
+// `snapshot` is an injection seam for tests, matching how the module layer takes runCommand/probeHttp
+// — it keeps a check from triggering a live listener scan. Production callers pass nothing.
+export function loadLocalhosterHistory(key, { snapshot = null } = {}) {
+  const instance = findCurrentInstanceByOpaqueKey(snapshot || loadLocalhosterSnapshot(), key);
   if (!instance) return { ok: false, status: 404, error: "unknown localhoster key" };
+  const events = readHistoryEvents({ stateRoot })
+    .filter((event) => event.associationKey === instance.associationKey)
+    .reverse()
+    .slice(0, HISTORY_API_LIMIT);
   return {
     ok: true,
     key,
     app: instance.app ? { id: instance.app.id, name: instance.app.name } : null,
-    events: [],
-    deferred: "History JSONL is split into the localhoster-git-health-history backlog plan.",
+    associationKey: instance.associationKey,
+    events,
   };
 }
 
@@ -205,6 +246,26 @@ function recordDiscoveredRepositories(instances) {
   }
 }
 
+// Append transition events for this refresh. Best-effort in the same spirit as
+// recordDiscoveredRepositories: history is an observability nicety and must never be able to break
+// discovery, so every failure is swallowed.
+function recordHistoryEvents(previous, next, settings) {
+  try {
+    if (knownHistoryKeys === null) {
+      knownHistoryKeys = new Set(readHistoryEvents({ stateRoot }).map((event) => event.associationKey));
+    }
+    const events = diffSnapshots(previous, next, { now: new Date(), knownKeys: knownHistoryKeys });
+    if (!events.length) return;
+    for (const event of events) knownHistoryKeys.add(event.associationKey);
+    appendHistoryEvents(events, {
+      stateRoot,
+      retentionDays: settings?.preferences?.historyRetentionDays,
+    });
+  } catch {
+    // History unavailable (unwritable state dir, corrupt file) — discovery continues unaffected.
+  }
+}
+
 function displayNameForProject(project) {
   const id = project.repositoryId || "";
   if (id.startsWith("git:")) return id.split("/").pop() || id;
@@ -243,6 +304,24 @@ function snapshotDiscovery(snapshot) {
   };
 }
 
+// Git context for roborepo's own checkout, refreshed alongside every discovery pass. The portal is
+// synthesized rather than discovered, so it has no probed cwd to resolve a repository from — appRoot
+// is the honest answer and the only one available. Cached because portalInstance() is called from
+// sync paths (setLocalhosterPortalInfo, emptyDiscovery) that cannot await a subprocess.
+//
+// undefined means "never collected" (git context omitted); null means collected and unavailable,
+// which is what a package-mode install with no .git correctly reports.
+let portalGit;
+
+async function refreshPortalGit() {
+  try {
+    portalGit = await collectGitContext(appRoot);
+  } catch {
+    // A failed collection must not cost us the refresh — the card simply renders without a badge.
+    portalGit = null;
+  }
+}
+
 function portalInstance() {
   const port = portalInfo?.port || null;
   if (!port) return null;
@@ -258,8 +337,12 @@ function portalInstance() {
     latencyMs: 0,
     protocol: "http",
     title: "RoboRepo Portal",
+    // Synthesized rather than classified: the portal is the process doing the asking, so it is
+    // healthy by construction and never probed. A static record keeps it out of the history diff's
+    // healthTransition path instead of flapping between null and a state.
+    health: { state: "healthy", reason: null, consecutiveFailures: 0, since: null, firstSeenAt: null, lastProbeAt: null },
     process: { pid: process.pid, command: "roborepo" },
-    project: { identity: "roborepo:portal", identityKind: "roborepo", confidence: "high", projectRoot: null, evidence: "built-in portal" },
+    project: { identity: "roborepo:portal", identityKind: "roborepo", confidence: "high", projectRoot: appRoot, evidence: "built-in portal", git: portalGit ?? null },
   };
 }
 

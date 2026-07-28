@@ -1478,6 +1478,27 @@ assert "repositories: discovery recording + Plans enrollment" \
 assert "repositories: browser-safe API contracts" \
   node "${repo_root}/scripts/test/repositories-api-check.mjs"
 
+# Localhoster module suite. Note: localhoster-check.mjs existed as an npm script but was never wired
+# into this file, so it had not been running in CI at all — added here alongside the new checks.
+assert "localhoster: discovery, settings schema, snapshot shaping" \
+  node "${repo_root}/scripts/test/localhoster-check.mjs"
+
+# Git context from existing local refs only: branch/detached/packed-refs/worktree resolution, dirty
+# reported as null (never false) when git is unavailable, and the guarantee that no network or
+# hook-invoking subcommand ever runs. See docs/plans/active/localhoster-git-health-history.md.
+assert "localhoster: git context from local refs only" \
+  node "${repo_root}/scripts/test/localhoster-git-check.mjs"
+
+# Health normalization: six states, the starting grace window, failure debouncing, and flap
+# resistance for an app alternating pass/fail.
+assert "localhoster: health normalization and flap resistance" \
+  node "${repo_root}/scripts/test/localhoster-health-check.mjs"
+
+# Bounded JSONL history: snapshot diffing into transition events, truncated-line tolerance,
+# retention, size cap, atomic compaction, and opaque-key route resolution.
+assert "localhoster: bounded JSONL history" \
+  node "${repo_root}/scripts/test/localhoster-history-check.mjs"
+
 # Root config drift VIEW (buildRootConfigView in root-config-view.mjs): the per-harness state the terminal
 # `config root inspect` report and the web /config drift chip both render from — not-installed /
 # unwritten / in-sync / drifted / staged-pending.

@@ -15,6 +15,15 @@ export {
   providerUrlForRepositoryId,
 } from "./identity.mjs";
 
+export { createScanCache } from "./scan-cache.mjs";
+
+export {
+  GIT_TIMEOUT_MS,
+  GIT_READONLY_COMMANDS,
+  defaultRunGit,
+  defaultRunGitSync,
+} from "./git-exec.mjs";
+
 export {
   REGISTRY_VERSION,
   VISIBILITY_STATES,

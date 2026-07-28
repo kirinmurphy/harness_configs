@@ -1,55 +1,22 @@
 #!/usr/bin/env node
+// Claude status-line entrypoint. Kept as the installed command so ownership stays stable across the
+// refactor; it is now orchestration only — adapt stdin JSON, assess, render, print, then persist a
+// snapshot best-effort. Pure work lives in the sibling modules; this file is the only one doing I/O.
+import { adaptClaudeStatusPayload } from "./usage-adapters.mjs";
+import { assessUsage } from "./usage-domain.mjs";
+import { renderStatusLine } from "./usage-render.mjs";
+import { writeLatestSnapshot } from "./usage-snapshot-store.mjs";
 
-export const ANSI = {
-  orange: "\u001b[38;5;208m",
-  red: "\u001b[91m",
-  reset: "\u001b[0m",
-};
-
-export const THRESHOLDS = {
-  percent: { orange: 50, red: 70 },
-};
-
-export function clamp(value) {
-  return Math.min(100, Math.max(0, value));
-}
-
-export function normalizePercent(value) {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "string" && value.trim() === "") return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? Math.round(clamp(number)) : null;
-}
-
-export function toneForPercent(value) {
-  if (value === null) return "default";
-  if (value >= THRESHOLDS.percent.red) return "red";
-  if (value >= THRESHOLDS.percent.orange) return "orange";
-  return "default";
-}
-
-function metric(label, value) {
-  const normalized = normalizePercent(value);
+// Returns both the normalized snapshot (for persistence) and the rendered line. color is left
+// undefined by default so the renderer applies its own NO_COLOR-aware default; tests pass it
+// explicitly.
+export function formatStatusLine(data, { now = Date.now(), color } = {}) {
+  const snapshot = adaptClaudeStatusPayload(data, { now });
+  const assessed = assessUsage(snapshot, { now });
   return {
-    label,
-    value: normalized,
-    text: `${label}: ${normalized === null ? "—" : `${normalized}%`}`,
-    tone: toneForPercent(normalized),
+    snapshot,
+    text: renderStatusLine(assessed, color === undefined ? {} : { color }),
   };
-}
-
-export function formatStatusLine(data, { color = !Object.hasOwn(process.env, "NO_COLOR") } = {}) {
-  const metrics = [
-    metric("Context", data?.context_window?.used_percentage),
-    metric("5h", data?.rate_limits?.five_hour?.used_percentage),
-    metric("Weekly", data?.rate_limits?.seven_day?.used_percentage),
-  ];
-  return metrics.map((entry) => colorSegment(entry, color)).join(" · ");
-}
-
-function colorSegment(entry, color) {
-  if (!color || entry.tone === "default") return entry.text;
-  return `${ANSI[entry.tone]}${entry.text}${ANSI.reset}`;
 }
 
 async function readStdin() {
@@ -67,7 +34,10 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  process.stdout.write(`${formatStatusLine(data)}\n`);
+  const { snapshot, text } = formatStatusLine(data);
+  process.stdout.write(`${text}\n`);
+  // Best-effort: a failed persist must never suppress or delay the status line (plan write behavior).
+  writeLatestSnapshot("claude", snapshot);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

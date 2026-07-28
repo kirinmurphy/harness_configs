@@ -3,6 +3,7 @@ import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 import { roborepoStateDir } from "./state-paths.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
+import { clearOwnedScalar, readOwnedScalar, recordOwnedScalar } from "./owned-scalars-state.mjs";
 
 export function runtimeAssetDestination(pkg, component) {
   const target = component.target || path.basename(component.source);
@@ -129,15 +130,16 @@ function unmergeClaudeStatusLine(settingsPath, desired, { readSettings, writeSet
   console.log(`  removed: Claude statusLine <- ${settingsPath}`);
 }
 
+const COLORS_KEY = "status_line_use_colors";
+
 function mergeCodexTuiStatusLine(configPath, tui) {
   const desired = Array.isArray(tui.status_line) ? tui.status_line : [];
   if (desired.length === 0) throw new Error("Codex harness-config needs non-empty tui.status_line");
   let text = "";
   try { text = fs.readFileSync(configPath, "utf8"); } catch {}
-  const merged = mergeTomlArray(text, "tui", "status_line", desired);
-  let next = merged.text;
+  let next = mergeTomlArray(text, "tui", "status_line", desired).text;
   if (typeof tui.status_line_use_colors === "boolean") {
-    next = setTomlScalar(next, "tui", "status_line_use_colors", tui.status_line_use_colors);
+    next = mergeCodexColorScalar(next, tui.status_line_use_colors);
   }
   if (next !== text) {
     writeRootConfig("codex", configPath, next);
@@ -147,17 +149,48 @@ function mergeCodexTuiStatusLine(configPath, tui) {
   }
 }
 
+// Own the color scalar safely. On the first enable, an existing value we didn't set is unmanaged: if
+// it disagrees with what we want, preserve it and report rather than corrupt it. Once roborepo has
+// recorded ownership, subsequent enables freely reassert the desired value (the user's original is
+// safe in provenance and restored on disable).
+function mergeCodexColorScalar(text, desiredValue) {
+  const priorRecord = readOwnedScalar("codex", "tui", COLORS_KEY);
+  const current = getTomlScalar(text, "tui", COLORS_KEY);
+  if (!priorRecord && current !== undefined && current !== desiredValue) {
+    console.warn(`  conflict: Codex tui.${COLORS_KEY} is unmanaged; leaving it unchanged`);
+    return text;
+  }
+  recordOwnedScalar("codex", "tui", COLORS_KEY, current);
+  return setTomlScalar(text, "tui", COLORS_KEY, desiredValue);
+}
+
 function unmergeCodexTuiStatusLine(configPath, tui) {
   const owned = Array.isArray(tui.status_line) ? tui.status_line : [];
   let text = "";
   try { text = fs.readFileSync(configPath, "utf8"); } catch {}
-  const next = unmergeTomlArray(text, "tui", "status_line", owned);
+  let next = unmergeTomlArray(text, "tui", "status_line", owned);
+  if (typeof tui.status_line_use_colors === "boolean") {
+    next = unmergeCodexColorScalar(next);
+  }
   if (next !== text) {
     writeRootConfig("codex", configPath, next);
     console.log(`  removed: Codex tui.status_line <- ${configPath}`);
   } else {
     console.log(`  ok: Codex tui.status_line already absent <- ${configPath}`);
   }
+}
+
+// Restore the color scalar to its provenance: put back an unmanaged prior value, or remove the key
+// entirely if roborepo introduced it. Only touches the scalar when roborepo recorded ownership, so
+// a manual user value set after enable is never clobbered.
+function unmergeCodexColorScalar(text) {
+  const record = readOwnedScalar("codex", "tui", COLORS_KEY);
+  if (!record) return text;
+  const next = record.existed
+    ? setTomlScalar(text, "tui", COLORS_KEY, record.priorValue)
+    : removeTomlScalar(text, "tui", COLORS_KEY);
+  clearOwnedScalar("codex", "tui", COLORS_KEY);
+  return next;
 }
 
 function tomlArrayLine(key, values) {
@@ -172,9 +205,15 @@ function tableHeader(table) {
   return `[${tomlTableKey(table)}]`;
 }
 
+// Captures a table's body as everything from just after its `[header]\n` up to the next table
+// header (`^[`) or the true end of the string. The end-of-string branch is `$(?![\s\S])` — NOT a
+// bare `\s*$`: under the `m` flag `$` matches every line end, so a lazy body + `\s*$` would stop at
+// the FIRST line, silently excluding later keys in the same table (e.g. a scalar written after an
+// array) and causing duplicate-key appends on re-write. Anchoring to absolute end keeps the whole
+// table body in one capture.
 function tableBlockPattern(table) {
   const header = tableHeader(table).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^${header}\\n)([\\s\\S]*?)(?=^\\[|\\s*$)`, "m");
+  return new RegExp(`(^${header}\\n)([\\s\\S]*?)(?=^\\[|$(?![\\s\\S]))`, "m");
 }
 
 function parseTomlArray(body, key) {
@@ -212,6 +251,23 @@ function unmergeTomlArray(text, table, key, values) {
     const nextValues = existing.filter((value) => !owned.has(value));
     return `${header}${body.replace(new RegExp(`^${key}\\s*=\\s*\\[[^\\]]*\\].*\\n?`, "m"), tomlArrayLine(key, nextValues))}`;
   }).replace(/\n{3,}/g, "\n\n");
+}
+
+// Read a boolean scalar's current value from a TOML table. Returns undefined when the table or key
+// is absent — the caller distinguishes "absent" (safe to remove on disable) from a real value.
+function getTomlScalar(text, table, key) {
+  const match = text.match(tableBlockPattern(table));
+  if (!match) return undefined;
+  const line = match[2].match(new RegExp(`^${key}\\s*=\\s*(true|false)`, "m"));
+  return line ? line[1] === "true" : undefined;
+}
+
+function removeTomlScalar(text, table, key) {
+  const pattern = tableBlockPattern(table);
+  if (!pattern.test(text)) return text;
+  return text
+    .replace(pattern, (_match, header, body) => `${header}${body.replace(new RegExp(`^${key}\\s*=.*\\n?`, "m"), "")}`)
+    .replace(/\n{3,}/g, "\n\n");
 }
 
 function setTomlScalar(text, table, key, value) {

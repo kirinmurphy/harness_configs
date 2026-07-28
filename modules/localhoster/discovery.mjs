@@ -1,8 +1,10 @@
-import { createHash } from "node:crypto";
-import path from "node:path";
 import { capabilityForPlatform } from "./capabilities.mjs";
 import { resolveProjectIdentity } from "./identity.mjs";
 import { canonicalRepositoryId, rootId as computeRootId } from "../repositories/identity.mjs";
+import { createScanCache } from "../repositories/scan-cache.mjs";
+import { defaultRunGit } from "../repositories/git-exec.mjs";
+import { collectGitContext, collectGitForRoots } from "./git.mjs";
+import { attachHealth, disambiguateAssociationKeys, toInstance } from "./instance-shape.mjs";
 import { defaultRunCommand, discoverListenerRecords } from "./listeners.mjs";
 import { originCandidatesForListener } from "./origin.mjs";
 import { probeHttpCandidate } from "./http-probe.mjs";
@@ -17,8 +19,18 @@ export async function discoverInstances(options = {}) {
     probeHttp = probeHttpCandidate,
     probeConcurrency = PROBE_CONCURRENCY,
     resolveIdentity = resolveProjectIdentity,
+    collectGit = collectGitContext,
+    runGit = defaultRunGit,
+    previousHealth = new Map(),
+    now = new Date(),
     settings = null,
   } = options;
+  // One cache per scan, created here and dropped when this call returns. Because
+  // refreshLocalhosterSnapshot invokes discoverInstances exactly once per refresh, "per-scan" and
+  // "per-call" are the same boundary. A process-lifetime cache would pin the first branch/dirty
+  // reading the portal ever took and report it forever. The option exists only so tests can inspect
+  // hit counts.
+  const scanCache = options.scanCache || createScanCache();
   const capabilities = capabilityForPlatform(platform);
   const warnings = [];
   if (capabilities.discovery !== "supported") {
@@ -42,18 +54,44 @@ export async function discoverInstances(options = {}) {
       });
     const appSettings = appSettingsForIdentity(settings, identity.identity);
     const candidates = originCandidatesForListener(listener, appSettings?.originPreference);
-    pending.push({ listener, identity, candidates, cwd });
+    // appSettings is retained (not just its originPreference) so health classification reuses this
+    // alias-resolved lookup rather than re-deriving it with a different rule.
+    pending.push({ listener, identity, candidates, cwd, appSettings });
   }
 
-  const probes = probeHttp
-    ? await probeCandidatesForInstances(pending, probeHttp, warnings, probeConcurrency)
-    : new Map();
+  // Git collection is a separate pass over unique repository roots rather than work threaded into
+  // the probe worker: the two are independent, and deduping by root means N apps in one repository
+  // cost one collection. Running them concurrently keeps the scan at the cost of the slower half.
+  const [probes, gitByRoot] = await Promise.all([
+    probeHttp
+      ? probeCandidatesForInstances(pending, probeHttp, warnings, probeConcurrency)
+      : Promise.resolve(new Map()),
+    collectGit
+      ? collectGitForRoots(pending, { collectGit, scanCache, runGit })
+      : Promise.resolve(new Map()),
+  ]);
+
+  // instance -> the probe and app settings that produced it. Health is classified in a later pass
+  // (association keys must be final first), and this carries the inputs across rather than having
+  // that pass rebuild them from the flattened instance.
+  const context = new Map();
   for (const item of pending) {
     const probe = probeHttp ? probes.get(item) : null;
     if (probeHttp && !probe) continue;
-    instances.push(toInstance(item.listener, item.identity, item.candidates, probe, item.cwd));
+    const instance = toInstance({
+      listener: item.listener,
+      identity: item.identity,
+      candidates: item.candidates,
+      probe,
+      cwd: item.cwd,
+      git: gitByRoot.get(item.identity.projectRoot) || null,
+    });
+    context.set(instance, { probe, appSettings: item.appSettings });
+    instances.push(instance);
   }
   disambiguateAssociationKeys(instances);
+  // After disambiguation, so the previous-health lookup uses each instance's final key.
+  attachHealth(instances, { previousHealth, context, now });
 
   return { capabilities, warnings, instances };
 }
@@ -101,59 +139,4 @@ async function probeCandidatesForInstances(items, probeHttp, warnings, concurren
   }
   await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, worker));
   return results;
-}
-
-function toInstance(listener, identity, candidates, probe, cwd) {
-  const origin = probe?.origin || candidates[0]?.origin || null;
-  const matchSignature = buildMatchSignature(identity, listener.command, cwd, probe?.title);
-  return {
-    key: `${listener.pid}:${listener.address}:${listener.port}`,
-    associationKey: matchSignature.key,
-    matchSignature,
-    origin,
-    alternateOrigins: candidates.map((candidate) => candidate.origin).filter((candidate) => candidate !== origin),
-    bind: {
-      address: listener.address,
-      port: listener.port,
-      scope: listener.bindScope,
-      warning: listener.bindScope === "loopback" ? null : "Listener is exposed beyond loopback.",
-    },
-    status: probe?.status ?? null,
-    latencyMs: probe?.latencyMs ?? null,
-    protocol: probe?.protocol ?? "http",
-    title: probe?.title ?? null,
-    process: { pid: listener.pid, command: listener.command },
-    project: identity,
-  };
-}
-
-function disambiguateAssociationKeys(instances) {
-  const counts = new Map();
-  for (const instance of instances) {
-    const key = instance.matchSignature.key;
-    counts.set(key, (counts.get(key) || 0) + 1);
-  }
-  for (const instance of instances) {
-    if (counts.get(instance.matchSignature.key) <= 1) continue;
-    instance.associationKey = instance.matchSignature.titleKey;
-  }
-}
-
-function buildMatchSignature(identity, command, cwd, title) {
-  const relativeCwd = identity.projectRoot && cwd
-    ? path.relative(identity.projectRoot, cwd) || "."
-    : null;
-  const parts = {
-    projectIdentity: identity.identity,
-    relativeCwd,
-    command: safeCommand(command),
-  };
-  const key = "a" + createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 24);
-  const safeTitle = title ? String(title).slice(0, 120) : null;
-  const titleKey = "a" + createHash("sha256").update(JSON.stringify({ ...parts, title: safeTitle })).digest("hex").slice(0, 24);
-  return { key, titleKey, ...parts, title: safeTitle };
-}
-
-function safeCommand(value) {
-  return String(value || "unknown").replace(/[^\w.-]/g, "_").slice(0, 80);
 }

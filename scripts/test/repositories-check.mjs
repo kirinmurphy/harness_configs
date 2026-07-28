@@ -33,6 +33,7 @@ import {
   globalFinding,
   isRepositoryScoped,
   providerUrlForRepositoryId,
+  createScanCache,
 } from "../../modules/repositories/index.mjs";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-repositories-"));
@@ -264,6 +265,35 @@ try {
   assert.equal(glob.repositoryId, undefined, "global finding never carries a repositoryId");
   assert.equal(isRepositoryScoped(glob), false);
   assert.throws(() => repositoryScopedFinding({}, { repositoryId: "path:/x" }), /invalid repository id/);
+
+  // ---- Per-scan cache ----
+  const cache = createScanCache();
+  let computed = 0;
+  const compute = () => {
+    computed += 1;
+    return { value: computed };
+  };
+  assert.equal(cache.get("/a", compute).value, 1);
+  assert.equal(cache.get("/a", compute).value, 1, "a repeated key reuses the memoized value");
+  assert.equal(computed, 1);
+  assert.equal(cache.get("/b", compute).value, 2, "a distinct root computes separately");
+  assert.equal(cache.size, 2);
+
+  // Async work caches the promise itself, so concurrent callers under one root share a single
+  // in-flight read rather than each starting their own.
+  let asyncRuns = 0;
+  const slow = () => {
+    asyncRuns += 1;
+    return Promise.resolve("done");
+  };
+  const shared = await Promise.all([cache.get("/c", slow), cache.get("/c", slow)]);
+  assert.equal(asyncRuns, 1, "concurrent callers share one in-flight computation");
+  assert.deepEqual(shared, ["done", "done"]);
+
+  // A rootless caller must not poison the cache with a null key.
+  assert.equal(cache.get(null, compute).value, 3);
+  assert.equal(cache.size, 3, "a null key bypasses the cache entirely");
+  console.log("ok  per-scan cache memoizes by root and bypasses null keys");
 
   console.log("repositories-check passed");
 } finally {

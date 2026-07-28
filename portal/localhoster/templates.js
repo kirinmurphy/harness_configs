@@ -1,7 +1,5 @@
 import { portalCopyText, portalFillSlots as fill, portalTpl as tpl } from "/portal/shared/api.js";
-import { statusText } from "./state.js";
-
-const OTHER_INSTANCES = "Other instances";
+import { healthState, statusDetail, statusText, UNMATCHED_PROJECT_NAME } from "./state.js";
 
 export function emptyState(title, body) {
   return fill(tpl("tpl-empty"), { title, body });
@@ -41,12 +39,15 @@ export function collapsibleGroup(title, meta, nodes) {
 export function instanceCard(project, instance, actions) {
   const node = fill(tpl("tpl-card"), {
     title: instanceTitle(project, instance),
-    status: statusText(instance),
+    status: `${statusText(instance)} (${statusDetail(instance)})`,
     latency: instance.latencyMs == null ? "unknown" : `${instance.latencyMs}ms`,
     process: `${instance.process.command} (${instance.process.pid})`,
     identity: `${instance.project?.evidence || project.evidence || "runtime"} · ${instance.project?.confidence || project.confidence || "low"}`,
     bind: `${instance.bind.address}:${instance.bind.port}`,
   });
+  const state = healthState(instance);
+  if (state) node.dataset.health = state;
+  applyGitBadge(node, instance.project?.git || project.git || null);
   const origin = node.querySelector("[data-slot=origin]");
   if (instance.origin) {
     origin.textContent = instance.origin;
@@ -120,6 +121,47 @@ export function settingsRow(title, meta, label, onClick) {
   return node;
 }
 
+// Render Git context, distinguishing "no uncommitted changes" from "we could not tell". A dirty
+// marker only appears for an explicit true; null means the subprocess could not answer, and drawing
+// nothing there is the honest choice — a card that implied "clean" would be acted on.
+function applyGitBadge(node, git) {
+  const badge = node.querySelector("[data-slot=git]");
+  if (!badge || !git?.provider?.ok || (!git.branch && !git.shortHead)) return;
+
+  badge.hidden = false;
+  node.querySelector("[data-slot=git-branch]").textContent = git.detached
+    ? "detached"
+    : git.branch || "";
+  node.querySelector("[data-slot=git-commit]").textContent = git.shortHead || "";
+
+  const dirty = node.querySelector("[data-slot=git-dirty]");
+  dirty.hidden = git.dirty !== true;
+  if (git.dirty === true) dirty.title = "Uncommitted changes";
+
+  const tracking = node.querySelector("[data-slot=git-tracking]");
+  const marks = [];
+  if (git.ahead) marks.push(`↑${git.ahead}`);
+  if (git.behind) marks.push(`↓${git.behind}`);
+  if (marks.length) {
+    tracking.hidden = false;
+    tracking.textContent = marks.join(" ");
+    tracking.title = `${git.ahead || 0} ahead, ${git.behind || 0} behind ${git.upstream || "upstream"}`;
+  }
+
+  const tooltip = gitTooltip(git);
+  badge.title = tooltip;
+  node.querySelector("[data-slot=git-detail]").hidden = false;
+  node.querySelector("[data-slot=git-detail-text]").textContent = tooltip;
+}
+
+function gitTooltip(git) {
+  const parts = [git.detached ? `detached at ${git.shortHead}` : `${git.branch} · ${git.shortHead}`];
+  if (git.isWorktree) parts.push("linked worktree");
+  parts.push(git.dirty === null ? "dirty state unavailable" : git.dirty ? "uncommitted changes" : "no uncommitted changes");
+  if (git.upstream) parts.push(`tracking ${git.upstream}`);
+  return parts.join(" · ");
+}
+
 function wireCardActions(node, project, instance, actions) {
   const trigger = node.querySelector("[data-action=menu]");
   const menu = node.querySelector("[data-menu]");
@@ -143,6 +185,15 @@ function wireCardActions(node, project, instance, actions) {
     actions.onCloseMenus();
     if (instance.origin) window.open(instance.origin, "_blank", "noopener,noreferrer");
   });
+  const history = node.querySelector("[data-action=history]");
+  // Only an instance the current snapshot minted a key for has readable history.
+  if (!instance.opaqueKey || !actions.onHistory) history.hidden = true;
+  else {
+    history.addEventListener("click", () => {
+      actions.onCloseMenus();
+      actions.onHistory(project, instance);
+    });
+  }
   node.querySelector("[data-action=associate]").addEventListener("click", () => {
     actions.onCloseMenus();
     actions.onAssociate(project, instance);
@@ -163,6 +214,6 @@ function wireCardActions(node, project, instance, actions) {
 }
 
 function instanceTitle(project, instance) {
-  const projectName = project.name === OTHER_INSTANCES ? null : project.name;
+  const projectName = project.name === UNMATCHED_PROJECT_NAME ? null : project.name;
   return projectName || instance.app?.name || instance.title || instance.process.command;
 }

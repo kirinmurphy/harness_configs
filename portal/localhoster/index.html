@@ -150,6 +150,17 @@
       <div class="modal-body settings-body" id="settings-body"></div>
     </dialog>
 
+    <dialog id="history-dialog" aria-labelledby="history-dialog-title">
+      <div class="modal-head">
+        <h2 id="history-dialog-title">Activity history</h2>
+        <portal-close-button data-close aria-label="Close"></portal-close-button>
+      </div>
+      <div class="modal-body">
+        <p class="history-subject" id="history-subject"></p>
+        <div class="history-list" id="history-body"></div>
+      </div>
+    </dialog>
+
     <!-- Instance grouping & toolbar -->
     <template id="tpl-group">
       <section class="instance-group">
@@ -192,6 +203,12 @@
             <h3 data-slot="title"></h3>
             <span class="title-separator">-</span>
             <a data-slot="origin" target="_blank" rel="noreferrer"></a>
+            <span class="git-badge" data-slot="git" hidden>
+              <span data-slot="git-branch"></span>
+              <span class="git-commit" data-slot="git-commit"></span>
+              <span class="git-dirty" data-slot="git-dirty" hidden>&bull;</span>
+              <span class="git-tracking" data-slot="git-tracking" hidden></span>
+            </span>
             <span class="info-wrap">
               <portal-info-icon
                 aria-label="Show instance details"
@@ -210,6 +227,9 @@
                   ><strong>Identity</strong><span data-slot="identity"></span
                 ></span>
                 <span><strong>Bind</strong><span data-slot="bind"></span></span>
+                <span data-slot="git-detail" hidden
+                  ><strong>Git</strong><span data-slot="git-detail-text"></span
+                ></span>
                 <span data-slot="warning" hidden></span>
               </span>
             </span>
@@ -229,6 +249,7 @@
               <button type="button" data-action="edit">Edit links</button>
               <button type="button" data-action="copy">Copy URL</button>
               <button type="button" data-action="open">Open</button>
+              <button type="button" data-action="history">View history</button>
               <button type="button" data-action="associate">
                 Change association
               </button>
@@ -262,6 +283,13 @@
     </template>
     <template id="tpl-no-links">
       <span class="no-links" data-slot="text"></span>
+    </template>
+    <template id="tpl-history-row">
+      <div class="history-row">
+        <span class="history-when" data-slot="when"></span>
+        <span class="history-type" data-slot="type"></span>
+        <span class="history-detail" data-slot="detail"></span>
+      </div>
     </template>
     <!-- Settings dialog: link editor rows + settings sections -->
     <template id="tpl-link-empty">

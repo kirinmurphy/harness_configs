@@ -1,7 +1,5 @@
 import { portalCopyText, portalFillSlots as fill, portalTpl as tpl } from "/portal/shared/api.js";
-import { healthState, statusDetail, statusText } from "./state.js";
-
-const OTHER_INSTANCES = "Other instances";
+import { healthState, statusDetail, statusText, UNMATCHED_PROJECT_NAME } from "./state.js";
 
 export function emptyState(title, body) {
   return fill(tpl("tpl-empty"), { title, body });
@@ -216,6 +214,6 @@ function wireCardActions(node, project, instance, actions) {
 }
 
 function instanceTitle(project, instance) {
-  const projectName = project.name === OTHER_INSTANCES ? null : project.name;
+  const projectName = project.name === UNMATCHED_PROJECT_NAME ? null : project.name;
   return projectName || instance.app?.name || instance.title || instance.process.command;
 }

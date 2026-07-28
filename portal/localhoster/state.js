@@ -1,3 +1,8 @@
+// Sentinel project name for the unmatched group. Cards there have no real project, so this stands
+// in as the name — and both the card title and the association dialog have to recognize it to avoid
+// presenting it as a genuine project name the user chose.
+export const UNMATCHED_PROJECT_NAME = "Other instances";
+
 export function snapshotHash(snapshot) {
   return JSON.stringify({
     revision: snapshot.settingsRevision,

@@ -584,7 +584,7 @@ main {
   border-radius: 6px;
 }
 .markdown code {
-  font: inherit;
+  font-size: inherit;
   color: var(--code-ink);
   background: var(--code-inline-bg);
   padding: 0.08em 0.3em;

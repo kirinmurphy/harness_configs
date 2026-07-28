@@ -71,6 +71,12 @@
   --chip-medium-bg: #8a6414;
   --chip-high-bg: #a32f28;
 
+  /* Font stacks. --sans is the page default: the system UI face, which reads lighter and less
+   * blocky than a monospace body at these sizes. --mono is reserved for content where character
+   * alignment carries meaning — ports, shas, paths, code — not for prose or chrome. */
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
   /* Fixed type scale — every font-size in the portal maps to one of these instead of a bare px
    * value, so sizing stays consistent across pages and can be re-tuned in one place. */
   --text-2xs: 13px; /* fine print: timestamps, meta, badges */
@@ -225,11 +231,20 @@ button:disabled,
 }
 body {
   margin: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--sans);
   font-size: var(--text-sm);
   line-height: var(--line-height-normal);
   background: var(--bg);
   color: var(--ink);
+}
+/* Code faces stay monospace now that the body default is sans. This has to be a real rule rather
+ * than left to the UA default, because page stylesheets set `font: inherit` on .markdown code to
+ * pick up body sizing — which would otherwise drag the sans face in with it. */
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--mono);
 }
 /* Common header, footer, and nav across every portal page. */
 .portal-header {

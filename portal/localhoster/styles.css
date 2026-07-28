@@ -57,10 +57,17 @@ main {
   display: flex;
   align-items: center;
 }
-.instance-group h2,
 .instance-card h3 {
   margin: 0;
   font-size: var(--text-lg);
+}
+/* Section headings sit at body size, bold — the page-level <h1> title owns the large type, so a
+ * group label only needs to read as a boundary between card lists, not compete with it. */
+.instance-group h2,
+.expanded-head h2 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: 700;
 }
 .collapsed-group summary {
   display: flex;
@@ -91,10 +98,6 @@ main {
 }
 .collapsed-group[open] .expanded-head {
   display: flex;
-}
-.expanded-head h2 {
-  margin: 0;
-  font-size: var(--text-lg);
 }
 .expanded-head [data-btn="text"] {
   margin-left: auto;
@@ -152,8 +155,11 @@ main {
 .card-title h3 {
   font-size: var(--text-md);
 }
+/* The origin is a URL with a port — mono keeps the digits legible and aligned across stacked
+ * cards, where a sans face makes 1/l and 0/O ambiguous at this size. */
 .card-title a {
   color: var(--accent);
+  font-family: var(--mono);
 }
 .title-separator {
   color: var(--dim);

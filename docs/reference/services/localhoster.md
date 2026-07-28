@@ -43,7 +43,7 @@ shape has multiple listeners — those extra listeners are treated as redundant 
 the same app (e.g. two different static-file-server tools pointed at the same directory) rather
 than separate apps, and the card shows a notice naming the extra ports. A project identity with
 two or more genuinely different shapes (different titles) still cannot be auto-assigned, since
-there is no reliable way to guess which one is "the" app; those stay in Other instances until
+there is no reliable way to guess which one is "the" app; those stay in Unrecognized listeners until
 manually associated.
 
 Discovery is split across provider boundaries:

@@ -93,7 +93,7 @@ function render(snapshot, { reconcile }) {
     {
       id: "active",
       kind: "group",
-      title: "Localhosting",
+      title: "Running now",
       headerEnd: toolbarActionsNode,
       // Refresh/Settings live in this header, so it must always render even with zero active
       // apps — otherwise those controls would vanish along with the empty-state fallback.
@@ -109,7 +109,7 @@ function render(snapshot, { reconcile }) {
     {
       id: "unmatched",
       kind: "collapsible",
-      title: "Other instances",
+      title: "Unrecognized listeners",
       meta: (n) => `${n} other hidden/noisy listeners`,
       cards: snapshot.unmatchedInstances.map((instance) => ({
         key: instance.associationKey,

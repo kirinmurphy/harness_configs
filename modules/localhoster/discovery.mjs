@@ -9,6 +9,8 @@ import { defaultRunCommand, discoverListenerRecords } from "./listeners.mjs";
 import { originCandidatesForListener } from "./origin.mjs";
 import { probeHttpCandidate } from "./http-probe.mjs";
 import { resolveProjectAlias } from "./settings.mjs";
+import { discoverDockerRecords, defaultRunCommand as defaultRunDockerCommand } from "./docker.mjs";
+import { collectProcessMetrics, defaultRunCommand as defaultRunPsCommand } from "./process-metrics.mjs";
 
 const PROBE_CONCURRENCY = 8;
 
@@ -21,6 +23,14 @@ export async function discoverInstances(options = {}) {
     resolveIdentity = resolveProjectIdentity,
     collectGit = collectGitContext,
     runGit = defaultRunGit,
+    discoverDocker = discoverDockerRecords,
+    collectProcess = collectProcessMetrics,
+    // Deliberately separate from the listener `runCommand`: existing callers/tests configure
+    // `runCommand` to answer `lsof`, and must not also have to answer `docker`/`ps` invocations they
+    // never asked to opt into. Passing `runCommand` here only takes effect for callers who
+    // explicitly provide these two options.
+    runDockerCommand = defaultRunDockerCommand,
+    runPsCommand = defaultRunPsCommand,
     previousHealth = new Map(),
     now = new Date(),
     settings = null,
@@ -59,17 +69,23 @@ export async function discoverInstances(options = {}) {
     pending.push({ listener, identity, candidates, cwd, appSettings });
   }
 
-  // Git collection is a separate pass over unique repository roots rather than work threaded into
-  // the probe worker: the two are independent, and deduping by root means N apps in one repository
-  // cost one collection. Running them concurrently keeps the scan at the cost of the slower half.
-  const [probes, gitByRoot] = await Promise.all([
+  // Git, Docker, and process-metrics collection are each a separate pass rather than work threaded
+  // into the probe worker: all three are independent of the probe and of each other. Git dedupes by
+  // repository root, Docker is one `docker ps` for the whole scan, and process metrics is one batched
+  // `ps` for every discovered PID — so running them concurrently keeps the scan at the cost of the
+  // slowest single pass rather than the sum of all four.
+  const [probes, gitByRoot, dockerResult, processByPid] = await Promise.all([
     probeHttp
       ? probeCandidatesForInstances(pending, probeHttp, warnings, probeConcurrency)
       : Promise.resolve(new Map()),
     collectGit
       ? collectGitForRoots(pending, { collectGit, scanCache, runGit })
       : Promise.resolve(new Map()),
+    discoverDocker ? discoverDocker({ platform, runCommand: runDockerCommand }) : Promise.resolve({ warnings: [], containers: [] }),
+    collectProcess ? collectProcess(pending.map((item) => item.listener.pid), { platform, runCommand: runPsCommand }) : Promise.resolve(new Map()),
   ]);
+  warnings.push(...dockerResult.warnings);
+  const dockerByHostPort = indexDockerContainersByHostPort(dockerResult.containers);
 
   // instance -> the probe and app settings that produced it. Health is classified in a later pass
   // (association keys must be final first), and this carries the inputs across rather than having
@@ -85,6 +101,8 @@ export async function discoverInstances(options = {}) {
       probe,
       cwd: item.cwd,
       git: gitByRoot.get(item.identity.projectRoot) || null,
+      docker: dockerByHostPort.get(item.listener.port) || null,
+      processMetrics: toProcessMetricsFields(processByPid.get(item.listener.pid)),
     });
     context.set(instance, { probe, appSettings: item.appSettings });
     instances.push(instance);
@@ -106,6 +124,41 @@ function withRepositoryFields(identity) {
     ...identity,
     repositoryId: canonicalRepositoryId(identity),
     rootId: identity.projectRoot ? computeRootId(identity.projectRoot) : null,
+  };
+}
+
+// Docker Desktop on macOS runs containers inside a Linux VM, so container PIDs are never
+// comparable to host-side lsof PIDs — published host port is the only reliable correlation between
+// a container and the listener it backs. A container with no published ports, or whose published
+// port matches no discovered listener, never appears on any instance.
+function indexDockerContainersByHostPort(containers) {
+  const byHostPort = new Map();
+  for (const container of containers) {
+    for (const { hostPort } of container.publishedPorts) {
+      if (!byHostPort.has(hostPort)) {
+        byHostPort.set(hostPort, {
+          containerId: container.containerId,
+          name: container.name,
+          image: container.image,
+          composeProject: container.composeProject,
+          composeService: container.composeService,
+          state: container.state,
+        });
+      }
+    }
+  }
+  return byHostPort;
+}
+
+// Instance records already carry pid/ppid/command via `process`; only the metrics `ps` doesn't
+// overlap with are surfaced here, and only when that PID actually answered (exited-before-`ps`-ran
+// PIDs are simply absent from processByPid, never backfilled with a fabricated reading).
+function toProcessMetricsFields(metrics) {
+  if (!metrics) return null;
+  return {
+    cpuPercent: metrics.cpuPercent,
+    residentMemoryKb: metrics.residentMemoryKb,
+    elapsedSeconds: metrics.elapsedSeconds,
   };
 }
 

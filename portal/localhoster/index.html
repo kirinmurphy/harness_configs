@@ -209,6 +209,9 @@
               <span class="git-dirty" data-slot="git-dirty" hidden>&bull;</span>
               <span class="git-tracking" data-slot="git-tracking" hidden></span>
             </span>
+            <span class="docker-badge" data-slot="docker" hidden>
+              <span data-slot="docker-label"></span>
+            </span>
             <span class="info-wrap">
               <portal-info-icon
                 aria-label="Show instance details"
@@ -229,6 +232,12 @@
                 <span><strong>Bind</strong><span data-slot="bind"></span></span>
                 <span data-slot="git-detail" hidden
                   ><strong>Git</strong><span data-slot="git-detail-text"></span
+                ></span>
+                <span data-slot="docker-detail" hidden
+                  ><strong>Container</strong><span data-slot="docker-detail-text"></span
+                ></span>
+                <span data-slot="process-metrics-detail" hidden
+                  ><strong>Resources</strong><span data-slot="process-metrics-detail-text"></span
                 ></span>
                 <span data-slot="warning" hidden></span>
               </span>

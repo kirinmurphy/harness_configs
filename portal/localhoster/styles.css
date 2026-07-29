@@ -382,6 +382,15 @@ dialog::backdrop {
 .git-tracking {
   color: var(--desc-dim);
 }
+/* Docker/Compose badge, styled like the Git badge for a consistent title-row language. */
+.docker-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: var(--text-2xs);
+  color: var(--dim);
+  white-space: nowrap;
+}
 
 /* Health state accents the card's status text. `unknown` deliberately gets no color: an
    unconfigured listener answering 4xx is not a fault worth flagging. */

@@ -1,4 +1,4 @@
-const FUTURE_PROVIDERS = ["docker", "processMetrics", "metadata"];
+const FUTURE_PROVIDERS = ["metadata"];
 
 export function capabilityForPlatform(platform = process.platform) {
   const providers = providerCapabilitiesForPlatform(platform);
@@ -44,6 +44,8 @@ function providerCapabilitiesForPlatform(platform) {
     // would put entries in `available` that no instance ever carries.
     git: provider("git", coreState, ["gitBranch", "gitCommit", "gitDirty", "gitAheadBehind"], coreMessage),
     history: provider("history", coreState, ["historyEvents"], coreMessage),
+    docker: provider("docker", coreState, ["dockerLabels", "dockerPorts"], coreMessage),
+    processMetrics: provider("processMetrics", coreState, ["processCpu", "processMemory", "processElapsed"], coreMessage),
     ...Object.fromEntries(FUTURE_PROVIDERS.map((name) => [
       name,
       provider(name, "unsupported", [], "Planned in a follow-up Localhoster provider plan."),

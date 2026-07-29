@@ -48,6 +48,8 @@ export function instanceCard(project, instance, actions) {
   const state = healthState(instance);
   if (state) node.dataset.health = state;
   applyGitBadge(node, instance.project?.git || project.git || null);
+  applyDockerBadge(node, instance.docker);
+  applyProcessMetricsBadge(node, instance.processMetrics);
   const origin = node.querySelector("[data-slot=origin]");
   if (instance.origin) {
     origin.textContent = instance.origin;
@@ -152,6 +154,54 @@ function applyGitBadge(node, git) {
   badge.title = tooltip;
   node.querySelector("[data-slot=git-detail]").hidden = false;
   node.querySelector("[data-slot=git-detail-text]").textContent = tooltip;
+}
+
+// Docker/process fields are current-snapshot facts only — real provider data or nothing, never a
+// placeholder. A card for an instance the Docker/process provider never observed shows no badge at
+// all, matching the git badge's correct-or-absent discipline.
+function applyDockerBadge(node, docker) {
+  const badge = node.querySelector("[data-slot=docker]");
+  if (!badge || !docker) return;
+
+  badge.hidden = false;
+  node.querySelector("[data-slot=docker-label]").textContent = docker.composeService || docker.name || "container";
+
+  const detail = node.querySelector("[data-slot=docker-detail]");
+  const parts = [docker.name || docker.containerId];
+  if (docker.image) parts.push(docker.image);
+  if (docker.composeProject) parts.push(`compose: ${docker.composeProject}${docker.composeService ? `/${docker.composeService}` : ""}`);
+  if (docker.state) parts.push(docker.state);
+  detail.hidden = false;
+  node.querySelector("[data-slot=docker-detail-text]").textContent = parts.join(" · ");
+}
+
+function applyProcessMetricsBadge(node, metrics) {
+  const detail = node.querySelector("[data-slot=process-metrics-detail]");
+  if (!detail || !metrics) return;
+
+  const parts = [];
+  if (metrics.cpuPercent != null) parts.push(`${metrics.cpuPercent}% CPU`);
+  if (metrics.residentMemoryKb != null) parts.push(`${formatMemory(metrics.residentMemoryKb)} RSS`);
+  if (metrics.elapsedSeconds != null) parts.push(`up ${formatElapsed(metrics.elapsedSeconds)}`);
+  if (!parts.length) return;
+
+  detail.hidden = false;
+  node.querySelector("[data-slot=process-metrics-detail-text]").textContent = parts.join(" · ");
+}
+
+function formatMemory(kb) {
+  if (kb >= 1024 * 1024) return `${(kb / (1024 * 1024)).toFixed(1)}GB`;
+  if (kb >= 1024) return `${(kb / 1024).toFixed(1)}MB`;
+  return `${kb}KB`;
+}
+
+function formatElapsed(seconds) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
 function gitTooltip(git) {

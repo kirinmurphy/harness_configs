@@ -36,6 +36,8 @@
     "test:localhoster-git": "node scripts/test/localhoster-git-check.mjs",
     "test:localhoster-health": "node scripts/test/localhoster-health-check.mjs",
     "test:localhoster-history": "node scripts/test/localhoster-history-check.mjs",
+    "test:localhoster-docker": "node scripts/test/localhoster-docker-check.mjs",
+    "test:localhoster-process": "node scripts/test/localhoster-process-check.mjs",
     "test:repositories": "node scripts/test/repositories-check.mjs",
     "test:repositories-service": "node scripts/test/repositories-service-check.mjs",
     "test:repositories-api": "node scripts/test/repositories-api-check.mjs",

@@ -59,9 +59,11 @@ Discovery is split across provider boundaries:
 - `git.mjs` and `git-refs.mjs` collect Git context; `health.mjs` and `health-policy.mjs` normalize
   probe results into health states; `history.mjs` and `history-diff.mjs` derive and persist
   transition events.
+- `docker.mjs` collects running-container/Compose data; `process-metrics.mjs` collects live
+  CPU/memory/elapsed for discovered PIDs. See [Docker and process metrics](#docker-and-process-metrics).
 
-Docker, process metrics, and metadata suggestions are listed as provider capabilities but marked
-unsupported until their smaller follow-up plans implement them.
+Metadata suggestions remain listed as a provider capability but marked unsupported until its
+smaller follow-up plan implements it.
 
 ## Git context
 
@@ -108,6 +110,34 @@ Git results are cached per scan, keyed by repository root realpath
 (`modules/repositories/scan-cache.mjs`), so N apps running out of one repository cost one collection.
 The cache is created per `discoverInstances` call and discarded when it returns; a process-lifetime
 cache would pin the first reading a long-lived portal ever took.
+
+## Docker and process metrics
+
+Docker/Compose enrichment and live process metrics run on macOS as part of the same scan that
+collects listeners and Git context — one `docker ps` call and one batched `ps` call per refresh, not
+a separate cadence or on-demand trigger.
+
+**Docker** (`modules/localhoster/docker.mjs`) shells out to `docker ps --format '{{json .}}'`, one
+call for the whole scan rather than one per container. Each line is parsed independently, so a
+single malformed line is skipped rather than invalidating the scan. Compose project/service come
+from the `com.docker.compose.project` / `com.docker.compose.service` labels Compose already attaches
+to every container it creates. A container is merged onto a discovered instance by matching its
+published host port against the instance's bound port — the only reliable correlation available,
+since Docker Desktop on macOS runs containers inside a Linux VM and container PIDs are never
+comparable to host-side `lsof` PIDs. A container with no published ports, or whose port matches no
+discovered listener, never appears. Docker not installed, the daemon not running, and permission
+failures are all reported as a scan warning with zero containers — never a thrown error.
+
+**Process metrics** (`modules/localhoster/process-metrics.mjs`) shells out to `ps
+-o pid=,ppid=,pcpu=,rss=,etime=,comm= -p <pid1>,<pid2>,...`, one call for every PID discovered in the
+scan rather than one call per PID. A PID that exits between listener discovery and this `ps` call is
+simply absent from the result — never backfilled with a stale or fabricated reading. `cpuPercent`,
+`residentMemoryKb`, and `elapsedSeconds` are current-snapshot facts only; like Git's `dirty` field,
+they are never persisted to settings.
+
+Both providers are gated on the same darwin-only `coreState` as the rest of discovery in
+`capabilities.mjs` — `ps`/`docker` are subprocess calls that assume the same platform boundary as
+`lsof`.
 
 ## Health states
 
@@ -264,9 +294,10 @@ confirmation workflow in the portal. It does not yet auto-suggest path-to-Git al
 Future final-phase work will surface those prompts when discovery evidence says a `path:<realpath>`
 project and a Git remote identity are likely the same project.
 
-Localhoster does not yet collect Docker/Compose labels, process CPU/memory, or metadata route
-suggestions. Those pieces are tracked in smaller backlog plans so shipped behavior stays honest and
-testable.
+Localhoster does not yet collect metadata route suggestions. That piece is tracked in a smaller
+backlog plan so shipped behavior stays honest and testable. See
+[Docker and process metrics](#docker-and-process-metrics) for what Docker/Compose and process
+collection cover today, including the host-port merge limitation on Docker Desktop for macOS.
 
 Known limits in the Git, health, and history behavior described above:
 

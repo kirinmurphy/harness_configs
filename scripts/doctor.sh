@@ -259,6 +259,42 @@ check_package_command_catalog() {
   fi
 }
 
+# Harness provider manifests (Phase 1 of the discoverable-harness-provider-architecture plan):
+# validate every globals/harnesses/<id>/provider.json against the shared contract so a malformed
+# manifest fails doctor instead of surfacing later as a confusing runtime error.
+check_harness_manifests() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped harness provider manifest check"
+    return 0
+  fi
+  local output
+  if output="$(node -e '
+    import(process.argv[1]).then(async (m) => {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const root = process.argv[2];
+      const dir = path.join(root, "globals", "harnesses");
+      for (const id of fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)) {
+        const manifestPath = path.join(dir, id, "provider.json");
+        if (!fs.existsSync(manifestPath)) continue;
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        m.validateProviderManifest(manifest);
+        if (manifest.id !== id) throw new Error(`${manifestPath}: manifest id "${manifest.id}" does not match directory "${id}"`);
+      }
+    }).catch((err) => {
+      console.error(err?.stack || String(err));
+      process.exit(1);
+    });
+  ' "${repo_root}/scripts/harnesses/contract.mjs" "${repo_root}" 2>&1)"; then
+    ok "harness provider manifests valid"
+  else
+    fail "harness provider manifest invalid"
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && echo "  ${line}" >&2
+    done <<< "${output}"
+  fi
+}
+
 check_local_config_repair_candidates() {
   if ! command -v node >/dev/null 2>&1; then
     ok "node unavailable; skipped local config repair check"
@@ -357,6 +393,7 @@ done
 check_skill_lib_parity
 check_package_command_catalog
 check_manifest_sources
+check_harness_manifests
 check_json "generated/codex/hooks.json"
 check_json "generated/claude/settings.json"
 check_toml "generated/codex/config.toml"

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "gemini",
+  "displayName": "Gemini CLI",
+  "commandName": "gemini",
+  "adapter": "gemini",
+  "detection": {
+    "executables": ["gemini"],
+    "minimumConfidence": "probable"
+  },
+  "paths": {
+    "home": { "path": "~/.gemini", "kind": "directory" }
+  },
+  "capabilities": ["root-config", "time-travel"]
+}

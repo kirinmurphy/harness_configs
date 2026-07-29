@@ -1461,6 +1461,11 @@ assert "mcp: enabling a built-in MCP package does not record it into the workspa
 assert "workspace: built-in conflicts require a typed replace override" \
   node "${repo_root}/scripts/test/workspace-resources-check.mjs"
 
+# Harness provider contract (Phase 1): manifest schema, capability enum, discovery/state shape
+# validators. See docs/plans/active/discoverable-harness-provider-architecture-plan.md.
+assert "harness: provider manifest and schema validation" \
+  node "${repo_root}/scripts/test/harness-manifest-check.mjs"
+
 # Canonical repository identity (modules/repositories): shared resolver extraction, normalization
 # equivalence, worktree/clone roots, versioned registry persistence, aliases, associations,
 # Plans source coverage. See docs/plans/backlog/canonical-repository-identity-plan-v2.md.

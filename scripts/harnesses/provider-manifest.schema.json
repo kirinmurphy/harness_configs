@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://roborepo.dev/schemas/provider-manifest.schema.json",
+  "title": "Harness provider manifest",
+  "description": "Declarative metadata for an app-owned RoboRepo harness provider. Executable adapter bindings are never loaded from this file — see scripts/harnesses/registry.mjs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "displayName", "commandName", "adapter", "detection", "paths", "capabilities"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Lowercase stable slug. Must match a key in the static adapter registry."
+    },
+    "displayName": { "type": "string", "minLength": 1 },
+    "commandName": { "type": "string", "minLength": 1 },
+    "adapter": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Key into the static, app-owned adapter registry. Not a file path or module specifier."
+    },
+    "detection": { "$ref": "#/$defs/detection" },
+    "paths": { "$ref": "#/$defs/pathMap" },
+    "capabilities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/capability" },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "platforms": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-platform overrides layered onto the top-level detection/paths, keyed by Node os.platform() values.",
+      "propertyNames": { "enum": ["darwin", "linux", "win32"] },
+      "patternProperties": {
+        "^(darwin|linux|win32)$": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "detection": { "$ref": "#/$defs/detection" },
+            "paths": { "$ref": "#/$defs/pathMap" }
+          }
+        }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Provider-specific data with no shared meaning across providers. Core code must not read this without a namespaced, provider-specific reason."
+    }
+  },
+  "$defs": {
+    "capability": {
+      "type": "string",
+      "enum": [
+        "root-config",
+        "rules",
+        "permissions",
+        "skills",
+        "slash-commands",
+        "hooks",
+        "mcp",
+        "package-config",
+        "telemetry-capture",
+        "telemetry-rate-limits",
+        "telemetry-transcripts",
+        "session-launch",
+        "session-resume"
+      ]
+    },
+    "detection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimumConfidence"],
+      "properties": {
+        "executables": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Bounded executable names to look up on PATH. Never a full filesystem scan."
+        },
+        "homeCandidates": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^~/" }
+        },
+        "configCandidates": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^~/" }
+        },
+        "minimumConfidence": {
+          "type": "string",
+          "enum": ["confirmed", "probable", "possible"]
+        }
+      }
+    },
+    "pathMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "kind"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^~/",
+            "description": "Home-relative declarative path. Never absolute or workspace-relative."
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["file", "directory"]
+          }
+        }
+      }
+    }
+  }
+}

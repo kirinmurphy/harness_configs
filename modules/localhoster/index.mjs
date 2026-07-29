@@ -9,6 +9,14 @@ export {
   collectGitForRoots,
 } from "./git.mjs";
 export {
+  discoverDockerRecords,
+  parseDockerPsOutput,
+} from "./docker.mjs";
+export {
+  collectProcessMetrics,
+  parsePsOutput,
+} from "./process-metrics.mjs";
+export {
   parseAheadBehind,
   parseHeadRef,
   parsePackedRefs,

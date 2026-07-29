@@ -63,6 +63,8 @@
     "test:telemetry-portal-state": "node scripts/test/telemetry-portal-state-check.mjs",
     "test:markdown-render": "node scripts/test/markdown-render-check.mjs",
     "test:harness-manifest": "node scripts/test/harness-manifest-check.mjs",
+    "test:harness-registry": "node scripts/test/harness-registry-check.mjs",
+    "test:harness-cli": "node scripts/test/harness-cli-check.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "pack:smoke": "npm pack"
   },

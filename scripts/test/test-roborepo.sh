@@ -1466,6 +1466,15 @@ assert "workspace: built-in conflicts require a typed replace override" \
 assert "harness: provider manifest and schema validation" \
   node "${repo_root}/scripts/test/harness-manifest-check.mjs"
 
+# Harness provider registry, discovery, state, and runtime (Phase 2): zero/one/multi enabled
+# provider scenarios, explicit-disable survives refresh, synthetic third provider proves no
+# hardcoded two-provider assumption. See discoverable-harness-provider-architecture-plan.md Phase 2.
+assert "harness: registry, discovery, state, and runtime" \
+  node "${repo_root}/scripts/test/harness-registry-check.mjs"
+
+assert "harness: CLI list/inspect/refresh/enable/disable end to end" \
+  node "${repo_root}/scripts/test/harness-cli-check.mjs"
+
 # Canonical repository identity (modules/repositories): shared resolver extraction, normalization
 # equivalence, worktree/clone roots, versioned registry persistence, aliases, associations,
 # Plans source coverage. See docs/plans/backlog/canonical-repository-identity-plan-v2.md.

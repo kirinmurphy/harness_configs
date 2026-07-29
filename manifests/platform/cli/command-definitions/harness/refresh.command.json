@@ -1,0 +1,13 @@
+{
+  "path": ["harness", "refresh"],
+  "kind": "command",
+  "title": "Refresh harnesses",
+  "description": "Re-run harness discovery and update persisted state (preserves explicit disables)",
+  "order": 30,
+  "usage": "roborepo harness refresh",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/harness.mjs",
+    "export": "harnessRefresh"
+  }
+}

@@ -1,7 +1,7 @@
 ---
 id: discoverable-harness-provider-architecture
 priority: high
-next_action: Start Phase 2 (registry, state, discovery) — Phase 1 contract and schemas are complete
+next_action: Start Phase 3 (paths and config adapters) — Phase 2 registry, state, and discovery are complete
 blocked_by: []
 depends_on: []
 related:
@@ -9,6 +9,7 @@ related:
   - native-skill-tools-boundary
   - plan-terminal-session-launching-milestone-1
   - portal-telemetry-web-components
+  - localhoster-docker-process-providers
 reviewed_commit: c1ce2b9be751e8d4ec40f09669a268df14367ecb
 ---
 
@@ -844,14 +845,30 @@ On first run:
 
 ### Phase 2: Registry, state, and discovery
 
-- [ ] Add the trusted static adapter registry.
-- [ ] Add provider definition validation at startup/test time.
-- [ ] Implement bounded executable, home, and config evidence helpers.
-- [ ] Implement normalized discovery confidence.
-- [ ] Persist enabled state under `stateRoot`.
-- [ ] Preserve explicit disable choices across refresh.
-- [ ] Add `harness list`, `inspect`, `refresh`, `enable`, and `disable`.
-- [ ] Add zero-, one-, and multi-provider CLI behavior tests.
+- [x] Add the trusted static adapter registry. `scripts/harnesses/registry.mjs`
+  (`listHarnessProviders`, `getHarnessProvider`, `hasHarnessProvider`) — static
+  `claude`/`codex` adapter map, stub adapter bodies for capabilities not yet migrated
+  (`scripts/harnesses/stub-adapter.mjs`, `scripts/harnesses/{claude,codex}/index.mjs`).
+- [x] Add provider definition validation at startup/test time. `scripts/doctor.sh`
+  (`check_harness_registry`, constructs the real registry), `npm run test:harness-registry`
+  (`scripts/test/harness-registry-check.mjs`), wired into `test-roborepo.sh`.
+- [x] Implement bounded executable, home, and config evidence helpers.
+  `scripts/harnesses/discovery.mjs` (`collectEvidence`, `resolveExecutable` via
+  `which`/`where`, home-relative existence checks — never a filesystem scan).
+- [x] Implement normalized discovery confidence. `scripts/harnesses/discovery.mjs`
+  (`normalizeConfidence`, `detectHarnessProvider`) — matches the plan's confidence table.
+- [x] Persist enabled state under `stateRoot`. `scripts/cli/state-paths.mjs`
+  (`harnessStatePath` = `~/.roborepo/harnesses/state.json`), `scripts/harnesses/state.mjs`
+  (`readHarnessState`/`writeHarnessState`).
+- [x] Preserve explicit disable choices across refresh. `scripts/harnesses/state.mjs`
+  (`applyDiscoveryToState` keeps `selectionSource: "user"` + `enabled: false` across a
+  discovery merge); covered by `harness-registry-check.mjs` and `harness-cli-check.mjs`.
+- [x] Add `harness list`, `inspect`, `refresh`, `enable`, and `disable`. `scripts/cli/harness.mjs`
+  + `manifests/platform/cli/command-definitions/harness/*.json`.
+- [x] Add zero-, one-, and multi-provider CLI behavior tests.
+  `scripts/test/harness-registry-check.mjs` (module-level, synthetic third provider proves no
+  hardcoded two-provider assumption), `scripts/test/harness-cli-check.mjs` (real CLI process,
+  `npm run test:harness-cli`).
 
 ### Phase 3: Paths and config adapters
 
@@ -1044,6 +1061,7 @@ Valid remaining hits should be limited to:
 | Config grid becomes too wide | Keep dynamic data now; handle axis orientation in the follow-up below |
 | Provider-specific telemetry leaks into shared schema | Normalize shared fields or namespace extensions |
 | Broad migration becomes unreviewable | Land vertical phases with contract tests and output characterization |
+| Naming collision with `localhoster-docker-process-providers`' unrelated provider/capability vocabulary | Use `harnessProvider`/`harnessCapabilities` explicitly throughout; do not build a shared generic provider framework — the two contracts and lifecycles are unrelated |
 
 ## Follow-up work
 

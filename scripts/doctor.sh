@@ -295,6 +295,36 @@ check_harness_manifests() {
   fi
 }
 
+# Harness provider registry (Phase 2): construct the real static adapter registry, which exercises
+# validateCapabilityAdapters against each provider's actual adapter object — catching a declared
+# capability with a missing/malformed adapter method that the manifest-only check above can't see.
+check_harness_registry() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped harness provider registry check"
+    return 0
+  fi
+  local output
+  if output="$(node -e '
+    import(process.argv[1]).then((m) => {
+      const providers = m.listHarnessProviders();
+      if (providers.length === 0) throw new Error("registry constructed zero providers");
+      for (const provider of providers) {
+        if (!provider.manifest?.capabilities?.length) throw new Error(`${provider.id}: no declared capabilities`);
+      }
+    }).catch((err) => {
+      console.error(err?.stack || String(err));
+      process.exit(1);
+    });
+  ' "${repo_root}/scripts/harnesses/registry.mjs" 2>&1)"; then
+    ok "harness provider registry constructs cleanly"
+  else
+    fail "harness provider registry failed to construct"
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && echo "  ${line}" >&2
+    done <<< "${output}"
+  fi
+}
+
 check_local_config_repair_candidates() {
   if ! command -v node >/dev/null 2>&1; then
     ok "node unavailable; skipped local config repair check"
@@ -394,6 +424,7 @@ check_skill_lib_parity
 check_package_command_catalog
 check_manifest_sources
 check_harness_manifests
+check_harness_registry
 check_json "generated/codex/hooks.json"
 check_json "generated/claude/settings.json"
 check_toml "generated/codex/config.toml"

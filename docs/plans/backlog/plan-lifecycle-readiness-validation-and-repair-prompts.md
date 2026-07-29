@@ -320,3 +320,47 @@ after identity, stale-state, boundary, and collision checks, and already threw
       never gate those two destinations — the `lifecyclePolicies` map is the place to express
       that, and `plan.readiness` (which drives a portal filter) would need checking, since it is
       derived from the same validation.
+
+## Manual Browser Verification
+
+The dialog is the one part of this milestone with no automated coverage — the repo has no DOM
+test capability, so template cloning, `data-slot` lookups, `hidden` toggling, the copy button's
+`copySource` wiring, and the CSS all rest on a manual pass. The pure decision helpers
+(`lifecycleFindingGroups`, `canRepairLifecycleError`) and the 422 wire contract are tested; the
+wiring between them is not.
+
+**This document is the fixture.** As it stands it produces both finding groups when moved to
+Completed, which exercises every branch below. Do not tidy it before testing.
+
+| Group | Finding | Why it fires |
+|---|---|---|
+| Must fix | `UNCHECKED_REQUIRED_TASKS` | one unchecked box under "Not done" |
+| Must fix | `NEXT_ACTION_REMAINS` | `next_action` is set in frontmatter |
+| Also worth fixing | `MISSING_VERIFICATION` | no `## Verification` section |
+
+Steps:
+
+1. `roborepo web`, then open `/plans` and find this plan on the Backlog tab.
+2. Set its lifecycle dropdown to **Completed**. The move must be rejected.
+
+Confirm, in the dialog:
+
+- Both group labels appear — "Must fix before moving" above two findings, "Also worth fixing"
+      above one. This pairing is the branch that only renders when both groups are non-empty.
+- Each finding shows its problem with the fix beneath it, dimmed and indented.
+- **Copy prompt to resolve warnings** copies a prompt naming this repository, the plan id,
+      the path, both lifecycles, and all three findings with their resolutions. Paste it
+      somewhere to check. The button swaps to "Copied!" without resizing.
+- **View Plan** closes the dialog and opens the drawer for this plan — never two stacked
+      dialogs.
+- **Move anyway** still completes the move. Undo it afterward, or use a scratch plan.
+- Dismissing with Cancel, Escape, or a backdrop click leaves the lifecycle dropdown showing
+      Backlog and not stuck on a spinner.
+
+Then confirm the same dialog appears from the drawer's own lifecycle dropdown, and from the
+**Archive** shortcut on an active plan's card — all three entry points funnel through
+`handlePlanChange`, so they should be identical.
+
+Also worth one look: a plan whose move fails for a non-readiness reason (edit a plan's file on
+disk to force `STALE_PLAN`) must show no Copy-prompt button, since no repair descriptor
+accompanies those errors.

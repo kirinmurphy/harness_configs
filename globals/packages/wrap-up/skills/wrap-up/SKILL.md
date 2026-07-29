@@ -33,7 +33,7 @@ re-deriving context. It reviews what was built, brings docs in line with it, che
 for anything left uncommitted, commits, and hands back both a status summary and a
 paste-ready prompt for a fresh chat.
 
-It is the session-boundary counterpart to `tighten` (code-quality mid-session) and targeted doc
+It is the session-boundary counterpart to a mid-session code-quality review and targeted doc
 sync — wrap-up orchestrates both plus commit and handoff, only when the user is ending the session.
 
 ## When To Activate
@@ -58,10 +58,11 @@ in scope here even though `git diff`/`git status` can't tell them apart from ses
 If you cannot enumerate this set (e.g. picking up mid-session with no memory of earlier edits),
 say so explicitly rather than guessing from the working tree.
 
-- Load `tighten` and run its review loop against the scoped files: optimizations,
-  functionality gaps, intuitiveness/naming, project-pattern conformance.
-- Apply fixes that don't change intended behavior, same as `tighten`'s own rule. Leave
-  genuinely low-risk/cosmetic items as notes instead of silently changing more.
+- If a dedicated code-quality review skill exists in the current environment, load it and run
+  its review loop against the scoped files. Otherwise review the scoped files directly for:
+  optimizations, functionality gaps, intuitiveness/naming, project-pattern conformance.
+- Apply fixes that don't change intended behavior. Leave genuinely low-risk/cosmetic items as
+  notes instead of silently changing more.
 - Skip this step only if there is no code diff this session (docs-only or planning
   session) — say so rather than fabricating a review.
 

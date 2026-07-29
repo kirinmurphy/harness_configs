@@ -143,6 +143,34 @@ Other warnings include:
 
 Warnings are surfaced in the list view and document drawer. They do not move files automatically.
 
+Section requirements are matched by heading label against a synonym list, so `Purpose` satisfies
+Summary, `Current behavior` satisfies Context, and so on. The list lives in
+`modules/plan-docs/section-synonyms.mjs` and is the single place to extend when a document uses a
+reasonable heading the scanner does not yet recognize.
+
+## Readiness Findings
+
+Each problem is reported as a finding with a stable code, a plain-language message, a resolution
+describing the fix, and optional structured metadata (an unchecked-task count, the accepted heading
+names for a missing section). `plan.validation` carries both `findings` and `warnings`, the latter
+being the message strings, so display and search keep working while the dialog, the API, and prompt
+generation read the structured form.
+
+Moving a plan into a lifecycle whose requirements it does not meet returns `422
+LIFECYCLE_REQUIREMENTS` with every finding at once, and the file is not moved. Validation runs
+against the file on disk — after identity, stale-state, boundary, and collision checks, immediately
+before the rename — so findings always describe current content, and a stale or wrongly targeted
+request gets that answer instead of repair guidance.
+
+The response also carries a server-generated repair prompt built from those same findings. The
+portal offers it as **Copy prompt to resolve warnings** alongside **View Plan** and **Move anyway**;
+the prompt tells an agent to fix the document, leave the file where it is, and preserve the plan ID.
+Because the prompt is generated server-side and returned with the rejection, it can never describe
+requirements different from the ones on screen.
+
+Readiness is advisory. Confirming **Move anyway** re-submits with validation bypassed, so a document
+that predates the schema can still be filed.
+
 ## Git Metadata
 
 For Git repositories, the scanner attempts to collect:
@@ -173,11 +201,35 @@ All routes are served by the loopback-only portal server.
 | `/api/plans` | GET | compact plan index and package state |
 | `/api/plans/document?key=<key>` | GET | one plan's Markdown, rendered HTML, metadata, tasks, and warnings |
 | `/api/plans/prompt` | POST | build repository-aware or portable prompt from server-issued plan keys |
+| `/api/plans/priority` | POST | change one plan's priority, guarded by expected value and mtime |
+| `/api/plans/lifecycle` | POST | move one plan between lifecycle folders, guarded and readiness-validated |
 | `/api/plans/settings` | POST | replace discovery roots |
 | `/api/plans/refresh` | POST | rebuild the in-memory snapshot |
 
 POST routes require the same origin and per-server mutation token protections as other portal
 mutations.
+
+Mutation failures return a structured error:
+
+```jsonc
+{ "error": {
+    "code": "LIFECYCLE_REQUIREMENTS",       // STALE_PLAN, DESTINATION_EXISTS, INVALID_CHANGE, …
+    "message": "Couldn't move \"Plan Title\" to Completed.",
+    "resolution": "Complete or remove the listed items, then try again — or move anyway.",
+    "details": ["Completed plan has unchecked tasks."],   // message strings
+    "findings": [                                          // readiness failures only
+      { "code": "UNCHECKED_REQUIRED_TASKS", "kind": "lifecycle", "severity": "blocking",
+        "message": "Completed plan has unchecked tasks.",
+        "resolution": "Complete or remove the remaining required tasks.",
+        "count": 3, "meta": { "remaining": 3, "total": 7 } }
+    ],
+    "repair": { "prompt": "/plan-docs validate\n…", "planKey": "…", "planId": "…" } } }
+```
+
+`details` is always the message projection of `findings`, so the two cannot describe different
+problems. Both serialization boundaries whitelist error keys explicitly — `sendDomainError` in
+`scripts/cli/portal-routes-plans.mjs` and `portalPostJson` in `portal/shared/api.js` — so a new
+field on `domainError` must be added to both or it is dropped silently.
 
 The browser sends plan keys, never arbitrary file paths. The server resolves plan keys from the
 current snapshot and rechecks repository boundaries before reading document content.

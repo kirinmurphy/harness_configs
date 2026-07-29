@@ -273,3 +273,25 @@ export function resolveBlocking(record, allPlans) {
       (item.plan.blockers || []).includes(record.plan.id))
     .map((item) => ({ id: item.plan.id, title: item.plan.title, key: item.key, resolved: true }));
 }
+
+// --- lifecycle readiness errors ---------------------------------------------------------------
+
+// Splits a rejected move's findings into what must be fixed and what is merely worth fixing, so
+// the dialog and the repair prompt present them in the same order. Falls back to the plain
+// `details` strings for any error that predates structured findings, so an older or non-plans
+// route still renders something useful.
+export function lifecycleFindingGroups(err) {
+  const findings = Array.isArray(err?.findings) && err.findings.length
+    ? err.findings
+    : (err?.details || []).map((message) => ({ message, severity: "blocking" }));
+  return {
+    blocking: findings.filter((item) => item.severity === "blocking"),
+    advisory: findings.filter((item) => item.severity !== "blocking"),
+  };
+}
+
+// Whether a repair prompt is available to copy. The descriptor is generated server-side and only
+// accompanies readiness failures, so the button stays hidden for every other error.
+export function canRepairLifecycleError(err) {
+  return typeof err?.repair?.prompt === "string" && err.repair.prompt.length > 0;
+}

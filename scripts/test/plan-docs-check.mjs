@@ -398,6 +398,29 @@ Run targeted checks.
       assert.equal(err.code, "LIFECYCLE_REQUIREMENTS");
       assert.equal(err.status, 422);
       assert.ok(err.details.length > 1, `expected multiple accumulated requirement failures, got: ${JSON.stringify(err.details)}`);
+
+      // The full wire contract the portal depends on: display strings, structured findings, and
+      // the server-generated repair prompt, all from this one response.
+      assert.ok(Array.isArray(err.findings), "a readiness failure carries structured findings");
+      assert.equal(err.findings.length, err.details.length, "every display string has a matching finding");
+      assert.deepEqual(err.findings.map((item) => item.message), err.details,
+        "details is exactly the message projection of findings — the two cannot describe different problems");
+      for (const item of err.findings) {
+        assert.ok(item.code, "every finding carries a stable code the UI and tests can branch on");
+        assert.ok(item.resolution, "every finding explains how to fix it");
+      }
+
+      assert.ok(err.repair, "a readiness failure carries a repair descriptor");
+      assert.equal(typeof err.repair.prompt, "string", "the repair prompt is a ready-to-copy string");
+      assert.ok(err.repair.prompt.length > 0, "the repair prompt is not empty");
+      assert.equal(err.repair.planKey, requirementsSource.key, "the descriptor identifies which plan it describes");
+      assert.equal(err.repair.planId, requirementsSource.plan.id, "the descriptor carries the stable plan id");
+      for (const item of err.findings) {
+        assert.ok(err.repair.prompt.includes(item.message),
+          `the prompt must describe every finding shown to the user; missing: ${item.code}`);
+      }
+      assert.ok(!err.repair.prompt.includes(tempRoot),
+        "the repair prompt must not leak an absolute path — it gets pasted outside this machine");
       throw err;
     }
   }, /Couldn't move/);
@@ -479,6 +502,164 @@ N/A.
     mtimeMs: filledVerificationSource.mtimeMs,
   });
   assert.equal(filledVerificationResult.record.plan.lifecycle, "completed");
+
+  // Readiness validation reads the file from disk, not the snapshot record. A document repaired
+  // after the page loaded must move on the next attempt without a refresh — this is what makes
+  // the repair-prompt workflow work: fix the doc, retry, done.
+  fs.writeFileSync(path.join(repo, "docs", "plans", "backlog", "stale-then-repaired.md"), `---
+id: stale-then-repaired-plan
+priority: medium
+next_action: Finish the work
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+# Stale Then Repaired Plan
+
+## Summary
+
+Exercises validation reading fresh disk content rather than the loaded snapshot.
+
+## Context
+
+Used only by plan-docs-check.mjs.
+
+## Goals
+
+Prove a repaired document moves without rebuilding the snapshot first.
+
+## Proposed design
+
+N/A.
+
+## Implementation plan
+
+- [ ] Unfinished on purpose
+
+## Validation
+
+N/A.
+`);
+  const freshDiskSnapshot = buildPlanSnapshot({ stateRoot, packageState: { available: true, enabled: false, status: "disabled" } });
+  const freshDiskSource = freshDiskSnapshot.plans.find((item) => item.plan.id === "stale-then-repaired-plan");
+  assert.throws(() => movePlanLifecycle(freshDiskSnapshot, {
+    id: freshDiskSource.plan.id,
+    key: freshDiskSource.key,
+    lifecycle: "completed",
+    expectedLifecycle: "backlog",
+    mtimeMs: freshDiskSource.mtimeMs,
+  }), (err) => err.code === "LIFECYCLE_REQUIREMENTS", "an unfinished plan is rejected for Completed");
+
+  // Repair the document on disk while still holding the now-outdated snapshot above.
+  const repairedPath = path.join(repo, "docs", "plans", "backlog", "stale-then-repaired.md");
+  fs.writeFileSync(repairedPath, fs.readFileSync(repairedPath, "utf8")
+    .replace("next_action: Finish the work\n", "next_action:\n")
+    .replace("- [ ] Unfinished on purpose", "- [x] Now finished")
+    .replace("## Validation", "## Verification\n\nVerified by the test.\n\n## Validation"));
+  // Retry the way the portal does after an external edit: refresh, then move. The refreshed
+  // snapshot still carries the pre-repair findings on its record — buildPlanSnapshot validated
+  // against `backlog`, where unchecked tasks are not a problem — so a move that succeeds here
+  // proves the gate re-read the file rather than trusting record.plan.validation.
+  const repairedSnapshot = buildPlanSnapshot({ stateRoot, packageState: { available: true, enabled: false, status: "disabled" } });
+  const repairedSource = repairedSnapshot.plans.find((item) => item.plan.id === "stale-then-repaired-plan");
+  const repairedResult = movePlanLifecycle(repairedSnapshot, {
+    id: repairedSource.plan.id,
+    key: repairedSource.key,
+    lifecycle: "completed",
+    expectedLifecycle: "backlog",
+    mtimeMs: repairedSource.mtimeMs,
+  });
+  assert.equal(repairedResult.record.plan.lifecycle, "completed",
+    "a document repaired after the failed attempt moves on retry, with no bypass flag");
+
+  // The unambiguous direction: build a snapshot from a document that validates, then break the
+  // document on disk. The snapshot record still says it is fine, so a rejection here can only
+  // come from re-reading the file.
+  const brokenPath = path.join(repo, "docs", "plans", "backlog", "broken-after-scan.md");
+  fs.writeFileSync(brokenPath, fs.readFileSync(repairedPath.replace("backlog", "completed"), "utf8")
+    .replace("id: stale-then-repaired-plan", "id: broken-after-scan-plan"));
+  const beforeBreakSnapshot = buildPlanSnapshot({ stateRoot, packageState: { available: true, enabled: false, status: "disabled" } });
+  const beforeBreakSource = beforeBreakSnapshot.plans.find((item) => item.plan.id === "broken-after-scan-plan");
+  assert.ok(beforeBreakSource, "the fixture is present in the snapshot before it is broken");
+  // Rewrite in place, restoring mtime so the stale-state guard sees a current request and
+  // readiness validation is what decides. Without this the stale check fires first (as it should
+  // — that ordering is asserted below) and never exercises the fresh-disk read.
+  const beforeBreakStat = fs.statSync(brokenPath);
+  fs.writeFileSync(brokenPath, fs.readFileSync(brokenPath, "utf8")
+    .replace("- [x] Now finished", "- [ ] Reopened after the scan"));
+  fs.utimesSync(brokenPath, beforeBreakStat.atime, beforeBreakStat.mtime);
+  assert.throws(() => {
+    try {
+      movePlanLifecycle(beforeBreakSnapshot, {
+        id: beforeBreakSource.plan.id,
+        key: beforeBreakSource.key,
+        lifecycle: "completed",
+        expectedLifecycle: "backlog",
+        mtimeMs: beforeBreakSource.mtimeMs,
+      });
+    } catch (err) {
+      assert.equal(err.code, "LIFECYCLE_REQUIREMENTS",
+        "an edit made after the snapshot was built is caught, so findings always describe current disk content");
+      assert.ok(err.details.some((detail) => /unchecked/.test(detail)), "the reopened task is what was reported");
+      throw err;
+    }
+  }, /Couldn't move/);
+
+  // Ordering: stale-state and collision checks run before readiness validation, so a request that
+  // is stale or wrongly targeted gets that answer rather than repair guidance for a plan the user
+  // is no longer looking at. Both must therefore arrive without a repair descriptor.
+  fs.writeFileSync(path.join(repo, "docs", "plans", "backlog", "ordering.md"), `---
+id: ordering-plan
+priority: medium
+next_action: Something
+blocked_by: []
+depends_on: []
+related: []
+reviewed_commit:
+---
+# Ordering Plan
+
+## Implementation plan
+
+- [ ] Deliberately unfinished
+`);
+  const orderingSnapshot = buildPlanSnapshot({ stateRoot, packageState: { available: true, enabled: false, status: "disabled" } });
+  const orderingSource = orderingSnapshot.plans.find((item) => item.plan.id === "ordering-plan");
+  assert.throws(() => {
+    try {
+      movePlanLifecycle(orderingSnapshot, {
+        id: orderingSource.plan.id,
+        key: orderingSource.key,
+        lifecycle: "completed",
+        expectedLifecycle: "backlog",
+        mtimeMs: orderingSource.mtimeMs - 1000, // stale, and the document is also invalid
+      });
+    } catch (err) {
+      assert.equal(err.code, "STALE_PLAN", "a stale request is rejected before readiness is evaluated");
+      assert.equal(err.repair, undefined, "no repair prompt is offered for a plan the user may no longer be viewing");
+      throw err;
+    }
+  }, /changed outside the portal/);
+
+  fs.mkdirSync(path.join(repo, "docs", "plans", "completed"), { recursive: true });
+  fs.writeFileSync(path.join(repo, "docs", "plans", "completed", "ordering.md"), "placeholder occupying the destination\n");
+  assert.throws(() => {
+    try {
+      movePlanLifecycle(orderingSnapshot, {
+        id: orderingSource.plan.id,
+        key: orderingSource.key,
+        lifecycle: "completed",
+        expectedLifecycle: "backlog",
+        mtimeMs: orderingSource.mtimeMs,
+      });
+    } catch (err) {
+      assert.equal(err.code, "DESTINATION_EXISTS", "a collision is reported before readiness is evaluated");
+      assert.equal(err.repair, undefined, "no repair prompt is offered when the move could not land regardless");
+      throw err;
+    }
+  }, /already exists at the destination/);
+  fs.rmSync(path.join(repo, "docs", "plans", "completed", "ordering.md"));
 
   const portalFacing = spawnSync(process.execPath, [
     "-e",

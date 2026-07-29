@@ -1573,6 +1573,21 @@ assert "telemetry: portal global filter URL state round-trips" \
 assert "markdown-render: heading ids, tables, mermaid fallback" \
   node "${repo_root}/scripts/test/markdown-render-check.mjs"
 
+# Plan docs: scanning, frontmatter parsing, guarded lifecycle moves, readiness validation, and the
+# portal's pure mutation-orchestration helpers. These have npm scripts of their own but were never
+# reachable from `npm test`, so a plans-domain regression could pass CI unnoticed.
+assert "plan-docs: scanning, frontmatter, guarded lifecycle moves" \
+  node "${repo_root}/scripts/test/plan-docs-check.mjs"
+
+assert "plan-docs: findings catalog and destination policy" \
+  node "${repo_root}/scripts/test/plan-docs-findings-check.mjs"
+
+assert "plan-docs: frontmatter repair pass" \
+  node "${repo_root}/scripts/test/plan-docs-repair-check.mjs"
+
+assert "plans: portal mutation-orchestration helpers" \
+  node "${repo_root}/scripts/test/plans-portal-state-check.mjs"
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"

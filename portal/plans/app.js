@@ -79,7 +79,9 @@ const lifecycleEventDialog = createLifecycleEventDialog(document.getElementById(
   onViewPlan: (record) => openPlan(record.key),
   onRevert: (record, previousValue) => handlePlanChange({ property: "lifecycle", value: previousValue, record }),
 });
-const lifecycleErrorDialog = createLifecycleErrorDialog(document.getElementById("lifecycle-error-modal"));
+const lifecycleErrorDialog = createLifecycleErrorDialog(document.getElementById("lifecycle-error-modal"), {
+  onViewPlan: (key) => openPlan(key),
+});
 portalWireBackdropClose(drawer, () => drawer.close());
 // Fires however the dialog closes (button, backdrop, Escape, or a programmatic .close() call
 // from presentChangeOutcome) — one place to clear which plan the drawer was showing.
@@ -321,7 +323,13 @@ async function handlePlanChange({ property, value, record }, mutationOptions) {
     if (err.code === "LIFECYCLE_REQUIREMENTS") {
       // Validation is a soft warning, not a hard gate (see movePlanLifecycle's comment) — offer
       // "move anyway," which re-enters this same function with the bypass flag so the retry gets
-      // the exact same snapshot-replace/outcome handling as any other successful mutation.
+      // the exact same snapshot-replace/outcome handling as any other successful mutation. The
+      // dialog also offers the server-generated repair prompt carried on the error, for users who
+      // would rather fix the document than move past it.
+      //
+      // This is the single place a readiness failure surfaces. Card dropdowns, the drawer's
+      // <plan-status>, and the Start/Archive/Revert shortcuts all funnel through this function,
+      // which is what guarantees they show identical findings.
       lifecycleErrorDialog.open(err, () => handlePlanChange({ property, value, record }, { skipDestinationValidation: true }));
     } else {
       showError(err);

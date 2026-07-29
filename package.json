@@ -45,6 +45,7 @@
     "test:usage-statusline": "node scripts/test/usage-statusline-check.mjs",
     "test:usage-domain": "node scripts/test/usage-domain-check.mjs",
     "test:plans": "node scripts/test/plan-docs-check.mjs",
+    "test:plans-findings": "node scripts/test/plan-docs-findings-check.mjs",
     "test:plans-repair": "node scripts/test/plan-docs-repair-check.mjs",
     "test:plans-portal-state": "node scripts/test/plans-portal-state-check.mjs",
     "test:telemetry": "node scripts/test/telemetry-correctness-check.mjs && node scripts/test/telemetry-time-axis-check.mjs",

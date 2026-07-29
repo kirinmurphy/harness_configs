@@ -1,6 +1,6 @@
 ---
 id: package-cli-test-guide
-priority: none
+priority: low
 next_action: Wire Playwright into the repo so the browser half of the walkthrough can be automated and video-recorded
 blocked_by: []
 depends_on: [user-managed-packages-and-add-workflows]

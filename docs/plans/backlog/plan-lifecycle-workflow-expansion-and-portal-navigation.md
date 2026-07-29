@@ -1,6 +1,6 @@
 ---
 id: plan-lifecycle-workflow-expansion-and-portal-navigation
-priority: high
+priority: medium
 next_action: Implement Phase 1 by adding and validating the canonical lifecycle manifest, compiling domain policy from it, and proving a generic manifest-only state can flow through discovery and mutation before changing portal rendering.
 blocked_by: []
 depends_on:

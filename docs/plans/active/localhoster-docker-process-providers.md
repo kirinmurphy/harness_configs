@@ -1,6 +1,6 @@
 ---
 id: localhoster-docker-process-providers
-priority: low
+priority: high
 next_action: Implement Docker/Compose and process-metrics providers behind Localhoster capability reporting
 blocked_by: []
 depends_on:

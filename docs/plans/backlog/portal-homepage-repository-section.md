@@ -1,6 +1,6 @@
 ---
 id: portal-repository-scope-and-homepage
-priority: medium
+priority: high
 next_action: Reconcile the completed repository registry API with this plan, then implement the stable repository urlKey contract and shared URL-scope helpers
 blocked_by: []
 depends_on:

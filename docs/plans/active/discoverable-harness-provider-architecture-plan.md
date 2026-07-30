@@ -987,10 +987,12 @@ On first run:
 - [x] Ensure backup, conflict, drift, and restore state remains keyed by stable provider ID.
   `root-config-state.mjs` confirmed already keyed by an opaque harness-id string with no branching —
   no code change needed.
-- [ ] Add round-trip and conflict tests per provider beyond the characterization checks above.
-  Not yet done — the two characterization suites cover merge/render and package-component
-  merge/unmerge conflict cases thoroughly, but a dedicated per-provider round-trip suite (author a
-  package config, enable, disable, re-enable, assert final state matches initial) is still open.
+- [x] Add round-trip and conflict tests per provider beyond the characterization checks above.
+  `scripts/test/harness-package-config-roundtrip-check.mjs`: authors a package config, enables
+  (merge), disables (unmerge), re-enables, and asserts final state matches first-enable state
+  byte-for-byte, for both Claude and Codex, plus a Codex case with an unowned neighbor `status_line`
+  entry that must survive the whole cycle untouched (conflict/coexistence case). Wired as
+  `npm run test:harness-package-config-roundtrip` and into `test-roborepo.sh`.
 
 ### Phase 4: Install, uninstall, verify, doctor, and repair
 

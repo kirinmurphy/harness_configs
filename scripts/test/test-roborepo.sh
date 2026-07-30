@@ -1508,6 +1508,13 @@ assert "harness: root-config merge characterization (pre-Phase-3 baseline)" \
 assert "harness: package-harness-config characterization (pre-refactor baseline)" \
   node "${repo_root}/scripts/test/package-harness-config-characterization-check.mjs"
 
+# Package-config round-trip (Phase 3 checklist item): author a package config, enable it, disable
+# it, re-enable it, and assert the final state matches the first-enable state byte-for-byte, for
+# both Claude and Codex, including a Codex case with an unowned neighbor entry that must survive
+# the whole cycle untouched.
+assert "harness: package-config round-trip (enable/disable/enable parity)" \
+  node "${repo_root}/scripts/test/harness-package-config-roundtrip-check.mjs"
+
 # Canonical repository identity (modules/repositories): shared resolver extraction, normalization
 # equivalence, worktree/clone roots, versioned registry persistence, aliases, associations,
 # Plans source coverage. See docs/plans/backlog/canonical-repository-identity-plan-v2.md.

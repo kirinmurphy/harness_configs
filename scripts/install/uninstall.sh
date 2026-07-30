@@ -678,80 +678,33 @@ done < <(manifest_rows)
 # via mergeHooks; remove_root_config restores the pre-install backup verbatim, which can contain
 # those hooks from a previous install cycle ("poisoned backup"). This pass removes whatever the
 # package enablers put in, leaving only the user's genuine pre-roborepo content.
+#
+# Delegates to the Claude provider's hooks.write adapter (removal semantics — scripts/harnesses/
+# claude/index.mjs), ported from this function's own former inline bash+node — see
+# scripts/test/harness-hooks-write-remove-characterization-check.mjs for the pinned behavior.
+# Claude-only: hooks.write has no Codex implementation (Codex hooks live in a separate hooks.json
+# sidecar, not migrated to a provider adapter as of this Phase 4 pass).
 strip_package_hooks() {
   local settings="${HOME}/.claude/settings.json"
   [[ -f "${settings}" ]] || return 0
   command -v node >/dev/null 2>&1 || return 0
 
-  local pkg_dir="${repo_root}/globals/packages"
-  [[ -d "${pkg_dir}" ]] || return 0
-
-  if [[ "${dry_run}" -eq 1 ]]; then
-    echo "strip: would remove package hooks/permissions from ${settings}"
-    return 0
-  fi
-
-  SETTINGS_PATH="${settings}" PKG_DIR="${pkg_dir}" node -e '
-const fs = require("fs");
-const path = require("path");
-const settingsPath = process.env.SETTINGS_PATH;
-const pkgDir = process.env.PKG_DIR;
-
-let settings;
-try { settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")); } catch { process.exit(0); }
-
-let changed = false;
-const packages = fs.readdirSync(pkgDir, { withFileTypes: true })
-  .filter(entry => entry.isDirectory())
-  .map(entry => path.join(pkgDir, entry.name, "package.config.json"))
-  .filter(file => fs.existsSync(file))
-  .flatMap(file => {
-    try { return [JSON.parse(fs.readFileSync(file, "utf8"))]; } catch { return []; }
+  local dry_run_flag="false"
+  [[ "${dry_run}" -eq 1 ]] && dry_run_flag="true"
+  HOME_DIR="${HOME}" DRY_RUN="${dry_run_flag}" node -e '
+import(process.argv[1] + "/scripts/harnesses/claude/index.mjs").then(async ({ claudeProvider }) => {
+  const result = claudeProvider.adapters.hooks.write({
+    homePath: process.env.HOME_DIR + "/.claude",
+    dryRun: process.env.DRY_RUN === "true",
   });
-
-// Strip hooks injected by each package
-for (const pkg of packages) {
-  const root = path.join(pkgDir, pkg.id);
-  for (const resource of pkg.resources || []) {
-    if (resource.type !== "hooks" || resource.harness !== "claude") continue;
-    const hooksFile = path.join(root, resource.source);
-    if (!fs.existsSync(hooksFile)) continue;
-    let fragment;
-    try { fragment = JSON.parse(fs.readFileSync(hooksFile, "utf8")); } catch { continue; }
-    const hooks = settings.hooks || {};
-    for (const [event, entries] of Object.entries(fragment)) {
-      const cmds = new Set(entries.map(e => e.hooks?.[0]?.command).filter(Boolean));
-      const existing = hooks[event] || [];
-      const next = existing.filter(e => {
-        const cmd = e.hooks?.[0]?.command;
-        if (cmd && cmds.has(cmd)) { changed = true; return false; }
-        return true;
-      });
-      if (next.length === 0) delete hooks[event];
-      else hooks[event] = next;
-    }
-    if (Object.keys(hooks).length === 0) delete settings.hooks;
-    else settings.hooks = hooks;
-  }
-}
-
-// Strip permissions injected by packages
-const toRemove = new Set(
-  packages.flatMap(p => (p.resources || []).filter(c => c.type === "permissions").flatMap(c => c.allow || []))
-);
-const existing = settings.permissions?.allow || [];
-const next = existing.filter(p => !toRemove.has(p));
-if (next.length !== existing.length) {
-  if (next.length === 0) delete settings.permissions;
-  else settings.permissions = { ...settings.permissions, allow: next };
-  changed = true;
-}
-
-if (changed) {
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-  console.log("strip: removed package hooks/permissions from " + settingsPath);
-}
-' && true || true
+  for (const warning of result.warnings) console.log("strip: " + warning);
+  if (result.changed) console.log("strip: removed package hooks/permissions from " + result.paths[0]);
+  if (!result.ok) process.exit(1);
+}).catch((err) => {
+  console.error(err?.stack || String(err));
+  process.exit(1);
+});
+' "${repo_root}" || true
 }
 strip_package_hooks
 

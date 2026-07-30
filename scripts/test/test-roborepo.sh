@@ -1521,6 +1521,12 @@ assert "harness: package-config round-trip (enable/disable/enable parity)" \
 assert "harness: Claude mcp.remove adapter characterization" \
   node "${repo_root}/scripts/test/harness-mcp-remove-characterization-check.mjs"
 
+# Claude hooks.write (removal semantics) adapter characterization (Phase 4): pins the ported
+# behavior of scripts/install/uninstall.sh's former strip_package_hooks before uninstall.sh calls
+# the adapter instead of its own inline bash+node.
+assert "harness: Claude hooks.write (removal) adapter characterization" \
+  node "${repo_root}/scripts/test/harness-hooks-write-remove-characterization-check.mjs"
+
 # Canonical repository identity (modules/repositories): shared resolver extraction, normalization
 # equivalence, worktree/clone roots, versioned registry persistence, aliases, associations,
 # Plans source coverage. See docs/plans/backlog/canonical-repository-identity-plan-v2.md.

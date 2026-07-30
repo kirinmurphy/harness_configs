@@ -8,7 +8,12 @@
 #   manifests/platform/verify-content.tsv post-install content checks -> verify_content_rows
 #   manifests/platform/rule-targets.tsv   generated rule targets      -> rule_target_rows
 #   manifests/platform/shell-snippets.tsv shell source/prune catalog   -> shell_snippet_rows
-#   manifests/platform/harnesses.tsv      harness presence metadata    -> harness_rows / harness_present
+#
+# Harness presence (harness_present) is no longer TSV-backed — it shells to
+# `roborepo harness detected` (scripts/cli/harness.mjs), which reads the provider registry
+# (scripts/harnesses/), so there is one source of truth for known harnesses instead of two
+# independently-maintained enums drifting apart. See
+# docs/plans/active/discoverable-harness-provider-architecture-plan.md Phase 4.
 #
 # manifest_path
 #   Echo the absolute path to the manifest.
@@ -97,25 +102,42 @@ shell_snippet_rows() {
   done < "${repo_root}/manifests/platform/shell-snippets.tsv"
 }
 
-harness_rows() {
-  local harness home_roots presence_roots display_name
-  while IFS=$'\t' read -r harness home_roots presence_roots display_name; do
-    [[ -z "${harness}" || "${harness}" == \#* ]] && continue
-    printf '%s\t%s\t%s\t%s\n' "${harness}" "${home_roots}" "${presence_roots}" "${display_name}"
-  done < "${repo_root}/manifests/platform/harnesses.tsv"
+# Cache of `roborepo harness detected` output (id<TAB>homePath<TAB>present<TAB>displayName rows),
+# loaded once per process into a plain newline-joined string (this repo's shell targets bash 3.2 /
+# macOS system bash, which has no associative arrays). Falls back to a plain home-dir existence
+# check (mirroring the old harnesses.tsv presence_roots semantics) if node or the CLI entrypoint
+# isn't available — matters for test sandboxes that copy only a subset of scripts/ (see
+# scripts/build/link-global-skills.sh's early-exit guard).
+_HARNESS_DETECTED_ROWS=""
+_HARNESS_DETECTED_LOADED=0
+_harness_detected_load() {
+  [[ "${_HARNESS_DETECTED_LOADED}" -eq 1 ]] && return 0
+  _HARNESS_DETECTED_LOADED=1
+
+  if command -v node >/dev/null 2>&1 && [[ -f "${repo_root}/scripts/cli/main.mjs" ]]; then
+    _HARNESS_DETECTED_ROWS="$(node "${repo_root}/scripts/cli/main.mjs" harness detected 2>/dev/null || true)"
+  fi
+
+  # Fallback for sandboxes without scripts/cli/scripts/harnesses: claude/codex are the only
+  # harnesses this repo has ever hardcoded, so this degrades to the pre-provider-registry check.
+  if [[ -z "${_HARNESS_DETECTED_ROWS}" ]]; then
+    local id present
+    for id in claude codex; do
+      present=0
+      [[ -d "$(_manifest_home_root "${id}")" ]] && present=1
+      _HARNESS_DETECTED_ROWS+="${id}	$(_manifest_home_root "${id}")	${present}	${id}
+"
+    done
+  fi
 }
 
 harness_present() {
   local want_harness="$1"
-  local harness _home_roots presence_roots _display_name token
-  while IFS=$'\t' read -r harness _home_roots presence_roots _display_name; do
-    [[ "${harness}" == "${want_harness}" ]] || continue
-    IFS=',' read -ra tokens <<< "${presence_roots}"
-    for token in "${tokens[@]}"; do
-      [[ -d "$(_manifest_home_root "${token}")" ]] && return 0
-    done
+  _harness_detected_load
+  local line
+  line="$(printf '%s\n' "${_HARNESS_DETECTED_ROWS}" | awk -F'\t' -v h="${want_harness}" '$1 == h { print $3; found=1 } END { if (!found) exit 1 }')" || {
+    echo "harness: unknown harness '${want_harness}'" >&2
     return 1
-  done < <(harness_rows)
-  echo "harness: unknown harness '${want_harness}'" >&2
-  return 1
+  }
+  [[ "${line}" == "1" ]]
 }

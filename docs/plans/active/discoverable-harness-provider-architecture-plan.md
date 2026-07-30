@@ -979,16 +979,18 @@ On first run:
   (`package-harness-config.mjs`), which sits above both the provider and `paths.mjs` in the
   dependency graph, performs the actual write — this is also a cleaner separation of concerns
   (provider computes; core orchestrator decides how/whether to persist).
-- [ ] Refactor `root-config-state.mjs` and `local-config-repair.mjs` to accept resolved providers.
-  Not yet done: both already iterate `Object.keys(rootConfigActive)` (now registry-derived, so
-  already provider-count-agnostic in practice), but `local-config-repair.mjs`'s
-  `diffConfigKeys`/`harness === "codex" ? diffTomlKeys : diffJsonKeys` ternary is a real
-  default-to-JSON-diff gap for an unrecognized harness, lower severity than the merge dispatch bug
-  (read-only diff display, not a write-path correctness bug) but still open.
-- [ ] Ensure backup, conflict, drift, and restore state remains keyed by stable provider ID.
-  `root-config-state.mjs` is already keyed by an opaque harness-id string with no branching — needs
-  verification, not necessarily a code change.
+- [x] Refactor `root-config-state.mjs` and `local-config-repair.mjs` to accept resolved providers.
+  Both already iterate `Object.keys(rootConfigActive)` (now registry-derived, so already
+  provider-count-agnostic). Fixed `local-config-repair.mjs`'s `diffConfigKeys` — same
+  default-to-Claude-shaped bug as `mergeRootConfig` (silently fell through to the JSON diff path for
+  any unrecognized harness); now throws `unsupported harness: <id>`.
+- [x] Ensure backup, conflict, drift, and restore state remains keyed by stable provider ID.
+  `root-config-state.mjs` confirmed already keyed by an opaque harness-id string with no branching —
+  no code change needed.
 - [ ] Add round-trip and conflict tests per provider beyond the characterization checks above.
+  Not yet done — the two characterization suites cover merge/render and package-component
+  merge/unmerge conflict cases thoroughly, but a dedicated per-provider round-trip suite (author a
+  package config, enable, disable, re-enable, assert final state matches initial) is still open.
 
 ### Phase 4: Install, uninstall, verify, doctor, and repair
 

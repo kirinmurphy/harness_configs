@@ -116,9 +116,9 @@ function repairPlan(harness, activePath, repaired, issues) {
 // Structural diff (parsed keys, not raw text) so hook/section reordering that mergeRootConfig
 // re-serializes differently from the active file doesn't get reported as a real setting change.
 function diffConfigKeys(harness, activeText, repairedText) {
-  return harness === "codex"
-    ? diffTomlKeys(activeText, repairedText)
-    : diffJsonKeys(activeText, repairedText);
+  if (harness === "codex") return diffTomlKeys(activeText, repairedText);
+  if (harness === "claude") return diffJsonKeys(activeText, repairedText);
+  throw new Error(`unsupported harness: ${harness}`);
 }
 
 function flattenObject(value, prefix = "", out = new Map()) {

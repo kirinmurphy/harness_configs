@@ -198,9 +198,25 @@ export function mergeCodexConfig(repoText, localText) {
 }
 
 export function mergeRootConfig(harness, repoText, localText) {
-  return harness === "codex"
-    ? mergeCodexConfig(repoText, localText)
-    : mergeClaudeSettings(repoText, localText);
+  if (harness === "codex") return mergeCodexConfig(repoText, localText);
+  if (harness === "claude") return mergeClaudeSettings(repoText, localText);
+  throw new Error(`unsupported harness: ${harness}`);
+}
+
+// Final content transform applied at write time, after merge. Lives here (not
+// root-config-writes.mjs) alongside mergeClaudeSettings/mergeCodexConfig, and imports nothing
+// beyond node builtins, so both root-config-writes.mjs and the Claude provider adapter
+// (scripts/harnesses/claude/index.mjs) can depend on it without a cycle through paths.mjs's
+// harness registry import.
+export function normalizeRootConfigContent(harness, content) {
+  if (harness !== "claude") return content;
+  try {
+    const settings = JSON.parse(content || "{}");
+    delete settings.model;
+    return `${JSON.stringify(settings, null, 2)}\n`;
+  } catch {
+    return content;
+  }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

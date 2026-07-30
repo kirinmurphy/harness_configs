@@ -64,9 +64,14 @@ assert "source layout: legacy globals/rules absent" bash -c "! test -e '${repo_r
 pkg_app="${work}/pkg-app"
 pkg_state="${work}/pkg-state"
 pkg_workspace="${work}/pkg-workspace"
-mkdir -p "${pkg_app}/manifests/platform" "${pkg_app}/scripts/build" "${pkg_app}/scripts/cli"
+mkdir -p "${pkg_app}/manifests/platform" "${pkg_app}/scripts/build" "${pkg_app}/scripts/cli" "${pkg_app}/scripts/harnesses" "${pkg_app}/globals/harnesses"
 cp "${repo_root}/package.json" "${pkg_app}/package.json"
 cp -R "${repo_root}/scripts/cli/." "${pkg_app}/scripts/cli/"
+# scripts/cli/paths.mjs (Phase 3) derives harness paths from the provider registry, so a sandboxed
+# CLI root needs that module graph and the manifests it reads too — see the mcp_harness copy below
+# for the same requirement, first hit there.
+cp -R "${repo_root}/scripts/harnesses/." "${pkg_app}/scripts/harnesses/"
+cp -R "${repo_root}/globals/harnesses/." "${pkg_app}/globals/harnesses/"
 cp "${repo_root}/manifests/platform/cli-commands.json" "${pkg_app}/manifests/platform/cli-commands.json"
 cp "${repo_root}/manifests/platform/context-cost-thresholds.json" "${pkg_app}/manifests/platform/context-cost-thresholds.json"
 cp -R "${repo_root}/manifests/platform/cli" "${pkg_app}/manifests/platform/cli"
@@ -336,13 +341,19 @@ assert "package validation: manual-only skill requires an entrypoint" \
 new_harness="${work}/new-harness"
 mkdir -p \
   "${new_harness}/scripts/cli" \
+  "${new_harness}/scripts/harnesses" \
   "${new_harness}/scripts/build" \
   "${new_harness}/manifests/inventory" \
   "${new_harness}/manifests/platform" \
   "${new_harness}/globals/system/skills" \
   "${new_harness}/globals/packages" \
+  "${new_harness}/globals/harnesses" \
   "${new_harness}/local/skills"
 cp -R "${repo_root}/scripts/cli/." "${new_harness}/scripts/cli/"
+# See the mcp_harness copy below for why scripts/harnesses/ and globals/harnesses/ must travel
+# with scripts/cli/ now that paths.mjs (Phase 3) derives harness paths from the provider registry.
+cp -R "${repo_root}/scripts/harnesses/." "${new_harness}/scripts/harnesses/"
+cp -R "${repo_root}/globals/harnesses/." "${new_harness}/globals/harnesses/"
 cp "${repo_root}/scripts/build/link-skills.sh" "${new_harness}/scripts/build/link-skills.sh"
 cp "${repo_root}/scripts/build/link-global-skills.sh" "${new_harness}/scripts/build/link-global-skills.sh"
 cp "${repo_root}/scripts/build/skill-lib.sh" "${new_harness}/scripts/build/skill-lib.sh"
@@ -1066,12 +1077,18 @@ assert "package command: index docs preserves marker contract" \
 # Real write tests run against a throwaway harness root. roborepo derives repoRoot from
 # scripts/cli/paths.mjs (two levels up), so copying scripts/cli/ (which holds the entry main.mjs
 # plus every module) lets us test writes without touching this repo. main.mjs imports every
-# cli/ module at load time.
+# cli/ module at load time. scripts/harnesses/ and globals/harnesses/ are copied too: paths.mjs
+# (Phase 3) now derives harnessHome/rootConfigActive/etc. from the provider registry instead of
+# hardcoding them, so the registry's module graph and the provider.json manifests it reads are
+# part of this sandbox's real dependency footprint, not an implementation detail scripts/cli/ owns
+# alone anymore.
 mcp_harness="${work}/mcp-harness"
 mcp_home="${work}/mcp-home"
-mkdir -p "${mcp_harness}/scripts/cli" "${mcp_harness}/generated/codex" "${mcp_harness}/generated/claude" "${mcp_harness}/manifests/inventory" "${mcp_harness}/manifests/platform"
+mkdir -p "${mcp_harness}/scripts/cli" "${mcp_harness}/scripts/harnesses" "${mcp_harness}/generated/codex" "${mcp_harness}/generated/claude" "${mcp_harness}/globals/harnesses" "${mcp_harness}/manifests/inventory" "${mcp_harness}/manifests/platform"
 mkdir -p "${mcp_home}/.codex" "${mcp_home}/.claude"
 cp -R "${repo_root}/scripts/cli/." "${mcp_harness}/scripts/cli/"
+cp -R "${repo_root}/scripts/harnesses/." "${mcp_harness}/scripts/harnesses/"
+cp -R "${repo_root}/globals/harnesses/." "${mcp_harness}/globals/harnesses/"
 cp "${repo_root}/manifests/inventory/mcp-presets.json" "${mcp_harness}/manifests/inventory/mcp-presets.json"
 cp "${repo_root}/manifests/platform/cli-commands.json" "${mcp_harness}/manifests/platform/cli-commands.json"
 cp "${repo_root}/manifests/platform/context-cost-thresholds.json" "${mcp_harness}/manifests/platform/context-cost-thresholds.json"
@@ -1474,6 +1491,14 @@ assert "harness: registry, discovery, state, and runtime" \
 
 assert "harness: CLI list/inspect/refresh/enable/disable end to end" \
   node "${repo_root}/scripts/test/harness-cli-check.mjs"
+
+# Root-config merge characterization (Phase 3 safety net): pins mergeClaudeSettings/
+# mergeCodexConfig's exact current output (TOML comment reattachment, bracket-in-value sections,
+# permissions dedupe, the Claude-only model-key strip) BEFORE this logic moves into provider
+# adapters, so the Phase 3 refactor can be checked byte-for-byte instead of by re-reading the merge
+# logic and hoping the port is faithful. Must keep passing unchanged through Phase 3.
+assert "harness: root-config merge characterization (pre-Phase-3 baseline)" \
+  node "${repo_root}/scripts/test/root-config-merge-characterization-check.mjs"
 
 # Canonical repository identity (modules/repositories): shared resolver extraction, normalization
 # equivalence, worktree/clone roots, versioned registry persistence, aliases, associations,

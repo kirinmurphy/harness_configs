@@ -549,6 +549,34 @@ re-enable a provider the user explicitly disabled.
 Do not persist absolute executable paths or sensitive command arguments unless required. Recompute
 ephemeral resolved paths during refresh.
 
+### Disable vs. withdraw
+
+RoboRepo does not own Claude or Codex — it does not make sense for "disable" to mean the harness
+stops working. `enabled: false` (Phase 2) means only "RoboRepo stops managing this provider going
+forward": no future root-config writes, no skill/command linking, no hook wiring. It is a state
+bit, reversible by flipping it back, and never touches a file on disk by itself.
+
+That is a distinct, larger operation from **withdraw**: actively unmerging RoboRepo's previously
+written content back out of a provider's live config — reversing what install/apply already put
+there (root config keys, hook wiring, linked skills/commands, MCP entries). Withdraw is the
+provider-agnostic generalization of logic that already exists asymmetrically today (see the
+grounding notes: `uninstall.sh`'s `remove_mcp_servers()` and `strip_package_hooks()` are
+Claude-only), so it belongs in Phase 4 alongside uninstall's provider-ization, not as a Phase 2 side
+effect.
+
+Keep the two explicitly separate operations:
+
+- `roborepo harness disable <id>` — flips the state bit only (Phase 2, already implemented).
+- `roborepo harness withdraw <id>` (Phase 4) — unmerges RoboRepo's managed content from that
+  provider's live config, using the same per-capability adapter methods uninstall uses
+  (`hooks.write` with removal semantics, `mcp.remove`, `rootConfig.merge` in reverse, skill/command
+  unlink). Prompts or requires `--yes` by default since it mutates live files; supports `--dry-run`
+  like other mutating commands in this CLI.
+
+A flag flip must never silently rewrite live config. `disable` alone leaves existing RoboRepo
+content in place (stale but inert, since RoboRepo will not touch it further); `withdraw` is the
+explicit, confirmable action that actually removes it.
+
 ### Runtime queries
 
 Core consumers should use a narrow query surface:
@@ -745,7 +773,10 @@ The portal should receive:
 }
 ```
 
-The filter remains hidden for zero or one available harness and appears for two or more. Filtering
+The filter remains hidden for zero or one available harness and appears for two or more. "Available"
+here means distinct harness values present in the queried telemetry data, not currently-enabled
+providers — a harness disabled after producing history must stay filterable for that historical
+data, so enable/disable state must never hide past events. Filtering
 continues to use the stable ID in URLs and API requests.
 
 Remove default-to-Claude behavior from `/api/session` and `portal/telemetry/api.js`. A session
@@ -774,6 +805,20 @@ Provider-specific labels, source paths, availability, and warnings come from the
 
 For the initial migration, preserve the existing grid orientation but generate columns from the
 array. Record the axes change as explicit follow-up work.
+
+### Harness management panel
+
+Add a panel below the existing Claude/Codex grid (Phase 7) showing, per provider: discovery status
+(`detected`/`absent`), confidence, evidence (what RoboRepo found and where), and RoboRepo's managed
+state (enabled/disabled). This is the GUI form of `roborepo harness list`/`inspect` — same runtime
+data, no new backend concept.
+
+Include the withdraw action (see "Disable vs. withdraw" above) here, not on the main grid: it is
+infrastructure-level and mutates live config, so it belongs in a clearly separate, lower-attention
+part of the page rather than beside routine per-resource toggles.
+
+Bottom placement is deliberate — this panel is for occasional harness lifecycle management, not the
+frequent interactions the top grid supports.
 
 ### Portal and CLI selection rule
 
@@ -872,14 +917,49 @@ On first run:
 
 ### Phase 3: Paths and config adapters
 
-- [ ] Replace exported fixed path maps in `scripts/cli/paths.mjs` with provider path resolution.
-- [ ] Move Claude JSON merge/render behavior into the Claude provider.
-- [ ] Move Codex TOML merge/render behavior into the Codex provider.
-- [ ] Refactor `root-config-merge.mjs`, `root-config-state.mjs`, `root-config-writes.mjs`, and
-  `local-config-repair.mjs` to accept resolved providers.
-- [ ] Refactor `package-harness-config.mjs` into a short orchestrator.
+- [x] Replace exported fixed path maps in `scripts/cli/paths.mjs` with provider path resolution.
+  `scripts/harnesses/paths.mjs` (`resolveHarnessPath`, `hasHarnessPath`) resolves manifest paths;
+  `paths.mjs`'s `harnessHome`/`rootConfigActive`/`claudeJsonPath`/`codexHooksPath` now derive from
+  the registry (`pathById()`), keeping the exact same plain-object-keyed-by-id export shape so
+  every existing consumer (12 files) is unaffected. `rootConfigBaseline` stays hardcoded — it is
+  repo build output (`generated/<id>/...`), not a harness home-relative location the manifest
+  models.
+- [x] Move Claude JSON merge/render behavior into the Claude provider.
+  `scripts/harnesses/claude/index.mjs` `adapters.rootConfig.merge`/`.render` wrap the existing,
+  characterization-tested `mergeClaudeSettings`/`normalizeRootConfigContent` — ownership moved
+  behind the contract without re-porting the implementation.
+- [x] Move Codex TOML merge/render behavior into the Codex provider.
+  `scripts/harnesses/codex/index.mjs`, same pattern (`mergeCodexConfig`/`normalizeRootConfigContent`).
+- [x] Fixed a real default-to-Claude bug while wiring this: `mergeRootConfig`'s dispatch was a bare
+  `harness === "codex" ? codex : claude` ternary, so any unrecognized harness string silently
+  mis-merged as Claude. Now throws `unsupported harness: <id>`. Pinned in
+  `scripts/test/root-config-merge-characterization-check.mjs`.
+- [x] Added `scripts/test/root-config-merge-characterization-check.mjs` as a pre-refactor safety
+  net: pins `mergeClaudeSettings`/`mergeCodexConfig`'s exact behavior (TOML comment reattachment —
+  including the actual current behavior that a shared key's LOCAL comment is dropped in favor of
+  the repo's, not a guessed "correct" behavior — bracket-in-value sections, permissions
+  allow/deny dedupe, the Claude-only `model` key strip) so the refactor was checked byte-for-byte.
+  Wired into `test-roborepo.sh` / `npm run test:root-config-merge-characterization`; kept
+  permanently as a regression guard, matching the repo's existing characterization-test convention
+  (`system-package-ownership-characterization-check.mjs`).
+- [x] Fixed 3 test sandboxes in `test-roborepo.sh` (`pkg_app`, `new_harness`, `mcp_harness`) that
+  copied only `scripts/cli/` into an isolated temp root — `paths.mjs` now reaches into
+  `scripts/harnesses/` and `globals/harnesses/`, so those sandboxes now copy those directories too.
+  Caught by `cli-surface-integration-check.mjs` failing in the full suite (not by the targeted
+  checks, which don't build an isolated sandbox).
+- [ ] Refactor `root-config-state.mjs` and `local-config-repair.mjs` to accept resolved providers.
+  Not yet done: both already iterate `Object.keys(rootConfigActive)` (now registry-derived, so
+  already provider-count-agnostic in practice), but `local-config-repair.mjs`'s
+  `diffConfigKeys`/`harness === "codex" ? diffTomlKeys : diffJsonKeys` ternary is a real
+  default-to-JSON-diff gap for an unrecognized harness, lower severity than the merge dispatch bug
+  (read-only diff display, not a write-path correctness bug) but still open.
+- [ ] Refactor `package-harness-config.mjs` into a short orchestrator. Not yet done — its
+  `component.harness === "claude"/"codex"` branches already throw on an unknown harness (unlike the
+  now-fixed `mergeRootConfig`), so this is a structural cleanup rather than a correctness fix.
 - [ ] Ensure backup, conflict, drift, and restore state remains keyed by stable provider ID.
-- [ ] Add round-trip and conflict tests per provider.
+  `root-config-state.mjs` is already keyed by an opaque harness-id string with no branching — needs
+  verification, not necessarily a code change.
+- [ ] Add round-trip and conflict tests per provider beyond the characterization check above.
 
 ### Phase 4: Install, uninstall, verify, doctor, and repair
 

@@ -1430,6 +1430,35 @@ HOME="${lu_home}" ROBOREPO_STATE_DIR="${lu_home}/.roborepo" ROBOREPO_ASSUME_INTE
 assert "legacy: real ~/.agents/skills user dir is preserved, not reclaimed" \
   bash -c "test -d '${lu_home}/.agents/skills/mine'"
 
+# ---------------------------------------------------------------------------
+# `roborepo harness withdraw <id>` (Phase 4): actively unmerges RoboRepo's content from ONE
+# provider's live config, distinct from `harness disable` (state-bit only). Verifies the sibling
+# harness is left untouched, unsupported capabilities (Codex hooks/mcp) are reported rather than
+# silently skipped, dry-run makes no change, and an unknown id is rejected.
+# ---------------------------------------------------------------------------
+wd_home="${reloc_root}/withdraw/home"
+mkdir -p "${wd_home}/.claude" "${wd_home}/.codex" "${wd_home}/.local/bin"
+HOME="${wd_home}" ROBOREPO_STATE_DIR="${wd_home}/.roborepo" ROBOREPO_ASSUME_INTERACTIVE=0 \
+  ROBOREPO_ON_CONFLICT=overwrite bash "${repo_root}/scripts/install/main.sh" >/dev/null 2>&1 || true
+assert "harness withdraw: unknown id is rejected" \
+  bash -c "! HOME='${wd_home}' ROBOREPO_STATE_DIR='${wd_home}/.roborepo' node '${cli}' harness withdraw bogus-harness >/dev/null 2>&1"
+assert "harness withdraw: dry-run makes no change" \
+  bash -c "HOME='${wd_home}' ROBOREPO_STATE_DIR='${wd_home}/.roborepo' node '${cli}' harness withdraw claude --dry-run >/dev/null 2>&1 && test -f '${wd_home}/.claude/settings.json'"
+HOME="${wd_home}" ROBOREPO_STATE_DIR="${wd_home}/.roborepo" node "${cli}" harness withdraw claude --yes >/dev/null 2>&1
+assert "harness withdraw: removes the target provider's root config" \
+  bash -c "! test -f '${wd_home}/.claude/settings.json'"
+assert "harness withdraw: leaves the sibling provider's root config untouched" \
+  bash -c "test -f '${wd_home}/.codex/config.toml'"
+assert "harness withdraw: removes the target provider's linked base skill" \
+  bash -c "! test -e '${wd_home}/.claude/skills/roborepo-support'"
+assert "harness withdraw: leaves the sibling provider's linked base skill untouched" \
+  bash -c "test -e '${wd_home}/.codex/skills/roborepo-support'"
+withdraw_codex_out="$(HOME="${wd_home}" ROBOREPO_STATE_DIR="${wd_home}/.roborepo" node "${cli}" harness withdraw codex --yes 2>&1)"
+assert "harness withdraw: unsupported hooks.write capability is reported for codex" \
+  bash -c "echo '${withdraw_codex_out}' | grep -q 'unsupported: hooks.write has no codex adapter'"
+assert "harness withdraw: unsupported mcp.remove capability is reported for codex" \
+  bash -c "echo '${withdraw_codex_out}' | grep -q 'unsupported: mcp.remove has no codex adapter'"
+
 # --------------------------------------------------------------------------- onboarding / defaults
 # Minimal default: install seeds only the `base` bundle; everything else is opt-in via the wizard.
 assert "onboard: presets.json default is base-only" \

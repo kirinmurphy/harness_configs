@@ -996,14 +996,55 @@ On first run:
 
 ### Phase 4: Install, uninstall, verify, doctor, and repair
 
-- [ ] Make Node provider discovery the source consumed by shell installers.
-- [ ] Replace `has_claude`/`has_codex` with provider iteration.
+- [x] Make Node provider discovery the source consumed by shell installers.
+  Added `roborepo harness detected` (`scripts/cli/harness.mjs`'s `harnessDetected`, backed by the
+  provider registry) as the row source: `id<TAB>homePath<TAB>present<TAB>displayName<TAB>
+  rootConfigPath`. `scripts/lib/manifests-data.sh`'s `harness_present`/new `harness_detected_rows`
+  shell to it (cached once per process, no associative arrays — this repo's shell targets bash 3.2
+  / macOS system bash), falling back to a plain home-dir check when `scripts/cli/`/`scripts/
+  harnesses/` aren't present (sandbox safety). Retired `manifests/platform/harnesses.tsv`, the
+  second hardcoded harness enum the grounding notes flagged as a drift risk. Presence is
+  deliberately strict (home-dir existence only, not discovery's broader executable-on-PATH
+  signal) so this is a behavior-preserving swap — see
+  `docs/plans/backlog/harness-presence-signal-expansion-plan.md` for broadening it later.
+- [x] Replace `has_claude`/`has_codex` with provider iteration.
+  `scripts/install/main.sh` now builds `present_harness_ids`/`present_harness_rows`/
+  `all_harness_rows` from `harness_detected_rows` and loops over them for skill linking,
+  root-config export, and the summary; `has_claude`/`has_codex` booleans stay as derived
+  convenience flags for the two remaining early-exit checks, not as the source of truth.
 - [ ] Retain provider-scoped shell scripts only where they implement native execution.
-- [ ] Make base-skill linking iterate providers with the `skills` capability.
-- [ ] Make post-install config export iterate providers with `root-config`.
-- [ ] Make summary output derive from provider display metadata.
+- [x] Make base-skill linking iterate providers with the `skills` capability.
+  `main.sh`'s "Base Skill" section loops `present_harness_rows` instead of two `[[ $has_X -eq 1 ]]`
+  branches.
+- [x] Make post-install config export iterate providers with `root-config`.
+  `main.sh` derives each provider's `generated/<id>/<basename>` source path from `harness
+  detected`'s `rootConfigPath` column (basename convention) instead of hardcoding
+  `claude/settings.json`/`codex/config.toml` as a literal pair.
+- [x] Make summary output derive from provider display metadata.
+  The "Core Install Complete" section prints one line per row in `all_harness_rows`, using each
+  provider's manifest `displayName`, instead of two hardcoded `echo` lines.
 - [ ] Refactor Windows installer provider detection and paths through the same manifest data.
-- [ ] Refactor uninstall, repair, verify, and doctor to provider iteration.
+- [x] Refactor uninstall to provider iteration; add `harness withdraw`.
+  `scripts/install/uninstall.sh`'s hardcoded `.claude`/`.codex` pairs (`check_no_active_remnants`,
+  `remove_skill_links` call sites, `remove_install_backups`, `assert_under_harness_home`'s security
+  allowlist) now iterate `harness_detected_rows`. Extracted the file's reusable functions into a new
+  sourceable `scripts/install/uninstall-lib.sh` (matching the `install-lib.sh`/`manifests-data.sh`
+  convention) so both `uninstall.sh` and the new `scripts/install/withdraw.sh` can share them.
+  Migrated `remove_mcp_servers`/`strip_package_hooks`'s real logic into real Claude provider
+  adapters (`mcp.remove`, `hooks.write` with removal semantics —
+  `scripts/harnesses/claude/index.mjs`, replacing the throwing stubs), each with a dedicated
+  characterization test
+  (`scripts/test/harness-{mcp-remove,hooks-write-remove}-characterization-check.mjs). Codex has no
+  adapter for either capability yet (asymmetric — separate `hooks.json` sidecar and `config.toml`
+  `[mcp_servers.*]` tables, matching the grounding notes). Added `roborepo harness withdraw <id>
+  [--dry-run] [--yes]` (`scripts/install/withdraw.sh`, wired as a `repoScript` command like
+  `maintenance uninstall`): actively unmerges RoboRepo's content from ONE provider's live config,
+  reusing `uninstall-lib.sh`'s functions scoped to that provider, reporting `hooks.write`/
+  `mcp.remove` as unsupported for a provider that lacks the adapter rather than silently
+  no-opping. Prompts for confirmation unless `--yes`; requires `--yes` or `--dry-run` in a
+  non-interactive shell. Distinct from `harness disable` (Phase 2, state-bit only, never touches
+  files) per the plan's "Disable vs. withdraw" section.
+- [ ] Refactor repair, verify, and doctor to provider iteration.
 - [ ] Test zero, Claude-only, Codex-only, both, disabled, stale-home, and executable-only scenarios.
 
 ### Phase 5: Package resources

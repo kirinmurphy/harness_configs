@@ -5,7 +5,7 @@
 import { listHarnessProviders, getHarnessProvider, hasHarnessProvider } from "../harnesses/registry.mjs";
 import { discoverHarnessProviders } from "../harnesses/discovery.mjs";
 import { readHarnessState, writeHarnessState, applyDiscoveryToState, setProviderEnabled } from "../harnesses/state.mjs";
-import { resolveHarnessPath } from "../harnesses/paths.mjs";
+import { resolveHarnessPath, hasHarnessPath } from "../harnesses/paths.mjs";
 import fs from "node:fs";
 
 function requireProviderId(rest, label) {
@@ -73,11 +73,18 @@ export function harnessDisable(rest) {
 // semantics of the harness_present() function this replaces, so swapping the source is
 // behavior-preserving. See docs/plans/backlog/harness-presence-signal-expansion-plan.md for
 // broadening what "present" means for install-time decisions.
-// One row per provider: id, home path, "1"/"0" home-dir presence, display name.
+// One row per provider: id, home path, "1"/"0" home-dir presence, display name, root-config home
+// path (empty string if the provider declares no "rootConfig" manifest path). The root-config
+// path's basename follows the same convention as this repo's generated/<id>/<basename> build
+// output, so shell installers can derive their generated-source path from it instead of
+// hardcoding a per-harness filename.
 export function harnessDetected() {
   for (const provider of listHarnessProviders()) {
     const homePath = resolveHarnessPath(provider.manifest, "home");
     const present = fs.existsSync(homePath) ? "1" : "0";
-    console.log(`${provider.id}\t${homePath}\t${present}\t${provider.manifest.displayName}`);
+    const rootConfigPath = hasHarnessPath(provider.manifest, "rootConfig")
+      ? resolveHarnessPath(provider.manifest, "rootConfig")
+      : "";
+    console.log(`${provider.id}\t${homePath}\t${present}\t${provider.manifest.displayName}\t${rootConfigPath}`);
   }
 }

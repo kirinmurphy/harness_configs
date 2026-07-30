@@ -102,12 +102,12 @@ shell_snippet_rows() {
   done < "${repo_root}/manifests/platform/shell-snippets.tsv"
 }
 
-# Cache of `roborepo harness detected` output (id<TAB>homePath<TAB>present<TAB>displayName rows),
-# loaded once per process into a plain newline-joined string (this repo's shell targets bash 3.2 /
-# macOS system bash, which has no associative arrays). Falls back to a plain home-dir existence
-# check (mirroring the old harnesses.tsv presence_roots semantics) if node or the CLI entrypoint
-# isn't available — matters for test sandboxes that copy only a subset of scripts/ (see
-# scripts/build/link-global-skills.sh's early-exit guard).
+# Cache of `roborepo harness detected` output (id<TAB>homePath<TAB>present<TAB>displayName<TAB>
+# rootConfigPath rows), loaded once per process into a plain newline-joined string (this repo's
+# shell targets bash 3.2 / macOS system bash, which has no associative arrays). Falls back to a
+# plain home-dir existence check (mirroring the old harnesses.tsv presence_roots semantics) if
+# node or the CLI entrypoint isn't available — matters for test sandboxes that copy only a subset
+# of scripts/ (see scripts/build/link-global-skills.sh's early-exit guard).
 _HARNESS_DETECTED_ROWS=""
 _HARNESS_DETECTED_LOADED=0
 _harness_detected_load() {
@@ -121,11 +121,13 @@ _harness_detected_load() {
   # Fallback for sandboxes without scripts/cli/scripts/harnesses: claude/codex are the only
   # harnesses this repo has ever hardcoded, so this degrades to the pre-provider-registry check.
   if [[ -z "${_HARNESS_DETECTED_ROWS}" ]]; then
-    local id present
+    local id present root_config_file
     for id in claude codex; do
       present=0
       [[ -d "$(_manifest_home_root "${id}")" ]] && present=1
-      _HARNESS_DETECTED_ROWS+="${id}	$(_manifest_home_root "${id}")	${present}	${id}
+      root_config_file="settings.json"
+      [[ "${id}" == "codex" ]] && root_config_file="config.toml"
+      _HARNESS_DETECTED_ROWS+="${id}	$(_manifest_home_root "${id}")	${present}	${id}	$(_manifest_home_root "${id}")/${root_config_file}
 "
     done
   fi
@@ -140,4 +142,12 @@ harness_present() {
     return 1
   }
   [[ "${line}" == "1" ]]
+}
+
+# Public accessor: id<TAB>homePath<TAB>present<TAB>displayName rows for every known harness
+# provider, one per line. Callers that need to iterate every provider (rather than test one id)
+# use this instead of reaching into the _HARNESS_DETECTED_ROWS cache directly.
+harness_detected_rows() {
+  _harness_detected_load
+  printf '%s\n' "${_HARNESS_DETECTED_ROWS}"
 }

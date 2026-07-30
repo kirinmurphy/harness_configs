@@ -80,13 +80,15 @@ function testEnableDisableRoundTrip() {
 function testDetectedReflectsHomeDirOnly() {
   let result = run(["harness", "detected"]);
   assert.equal(result.status, 0, `detected failed:\n${result.stdout}\n${result.stderr}`);
-  assert.match(result.stdout, /^claude\t.*\t0\tClaude Code$/m, "claude must show absent (0) with no ~/.claude dir");
-  assert.match(result.stdout, /^codex\t.*\t0\tCodex$/m, "codex must show absent (0) with no ~/.codex dir");
+  assert.match(result.stdout, /^claude\t.*\t0\tClaude Code\t/m, "claude must show absent (0) with no ~/.claude dir");
+  assert.match(result.stdout, /^codex\t.*\t0\tCodex\t/m, "codex must show absent (0) with no ~/.codex dir");
+  assert.match(result.stdout, /^claude\t.*\t.*\.claude[/\\]settings\.json$/m, "claude row must end with its rootConfig path");
+  assert.match(result.stdout, /^codex\t.*\t.*\.codex[/\\]config\.toml$/m, "codex row must end with its rootConfig path");
 
   fs.mkdirSync(path.join(tmp, ".claude"), { recursive: true });
   result = run(["harness", "detected"]);
   assert.equal(result.status, 0, `detected failed:\n${result.stdout}\n${result.stderr}`);
-  assert.match(result.stdout, /^claude\t.*\t1\tClaude Code$/m, "claude must show present (1) once ~/.claude exists");
-  assert.match(result.stdout, /^codex\t.*\t0\tCodex$/m, "codex must still show absent (0)");
+  assert.match(result.stdout, /^claude\t.*\t1\tClaude Code\t/m, "claude must show present (1) once ~/.claude exists");
+  assert.match(result.stdout, /^codex\t.*\t0\tCodex\t/m, "codex must still show absent (0)");
   fs.rmSync(path.join(tmp, ".claude"), { recursive: true, force: true });
 }

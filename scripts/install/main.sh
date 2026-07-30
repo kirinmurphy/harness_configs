@@ -123,11 +123,26 @@ case "$(uname -s 2>/dev/null || echo unknown)" in
     ;;
 esac
 
-# Detect which harnesses are present.
-has_claude=0
-has_codex=0
-harness_present claude && has_claude=1
-harness_present codex && has_codex=1
+# Detect which harnesses are present, from the provider registry (scripts/harnesses/) via
+# `roborepo harness detected` — not a fixed two-harness enum. present_harness_ids holds the ids
+# present on this machine; present_harness_rows/all_harness_rows keep the full
+# id/home/present/displayName/rootConfigPath rows for the sections below.
+# See docs/plans/active/discoverable-harness-provider-architecture-plan.md Phase 4.
+present_harness_ids=()
+present_harness_rows=()
+all_harness_rows=()
+while IFS=$'\t' read -r id home_path present display_name root_config_path; do
+  [[ -z "${id}" ]] && continue
+  all_harness_rows+=("${id}	${home_path}	${present}	${display_name}	${root_config_path}")
+  if [[ "${present}" == "1" ]]; then
+    present_harness_ids+=("${id}")
+    present_harness_rows+=("${id}	${home_path}	${present}	${display_name}	${root_config_path}")
+  fi
+done < <(harness_detected_rows)
+
+has_claude=0; has_codex=0
+[[ " ${present_harness_ids[*]} " == *" claude "* ]] && has_claude=1
+[[ " ${present_harness_ids[*]} " == *" codex "* ]] && has_codex=1
 
 preflight_shell_setup() {
   "${repo_root}/scripts/install/install-global-commands.sh" --dry-run
@@ -159,8 +174,10 @@ write_install_state "${on_conflict}"
 
 install_section "Base Skill"
 if [[ $dry_run -eq 0 ]]; then
-  [[ $has_claude -eq 1 ]] && link_global_skills "${HOME}/.claude" --preserve-existing roborepo-support
-  [[ $has_codex  -eq 1 ]] && link_global_skills "${HOME}/.codex" --preserve-existing roborepo-support
+  for row in "${present_harness_rows[@]}"; do
+    IFS=$'\t' read -r _id home_path _present _display_name _root_config_path <<< "${row}"
+    link_global_skills "${home_path}" --preserve-existing roborepo-support
+  done
 fi
 
 presets_onboarded() {
@@ -191,8 +208,11 @@ run_post_install_onboarding() {
   node "${repo_root}/scripts/cli/main.mjs" package adopt-live
   node "${repo_root}/scripts/cli/main.mjs" bundle apply --default
   node "${repo_root}/scripts/cli/main.mjs" package reconcile
-  [[ $has_claude -eq 1 ]] && export_user_config claude generated/claude/settings.json "${HOME}/.claude/settings.json"
-  [[ $has_codex  -eq 1 ]] && export_user_config codex generated/codex/config.toml "${HOME}/.codex/config.toml"
+  for row in "${present_harness_rows[@]}"; do
+    IFS=$'\t' read -r id _home _present _display_name root_config_path <<< "${row}"
+    [[ -z "${root_config_path}" ]] && continue  # provider declares no root-config path (e.g. a future harness that lacks the capability)
+    export_user_config "${id}" "generated/${id}/$(basename "${root_config_path}")" "${root_config_path}"
+  done
 
   if presets_onboarded; then
     echo "Already onboarded. Run 'roborepo package manage' to change which behaviors are enabled."
@@ -215,10 +235,15 @@ run_post_install_onboarding() {
   node "${repo_root}/scripts/cli/main.mjs" onboard-intro
 }
 
-# Post-install summary
+# Post-install summary: one line per known harness provider, from the registry rather than a
+# fixed Claude/Codex pair.
 install_section "Core Install Complete"
-echo "  ${RR_BOLD}Claude${RR_RESET}  $([ $has_claude -eq 1 ] && echo "${RR_GREEN}available${RR_RESET}" || echo "${RR_DIM}not installed${RR_RESET}")"
-echo "  ${RR_BOLD}Codex${RR_RESET}   $([ $has_codex  -eq 1 ] && echo "${RR_GREEN}available${RR_RESET}" || echo "${RR_DIM}not installed${RR_RESET}")"
+for row in "${all_harness_rows[@]}"; do
+  IFS=$'\t' read -r _id _home present display_name _root_config_path <<< "${row}"
+  status="${RR_DIM}not installed${RR_RESET}"
+  [[ "${present}" == "1" ]] && status="${RR_GREEN}available${RR_RESET}"
+  echo "  ${RR_BOLD}${display_name}${RR_RESET}  ${status}"
+done
 echo ""
 echo "  ${RR_BOLD}Web portal${RR_RESET}  run ${RR_CYAN}roborepo web${RR_RESET} to manage behavior in the UI"
 run_post_install_onboarding
@@ -230,7 +255,7 @@ if [[ "${package_mode}" == "1" ]]; then
     node "${repo_root}/scripts/cli/workspace-resources.mjs"
   fi
 fi
-if [[ $has_claude -eq 0 || $has_codex -eq 0 ]]; then
+if [[ "${#present_harness_ids[@]}" -lt "${#all_harness_rows[@]}" ]]; then
   echo ""
   echo "To add another harness later: install it, then run roborepo package manage again."
 fi

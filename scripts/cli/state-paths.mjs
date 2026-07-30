@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { stateRoot } from "./paths.mjs";
+import { stateRoot } from "./roots.mjs";
 
 export const roborepoStateDir = stateRoot;
 

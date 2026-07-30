@@ -31,7 +31,7 @@ export const CAPABILITY_REQUIRED_METHODS = Object.freeze({
   "slash-commands": { group: "commands", methods: ["render"] },
   hooks: { group: "hooks", methods: ["read", "write"] },
   mcp: { group: "mcp", methods: ["add", "remove"] },
-  "package-config": { group: "rootConfig", methods: ["mergePackageComponent"] },
+  "package-config": { group: "rootConfig", methods: ["mergePackageComponent", "unmergePackageComponent"] },
   "telemetry-capture": { group: "telemetry", methods: ["wireCaptureHooks"] },
   "telemetry-rate-limits": { group: "telemetry", methods: ["parseRateLimits"] },
   "telemetry-transcripts": { group: "transcripts", methods: ["locate", "parse"] },

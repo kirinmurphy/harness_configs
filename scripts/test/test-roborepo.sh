@@ -1500,6 +1500,14 @@ assert "harness: CLI list/inspect/refresh/enable/disable end to end" \
 assert "harness: root-config merge characterization (pre-Phase-3 baseline)" \
   node "${repo_root}/scripts/test/root-config-merge-characterization-check.mjs"
 
+# Package-harness-config characterization (Phase 3 safety net): pins mergeHarnessConfig/
+# unmergeHarnessConfig's exact current behavior (Claude statusLine conflict preservation, Codex TUI
+# status_line array dedupe/table-creation-from-scratch, the color-scalar ownership-provenance
+# round-trip) BEFORE package-harness-config.mjs's orchestrator refactor. Must keep passing
+# unchanged through that refactor.
+assert "harness: package-harness-config characterization (pre-refactor baseline)" \
+  node "${repo_root}/scripts/test/package-harness-config-characterization-check.mjs"
+
 # Canonical repository identity (modules/repositories): shared resolver extraction, normalization
 # equivalence, worktree/clone roots, versioned registry persistence, aliases, associations,
 # Plans source coverage. See docs/plans/backlog/canonical-repository-identity-plan-v2.md.

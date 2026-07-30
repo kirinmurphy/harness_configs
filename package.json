@@ -66,6 +66,7 @@
     "test:harness-registry": "node scripts/test/harness-registry-check.mjs",
     "test:harness-cli": "node scripts/test/harness-cli-check.mjs",
     "test:root-config-merge-characterization": "node scripts/test/root-config-merge-characterization-check.mjs",
+    "test:package-harness-config-characterization": "node scripts/test/package-harness-config-characterization-check.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "pack:smoke": "npm pack"
   },

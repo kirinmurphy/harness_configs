@@ -953,13 +953,42 @@ On first run:
   `diffConfigKeys`/`harness === "codex" ? diffTomlKeys : diffJsonKeys` ternary is a real
   default-to-JSON-diff gap for an unrecognized harness, lower severity than the merge dispatch bug
   (read-only diff display, not a write-path correctness bug) but still open.
-- [ ] Refactor `package-harness-config.mjs` into a short orchestrator. Not yet done — its
-  `component.harness === "claude"/"codex"` branches already throw on an unknown harness (unlike the
-  now-fixed `mergeRootConfig`), so this is a structural cleanup rather than a correctness fix.
+- [x] Refactor `package-harness-config.mjs` into a short orchestrator.
+  `mergeHarnessConfig`/`unmergeHarnessConfig` now read the component config once and dispatch to
+  `getHarnessProvider(component.harness).adapters.rootConfig.mergePackageComponent`/
+  `unmergePackageComponent` (added to the Phase 1 contract's `package-config` capability, which
+  previously required only `mergePackageComponent`) instead of branching on
+  `component.harness === "claude"/"codex"`. Claude's status-line logic moved to
+  `scripts/harnesses/claude/index.mjs`; Codex's TOML table/array/scalar helpers and ownership-scalar
+  logic moved to `scripts/harnesses/codex/index.mjs`. Added
+  `scripts/test/package-harness-config-characterization-check.mjs` as the pre-refactor safety net
+  (Claude statusLine conflict preservation, Codex TUI status_line dedupe/table-creation-from-scratch,
+  color-scalar ownership-provenance round-trip) — all pass unchanged post-refactor.
+- [x] Fixed a second real import-cycle discovered while doing this:
+  `scripts/cli/paths.mjs` (registry-dependent since the path-resolution item above) is imported,
+  directly or transitively, by nearly every root-config module a provider adapter would naturally
+  need (`state-paths.mjs` for `stateRoot`, `root-config-writes.mjs` for `writeRootConfig`). Any of
+  those imported from inside `claude/index.mjs`/`codex/index.mjs` cycles back through
+  `registry.mjs` into the importing module itself. Fixed at the root: split `paths.mjs`'s
+  registry-independent basics (`appRoot`/`stateRoot`/`workspaceRoot`/workspace scaffolding) into a
+  new leaf module, `scripts/cli/roots.mjs`, with zero harness-registry dependency; `paths.mjs`
+  re-exports everything from it unchanged, so none of the 12+ existing consumers see any
+  difference. `state-paths.mjs` now imports `stateRoot` from `roots.mjs` directly. Provider adapters
+  needing `writeRootConfig` (which still routes through the registry-dependent half of `paths.mjs`)
+  return `{ changed, content }` instead of writing directly; the orchestrator
+  (`package-harness-config.mjs`), which sits above both the provider and `paths.mjs` in the
+  dependency graph, performs the actual write — this is also a cleaner separation of concerns
+  (provider computes; core orchestrator decides how/whether to persist).
+- [ ] Refactor `root-config-state.mjs` and `local-config-repair.mjs` to accept resolved providers.
+  Not yet done: both already iterate `Object.keys(rootConfigActive)` (now registry-derived, so
+  already provider-count-agnostic in practice), but `local-config-repair.mjs`'s
+  `diffConfigKeys`/`harness === "codex" ? diffTomlKeys : diffJsonKeys` ternary is a real
+  default-to-JSON-diff gap for an unrecognized harness, lower severity than the merge dispatch bug
+  (read-only diff display, not a write-path correctness bug) but still open.
 - [ ] Ensure backup, conflict, drift, and restore state remains keyed by stable provider ID.
   `root-config-state.mjs` is already keyed by an opaque harness-id string with no branching — needs
   verification, not necessarily a code change.
-- [ ] Add round-trip and conflict tests per provider beyond the characterization check above.
+- [ ] Add round-trip and conflict tests per provider beyond the characterization checks above.
 
 ### Phase 4: Install, uninstall, verify, doctor, and repair
 

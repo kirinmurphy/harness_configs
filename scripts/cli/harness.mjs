@@ -5,6 +5,8 @@
 import { listHarnessProviders, getHarnessProvider, hasHarnessProvider } from "../harnesses/registry.mjs";
 import { discoverHarnessProviders } from "../harnesses/discovery.mjs";
 import { readHarnessState, writeHarnessState, applyDiscoveryToState, setProviderEnabled } from "../harnesses/state.mjs";
+import { resolveHarnessPath } from "../harnesses/paths.mjs";
+import fs from "node:fs";
 
 function requireProviderId(rest, label) {
   const id = rest[0];
@@ -57,4 +59,25 @@ export function harnessDisable(rest) {
   const state = readHarnessState();
   writeHarnessState(setProviderEnabled(state, id, false));
   console.log(`disabled: ${id}`);
+}
+
+// Live filesystem discovery, independent of ~/.roborepo/harnesses/state.json — install/uninstall/
+// repair/doctor need to know which harnesses are present before any state file exists (a fresh
+// install has none yet), so this must not depend on readHarnessState(). This is the row source
+// shell installers consume instead of re-implementing provider presence checks
+// (manifests/platform/harnesses.tsv's harness_present) or the provider manifest schema themselves.
+//
+// "present" here is deliberately narrower than discovery's "detected" (which also counts an
+// executable on PATH with no home dir yet as present, useful for `harness list`/`refresh` signal).
+// Shell install/uninstall/repair actions gate on home-dir existence only, matching the exact
+// semantics of the harness_present() function this replaces, so swapping the source is
+// behavior-preserving. See docs/plans/backlog/harness-presence-signal-expansion-plan.md for
+// broadening what "present" means for install-time decisions.
+// One row per provider: id, home path, "1"/"0" home-dir presence, display name.
+export function harnessDetected() {
+  for (const provider of listHarnessProviders()) {
+    const homePath = resolveHarnessPath(provider.manifest, "home");
+    const present = fs.existsSync(homePath) ? "1" : "0";
+    console.log(`${provider.id}\t${homePath}\t${present}\t${provider.manifest.displayName}`);
+  }
 }

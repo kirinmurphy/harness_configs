@@ -18,6 +18,7 @@ try {
   testRefreshDiscoversAndEnables();
   testInspectUnknownHarnessFails();
   testEnableDisableRoundTrip();
+  testDetectedReflectsHomeDirOnly();
   console.log("harness CLI checks passed");
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -68,4 +69,24 @@ function testEnableDisableRoundTrip() {
   assert.equal(result.status, 0, `enable failed:\n${result.stdout}\n${result.stderr}`);
   result = run(["harness", "list"]);
   assert.match(result.stdout, /^codex\t.*\tenabled\t/m, "codex must show enabled after explicit enable");
+}
+
+// `harness detected`: the row source shell install/uninstall/repair/doctor scripts consume
+// (Phase 4). Presence must reflect home-dir existence only, independent of state.json and
+// independent of whether an executable happens to be on PATH — same semantics as the
+// harness_present() shell function it replaces. See
+// docs/plans/active/discoverable-harness-provider-architecture-plan.md Phase 4 and
+// docs/plans/backlog/harness-presence-signal-expansion-plan.md for the broader signal left for later.
+function testDetectedReflectsHomeDirOnly() {
+  let result = run(["harness", "detected"]);
+  assert.equal(result.status, 0, `detected failed:\n${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /^claude\t.*\t0\tClaude Code$/m, "claude must show absent (0) with no ~/.claude dir");
+  assert.match(result.stdout, /^codex\t.*\t0\tCodex$/m, "codex must show absent (0) with no ~/.codex dir");
+
+  fs.mkdirSync(path.join(tmp, ".claude"), { recursive: true });
+  result = run(["harness", "detected"]);
+  assert.equal(result.status, 0, `detected failed:\n${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /^claude\t.*\t1\tClaude Code$/m, "claude must show present (1) once ~/.claude exists");
+  assert.match(result.stdout, /^codex\t.*\t0\tCodex$/m, "codex must still show absent (0)");
+  fs.rmSync(path.join(tmp, ".claude"), { recursive: true, force: true });
 }

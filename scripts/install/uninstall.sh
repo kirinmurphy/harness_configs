@@ -86,21 +86,25 @@ remove_file_if_repo_symlink() {
 # — single source of truth instead of two hand-kept-in-sync copies.
 
 # Defense-in-depth for rm -rf call sites: every path uninstall deletes must resolve (after symlink
-# resolution) under a known harness home (~/.claude or ~/.codex). content_matches_repo_source already
+# resolution) under a known harness home (~/.claude, ~/.codex, or any provider the registry adds
+# later — from harness_detected_rows, whose home path is always the resolved manifest location
+# regardless of whether that provider is currently present). content_matches_repo_source already
 # makes deletion content-safe; this makes it path-safe too, so a future manifest-row bug can never
-# point a delete at an arbitrary path. Aborts uninstall rather than silently skipping — a path outside
-# both homes reaching here means the manifest itself is wrong and needs a human to look at it.
+# point a delete at an arbitrary path. Aborts uninstall rather than silently skipping — a path
+# outside every known home reaching here means the manifest itself is wrong and needs a human to
+# look at it.
 assert_under_harness_home() {
   local target="$1"
-  local resolved
+  local resolved home_path
   resolved="$(cd "$(dirname "${target}")" 2>/dev/null && pwd)/$(basename "${target}")" || resolved="${target}"
-  case "${resolved}" in
-    "${HOME}/.claude"/*|"${HOME}/.codex"/*) return 0 ;;
-    *)
-      echo "abort: refusing to delete outside harness home: ${target} (resolved: ${resolved})" >&2
-      exit 1
-      ;;
-  esac
+  while IFS=$'\t' read -r _id home_path _present _display_name _root_config_path; do
+    [[ -z "${home_path}" ]] && continue
+    case "${resolved}" in
+      "${home_path}"/*) return 0 ;;
+    esac
+  done < <(harness_detected_rows)
+  echo "abort: refusing to delete outside harness home: ${target} (resolved: ${resolved})" >&2
+  exit 1
 }
 
 # Restore the user's pre-roborepo original for a link target, if install persisted one to
@@ -268,56 +272,30 @@ remove_root_config() {
   echo "skip user-owned root_config: ${home_abs}"
 }
 
+# Delegates to the Claude provider's mcp.remove adapter (scripts/harnesses/claude/index.mjs),
+# ported from this function's own former inline bash+node — see
+# scripts/test/harness-mcp-remove-characterization-check.mjs for the pinned behavior. Codex has no
+# mcp.remove adapter yet (asymmetric: Codex stores MCP servers in config.toml
+# [mcp_servers.*] tables, not migrated to a provider adapter as of this Phase 4 pass), so this
+# stays Claude-only, matching the original function.
 remove_mcp_servers() {
-  local mcp_file="${repo_root}/manifests/inventory/mcp-servers.json"
-  [[ -f "${mcp_file}" ]] || return 0
-
-  local names=()
-  while IFS= read -r name; do
-    [[ -n "${name}" ]] && names+=("${name}")
-  done < <(node -e "
-const d = JSON.parse(require('fs').readFileSync('${mcp_file}', 'utf8'));
-d.servers.filter(s => s.harnesses.includes('claude')).forEach(s => console.log(s.name));
-")
-  [[ ${#names[@]} -gt 0 ]] || return 0
-
-  # `claude mcp add` registers at a chosen scope (default `user`); `claude mcp remove` without
-  # --scope only checks the default (`local`), so a single remove leaks the other scopes. Remove from
-  # every scope via the CLI when available, then prune ~/.claude.json directly as a fallback so the
-  # entry is gone even when the `claude` binary isn't present.
-  local name scope
-  if command -v claude >/dev/null 2>&1; then
-    for name in "${names[@]}"; do
-      if [[ "${dry_run}" -eq 1 ]]; then
-        echo "mcp remove (claude, all scopes): ${name}"
-      else
-        for scope in user local project; do
-          claude mcp remove "${name}" --scope "${scope}" >/dev/null 2>&1 || true
-        done
-        echo "mcp remove (claude, all scopes): ${name}"
-      fi
-    done
-  fi
-
-  # Direct prune of ~/.claude.json: top-level mcpServers and every project-scoped mcpServers map.
-  local claude_json="${HOME}/.claude.json"
-  [[ -f "${claude_json}" ]] || return 0
-  if [[ "${dry_run}" -eq 1 ]]; then
-    echo "mcp prune (~/.claude.json): ${names[*]}"
-    return 0
-  fi
-  ROBOREPO_MCP_NAMES="${names[*]}" node -e '
-const fs = require("fs");
-const file = process.env.HOME + "/.claude.json";
-const names = new Set((process.env.ROBOREPO_MCP_NAMES || "").split(" ").filter(Boolean));
-let d;
-try { d = JSON.parse(fs.readFileSync(file, "utf8")); } catch { process.exit(0); }
-let changed = false;
-const prune = (m) => { if (!m) return; for (const n of names) if (n in m) { delete m[n]; changed = true; } };
-prune(d.mcpServers);
-for (const p of Object.values(d.projects || {})) prune(p.mcpServers);
-if (changed) fs.writeFileSync(file, JSON.stringify(d, null, 2) + "\n");
-' && echo "mcp prune (~/.claude.json): ${names[*]}" || true
+  command -v node >/dev/null 2>&1 || return 0
+  local dry_run_flag="false"
+  [[ "${dry_run}" -eq 1 ]] && dry_run_flag="true"
+  HOME_DIR="${HOME}" DRY_RUN="${dry_run_flag}" node -e '
+import(process.argv[1] + "/scripts/harnesses/claude/index.mjs").then(async ({ claudeProvider }) => {
+  const result = claudeProvider.adapters.mcp.remove({
+    homePath: process.env.HOME_DIR + "/.claude",
+    dryRun: process.env.DRY_RUN === "true",
+  });
+  for (const warning of result.warnings) console.log("mcp remove: " + warning);
+  for (const path of result.paths) console.log("mcp prune (" + path + "): pruned");
+  if (!result.ok) process.exit(1);
+}).catch((err) => {
+  console.error(err?.stack || String(err));
+  process.exit(1);
+});
+' "${repo_root}" || true
 }
 
 # Reverse install-gitignore-globals.sh: drop the .jdm-indexed entry it appended to
@@ -343,8 +321,10 @@ remove_gitignore_globals() {
 }
 
 remove_install_backups() {
-  local dir file
-  for dir in "${HOME}/.claude" "${HOME}/.codex"; do
+  local dir file home_path
+  while IFS=$'\t' read -r _id home_path _present _display_name _root_config_path; do
+    [[ -z "${home_path}" ]] && continue
+    dir="${home_path}"
     [[ -d "${dir}" ]] || continue
     for file in "${dir}"/*_original_*; do
       [[ -e "${file}" ]] || continue
@@ -355,7 +335,7 @@ remove_install_backups() {
         echo "remove (backup): ${file}"
       fi
     done
-  done
+  done < <(harness_detected_rows)
 
   local pre_install_dir="${HOME}/.roborepo/backups/pre-install"
   if [[ -d "${pre_install_dir}" ]]; then
@@ -567,8 +547,10 @@ check_no_active_remnants() {
     esac
   done < <(manifest_rows)
 
-  local skills_home entry
-  for skills_home in "${HOME}/.claude/skills" "${HOME}/.codex/skills"; do
+  local skills_home entry home_path
+  while IFS=$'\t' read -r _id home_path _present _display_name _root_config_path; do
+    [[ -z "${home_path}" ]] && continue
+    skills_home="${home_path}/skills"
     [[ -d "${skills_home}" ]] || continue
     for entry in "${skills_home}"/*; do
       [[ -e "${entry}" || -L "${entry}" ]] || continue
@@ -577,7 +559,7 @@ check_no_active_remnants() {
         failed=1
       fi
     done
-  done
+  done < <(harness_detected_rows)
 
   if [[ "${failed}" -eq 0 ]]; then
     echo "ok: no active roborepo remnants"
@@ -773,8 +755,10 @@ if (changed) {
 }
 strip_package_hooks
 
-remove_skill_links "${HOME}/.claude/skills"
-remove_skill_links "${HOME}/.codex/skills"
+while IFS=$'\t' read -r _id home_path _present _display_name _root_config_path; do
+  [[ -z "${home_path}" ]] && continue
+  remove_skill_links "${home_path}/skills"
+done < <(harness_detected_rows)
 
 remove_file_if_repo_symlink "${HOME}/.local/bin/roborepo" "${repo_root}/bin/roborepo"
 remove_shell_wiring

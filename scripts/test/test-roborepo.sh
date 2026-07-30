@@ -1515,6 +1515,12 @@ assert "harness: package-harness-config characterization (pre-refactor baseline)
 assert "harness: package-config round-trip (enable/disable/enable parity)" \
   node "${repo_root}/scripts/test/harness-package-config-roundtrip-check.mjs"
 
+# Claude mcp.remove adapter characterization (Phase 4): pins the ported behavior of
+# scripts/install/uninstall.sh's former remove_mcp_servers before uninstall.sh calls the adapter
+# instead of its own inline bash+node.
+assert "harness: Claude mcp.remove adapter characterization" \
+  node "${repo_root}/scripts/test/harness-mcp-remove-characterization-check.mjs"
+
 # Canonical repository identity (modules/repositories): shared resolver extraction, normalization
 # equivalence, worktree/clone roots, versioned registry persistence, aliases, associations,
 # Plans source coverage. See docs/plans/backlog/canonical-repository-identity-plan-v2.md.

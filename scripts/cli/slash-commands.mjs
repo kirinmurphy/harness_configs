@@ -5,8 +5,10 @@ import { loadPackageCatalog } from "./package-catalog.mjs";
 import {
   GENERATED_COMMAND_MARKER,
   LEGACY_GENERATED_COMMAND_MARKER,
-  SLASH_COMMAND_HARNESSES,
   packageOwnerMarker,
+  slashCommandGenDir,
+  slashCommandLiveDir,
+  skillFilePath,
 } from "./skill-command-config.mjs";
 import { resolvesIntoRepo } from "./hook-composition.mjs";
 
@@ -46,7 +48,7 @@ function withGeneratedMarker(content, packageId) {
   return `${marker}\n${ownerMarker}\n\n${content.replace(/\n*$/, "")}\n`;
 }
 
-function skillBackedCommand(command, harness) {
+function skillBackedCommand(command, harnessName) {
   return withGeneratedMarker(`---
 description: ${command.description}
 ---
@@ -55,7 +57,7 @@ description: ${command.description}
 
 Use the \`${command.skill}\` skill for this request.
 
-Read \`${harness.skillPath(command.skill)}\`, then follow its workflow.
+Read \`${skillFilePath(harnessName, command.skill)}\`, then follow its workflow.
 
 Keep the skill as the source of truth; this command is only the explicit entry
 point.
@@ -73,8 +75,7 @@ function expectedCommands(commands) {
 
   for (const command of commands) {
     for (const harnessName of command.harnesses) {
-      const harness = SLASH_COMMAND_HARNESSES[harnessName];
-      const content = command.kind === "skill-backed" ? skillBackedCommand(command, harness) : standaloneCommand(command);
+      const content = command.kind === "skill-backed" ? skillBackedCommand(command, harnessName) : standaloneCommand(command);
       const key = `${harnessName}::${command.packageId}`;
       if (!byKey.has(key)) byKey.set(key, new Map());
       byKey.get(key).set(commandTarget(command.name), content);
@@ -90,7 +91,7 @@ function hasGeneratedMarker(filePath) {
 }
 
 function renderPackageHarness(harnessName, packageId, expected, { checkOnly = false, quiet = false } = {}) {
-  const relDir = SLASH_COMMAND_HARNESSES[harnessName].genDir(packageId);
+  const relDir = slashCommandGenDir(packageId, harnessName);
   const outDir = path.join(repoRoot, relDir);
   let changed = 0;
   let failed = 0;
@@ -221,7 +222,7 @@ export function renderSlashCommands({ checkOnly = false, quiet = false } = {}) {
 // Reuses the same "refuse to overwrite a non-generated file" safety property as renderPackageHarness.
 
 function liveCommandsDir(harnessHome, harnessName) {
-  return path.join(harnessHome, SLASH_COMMAND_HARNESSES[harnessName].liveDir);
+  return path.join(harnessHome, slashCommandLiveDir(harnessName));
 }
 
 // Package commands this package declares for a given harness, i.e. the file names it owns there.
@@ -244,7 +245,7 @@ function packageCommandNamesForHarness(pkg, harnessName) {
 export function installPackageCommands(pkg, harnessHome, harnessName, { dryRun = false } = {}) {
   const names = packageCommandNamesForHarness(pkg, harnessName);
   if (names.length === 0) return;
-  const genDir = path.join(repoRoot, SLASH_COMMAND_HARNESSES[harnessName].genDir(pkg.id));
+  const genDir = path.join(repoRoot, slashCommandGenDir(pkg.id, harnessName));
   const destDir = liveCommandsDir(harnessHome, harnessName);
   if (!dryRun && resolvesIntoRepo(destDir, repoRoot)) {
     console.error(`  refusing to install commands: ${destDir} resolves into the repo tree (stale legacy symlink?)`);

@@ -1170,7 +1170,37 @@ On first run:
   override-mirror write (present and absent cases), Claude's legacy-file cleanup, independent
   per-harness home-dir-presence gating, and `targetHarness` scoping — all byte-for-byte unchanged
   post-refactor. 373/373 tests passing (372 -> 373), doctor 100/100 clean.
-- [ ] Refactor slash-command rendering and collision checks through provider command adapters.
+- [x] Refactor slash-command rendering and collision checks through provider command adapters.
+  `scripts/cli/skill-command-config.mjs`'s `SLASH_COMMAND_HARNESSES`/`SLASH_COMMAND_HARNESS_NAMES`
+  (the second closed-set enum the grounding notes flagged as an independent-drift risk alongside
+  `package-catalog.mjs`'s `HARNESSES`, deliberately left untouched during that earlier item for
+  this one to handle) replaced with three registry-driven helpers: `slashCommandGenDir(packageId,
+  harnessId)` (uniform `generated/packages/<id>/<harness>/commands` convention, same
+  `globals/<resource>/<id>/` shape as `rules-render.mjs`'s `ruleDirsFor`), `slashCommandLiveDir`
+  and `skillFilePath` (both read the provider manifest's `commands`/`skills` path directly), and
+  `isKnownSlashCommandHarness`. Consumed by `slash-commands.mjs`, `packages.mjs`, and
+  `skill-new-options.mjs`, all three previously importing the fixed maps directly.
+  `checkCommandCollisions` (reserved-name checking) was already fully harness-neutral — no change
+  needed there; "collision checks" in this item's title is satisfied by that pre-existing
+  abstraction, not new code.
+  **Real bug caught mid-refactor**: the first version of `skillFilePath` built the "read this
+  skill" instruction text using `resolveHarnessPath` (expands `~` to the actual machine's home
+  directory), which broke `node scripts/build/render-slash-commands.mjs --check` (14 files flagged
+  stale) — those generated `.md` files are committed to the repo and read on every machine, so the
+  instruction text must stay the literal `~/.claude/skills/...` string, never get baked to
+  whichever machine happened to render it. Fixed by reading `manifest.paths.skills.path` (and
+  `.commands.path` for `slashCommandLiveDir`) directly instead of resolving through
+  `resolveHarnessPath` — the general rule this surfaced: use `resolveHarnessPath`/`hasHarnessPath`
+  for paths this machine will actually read/write, and the manifest's raw path string for text
+  that's rendered into portable, repo-committed, or cross-machine output. Caught immediately by
+  running the real build check, not just the new characterization test.
+  Added `scripts/test/slash-commands-characterization-check.mjs` (wired into `test-roborepo.sh` and
+  `npm run test:slash-commands-characterization`) covering the runtime install/remove path
+  (`installPackageCommands`/`removePackageCommands`): copy-into-live-dir, refuse-to-clobber a
+  non-generated file, remove-owned-wrapper, refuse-to-delete a non-generated file — the build-time
+  render path already has strong coverage via doctor's real `render-slash-commands.mjs --check`
+  run against the actual generated tree, which caught the raw-path bug above. 374/374 tests passing
+  (373 -> 374), doctor 100/100 clean.
 - [ ] Refactor skill linking through provider skill paths.
 - [ ] Refactor permission rendering through provider permission adapters.
 - [ ] Refactor MCP add/remove/list/scope mapping through provider MCP adapters.

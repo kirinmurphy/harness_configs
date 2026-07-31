@@ -1573,6 +1573,14 @@ assert "harness: package-catalog harness validation is registry-backed" \
 assert "harness: rules rendering is registry-backed (Codex override mirror, Claude legacy cleanup)" \
   node "${repo_root}/scripts/test/rules-render-characterization-check.mjs"
 
+# Slash-command rendering through provider command adapters (Phase 5): SLASH_COMMAND_HARNESSES'
+# genDir/liveDir/skillPath replaced by registry-driven lookups (skill-command-config.mjs). Pins the
+# runtime install/remove path's copy/refuse-to-clobber/remove/refuse-to-delete behavior; the
+# build-time render path is separately covered by doctor's `render-slash-commands.mjs --check`
+# against the real generated tree.
+assert "harness: slash-command install/remove is registry-backed" \
+  node "${repo_root}/scripts/test/slash-commands-characterization-check.mjs"
+
 assert "harness: CLI list/inspect/refresh/enable/disable end to end" \
   node "${repo_root}/scripts/test/harness-cli-check.mjs"
 

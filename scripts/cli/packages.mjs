@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { claudeJsonPath, repoRoot, rootConfigActive, harnessHome, workspacePackagesDir, packageMode, initializeWorkspace } from "./paths.mjs";
-import { setPackageEnabled, renderHomeRules, effectiveEnabledIds } from "./rules-render.mjs";
+import { setPackageEnabled, renderHomeRules, effectiveEnabledIds, knownHarnessIds } from "./rules-render.mjs";
 import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog, BUILT_IN_PACKAGES_DIR, readPackageCategories } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 import { buildPackageLiveState } from "./package-probes.mjs";
@@ -12,7 +12,6 @@ import { writeRootConfig } from "./root-config-writes.mjs";
 import { hookFilePath, mergeHooksInto, unmergeHooksFrom, installHookScripts, removeHookScripts } from "./hook-composition.mjs";
 import { installRuntimeAsset, mergeHarnessConfig, removeRuntimeAsset, unmergeHarnessConfig } from "./package-harness-config.mjs";
 import { installPackageCommands, removePackageCommands } from "./slash-commands.mjs";
-import { SLASH_COMMAND_HARNESS_NAMES } from "./skill-command-config.mjs";
 
 export const USER_CLAUDE_SETTINGS = rootConfigActive.claude;
 export const USER_CODEX_CONFIG = rootConfigActive.codex;
@@ -452,13 +451,13 @@ export async function enablePackage(rest, _seen = new Set()) {
       case "skill":
         if (dryRun) {
           console.log(`  [dry-run] install skill ${component.id}`);
-          for (const harnessName of SLASH_COMMAND_HARNESS_NAMES) {
+          for (const harnessName of knownHarnessIds()) {
             installPackageCommands(pkg, harnessHome[harnessName], harnessName, { dryRun: true });
           }
           break;
         }
         servicePromises.push(setSkillComponent(component.id, true));
-        for (const harnessName of SLASH_COMMAND_HARNESS_NAMES) {
+        for (const harnessName of knownHarnessIds()) {
           installPackageCommands(pkg, harnessHome[harnessName], harnessName);
         }
         break;
@@ -675,13 +674,13 @@ export async function disablePackage(rest) {
       case "skill":
         if (dryRun) {
           console.log(`  [dry-run] remove skill ${component.id}`);
-          for (const harnessName of SLASH_COMMAND_HARNESS_NAMES) {
+          for (const harnessName of knownHarnessIds()) {
             removePackageCommands(pkg, harnessHome[harnessName], harnessName, { dryRun: true });
           }
           break;
         }
         servicePromises.push(setSkillComponent(component.id, false));
-        for (const harnessName of SLASH_COMMAND_HARNESS_NAMES) {
+        for (const harnessName of knownHarnessIds()) {
           removePackageCommands(pkg, harnessHome[harnessName], harnessName);
         }
         break;

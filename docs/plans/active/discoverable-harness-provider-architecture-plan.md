@@ -1201,7 +1201,34 @@ On first run:
   render path already has strong coverage via doctor's real `render-slash-commands.mjs --check`
   run against the actual generated tree, which caught the raw-path bug above. 374/374 tests passing
   (373 -> 374), doctor 100/100 clean.
-- [ ] Refactor skill linking through provider skill paths.
+- [x] Refactor skill linking through provider skill paths.
+  `scripts/cli/config-mutate.mjs`'s hardcoded `HARNESS_SKILL_DIRS` array
+  (`[~/.claude/skills, ~/.codex/skills]`, the live machine-home symlink-target list `setSkillInstalled`
+  loops over to link/unlink a shared skill into every present harness) now derives from
+  `listHarnessProviders().map((p) => resolveHarnessPath(p.manifest, "skills"))`.
+  `scripts/cli/skill-inventory.mjs`'s parallel `HARNESSES` array (used by `listSkillInventory`/
+  `inspectSkill`/`formatSkillInspection` for per-harness install-state reporting) got the identical
+  fix. Both are live filesystem locations this machine actually reads/writes, so
+  `resolveHarnessPath`'s expanded absolute path is correct here — unlike the slash-command item's
+  `skillFilePath`, which needed the manifest's raw `"~/..."` string because that text is rendered
+  into a portable, repo-committed generated file.
+  Two related hardcoded-harness spots were reviewed and deliberately left untouched, with reasoning
+  captured rather than silently skipped: `scripts/cli/skill-links.mjs` (the repo-local dev-checkout
+  symlinker linking *this repo's own* `.codex/skills` into `.claude/skills` for repo authors) is a
+  fundamentally different, intentionally two-harness-specific dev tool — Codex is the source of
+  truth for repo-local skills by design, not a generalizable "iterate all providers" concept, so
+  extending it to a 3rd harness needs its own design decision, not a mechanical registry swap.
+  `scripts/cli/config.mjs`'s Config-page `installed` flag checks only `harnessHome.claude`'s skills
+  dir as a single-harness proxy for "installed at all" (since install/disable already links every
+  present harness atomically) — read-only display logic, and `config.mjs`/`portal/config/*` are
+  explicitly Phase 7 (Config portal) scope in the plan's own touchpoint table, so left as a noted
+  follow-up rather than pulled forward.
+  Added `scripts/test/config-mutate-skill-characterization-check.mjs` (wired into `test-roborepo.sh`
+  and `npm run test:config-mutate-skill-characterization`) as the pre-refactor safety net, since no
+  prior test covered this write path at all: pins the machine-local-cache-then-symlink round trip on
+  enable, full removal (symlinks + cache) on disable, present-harness-only gating (codex absent ->
+  its home never touched), and refusal to overwrite a pre-existing native (non-roborepo-managed)
+  skill directory of the same name. 375/375 tests passing (374 -> 375), doctor 100/100 clean.
 - [ ] Refactor permission rendering through provider permission adapters.
 - [ ] Refactor MCP add/remove/list/scope mapping through provider MCP adapters.
 - [ ] Replace `--only-claude`/`--only-codex` with repeatable `--harness`.

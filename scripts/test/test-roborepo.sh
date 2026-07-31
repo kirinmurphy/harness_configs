@@ -1581,6 +1581,14 @@ assert "harness: rules rendering is registry-backed (Codex override mirror, Clau
 assert "harness: slash-command install/remove is registry-backed" \
   node "${repo_root}/scripts/test/slash-commands-characterization-check.mjs"
 
+# Skill linking through provider skill paths (Phase 5): config-mutate.mjs's hardcoded
+# HARNESS_SKILL_DIRS ([~/.claude/skills, ~/.codex/skills]) and skill-inventory.mjs's HARNESSES
+# array both replaced by registry-driven resolveHarnessPath lookups. Pins the machine-local
+# cache + per-harness symlink round trip, present-harness-only gating, and native-skill
+# non-overwrite behavior.
+assert "harness: skill linking (machine-local cache + symlinks) is registry-backed" \
+  node "${repo_root}/scripts/test/config-mutate-skill-characterization-check.mjs"
+
 assert "harness: CLI list/inspect/refresh/enable/disable end to end" \
   node "${repo_root}/scripts/test/harness-cli-check.mjs"
 

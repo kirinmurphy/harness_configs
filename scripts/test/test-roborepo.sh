@@ -1559,6 +1559,13 @@ assert "harness: provider manifest and schema validation" \
 assert "harness: registry, discovery, state, and runtime" \
   node "${repo_root}/scripts/test/harness-registry-check.mjs"
 
+# Package harness validation resolves against the provider registry (Phase 5), not a hardcoded
+# local Set -- pins rejection of an unregistered harness id, acceptance of registered ones, and
+# rejection of a resource targeting a harness whose manifest doesn't declare the capability that
+# resource type needs (e.g. a hooks resource pointed at a harness with no "hooks" capability).
+assert "harness: package-catalog harness validation is registry-backed" \
+  node "${repo_root}/scripts/test/package-catalog-harness-check.mjs"
+
 assert "harness: CLI list/inspect/refresh/enable/disable end to end" \
   node "${repo_root}/scripts/test/harness-cli-check.mjs"
 

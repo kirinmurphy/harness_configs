@@ -1078,9 +1078,43 @@ On first run:
 
 ### Phase 5: Package resources
 
-- [ ] Change package harness validation from a hardcoded enum to registry lookup.
-- [ ] Add capability requirements to package schema.
-- [ ] Define shared, included-provider, and provider-override targeting semantics.
+- [x] Change package harness validation from a hardcoded enum to registry lookup.
+  `scripts/cli/package-catalog.mjs`'s `validateHarness`/`validateHarnesses` now call
+  `hasHarnessProvider()` (`scripts/harnesses/registry.mjs`) instead of a local
+  `HARNESSES = new Set(["claude", "codex"])`. Added
+  `scripts/test/package-catalog-harness-check.mjs` as the characterization/regression test (wired
+  into `test-roborepo.sh` and `npm run test:package-catalog-harness`): pins rejection of an
+  unregistered harness id and acceptance of registered ones. Left `SLASH_COMMAND_HARNESSES`/
+  `SLASH_COMMAND_HARNESS_NAMES` (`scripts/cli/skill-command-config.mjs`) untouched here — that map
+  is slash-command render data (genDir/liveDir/skillPath per harness), not a validation enum, so it
+  belongs to the "slash-command rendering through provider command adapters" item below, not this
+  one. Fixed two sandbox gaps this surfaced (mirroring Phase 3/4's `paths.mjs -> registry.mjs ->
+  globals/harnesses/` pattern): `package-catalog-check.mjs`'s dev-mode `package dev create`
+  subprocess sandbox now copies `globals/harnesses/` alongside `scripts/`.
+- [x] Add capability requirements to package schema.
+  Design decision (confirmed with user after reviewing real packages): package-level
+  `requires`/`include` targeting from the plan's original example was NOT needed and was NOT
+  built. Evidence: `caveman`'s `plugin` resource (Claude-only, no `harness` field -- implied by
+  resource type) sits alongside a `hooks` resource explicitly scoped `harness: "codex"` in the SAME
+  package; `jcodemunch` similarly mixes an unscoped `mcp` resource with Claude-only `permissions`
+  and Codex-only `codex_tool_approvals`. Per-resource (or type-implied) targeting was already the
+  real shape of every existing package -- a package-level blanket `requires` can't express "this
+  resource is Claude-only, that resource is Codex-only, same package," so it was dropped rather
+  than built and left unused. What shipped instead: `validateHarness`/`validateHarnesses`
+  (`package-catalog.mjs`) now take an optional `requiredCapability` and check it against
+  `getHarnessProvider(harness).manifest.capabilities` -- so a `hooks` resource targeting a harness
+  whose manifest doesn't declare the `hooks` capability now fails package validation instead of
+  silently no-opping at install time. Wired at every existing harness-targeting call site: hooks
+  (`"hooks"`), harness-config (`"package-config"`), slash-command/entrypoint `harnesses` arrays
+  (`"slash-commands"`), rules (`"rules"`, still via the existing `allowBoth`/`"both"` shape, not
+  newly made optional -- see next item's note). With today's two providers declaring the same
+  capability set this never fires yet; proven with a fabricated codex manifest (capabilities minus
+  `"hooks"`) run in a subprocess against a copied `scripts/`/`globals/harnesses/` tree, since
+  `scripts/harnesses/{claude,codex}/index.mjs` resolve their `provider.json` relative to their own
+  `import.meta.url`, never via `ROBOREPO_APP_ROOT` -- an in-process re-import from the same test
+  file resolves the cached first-import's `roots.mjs`/`paths.mjs`, not the edited manifest, so this
+  needed a real subprocess with its own copied tree. Same
+  `scripts/test/package-catalog-harness-check.mjs` test file as the item above.
 - [ ] Refactor hook composition through provider hook adapters.
 - [ ] Refactor rules rendering through provider rule targets.
 - [ ] Refactor slash-command rendering and collision checks through provider command adapters.

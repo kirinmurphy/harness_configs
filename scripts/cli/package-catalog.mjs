@@ -3,6 +3,7 @@ import path from "node:path";
 import { repoRoot, workspacePackagesDir } from "./paths.mjs";
 import { experimentalStatePath } from "./state-paths.mjs";
 import { readWorkspaceOverrides, hasReplaceOverride } from "./workspace-resources.mjs";
+import { hasHarnessProvider, getHarnessProvider } from "../harnesses/registry.mjs";
 
 export const PACKAGE_CATEGORIES_PATH = path.join(repoRoot, "manifests", "inventory", "package-categories.json");
 export const BUILT_IN_PACKAGES_DIR = path.join(repoRoot, "globals", "packages");
@@ -25,7 +26,6 @@ const RESOURCE_TYPES = new Set([
   "harness-config",
   "runtime-asset",
 ]);
-const HARNESSES = new Set(["claude", "codex"]);
 const SKILL_INVOCATIONS = new Set(["auto", "manual"]);
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -275,7 +275,7 @@ function normalizeResource(resource, { pkgId, root, index }) {
     next.name = String(next.name || next.id).replace(/^\//, "");
     next.source = validateInsideSource(root, next.source, `${pkgId}:/${next.name}`);
     if (!fs.existsSync(path.join(root, next.source))) throw new Error(`${pkgId}:/${next.name} source missing: ${next.source}`);
-    validateHarnesses(next.harnesses, `${pkgId}:/${next.name}`);
+    validateHarnesses(next.harnesses, `${pkgId}:/${next.name}`, { requiredCapability: "slash-commands" });
   } else if (next.type === "permissions") {
     if (!Array.isArray(next.allow) || next.allow.length === 0) throw new Error(`${pkgId}: permissions resource needs non-empty allow array`);
     if (!next.allow.every((entry) => typeof entry === "string" && entry.trim() !== "")) {
@@ -298,7 +298,7 @@ function normalizeResource(resource, { pkgId, root, index }) {
   } else if (next.type === "harness-config") {
     next.source = validateInsideSource(root, next.source, `${pkgId}:harness-config`);
     if (!fs.existsSync(path.join(root, next.source))) throw new Error(`${pkgId}:harness-config source missing: ${next.source}`);
-    validateHarness(next.harness, `${pkgId}:harness-config`);
+    validateHarness(next.harness, `${pkgId}:harness-config`, { requiredCapability: "package-config" });
   } else if (next.type === "runtime-asset") {
     next.source = validateInsideSource(root, next.source, `${pkgId}:runtime-asset`);
     if (!fs.existsSync(path.join(root, next.source))) throw new Error(`${pkgId}:runtime-asset source missing: ${next.source}`);
@@ -308,7 +308,7 @@ function normalizeResource(resource, { pkgId, root, index }) {
   } else if (next.type === "rules" || next.type === "hooks") {
     next.source = validateInsideSource(root, next.source, `${pkgId}:${next.type}`);
     if (!fs.existsSync(path.join(root, next.source))) throw new Error(`${pkgId}:${next.type} source missing: ${next.source}`);
-    validateHarness(next.harness, `${pkgId}:${next.type}`, true);
+    validateHarness(next.harness, `${pkgId}:${next.type}`, { allowBoth: true, requiredCapability: next.type });
     if (next.type === "hooks" && next.scripts !== undefined) {
       if (!Array.isArray(next.scripts)) throw new Error(`${pkgId}:hooks scripts must be an array`);
       next.scripts = next.scripts.map((script) => {
@@ -329,7 +329,7 @@ function normalizeSlashEntrypoint(entrypoint, pkgId, skillId) {
   if (!isSlug(name)) throw new Error(`${pkgId}:${skillId} entrypoint has invalid command name`);
   const description = String(entrypoint.description || "").trim();
   if (!description || description.includes("\n")) throw new Error(`${pkgId}:/${name} needs one-line description`);
-  validateHarnesses(entrypoint.harnesses, `${pkgId}:/${name}`);
+  validateHarnesses(entrypoint.harnesses, `${pkgId}:/${name}`, { requiredCapability: "slash-commands" });
   return { ...entrypoint, name, description };
 }
 
@@ -361,16 +361,24 @@ function validateInsideSource(root, relSource, label) {
   return relative.split(path.sep).join("/");
 }
 
-function validateHarness(harness, label, allowBoth = false) {
+// requiredCapability, when given, is checked against the target harness's provider manifest so a
+// resource can't silently target a harness that doesn't support what the resource type needs (e.g.
+// a hooks resource pointed at a harness whose manifest doesn't declare the "hooks" capability).
+// With today's two providers (claude/codex) both declaring the same capability set this never
+// fires, but it becomes real protection the moment a narrower-capability harness is registered.
+function validateHarness(harness, label, { allowBoth = false, requiredCapability } = {}) {
   if (allowBoth && harness === "both") return;
-  if (!HARNESSES.has(harness)) throw new Error(`${label} unknown harness: ${harness || "(missing)"}`);
+  if (!hasHarnessProvider(harness)) throw new Error(`${label} unknown harness: ${harness || "(missing)"}`);
+  if (requiredCapability && !getHarnessProvider(harness).manifest.capabilities.includes(requiredCapability)) {
+    throw new Error(`${label} harness "${harness}" does not support required capability: ${requiredCapability}`);
+  }
 }
 
-function validateHarnesses(harnesses, label) {
+function validateHarnesses(harnesses, label, { requiredCapability } = {}) {
   if (!Array.isArray(harnesses) || harnesses.length === 0) throw new Error(`${label} needs harnesses`);
   const seen = new Set();
   for (const harness of harnesses) {
-    validateHarness(harness, label);
+    validateHarness(harness, label, { requiredCapability });
     if (seen.has(harness)) throw new Error(`${label} duplicate harness: ${harness}`);
     seen.add(harness);
   }

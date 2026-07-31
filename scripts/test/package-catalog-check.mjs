@@ -97,6 +97,11 @@ try {
   // appRoot, mirroring the real npm package layout (scripts/cli/ ships under the install root) — so
   // a spawned CLI subprocess under a fake appRoot needs scripts/ too, not just manifests/.
   fs.cpSync(path.resolve("scripts"), path.join(devRoot, "scripts"), { recursive: true });
+  // package-catalog.mjs resolves harnesses through scripts/harnesses/registry.mjs, whose Claude
+  // and Codex provider modules read their manifest from globals/harnesses/<id>/provider.json —
+  // needed here too, same gap the Phase 3 grounding notes describe for test-roborepo.sh sandboxes.
+  fs.mkdirSync(path.join(devRoot, "globals"), { recursive: true });
+  fs.cpSync(path.resolve("globals/harnesses"), path.join(devRoot, "globals", "harnesses"), { recursive: true });
   const cliPath = path.resolve("scripts/cli/main.mjs");
   const env = { ...process.env, ROBOREPO_MODE: "development", ROBOREPO_APP_ROOT: devRoot, ROBOREPO_STATE_DIR: path.join(devRoot, "state") };
   const create = spawnSync(process.execPath, [cliPath, "package", "dev", "create", "dev-scaffold-check", "--kind=empty"], { env, encoding: "utf8" });

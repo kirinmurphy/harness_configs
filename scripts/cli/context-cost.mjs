@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { repoRoot } from "./paths.mjs";
-import { renderRulesPreview } from "./rules-render.mjs";
+import { renderRulesPreview, ruleDirsFor, knownHarnessIds } from "./rules-render.mjs";
 import { loadSlashCommandPlan } from "./slash-commands.mjs";
 
 // Token-cost estimation for the Config page. Everything here is an explicitly labeled
@@ -25,13 +25,7 @@ export const RULE_FRAGMENT_LEVEL_THRESHOLDS = CONTEXT_COST_THRESHOLDS.ruleFragme
 export const SKILL_DISCOVERY_LEVEL_THRESHOLDS = CONTEXT_COST_THRESHOLDS.skillDiscovery;
 export const ON_DEMAND_LEVEL_THRESHOLDS = CONTEXT_COST_THRESHOLDS.onDemand;
 
-const HARNESSES = ["claude", "codex"];
-
-// Baseline rule fragment dirs, mirroring RULE_DIRS in rules-render.mjs (private there).
-const SYSTEM_RULE_DIRS = {
-  claude: ["globals/system/rules/shared", "globals/system/rules/claude"],
-  codex: ["globals/system/rules/shared", "globals/system/rules/codex"],
-};
+const HARNESSES = knownHarnessIds();
 
 export function estimateTokens(text) {
   const chars = String(text ?? "").length;
@@ -214,7 +208,7 @@ function sumTokens(components, load, { activeOnly = false } = {}) {
 
 function systemRulesTokens(harness, deps) {
   let total = 0;
-  for (const dir of SYSTEM_RULE_DIRS[harness]) {
+  for (const dir of ruleDirsFor(harness)) {
     const absDir = path.join(deps.repoRoot, dir);
     for (const file of deps.listDir(absDir).filter((f) => f.endsWith(".md"))) {
       const content = deps.readFile(path.join(absDir, file));
@@ -253,7 +247,7 @@ function harnessCost(harness, { catalog, enabledIds, tools, deps, plan }) {
     tokens: coreBaselineTokens,
     active: true,
     basis: "rendered-remainder",
-    sourcePaths: SYSTEM_RULE_DIRS[harness],
+    sourcePaths: ruleDirsFor(harness),
   });
 
   const skillDiscoveryTokens = components
@@ -363,7 +357,7 @@ function statSig(absPath, deps) {
 function buildSignature({ catalog, enabledIds, tools, deps }) {
   const parts = [`v${ESTIMATOR.version}`, [...enabledIds].sort().join(",")];
   parts.push(statSig(THRESHOLDS_FILE, deps));
-  for (const dir of new Set(Object.values(SYSTEM_RULE_DIRS).flat())) {
+  for (const dir of new Set(HARNESSES.flatMap(ruleDirsFor))) {
     const absDir = path.join(deps.repoRoot, dir);
     for (const file of deps.listDir(absDir).filter((f) => f.endsWith(".md"))) {
       parts.push(statSig(path.join(absDir, file), deps));

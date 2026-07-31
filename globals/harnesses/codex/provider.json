@@ -15,6 +15,7 @@
     "home": { "path": "~/.codex", "kind": "directory" },
     "rootConfig": { "path": "~/.codex/config.toml", "kind": "file" },
     "rules": { "path": "~/.codex/AGENTS.md", "kind": "file" },
+    "rulesOverride": { "path": "~/.codex/AGENTS.override.md", "kind": "file" },
     "skills": { "path": "~/.codex/skills", "kind": "directory" },
     "commands": { "path": "~/.codex/commands", "kind": "directory" },
     "hooks": { "path": "~/.codex/hooks.json", "kind": "file" }

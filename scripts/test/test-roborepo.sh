@@ -1566,6 +1566,13 @@ assert "harness: registry, discovery, state, and runtime" \
 assert "harness: package-catalog harness validation is registry-backed" \
   node "${repo_root}/scripts/test/package-catalog-harness-check.mjs"
 
+# Rules rendering through provider rule targets (Phase 5): HOME_RULES/RULE_DIRS replaced by
+# registry-driven lookups (provider manifest "rules"/"rulesOverride" paths, globals/system/rules/
+# <id> convention). Pins Codex's AGENTS.override.md mirror and Claude's legacy-file cleanup
+# byte-for-byte across the refactor.
+assert "harness: rules rendering is registry-backed (Codex override mirror, Claude legacy cleanup)" \
+  node "${repo_root}/scripts/test/rules-render-characterization-check.mjs"
+
 assert "harness: CLI list/inspect/refresh/enable/disable end to end" \
   node "${repo_root}/scripts/test/harness-cli-check.mjs"
 

@@ -1144,7 +1144,32 @@ On first run:
   through to Claude's path. Existing characterization tests
   (`scripts/test/hook-composition-check.mjs`, `system-package-ownership-characterization-check.mjs`)
   pass unchanged. 372/372 tests passing, doctor 100/100 clean.
-- [ ] Refactor rules rendering through provider rule targets.
+- [x] Refactor rules rendering through provider rule targets.
+  `scripts/cli/rules-render.mjs`'s fixed `HOME_RULES`/`RULE_DIRS` maps replaced with registry-
+  driven lookups: `homeRulesPath(harness)` resolves each provider's manifest `"rules"` path via
+  `resolveHarnessPath`; `ruleDirsFor(providerId)` derives `globals/system/rules/<id>` from the
+  provider's own id (a uniform convention, not manifest data — every provider follows the same
+  `globals/<resource>/<id>/` shape already used for `globals/harnesses/<id>/`). Added a
+  `"rulesOverride"` path key to `globals/harnesses/codex/provider.json`
+  (`~/.codex/AGENTS.override.md`) so Codex's override-mirror write (previously a literal
+  `if (harness === "codex")` branch) is now `if (hasHarnessPath(manifest, "rulesOverride"))` — a
+  provider without that key (Claude) is skipped with no per-harness code, so a 3rd provider needs
+  zero changes here whether or not it wants an override-mirror file. Claude's legacy pre-managed-
+  block rules-file cleanup stays a literal `harness === "claude"` check, documented inline as
+  deliberate: it's one-time migration cleanup tied to a specific historical Claude file, not a
+  generalizable provider concept. CLI harness-arg parsing (`args.find(...)`) and the `--matches`
+  usage string now derive from `knownHarnessIds()` instead of a literal `"claude" || "codex"`
+  check. Also fixed a second, previously-undetected copy of the same closed set in
+  `scripts/cli/context-cost.mjs` (`HARNESSES`/`SYSTEM_RULE_DIRS`, explicitly commented as
+  "mirroring RULE_DIRS in rules-render.mjs (private there)") — now imports `ruleDirsFor`/
+  `knownHarnessIds` from `rules-render.mjs` instead of maintaining its own duplicate; this is
+  exactly the drift risk the grounding notes flagged for `HARNESSES`/`SLASH_COMMAND_HARNESSES`,
+  found here in a third location neither original list named. Added
+  `scripts/test/rules-render-characterization-check.mjs` as the pre-refactor safety net (wired
+  into `test-roborepo.sh` and `npm run test:rules-render-characterization`): pins Codex's
+  override-mirror write (present and absent cases), Claude's legacy-file cleanup, independent
+  per-harness home-dir-presence gating, and `targetHarness` scoping — all byte-for-byte unchanged
+  post-refactor. 373/373 tests passing (372 -> 373), doctor 100/100 clean.
 - [ ] Refactor slash-command rendering and collision checks through provider command adapters.
 - [ ] Refactor skill linking through provider skill paths.
 - [ ] Refactor permission rendering through provider permission adapters.

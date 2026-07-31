@@ -44,6 +44,7 @@
     "test:rules-render-characterization": "node scripts/test/rules-render-characterization-check.mjs",
     "test:slash-commands-characterization": "node scripts/test/slash-commands-characterization-check.mjs",
     "test:config-mutate-skill-characterization": "node scripts/test/config-mutate-skill-characterization-check.mjs",
+    "test:permissions-render-live-characterization": "node scripts/test/permissions-render-live-characterization-check.mjs",
     "test:package-lifecycle": "node scripts/test/package-lifecycle-check.mjs",
     "test:package-default-enabled": "node scripts/test/package-default-enabled-check.mjs",
     "test:usage-statusline": "node scripts/test/usage-statusline-check.mjs",

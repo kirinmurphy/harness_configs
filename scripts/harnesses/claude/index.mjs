@@ -11,6 +11,7 @@ import { detectHarnessProvider } from "../discovery.mjs";
 import { stubAdapterGroups } from "../stub-adapter.mjs";
 import { isHooksMap, mergeHooksMap, unmergeHooksMap } from "../hooks-merge.mjs";
 import { mergeClaudeSettings, normalizeRootConfigContent } from "../../cli/root-config-merge.mjs";
+import { renderClaudeSettings } from "../permissions-render.mjs";
 import { repoRoot } from "../../cli/roots.mjs";
 
 // Mirrors scripts/cli/mcp-config.mjs's MCP_SERVERS_PATH/MCP_SCOPES, duplicated rather than
@@ -261,7 +262,6 @@ function hooksUnmerge(settingsPath, hooksFragment) {
 
 const stubGroups = stubAdapterGroups("claude", {
   rules: ["render"],
-  permissions: ["render"],
   skills: ["link"],
   commands: ["render"],
   hooks: ["read"],
@@ -291,6 +291,10 @@ export const claudeProvider = defineHarnessProvider({
       write: hooksWriteRemove,
       merge: hooksMerge,
       unmerge: hooksUnmerge,
+    },
+    // 4th param (target path) is Codex-only (used in an error message); Claude's render ignores it.
+    permissions: {
+      render: (current, manifest, overrides) => renderClaudeSettings(current, manifest, overrides),
     },
   },
 });

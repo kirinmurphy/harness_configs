@@ -1589,6 +1589,15 @@ assert "harness: slash-command install/remove is registry-backed" \
 assert "harness: skill linking (machine-local cache + symlinks) is registry-backed" \
   node "${repo_root}/scripts/test/config-mutate-skill-characterization-check.mjs"
 
+# Permission rendering through provider permission adapters (Phase 5): renderPermissionsTo (the
+# LIVE home-config path, distinct from render-agent-permissions.mjs's build-time repo SOURCE
+# render, which stays Phase 8 scope) now dispatches through getHarnessProvider(id).adapters.
+# permissions.render instead of two hardcoded if-blocks. Pure render core extracted into
+# scripts/harnesses/permissions-render.mjs so provider adapters can import it without cycling
+# back through the registry.
+assert "harness: live permission rendering is registry-backed" \
+  node "${repo_root}/scripts/test/permissions-render-live-characterization-check.mjs"
+
 assert "harness: CLI list/inspect/refresh/enable/disable end to end" \
   node "${repo_root}/scripts/test/harness-cli-check.mjs"
 

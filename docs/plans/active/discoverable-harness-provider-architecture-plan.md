@@ -1229,7 +1229,40 @@ On first run:
   enable, full removal (symlinks + cache) on disable, present-harness-only gating (codex absent ->
   its home never touched), and refusal to overwrite a pre-existing native (non-roborepo-managed)
   skill directory of the same name. 375/375 tests passing (374 -> 375), doctor 100/100 clean.
-- [ ] Refactor permission rendering through provider permission adapters.
+- [x] Refactor permission rendering through provider permission adapters.
+  Scoped to the LIVE home-config path only: `scripts/cli/permissions-render.mjs`'s
+  `renderPermissionsTo` (called by config controls to render into a consumer's `~/.claude`/
+  `~/.codex`) now dispatches through `getHarnessProvider(id).adapters.permissions.render` instead
+  of two hardcoded `if` blocks. `scripts/build/render-agent-permissions.mjs` (the build-time repo
+  SOURCE render — three literal `renderCodexConfig`/`renderCodexRules`/`renderClaudeSettings`
+  calls against `generated/`) was deliberately left untouched: it's explicitly Phase 8 scope per
+  this plan's own touchpoint table, and doctor's real `--check` run against it already provides
+  strong regression coverage that would have caught any accidental behavior change here anyway.
+  **Real import cycle found and fixed**: extracted the pure render core (`resolveBehaviors`,
+  `resolveArbitraryCommands`, `renderCodexConfig`, `renderCodexRules`, `claudePermissions`,
+  `renderClaudeSettings`) into a new leaf module, `scripts/harnesses/permissions-render.mjs`,
+  because `scripts/cli/permissions-render.mjs`'s top-level import of `root-config-writes.mjs`
+  (used only by its orchestrator `renderPermissionsTo`, never by the pure functions) pulls in
+  `paths.mjs`'s registry-dependent half. Confirmed this was a real (not just theoretical) cycle by
+  importing `scripts/harnesses/registry.mjs` with the direct-import version wired into
+  `claude/index.mjs`: threw `ReferenceError: Cannot access 'PROVIDERS' before initialization` —
+  same failure signature as the earlier hooks/rootConfig cycles the Phase 3 grounding notes and
+  this phase's own hooks item describe. `scripts/cli/permissions-render.mjs` now re-exports
+  everything from the new pure module unchanged, so its existing consumers
+  (`config-mutate.mjs`, `render-agent-permissions.mjs`) see zero API difference.
+  Both providers' `permissions.render(current, manifest, overrides, target)` wrap the pure
+  functions unchanged (`claude/index.mjs` calls `renderClaudeSettings`, ignoring the Codex-only
+  4th param; `codex/index.mjs` resolves `behaviors`/`arbitraryCommands` internally then calls
+  `renderCodexConfig`) — ownership moves behind the contract, implementation untouched, same
+  pattern as every other capability this phase. `renderPermissionsTo` keeps the create/existence-
+  gating policy itself (Claude materializes `settings.json` from nothing when its dir exists or
+  `createClaude` is set; Codex never fabricates `config.toml`) since that's genuinely per-provider
+  policy, not render logic, and changing it risked an unreviewable behavior diff for no benefit.
+  Added `scripts/test/permissions-render-live-characterization-check.mjs` (no prior test covered
+  `renderPermissionsTo` at all) pinning: only-present-harness gating, Codex skipped entirely when
+  `config.toml` doesn't already exist, Claude's `model` key always stripped, and override-driven
+  bucket changes reflected consistently in the rendered output. 376/376 tests passing
+  (375 -> 376), doctor 100/100 clean (including the real `render-agent-permissions.mjs --check`).
 - [ ] Refactor MCP add/remove/list/scope mapping through provider MCP adapters.
 - [ ] Replace `--only-claude`/`--only-codex` with repeatable `--harness`.
 - [ ] Add package lifecycle contract fixtures for supported, unsupported, and degraded capabilities.

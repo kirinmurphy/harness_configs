@@ -11,6 +11,7 @@ import { stubAdapterGroups } from "../stub-adapter.mjs";
 import { isHooksMap, mergeHooksMap, unmergeHooksMap } from "../hooks-merge.mjs";
 import { mergeCodexConfig, normalizeRootConfigContent } from "../../cli/root-config-merge.mjs";
 import { clearOwnedScalar, readOwnedScalar, recordOwnedScalar } from "../../cli/owned-scalars-state.mjs";
+import { resolveBehaviors, resolveArbitraryCommands, renderCodexConfig } from "../permissions-render.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const manifestPath = path.resolve(here, "..", "..", "..", "globals", "harnesses", "codex", "provider.json");
@@ -201,7 +202,6 @@ function hooksUnmerge(hooksPath, hooksFragment) {
 
 const stubGroups = stubAdapterGroups("codex", {
   rules: ["render"],
-  permissions: ["render"],
   skills: ["link"],
   commands: ["render"],
   hooks: ["read", "write"],
@@ -230,6 +230,13 @@ export const codexProvider = defineHarnessProvider({
       render: (content) => normalizeRootConfigContent("codex", content),
       mergePackageComponent,
       unmergePackageComponent,
+    },
+    permissions: {
+      render: (current, manifest, overrides, target) => {
+        const behaviors = resolveBehaviors(manifest, overrides.behaviors);
+        const arbitraryCommands = resolveArbitraryCommands(manifest, overrides.commands);
+        return renderCodexConfig(current, behaviors, arbitraryCommands, target);
+      },
     },
   },
 });

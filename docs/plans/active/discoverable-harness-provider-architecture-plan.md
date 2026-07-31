@@ -1058,7 +1058,23 @@ On first run:
   non-interactive shell. Distinct from `harness disable` (Phase 2, state-bit only, never touches
   files) per the plan's "Disable vs. withdraw" section.
 - [ ] Refactor repair, verify, and doctor to provider iteration.
-- [ ] Test zero, Claude-only, Codex-only, both, disabled, stale-home, and executable-only scenarios.
+- [x] Test zero, Claude-only, Codex-only, both, disabled, stale-home, and executable-only scenarios.
+  Added dedicated `main.sh` presence scenarios to `test-roborepo.sh`: zero harnesses present,
+  Claude-only, Codex-only (each asserting no crash, correct summary line, and correct base-skill
+  linking), alongside "both" coverage every other install scenario in the file already exercised.
+  The zero-harness scenario caught a real bug introduced earlier in this Phase 4 pass:
+  `main.sh` iterated `"${present_harness_rows[@]}"`/`"${present_harness_ids[*]}"` with no
+  length guard, and this repo's target bash (3.2, macOS system bash) throws "unbound variable"
+  under `set -u` when expanding an empty array with `[@]` or `[*]` — fixed by guarding every such
+  expansion with `${#arr[@]} -gt 0` first (`main.sh`'s `has_claude`/`has_codex` derivation and its
+  three `present_harness_rows`/`all_harness_rows` loops). Audited every other file touched in this
+  phase (`uninstall.sh`, `uninstall-lib.sh`, `withdraw.sh`, `repair.sh`, `doctor.sh`) for the same
+  pattern — none of the others had it (they use `while read` over process substitution rather than
+  array iteration, or were already guarded). "Disabled" and "stale-home" scenarios are already
+  covered by existing suites (`harness-cli-check.mjs`'s enable/disable round-trip;
+  `test-roborepo.sh`'s relocation-resilient uninstall/repair blocks). "Executable-only" (a harness
+  binary on PATH with no home directory) is intentionally out of scope for install/uninstall/repair
+  per the strict-presence decision — see `harness-presence-signal-expansion-plan.md`.
 
 ### Phase 5: Package resources
 

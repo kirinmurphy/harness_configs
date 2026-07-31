@@ -1431,6 +1431,47 @@ assert "legacy: real ~/.agents/skills user dir is preserved, not reclaimed" \
   bash -c "test -d '${lu_home}/.agents/skills/mine'"
 
 # ---------------------------------------------------------------------------
+# main.sh presence-scenario coverage (Phase 4 checklist's last item): zero, Claude-only, and
+# Codex-only harness presence at install time, in addition to the "both" coverage every other
+# install scenario in this file already exercises. Zero-harness caught a real bash 3.2 "unbound
+# variable" crash during this Phase 4 pass (main.sh iterated `"${present_harness_rows[@]}"` /
+# `"${present_harness_ids[*]}"` with no length guard — empty-array expansion under `set -u` throws
+# on this repo's target bash), fixed by guarding every such expansion with a `${#arr[@]} -gt 0`
+# check first. These scenarios exist specifically to keep that class of regression caught by CI
+# instead of only surfacing on a machine with zero or one harness actually installed.
+# ---------------------------------------------------------------------------
+zero_home="${reloc_root}/presence-zero/home"
+mkdir -p "${zero_home}/.local/bin"
+zero_out="$(HOME="${zero_home}" ROBOREPO_STATE_DIR="${zero_home}/.roborepo" ROBOREPO_ASSUME_INTERACTIVE=0 \
+  ROBOREPO_ON_CONFLICT=overwrite bash "${repo_root}/scripts/install/main.sh" 2>&1)"
+assert "install: zero harnesses present does not crash (no unbound variable)" \
+  bash -c "! echo '${zero_out}' | grep -q 'unbound variable'"
+assert "install: zero-harness summary shows both as not installed" \
+  bash -c "echo '${zero_out}' | grep -q 'Claude Code.*not installed' && echo '${zero_out}' | grep -q 'Codex.*not installed'"
+
+claude_only_home="${reloc_root}/presence-claude-only/home"
+mkdir -p "${claude_only_home}/.claude" "${claude_only_home}/.local/bin"
+claude_only_out="$(HOME="${claude_only_home}" ROBOREPO_STATE_DIR="${claude_only_home}/.roborepo" ROBOREPO_ASSUME_INTERACTIVE=0 \
+  ROBOREPO_ON_CONFLICT=overwrite bash "${repo_root}/scripts/install/main.sh" 2>&1)"
+assert "install: Claude-only presence does not crash" \
+  bash -c "! echo '${claude_only_out}' | grep -q 'unbound variable'"
+assert "install: Claude-only summary shows Claude available" \
+  bash -c "echo '${claude_only_out}' | grep -q 'Claude Code.*available'"
+assert "install: Claude-only links the base skill into .claude" \
+  bash -c "test -e '${claude_only_home}/.claude/skills/roborepo-support'"
+
+codex_only_home="${reloc_root}/presence-codex-only/home"
+mkdir -p "${codex_only_home}/.codex" "${codex_only_home}/.local/bin"
+codex_only_out="$(HOME="${codex_only_home}" ROBOREPO_STATE_DIR="${codex_only_home}/.roborepo" ROBOREPO_ASSUME_INTERACTIVE=0 \
+  ROBOREPO_ON_CONFLICT=overwrite bash "${repo_root}/scripts/install/main.sh" 2>&1)"
+assert "install: Codex-only presence does not crash" \
+  bash -c "! echo '${codex_only_out}' | grep -q 'unbound variable'"
+assert "install: Codex-only summary shows Codex available" \
+  bash -c "echo '${codex_only_out}' | grep -q 'Codex.*available'"
+assert "install: Codex-only links the base skill into .codex" \
+  bash -c "test -e '${codex_only_home}/.codex/skills/roborepo-support'"
+
+# ---------------------------------------------------------------------------
 # `roborepo harness withdraw <id>` (Phase 4): actively unmerges RoboRepo's content from ONE
 # provider's live config, distinct from `harness disable` (state-bit only). Verifies the sibling
 # harness is left untouched, unsupported capabilities (Codex hooks/mcp) are reported rather than

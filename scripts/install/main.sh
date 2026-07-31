@@ -141,8 +141,10 @@ while IFS=$'\t' read -r id home_path present display_name root_config_path; do
 done < <(harness_detected_rows)
 
 has_claude=0; has_codex=0
-[[ " ${present_harness_ids[*]} " == *" claude "* ]] && has_claude=1
-[[ " ${present_harness_ids[*]} " == *" codex "* ]] && has_codex=1
+if [[ "${#present_harness_ids[@]}" -gt 0 ]]; then
+  [[ " ${present_harness_ids[*]} " == *" claude "* ]] && has_claude=1
+  [[ " ${present_harness_ids[*]} " == *" codex "* ]] && has_codex=1
+fi
 
 preflight_shell_setup() {
   "${repo_root}/scripts/install/install-global-commands.sh" --dry-run
@@ -173,7 +175,7 @@ fi
 write_install_state "${on_conflict}"
 
 install_section "Base Skill"
-if [[ $dry_run -eq 0 ]]; then
+if [[ $dry_run -eq 0 && "${#present_harness_rows[@]}" -gt 0 ]]; then
   for row in "${present_harness_rows[@]}"; do
     IFS=$'\t' read -r _id home_path _present _display_name _root_config_path <<< "${row}"
     link_global_skills "${home_path}" --preserve-existing roborepo-support
@@ -208,11 +210,13 @@ run_post_install_onboarding() {
   node "${repo_root}/scripts/cli/main.mjs" package adopt-live
   node "${repo_root}/scripts/cli/main.mjs" bundle apply --default
   node "${repo_root}/scripts/cli/main.mjs" package reconcile
-  for row in "${present_harness_rows[@]}"; do
-    IFS=$'\t' read -r id _home _present _display_name root_config_path <<< "${row}"
-    [[ -z "${root_config_path}" ]] && continue  # provider declares no root-config path (e.g. a future harness that lacks the capability)
-    export_user_config "${id}" "generated/${id}/$(basename "${root_config_path}")" "${root_config_path}"
-  done
+  if [[ "${#present_harness_rows[@]}" -gt 0 ]]; then
+    for row in "${present_harness_rows[@]}"; do
+      IFS=$'\t' read -r id _home _present _display_name root_config_path <<< "${row}"
+      [[ -z "${root_config_path}" ]] && continue  # provider declares no root-config path (e.g. a future harness that lacks the capability)
+      export_user_config "${id}" "generated/${id}/$(basename "${root_config_path}")" "${root_config_path}"
+    done
+  fi
 
   if presets_onboarded; then
     echo "Already onboarded. Run 'roborepo package manage' to change which behaviors are enabled."
@@ -238,12 +242,14 @@ run_post_install_onboarding() {
 # Post-install summary: one line per known harness provider, from the registry rather than a
 # fixed Claude/Codex pair.
 install_section "Core Install Complete"
-for row in "${all_harness_rows[@]}"; do
-  IFS=$'\t' read -r _id _home present display_name _root_config_path <<< "${row}"
-  status="${RR_DIM}not installed${RR_RESET}"
-  [[ "${present}" == "1" ]] && status="${RR_GREEN}available${RR_RESET}"
-  echo "  ${RR_BOLD}${display_name}${RR_RESET}  ${status}"
-done
+if [[ "${#all_harness_rows[@]}" -gt 0 ]]; then
+  for row in "${all_harness_rows[@]}"; do
+    IFS=$'\t' read -r _id _home present display_name _root_config_path <<< "${row}"
+    status="${RR_DIM}not installed${RR_RESET}"
+    [[ "${present}" == "1" ]] && status="${RR_GREEN}available${RR_RESET}"
+    echo "  ${RR_BOLD}${display_name}${RR_RESET}  ${status}"
+  done
+fi
 echo ""
 echo "  ${RR_BOLD}Web portal${RR_RESET}  run ${RR_CYAN}roborepo web${RR_RESET} to manage behavior in the UI"
 run_post_install_onboarding

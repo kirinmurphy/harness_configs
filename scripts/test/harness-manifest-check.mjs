@@ -79,7 +79,7 @@ const completeAdapters = {
   permissions: { render() {} },
   skills: { link() {} },
   commands: { render() {} },
-  hooks: { read() {}, write() {} },
+  hooks: { read() {}, write() {}, merge() {}, unmerge() {} },
   mcp: { add() {}, remove() {} },
   telemetry: { wireCaptureHooks() {} },
   transcripts: { locate() {}, parse() {} },

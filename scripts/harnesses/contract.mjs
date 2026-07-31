@@ -29,7 +29,12 @@ export const CAPABILITY_REQUIRED_METHODS = Object.freeze({
   permissions: { group: "permissions", methods: ["render"] },
   skills: { group: "skills", methods: ["link"] },
   "slash-commands": { group: "commands", methods: ["render"] },
-  hooks: { group: "hooks", methods: ["read", "write"] },
+  // read/write: withdraw's blanket strip-all (Phase 4 — see harness withdraw <id>). merge/unmerge:
+  // one package's hooks fragment added/removed during package install/disable (Phase 5). Four
+  // separate names on purpose — "write" was already claimed by withdraw's removal-only semantics
+  // before Phase 5, so reusing it for a generic install-time merge would make one name mean two
+  // different operations depending on caller.
+  hooks: { group: "hooks", methods: ["read", "write", "merge", "unmerge"] },
   mcp: { group: "mcp", methods: ["add", "remove"] },
   "package-config": { group: "rootConfig", methods: ["mergePackageComponent", "unmergePackageComponent"] },
   "telemetry-capture": { group: "telemetry", methods: ["wireCaptureHooks"] },

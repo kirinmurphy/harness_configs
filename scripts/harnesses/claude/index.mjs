@@ -9,6 +9,7 @@ import { spawnSync } from "node:child_process";
 import { defineHarnessProvider } from "../contract.mjs";
 import { detectHarnessProvider } from "../discovery.mjs";
 import { stubAdapterGroups } from "../stub-adapter.mjs";
+import { isHooksMap, mergeHooksMap, unmergeHooksMap } from "../hooks-merge.mjs";
 import { mergeClaudeSettings, normalizeRootConfigContent } from "../../cli/root-config-merge.mjs";
 import { repoRoot } from "../../cli/roots.mjs";
 
@@ -232,6 +233,32 @@ function hooksWriteRemove({ homePath, dryRun = false } = {}) {
   return { ok: true, changed: true, providerId: "claude", action: "hooks.write", paths, warnings };
 }
 
+// Claude stores hooks nested under settings.json's "hooks" key, alongside permissions etc. Reads
+// the file itself (plain fs, no paths.mjs) and returns { changed, content } rather than writing —
+// the orchestrator (packages.mjs, which already imports paths.mjs directly with no cycle risk)
+// performs the actual write, same pattern as mergePackageComponent/unmergePackageComponent above.
+function readSettingsHooks(settingsPath) {
+  let settings = {};
+  try { settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")); } catch {}
+  return { settings, hooks: isHooksMap(settings.hooks) ? settings.hooks : {} };
+}
+
+function hooksMerge(settingsPath, hooksFragment) {
+  const { settings, hooks } = readSettingsHooks(settingsPath);
+  const { hooks: nextHooks, added } = mergeHooksMap(hooks, hooksFragment);
+  const nextSettings = { ...settings, hooks: nextHooks };
+  return { changed: added > 0, content: `${JSON.stringify(nextSettings, null, 2)}\n` };
+}
+
+function hooksUnmerge(settingsPath, hooksFragment) {
+  const { settings, hooks } = readSettingsHooks(settingsPath);
+  const { hooks: nextHooks, removed } = unmergeHooksMap(hooks, hooksFragment);
+  const nextSettings = { ...settings };
+  if (Object.keys(nextHooks).length > 0) nextSettings.hooks = nextHooks;
+  else delete nextSettings.hooks;
+  return { changed: removed > 0, content: `${JSON.stringify(nextSettings, null, 2)}\n` };
+}
+
 const stubGroups = stubAdapterGroups("claude", {
   rules: ["render"],
   permissions: ["render"],
@@ -262,6 +289,8 @@ export const claudeProvider = defineHarnessProvider({
     hooks: {
       ...stubGroups.hooks,
       write: hooksWriteRemove,
+      merge: hooksMerge,
+      unmerge: hooksUnmerge,
     },
   },
 });

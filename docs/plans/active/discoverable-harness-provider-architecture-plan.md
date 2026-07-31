@@ -1115,7 +1115,35 @@ On first run:
   file resolves the cached first-import's `roots.mjs`/`paths.mjs`, not the edited manifest, so this
   needed a real subprocess with its own copied tree. Same
   `scripts/test/package-catalog-harness-check.mjs` test file as the item above.
-- [ ] Refactor hook composition through provider hook adapters.
+- [x] Refactor hook composition through provider hook adapters.
+  Design decision (confirmed with user): the `hooks` capability's existing `read`/`write` methods
+  keep Phase 4's meaning (`write` = withdraw's blanket strip-all, `read` still an open stub) rather
+  than being repurposed for the new install-time merge. Added `merge`/`unmerge` as two more required
+  methods for the `hooks` capability instead (`CAPABILITY_REQUIRED_METHODS.hooks` in `contract.mjs`
+  now requires 4 methods, not 2) so no single name means two different operations depending on
+  caller. Extracted the pure hooks-map math (no file I/O, no path resolution) into a new leaf
+  module, `scripts/harnesses/hooks-merge.mjs` (`mergeHooksMap`/`unmergeHooksMap`/`isHooksMap`) —
+  needed because `scripts/cli/hook-composition.mjs` (the function bodies this was ported from)
+  imports `paths.mjs`'s registry-dependent half (`codexHooksPath`/`harnessHome`) and
+  `root-config-writes.mjs`, both of which resolve through `scripts/harnesses/registry.mjs`; a
+  provider adapter importing `hook-composition.mjs` directly would cycle back into itself, the same
+  class of import cycle the Phase 3 grounding notes describe for `paths.mjs`/`roots.mjs`. Real
+  `hooks.merge`/`hooks.unmerge` adapters added to both `scripts/harnesses/claude/index.mjs`
+  (settings.json's nested `hooks` key) and `scripts/harnesses/codex/index.mjs` (the `hooks.json`
+  sidecar's whole-file `{ hooks: {...} }` shape) — both read the file themselves (plain `fs`, no
+  `paths.mjs`) and return `{ changed, content }` without writing, same pattern as
+  `mergePackageComponent`/`unmergePackageComponent`. `hook-composition.mjs`'s
+  `mergeHooksInto`/`unmergeHooksFrom` (called by `packages.mjs` during package enable/disable) now
+  dispatch through `getHarnessProvider(harness).adapters.hooks.merge/unmerge` instead of an internal
+  `readHooksMap`/`writeHooksMap` pair with a hardcoded `harness === "codex"` ternary; the
+  orchestrator still owns the actual write (Claude via `writeRootConfig` for drift-tracking, Codex
+  via a plain file write, since `hooks.json` has no root-config equivalent). `hookFilePath` (Claude's
+  hooks live inside its root config, Codex's are a dedicated file — a genuine structural asymmetry,
+  not a fixable-by-registry-lookup gap) now validates the harness id via `getHarnessProvider()`
+  before its two-branch lookup, so an unrecognized harness throws instead of silently falling
+  through to Claude's path. Existing characterization tests
+  (`scripts/test/hook-composition-check.mjs`, `system-package-ownership-characterization-check.mjs`)
+  pass unchanged. 372/372 tests passing, doctor 100/100 clean.
 - [ ] Refactor rules rendering through provider rule targets.
 - [ ] Refactor slash-command rendering and collision checks through provider command adapters.
 - [ ] Refactor skill linking through provider skill paths.

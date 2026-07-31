@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { defineHarnessProvider } from "../contract.mjs";
 import { detectHarnessProvider } from "../discovery.mjs";
 import { stubAdapterGroups } from "../stub-adapter.mjs";
+import { isHooksMap, mergeHooksMap, unmergeHooksMap } from "../hooks-merge.mjs";
 import { mergeCodexConfig, normalizeRootConfigContent } from "../../cli/root-config-merge.mjs";
 import { clearOwnedScalar, readOwnedScalar, recordOwnedScalar } from "../../cli/owned-scalars-state.mjs";
 
@@ -175,6 +176,29 @@ function unmergePackageComponent(pkg, config, { codexConfigPath }) {
   return { changed: next !== text, content: next };
 }
 
+// Codex stores hooks in a dedicated hooks.json sidecar, whose whole content is { hooks: {...} } —
+// unlike Claude's settings.json, no other top-level keys share this file, and there's no
+// drift-tracking write equivalent to writeRootConfig for it. Reads the file itself (plain fs, no
+// paths.mjs) and returns { changed, content } — the orchestrator performs the actual write, same
+// pattern as Claude's hooksMerge/hooksUnmerge and mergePackageComponent above.
+function readHooksFile(hooksPath) {
+  let parsed = {};
+  try { parsed = JSON.parse(fs.readFileSync(hooksPath, "utf8")); } catch {}
+  return { parsed, hooks: isHooksMap(parsed.hooks) ? parsed.hooks : {} };
+}
+
+function hooksMerge(hooksPath, hooksFragment) {
+  const { parsed, hooks } = readHooksFile(hooksPath);
+  const { hooks: nextHooks, added } = mergeHooksMap(hooks, hooksFragment);
+  return { changed: added > 0, content: `${JSON.stringify({ ...parsed, hooks: nextHooks }, null, 2)}\n` };
+}
+
+function hooksUnmerge(hooksPath, hooksFragment) {
+  const { parsed, hooks } = readHooksFile(hooksPath);
+  const { hooks: nextHooks, removed } = unmergeHooksMap(hooks, hooksFragment);
+  return { changed: removed > 0, content: `${JSON.stringify({ ...parsed, hooks: nextHooks }, null, 2)}\n` };
+}
+
 const stubGroups = stubAdapterGroups("codex", {
   rules: ["render"],
   permissions: ["render"],
@@ -196,6 +220,11 @@ export const codexProvider = defineHarnessProvider({
   adapters: {
     discovery: { detect: () => detectHarnessProvider(codexManifest) },
     ...stubGroups,
+    hooks: {
+      ...stubGroups.hooks,
+      merge: hooksMerge,
+      unmerge: hooksUnmerge,
+    },
     rootConfig: {
       merge: (repoText, localText) => mergeCodexConfig(repoText, localText),
       render: (content) => normalizeRootConfigContent("codex", content),

@@ -470,15 +470,18 @@ if [[ "${check_installed}" -eq 1 ]]; then
   fi
   check_local_config_repair_candidates
   # Base install owns only roborepo-support. Optional skills are checked through their package/toggle
-  # state, not as unconditional install payload.
-  installed_has_claude=0; installed_has_codex=0
-  harness_present claude && installed_has_claude=1
-  harness_present codex  && installed_has_codex=1
-  [[ "${installed_has_claude}" -eq 1 ]] && check_managed_skill "globals/system/skills/roborepo-support" "${HOME}/.claude/skills/roborepo-support"
-  [[ "${installed_has_codex}"  -eq 1 ]] && check_managed_skill "globals/system/skills/roborepo-support" "${HOME}/.codex/skills/roborepo-support"
+  # state, not as unconditional install payload. Provider iteration (docs/plans/active/
+  # discoverable-harness-provider-architecture-plan.md Phase 4) instead of a fixed Claude/Codex pair.
+  while IFS=$'\t' read -r doctor_harness_id doctor_home_path doctor_present _display_name _root_config_path; do
+    [[ -z "${doctor_harness_id}" ]] && continue
+    [[ "${doctor_present}" == "1" ]] || continue
+    check_managed_skill "globals/system/skills/roborepo-support" "${doctor_home_path}/skills/roborepo-support"
+  done < <(harness_detected_rows)
   # Drift report: unmanaged skills in native dirs (real dirs without our managed marker).
   drift_count=0
-  for skills_home in "${HOME}/.claude/skills" "${HOME}/.codex/skills"; do
+  while IFS=$'\t' read -r _doctor_harness_id doctor_home_path _doctor_present _display_name _root_config_path; do
+    [[ -z "${doctor_home_path}" ]] && continue
+    skills_home="${doctor_home_path}/skills"
     [[ -d "${skills_home}" ]] || continue
     for skill_dir in "${skills_home}"/*/; do
       [[ -d "${skill_dir}" ]] || continue
@@ -489,7 +492,7 @@ if [[ "${check_installed}" -eq 1 ]]; then
       echo "drift: ${skill_dir} is unmanaged — run: roborepo skill adopt ${skill_name}"
       drift_count=$((drift_count + 1))
     done
-  done
+  done < <(harness_detected_rows)
   [[ "${drift_count}" -gt 0 ]] || ok "no unmanaged skills found in harness skill dirs"
 fi
 

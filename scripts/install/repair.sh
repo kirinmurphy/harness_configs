@@ -134,11 +134,18 @@ repair_skill_links() {
   link_global_skills "${1%/skills}" roborepo-support
 }
 
-[[ -d "${HOME}/.claude" ]] && repair_cleanup_rows claude
-[[ -d "${HOME}/.codex" ]] && repair_cleanup_rows codex
+# Provider iteration (docs/plans/active/discoverable-harness-provider-architecture-plan.md Phase
+# 4) instead of a fixed Claude/Codex pair. home_path is always the resolved manifest location
+# regardless of presence, so the -d guard still decides whether repair touches this machine's copy.
+while IFS=$'\t' read -r id home_path _present _display_name _root_config_path; do
+  [[ -z "${id}" ]] && continue
+  [[ -d "${home_path}" ]] && repair_cleanup_rows "${id}"
+done < <(harness_detected_rows)
 
-[[ -d "${HOME}/.claude" ]] && repair_skill_links "${HOME}/.claude/skills"
-[[ -d "${HOME}/.codex" ]] && repair_skill_links "${HOME}/.codex/skills"
+while IFS=$'\t' read -r id home_path _present _display_name _root_config_path; do
+  [[ -z "${id}" ]] && continue
+  [[ -d "${home_path}" ]] && repair_skill_links "${home_path}/skills"
+done < <(harness_detected_rows)
 
 # Bin command: install-global-commands.sh now self-heals a dangling link. Pass --dry-run
 # only when set; avoid expanding an empty array under `set -u` (unbound on bash 3.2 / macOS).

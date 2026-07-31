@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// Characterizes scripts/cli/mcp.mjs's mcpAdd (the `roborepo mcp add` CLI path) before Phase 5
-// replaces its direct claudeMcpArgs/runClaudeMcpAdd/ensureCodexMcp calls with dispatch through
-// getHarnessProvider(id).adapters.mcp.addServer (docs/plans/active/discoverable-harness-provider-
-// architecture-plan.md). Pins the dry-run display text (still must read "claude mcp add ..."),
-// --only-claude/--only-codex gating, and a real (non-dry-run) Codex-only add's on-disk TOML
-// output. Claude's real (non-dry-run) add shells to the actual `claude` CLI and calls
-// process.exit(0), so it is not exercised here -- covered instead by
-// harness-mcp-remove-characterization-check.mjs (removal) and mcp-claude-permission-check.mjs
-// (the permission-grant side effect), both of which don't require a live `claude` binary.
+// Characterizes scripts/cli/mcp.mjs's mcpAdd (the `roborepo mcp add` CLI path) through
+// getHarnessProvider(id).adapters.mcp.addServer dispatch (docs/plans/active/discoverable-harness-
+// provider-architecture-plan.md). Pins the dry-run display text (still must read "claude mcp add
+// ..."), repeatable --harness <id> gating (the --only-claude/--only-codex replacement -- omitting
+// --harness means every registered harness, a given --harness always narrows to exactly the ids
+// named), and a real (non-dry-run) Codex-only add's on-disk TOML output. Claude's real
+// (non-dry-run) add shells to the actual `claude` CLI and calls process.exit(0), so it is not
+// exercised here -- covered instead by harness-mcp-remove-characterization-check.mjs (removal) and
+// mcp-claude-permission-check.mjs (the permission-grant side effect), both of which don't require a
+// live `claude` binary.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -62,43 +63,69 @@ function run(home, args) {
   }
 }
 
-// --- Dry-run, --only-codex: no Claude lines at all ---
+// --- Dry-run, --harness codex: no Claude lines at all ---
 {
   const home = makeHome();
   try {
-    const result = run(home, ["--dry-run", "--only-codex", "--name=char-test-codex", "char-test-mcp"]);
+    const result = run(home, ["--dry-run", "--harness", "codex", "--name=char-test-codex", "char-test-mcp"]);
     assert.equal(result.status, 0, `dry-run should exit 0: ${result.stderr}`);
-    assert.doesNotMatch(result.stdout, /^claude mcp add/m, "--only-codex dry-run must not print the claude CLI line");
-    assert.doesNotMatch(result.stdout, /would add permission/, "--only-codex dry-run must not print the permission line");
-    assert.match(result.stdout, /would add Codex MCP: char-test-codex/, "--only-codex dry-run still prints the Codex add line");
+    assert.doesNotMatch(result.stdout, /^claude mcp add/m, "--harness codex dry-run must not print the claude CLI line");
+    assert.doesNotMatch(result.stdout, /would add permission/, "--harness codex dry-run must not print the permission line");
+    assert.match(result.stdout, /would add Codex MCP: char-test-codex/, "--harness codex dry-run still prints the Codex add line");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
 }
 
-// --- Real (non-dry-run), --only-claude: Codex config.toml must be untouched ---
+// --- Real (non-dry-run), --harness claude: Codex config.toml must be untouched ---
 {
   const home = makeHome();
   try {
     const before = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
-    // --only-claude shells to the real `claude` binary, which may not exist in CI/sandboxed runs --
+    // --harness claude shells to the real `claude` binary, which may not exist in CI/sandboxed runs --
     // accept either a clean exit (claude present) or a spawn/exec failure (claude absent), but in
-    // both cases Codex's config must be untouched, since --only-claude must never call ensureCodexMcp.
-    run(home, ["--only-claude", "--name=char-test-claude-only", "char-test-mcp"]);
+    // both cases Codex's config must be untouched, since --harness claude alone must never call
+    // ensureCodexMcp.
+    run(home, ["--harness", "claude", "--name=char-test-claude-only", "char-test-mcp"]);
     const after = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
-    assert.equal(after, before, "--only-claude must never touch the Codex config");
+    assert.equal(after, before, "--harness claude must never touch the Codex config");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
 }
 
-// --- --only-claude and --only-codex together must be rejected ---
+// --- --harness claude --harness codex repeated: equivalent to omitting the flag, not an error ---
 {
   const home = makeHome();
   try {
-    const result = run(home, ["--only-claude", "--only-codex", "--name=x", "x"]);
-    assert.notEqual(result.status, 0, "conflicting --only-* flags must fail");
-    assert.match(result.stderr, /mutually exclusive/, "conflicting --only-* flags must explain why");
+    const result = run(home, ["--dry-run", "--harness", "claude", "--harness", "codex", "--name=char-test-both", "char-test-mcp"]);
+    assert.equal(result.status, 0, `repeated --harness for every registered id must succeed: ${result.stderr}`);
+    assert.match(result.stdout, /^claude mcp add/m, "repeated --harness claude codex still prints the claude CLI line");
+    assert.match(result.stdout, /would add Codex MCP: char-test-both/, "repeated --harness claude codex still prints the Codex add line");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+// --- --harness with a missing value must error, not silently mean "all" ---
+{
+  const home = makeHome();
+  try {
+    const result = run(home, ["--harness"]);
+    assert.notEqual(result.status, 0, "--harness with no value must fail");
+    assert.match(result.stderr, /--harness requires a value/, "missing --harness value must explain why");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+// --- --harness with an unregistered id must be rejected ---
+{
+  const home = makeHome();
+  try {
+    const result = run(home, ["--harness", "nonexistent", "--name=x", "x"]);
+    assert.notEqual(result.status, 0, "unknown --harness id must fail");
+    assert.match(result.stderr, /unknown harness: nonexistent/, "unknown --harness id must name the bad value");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

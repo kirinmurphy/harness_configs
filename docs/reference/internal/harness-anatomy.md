@@ -151,7 +151,7 @@ machine, making the MCP set portable. (Why a command, not a generator:
 
 ```sh
 roborepo mcp add <name-or-url>            # both harnesses + Claude permissions + record in mcp-servers.json
-roborepo mcp add <name-or-url> --only-claude   # or --only-codex to scope it
+roborepo mcp add <name-or-url> --harness claude   # repeatable; omit for every registered harness
 roborepo mcp apply                        # re-apply mcp-servers.json to current machine (called by update)
 ```
 

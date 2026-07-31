@@ -1316,7 +1316,42 @@ On first run:
   before staging a commit that includes a new test which shells out to the real CLI, even when the
   test's own exit code is green. 378/378 tests passing (376 -> 378), doctor 100/100 clean,
   `manifests/inventory/mcp-servers.json` confirmed unmodified.
-- [ ] Replace `--only-claude`/`--only-codex` with repeatable `--harness`.
+- [x] Replace `--only-claude`/`--only-codex` with repeatable `--harness`.
+  Design decision (confirmed with user before coding): omitting `--harness` entirely still means
+  every registered harness (unchanged default); a given `--harness <id>` always narrows to exactly
+  the id(s) named, however many times the flag repeats — `--harness claude --harness codex` is
+  valid and equivalent to omitting the flag, not an error (the old `--only-claude --only-codex`
+  combination was a hard "mutually exclusive" rejection, which no longer makes sense once the flag
+  means "add to the set" instead of "pick one of two"). Separately, `--harness` present but given no
+  value (bare `--harness` at end of args, or a value starting with `--`) is a hard parse error
+  (`--harness requires a value`), not silently "all" — confirmed with the user that no caller
+  actually depends on an empty-value form meaning anything, so treating it as a likely-typo input
+  error is strictly safer than swallowing it into a default. `scripts/cli/mcp-parse.mjs`'s
+  `parseMcpAdd` now builds `opts.harnesses` (`null` = no `--harness` given, else the deduped id list
+  in first-seen order) instead of the closed `opts.target` enum (`"only-claude"`/`"only-codex"`/
+  `"all"`/`"conflict"`), validating each id against the registry (`hasHarnessProvider`,
+  `listHarnessProviders` from `scripts/harnesses/registry.mjs`) as it's parsed so an unregistered id
+  fails immediately with the list of valid ids, not a cryptic downstream failure. Added
+  `resolveMcpHarnesses(opts)` (same file) returning the concrete id array either way, so consumers
+  never branch on whether `--harness` was passed — `scripts/cli/mcp.mjs`'s `mcpAdd` calls it once and
+  gates on `harnesses.includes("claude")`/`.includes("codex")` (replacing five separate
+  `opts.target !== "only-codex"`/`!== "only-claude"` checks) and passes the resolved array straight
+  into `recordMcpServer`, which now takes `harnesses` directly instead of re-deriving it from
+  `target`. `scripts/cli/packages.mjs`'s `installMcpPreset`/`removeMcpPreset` were confirmed to never
+  read `opts.target` at all (both always wire Claude and Codex unconditionally, independent of any
+  flag), so neither needed changes — narrower blast radius than the original task brief assumed.
+  Updated the one existing characterization test that encoded the old flag pair
+  (`scripts/test/mcp-add-characterization-check.mjs`) plus every `--only-claude`/`--only-codex`
+  invocation in `scripts/test/test-roborepo.sh`'s `mcp add` section (straight flag rename for the
+  same-semantics cases; the old "only flags are mutually exclusive" assertion was replaced with a
+  "repeated `--harness claude --harness codex` matches omitting the flag" assertion plus two new
+  cases for the missing-value and unregistered-id errors) — old-flag references left only in two
+  comments describing past behavior accurately (`scripts/cli/packages.mjs`'s historical
+  `mcp add --builtin --only-claude` note, and this test file's own docstring), not live code paths.
+  Updated user-facing docs (`docs/reference/services/roborepo.md`,
+  `docs/reference/internal/harness-anatomy.md`) to show `--harness <id>` instead of the old flags.
+  380/380 tests passing (378 -> 380), doctor 100/100 clean, `git status` confirmed only the intended
+  six files touched before running either check.
 - [ ] Add package lifecycle contract fixtures for supported, unsupported, and degraded capabilities.
 
 ### Phase 6: Telemetry

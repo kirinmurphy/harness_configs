@@ -1009,16 +1009,23 @@ mcp_skip_permission="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch 
 assert "mcp add: --skip-claude-permission skips settings update" \
   test "${mcp_skip_permission}" = $'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp\ncodex MCP already present: jdocmunch'
 
-mcp_only_claude="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --only-claude" )"
-assert "mcp add: --only-claude skips Codex config update" \
+mcp_only_claude="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --harness claude" )"
+assert "mcp add: --harness claude skips Codex config update" \
   test "${mcp_only_claude}" = $'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp\nwould add permission: mcp__jdocmunch -> generated/claude/settings.json'
 
-mcp_only_codex="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --only-codex" )"
-assert "mcp add: --only-codex skips Claude registration and settings update" \
+mcp_only_codex="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --harness codex" )"
+assert "mcp add: --harness codex skips Claude registration and settings update" \
   test "${mcp_only_codex}" = "codex MCP already present: jdocmunch"
 
-assert "mcp add: only flags are mutually exclusive" \
-  bash -c "! node '${cli}' mcp add jdocmunch --only-claude --only-codex --dry-run >/dev/null 2>&1"
+mcp_harness_repeated="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --harness claude --harness codex" )"
+assert "mcp add: repeated --harness claude --harness codex is equivalent to omitting the flag" \
+  test "${mcp_harness_repeated}" = $'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp\nwould add permission: mcp__jdocmunch -> generated/claude/settings.json\ncodex MCP already present: jdocmunch'
+
+assert "mcp add: --harness with no value is rejected" \
+  bash -c "! node '${cli}' mcp add jdocmunch --harness --dry-run >/dev/null 2>&1"
+
+assert "mcp add: unregistered --harness id is rejected" \
+  bash -c "! node '${cli}' mcp add jdocmunch --harness nonexistent --dry-run >/dev/null 2>&1"
 
 assert "mcp add: invalid scope rejected" \
   bash -c "! node '${cli}' mcp add jdocmunch --scope=team --dry-run >/dev/null 2>&1"
@@ -1098,17 +1105,17 @@ printf '{"permissions":{"allow":["Read"]}}\n' > "${mcp_harness}/generated/claude
 printf '[features]\nhooks = true\n' > "${mcp_home}/.codex/config.toml"
 printf '{"permissions":{"allow":["Read"]}}\n' > "${mcp_home}/.claude/settings.json"
 
-( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add https://mcp.example.com/mcp --name=example --only-codex >/dev/null )
+( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add https://mcp.example.com/mcp --name=example --harness codex >/dev/null )
 assert "mcp add: writes Codex HTTP url block" \
   grep -q 'url = "https://mcp.example.com/mcp"' "${mcp_home}/.codex/config.toml"
 
-( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add example-mcp --name=stdio-example --only-codex -- --flag value >/dev/null )
+( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add example-mcp --name=stdio-example --harness codex -- --flag value >/dev/null )
 assert "mcp add: writes Codex stdio command block" \
   grep -q 'command = "uvx"' "${mcp_home}/.codex/config.toml"
 assert "mcp add: writes Codex stdio args block" \
   grep -q 'args = \["example-mcp", "--flag", "value"\]' "${mcp_home}/.codex/config.toml"
 
-( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add https://mcp.example.com/mcp --name=example --only-codex >/dev/null )
+( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add https://mcp.example.com/mcp --name=example --harness codex >/dev/null )
 assert "mcp add: Codex write is idempotent" \
   bash -c "test \"\$(grep -c '^\\[mcp_servers.example\\]' '${mcp_home}/.codex/config.toml')\" = 1"
 
@@ -1119,7 +1126,7 @@ mkdir -p "${fake_bin}"
   printf 'printf "%%s\\n" "$*" > "%s"\n' "${work}/fake-claude-args.txt"
 } > "${fake_bin}/claude"
 chmod +x "${fake_bin}/claude"
-( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" PATH="${fake_bin}:${PATH}" node "${mcp_harness}/scripts/cli/main.mjs" mcp add perm-mcp --name=permtest --only-claude >/dev/null )
+( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" PATH="${fake_bin}:${PATH}" node "${mcp_harness}/scripts/cli/main.mjs" mcp add perm-mcp --name=permtest --harness claude >/dev/null )
 assert "mcp add: Claude registration command invoked" \
   grep -q 'mcp add --scope user permtest -- uvx perm-mcp' "${work}/fake-claude-args.txt"
 # The grant targets the ACTIVE settings the harness reads (~/.claude/settings.json), never the repo

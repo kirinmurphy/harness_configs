@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { loadMcpPresets } from "./mcp-presets.mjs";
-import { parseMcpAdd } from "./mcp-parse.mjs";
+import { parseMcpAdd, resolveMcpHarnesses } from "./mcp-parse.mjs";
 import { claudeMcpArgs, ensureClaudeMcpPermission, shellQuote } from "./mcp-claude.mjs";
 import { ensureCodexMcp } from "./mcp-codex.mjs";
 import { MCP_SERVERS_PATH } from "./mcp-config.mjs";
@@ -37,15 +37,11 @@ function readRecordServers() {
   }
 }
 
-function recordMcpServer(spec, target) {
+function recordMcpServer(spec, harnesses) {
   if (packageMode) initializeWorkspace();
   if (packageMode) assertMcpRecordAllowed(spec.name);
   const data = readRecordServers();
   const existing = data.servers.find((s) => s.name === spec.name);
-  const harnesses =
-    target === "only-claude" ? ["claude"] :
-    target === "only-codex"  ? ["codex"] :
-    ["claude", "codex"];
 
   if (existing) {
     existing.commandOrUrl = spec.commandOrUrl;
@@ -113,26 +109,29 @@ export function mcpApply({ dryRun = false } = {}) {
 
 export function mcpAdd(rest) {
   const { opts, spec } = parseMcpAdd(rest, mcpPresets);
+  const harnesses = resolveMcpHarnesses(opts);
+  const applyClaude = harnesses.includes("claude");
+  const applyCodex = harnesses.includes("codex");
   const args = claudeMcpArgs(opts, spec);
   const display = ["claude", ...args].map(shellQuote).join(" ");
 
   if (opts.dryRun) {
-    if (opts.target !== "only-codex") console.log(display);
-    if (opts.target !== "only-codex" && opts.updateClaudePermission) {
+    if (applyClaude) console.log(display);
+    if (applyClaude && opts.updateClaudePermission) {
       console.log(`would add permission: mcp__${spec.name} -> generated/claude/settings.json`);
     }
-    if (opts.target !== "only-claude") ensureCodexMcp(spec, { dryRun: true });
+    if (applyCodex) ensureCodexMcp(spec, { dryRun: true });
     return;
   }
 
-  if (opts.target !== "only-codex") {
+  if (applyClaude) {
     getHarnessProvider("claude").adapters.mcp.addServer(spec, { scope: opts.scope, transport: opts.transport });
     if (opts.updateClaudePermission) ensureClaudeMcpPermission(spec.name);
   }
-  if (opts.target !== "only-claude") ensureCodexMcp(spec);
+  if (applyCodex) ensureCodexMcp(spec);
   // Built-in package presets already live in the app's mcp-servers.json; recording them again would
   // duplicate a built-in into the user workspace and trip assertMcpRecordAllowed. Only user-added
   // servers get a workspace record.
-  if (!opts.builtIn) recordMcpServer(spec, opts.target);
+  if (!opts.builtIn) recordMcpServer(spec, harnesses);
   process.exit(0);
 }

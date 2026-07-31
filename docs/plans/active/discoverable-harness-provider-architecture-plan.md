@@ -1023,7 +1023,20 @@ On first run:
 - [x] Make summary output derive from provider display metadata.
   The "Core Install Complete" section prints one line per row in `all_harness_rows`, using each
   provider's manifest `displayName`, instead of two hardcoded `echo` lines.
-- [ ] Refactor Windows installer provider detection and paths through the same manifest data.
+- [x] Refactor Windows installer provider detection and paths through the same manifest data.
+  `install-windows.ps1`'s hardcoded `$hasClaude`/`$hasCodex` detection, `Get-PresentHarnesses`,
+  and the per-harness install/summary blocks now iterate a `$KnownHarnessIds` array + a
+  `$HarnessPresence` hashtable instead of parallel booleans and two copy-pasted `if` blocks. Not
+  yet derived from the Node provider registry the way the bash installers are (`harness_detected_rows`)
+  — Claude's Windows home (`%APPDATA%\Claude`) is an absolute environment-variable path, not
+  `~`-relative like every other platform, and `scripts/harnesses/paths.mjs`'s `expandHome()` has no
+  token for that. Modeling it properly needs a provider-manifest schema change (a `platforms.win32`
+  path override plus a new path-expansion form), left as follow-up rather than bundled into this
+  iteration-only pass. Verified with PowerShell 7.7-preview (no Windows machine available): the
+  file's AST parses clean via `[System.Management.Automation.Language.Parser]::ParseFile`, and the
+  detection/`Get-PresentHarnesses`/summary logic was dry-run in isolation (dot-sourced function
+  definitions, mocked `$env:APPDATA`/`$env:USERPROFILE`) against both a Claude-only and an
+  unknown-harness-id scenario.
 - [x] Refactor uninstall to provider iteration; add `harness withdraw`.
   `scripts/install/uninstall.sh`'s hardcoded `.claude`/`.codex` pairs (`check_no_active_remnants`,
   `remove_skill_links` call sites, `remove_install_backups`, `assert_under_harness_home`'s security

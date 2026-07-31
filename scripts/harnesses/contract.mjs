@@ -35,7 +35,13 @@ export const CAPABILITY_REQUIRED_METHODS = Object.freeze({
   // before Phase 5, so reusing it for a generic install-time merge would make one name mean two
   // different operations depending on caller.
   hooks: { group: "hooks", methods: ["read", "write", "merge", "unmerge"] },
-  mcp: { group: "mcp", methods: ["add", "remove"] },
+  // add/remove: Phase 4's bulk operations (add = not yet migrated; remove = withdraw's "strip
+  // every MCP server this package owns" sweep, real for Claude). addServer/removeServer/list:
+  // Phase 5's single-server operations (add one server, remove one named server, enumerate
+  // configured servers) -- separate names on purpose, same lesson as hooks' merge/unmerge vs
+  // write: "remove" was already claimed by bulk-removal semantics before Phase 5, so reusing it
+  // for a single-server op would make one name mean two different things depending on caller.
+  mcp: { group: "mcp", methods: ["add", "remove", "addServer", "removeServer", "list"] },
   "package-config": { group: "rootConfig", methods: ["mergePackageComponent", "unmergePackageComponent"] },
   "telemetry-capture": { group: "telemetry", methods: ["wireCaptureHooks"] },
   "telemetry-rate-limits": { group: "telemetry", methods: ["parseRateLimits"] },

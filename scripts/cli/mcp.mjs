@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { loadMcpPresets } from "./mcp-presets.mjs";
 import { parseMcpAdd } from "./mcp-parse.mjs";
-import { claudeMcpArgs, ensureClaudeMcpPermission, runClaudeMcpAdd, shellQuote } from "./mcp-claude.mjs";
+import { claudeMcpArgs, ensureClaudeMcpPermission, shellQuote } from "./mcp-claude.mjs";
 import { ensureCodexMcp } from "./mcp-codex.mjs";
 import { MCP_SERVERS_PATH } from "./mcp-config.mjs";
 import { initializeWorkspace, packageMode, workspaceMcpServersPath } from "./paths.mjs";
 import { hasReplaceOverride, loadWorkspaceMcpServers, readWorkspaceOverrides } from "./workspace-resources.mjs";
+import { getHarnessProvider } from "../harnesses/registry.mjs";
 
 const mcpPresets = loadMcpPresets();
 
@@ -85,13 +85,8 @@ function assertMcpRecordAllowed(name) {
 }
 
 function claudeHasMcp(serverName) {
-  try {
-    const result = spawnSync("claude", ["mcp", "list"], { encoding: "utf8" });
-    if (result.error || result.status !== 0) return false;
-    return result.stdout.includes(`${serverName}:`);
-  } catch {
-    return false;
-  }
+  const names = getHarnessProvider("claude").adapters.mcp.list();
+  return names.includes(serverName);
 }
 
 export function mcpApply({ dryRun = false } = {}) {
@@ -109,8 +104,7 @@ export function mcpApply({ dryRun = false } = {}) {
       if (claudeHasMcp(spec.name)) {
         console.log(`claude MCP already present: ${server.name}`);
       } else {
-        const args = claudeMcpArgs({ scope: "user", transport: null }, spec);
-        runClaudeMcpAdd(args);
+        getHarnessProvider("claude").adapters.mcp.addServer(spec, { scope: "user", transport: null });
       }
     }
     if (applyCodex) ensureCodexMcp(spec);
@@ -132,7 +126,7 @@ export function mcpAdd(rest) {
   }
 
   if (opts.target !== "only-codex") {
-    runClaudeMcpAdd(args);
+    getHarnessProvider("claude").adapters.mcp.addServer(spec, { scope: opts.scope, transport: opts.transport });
     if (opts.updateClaudePermission) ensureClaudeMcpPermission(spec.name);
   }
   if (opts.target !== "only-claude") ensureCodexMcp(spec);

@@ -12,6 +12,7 @@ import { isHooksMap, mergeHooksMap, unmergeHooksMap } from "../hooks-merge.mjs";
 import { mergeCodexConfig, normalizeRootConfigContent } from "../../cli/root-config-merge.mjs";
 import { clearOwnedScalar, readOwnedScalar, recordOwnedScalar } from "../../cli/owned-scalars-state.mjs";
 import { resolveBehaviors, resolveArbitraryCommands, renderCodexConfig } from "../permissions-render.mjs";
+import { addCodexMcpBlock, removeCodexMcpBlock, codexHasMcp, listCodexMcpServers } from "../mcp-codex-toml.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const manifestPath = path.resolve(here, "..", "..", "..", "globals", "harnesses", "codex", "provider.json");
@@ -200,6 +201,27 @@ function hooksUnmerge(hooksPath, hooksFragment) {
   return { changed: removed > 0, content: `${JSON.stringify({ ...parsed, hooks: nextHooks }, null, 2)}\n` };
 }
 
+// Single-server add/remove: unlike Claude, Codex has a real config file to write into directly —
+// no CLI shell-out. Thin wrappers over the pure TOML block math in ../mcp-codex-toml.mjs; return
+// { changed, content } without writing, same pattern as rootConfig.mergePackageComponent above.
+function mcpAddServer(spec, { configPath }) {
+  const text = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "";
+  const { changed, content } = addCodexMcpBlock(text, spec);
+  return { ok: true, changed, providerId: "codex", action: "mcp.addServer", content };
+}
+
+function mcpRemoveServer(name, { configPath }) {
+  if (!fs.existsSync(configPath)) return { ok: true, changed: false, providerId: "codex", action: "mcp.removeServer" };
+  const text = fs.readFileSync(configPath, "utf8");
+  const { changed, content } = removeCodexMcpBlock(text, name);
+  return { ok: true, changed, providerId: "codex", action: "mcp.removeServer", content };
+}
+
+function mcpList({ configPath }) {
+  if (!fs.existsSync(configPath)) return [];
+  return listCodexMcpServers(fs.readFileSync(configPath, "utf8"));
+}
+
 const stubGroups = stubAdapterGroups("codex", {
   rules: ["render"],
   skills: ["link"],
@@ -237,6 +259,12 @@ export const codexProvider = defineHarnessProvider({
         const arbitraryCommands = resolveArbitraryCommands(manifest, overrides.commands);
         return renderCodexConfig(current, behaviors, arbitraryCommands, target);
       },
+    },
+    mcp: {
+      ...stubGroups.mcp,
+      addServer: mcpAddServer,
+      removeServer: mcpRemoveServer,
+      list: mcpList,
     },
   },
 });

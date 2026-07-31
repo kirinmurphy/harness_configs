@@ -1263,7 +1263,59 @@ On first run:
   `config.toml` doesn't already exist, Claude's `model` key always stripped, and override-driven
   bucket changes reflected consistently in the rendered output. 376/376 tests passing
   (375 -> 376), doctor 100/100 clean (including the real `render-agent-permissions.mjs --check`).
-- [ ] Refactor MCP add/remove/list/scope mapping through provider MCP adapters.
+- [x] Refactor MCP add/remove/list/scope mapping through provider MCP adapters.
+  Full unification (confirmed with user, not the minimal "add methods, migrate one call site"
+  option): the three previously-independent, duplicated Claude-shell-out+Codex-TOML
+  implementations — `scripts/cli/mcp.mjs`'s `mcpAdd`/`mcpApply` (CLI `roborepo mcp add`) and
+  `scripts/cli/packages.mjs`'s `installMcpPreset`/`removeMcpPreset` (package enable/disable) — all
+  now dispatch through `getHarnessProvider(id).adapters.mcp.addServer`/`removeServer`/`list`.
+  These are NEW contract methods (`CAPABILITY_REQUIRED_METHODS.mcp` now requires
+  `["add", "remove", "addServer", "removeServer", "list"]`), added alongside the existing
+  `add`/`remove` rather than reusing them: Claude's `remove` already meant Phase 4's bulk
+  withdraw-removal sweep (every server a package owns, across all scopes) before this phase, so
+  reusing it for a single-server op would make one name mean two different things depending on
+  caller — the same lesson as hooks' `merge`/`unmerge` vs `write`.
+  Two new pure leaf modules avoid the now-familiar registry import cycle: `scripts/harnesses/
+  mcp-claude-cli.mjs` (pure CLI-arg construction/invocation, extracted from `mcp-claude.mjs`,
+  whose `ensureClaudeMcpPermission` needs `paths.mjs`'s registry-dependent half) and
+  `scripts/harnesses/mcp-codex-toml.mjs` (pure TOML block add/remove/list math, extracted from
+  `mcp-codex.mjs`, which imports `mcp-config.mjs` → `paths.mjs`). Both
+  `scripts/cli/mcp-claude.mjs`/`mcp-codex.mjs` now re-export/wrap the pure modules unchanged, so
+  existing consumers (`mcp.mjs`) see zero API difference. Claude's `mcp.addServer` shells to
+  `claude mcp add` (no direct config file — matches existing behavior); Codex's `mcp.addServer`/
+  `removeServer` return `{changed, content}` without writing, same pattern as every other
+  capability this phase.
+  **Two real regressions caught and fixed** migrating `packages.mjs` (both would have shipped
+  silently without the new characterization tests): (1) `installMcpPreset`'s old code shelled out
+  to a fresh `mcp add --builtin --only-claude` subprocess, which — since it never passed
+  `--skip-claude-permission` — always granted the `mcp__<name>` Claude permission as a side effect;
+  the first direct-adapter-call rewrite dropped that grant entirely, fixed by adding an explicit
+  `ensureClaudeMcpPermission(spec.name)` call. (2) `removeMcpPreset`'s original
+  `pruneClaudeMcpStore` call ran unconditionally, outside the `claude`-CLI-availability check, so
+  `~/.claude.json` got pruned even when the CLI binary was absent; the first rewrite nested the
+  equivalent adapter call inside the CLI-availability `if`-branch, silently skipping the prune when
+  the CLI is missing — fixed by moving the call outside the branch (the adapter has its own
+  internal CLI check for the shell-out sweep, but the JSON prune must run either way). Also
+  deduped `mcpAlreadyPresent`/`claudeHasMcp` (two copies of the same `claude mcp list` check,
+  `packages.mjs` and `mcp.mjs`) and deleted `pruneClaudeMcpStore` (now genuinely dead code) once
+  both were routed through the shared adapter.
+  Added `scripts/test/mcp-add-characterization-check.mjs` (dry-run display text, `--only-claude`/
+  `--only-codex` gating, conflicting-flags rejection) and `scripts/test/mcp-package-lifecycle-
+  characterization-check.mjs` (`ROBOREPO_SKIP_MCP` gating, real enable/disable against a built-in
+  package's preset, Claude/Codex wired and removed independently not all-or-nothing) — neither
+  call site had any test coverage before this task.
+  **A third bug, in the test itself, not the source**: `mcp-add-characterization-check.mjs`'s
+  first version ran a real (non-dry-run) `roborepo mcp add --only-claude ...` without
+  `ROBOREPO_APP_ROOT` set, which wrote a `"char-test-claude-only"` entry directly into this repo's
+  own tracked `manifests/inventory/mcp-servers.json` (dev-checkout mode resolves
+  `MCP_SERVERS_PATH` under `repoRoot`, which defaults to the real checkout absent an app-root
+  override). Caught via `git status` before committing — the file showed as unexpectedly
+  modified — reverted with `git checkout --`, and fixed by copying `scripts/manifests/globals`
+  into a fake `ROBOREPO_APP_ROOT` first (the same pattern every other subprocess-spawning test in
+  this phase already uses). Worth restating as a standing check: always read `git status` in full
+  before staging a commit that includes a new test which shells out to the real CLI, even when the
+  test's own exit code is green. 378/378 tests passing (376 -> 378), doctor 100/100 clean,
+  `manifests/inventory/mcp-servers.json` confirmed unmodified.
 - [ ] Replace `--only-claude`/`--only-codex` with repeatable `--harness`.
 - [ ] Add package lifecycle contract fixtures for supported, unsupported, and degraded capabilities.
 

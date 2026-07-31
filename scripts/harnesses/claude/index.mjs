@@ -5,13 +5,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
 import { defineHarnessProvider } from "../contract.mjs";
 import { detectHarnessProvider } from "../discovery.mjs";
 import { stubAdapterGroups } from "../stub-adapter.mjs";
 import { isHooksMap, mergeHooksMap, unmergeHooksMap } from "../hooks-merge.mjs";
 import { mergeClaudeSettings, normalizeRootConfigContent } from "../../cli/root-config-merge.mjs";
 import { renderClaudeSettings } from "../permissions-render.mjs";
+import { claudeMcpArgs, runClaudeMcpAdd, hasClaudeCli, claudeMcpRemove, claudeMcpList } from "../mcp-claude-cli.mjs";
 import { repoRoot } from "../../cli/roots.mjs";
 
 // Mirrors scripts/cli/mcp-config.mjs's MCP_SERVERS_PATH/MCP_SCOPES, duplicated rather than
@@ -95,12 +95,9 @@ function mcpRemove({ homePath, dryRun = false } = {}) {
     return { ok: true, changed: false, providerId: "claude", action: "mcp.remove", paths, warnings: [...warnings, `dry-run: would remove ${names.join(", ")} from all scopes`] };
   }
 
-  const hasClaudeCli = spawnSync("command", ["-v", "claude"], { shell: true }).status === 0;
-  if (hasClaudeCli) {
+  if (hasClaudeCli()) {
     for (const name of names) {
-      for (const scope of MCP_SCOPES) {
-        spawnSync("claude", ["mcp", "remove", name, "--scope", scope], { stdio: "ignore" });
-      }
+      for (const scope of MCP_SCOPES) claudeMcpRemove(name, scope);
     }
     warnings.push(`ran 'claude mcp remove' for ${names.join(", ")} across all scopes (best-effort; the CLI does not report whether anything was actually registered)`);
   }
@@ -138,6 +135,59 @@ function mcpRemove({ homePath, dryRun = false } = {}) {
     paths,
     warnings,
   };
+}
+
+// Single-server add: shells to `claude mcp add` (the only way to register with Claude's own MCP
+// client state — there is no direct config file to write into, unlike Codex's TOML table). Thin
+// wrapper over the pure arg-construction/invocation in ../mcp-claude-cli.mjs; unchanged behavior
+// from scripts/cli/mcp.mjs's existing mcpAdd, ownership moved behind the contract.
+function mcpAddServer(spec, opts = {}) {
+  const args = claudeMcpArgs({ scope: opts.scope || "user", transport: opts.transport || null }, spec);
+  if (opts.dryRun) return { ok: true, changed: false, providerId: "claude", action: "mcp.addServer", warnings: [`dry-run: claude ${args.join(" ")}`] };
+  runClaudeMcpAdd(args);
+  return { ok: true, changed: true, providerId: "claude", action: "mcp.addServer", warnings: [] };
+}
+
+// Single-server remove: same "remove --scope without an explicit scope only checks one scope"
+// gap mcpRemove (bulk) already accounts for -- sweeps every scope via the CLI when available, then
+// prunes ~/.claude.json directly so the entry is gone even when the `claude` binary isn't present.
+function mcpRemoveServer(name, { homePath, dryRun = false } = {}) {
+  if (dryRun) return { ok: true, changed: false, providerId: "claude", action: "mcp.removeServer", warnings: [`dry-run: would remove ${name} from all scopes`] };
+
+  const warnings = [];
+  if (hasClaudeCli()) {
+    for (const scope of MCP_SCOPES) claudeMcpRemove(name, scope);
+    warnings.push(`ran 'claude mcp remove' for ${name} across all scopes (best-effort; the CLI does not report whether anything was actually registered)`);
+  }
+
+  const claudeJsonPath = path.join(homePath, "..", ".claude.json");
+  let changed = false;
+  const paths = [];
+  try {
+    const data = JSON.parse(fs.readFileSync(claudeJsonPath, "utf8"));
+    const prune = (servers) => {
+      if (servers && name in servers) { delete servers[name]; changed = true; }
+    };
+    prune(data.mcpServers);
+    for (const project of Object.values(data.projects || {})) prune(project.mcpServers);
+    if (changed) {
+      fs.writeFileSync(claudeJsonPath, `${JSON.stringify(data, null, 2)}\n`);
+      paths.push(claudeJsonPath);
+    }
+  } catch (err) {
+    if (err.code !== "ENOENT") warnings.push(`could not prune ${claudeJsonPath}: ${err.message}`);
+  }
+
+  return { ok: true, changed, providerId: "claude", action: "mcp.removeServer", paths, warnings };
+}
+
+// Server names Claude currently has registered, via `claude mcp list`. Returns [] (not an error)
+// when the CLI is unavailable or the call fails — listing is a best-effort read, not a capability
+// gate.
+function mcpList() {
+  const output = claudeMcpList();
+  if (!output) return [];
+  return [...output.matchAll(/^([^\s:]+):/gm)].map((match) => match[1]);
 }
 
 // Ported from scripts/install/uninstall.sh's strip_package_hooks (characterization test:
@@ -285,6 +335,9 @@ export const claudeProvider = defineHarnessProvider({
     mcp: {
       ...stubGroups.mcp,
       remove: mcpRemove,
+      addServer: mcpAddServer,
+      removeServer: mcpRemoveServer,
+      list: mcpList,
     },
     hooks: {
       ...stubGroups.hooks,

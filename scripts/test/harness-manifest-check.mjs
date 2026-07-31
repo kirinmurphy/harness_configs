@@ -80,7 +80,7 @@ const completeAdapters = {
   skills: { link() {} },
   commands: { render() {} },
   hooks: { read() {}, write() {}, merge() {}, unmerge() {} },
-  mcp: { add() {}, remove() {} },
+  mcp: { add() {}, remove() {}, addServer() {}, removeServer() {}, list() {} },
   telemetry: { wireCaptureHooks() {} },
   transcripts: { locate() {}, parse() {} },
   session: { launch() {} },

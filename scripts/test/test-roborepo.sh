@@ -1598,6 +1598,19 @@ assert "harness: skill linking (machine-local cache + symlinks) is registry-back
 assert "harness: live permission rendering is registry-backed" \
   node "${repo_root}/scripts/test/permissions-render-live-characterization-check.mjs"
 
+# MCP add/remove/list through provider MCP adapters (Phase 5): mcp.mjs's mcpAdd/mcpApply and
+# packages.mjs's installMcpPreset/removeMcpPreset (previously three independent, duplicated
+# Claude-shell-out+Codex-TOML implementations) now dispatch through
+# getHarnessProvider(id).adapters.mcp.addServer/removeServer/list. Distinct names from Phase 4's
+# existing bulk mcp.remove (withdraw's "strip every server this package owns" sweep) -- same
+# merge/unmerge-vs-write naming lesson as hooks. Pure Claude CLI-arg and Codex TOML-block logic
+# extracted into scripts/harnesses/{mcp-claude-cli,mcp-codex-toml}.mjs so provider adapters can
+# import them without cycling back through the registry.
+assert "harness: single-server MCP add is registry-backed (dry-run display, --only-* gating)" \
+  node "${repo_root}/scripts/test/mcp-add-characterization-check.mjs"
+assert "harness: package-lifecycle MCP wiring is registry-backed (ROBOREPO_SKIP_MCP, independent Claude/Codex)" \
+  node "${repo_root}/scripts/test/mcp-package-lifecycle-characterization-check.mjs"
+
 assert "harness: CLI list/inspect/refresh/enable/disable end to end" \
   node "${repo_root}/scripts/test/harness-cli-check.mjs"
 

@@ -45,8 +45,15 @@ const ICONS = {
   },
 };
 
+// A fixed scale, not free-form pixel values. Call sites pick a step (`size="sm"`); they do not get
+// to invent a size, and page CSS must not shrink an icon below the scale with a bare `svg { width }`
+// rule — every step here is chosen to stay legible, and 10px-class icons (which this page had) are
+// not. `md` is the default and matches the body-text cap height.
+const ICON_SIZES = { sm: 14, md: 16, lg: 20, xl: 24 };
+const DEFAULT_ICON_SIZE = "md";
+
 class PortalIcon extends HTMLElement {
-  static observedAttributes = ["name"];
+  static observedAttributes = ["name", "size"];
 
   connectedCallback() {
     this.render();
@@ -63,10 +70,11 @@ class PortalIcon extends HTMLElement {
       this.replaceChildren();
       return;
     }
+    const size = ICON_SIZES[this.getAttribute("size")] || ICON_SIZES[DEFAULT_ICON_SIZE];
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", icon.viewBox);
-    svg.setAttribute("width", this.getAttribute("width") || "15");
-    svg.setAttribute("height", this.getAttribute("height") || "15");
+    svg.setAttribute("width", String(size));
+    svg.setAttribute("height", String(size));
     svg.setAttribute("aria-hidden", "true");
     svg.innerHTML = icon.body;
     this.replaceChildren(svg);

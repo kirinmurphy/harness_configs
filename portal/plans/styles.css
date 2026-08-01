@@ -694,14 +694,16 @@ plan-card {
   box-sizing: border-box;
   height: 100%;
 }
+/* Sized from the shared scale (base.css / portal/shared/icon.js) rather than an off-scale 18px,
+ * so these trigger icons match every other icon at the same visual weight. */
 .plan-card
   .card-actions
   .menu-button-trigger
   portal-icon:not(.menu-button-chevron)
   svg,
 .drawer-actions .menu-button-trigger portal-icon:not(.menu-button-chevron) svg {
-  width: 18px;
-  height: 18px;
+  width: var(--icon-lg);
+  height: var(--icon-lg);
 }
 /* Surface-neutral base: layout only, no chrome assumptions — <plan-status> renders inside both
  * the card (bottom of a rounded/bordered box) and the drawer (plain top border, no rounding), so

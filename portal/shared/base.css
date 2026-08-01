@@ -352,6 +352,16 @@ nav a.active {
   border-color: var(--line);
 }
 portal-info-icon,
+/* Icon size scale. These mirror ICON_SIZES in portal/shared/icon.js — <portal-icon size="sm"> and
+ * a CSS-sized icon element like .info-icon must land on the same steps, so the numbers live in
+ * both places by necessity but never diverge in value. Nothing should size an icon off-scale;
+ * `sm` is the floor for legibility. */
+:root {
+  --icon-sm: 14px;
+  --icon-md: 16px;
+  --icon-lg: 20px;
+  --icon-xl: 24px;
+}
 portal-icon {
   display: inline-flex;
   flex: 0 0 auto;
@@ -360,8 +370,8 @@ portal-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
+  width: var(--icon-md);
+  height: var(--icon-md);
   padding: 0;
   border-radius: 50%;
   border: 1px solid var(--dim);

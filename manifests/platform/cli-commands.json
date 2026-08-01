@@ -2,7 +2,6 @@
   "schemaVersion": 2,
   "commandName": "roborepo",
   "title": "RoboRepo",
-  "description": "manage Claude and Codex harness configuration",
   "helpLabels": {
     "usage": "Usage:",
     "openMenu": "Open the interactive menu",

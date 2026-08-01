@@ -8,6 +8,7 @@ import { installStatePath, presetsStatePath } from "./state-paths.mjs";
 import { readConfigSnapshot, buildBehaviorView } from "./config.mjs";
 import { mutatePackage, setBehaviorBucket } from "./config-mutate.mjs";
 import { renderHomeRules, removeHomeRules, isRenderedRulesOutput } from "./rules-render.mjs";
+import { listHarnessProviders } from "../harnesses/registry.mjs";
 import { confirmYesNo, makePrompter, selectMenu, wizard } from "./skill-lib.mjs";
 import { pathExists, findSiblingArtifact, copyTree, stageCandidate, backupOriginal } from "./staging-lib.mjs";
 import { mergeRootConfig } from "./root-config-merge.mjs";
@@ -349,8 +350,14 @@ function printIntroBanner() {
   console.log(`\n${rule}\n${rule}\n${label}${tail}\n${rule}\n${rule}\n`);
 }
 
+function providerNameList() {
+  const names = listHarnessProviders().map((provider) => provider.manifest.displayName);
+  if (names.length <= 1) return names.join("") || "your harness";
+  return names.length === 2 ? names.join("/") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
 function printIntroWelcome() {
-  console.log("roborepo — version-controlled Claude/Codex harness config.\n");
+  console.log(`roborepo — version-controlled ${providerNameList()} harness config.\n`);
   console.log("Main commands");
   console.log("  roborepo web        manage your settings online");
   console.log("  roborepo package manage    choose which behaviors are enabled");

@@ -1429,7 +1429,30 @@ On first run:
   item asked for; each provider's `locate(sessionId)` adapter is a thin wrapper baking in its own
   harness id. `harness-manifest-check.mjs`'s fixture stub (`transcripts: { locate(){}, parse(){} }`)
   needed no change — still just a shape check. 380/380 tests passing, doctor 100/100 clean.
-- [ ] Reject missing/unknown harness IDs in session lookup instead of defaulting to Claude.
+- [x] Reject missing/unknown harness IDs in session lookup instead of defaulting to Claude.
+  Traced every `|| "claude"` fallback touching session lookup: `portal-routes-telemetry.mjs`'s
+  `/api/session` route (`params.get("harness") || "claude"`), `portal/telemetry/api.js`'s
+  `fetchSession` client wrapper (same default before the request even reaches the server), and
+  `telemetry.mjs`'s `cachedTranscriptTitle(sessionId, s.harness || harness || "claude")` call site.
+  `/api/session` now validates before calling `loadSession`: missing `harness` or an id
+  `hasHarnessProvider()` doesn't recognize returns a 400 with `{error: "missing or unknown harness:
+  <value>"}` instead of silently substituting Claude's adapter for a different provider's transcript
+  (`loadSessionDetail`'s `getHarnessProvider(harness)` already threw for a bad id post-Phase-6-item-5;
+  this closes the gap where a *missing* id previously never reached that check at all, since the old
+  code substituted a valid "claude" string first). The client's matching default in `api.js` was
+  removed too, so a genuinely absent harness surfaces as the new 400 rather than being masked before
+  the request leaves the browser. `cachedTranscriptTitle` (the best-effort title backfill for the
+  dashboard's session list, capped at 20 rows) is a different case — deliberately kept soft rather
+  than hard-throwing, since one row's bad harness must not break the whole report: it now checks
+  `hasHarnessProvider()` and returns `null` (leaves the spool's own title, if any) instead of ever
+  treating an unrecognized id as Claude; the caller simplified from a three-way `s.harness || harness
+  || "claude"` fallback chain to just `s.harness`, since the per-row field is the only value that was
+  ever authoritative there (the request-level `harness` filter parameter is nullable "show all
+  harnesses" scope, not a per-session identity, and was never the right fallback to begin with). Added
+  `scripts/test/telemetry-session-harness-check.mjs` (no test previously exercised this route handler
+  directly) covering missing-harness-rejected, unknown-harness-rejected, and known-harness-reaches-
+  loadSession, using a minimal fake `res` satisfying `send()`'s `writeHead`/`end` contract rather than
+  a real HTTP socket. 381/381 tests passing, doctor 100/100 clean.
 - [ ] Return provider display metadata with available telemetry harnesses.
 - [ ] Keep filters hidden when fewer than two harnesses exist.
 - [ ] Add a synthetic third-provider fixture to prove the shared analysis and filter do not encode a

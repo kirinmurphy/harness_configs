@@ -44,7 +44,7 @@ import { createHash } from "node:crypto";
 import { buildAnalysisPrompt } from "../harnesses/transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
 import { hookFilePath, writeHooksFile } from "./hook-composition.mjs";
-import { getHarnessProvider, listHarnessProviders } from "../harnesses/registry.mjs";
+import { getHarnessProvider, hasHarnessProvider, listHarnessProviders } from "../harnesses/registry.mjs";
 
 export async function telemetryCommand(rest) {
   const [sub, ...args] = rest;
@@ -1167,7 +1167,7 @@ function cachedAnalysisEntry(window, harness, extra = {}) {
   // sessions started before telemetry was enabled may have no spool title or a mid-chat title.
   // Cap at top 20 sessions to bound latency; titles are separately cached so 5s polls don't re-read.
   for (const s of report.sessions.slice(0, 20)) {
-    const t = cachedTranscriptTitle(s.session_id, s.harness || harness || "claude");
+    const t = cachedTranscriptTitle(s.session_id, s.harness);
     if (t) s.title = t;
   }
   report.available_harnesses = availableHarnesses;
@@ -1270,9 +1270,13 @@ function stopAnalysisRefresh() {
 // Title cache: transcripts are append-only so the first user message never changes. Cache by id so
 // the 5-second dashboard poll doesn't re-stat/re-read files for every session on every tick.
 const _titleCache = new Map();
+// No silent default to Claude: an unrecognized/missing harness is a data-quality problem on this
+// one session's spool record, not grounds to guess — this is a best-effort title backfill (a miss
+// just leaves the spool's own title, if any), so it degrades to null rather than throwing.
 function cachedTranscriptTitle(sessionId, harness) {
   if (_titleCache.has(sessionId)) return _titleCache.get(sessionId);
-  const adapters = getHarnessProvider(harness || "claude").adapters;
+  if (!hasHarnessProvider(harness)) return null;
+  const adapters = getHarnessProvider(harness).adapters;
   const p = adapters.transcripts.locate(sessionId);
   const t = p ? adapters.transcripts.parse(p, { includeHeavyTurns: true }).title : null;
   if (t) _titleCache.set(sessionId, t);

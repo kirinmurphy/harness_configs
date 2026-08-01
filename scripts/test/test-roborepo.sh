@@ -1763,6 +1763,11 @@ assert "telemetry: package telemetry policy validation and evaluation" \
 assert "telemetry: portal global filter URL state round-trips" \
   node "${repo_root}/scripts/test/telemetry-portal-state-check.mjs"
 
+# Phase 6 of docs/plans/active/discoverable-harness-provider-architecture-plan.md: /api/session
+# rejects a missing/unrecognized harness id instead of silently defaulting to Claude.
+assert "telemetry: /api/session rejects missing/unknown harness ids" \
+  node "${repo_root}/scripts/test/telemetry-session-harness-check.mjs"
+
 # Telemetry "view docs" popup: heading-slug ids, table, and mermaid-fallback extensions to the
 # shared markdown renderer (also used by Config's skill-source popup).
 assert "markdown-render: heading ids, tables, mermaid fallback" \

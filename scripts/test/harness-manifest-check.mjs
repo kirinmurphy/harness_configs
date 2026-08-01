@@ -140,6 +140,18 @@ validateAdapterActionResult({
   warnings: [],
   status: "unsupported",
 });
+// degraded: the provider applied a partial/best-effort equivalent rather than the exact requested
+// behavior (e.g. no native concept for one allow/ask/deny mode) -- distinct from unsupported (did
+// nothing) and from the no-status case (fully applied as requested).
+validateAdapterActionResult({
+  ok: true,
+  changed: true,
+  providerId: "codex",
+  action: "render-permission",
+  paths: ["~/.codex/config.toml"],
+  warnings: ["codex has no native \"ask\" mode; applied as \"allow\" instead"],
+  status: "degraded",
+});
 assertThrows(
   () => validateAdapterActionResult({ ok: true, changed: true, providerId: "codex", action: "x", paths: [], warnings: [], status: "broken" }),
   'status must be "unsupported" or "degraded"',

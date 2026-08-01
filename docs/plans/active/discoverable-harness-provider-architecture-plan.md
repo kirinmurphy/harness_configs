@@ -1352,7 +1352,28 @@ On first run:
   `docs/reference/internal/harness-anatomy.md`) to show `--harness <id>` instead of the old flags.
   380/380 tests passing (378 -> 380), doctor 100/100 clean, `git status` confirmed only the intended
   six files touched before running either check.
-- [ ] Add package lifecycle contract fixtures for supported, unsupported, and degraded capabilities.
+- [x] Add package lifecycle contract fixtures for supported, unsupported, and degraded capabilities.
+  Audited existing coverage before adding anything, per this plan's own "Validation > Contract"
+  criteria ("every declared capability has its required adapter methods", "unsupported
+  capabilities produce actionable structured output"): `scripts/test/harness-manifest-check.mjs`
+  (Phase 1) already exercised `validateProviderManifest`/`validateCapabilityAdapters` structural
+  failures and `validateAdapterActionResult`'s fully-supported (no `status` field) and
+  `"unsupported"` shapes; `scripts/test/package-catalog-harness-check.mjs` (this phase, task above)
+  already covers package-level capability-gap rejection with a fabricated codex manifest. The one
+  real gap: `validateAdapterActionResult` had no fixture proving `status: "degraded"` — the third
+  state `schemas.mjs`'s own doc comment names alongside `"unsupported"` — was ever accepted as
+  valid, only rejected as `"broken"` was tested as invalid. Added that one case to
+  `harness-manifest-check.mjs` (a realistic codex permission-mode example: `ok: true, changed:
+  true, status: "degraded"`, distinct from `unsupported`'s `ok: true, changed: false` — degraded
+  means "did something, just not exactly what was asked," unsupported means "did nothing"). Did not
+  duplicate this into a new test file — drafted one first, then deleted it on discovering the
+  overlap, since three near-identical suites asserting the same validators would drift out of sync
+  with each other over time for no coverage gain. Confirmed no real adapter (Claude or Codex)
+  produces `"degraded"` today, same as `"unsupported"` before this phase — expected, since both
+  providers currently declare identical capability sets; the schema allows it, it doesn't force any
+  provider to use it. 380/380 tests passing (unchanged — this added an assertion to an existing
+  file, not a new one), doctor 100/100 clean, `git status` confirmed only
+  `harness-manifest-check.mjs` touched.
 
 ### Phase 6: Telemetry
 

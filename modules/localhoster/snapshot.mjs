@@ -35,6 +35,10 @@ export function buildLocalhosterSnapshot({
           repoPath: projectSettings.repoPath || null,
           git: gitInfo?.git || null,
           repositoryId: gitInfo?.repositoryId || null,
+          // "manual" when settings.composeProjects[name].repoPath was set and used, "auto" when
+          // resolveIdentity instead ran against the working_dir label from `docker ps`, null when
+          // neither resolved (e.g. a compose project with no git repo at all).
+          resolvedFrom: gitInfo?.resolvedFrom || null,
           providerUrl: gitInfo?.repositoryId ? providerUrlForRepositoryId(gitInfo.repositoryId) : null,
           instances: [],
         });

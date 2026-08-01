@@ -63,6 +63,7 @@ function parseDockerPsEntry(raw) {
     state: raw.State || null,
     composeProject: labels["com.docker.compose.project"] || null,
     composeService: labels["com.docker.compose.service"] || null,
+    workingDir: labels["com.docker.compose.project.working_dir"] || null,
     publishedPorts: parsePublishedPorts(raw.Ports),
   };
 }

@@ -93,7 +93,7 @@ export async function discoverInstances(options = {}) {
   // only known once dockerResult above has resolved. One extra collectGit call per associated
   // project, not per container/port.
   const composeProjectGit = collectGit
-    ? await collectGitForComposeProjects(dockerResult.containers, settings, { collectGit, scanCache, runGit })
+    ? await collectGitForComposeProjects(dockerResult.containers, settings, { collectGit, scanCache, runGit, resolveIdentity })
     : new Map();
 
   // instance -> the probe and app settings that produced it. Health is classified in a later pass
@@ -144,17 +144,47 @@ function withRepositoryFields(identity) {
 // projects could theoretically point at the same path, and a project with no association at all
 // (the common case) costs nothing here. repositoryId is resolved alongside git so the compose
 // card's repo link can reuse providerUrlForRepositoryId the same way a regular project card does.
-async function collectGitForComposeProjects(containers, settings, { collectGit, scanCache, runGit }) {
+//
+// A manual settings.composeProjects[name].repoPath always wins over the auto-derived working_dir
+// label when both exist — repoPath is a deliberate user decision (see settings-schema.mjs) and is
+// never silently overridden by a guess. When no manual repoPath exists,
+// com.docker.compose.project.working_dir (already present on every container from that project's
+// `docker ps` output, no extra subprocess call) is tried instead, but only promoted to a resolved
+// identity when resolveIdentity actually found a `.git` (identityKind "git" or "path") —
+// "process" is resolveProjectIdentity's safe fallback for "no .git found at all", and promoting
+// that would make every compose project pointed at a non-repo directory look resolved. The
+// auto-derived path and its resolved identity are never written to settings — only repoPath itself
+// is a durable, deliberate association; this stays exactly as ephemeral/scan-cached as git context
+// already is.
+async function collectGitForComposeProjects(containers, settings, { collectGit, scanCache, runGit, resolveIdentity = resolveProjectIdentity }) {
+  const workingDirByProjectName = new Map();
+  for (const container of containers) {
+    if (container.composeProject && container.workingDir && !workingDirByProjectName.has(container.composeProject)) {
+      workingDirByProjectName.set(container.composeProject, container.workingDir);
+    }
+  }
   const composeProjectNames = new Set(containers.map((c) => c.composeProject).filter(Boolean));
   const byProjectName = new Map();
   await Promise.all(
     Array.from(composeProjectNames, async (name) => {
       const repoPath = settings?.composeProjects?.[name]?.repoPath;
-      if (!repoPath) return;
-      const identity = resolveProjectIdentity(repoPath, "docker-compose");
+      if (repoPath) {
+        const identity = resolveIdentity(repoPath, "docker-compose");
+        byProjectName.set(name, {
+          git: await collectGit(repoPath, { scanCache, runGit }),
+          repositoryId: canonicalRepositoryId(identity),
+          resolvedFrom: "manual",
+        });
+        return;
+      }
+      const workingDir = workingDirByProjectName.get(name);
+      if (!workingDir) return;
+      const identity = resolveIdentity(workingDir, "docker-compose");
+      if (identity.identityKind === "process") return;
       byProjectName.set(name, {
-        git: await collectGit(repoPath, { scanCache, runGit }),
+        git: await collectGit(workingDir, { scanCache, runGit }),
         repositoryId: canonicalRepositoryId(identity),
+        resolvedFrom: "auto",
       });
     }),
   );

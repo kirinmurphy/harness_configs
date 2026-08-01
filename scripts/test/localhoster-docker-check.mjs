@@ -33,6 +33,7 @@ assert.deepEqual(parseDockerPsOutput([composeLine, plainLine].join("\n")), [
     state: "running",
     composeProject: "myapp",
     composeService: "web",
+    workingDir: null,
     publishedPorts: [{ hostPort: 5432, containerPort: 5432, protocol: "tcp" }],
   },
   {
@@ -42,9 +43,28 @@ assert.deepEqual(parseDockerPsOutput([composeLine, plainLine].join("\n")), [
     state: "running",
     composeProject: null,
     composeService: null,
+    workingDir: null,
     publishedPorts: [],
   },
 ]);
+
+// The working_dir label (already present on every docker ps line for a Compose container, no
+// extra `docker inspect` needed) is parsed into workingDir for auto-derivation of the project's
+// filesystem identity.
+const composeWithWorkingDirLine = JSON.stringify({
+  ID: "ghi789",
+  Names: "traefik_vps-traefik-1",
+  Image: "traefik",
+  State: "running",
+  Labels: "com.docker.compose.project.working_dir=/Users/kirinmurphy/projects/live/traefik_vps,com.docker.compose.project=traefik_vps,com.docker.compose.service=traefik",
+  Ports: "",
+});
+assert.equal(
+  parseDockerPsOutput(composeWithWorkingDirLine)[0].workingDir,
+  "/Users/kirinmurphy/projects/live/traefik_vps",
+);
+// A container with no working_dir label reports null, not undefined — keeps the shape stable.
+assert.equal(parseDockerPsOutput(composeLine)[0].workingDir, null);
 
 // Duplicate host:container:protocol bindings (dual-stack 0.0.0.0 + :: on the same port) collapse
 // to one entry rather than appearing twice.

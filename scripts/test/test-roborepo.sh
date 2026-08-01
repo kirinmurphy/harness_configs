@@ -1774,6 +1774,18 @@ assert "telemetry: /api/session rejects missing/unknown harness ids" \
 assert "telemetry: synthetic third-provider analysis and rate-limit capability" \
   node "${repo_root}/scripts/test/telemetry-synthetic-provider-check.mjs"
 
+# Phase 7 of discoverable-harness-provider-architecture-plan.md: /api/config/source rejects a
+# missing/unrecognized harness id for harness-scoped kinds instead of silently defaulting to
+# Claude, and the Config snapshot's harnesses list stays registry-driven.
+assert "config: /api/config/source rejects missing/unknown harness ids" \
+  node "${repo_root}/scripts/test/config-source-harness-check.mjs"
+
+# Phase 7 of discoverable-harness-provider-architecture-plan.md: a genuinely third registered
+# provider proves the Config snapshot's harnesses list (grid columns, defaults popover) and the
+# rootConfigBaseline/Active path maps do not encode a two-provider assumption.
+assert "config: synthetic third-provider harnesses list and root-config paths" \
+  node "${repo_root}/scripts/test/config-synthetic-provider-check.mjs"
+
 # Telemetry "view docs" popup: heading-slug ids, table, and mermaid-fallback extensions to the
 # shared markdown renderer (also used by Config's skill-source popup).
 assert "markdown-render: heading ids, tables, mermaid fallback" \

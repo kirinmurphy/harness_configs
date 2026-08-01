@@ -1515,14 +1515,127 @@ On first run:
 
 ### Phase 7: CLI and Config portal
 
-- [ ] Add dynamic harness argument providers to the CLI catalog.
-- [ ] Scope choices by enabled state and required capability.
-- [ ] Update root help and provider summaries from registry metadata.
-- [ ] Change Config API objects keyed by `claude`/`codex` into provider arrays.
-- [ ] Generate Config grid columns from API data.
-- [ ] Move provider-specific presentation strings into server view models.
-- [ ] Add one-provider, two-provider, and synthetic-three-provider Config UI tests.
-- [ ] Confirm mutations reject unsupported capabilities and unknown IDs.
+- [x] Add dynamic harness argument providers to the CLI catalog; scope choices by enabled state and
+  required capability; update root help and provider summaries from registry metadata.
+  Audited every CLI/Config touchpoint for a literal `"claude"`/`"codex"` argument choice before
+  changing anything: `harness.mjs`'s `requireProviderId`/`harnessList`/`harnessInspect` and
+  `package-catalog.mjs`'s `validateHarness`/`validateHarnesses` (capability-gated via
+  `getHarnessProvider(harness).manifest.capabilities.includes(requiredCapability)`) were already
+  fully generic — the reference pattern, no changes needed. `skill-new-options.mjs`'s `--harnesses`
+  flag already sources its default from `knownHarnessIds()`. The real finding: **no CLI command
+  exposes a user-facing `--harness claude|codex` argument at all today**, so "scope by enabled
+  state + capability" had no argument surface to attach to yet — item 2 is deferred until such an
+  argument exists (tracked as an open item, not a gap in this pass). What *was* hardcoded and fixed:
+  `config.mjs`'s `loadConfigSource({ harness = "claude" })` silently collapsed any unrecognized
+  harness to Claude; replaced with a `HARNESS_SCOPED_KINDS` set (`command`, `command-skill`,
+  `globals-rules`, `harness-hooks`, `live-rules` — the kinds that actually read a harness-specific
+  file) and a `hasHarnessProvider` check that rejects `{ok:false, error:"missing or unknown
+  harness: ..."}` instead, matching Phase 6's `/api/session` fix; `config-file`/`skill` kinds are
+  untouched since they resolve the harness from `id` itself and never needed the param.
+  `portal-routes-config.mjs`'s `/api/config/source` route had the same masking default
+  (`params.get("harness") || "claude"`) one layer up — changed to pass `params.get("harness")`
+  (native `null` on missing, which does not trigger `loadConfigSource`'s default param the way
+  `undefined` would) so a missing param reaches the same rejection. Root help: `cli-commands.json`'s
+  static `"description": "manage Claude and Codex harness configuration"` is now computed at load
+  time in `command-catalog.mjs`'s new `rootDescription()` from `listHarnessProviders()`'s real
+  display names (removed the now-dead static field from the JSON rather than keep two sources of
+  truth); `presets.mjs`'s one-time welcome banner similarly built from a new `providerNameList()`
+  helper instead of a literal "Claude/Codex" string. Left alone as legitimate provider-specific
+  content, not genericness gaps: `config-cli-print.mjs`'s Codex-only root-config-drift hint
+  (already commented as intentional, same shape as `codexOnly`/`noCodexAsk`), and `skills.mjs`'s
+  native-plugin help text (documents the real external `claude`/`codex` CLI binaries' own command
+  surface, not a roborepo harness abstraction). 383/383 tests passing, doctor 100/100 clean.
+- [x] Change Config API objects keyed by `claude`/`codex` into provider arrays.
+  `readConfigSnapshot()`'s `globals.rules`/`globals.liveRules` were object literals with hardcoded
+  `claude`/`codex` keys; both now spread from `listHarnessProviders()` so a third registered
+  provider gets a real key automatically (verified byte-identical output for the existing two).
+  Added a new top-level `harnesses` array to the snapshot — `{id, displayName, rulesFile,
+  settingsFile, hooksFile}` per registered provider, all four filename fields derived from the
+  manifest's own declared paths (`paths.rules`/`paths.rootConfig` basenames) rather than hardcoded
+  strings — extracted into an exported `configSnapshotHarnesses()` so a synthetic-provider test
+  could call it without pulling in the rest of the snapshot's disk-reading dependencies. This
+  required actually wiring up `manifest.extensions.roborepo.hooksStorage`, previously declared in
+  both providers' manifests but never read anywhere: `loadConfigSource`'s `harness-hooks` and
+  `config-file` kinds used to branch on a literal `harnessSafe === "codex"` two-way check for "is
+  hooks storage embedded in root config or a dedicated sidecar file" — now branch on
+  `hooksStorageOf(harness) === "dedicated-json-sidecar"` instead, a real behavior change confirmed
+  with the user before implementing (not just a rename) since a third provider's storage shape is
+  now handled generically rather than needing a new hardcoded branch. `rootConfigBaseline` in
+  paths.mjs (`generated/<id>/<filename>`, repo build output rather than the harness's own
+  home-relative location) was still a hardcoded `{claude, codex}` object — genericized to
+  `Object.fromEntries(listHarnessProviders()...)` deriving the filename from each manifest's own
+  `rootConfig` path basename, closing a concrete bug the synthetic-provider test would otherwise
+  have hit (`rootConfigBaseline["acme"]` → `undefined` → `fs.existsSync(undefined)` throws inside
+  `buildRootConfigView()`). `root-config-view.mjs`'s `ROOT_CONFIG_HARNESSES` hardcoded map replaced
+  with `rootConfigHarnesses()` iterating `rootConfigActive`'s own keys. Verified every changed
+  `config-file`/`harness-hooks` lookup byte-identical to the pre-change hardcoded output for both
+  real providers. 383/383 tests passing, doctor 100/100 clean.
+- [x] Generate Config grid columns from API data.
+  `portal/config/index.html`'s `tpl-config-files` template was fully static hand-written markup —
+  a literal 2-column grid (`Claude`/`Codex` headers, `data-config-harness="claude"/"codex"`
+  hardcoded on every row's button) plus a matching hardcoded pre-hydration loading shell and a
+  hardcoded `claude`/`codex` pair in the defaults-popover template. Per this session's explicit
+  frameworkless-markup convention (`<template>` + slot-fill only; JS clones/fills/positions, never
+  builds nested DOM structure itself): split the single static template into a grid *shell*
+  (header + 4 row skeletons, the row-label cells that don't vary per harness) plus five small
+  per-provider cell templates (`tpl-config-header-cell`, `tpl-config-usage-cell`,
+  `tpl-config-rules-cell`, `tpl-config-config-cell`, `tpl-config-hooks-cell`) and one
+  `tpl-modal-defaults-harness-button` for the popover. `templates.js`'s `configFiles()` now clones
+  the shell once, then clones+fills one cell template per entry in the snapshot's new `harnesses`
+  list and appends it into the matching row/header — the DOM structure itself still only ever comes
+  from an actual `<template>` tag, JS only decides how many times to clone it and what slot values
+  to fill. `modalDefaults()` grew the same per-harness clone loop for the popover's "Xxx specifics"
+  buttons. Discovered and wired up a dead CSS mechanism already built for this:
+  `.config-grid-head`/`.config-grid-row` used `grid-template-columns: ... repeat(var(--provider-
+  count, 2), 140px)`, a custom property nothing had ever set — `configFiles()` now sets
+  `--provider-count` to the real harness count, and the `#usage-per-harness` id-selector (now
+  replaced by `data-slot="row-usage"`, so its matching CSS selector was updated too) got the same
+  treatment. 384/384 tests passing, doctor 100/100 clean.
+- [x] Move provider-specific presentation strings into server view models.
+  `portal/config/state.js` still had client-side hardcoded display strings even after the grid
+  itself went generic: `tokenWarningEntries()`'s "CLAUDE.md"/"AGENTS.md" warning-entry labels (now
+  built from `snap.harnesses[].rulesFile`), `discoveryWarning()`'s `row.harness === "codex" ?
+  "Codex" : "Claude"` breakdown-label ternary (now a `Map` from `snap.harnesses` id→displayName),
+  and `inspectChipSpecs()`'s `inspect.harness || "claude"` fallback for the live-rules cost chip
+  (changed to skip the chip entirely on a missing harness rather than silently mislabel it as
+  Claude's, matching this phase's reject-don't-default theme). `contextCostChipSpecs()`'s "Claude
+  and Codex costs differ" note was reworded to "Costs differ by harness" instead of threading
+  `snap.harnesses` through five call sites (`app.js` → `templates.js` → `config-item.js` custom
+  element) for a boolean flag that never actually needed harness names to be accurate for any N.
+  Left alone as legitimate Codex-specific semantics, not genericness gaps:
+  `codexOnly`/`noCodexAsk` behavior flags (real per-harness capability differences documented since
+  Phase 6, not display-string debt). 384/384 tests passing, doctor 100/100 clean.
+- [x] Add one-provider, two-provider, and synthetic-three-provider Config UI tests; confirm
+  mutations reject unsupported capabilities and unknown IDs.
+  `config-mutate.mjs`'s mutations (`mutatePackage`/`mutateSkill`/`mutateBehavior`/`mutateCommand`)
+  take no harness parameter at all — package-to-harness targeting is validated at package-catalog
+  load time (`package-catalog.mjs`'s `validateHarness`/`validateHarnesses`, already
+  capability-gated), so there was no runtime mutation-endpoint gap to close; confirmed unknown
+  package ids already reject cleanly (`{ok:false, message:"unknown package: ..."}`). The one real
+  runtime gap was `/api/config/source`'s harness param (closed above). Added
+  `config-source-harness-check.mjs` (missing/unknown harness rejected for harness-scoped kinds,
+  `config-file` kind unaffected by a missing harness, snapshot's `harnesses` list shape-checked) and
+  `config-synthetic-provider-check.mjs`, reusing `telemetry-synthetic-provider-check.mjs`'s
+  subprocess-isolation technique (registry.mjs's `PROVIDERS` map is a static import-time `Map`):
+  copies `scripts/`, `globals/harnesses/`, `modules/`, and `manifests/` into a temp app root (the
+  first three sufficed for telemetry's narrower probe; importing `config.mjs` itself pulls in
+  `manifests/platform/*.json` for context-cost thresholds and package catalogs, discovered by
+  running the probe and following the `ENOENT`s), adds a fabricated `acme` provider declaring
+  `dedicated-json-sidecar` hooksStorage (so the hooksFile branch has a real third case, not just
+  claude/codex's existing two), and verifies against the isolated copy: (1) `configSnapshotHarnesses()`
+  returns 3 entries, not a hardcoded 2; (2) acme's displayName/rulesFile/settingsFile resolve from
+  its own manifest, not its bare id or a claude/codex-shaped guess; (3) acme's `hooksFile` follows
+  its own sidecar path, proving the `hooksStorage` branch generalizes; (4) `rootConfigBaseline`/
+  `rootConfigActive` both key by whatever's registered, including acme — the exact path that used
+  to throw before this phase's `rootConfigBaseline` fix. Scoped to the pure per-provider
+  derivations rather than the full portal snapshot/DOM, since `readConfigSnapshot()` reads real
+  disk state (package catalog, skills dir, telemetry state) unrelated to the harness-genericness
+  question this test exists to answer, and the repo has no DOM-testing library (jsdom or
+  equivalent) to assert against rendered markup directly — grid rendering was instead verified by
+  running the real portal server and cross-checking the JSON snapshot's `harnesses` field plus a
+  static cross-check that every `data-slot` name referenced in `templates.js` exists in its
+  matching `index.html` template. 384/384 tests passing (up from 382 — these two tests), doctor
+  100/100 clean.
 
 ### Phase 8: Build outputs and documentation
 
@@ -1689,6 +1802,12 @@ versioning design.
 3. Should provider discovery consider native application bundles on macOS when no CLI executable is
    on `PATH`, or are known config/home paths sufficient for the currently supported terminal
    harnesses?
+4. No CLI command currently exposes a user-facing `--harness claude|codex` argument (Phase 7
+   discovery) — `harness.mjs`'s own subcommands take a positional provider id already validated
+   against `hasHarnessProvider`, and no other command needs a harness-scoped flag today. If a
+   future command adds one, should its choice list be scoped by enabled state and required
+   capability at definition time, or does the existing `hasHarnessProvider`/capability-check
+   pattern already cover it generically enough that no new catalog mechanism is needed?
 
 These do not block Phase 1. They must be resolved before discovery-selection policy and
 capability-only package targeting are finalized.

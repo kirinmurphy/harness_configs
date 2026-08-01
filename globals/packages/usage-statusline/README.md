@@ -103,7 +103,8 @@ signals. They remain a separate follow-up feature.
 
 - **Claude Code** — any version whose command `statusLine` payload includes `context_window` and
   `rate_limits` (`five_hour`, `seven_day`) with `used_percentage`; `resets_at` enables weekly
-  pacing (usage-only fallback without it).
+  pacing (usage-only fallback without it). Claude sends `resets_at` as Unix epoch **seconds**
+  (a bare number); ISO strings are also accepted.
 - **Codex** — no minimum; the Codex footer is left native. Parity depends on a future upstream
   footer-command hook, tracked separately.
 

@@ -23,9 +23,12 @@ function finitePercent(value) {
   return Number.isFinite(number) ? number : undefined;
 }
 
+// Numeric resets_at values arrive as Unix epoch SECONDS (Claude status-line docs: "Unix epoch
+// seconds when the ... window resets"; Codex RateLimitWindow follows the same convention) — only
+// ISO strings are already millisecond-precise, so only those go through Date.parse directly.
 function epochMs(value) {
   if (value === null || value === undefined || value === "") return undefined;
-  const ms = typeof value === "number" ? value : Date.parse(value);
+  const ms = typeof value === "number" ? value * 1000 : Date.parse(value);
   return Number.isFinite(ms) ? ms : undefined;
 }
 

@@ -1,6 +1,6 @@
 ---
 id: package-registry-live-state-reconciliation
-priority: medium
+priority: low
 next_action: Introduce the versioned package-state file (scripts/cli/package-state.mjs) with migration from enabled-packages.json
 blocked_by: []
 depends_on: []

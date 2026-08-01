@@ -1,6 +1,6 @@
 ---
 id: localhoster-metadata-suggestions
-priority: low
+priority: high
 next_action: Implement safe same-origin metadata discovery and quick-link suggestions
 blocked_by: []
 depends_on:

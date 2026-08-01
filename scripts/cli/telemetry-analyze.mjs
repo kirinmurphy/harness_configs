@@ -8,6 +8,18 @@ import { deriveInsights } from "./telemetry-insights.mjs";
 import { computeMetric } from "./telemetry-metrics.mjs";
 import { applyCohortFilter, normalizeCohortFilter, describeCohortFilter, activeFilterCount } from "./telemetry-cohort.mjs";
 import { compareAcrossMarker, describeMarkerComparison } from "./telemetry-compare.mjs";
+import { hasHarnessProvider, getHarnessProvider } from "../harnesses/registry.mjs";
+
+// Whether `harness` declares the telemetry-rate-limits capability — Codex today, potentially other
+// providers later. Namespaced field name (event.details.codex_rate_limits) stays as-is (see the
+// field-shape note above hasRateLimits' call sites): the plan's Phase 6 item allowed either
+// normalizing the field or namespacing it as a provider extension, and the field was already
+// namespaced. What was still hardcoded was the *check* (`harness === "codex"`), not the data shape —
+// this makes the check capability-driven so a future rate-limited provider doesn't need a new
+// literal string added here.
+function hasRateLimitsCapability(harness) {
+  return hasHarnessProvider(harness) && getHarnessProvider(harness).manifest.capabilities.includes("telemetry-rate-limits");
+}
 
 // A capture counts as a spike when its token delta exceeds the mean by this many standard
 // deviations. Tunable, but kept conservative so quiet sessions never trip the threshold.
@@ -175,7 +187,7 @@ function indexCaptures(captures) {
   };
   for (const event of captures) {
     if (event.ts > index.latestTs) index.latestTs = event.ts;
-    if (event.harness === "codex" && event.details?.codex_rate_limits) index.latestCodexRateLimits = event.details.codex_rate_limits;
+    if (hasRateLimitsCapability(event.harness) && event.details?.codex_rate_limits) index.latestCodexRateLimits = event.details.codex_rate_limits;
     countTop(index.topRepos, event.repo?.label ?? "unknown", event.delta_tokens || 0);
     countTop(index.topTools, event.tool?.name ?? event.event ?? "unknown", event.delta_tokens || 0);
     if (event.tool?.is_mcp) countTop(index.topMcp, event.tool?.mcp_server ?? "unknown", event.delta_tokens || 0);
@@ -620,7 +632,7 @@ function dataQualityWarnings(events) {
       if ((event.tokens?.total || 0) > 0) cur.nonzeroTokenRecords += 1;
     }
     if (event.details?.unsupported_usage_seen) cur.unsupported += 1;
-    if (harness === "codex" && event.details?.codex_rate_limits) cur.rateLimited += 1;
+    if (hasRateLimitsCapability(harness) && event.details?.codex_rate_limits) cur.rateLimited += 1;
     byHarness.set(harness, cur);
   }
   for (const [harness, cur] of byHarness) {
@@ -641,7 +653,7 @@ function dataQualityWarnings(events) {
         hint: "transcript usage records were present but not in a supported schema",
       });
     }
-    if (harness === "codex" && cur.nonzeroTokenRecords > 0 && cur.rateLimited === 0) {
+    if (hasRateLimitsCapability(harness) && cur.nonzeroTokenRecords > 0 && cur.rateLimited === 0) {
       warnings.push({
         type: "rate_limit_unavailable",
         harness,

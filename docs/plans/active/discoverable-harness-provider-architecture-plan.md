@@ -1412,7 +1412,22 @@ On first run:
   `harness === "codex"` checks around rate-limit fields) is Codex-specific data shape handling, not a
   provider-count assumption — that is item 6.4's job (normalize/namespace the rate-limit capability),
   not this item's. No code changed; this item was already satisfied by existing generic aggregation.
-- [ ] Normalize rate-limit capability or namespace provider-specific rate-limit extensions.
+- [x] Normalize rate-limit capability or namespace provider-specific rate-limit extensions.
+  The plan allowed either approach; the field (`event.details.codex_rate_limits`,
+  `report.codex_provider_rate_limits`) was already namespaced with a `codex_` prefix, so the real gap
+  was the *check* gating it, not the data shape: `telemetry-analyze.mjs` had three `harness ===
+  "codex"` literals deciding whether to read/report that field. Replaced all three with a
+  `hasRateLimitsCapability(harness)` helper that looks up `getHarnessProvider(harness).manifest
+  .capabilities.includes("telemetry-rate-limits")` — the manifests already declared this correctly
+  (Codex's `provider.json` lists `telemetry-rate-limits`, Claude's doesn't), so a future rate-limited
+  provider needs no new literal added to the analyzer, just the capability in its own manifest. Also
+  gave Codex's `telemetry.parseRateLimits` adapter (declared in `contract.mjs` since Phase 1, still a
+  `notYetMigrated` stub) a real implementation: exported `transcript-parse.mjs`'s existing
+  `privacySafeRateLimits` (the same privacy-stripping function `applyCodexEntry` already called
+  inline during parse) as the capability method, rather than writing a second copy. No import cycle:
+  `telemetry-analyze.mjs` importing `scripts/harnesses/registry.mjs` resolves cleanly (verified) and
+  the hot capture path does not import `telemetry-analyze.mjs` at all. 381/381 tests passing, doctor
+  100/100 clean.
 - [x] Move transcript roots, location, and parsing into transcript adapters.
   Items 2 and 5 turned out to be the same refactor once traced: `scripts/cli/telemetry-transcript.mjs`
   (`transcriptStats`, the hot-path parser) and `scripts/cli/telemetry-transcript-locate.mjs`

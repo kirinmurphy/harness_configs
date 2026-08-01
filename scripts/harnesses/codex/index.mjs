@@ -13,7 +13,7 @@ import { mergeCodexConfig, normalizeRootConfigContent } from "../../cli/root-con
 import { clearOwnedScalar, readOwnedScalar, recordOwnedScalar } from "../../cli/owned-scalars-state.mjs";
 import { resolveBehaviors, resolveArbitraryCommands, renderCodexConfig } from "../permissions-render.mjs";
 import { addCodexMcpBlock, removeCodexMcpBlock, codexHasMcp, listCodexMcpServers } from "../mcp-codex-toml.mjs";
-import { transcriptStats } from "../transcript-parse.mjs";
+import { transcriptStats, privacySafeRateLimits } from "../transcript-parse.mjs";
 import { locateTranscript, extractHeavyTurns, transcriptTitle } from "../transcript-locate.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -255,7 +255,6 @@ const stubGroups = stubAdapterGroups("codex", {
   commands: ["render"],
   hooks: ["read", "write"],
   mcp: ["add", "remove"],
-  telemetry: ["parseRateLimits"],
   session: ["launch"],
 });
 
@@ -274,8 +273,8 @@ export const codexProvider = defineHarnessProvider({
       unmerge: hooksUnmerge,
     },
     telemetry: {
-      ...stubGroups.telemetry,
       wireCaptureHooks,
+      parseRateLimits: privacySafeRateLimits,
     },
     transcripts: {
       locate,

@@ -1687,6 +1687,30 @@ On first run:
   through `manifests-data.sh`'s `harness_present`/`harness_detected_rows`, which shell out to
   `roborepo harness detected` (`scripts/cli/harness.mjs`, backed by the registry) with a
   hardcoded-claude/codex fallback only for sandboxes that don't copy `scripts/harnesses/`.
+- [x] Run a repository-wide fixed-harness search and classify every remaining occurrence as
+  provider implementation, fixture, documentation example, or migration defect.
+  Ran the plan's four prescribed `rg` patterns (`claude|codex` literals, `.claude`/`.codex` path
+  literals, `"Claude"|"Codex"` display-string literals, install-script harness branching) across
+  the full repo. 114 total hits. Classified: ~24 legitimate provider-implementation hits (the
+  `scripts/harnesses/{claude,codex}/` adapters themselves, which are supposed to name their own
+  harness), ~55 test fixtures (characterization/synthetic-provider tests asserting against known
+  claude/codex output), ~20 documentation-example comments (docs illustrating the two shipped
+  providers by name, not asserting there are only two), and 15 genuine migration defects — code
+  that still branches or hardcodes claude/codex instead of going through the provider registry.
+  Defect sites: `scripts/cli/workspace-resources.mjs` (4 hardcoded-pair hits, no registry import
+  at all), `scripts/cli/presets.mjs:938-940` (`harnessAvailable` hardcodes the pair instead of
+  `hasHarnessProvider`), `scripts/cli/telemetry-schemas/snapshot-schema.mjs:39`, `scripts/install/
+  install-claude.sh` vs `install-codex.sh` (structural divergence a generic installer could
+  collapse), `scripts/cli/package-probes.mjs:49` (`"both"` expansion hardcodes the two IDs),
+  `scripts/cli/packages.mjs` (scaffold templates), `scripts/cli/skills.mjs` (`skillAdopt`), and
+  `scripts/install/main.sh` (dead harness-specific vars). All 15 are runtime CLI logic in earlier-
+  phase territory (packages, presets, telemetry, skills, install) rather than Phase 8's own build-
+  output/doc surface. Decision: log-only for this phase rather than fix in place — bundling
+  runtime-logic changes across 6 unrelated files into a phase scoped to build outputs and docs
+  inflates this phase's blast radius for no coupling benefit, since none of the 15 sites touch
+  `render-rules.sh`, `render-agent-permissions.mjs`, `render-slash-commands.mjs`, or the manifest/
+  doc work Phase 8 is actually about. Tracked as explicit follow-up work below rather than silently
+  dropped. 384/384 tests passing, doctor 100/100 clean (audit was read-only, no code touched).
 
 ## Code touchpoint inventory
 
@@ -1830,6 +1854,26 @@ proves contract independence but does not test real native configuration complex
 Only after multiple app-owned providers validate the contract should RoboRepo evaluate signed or
 third-party provider distribution. That requires a separate trust, compatibility, sandboxing, and
 versioning design.
+
+### Remaining fixed-harness call sites (Phase 8 audit)
+
+Phase 8's repository-wide audit found 15 sites that still hardcode or branch on `claude`/`codex`
+instead of going through `listHarnessProviders()`/`hasHarnessProvider()`. Logged rather than fixed
+in Phase 8 because they are runtime CLI logic outside that phase's build-output/doc scope:
+
+- `scripts/cli/workspace-resources.mjs` — 4 hits, no registry import at all.
+- `scripts/cli/presets.mjs:938-940` — `harnessAvailable` hardcodes the pair instead of calling
+  `hasHarnessProvider`.
+- `scripts/cli/telemetry-schemas/snapshot-schema.mjs:39`.
+- `scripts/install/install-claude.sh` vs `install-codex.sh` — structural divergence a generic
+  installer driven by provider manifests could collapse.
+- `scripts/cli/package-probes.mjs:49` — `"both"` expansion hardcodes the two provider IDs.
+- `scripts/cli/packages.mjs` — scaffold templates reference the two providers by name.
+- `scripts/cli/skills.mjs` — `skillAdopt`.
+- `scripts/install/main.sh` — dead harness-specific vars.
+
+Take this as a follow-up plan or task, not silent debt: each site should route through the
+registry the same way `render-agent-permissions.mjs` was refactored in this phase.
 
 ## Open questions
 

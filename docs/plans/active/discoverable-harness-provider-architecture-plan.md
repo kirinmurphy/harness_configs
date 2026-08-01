@@ -1879,6 +1879,25 @@ provider abstraction on this presentation change.
 After the migration, implement one real third provider in a separate plan. The synthetic provider
 proves contract independence but does not test real native configuration complexity.
 
+**Started:** see [Gemini CLI Provider Integration](../backlog/gemini-cli-provider-integration-plan.md).
+Gemini CLI was chosen over Cursor CLI for this first real-provider pass because its config shape
+(global settings path, rules-file discovery, permissions model, MCP registration, custom-command
+mechanism) is fully documented; Cursor CLI's public docs left permissions storage, MCP registration
+format, and any skills/slash-commands equivalent underdocumented or contradictory across sources at
+research time.
+
+**Next candidate:** Cursor CLI (`cursor-agent`), once Gemini has exercised the contract once for
+real. Known unknowns to resolve via hands-on verification (installing `cursor-agent`, not further
+doc research) before planning it: whether it has a skills or slash-commands equivalent at all (none
+found in docs), the exact `mcp.json` registration format (docs only say it "detects and respects"
+the editor's file, no schema given), and the global rules-file path (docs confirm project-root
+`AGENTS.md`/`CLAUDE.md` support but not a `~/.cursor/`-level global equivalent). What *is* confirmed
+and looks like a reasonably close match: permissions at `~/.cursor/cli-config.json` (global) /
+`.cursor/cli.json` (project) as JSON allow/deny, and a `.cursor/hooks.json` lifecycle-hook model
+(`beforeShellExecution`, `afterFileEdit`, etc.) structurally similar to Codex's `hooks.json`,
+including a real 3-state `allow`/`deny`/`ask` permission decision at the hook layer — same shape as
+Codex's `permission-check.mjs` recovery of the `ask` tier.
+
 ### External provider ecosystem
 
 Only after multiple app-owned providers validate the contract should RoboRepo evaluate signed or

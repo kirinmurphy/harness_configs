@@ -1499,6 +1499,21 @@ assert "localhoster: health normalization and flap resistance" \
 assert "localhoster: bounded JSONL history" \
   node "${repo_root}/scripts/test/localhoster-history-check.mjs"
 
+# Per-container CPU/memory via `docker stats`, replacing the host `ps` reading for docker-matched
+# instances (that reading is always the shared VM-proxy PID on macOS, never the real container).
+assert "localhoster: docker stats provider" \
+  node "${repo_root}/scripts/test/localhoster-docker-stats-check.mjs"
+
+# Bind-mount sources per container, the third repo-resolution tier for Compose projects that carry
+# no working_dir label (Supabase CLI and anything else not started via `docker compose up`).
+assert "localhoster: docker mounts provider" \
+  node "${repo_root}/scripts/test/localhoster-docker-mounts-check.mjs"
+
+# Compose repo resolution precedence: manual repoPath > working_dir label > bind-mount path, plus
+# the agreement guard that refuses to guess when a project's mounts disagree.
+assert "localhoster: compose project identity resolution" \
+  node "${repo_root}/scripts/test/localhoster-compose-identity-check.mjs"
+
 # Root config drift VIEW (buildRootConfigView in root-config-view.mjs): the per-harness state the terminal
 # `config root inspect` report and the web /config drift chip both render from — not-installed /
 # unwritten / in-sync / drifted / staged-pending.

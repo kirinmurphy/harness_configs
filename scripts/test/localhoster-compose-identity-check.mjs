@@ -33,6 +33,9 @@ const baseOptions = {
   collectGit: async (root) => ({ root, branch: "main", dirty: false, provider: { ok: true, reason: null } }),
   runGit: async () => ({ stdout: "" }),
   collectProcess: async () => new Map(),
+  // Off by default so the existing working_dir/manual cases can never reach a real `docker inspect`;
+  // the bind-mount cases below opt in explicitly.
+  collectDockerMountRecords: null,
   discoverListenerRecords: undefined, // not an option of discoverInstances; left out intentionally
 };
 
@@ -102,6 +105,129 @@ async function runCommand(command, args) {
     settings: { composeProjects: {} },
   });
   assert.equal(result.composeProjectGit.has("myapp"), false);
+}
+
+// Bind-mount tier. A project with NO working_dir label (Supabase CLI starts its containers outside
+// `docker compose up`, so Compose never writes one) still resolves when a container bind-mounts a
+// path inside the repo — the walk-up from that path finds the same `.git`.
+{
+  let inspected = null;
+  const result = await discoverInstances({
+    ...baseOptions,
+    runCommand,
+    discoverDocker: async () => ({ warnings: [], containers: [composeContainer({ workingDir: null })] }),
+    collectDockerMountRecords: async (ids) => {
+      inspected = ids;
+      return new Map([["abc123", ["/repo/myapp/supabase/snippets"]]]);
+    },
+    resolveIdentity: (cwd) => {
+      if (cwd === "/repo/myapp/supabase/snippets") {
+        return { identity: "git:github.com/x/myapp", identityKind: "git", confidence: "high", projectRoot: "/repo/myapp", evidence: "Git remote" };
+      }
+      return { identity: `process:${cwd}:unknown`, identityKind: "process", confidence: "low", projectRoot: null, evidence: "process working directory" };
+    },
+    settings: { composeProjects: {} },
+  });
+  const entry = result.composeProjectGit.get("myapp");
+  assert.equal(entry?.resolvedFrom, "auto-bind");
+  assert.equal(entry?.repositoryId, "git:github.com/x/myapp");
+  // git context is collected against the repo ROOT, not the mounted subdirectory.
+  assert.equal(entry?.git?.root, "/repo/myapp");
+  assert.deepEqual(inspected, ["abc123"]);
+}
+
+// Agreement guard: two containers in one project whose bind mounts resolve to DIFFERENT
+// repositories means at least one mount points somewhere unrelated, and there is no basis for
+// picking between them — resolve nothing rather than guess.
+{
+  const result = await discoverInstances({
+    ...baseOptions,
+    runCommand,
+    discoverDocker: async () => ({
+      warnings: [],
+      containers: [
+        composeContainer({ workingDir: null }),
+        { ...composeContainer({ workingDir: null }), containerId: "def456", publishedPorts: [] },
+      ],
+    }),
+    collectDockerMountRecords: async () => new Map([
+      ["abc123", ["/repo/myapp/sub"]],
+      ["def456", ["/repo/unrelated/sub"]],
+    ]),
+    resolveIdentity: (cwd) => {
+      if (cwd === "/repo/myapp/sub") {
+        return { identity: "git:github.com/x/myapp", identityKind: "git", confidence: "high", projectRoot: "/repo/myapp", evidence: "Git remote" };
+      }
+      if (cwd === "/repo/unrelated/sub") {
+        return { identity: "git:github.com/x/unrelated", identityKind: "git", confidence: "high", projectRoot: "/repo/unrelated", evidence: "Git remote" };
+      }
+      return { identity: `process:${cwd}:unknown`, identityKind: "process", confidence: "low", projectRoot: null, evidence: "process working directory" };
+    },
+    settings: { composeProjects: {} },
+  });
+  assert.equal(result.composeProjectGit.has("myapp"), false);
+}
+
+// Several containers agreeing on ONE repository is the normal Supabase shape (only some containers
+// bind-mount anything at all) and still resolves.
+{
+  const result = await discoverInstances({
+    ...baseOptions,
+    runCommand,
+    discoverDocker: async () => ({
+      warnings: [],
+      containers: [
+        composeContainer({ workingDir: null }),
+        { ...composeContainer({ workingDir: null }), containerId: "def456", publishedPorts: [] },
+      ],
+    }),
+    collectDockerMountRecords: async () => new Map([
+      ["abc123", ["/repo/myapp/a"]],
+      ["def456", ["/repo/myapp/b"]],
+    ]),
+    resolveIdentity: (cwd) => {
+      if (cwd.startsWith("/repo/myapp/")) {
+        return { identity: "git:github.com/x/myapp", identityKind: "git", confidence: "high", projectRoot: "/repo/myapp", evidence: "Git remote" };
+      }
+      return { identity: `process:${cwd}:unknown`, identityKind: "process", confidence: "low", projectRoot: null, evidence: "process working directory" };
+    },
+    settings: { composeProjects: {} },
+  });
+  assert.equal(result.composeProjectGit.get("myapp")?.resolvedFrom, "auto-bind");
+}
+
+// A bind mount that resolves to no repo at all (identityKind "process") is not promoted, same guard
+// the working_dir tier applies.
+{
+  const result = await discoverInstances({
+    ...baseOptions,
+    runCommand,
+    discoverDocker: async () => ({ warnings: [], containers: [composeContainer({ workingDir: null })] }),
+    collectDockerMountRecords: async () => new Map([["abc123", ["/var/cache/something"]]]),
+    resolveIdentity: (cwd) => ({ identity: `process:${cwd}:unknown`, identityKind: "process", confidence: "low", projectRoot: null, evidence: "process working directory" }),
+    settings: { composeProjects: {} },
+  });
+  assert.equal(result.composeProjectGit.has("myapp"), false);
+}
+
+// Precedence: a working_dir that resolves wins outright, and no `docker inspect` is issued at all.
+{
+  const result = await discoverInstances({
+    ...baseOptions,
+    runCommand,
+    discoverDocker: async () => ({ warnings: [], containers: [composeContainer({ workingDir: "/repo/myapp" })] }),
+    collectDockerMountRecords: async () => {
+      throw new Error("mounts must not be inspected when working_dir already resolved");
+    },
+    resolveIdentity: (cwd) => {
+      if (cwd === "/repo/myapp") {
+        return { identity: "git:github.com/x/myapp", identityKind: "git", confidence: "high", projectRoot: "/repo/myapp", evidence: "Git remote" };
+      }
+      return { identity: `process:${cwd}:unknown`, identityKind: "process", confidence: "low", projectRoot: null, evidence: "process working directory" };
+    },
+    settings: { composeProjects: {} },
+  });
+  assert.equal(result.composeProjectGit.get("myapp")?.resolvedFrom, "auto");
 }
 
 console.log("ok: localhoster compose project identity resolution");

@@ -14,6 +14,8 @@ import {
   updateSettings,
 } from "../../modules/localhoster/index.mjs";
 import { recordRepositoryDiscovery } from "./repositories.mjs";
+import { resolveProjectIdentity } from "../../modules/localhoster/identity.mjs";
+import { canonicalRepositoryId, rootId as computeRootId } from "../../modules/repositories/identity.mjs";
 
 const FRESHNESS_MS = 8000;
 const HISTORY_API_LIMIT = 200;
@@ -313,6 +315,25 @@ function snapshotDiscovery(snapshot) {
 // which is what a package-mode install with no .git correctly reports.
 let portalGit;
 
+// Canonical repository fields for appRoot, resolved once. Same sync-caller constraint as portalGit,
+// but this is pure filesystem inspection rather than a subprocess, so it is computed lazily on
+// first use instead of needing its own refresh hook.
+let portalRepositoryCache;
+function portalRepositoryFields() {
+  if (portalRepositoryCache === undefined) {
+    try {
+      const resolved = resolveProjectIdentity(appRoot, "roborepo");
+      portalRepositoryCache = {
+        repositoryId: canonicalRepositoryId(resolved),
+        rootId: resolved.projectRoot ? computeRootId(resolved.projectRoot) : null,
+      };
+    } catch {
+      portalRepositoryCache = { repositoryId: null, rootId: null };
+    }
+  }
+  return portalRepositoryCache;
+}
+
 async function refreshPortalGit() {
   try {
     portalGit = await collectGitContext(appRoot);
@@ -342,7 +363,20 @@ function portalInstance() {
     // healthTransition path instead of flapping between null and a state.
     health: { state: "healthy", reason: null, consecutiveFailures: 0, since: null, firstSeenAt: null, lastProbeAt: null },
     process: { pid: process.pid, command: "roborepo" },
-    project: { identity: "roborepo:portal", identityKind: "roborepo", confidence: "high", projectRoot: appRoot, evidence: "built-in portal", git: portalGit ?? null },
+    project: {
+      identity: "roborepo:portal",
+      identityKind: "roborepo",
+      confidence: "high",
+      projectRoot: appRoot,
+      evidence: "built-in portal",
+      git: portalGit ?? null,
+      // The synthetic identity above is deliberately not a git: identity — "roborepo:portal" names
+      // the portal app, not the repository it ships from. But the checkout underneath appRoot is a
+      // real repository, so its canonical id is resolved separately here; without it the portal was
+      // the one card that could never link to its own remote and always fell back to "local repo".
+      // Null in a package-mode install with no .git, exactly like any other non-repo root.
+      ...portalRepositoryFields(),
+    },
   };
 }
 

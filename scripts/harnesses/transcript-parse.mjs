@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { readAppendedLines } from "./jsonl-tail.mjs";
+import { readAppendedLines } from "../cli/jsonl-tail.mjs";
 
 // Reads a harness transcript (JSONL) and derives the session-level context that explains token
 // spikes: cumulative token usage, turn/tool counts, and which tools/MCP servers were exercised.

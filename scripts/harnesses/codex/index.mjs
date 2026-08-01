@@ -13,6 +13,8 @@ import { mergeCodexConfig, normalizeRootConfigContent } from "../../cli/root-con
 import { clearOwnedScalar, readOwnedScalar, recordOwnedScalar } from "../../cli/owned-scalars-state.mjs";
 import { resolveBehaviors, resolveArbitraryCommands, renderCodexConfig } from "../permissions-render.mjs";
 import { addCodexMcpBlock, removeCodexMcpBlock, codexHasMcp, listCodexMcpServers } from "../mcp-codex-toml.mjs";
+import { transcriptStats } from "../transcript-parse.mjs";
+import { locateTranscript, extractHeavyTurns, transcriptTitle } from "../transcript-locate.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const manifestPath = path.resolve(here, "..", "..", "..", "globals", "harnesses", "codex", "provider.json");
@@ -210,6 +212,22 @@ function wireCaptureHooks(hooksPath) {
   return hooksMerge(hooksPath, fragment);
 }
 
+function locate(sessionId) {
+  return locateTranscript(sessionId, "codex");
+}
+
+// Shares the same format-tolerant parser as Claude's provider — see the longer note in
+// scripts/harnesses/claude/index.mjs's parse().
+function parse(transcriptPath, { sessionId, collectorDir, includeHeavyTurns = false } = {}) {
+  const stats = transcriptStats(transcriptPath, { sessionId, collectorDir });
+  if (!includeHeavyTurns) return { stats, heavyTurns: null, title: null };
+  return {
+    stats,
+    heavyTurns: extractHeavyTurns(transcriptPath, { limit: 8 }),
+    title: transcriptTitle(transcriptPath),
+  };
+}
+
 // Single-server add/remove: unlike Claude, Codex has a real config file to write into directly —
 // no CLI shell-out. Thin wrappers over the pure TOML block math in ../mcp-codex-toml.mjs; return
 // { changed, content } without writing, same pattern as rootConfig.mergePackageComponent above.
@@ -238,7 +256,6 @@ const stubGroups = stubAdapterGroups("codex", {
   hooks: ["read", "write"],
   mcp: ["add", "remove"],
   telemetry: ["parseRateLimits"],
-  transcripts: ["locate", "parse"],
   session: ["launch"],
 });
 
@@ -259,6 +276,10 @@ export const codexProvider = defineHarnessProvider({
     telemetry: {
       ...stubGroups.telemetry,
       wireCaptureHooks,
+    },
+    transcripts: {
+      locate,
+      parse,
     },
     rootConfig: {
       merge: (repoText, localText) => mergeCodexConfig(repoText, localText),

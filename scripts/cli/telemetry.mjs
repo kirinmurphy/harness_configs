@@ -41,7 +41,7 @@ import {
 import { loadRegistry, updateRegistry, upsertRepository, recordDiscovery } from "../../modules/repositories/index.mjs";
 import { buildRepositoryHashIndex } from "./telemetry-repository.mjs";
 import { createHash } from "node:crypto";
-import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
+import { buildAnalysisPrompt } from "../harnesses/transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
 import { hookFilePath, writeHooksFile } from "./hook-composition.mjs";
 import { getHarnessProvider, listHarnessProviders } from "../harnesses/registry.mjs";
@@ -1272,8 +1272,9 @@ function stopAnalysisRefresh() {
 const _titleCache = new Map();
 function cachedTranscriptTitle(sessionId, harness) {
   if (_titleCache.has(sessionId)) return _titleCache.get(sessionId);
-  const p = locateTranscript(sessionId, harness || "claude");
-  const t = p ? transcriptTitle(p) : null;
+  const adapters = getHarnessProvider(harness || "claude").adapters;
+  const p = adapters.transcripts.locate(sessionId);
+  const t = p ? adapters.transcripts.parse(p, { includeHeavyTurns: true }).title : null;
   if (t) _titleCache.set(sessionId, t);
   return t;
 }
@@ -1353,7 +1354,8 @@ function sessionSpoolContext(sessionId, markers) {
 // Resolve a flagged event to its chat: find the transcript, surface the heaviest turns, and build a
 // paste-ready analysis prompt. Best-effort — a missing transcript returns found:false, never throws.
 function loadSessionDetail({ id, harness, finding, repo, spoolContext = null }) {
-  const transcriptPath = locateTranscript(id, harness);
+  const adapters = getHarnessProvider(harness).adapters;
+  const transcriptPath = adapters.transcripts.locate(id);
   if (!transcriptPath) {
     return {
       found: false,
@@ -1363,13 +1365,14 @@ function loadSessionDetail({ id, harness, finding, repo, spoolContext = null }) 
       spool_context: spoolContext,
     };
   }
+  const { heavyTurns, title } = adapters.transcripts.parse(transcriptPath, { includeHeavyTurns: true });
   return {
     found: true,
     session_id: id,
     harness,
     transcript_path: transcriptPath,
-    title: transcriptTitle(transcriptPath),
-    heavy_turns: extractHeavyTurns(transcriptPath, { limit: 8 }),
+    title,
+    heavy_turns: heavyTurns,
     analysis_prompt: buildAnalysisPrompt({ sessionId: id, harness, repo, finding, transcriptPath }),
     spool_context: spoolContext,
   };

@@ -3,7 +3,7 @@
 // report and the dashboard JSON API so both speak the same numbers. Pure functions over arrays —
 // no I/O — so the server and CLI can each read the spool their own way.
 
-import { mcpServerOf } from "./telemetry-transcript.mjs";
+import { mcpServerOf } from "../harnesses/transcript-parse.mjs";
 import { deriveInsights } from "./telemetry-insights.mjs";
 import { computeMetric } from "./telemetry-metrics.mjs";
 import { applyCohortFilter, normalizeCohortFilter, describeCohortFilter, activeFilterCount } from "./telemetry-cohort.mjs";

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { transcriptStats } from "../cli/telemetry-transcript.mjs";
+import { transcriptStats } from "../harnesses/transcript-parse.mjs";
 import { analyzeTelemetry } from "../cli/telemetry-analyze.mjs";
 
 const FIXTURES_DIR = path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "telemetry");

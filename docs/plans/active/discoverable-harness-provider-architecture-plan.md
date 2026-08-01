@@ -1400,10 +1400,35 @@ On first run:
   cycle: `telemetry.mjs` importing `scripts/harnesses/registry.mjs` resolves cleanly since neither provider's
   `index.mjs` imports back into `telemetry.mjs` or `paths.mjs`'s registry-dependent half. 380/380 tests
   passing, doctor 100/100 clean.
-- [ ] Move raw Claude and Codex parsing into provider adapters.
+- [x] Move raw Claude and Codex parsing into provider adapters.
 - [ ] Keep normalized analysis independent of the provider count.
 - [ ] Normalize rate-limit capability or namespace provider-specific rate-limit extensions.
-- [ ] Move transcript roots, location, and parsing into transcript adapters.
+- [x] Move transcript roots, location, and parsing into transcript adapters.
+  Items 2 and 5 turned out to be the same refactor once traced: `scripts/cli/telemetry-transcript.mjs`
+  (`transcriptStats`, the hot-path parser) and `scripts/cli/telemetry-transcript-locate.mjs`
+  (`locateTranscript`/`extractHeavyTurns`/`transcriptTitle`) moved unchanged to
+  `scripts/harnesses/transcript-parse.mjs`/`transcript-locate.mjs` as shared leaf modules. Two design
+  forks confirmed with the user before coding: (1) `transcriptStats` takes no harness parameter and
+  detects Claude-vs-Codex purely by entry shape (`entry.type` checks), tolerating either format in one
+  cursor — kept that tolerance as a safety net inside the now-per-provider `transcripts.parse` rather
+  than making each provider's parse harness-pure, so both `claude`/`codex` providers' `parse` literally
+  call the same shared `transcriptStats`, byte-for-byte identical behavior, only reorganized by
+  ownership. (2) `extractHeavyTurns`/`transcriptTitle` do a full non-incremental re-read the hot capture
+  path must never pay for, so `transcripts.parse(transcriptPath, {sessionId, collectorDir,
+  includeHeavyTurns})` gates that work behind an opt-in flag — the on-demand portal/session-detail
+  callers (`cachedTranscriptTitle`, `loadSessionDetail` in `telemetry.mjs`) pass `includeHeavyTurns:
+  true` and now dispatch through `getHarnessProvider(harness).adapters.transcripts.locate/parse`;
+  `telemetry-capture.mjs`'s hot PreToolUse/PostToolUse path keeps a direct leaf-module import of
+  `transcriptStats` instead of going through the registry at all, since dispatching through
+  `getHarnessProvider(...)` would pull in both providers' full adapter modules (root-config-merge,
+  permissions-render, mcp-claude-cli, mcp-codex-toml, owned-scalars-state, ...) on every single tool
+  call — a real import-weight regression on a path this repo has previously optimized, not just a style
+  preference. Transcript root paths (`~/.claude/projects`, `~/.codex/sessions`) stayed as constants
+  inside `transcript-locate.mjs` rather than moving into `provider.json`'s path map — the manifest
+  schema has no "transcripts root" path kind today and adding one is a bigger contract change than this
+  item asked for; each provider's `locate(sessionId)` adapter is a thin wrapper baking in its own
+  harness id. `harness-manifest-check.mjs`'s fixture stub (`transcripts: { locate(){}, parse(){} }`)
+  needed no change — still just a shape check. 380/380 tests passing, doctor 100/100 clean.
 - [ ] Reject missing/unknown harness IDs in session lookup instead of defaulting to Claude.
 - [ ] Return provider display metadata with available telemetry harnesses.
 - [ ] Keep filters hidden when fewer than two harnesses exist.

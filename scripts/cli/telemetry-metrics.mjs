@@ -10,7 +10,7 @@
 // records are not passed to metric formulas directly — cohort selection (telemetry-cohort.mjs) is
 // what turns "captures relative to a marker" into the array a metric formula consumes.
 
-import { mcpServerOf } from "./telemetry-transcript.mjs";
+import { mcpServerOf } from "../harnesses/transcript-parse.mjs";
 
 export const METRIC_UNITS = new Set(["count", "ratio", "percent", "tokens", "ms", "tokens_per_task"]);
 export const METRIC_DIRECTIONS_GOOD = new Set(["lower", "higher", "neutral"]);

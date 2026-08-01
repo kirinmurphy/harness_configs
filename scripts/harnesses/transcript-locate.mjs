@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { mcpServerOf } from "./telemetry-transcript.mjs";
+import { mcpServerOf } from "./transcript-parse.mjs";
 
 // Locate a harness transcript from a session id, then surface the heaviest turns so a flagged event
 // (spike, loop) can be tied back to what actually happened in the chat. Read-only, best-effort:

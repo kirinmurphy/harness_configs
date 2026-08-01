@@ -13,6 +13,8 @@ import { mergeClaudeSettings, normalizeRootConfigContent } from "../../cli/root-
 import { renderClaudeSettings } from "../permissions-render.mjs";
 import { claudeMcpArgs, runClaudeMcpAdd, hasClaudeCli, claudeMcpRemove, claudeMcpList } from "../mcp-claude-cli.mjs";
 import { repoRoot } from "../../cli/roots.mjs";
+import { transcriptStats } from "../transcript-parse.mjs";
+import { locateTranscript, extractHeavyTurns, transcriptTitle } from "../transcript-locate.mjs";
 
 // Mirrors scripts/cli/mcp-config.mjs's MCP_SERVERS_PATH/MCP_SCOPES, duplicated rather than
 // imported: mcp-config.mjs pulls in paths.mjs's registry-dependent half (rootConfigActive/
@@ -319,13 +321,32 @@ function wireCaptureHooks(settingsPath) {
   return hooksMerge(settingsPath, fragment);
 }
 
+function locate(sessionId) {
+  return locateTranscript(sessionId, "claude");
+}
+
+// transcriptStats tolerates either harness's entry shape by design (a session's transcript should
+// only ever contain its own harness's shape, but the shared parser stays format-tolerant as a
+// safety net rather than trusting the caller's harness id blindly) — both providers share this
+// same parser rather than each owning a harness-pure copy. includeHeavyTurns is opt-in: the hot
+// capture path (every PreToolUse/PostToolUse) never sets it, since extractHeavyTurns/transcriptTitle
+// do a full non-incremental re-read that only the on-demand session drill-down needs.
+function parse(transcriptPath, { sessionId, collectorDir, includeHeavyTurns = false } = {}) {
+  const stats = transcriptStats(transcriptPath, { sessionId, collectorDir });
+  if (!includeHeavyTurns) return { stats, heavyTurns: null, title: null };
+  return {
+    stats,
+    heavyTurns: extractHeavyTurns(transcriptPath, { limit: 8 }),
+    title: transcriptTitle(transcriptPath),
+  };
+}
+
 const stubGroups = stubAdapterGroups("claude", {
   rules: ["render"],
   skills: ["link"],
   commands: ["render"],
   hooks: ["read"],
   mcp: ["add"],
-  transcripts: ["locate", "parse"],
   session: ["launch"],
 });
 
@@ -355,6 +376,10 @@ export const claudeProvider = defineHarnessProvider({
     },
     telemetry: {
       wireCaptureHooks,
+    },
+    transcripts: {
+      locate,
+      parse,
     },
     // 4th param (target path) is Codex-only (used in an error message); Claude's render ignores it.
     permissions: {

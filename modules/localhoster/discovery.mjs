@@ -87,13 +87,26 @@ export async function discoverInstances(options = {}) {
   warnings.push(...dockerResult.warnings);
   const dockerByHostPort = indexDockerContainersByHostPort(dockerResult.containers);
 
+  // A manually-associated repo (settings.composeProjects[name].repoPath — see settings-schema.mjs
+  // for why this is a path rather than an identity) has to be resolved here, not in
+  // buildLocalhosterSnapshot, because git collection is async and which compose projects exist is
+  // only known once dockerResult above has resolved. One extra collectGit call per associated
+  // project, not per container/port.
+  const composeProjectGit = collectGit
+    ? await collectGitForComposeProjects(dockerResult.containers, settings, { collectGit, scanCache, runGit })
+    : new Map();
+
   // instance -> the probe and app settings that produced it. Health is classified in a later pass
   // (association keys must be final first), and this carries the inputs across rather than having
   // that pass rebuild them from the flattened instance.
   const context = new Map();
   for (const item of pending) {
     const probe = probeHttp ? probes.get(item) : null;
-    if (probeHttp && !probe) continue;
+    const docker = dockerByHostPort.get(item.listener.port) || null;
+    // A container observation is independent confirmation the listener is a real service, so it
+    // substitutes for a failed/inapplicable HTTP probe (e.g. Postgres) rather than being dropped
+    // alongside actual noise (ControlCenter, Dropbox) that never got Docker corroboration either.
+    if (probeHttp && !probe && !docker) continue;
     const instance = toInstance({
       listener: item.listener,
       identity: item.identity,
@@ -101,7 +114,7 @@ export async function discoverInstances(options = {}) {
       probe,
       cwd: item.cwd,
       git: gitByRoot.get(item.identity.projectRoot) || null,
-      docker: dockerByHostPort.get(item.listener.port) || null,
+      docker,
       processMetrics: toProcessMetricsFields(processByPid.get(item.listener.pid)),
     });
     context.set(instance, { probe, appSettings: item.appSettings });
@@ -111,7 +124,7 @@ export async function discoverInstances(options = {}) {
   // After disambiguation, so the previous-health lookup uses each instance's final key.
   attachHealth(instances, { previousHealth, context, now });
 
-  return { capabilities, warnings, instances };
+  return { capabilities, warnings, instances, composeProjectGit };
 }
 
 // Attach canonical repository fields alongside the existing identity contract. repositoryId is the
@@ -125,6 +138,27 @@ function withRepositoryFields(identity) {
     repositoryId: canonicalRepositoryId(identity),
     rootId: identity.projectRoot ? computeRootId(identity.projectRoot) : null,
   };
+}
+
+// One collectGit call per distinct associated repoPath, not per container — several compose
+// projects could theoretically point at the same path, and a project with no association at all
+// (the common case) costs nothing here. repositoryId is resolved alongside git so the compose
+// card's repo link can reuse providerUrlForRepositoryId the same way a regular project card does.
+async function collectGitForComposeProjects(containers, settings, { collectGit, scanCache, runGit }) {
+  const composeProjectNames = new Set(containers.map((c) => c.composeProject).filter(Boolean));
+  const byProjectName = new Map();
+  await Promise.all(
+    Array.from(composeProjectNames, async (name) => {
+      const repoPath = settings?.composeProjects?.[name]?.repoPath;
+      if (!repoPath) return;
+      const identity = resolveProjectIdentity(repoPath, "docker-compose");
+      byProjectName.set(name, {
+        git: await collectGit(repoPath, { scanCache, runGit }),
+        repositoryId: canonicalRepositoryId(identity),
+      });
+    }),
+  );
+  return byProjectName;
 }
 
 // Docker Desktop on macOS runs containers inside a Linux VM, so container PIDs are never

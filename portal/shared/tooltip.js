@@ -1,7 +1,8 @@
-// Shared hover/focus tooltip for any element carrying a `data-tip` attribute. One singleton bubble is
-// appended to <body> and positioned with JS so it never crosses the viewport edges — the same
-// boundary-aware behavior as the dropdown popovers (unlike a CSS ::after tooltip, which happily
-// renders off-screen). Import once per page; it wires delegated listeners itself.
+// Shared hover/focus tooltip for any element carrying a `data-tip` (plain text) or `data-tip-html`
+// (rich content, sourced from a sibling <template>) attribute. One singleton bubble is appended to
+// <body> and positioned with JS so it never crosses the viewport edges — the same boundary-aware
+// behavior as the dropdown popovers (unlike a CSS ::after tooltip, which happily renders
+// off-screen). Import once per page; it wires delegated listeners itself.
 //
 // Why JS and not a native element: there is no native, cross-browser, *styleable* tooltip. The
 // `title` attribute auto-positions but can't be styled; the Popover API renders in the top layer but
@@ -23,35 +24,57 @@ function ensureBubble() {
   return bubble;
 }
 
+// Picks whichever side (above/below, left/right) has the most room rather than a fixed
+// preference, then clamps inside the viewport. If neither vertical side can fit the content at
+// its natural height, the roomier side wins and the bubble gets a capped max-height + internal
+// scroll instead of overflowing the screen.
 function position(el) {
   const tip = ensureBubble();
+  tip.style.maxHeight = "";
+  tip.style.overflowY = "";
   const r = el.getBoundingClientRect();
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
-  // Measure at full width first, then clamp. max-width is enforced by CSS.
   const tw = tip.offsetWidth;
   const th = tip.offsetHeight;
 
-  // Prefer above the trigger; flip below if there isn't room above.
-  const above = r.top - GAP - th - MARGIN >= 0 || r.top > vh - r.bottom;
-  let top = above ? r.top - GAP - th : r.bottom + GAP;
-  // Clamp vertically so it never leaves the viewport even after the flip decision.
-  top = Math.max(MARGIN, Math.min(top, vh - th - MARGIN));
+  const spaceBelow = vh - r.bottom - GAP - MARGIN;
+  const spaceAbove = r.top - GAP - MARGIN;
+  const below = spaceBelow >= th || spaceBelow >= spaceAbove;
+  const availableVertical = Math.max(below ? spaceBelow : spaceAbove, 0);
 
-  // Center horizontally on the trigger, then clamp both edges inside the viewport.
-  let left = r.left + r.width / 2 - tw / 2;
-  left = Math.max(MARGIN, Math.min(left, vw - tw - MARGIN));
+  if (th > availableVertical) {
+    tip.style.maxHeight = `${Math.max(availableVertical, 80)}px`;
+    tip.style.overflowY = "auto";
+  }
 
+  const top = below ? r.bottom + GAP : Math.max(MARGIN, r.top - GAP - Math.min(th, availableVertical));
   tip.style.top = `${Math.round(top)}px`;
+
+  const spaceRight = vw - r.left - MARGIN;
+  const spaceLeft = r.right - MARGIN;
+  const alignLeft = spaceRight >= tw || spaceRight >= spaceLeft;
+
+  let left = alignLeft ? r.left : r.right - tw;
+  left = Math.max(MARGIN, Math.min(left, vw - tw - MARGIN));
   tip.style.left = `${Math.round(left)}px`;
 }
 
 function show(el) {
-  const text = el.getAttribute("data-tip");
-  if (!text) return;
   const tip = ensureBubble();
-  tip.textContent = text;
+  const templateSelector = el.getAttribute("data-tip-html");
+  if (templateSelector) {
+    const template = el.querySelector(templateSelector) || document.querySelector(templateSelector);
+    if (!template) return;
+    tip.replaceChildren(template.content.cloneNode(true));
+    tip.classList.add("portal-tooltip--rich");
+  } else {
+    const text = el.getAttribute("data-tip");
+    if (!text) return;
+    tip.textContent = text;
+    tip.classList.remove("portal-tooltip--rich");
+  }
   tip.hidden = false;
   // Position after it's laid out so offsetWidth/Height are real.
   position(el);
@@ -61,19 +84,21 @@ function hide() {
   if (bubble) bubble.hidden = true;
 }
 
+const TRIGGER_SELECTOR = "[data-tip], [data-tip-html]";
+
 function install() {
   // Delegated so it covers elements added after load (insight rows are rendered per repaint).
   document.addEventListener("pointerover", (e) => {
-    const el = e.target.closest?.("[data-tip]");
+    const el = e.target.closest?.(TRIGGER_SELECTOR);
     if (el) show(el);
   });
   document.addEventListener("pointerout", (e) => {
-    const el = e.target.closest?.("[data-tip]");
+    const el = e.target.closest?.(TRIGGER_SELECTOR);
     if (el && !el.contains(e.relatedTarget)) hide();
   });
   // Keyboard accessibility: focus/blur mirror hover.
   document.addEventListener("focusin", (e) => {
-    const el = e.target.closest?.("[data-tip]");
+    const el = e.target.closest?.(TRIGGER_SELECTOR);
     if (el) show(el);
   });
   document.addEventListener("focusout", hide);

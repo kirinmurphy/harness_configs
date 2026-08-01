@@ -30,6 +30,8 @@ const refs = {
   appRemoveAssociation: document.getElementById("app-remove-association"),
   aliasDialog: document.getElementById("alias-dialog"),
   aliasForm: document.getElementById("alias-form"),
+  composeRepoDialog: document.getElementById("compose-repo-dialog"),
+  composeRepoForm: document.getElementById("compose-repo-form"),
   settingsDialog: document.getElementById("settings-dialog"),
   settingsBody: document.getElementById("settings-body"),
 };
@@ -99,13 +101,20 @@ function render(snapshot, { reconcile }) {
       // Refresh/Settings live in this header, so it must always render even with zero active
       // apps — otherwise those controls would vanish along with the empty-state fallback.
       alwaysShow: true,
-      cards: snapshot.projects.flatMap((project) =>
-        project.instances.map((instance) => ({
-          key: instance.associationKey,
-          hash: JSON.stringify(instance) + JSON.stringify(project),
-          build: () => tmpl.instanceCard(project, instance, cardActions()),
+      cards: [
+        ...snapshot.projects.flatMap((project) =>
+          project.instances.map((instance) => ({
+            key: instance.associationKey,
+            hash: JSON.stringify(instance) + JSON.stringify(project),
+            build: () => tmpl.instanceCard(project, instance, cardActions()),
+          })),
+        ),
+        ...snapshot.composeProjects.map((composeProject) => ({
+          key: `compose:${composeProject.name}`,
+          hash: JSON.stringify(composeProject),
+          build: () => tmpl.composeProjectCard(composeProject, composeProjectActions()),
         })),
-      ),
+      ],
     },
     {
       id: "unmatched",
@@ -232,6 +241,12 @@ function reconcileSection(section) {
       !hasOpenMenu(existing.node)
     ) {
       const node = build();
+      // A poll-driven hash change (health/CPU/RSS ticking) shouldn't silently collapse a
+      // <details> the operator opened — e.g. an expanded compose-project card — since the
+      // rebuilt node is a fresh element with no memory of the old one's open state.
+      if (existing.node instanceof HTMLDetailsElement && node instanceof HTMLDetailsElement) {
+        node.open = existing.node.open;
+      }
       existing.node.replaceWith(node);
       renderedCards.set(cardKey, { node, hash, offline: false });
     }
@@ -299,6 +314,51 @@ function cardActions() {
     onCloseMenus: closeActionMenus,
     onHistory: (project, instance) => historyView.open(project, instance),
   };
+}
+
+function composeProjectActions() {
+  return {
+    onAssociateRepo: openComposeRepoDialog,
+    onToggleFavorite: toggleComposeFavorite,
+    onHide: hideComposeProject,
+    onToggleMenu: toggleActionMenu,
+    onCloseMenus: closeActionMenus,
+    onHistory: (project, instance) => historyView.open(project, instance),
+  };
+}
+
+function openComposeRepoDialog(composeProject) {
+  fields.setValue("compose-repo-project", composeProject.name);
+  fields.setValue("compose-repo-project-name", composeProject.name);
+  fields.setValue("compose-repo-path", composeProject.repoPath || "");
+  fields.setText("compose-repo-error", "");
+  refs.composeRepoDialog.showModal();
+}
+
+async function toggleComposeFavorite(composeProject) {
+  try {
+    const result = await api.updateComposeProject({
+      revision: lastSnapshot.settingsRevision,
+      composeProject: composeProject.name,
+      favorite: !composeProject.favorite,
+    });
+    applySnapshot(result.localhoster || result);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function hideComposeProject(composeProject) {
+  try {
+    const result = await api.updateComposeProject({
+      revision: lastSnapshot.settingsRevision,
+      composeProject: composeProject.name,
+      hidden: true,
+    });
+    applySnapshot(result.localhoster || result);
+  } catch (err) {
+    showError(err.message);
+  }
 }
 
 function openAddLinkDialog(project, instance) {
@@ -438,6 +498,16 @@ refs.aliasForm.addEventListener("submit", async (event) => {
       from: fields.readValue("alias-from"),
       to: fields.readValue("alias-to"),
       confirmed: fields.readChecked("alias-confirmed"),
+    }),
+  );
+});
+refs.composeRepoForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await mutateDialog(refs.composeRepoDialog, "compose-repo-error", () =>
+    api.updateComposeProject({
+      revision: lastSnapshot.settingsRevision,
+      composeProject: fields.readValue("compose-repo-project"),
+      repoPath: fields.readValue("compose-repo-path"),
     }),
   );
 });

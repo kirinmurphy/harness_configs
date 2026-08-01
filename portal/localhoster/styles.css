@@ -144,13 +144,18 @@ main {
   justify-content: space-between;
   align-items: start;
   gap: 12px;
+  flex-wrap: nowrap;
 }
 .card-title {
   display: flex;
   align-items: baseline;
   gap: 7px;
   min-width: 0;
+  flex: 1;
   flex-wrap: wrap;
+}
+.card-head .action-menu {
+  flex-shrink: 0;
 }
 .card-title h3 {
   font-size: var(--text-md);
@@ -189,7 +194,6 @@ main {
   width: 15px;
   height: 15px;
 }
-.info-tooltip,
 .menu-panel {
   position: absolute;
   z-index: 10;
@@ -200,27 +204,25 @@ main {
   background: var(--bg);
   box-shadow: 0 14px 40px var(--modal-shadow);
 }
-.info-tooltip {
-  display: none;
-  padding: 10px;
+/* Content layout only — position/background/border/shadow/show-hide now live in the shared
+ * .portal-tooltip bubble (portal/shared/tooltip.js + base.css), which screen-aware-positions
+ * this content via a <template data-tip-html> on .info-wrap. */
+.info-tooltip-content {
+  display: grid;
+  gap: 6px;
   color: var(--desc-dim);
   font-size: var(--text-xs);
 }
-.info-wrap:focus-within .info-tooltip,
-.info-wrap:hover .info-tooltip {
-  display: grid;
-  gap: 6px;
-}
-.info-tooltip > span {
+.info-tooltip-content > span {
   display: grid;
   grid-template-columns: 70px 1fr;
   gap: 8px;
 }
-.info-tooltip strong {
+.info-tooltip-content strong {
   color: var(--dim);
   font-weight: 600;
 }
-.info-tooltip [data-slot="warning"] {
+.info-tooltip-content [data-slot="warning"] {
   grid-template-columns: 1fr;
   color: var(--warn);
 }
@@ -364,20 +366,60 @@ dialog::backdrop {
    introducing colors, so light and dark themes both track base.css. */
 .git-badge {
   display: inline-flex;
-  align-items: baseline;
-  gap: 0.35rem;
+  align-items: center;
+  gap: 0.4rem;
   font-size: var(--text-2xs);
   color: var(--dim);
   white-space: nowrap;
 }
-.git-commit {
-  font-family: var(--mono, monospace);
-  opacity: 0.75;
+/* Dirty-state dot, not a text badge — clean/dirty is a glanceable fact, the commit hash and full
+ * clean/dirty wording live in the hover tooltip for the rare case that needs them. */
+.git-dirty-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex-shrink: 0;
 }
-/* Only ever rendered for an explicit dirty:true — an unknown dirty state draws nothing at all. */
-.git-dirty {
-  color: var(--warn);
-  font-weight: 700;
+.git-dirty-dot.is-dirty {
+  background: var(--warn);
+}
+.git-repo-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: var(--accent);
+}
+.git-repo-link svg {
+  width: 10px;
+  height: 10px;
+}
+.git-badge-icon {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+.git-repo-name {
+  color: var(--desc-dim);
+}
+.git-branch-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--dim);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: inherit;
+  font-family: var(--mono, monospace);
+}
+.git-branch-button:hover {
+  color: var(--accent);
+}
+.git-branch-button svg {
+  width: 10px;
+  height: 10px;
 }
 .git-tracking {
   color: var(--desc-dim);
@@ -402,6 +444,117 @@ dialog::backdrop {
   color: var(--warn);
 }
 .instance-card[data-health="unhealthy"] [data-slot="status"] {
+  color: var(--danger);
+}
+
+.compose-project-card > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.compose-project-card > summary::-webkit-details-marker {
+  display: none;
+}
+.compose-project-card > summary .action-menu {
+  margin-left: auto;
+}
+.compose-project-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dim);
+  flex-shrink: 0;
+}
+.compose-project-status[data-active="true"] {
+  background: var(--ok);
+}
+.compose-project-meta {
+  color: var(--dim);
+  font-size: var(--text-2xs);
+}
+.compose-project-rows {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+.compose-container-row {
+  padding: 6px 8px;
+  background: var(--bg);
+  border-radius: 4px;
+}
+.compose-container-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--text-xs);
+  flex-wrap: wrap;
+}
+.compose-container-name {
+  font-weight: 600;
+}
+.compose-container-metrics {
+  color: var(--dim);
+  font-size: var(--text-2xs);
+}
+.compose-container-head .info-wrap portal-info-icon .info-icon {
+  width: 12px;
+  height: 12px;
+}
+.compose-container-ports {
+  display: grid;
+  gap: 2px;
+  margin-top: 4px;
+  padding-left: 12px;
+}
+.compose-container-port {
+  display: grid;
+  grid-template-columns: 60px 8px 1fr auto auto auto auto;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-2xs);
+}
+.compose-container-port-num {
+  color: var(--desc-dim);
+  font-family: var(--mono);
+}
+.compose-container-port-origin {
+  color: var(--accent);
+  font-family: var(--mono);
+}
+.compose-container-port .info-wrap portal-info-icon .info-icon {
+  width: 12px;
+  height: 12px;
+}
+.compose-container-port-action {
+  width: 20px;
+  height: 20px;
+  padding: 3px;
+}
+.compose-container-port-action svg {
+  width: 100%;
+  height: 100%;
+}
+.compose-container-port-history {
+  font-size: var(--text-2xs);
+  color: var(--dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.compose-container-port-history:hover {
+  color: var(--accent);
+}
+.compose-container-port[data-health="healthy"] .compose-container-port-status {
+  color: var(--ok);
+}
+.compose-container-port[data-health="degraded"] .compose-container-port-status,
+.compose-container-port[data-health="starting"] .compose-container-port-status {
+  color: var(--warn);
+}
+.compose-container-port[data-health="unhealthy"] .compose-container-port-status {
   color: var(--danger);
 }
 

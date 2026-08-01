@@ -35,6 +35,10 @@ const ICONS = {
     viewBox: "0 0 16 16",
     body: `<rect x="5.5" y="5.5" width="8.5" height="8.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" /><path fill="none" stroke="currentColor" stroke-width="1.3" d="M10.5 5.5V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />`,
   },
+  "git-branch": {
+    viewBox: "0 0 16 16",
+    body: `<circle cx="4" cy="3" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3" /><circle cx="4" cy="13" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3" /><circle cx="12" cy="6" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3" /><path fill="none" stroke="currentColor" stroke-width="1.3" d="M4 4.6V11.4" /><path fill="none" stroke="currentColor" stroke-width="1.3" d="M4 8c0-2.5 2-3.5 4.5-3.8" />`,
+  },
   chevron: {
     viewBox: "0 0 16 16",
     body: `<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M4 6l4 4 4-4" />`,

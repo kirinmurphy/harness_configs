@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { defaultSettings, resolveProjectAlias } from "./settings.mjs";
+import { providerUrlForRepositoryId } from "../repositories/identity.mjs";
 
 export function buildLocalhosterSnapshot({
   discovery,
@@ -10,11 +11,42 @@ export function buildLocalhosterSnapshot({
 } = {}) {
   const activeByProject = new Map();
   const unmatchedInstances = [];
+  const composeProjectsByName = new Map();
   const seenApps = new Set();
   let hiddenCount = 0;
   const shapeGroups = groupByIdentityShape(discovery.instances || []);
 
   for (const instance of discovery.instances || []) {
+    // A Compose-labeled instance has its own resolvable identity — the project that spawned the
+    // container — independent of whether lsof/git could resolve a filesystem identity for the
+    // host-side listener process. Grouping here first means a Postgres/Traefik/proxy container with
+    // low-confidence process identity (the common case: Docker Desktop's `com.docker.backend` fronts
+    // every published port) still lands under its real project instead of "Unrecognized listeners".
+    if (instance.docker?.composeProject) {
+      const projectName = instance.docker.composeProject;
+      if (!composeProjectsByName.has(projectName)) {
+        const projectSettings = settings.composeProjects?.[projectName] || {};
+        const gitInfo = discovery.composeProjectGit?.get(projectName) || null;
+        composeProjectsByName.set(projectName, {
+          identity: `compose:${projectName}`,
+          name: projectSettings.name || projectName,
+          favorite: projectSettings.favorite === true,
+          hidden: projectSettings.hidden === true,
+          repoPath: projectSettings.repoPath || null,
+          git: gitInfo?.git || null,
+          repositoryId: gitInfo?.repositoryId || null,
+          providerUrl: gitInfo?.repositoryId ? providerUrlForRepositoryId(gitInfo.repositoryId) : null,
+          instances: [],
+        });
+      }
+      const project = composeProjectsByName.get(projectName);
+      if (project.hidden) {
+        hiddenCount += 1;
+        continue;
+      }
+      project.instances.push(withOpaqueKey(instance, `compose:${projectName}`, null));
+      continue;
+    }
     const projectIdentity = resolveProjectAlias(settings, instance.project.identity);
     const association = settings.associations[instance.associationKey];
     // A single distinct "shape" (same title + cwd) under this identity is treated as one app slot
@@ -98,6 +130,9 @@ export function buildLocalhosterSnapshot({
     capabilities: discovery.capabilities,
     warnings: discovery.warnings || [],
     projects: [...activeByProject.values()].sort(compareProjects).map(sortProject),
+    composeProjects: [...composeProjectsByName.values()]
+      .map((project) => ({ ...project, containers: groupByContainer(project.instances) }))
+      .sort(compareProjects),
     unmatchedInstances: unmatchedInstances.sort(compareInstances),
     inactiveProjects: inactiveProjects.sort(compareProjects),
     hiddenCount,
@@ -109,11 +144,35 @@ export function findCurrentInstanceByOpaqueKey(snapshot, opaqueKey) {
   if (!opaqueKey) return null;
   for (const instance of [
     ...(snapshot?.projects || []).flatMap((project) => project.instances || []),
+    ...(snapshot?.composeProjects || []).flatMap((project) => project.containers.flatMap((c) => c.instances)),
     ...(snapshot?.unmatchedInstances || []),
   ]) {
     if (instance.opaqueKey === opaqueKey) return instance;
   }
   return null;
+}
+
+// One row per container, not one per published port — a single Traefik/Postgres container that
+// publishes several host ports (e.g. 80/443/8080 on one proxy) is one operational unit, and
+// showing it as three identical-looking rows misrepresents it as three containers.
+function groupByContainer(instances) {
+  const byContainer = new Map();
+  for (const instance of instances) {
+    const containerId = instance.docker.containerId;
+    if (!byContainer.has(containerId)) {
+      byContainer.set(containerId, {
+        containerId,
+        name: instance.docker.composeService || instance.docker.name,
+        image: instance.docker.image,
+        state: instance.docker.state,
+        instances: [],
+      });
+    }
+    byContainer.get(containerId).instances.push(instance);
+  }
+  return [...byContainer.values()]
+    .map((container) => ({ ...container, instances: container.instances.sort(compareInstances) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // Groups instances by project identity, then by "shape" (same page title + same relative cwd)
@@ -153,6 +212,7 @@ function ensureProject(map, identity, settings, instance) {
       confidence: instance.project.confidence,
       evidence: instance.project.evidence,
       repositoryId: instance.project.repositoryId ?? null,
+      providerUrl: instance.project.repositoryId ? providerUrlForRepositoryId(instance.project.repositoryId) : null,
       rootId: instance.project.rootId ?? null,
       // Git context is per-root, so every instance under one project reports the same value; take it
       // from the first instance that has one rather than duplicating it on each.

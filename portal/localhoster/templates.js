@@ -1,4 +1,4 @@
-import { portalCopyText, portalFillSlots as fill, portalTpl as tpl } from "/portal/shared/api.js";
+import { portalCopyText, portalFillSlots as fill, portalMiddleEllipsis, portalTpl as tpl } from "/portal/shared/api.js";
 import { healthState, statusDetail, statusText, UNMATCHED_PROJECT_NAME } from "./state.js";
 
 export function emptyState(title, body) {
@@ -36,9 +36,131 @@ export function collapsibleGroup(title, meta, nodes) {
   return node;
 }
 
+// One card per Docker Compose project, its containers listed as compact rows rather than each
+// getting its own top-level card — a Compose stack (app, db, proxy, mailhog...) is one logical
+// operation, not N unrelated ones. Each container is its own row (not each published port) since a
+// single container publishing several host ports (e.g. one Traefik proxy on 80/443/8080) is one
+// operational unit, not three. See docs/plans/active/localhoster-compose-project-grouping.md.
+export function composeProjectCard(composeProject, actions) {
+  const allInstances = composeProject.containers.flatMap((c) => c.instances);
+  const portCount = allInstances.length;
+  // One CPU reading per container (not per port — a container's ports would otherwise multiply
+  // its own CPU into the sum), same de-dup as composeContainerRow's own metrics line.
+  const aggregateCpu = composeProject.containers.reduce((sum, c) => {
+    const cpu = c.instances.find((i) => i.processMetrics)?.processMetrics?.cpuPercent;
+    return cpu != null ? sum + cpu : sum;
+  }, 0);
+  const metaParts = [`${composeProject.containers.length} container${composeProject.containers.length === 1 ? "" : "s"}`, `${portCount} port${portCount === 1 ? "" : "s"}`];
+  if (aggregateCpu > 0) metaParts.push(`${aggregateCpu.toFixed(1)}% CPU`);
+  const node = fill(tpl("tpl-compose-project-card"), {
+    title: composeProject.name,
+    meta: metaParts.join(" · "),
+  });
+  applyGitBadge(node, node, composeProject.git, composeProject.providerUrl);
+  wireCopyBranchButton(node, composeProject.git);
+  const rows = node.querySelector("[data-slot=rows]");
+  for (const container of composeProject.containers) {
+    rows.append(composeContainerRow(container, actions));
+  }
+  wireComposeCardActions(node, composeProject, actions);
+  return node;
+}
+
+// The action-menu trigger lives inside <summary> (the only child a closed <details> keeps
+// rendered — everything else gets force-hidden by the UA stylesheet). Without preventDefault +
+// stopPropagation, any click on it would also toggle the details open/closed via the native
+// summary click behavior.
+function wireComposeCardActions(node, composeProject, actions) {
+  const trigger = node.querySelector("[data-action=menu]");
+  const menu = node.querySelector("[data-menu]");
+  trigger.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    actions.onToggleMenu(node);
+  });
+  node.querySelector("[data-action=repo]").addEventListener("click", (event) => {
+    event.preventDefault();
+    actions.onCloseMenus();
+    actions.onAssociateRepo(composeProject);
+  });
+  node.querySelector("[data-action=favorite]").addEventListener("click", (event) => {
+    event.preventDefault();
+    actions.onCloseMenus();
+    actions.onToggleFavorite(composeProject);
+  });
+  node.querySelector("[data-action=hide]").addEventListener("click", (event) => {
+    event.preventDefault();
+    actions.onCloseMenus();
+    actions.onHide(composeProject);
+  });
+  menu.addEventListener("click", (event) => event.stopPropagation());
+}
+
+function composeContainerRow(container, actions) {
+  const node = fill(tpl("tpl-compose-container-row"), {
+    name: container.name,
+  });
+  const tooltip = node.querySelector(".info-wrap > template").content;
+  fill(tooltip, {
+    image: container.image || "unknown",
+    state: container.state || "unknown",
+  });
+  // One PID serves every port a container publishes, so metrics are read off the first instance
+  // that has them rather than repeated/recomputed per port.
+  const metrics = node.querySelector("[data-slot=metrics]");
+  const metricsSource = container.instances.find((i) => i.processMetrics)?.processMetrics;
+  const metricsParts = [];
+  if (metricsSource?.cpuPercent != null) metricsParts.push(`${metricsSource.cpuPercent}% CPU`);
+  if (metricsSource?.residentMemoryKb != null) metricsParts.push(`${formatMemory(metricsSource.residentMemoryKb)} RSS`);
+  if (metricsSource?.elapsedSeconds != null) metricsParts.push(`up ${formatElapsed(metricsSource.elapsedSeconds)}`);
+  if (metricsParts.length) {
+    metrics.hidden = false;
+    metrics.textContent = metricsParts.join(" · ");
+  }
+  const ports = node.querySelector("[data-slot=ports]");
+  for (const instance of container.instances) {
+    const port = fill(tpl("tpl-compose-container-port"), {
+      port: `:${instance.bind.port}`,
+      status: `${statusText(instance)} (${statusDetail(instance)})`,
+    });
+    const origin = port.querySelector("[data-slot=origin]");
+    if (instance.origin) {
+      origin.textContent = displayOrigin(instance.origin);
+      origin.href = instance.origin;
+    } else {
+      origin.textContent = "—";
+      origin.removeAttribute("href");
+    }
+    const state = healthState(instance);
+    if (state) port.dataset.health = state;
+    port.querySelector("[data-slot=status-dot]").dataset.active = String(state === "healthy");
+    const tooltip = port.querySelector(".info-wrap > template").content;
+    fill(tooltip, {
+      latency: instance.latencyMs == null ? "unknown" : `${instance.latencyMs}ms`,
+      bind: `${instance.bind.address}:${instance.bind.port}`,
+    });
+    const warning = tooltip.querySelector("[data-slot=warning]");
+    if (instance.bind.warning) {
+      warning.hidden = false;
+      warning.textContent = instance.bind.warning;
+    }
+    port.querySelector("[data-action=copy]").addEventListener("click", () => {
+      portalCopyText(instance.origin || "");
+    });
+    const history = port.querySelector("[data-action=history]");
+    if (!instance.opaqueKey || !actions?.onHistory) history.hidden = true;
+    else history.addEventListener("click", () => actions.onHistory(null, instance));
+    ports.append(port);
+  }
+  return node;
+}
+
 export function instanceCard(project, instance, actions) {
   const node = fill(tpl("tpl-card"), {
     title: instanceTitle(project, instance),
+  });
+  const tooltip = node.querySelector(".info-wrap > template").content;
+  fill(tooltip, {
     status: `${statusText(instance)} (${statusDetail(instance)})`,
     latency: instance.latencyMs == null ? "unknown" : `${instance.latencyMs}ms`,
     process: `${instance.process.command} (${instance.process.pid})`,
@@ -47,9 +169,11 @@ export function instanceCard(project, instance, actions) {
   });
   const state = healthState(instance);
   if (state) node.dataset.health = state;
-  applyGitBadge(node, instance.project?.git || project.git || null);
-  applyDockerBadge(node, instance.docker);
-  applyProcessMetricsBadge(node, instance.processMetrics);
+  const gitInfo = instance.project?.git || project.git || null;
+  applyGitBadge(node, tooltip, gitInfo, project.providerUrl || instance.project?.providerUrl || null);
+  wireCopyBranchButton(node, gitInfo);
+  applyDockerBadge(node, tooltip, instance.docker);
+  applyProcessMetricsBadge(tooltip, instance.processMetrics);
   const origin = node.querySelector("[data-slot=origin]");
   if (instance.origin) {
     origin.textContent = instance.origin;
@@ -58,7 +182,7 @@ export function instanceCard(project, instance, actions) {
     origin.textContent = "origin unavailable";
     origin.removeAttribute("href");
   }
-  const warning = node.querySelector("[data-slot=warning]");
+  const warning = tooltip.querySelector("[data-slot=warning]");
   if (instance.bind.warning) {
     warning.hidden = false;
     warning.textContent = instance.bind.warning;
@@ -82,14 +206,15 @@ export function instanceCard(project, instance, actions) {
 export function inactiveCard(project, actions) {
   const node = fill(tpl("tpl-card"), {
     title: project.name || project.app.name || "localhost app",
+  });
+  fill(node.querySelector(".info-wrap > template").content, {
     status: "Inactive",
     latency: "not running",
     process: "not running",
     identity: project.identity,
     bind: "no active listener",
   });
-  const origin = node.querySelector("[data-slot=origin]");
-  origin.textContent = "saved routes only";
+  node.querySelector("[data-slot=origin]").hidden = true;
   node.querySelector("[data-action=copy]").hidden = true;
   node.querySelector("[data-action=open]").hidden = true;
   node.querySelector("[data-action=associate]").hidden = true;
@@ -126,7 +251,7 @@ export function settingsRow(title, meta, label, onClick) {
 // Render Git context, distinguishing "no uncommitted changes" from "we could not tell". A dirty
 // marker only appears for an explicit true; null means the subprocess could not answer, and drawing
 // nothing there is the honest choice — a card that implied "clean" would be acted on.
-function applyGitBadge(node, git) {
+function applyGitBadge(node, tooltip, git, providerUrl) {
   const badge = node.querySelector("[data-slot=git]");
   if (!badge || !git?.provider?.ok || (!git.branch && !git.shortHead)) return;
 
@@ -134,11 +259,26 @@ function applyGitBadge(node, git) {
   node.querySelector("[data-slot=git-branch]").textContent = git.detached
     ? "detached"
     : git.branch || "";
-  node.querySelector("[data-slot=git-commit]").textContent = git.shortHead || "";
 
+  const repoLink = node.querySelector("[data-slot=git-repo-link]");
+  const repoName = node.querySelector("[data-slot=git-repo-name]");
+  if (providerUrl) {
+    repoLink.hidden = false;
+    repoLink.href = providerUrl;
+    const fullName = repoNameFromProviderUrl(providerUrl);
+    repoLink.firstChild.textContent = portalMiddleEllipsis(fullName);
+    repoLink.title = fullName;
+  } else {
+    repoName.hidden = false;
+    repoName.textContent = "local repo";
+  }
+
+  // A dot, not a badge/text label — commit hash and "clean/dirty" as a boolean are rarely acted
+  // on day to day; both stay available in the hover detail for the rare case (reset, diff) that
+  // actually needs them, rather than claiming permanent top-level space.
   const dirty = node.querySelector("[data-slot=git-dirty]");
-  dirty.hidden = git.dirty !== true;
-  if (git.dirty === true) dirty.title = "Uncommitted changes";
+  dirty.classList.toggle("is-dirty", git.dirty === true);
+  dirty.title = git.dirty === true ? "Uncommitted changes" : git.dirty === false ? "No uncommitted changes" : "Dirty state unavailable";
 
   const tracking = node.querySelector("[data-slot=git-tracking]");
   const marks = [];
@@ -150,33 +290,43 @@ function applyGitBadge(node, git) {
     tracking.title = `${git.ahead || 0} ahead, ${git.behind || 0} behind ${git.upstream || "upstream"}`;
   }
 
-  const tooltip = gitTooltip(git);
-  badge.title = tooltip;
-  node.querySelector("[data-slot=git-detail]").hidden = false;
-  node.querySelector("[data-slot=git-detail-text]").textContent = tooltip;
+  const summary = gitTooltip(git);
+  badge.title = summary;
+  tooltip.querySelector("[data-slot=git-detail]").hidden = false;
+  tooltip.querySelector("[data-slot=git-detail-text]").textContent = summary;
+}
+
+function wireCopyBranchButton(node, git) {
+  const button = node.querySelector("[data-action=copy-branch]");
+  if (!button) return;
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    portalCopyText(git?.detached ? git.shortHead || "" : git?.branch || "");
+  });
 }
 
 // Docker/process fields are current-snapshot facts only — real provider data or nothing, never a
 // placeholder. A card for an instance the Docker/process provider never observed shows no badge at
 // all, matching the git badge's correct-or-absent discipline.
-function applyDockerBadge(node, docker) {
+function applyDockerBadge(node, tooltip, docker) {
   const badge = node.querySelector("[data-slot=docker]");
   if (!badge || !docker) return;
 
   badge.hidden = false;
   node.querySelector("[data-slot=docker-label]").textContent = docker.composeService || docker.name || "container";
 
-  const detail = node.querySelector("[data-slot=docker-detail]");
+  const detail = tooltip.querySelector("[data-slot=docker-detail]");
   const parts = [docker.name || docker.containerId];
   if (docker.image) parts.push(docker.image);
   if (docker.composeProject) parts.push(`compose: ${docker.composeProject}${docker.composeService ? `/${docker.composeService}` : ""}`);
   if (docker.state) parts.push(docker.state);
   detail.hidden = false;
-  node.querySelector("[data-slot=docker-detail-text]").textContent = parts.join(" · ");
+  tooltip.querySelector("[data-slot=docker-detail-text]").textContent = parts.join(" · ");
 }
 
-function applyProcessMetricsBadge(node, metrics) {
-  const detail = node.querySelector("[data-slot=process-metrics-detail]");
+function applyProcessMetricsBadge(tooltip, metrics) {
+  const detail = tooltip.querySelector("[data-slot=process-metrics-detail]");
   if (!detail || !metrics) return;
 
   const parts = [];
@@ -186,7 +336,7 @@ function applyProcessMetricsBadge(node, metrics) {
   if (!parts.length) return;
 
   detail.hidden = false;
-  node.querySelector("[data-slot=process-metrics-detail-text]").textContent = parts.join(" · ");
+  tooltip.querySelector("[data-slot=process-metrics-detail-text]").textContent = parts.join(" · ");
 }
 
 function formatMemory(kb) {
@@ -202,6 +352,21 @@ function formatElapsed(seconds) {
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
+}
+
+// Every localhost origin is http(s) by construction (see http-probe.mjs) — the scheme is never
+// informative here, only visual noise, so the link keeps its real href but displays without it.
+function displayOrigin(origin) {
+  return origin.replace(/^https?:\/\//, "");
+}
+
+function repoNameFromProviderUrl(providerUrl) {
+  try {
+    const path = new URL(providerUrl).pathname.replace(/^\/|\/$/g, "");
+    return path.split("/").pop() || path || "repo";
+  } catch {
+    return "repo";
+  }
 }
 
 function gitTooltip(git) {

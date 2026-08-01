@@ -2,12 +2,22 @@ export const SETTINGS_VERSION = 2;
 export const LEGACY_SETTINGS_VERSION = 1;
 export const DEFAULT_PREFERENCES = { showNonHttp: false, historyRetentionDays: 14 };
 
+const CONTROL_CHARS = /[\x00-\x1f\x7f]/;
+
 export function defaultSettings() {
-  return { version: SETTINGS_VERSION, revision: 1, projects: {}, associations: {}, aliases: {}, preferences: { ...DEFAULT_PREFERENCES } };
+  return {
+    version: SETTINGS_VERSION,
+    revision: 1,
+    projects: {},
+    associations: {},
+    aliases: {},
+    composeProjects: {},
+    preferences: { ...DEFAULT_PREFERENCES },
+  };
 }
 
 export function normalizeRoutePath(value) {
-  if (typeof value !== "string" || /[\u0000-\u001f\u007f]/.test(value)) {
+  if (typeof value !== "string" || CONTROL_CHARS.test(value)) {
     throw new Error("link path must be a local path or loopback URL");
   }
   if (value.startsWith("//")) throw new Error("protocol-relative URLs are not allowed");
@@ -28,7 +38,7 @@ export function normalizeRoutePath(value) {
 export function validateSettings(settings) {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) throw new Error("settings must be an object");
   const keys = Object.keys(settings).sort();
-  const allowed = ["aliases", "associations", "preferences", "projects", "revision", "version"];
+  const allowed = ["aliases", "associations", "composeProjects", "preferences", "projects", "revision", "version"];
   for (const key of keys) {
     if (!allowed.includes(key)) throw new Error(`unknown localhoster settings field: ${key}`);
   }
@@ -37,6 +47,7 @@ export function validateSettings(settings) {
   validateProjects(settings.projects);
   validateAssociations(settings.associations);
   validateAliases(settings.aliases);
+  validateComposeProjects(settings.composeProjects);
   validatePreferences(settings.preferences);
   return settings;
 }
@@ -96,7 +107,7 @@ export function safeId(value) {
 }
 
 export function safeLabel(value, label) {
-  if (typeof value !== "string" || !value.trim() || /[\u0000-\u001f\u007f]/.test(value)) throw new Error(`${label} is invalid`);
+  if (typeof value !== "string" || !value.trim() || CONTROL_CHARS.test(value)) throw new Error(`${label} is invalid`);
   return value.trim().slice(0, 80);
 }
 
@@ -169,7 +180,7 @@ function validateMatch(match) {
   if (!match || typeof match !== "object" || Array.isArray(match)) throw new Error("settings app match must be an object");
   validateObjectKeys(match, ["path", "process", "title"], "settings app match");
   for (const [key, values] of Object.entries(match)) {
-    if (!Array.isArray(values) || !values.every((value) => typeof value === "string" && value.trim() && !/[\u0000-\u001f\u007f]/.test(value))) {
+    if (!Array.isArray(values) || !values.every((value) => typeof value === "string" && value.trim() && !CONTROL_CHARS.test(value))) {
       throw new Error(`settings app match ${key} must be an array of strings`);
     }
   }
@@ -186,6 +197,35 @@ function validateAssociations(associations) {
     safeIdentity(association.projectIdentity);
     safeId(association.appId);
   }
+}
+
+// repoPath is a stopgap: this codebase has no reverse lookup from an opaque project identity back
+// to a filesystem path (identities are one-way fingerprints -- see resolveProjectIdentity), and a
+// Docker container has no cwd of its own for the normal by-cwd git resolution to run against. A
+// real path lets the exact same resolveProjectIdentity/collectGitContext path every other project
+// uses run for a manually-associated repo too. When the canonical repository registry from
+// docs/plans/backlog/portal-homepage-repository-section.md lands, this should become a
+// repositoryId reference instead -- kept to this one field so that's a rename, not a redesign.
+function validateComposeProjects(composeProjects) {
+  if (!composeProjects || typeof composeProjects !== "object" || Array.isArray(composeProjects)) {
+    throw new Error("settings composeProjects must be an object");
+  }
+  for (const [name, project] of Object.entries(composeProjects)) {
+    if (typeof name !== "string" || !name.trim()) throw new Error("compose project key must be a non-empty string");
+    if (!project || typeof project !== "object" || Array.isArray(project)) throw new Error("settings compose project must be an object");
+    validateObjectKeys(project, ["favorite", "hidden", "name", "repoPath"], "settings compose project");
+    if (project.name != null) safeLabel(project.name, "compose project name");
+    if (project.favorite != null) safeBoolean(project.favorite, "compose project favorite");
+    if (project.hidden != null) safeBoolean(project.hidden, "compose project hidden");
+    if (project.repoPath != null) safeAbsolutePath(project.repoPath, "compose project repoPath");
+  }
+}
+
+export function safeAbsolutePath(value, label) {
+  if (typeof value !== "string" || !value.startsWith("/") || CONTROL_CHARS.test(value)) {
+    throw new Error(`${label} must be an absolute path`);
+  }
+  return value;
 }
 
 function validateAliases(aliases) {

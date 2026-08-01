@@ -14,7 +14,7 @@ import { promisify } from "node:util";
 // directly, so they run measurably slower than lsof/ps and need more headroom than the 1500ms used
 // for those. Verified against a live `docker ps` on a machine with a running Compose stack, where a
 // 1500ms budget intermittently killed the call mid-flight (code 143/SIGTERM).
-export const DOCKER_DISCOVERY_TIMEOUT_MS = 4000;
+export const DOCKER_DISCOVERY_TIMEOUT_MS = 6000;
 
 const execFileAsync = promisify(execFile);
 

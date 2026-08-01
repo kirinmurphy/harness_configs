@@ -811,6 +811,10 @@ portal-menu-button {
   box-shadow: 0 4px 16px var(--tooltip-shadow);
   pointer-events: none;
 }
+/* Structured/multi-row content (key-value grids, badges) needs more room than a one-line hint. */
+.portal-tooltip.portal-tooltip--rich {
+  max-width: 360px;
+}
 .portal-tooltip[hidden] {
   display: none;
 }

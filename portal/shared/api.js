@@ -55,6 +55,22 @@ export async function portalCopyText(text, onCopied) {
   }
 }
 
+// Default cap for portalMiddleEllipsis. A single shared constant rather than a magic number
+// scattered across call sites, so every truncated label on the site stays visually consistent and
+// there's one place to retune it.
+export const PORTAL_MIDDLE_ELLIPSIS_MAX_LENGTH = 28;
+
+// Truncates in the middle rather than the end: for repo/path-shaped strings the tail is often the
+// most identifying part (e.g. "supabase/studio" vs "supabase/postgres"), so an end-truncated label
+// collapses distinct values to the same visible text.
+export function portalMiddleEllipsis(value, maxLength = PORTAL_MIDDLE_ELLIPSIS_MAX_LENGTH) {
+  if (typeof value !== "string" || value.length <= maxLength) return value;
+  const keep = maxLength - 1;
+  const head = Math.ceil(keep / 2);
+  const tail = Math.floor(keep / 2);
+  return `${value.slice(0, head)}…${value.slice(value.length - tail)}`;
+}
+
 export function portalSetUpdatedAt(date = new Date()) {
   const node = document.getElementById("portal-updated");
   if (!node) return;

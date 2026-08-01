@@ -4,7 +4,8 @@ import crypto from "node:crypto";
 import { repoRoot } from "./paths.mjs";
 
 // Content hash of the portal's served/serving source (portal/ + scripts/cli/, the same tree
-// portal-server.mjs reads from and is itself part of). A running `roborepo web`/`localhoster`
+// portal-server.mjs reads from and is itself part of; plus modules/, which portal routes like
+// portal-routes-localhoster.mjs import transitively). A running `roborepo web`/`localhoster`
 // server is detached on purpose so it outlives the CLI invocation that spawned it — but a Node
 // process never re-reads .mjs files after a later git pull/merge changes them on disk, so it can
 // keep serving stale portal code indefinitely with no visible sign anything is wrong. The server
@@ -13,7 +14,11 @@ import { repoRoot } from "./paths.mjs";
 // telemetry.mjs) to detect "a portal is already running here, but its code is now stale."
 export function computePortalSourceHash() {
   const hash = crypto.createHash("sha256");
-  const roots = [path.join(repoRoot, "portal"), path.join(repoRoot, "scripts", "cli")];
+  const roots = [
+    path.join(repoRoot, "portal"),
+    path.join(repoRoot, "scripts", "cli"),
+    path.join(repoRoot, "modules"),
+  ];
   for (const root of roots) {
     for (const rel of walkFiles(root)) {
       hash.update(rel);

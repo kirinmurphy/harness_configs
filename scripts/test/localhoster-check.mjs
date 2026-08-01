@@ -108,6 +108,7 @@ try {
     projects: {},
     associations: {},
     aliases: {},
+    composeProjects: {},
     preferences: { showNonHttp: false, historyRetentionDays: 14 },
   });
   const legacyStateRoot = path.join(tempRoot, "legacy-state");
@@ -194,8 +195,8 @@ try {
   assert.equal(renamed.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.originPreference, "127.0.0.1");
   assert.ok(fs.existsSync(settingsPathFor(stateRoot)));
   assert.throws(() => updateSettings({ stateRoot, input: { revision: 1, type: "project", projectIdentity: "git:github.com/x/y", name: "Y" } }), /revision conflict/);
-  assert.throws(() => validateSettings({ version: 2, revision: 1, projects: {}, associations: {}, aliases: {}, preferences: { showNonHttp: false, historyRetentionDays: 14 }, future: true }), /unknown/);
-  assert.throws(() => validateSettings({ version: 2, revision: 1, projects: { "git:github.com/x/y": { apps: { web: { links: [{ id: "x", label: "X", path: "/x" }, { id: "x", label: "X2", path: "/x2" }] } } } }, associations: {}, aliases: {}, preferences: { showNonHttp: false, historyRetentionDays: 14 } }), /duplicate/);
+  assert.throws(() => validateSettings({ version: 2, revision: 1, projects: {}, associations: {}, aliases: {}, composeProjects: {}, preferences: { showNonHttp: false, historyRetentionDays: 14 }, future: true }), /unknown/);
+  assert.throws(() => validateSettings({ version: 2, revision: 1, projects: { "git:github.com/x/y": { apps: { web: { links: [{ id: "x", label: "X", path: "/x" }, { id: "x", label: "X2", path: "/x2" }] } } } }, associations: {}, aliases: {}, composeProjects: {}, preferences: { showNonHttp: false, historyRetentionDays: 14 } }), /duplicate/);
   const aliased = updateSettings({
     stateRoot,
     input: {

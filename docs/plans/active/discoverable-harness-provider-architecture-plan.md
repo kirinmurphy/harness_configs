@@ -1687,6 +1687,36 @@ On first run:
   through `manifests-data.sh`'s `harness_present`/`harness_detected_rows`, which shell out to
   `roborepo harness detected` (`scripts/cli/harness.mjs`, backed by the registry) with a
   hardcoded-claude/codex fallback only for sandboxes that don't copy `scripts/harnesses/`.
+- [x] Update architecture, installation, telemetry, package, skills/commands, and daily-use docs.
+  Audited every doc under `docs/architecture/`, `docs/guides/`, and `docs/reference/` that
+  mentions `claude`/`codex`/`harness` for staleness against the provider-registry migration (15
+  files identified via `grep -l`). Checked each against the new registry API
+  (`listHarnessProviders`/`hasHarnessProvider`/`getHarnessProvider`) and the retired
+  `manifests/platform/harnesses.tsv`. Found exactly one stale reference:
+  `docs/architecture/config-code-separation.md`'s boundary table still listed `harnesses.tsv` as
+  the harness-presence source; replaced with two rows for `globals/harnesses/<id>/provider.json`
+  (metadata, read by `scripts/harnesses/registry.mjs`) and its `detection` rules (read by the
+  claude/codex adapters and `manifests-data.sh`'s `harness_present`/`harness_detected_rows`).
+  Everything else — `harnesses-explained.md`, `harness-anatomy.md`, `install-workflows.md`,
+  `setup-and-daily-use.md`, `telemetry.md`, `skills-and-commands.md`, `roborepo-cli.md`,
+  `roborepo.md`, `architecture.md` — needed no changes: they describe user-facing `roborepo`
+  commands and native per-harness paths (`~/.claude/`, `~/.codex/`), none of which changed in this
+  migration, since the registry replaced internal plumbing (how the CLI/build scripts *find* a
+  harness) without changing what a user runs or where native config lives. Committed separately
+  from the audit-logging change above.
+- [x] Generate or validate provider reference documentation from manifests.
+  Took the "validate," not "generate," branch of this item's stated either/or. `roborepo harness
+  inspect <id>` (`scripts/cli/harness.mjs`) already dumps a provider's full live `provider.json`
+  manifest — `detection`, `paths`, `capabilities`, `extensions.roborepo` — straight from the
+  registry, so it can never drift from the manifest it reads; that already satisfies "reference
+  documentation from manifests" without a separate build-time doc generator to maintain. Verified
+  by running `roborepo harness inspect claude` and cross-checking every path/capability against
+  `globals/harnesses/{claude,codex}/provider.json` directly, then cross-checked both manifests
+  against `docs/reference/internal/harness-anatomy.md`'s hand-authored elements table (rules,
+  skills, permissions, root-config paths; all declared capabilities represented). No drift found —
+  the hand-authored teaching/reference docs (`harness-anatomy.md`, `harnesses-explained.md`)
+  already match manifest reality, and the CLI's live `inspect` output covers the machine-readable
+  case. No new generator built.
 - [x] Run a repository-wide fixed-harness search and classify every remaining occurrence as
   provider implementation, fixture, documentation example, or migration defect.
   Ran the plan's four prescribed `rg` patterns (`claude|codex` literals, `.claude`/`.codex` path

@@ -3,10 +3,16 @@ import { rootConfigBaseline, rootConfigActive } from "./paths.mjs";
 import { checkDrift } from "./root-config-state.mjs";
 import { findSiblingArtifact } from "./staging-lib.mjs";
 
-const ROOT_CONFIG_HARNESSES = {
-  claude: { active: rootConfigActive.claude, baseline: rootConfigBaseline.claude },
-  codex: { active: rootConfigActive.codex, baseline: rootConfigBaseline.codex },
-};
+// Keyed by whichever providers actually declare a rootConfig path (rootConfigActive, from
+// paths.mjs's pathById("rootConfig")) — N-provider-safe, no hardcoded harness list.
+function rootConfigHarnesses() {
+  return Object.fromEntries(
+    Object.keys(rootConfigActive).map((harness) => [
+      harness,
+      { active: rootConfigActive[harness], baseline: rootConfigBaseline[harness] },
+    ]),
+  );
+}
 
 // One user-facing drift "state" per harness, plus the raw drift details. This is the SINGLE SOURCE
 // OF TRUTH for both the terminal `roborepo config root inspect` report and the web /config panel —
@@ -49,7 +55,7 @@ function describeDrift(harness, { active, baseline }) {
 
 // Per-harness root-config drift view, shared by the terminal report and the web portal.
 export function buildRootConfigView() {
-  return Object.entries(ROOT_CONFIG_HARNESSES).map(([harness, paths]) => describeDrift(harness, paths));
+  return Object.entries(rootConfigHarnesses()).map(([harness, paths]) => describeDrift(harness, paths));
 }
 
 // Human-readable one-liner for a row's state, reused by the CLI report.

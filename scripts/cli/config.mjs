@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { repoRoot, harnessHome, rootConfigActive } from "./paths.mjs";
+import { repoRoot, harnessHome, rootConfigActive, rootConfigBaseline } from "./paths.mjs";
 import { presetsStatePath, telemetryDir } from "./state-paths.mjs";
 import { effectivePermissions } from "./config-mutate.mjs";
 import { renderMarkdown } from "./markdown-render.mjs";
@@ -29,11 +29,11 @@ import {
 } from "./config-source-lookup.mjs";
 import { renderCommandSourceHtml } from "./config-source-render.mjs";
 import { buildContextCost } from "./context-cost.mjs";
+import { hasHarnessProvider, listHarnessProviders, getHarnessProvider } from "../harnesses/registry.mjs";
+import { resolveHarnessPath } from "../harnesses/paths.mjs";
 
 const PRESETS_PATH = path.join(repoRoot, "manifests", "platform", "presets.json");
 const CLAUDE_SETTINGS = rootConfigActive.claude;
-const CODEX_CONFIG = rootConfigActive.codex;
-const CODEX_HOOKS = path.join(harnessHome.codex, "hooks.json");
 
 function readJson(filePath, fallback = null) {
   try { return JSON.parse(fs.readFileSync(filePath, "utf8")); } catch { return fallback; }
@@ -41,6 +41,27 @@ function readJson(filePath, fallback = null) {
 
 function renderEntry(text) {
   return { text, html: renderMarkdown(text) };
+}
+
+// Ordered per-provider entry for the Config grid's columns and defaults popover: one row/column
+// per registered provider, never a hardcoded pair. Filenames are derived from each manifest's own
+// declared paths — rulesFile/settingsFile straight from paths.rules/paths.rootConfig; hooksFile
+// follows extensions.roborepo.hooksStorage (embedded providers show their root-config file, since
+// that's genuinely where the hooks live; sidecar providers show their own declared hooks path).
+// Exported (not inlined in readConfigSnapshot) so a synthetic third-provider test can call this
+// directly without pulling in the rest of the snapshot's disk-reading dependencies.
+export function configSnapshotHarnesses() {
+  return listHarnessProviders().map((provider) => {
+    const { manifest } = provider;
+    const sidecar = manifest.extensions?.roborepo?.hooksStorage === "dedicated-json-sidecar";
+    return {
+      id: provider.id,
+      displayName: manifest.displayName,
+      rulesFile: path.basename(manifest.paths.rules.path),
+      settingsFile: path.basename(manifest.paths.rootConfig.path),
+      hooksFile: path.basename(sidecar ? manifest.paths.hooks.path : manifest.paths.rootConfig.path),
+    };
+  });
 }
 
 export function readConfigSnapshot() {
@@ -116,6 +137,9 @@ export function readConfigSnapshot() {
     .filter((s) => !unavailableSkillIds.has(s.id));
 
   const snapshot = {
+    // Ordered list of registered providers, for the Config grid's per-harness columns and any
+    // other client rendering that needs one row/column per harness rather than a lookup-by-id.
+    harnesses: configSnapshotHarnesses(),
     packages,
     bundles,
     tools,
@@ -124,20 +148,21 @@ export function readConfigSnapshot() {
       caveman: settings?.enabledPlugins?.["caveman@caveman"] === true,
     },
     // Harness-agnostic rules + global settings shown in the /config "Globals" section. Each rules
-    // entry carries raw markdown plus rendered HTML: shared = baseline every harness gets,
-    // claude/codex = harness-specific deltas, packages = enabled package rule slices. The live
-    // home files are also included so the portal can render the actual on-disk CLAUDE.md / AGENTS.md.
+    // entry carries raw markdown plus rendered HTML: shared = baseline every harness gets, one key
+    // per registered provider id = that harness's rule deltas, packages = enabled package rule
+    // slices. The live home files are also included so the portal can render the actual on-disk
+    // CLAUDE.md / AGENTS.md.
     globals: {
       rules: {
         shared: renderEntry(renderSharedRulesPreview()),
-        claude: renderEntry(renderHarnessRulesPreview("claude")),
-        codex: renderEntry(renderHarnessRulesPreview("codex")),
+        ...Object.fromEntries(
+          listHarnessProviders().map((provider) => [provider.id, renderEntry(renderHarnessRulesPreview(provider.id))]),
+        ),
         packages: renderEntry(renderEnabledPackageRulesPreview()),
       },
-      liveRules: {
-        claude: readLiveRulesFile("claude"),
-        codex: readLiveRulesFile("codex"),
-      },
+      liveRules: Object.fromEntries(
+        listHarnessProviders().map((provider) => [provider.id, readLiveRulesFile(provider.id)]),
+      ),
       settings: {
         plugins: { caveman: settings?.enabledPlugins?.["caveman@caveman"] === true },
         hooks,
@@ -306,13 +331,32 @@ function packagePresentationItem(item, tool, contextCost = null) {
   };
 }
 
+function hooksStorageOf(harness) {
+  return getHarnessProvider(harness).manifest.extensions?.roborepo?.hooksStorage;
+}
+
+// Generated build output for a sidecar-hooks provider's hooks file (e.g. generated/codex/hooks.json)
+// — same "generated/<id>/<basename>" convention rootConfigBaseline uses for the root-config file,
+// applied to the provider's declared "hooks" path instead.
+function generatedSidecarHooksPath(harness) {
+  const manifest = getHarnessProvider(harness).manifest;
+  return path.join(repoRoot, "generated", harness, path.basename(manifest.paths.hooks.path));
+}
+
 // Read the full source that DEFINES a tool, for the /config click-to-inspect popup. Strictly
 // whitelisted: kind+id are resolved against the catalogs/known dirs, never used to build a path
 // directly, so an attacker can't request arbitrary files (no traversal — ids are matched against
 // catalog entries and basenames only). Returns { ok, title, path, content } or { ok:false, error }.
+const HARNESS_SCOPED_KINDS = new Set(["command", "command-skill", "globals-rules", "harness-hooks", "live-rules"]);
+
 export function loadConfigSource({ kind, id, harness = "claude" }) {
-  const harnessSafe = harness === "codex" ? "codex" : "claude";
   const fail = (error) => ({ ok: false, error });
+  // Only kinds that read a harness-specific file need the id validated — config-file/skill kinds
+  // resolve the harness from `id` itself, so a missing/default harness there is never a bug.
+  if (HARNESS_SCOPED_KINDS.has(kind) && !hasHarnessProvider(harness)) {
+    return fail(`missing or unknown harness: ${harness ?? "(none)"}`);
+  }
+  const harnessSafe = harness;
 
   if (kind === "skill") {
     if (!packageSkillIds().has(id)) return fail(`unknown skill: ${id}`);
@@ -367,28 +411,27 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
     // Full rendered home-rules for one harness (what lands in CLAUDE.md / AGENTS.md). Served on
     // demand so the 10s config poll doesn't carry ~13KB of rules text it rarely needs.
     const content = renderRulesPreview(harnessSafe);
-    const file = harnessSafe === "codex" ? "~/.codex/AGENTS.md" : "~/.claude/CLAUDE.md";
+    const file = getHarnessProvider(harnessSafe).manifest.paths.rules.path;
     return { ok: true, title: `Rendered rules — ${harnessSafe}`, path: file, content, html: renderMarkdown(content) };
   }
 
   if (kind === "harness-hooks") {
-    const abs = harnessSafe === "codex"
-      ? path.join(repoRoot, "generated", "codex", "hooks.json")
-      : path.join(repoRoot, "generated", "claude", "settings.json");
-    const source = readSourceFile(abs, `${harnessSafe === "codex" ? "Codex" : "Claude"} hooks`);
-    if (!source.ok) return source;
-    if (harnessSafe === "codex") {
-      return {
-        ...source,
-        html: renderMarkdown("```json\n" + source.content.trimEnd() + "\n```"),
-      };
+    const displayName = getHarnessProvider(harnessSafe).manifest.displayName;
+    if (hooksStorageOf(harnessSafe) === "dedicated-json-sidecar") {
+      const abs = generatedSidecarHooksPath(harnessSafe);
+      const source = readSourceFile(abs, `${displayName} hooks`);
+      if (!source.ok) return source;
+      return { ...source, html: renderMarkdown("```json\n" + source.content.trimEnd() + "\n```") };
     }
 
+    const abs = rootConfigBaseline[harnessSafe];
+    const source = readSourceFile(abs, `${displayName} hooks`);
+    if (!source.ok) return source;
     const settings = readJson(abs, {});
     const content = JSON.stringify(settings.hooks || {}, null, 2) + "\n";
     return {
       ok: true,
-      title: "Claude hooks",
+      title: `${displayName} hooks`,
       path: `${source.path}#hooks`,
       content,
       html: renderMarkdown("```json\n" + content + "```"),
@@ -396,14 +439,16 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
   }
 
   if (kind === "config-file") {
-    if (id === "claude-settings") {
-      return readExternalSourceFile(CLAUDE_SETTINGS, "Claude settings", "~/.claude/settings.json", "json");
-    }
-    if (id === "codex-config") {
-      return readExternalSourceFile(CODEX_CONFIG, "Codex config", "~/.codex/config.toml", "toml");
-    }
-    if (id === "codex-hooks") {
-      return readExternalSourceFile(CODEX_HOOKS, "Codex hooks", "~/.codex/hooks.json", "json");
+    for (const provider of listHarnessProviders()) {
+      if (id === `${provider.id}-settings`) {
+        const displayName = provider.manifest.displayName;
+        const language = provider.manifest.extensions?.roborepo?.rootConfigFormat || "json";
+        return readExternalSourceFile(rootConfigActive[provider.id], `${displayName} settings`, provider.manifest.paths.rootConfig.path, language);
+      }
+      if (id === `${provider.id}-hooks` && hooksStorageOf(provider.id) === "dedicated-json-sidecar") {
+        const displayName = provider.manifest.displayName;
+        return readExternalSourceFile(resolveHarnessPath(provider.manifest, "hooks"), `${displayName} hooks`, provider.manifest.paths.hooks.path, "json");
+      }
     }
     return fail(`unknown config file: ${id}`);
   }
@@ -411,7 +456,7 @@ export function loadConfigSource({ kind, id, harness = "claude" }) {
   if (kind === "live-rules") {
     const live = readLiveRulesFile(harnessSafe);
     if (!live.installed && !live.content) return fail(`live rules file not found: ${harnessSafe}`);
-    const file = harnessSafe === "codex" ? "~/.codex/AGENTS.md" : "~/.claude/CLAUDE.md";
+    const file = getHarnessProvider(harnessSafe).manifest.paths.rules.path;
     return { ok: true, title: `Live rules — ${harnessSafe}`, path: file, content: live.content, html: live.html };
   }
 

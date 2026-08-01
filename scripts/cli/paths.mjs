@@ -61,13 +61,20 @@ function pathById(key) {
 }
 
 export const harnessHome = pathById("home");
-// Root config baseline paths (the repo-tracked templates for mutable harness config). This is
-// repo build output, not a harness's own home-relative location, so it is not part of the
-// provider manifest's declarative paths — it stays hardcoded to generated/<id>/... here.
-export const rootConfigBaseline = {
-  claude: path.join(appRoot, "generated", "claude", "settings.json"),
-  codex: path.join(appRoot, "generated", "codex", "config.toml"),
-};
+// Root config baseline paths (the repo-tracked templates for mutable harness config). This is repo
+// build output, not a harness's own home-relative location, so it is not part of the provider
+// manifest's declarative paths — but the filename itself still comes from the manifest's own
+// rootConfig path (settings.json / config.toml / ...), keyed generically per registered provider
+// rather than hardcoded per id, following the same "generated/<id>/<basename>" convention used
+// elsewhere for generated build output (see config.mjs's generatedSidecarHooksPath).
+export const rootConfigBaseline = Object.fromEntries(
+  listHarnessProviders()
+    .filter((provider) => hasHarnessPath(provider.manifest, "rootConfig"))
+    .map((provider) => [
+      provider.id,
+      path.join(appRoot, "generated", provider.id, path.basename(resolveHarnessPath(provider.manifest, "rootConfig"))),
+    ])
+);
 // Root config active paths (what the harness actually reads).
 export const rootConfigActive = pathById("rootConfig");
 // Claude's per-user MCP live store (~/.claude.json), distinct from ~/.claude/settings.json.

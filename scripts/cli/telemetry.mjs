@@ -5,7 +5,7 @@ import path from "node:path";
 import net from "node:net";
 import { spawnSync, spawn } from "node:child_process";
 import { markTelemetrySelected } from "./presets.mjs";
-import { repoRoot, stateRoot } from "./paths.mjs";
+import { repoRoot, stateRoot, harnessHome, rootConfigActive } from "./paths.mjs";
 import { portalPidPathForPort, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir, repositoriesRegistryPath } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { readMarkers, readSnapshot, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
@@ -43,7 +43,8 @@ import { buildRepositoryHashIndex } from "./telemetry-repository.mjs";
 import { createHash } from "node:crypto";
 import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
-import { mergeHooksInto } from "./hook-composition.mjs";
+import { hookFilePath, writeHooksFile } from "./hook-composition.mjs";
+import { getHarnessProvider, listHarnessProviders } from "../harnesses/registry.mjs";
 
 export async function telemetryCommand(rest) {
   const [sub, ...args] = rest;
@@ -313,14 +314,11 @@ function telemetryInstall(args) {
   ensureTelemetryDirs();
   writeTelemetryState({ enabled: true });
   markTelemetrySelected(true);
-  // Wire capture hooks into whichever harness config files exist.
-  const claudeSettings = path.join(os.homedir(), ".claude", "settings.json");
-  if (fs.existsSync(path.join(os.homedir(), ".claude"))) {
-    wireCaptureHooks(claudeSettings, "claude");
-  }
-  const codexDir = path.join(os.homedir(), ".codex");
-  if (fs.existsSync(codexDir)) {
-    wireCaptureHooks(path.join(codexDir, "hooks.json"), "codex");
+  // Wire capture hooks into whichever registered providers are actually installed on this machine.
+  for (const provider of listHarnessProviders()) {
+    if (!provider.manifest.capabilities.includes("telemetry-capture")) continue;
+    if (!fs.existsSync(harnessHome[provider.id])) continue;
+    wireCaptureHooks(provider.id);
   }
   console.log("telemetry-only install complete.");
   console.log("capture is enabled.");
@@ -352,13 +350,19 @@ function wireBinSymlink() {
   console.log(`link: ${target} -> ${source}`);
 }
 
-// Thin wrapper over the canonical cross-harness hook composer (hook-composition.mjs), so the
-// standalone `roborepo telemetry install` path and the package-driven `enable telemetry` path
-// share one hook definition and one merge implementation — never two independently-maintained copies.
-function wireCaptureHooks(settingsPath, harness) {
-  const fragmentPath = path.join(repoRoot, "globals", "packages", "telemetry", `hooks-${harness}.json`);
-  const fragment = JSON.parse(fs.readFileSync(fragmentPath, "utf8"));
-  mergeHooksInto(harness, settingsPath, fragment);
+// Dispatches to the provider's own telemetry.wireCaptureHooks adapter (which merges its fixed
+// hooks-<id>.json fragment via the same hook-merge math the package-driven `enable telemetry` path
+// uses), then writes the result through the same drift-tracked-for-Claude/plain-for-Codex path
+// hook-composition.mjs uses — never two independently-maintained hook-write implementations.
+function wireCaptureHooks(harness) {
+  const filePath = hookFilePath(harness, { claudeSettingsPath: rootConfigActive.claude });
+  const { changed, content } = getHarnessProvider(harness).adapters.telemetry.wireCaptureHooks(filePath);
+  if (changed) {
+    writeHooksFile(harness, filePath, content);
+    console.log(`wired: telemetry capture hooks (${harness}) → ${filePath}`);
+  } else {
+    console.log(`ok: telemetry capture hooks already present (${harness}) → ${filePath}`);
+  }
 }
 
 async function telemetryEnable(args) {

@@ -17,7 +17,7 @@ import { getHarnessProvider } from "../harnesses/registry.mjs";
 // logic) — this module now only resolves the target file path, dispatches to the provider, and
 // performs the write. Claude's write goes through writeRootConfig for drift-tracking (settings.json
 // is the root config); Codex's hooks.json has no root-config equivalent, so it's a plain file write.
-function writeHooksFile(harness, filePath, content) {
+export function writeHooksFile(harness, filePath, content) {
   if (harness === "codex") {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, content);

@@ -201,6 +201,15 @@ function hooksUnmerge(hooksPath, hooksFragment) {
   return { changed: removed > 0, content: `${JSON.stringify({ ...parsed, hooks: nextHooks }, null, 2)}\n` };
 }
 
+// Telemetry capture's hook fragment is fixed per provider (globals/packages/telemetry/hooks-<id>.json).
+// Codex's hooks.json sidecar has no root-config equivalent, so this reuses the same hooksMerge as the
+// package-driven hooks.merge adapter above.
+function wireCaptureHooks(hooksPath) {
+  const fragmentPath = path.resolve(here, "..", "..", "..", "globals", "packages", "telemetry", "hooks-codex.json");
+  const fragment = JSON.parse(fs.readFileSync(fragmentPath, "utf8"));
+  return hooksMerge(hooksPath, fragment);
+}
+
 // Single-server add/remove: unlike Claude, Codex has a real config file to write into directly —
 // no CLI shell-out. Thin wrappers over the pure TOML block math in ../mcp-codex-toml.mjs; return
 // { changed, content } without writing, same pattern as rootConfig.mergePackageComponent above.
@@ -228,7 +237,7 @@ const stubGroups = stubAdapterGroups("codex", {
   commands: ["render"],
   hooks: ["read", "write"],
   mcp: ["add", "remove"],
-  telemetry: ["wireCaptureHooks", "parseRateLimits"],
+  telemetry: ["parseRateLimits"],
   transcripts: ["locate", "parse"],
   session: ["launch"],
 });
@@ -246,6 +255,10 @@ export const codexProvider = defineHarnessProvider({
       ...stubGroups.hooks,
       merge: hooksMerge,
       unmerge: hooksUnmerge,
+    },
+    telemetry: {
+      ...stubGroups.telemetry,
+      wireCaptureHooks,
     },
     rootConfig: {
       merge: (repoText, localText) => mergeCodexConfig(repoText, localText),

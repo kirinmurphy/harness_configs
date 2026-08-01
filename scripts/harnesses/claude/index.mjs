@@ -310,13 +310,21 @@ function hooksUnmerge(settingsPath, hooksFragment) {
   return { changed: removed > 0, content: `${JSON.stringify(nextSettings, null, 2)}\n` };
 }
 
+// Telemetry capture's hook fragment is fixed per provider (globals/packages/telemetry/hooks-<id>.json),
+// unlike the package-driven hooks.merge above which takes an arbitrary fragment — reuses the same
+// merge math (hooksMerge) since Claude's settings.json is both the root config and the hooks file.
+function wireCaptureHooks(settingsPath) {
+  const fragmentPath = path.join(PACKAGES_DIR, "telemetry", "hooks-claude.json");
+  const fragment = JSON.parse(fs.readFileSync(fragmentPath, "utf8"));
+  return hooksMerge(settingsPath, fragment);
+}
+
 const stubGroups = stubAdapterGroups("claude", {
   rules: ["render"],
   skills: ["link"],
   commands: ["render"],
   hooks: ["read"],
   mcp: ["add"],
-  telemetry: ["wireCaptureHooks"],
   transcripts: ["locate", "parse"],
   session: ["launch"],
 });
@@ -344,6 +352,9 @@ export const claudeProvider = defineHarnessProvider({
       write: hooksWriteRemove,
       merge: hooksMerge,
       unmerge: hooksUnmerge,
+    },
+    telemetry: {
+      wireCaptureHooks,
     },
     // 4th param (target path) is Codex-only (used in an error message); Claude's render ignores it.
     permissions: {

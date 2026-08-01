@@ -1377,7 +1377,29 @@ On first run:
 
 ### Phase 6: Telemetry
 
-- [ ] Move capture wiring into provider telemetry adapters.
+- [x] Move capture wiring into provider telemetry adapters.
+  Added a real `telemetry.wireCaptureHooks(filePath)` adapter to both `scripts/harnesses/claude/index.mjs`
+  and `scripts/harnesses/codex/index.mjs`, replacing the `notYetMigrated` stub — each loads its own
+  fixed `globals/packages/telemetry/hooks-<id>.json` fragment and reuses the same `hooksMerge` helper
+  its `hooks.merge` adapter already uses (kept as a distinct `telemetry` capability method rather than
+  folding into `hooks.merge` itself, per `contract.mjs`'s existing `telemetry-capture` requirement, since
+  a future provider could support one capability without the other). `scripts/cli/telemetry.mjs`'s
+  `telemetryInstall` no longer hardcodes `~/.claude`/`~/.codex` existence checks — it iterates
+  `listHarnessProviders()`, filters to providers declaring `telemetry-capture`, and checks
+  `harnessHome[provider.id]` (the existing registry-driven map from Phase 3) before wiring. Its
+  `wireCaptureHooks(harness)` now resolves the live file path via `hook-composition.mjs`'s existing
+  `hookFilePath(harness, {...})` (Claude's hooks live inside settings.json/root-config, Codex's are a
+  dedicated `hooks.json` — the same structural asymmetry `hookFilePath` already encodes), dispatches to
+  `getHarnessProvider(harness).adapters.telemetry.wireCaptureHooks`, then writes the result through
+  `writeHooksFile` (now exported from `hook-composition.mjs` rather than kept private, since telemetry.mjs
+  needed the same drift-tracked-for-Claude/plain-for-Codex write `mergeHooksInto` already used internally)
+  — one hook-write implementation shared by the package-driven `enable telemetry` path and the standalone
+  `roborepo telemetry install` path, never two. `scripts/test/system-package-ownership-characterization-check.mjs`
+  already had comments anticipating exactly this shape (written during an earlier, unrelated plan's Phase 6)
+  and passes unchanged, as does `hook-composition-check.mjs` and `harness-manifest-check.mjs`. No import
+  cycle: `telemetry.mjs` importing `scripts/harnesses/registry.mjs` resolves cleanly since neither provider's
+  `index.mjs` imports back into `telemetry.mjs` or `paths.mjs`'s registry-dependent half. 380/380 tests
+  passing, doctor 100/100 clean.
 - [ ] Move raw Claude and Codex parsing into provider adapters.
 - [ ] Keep normalized analysis independent of the provider count.
 - [ ] Normalize rate-limit capability or namespace provider-specific rate-limit extensions.

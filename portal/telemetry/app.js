@@ -131,12 +131,12 @@ async function load(force, opts) {
     document.getElementById("deepread").textContent = "deeper read" + (deepReadCli ? " (" + deepReadCli + ")" : " (unavailable)") + " ›";
   }
   // Render harness filter only when more than one harness exists in the spool.
-  if (data.available_harnesses) updateHarnessFilter(data.available_harnesses);
+  if (data.available_harnesses) updateHarnessFilter(data.available_harnesses, data.harness_display_names || {});
   if (data.available_models) updateSelectOptions("modelfilt", data.available_models, view.model);
   if (data.available_repos) updateSelectOptions("repofilt", data.available_repos, view.repo);
   updateMarkerFilter(data.markers || [], data.experiments || []);
   updateCohortSummary();
-  analysisExplorer.refresh({ markers: data.markers || [], metrics: data.available_metrics || [], harnesses: data.available_harnesses || [] });
+  analysisExplorer.refresh({ markers: data.markers || [], metrics: data.available_metrics || [], harnesses: data.available_harnesses || [], harnessDisplayNames: data.harness_display_names || {} });
   renders.renderCauses(data.spike_causes);
   document.body.dataset.threshold = data.spike_threshold || 0;
   allTimeline = data.timeline || [];
@@ -162,7 +162,7 @@ async function load(force, opts) {
   renders.renderComparison(data.comparison);
 }
 
-function updateHarnessFilter(harnesses) {
+function updateHarnessFilter(harnesses, displayNames) {
   const el = document.getElementById("harnessfilt");
   if (harnesses.length <= 1) { el.classList.remove("visible"); return; }
   el.classList.add("visible");
@@ -172,8 +172,8 @@ function updateHarnessFilter(harnesses) {
   const existing = [...el.querySelectorAll("button[data-harness]")];
   for (const b of existing) b.remove();
   el.append(
-    tmpl.harnessBtn("all", !view.harness),
-    ...harnesses.map((h) => tmpl.harnessBtn(h, view.harness === h)),
+    tmpl.harnessBtn("all", !view.harness, "all"),
+    ...harnesses.map((h) => tmpl.harnessBtn(h, view.harness === h, displayNames[h] || h)),
   );
 }
 

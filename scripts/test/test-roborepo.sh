@@ -1768,6 +1768,12 @@ assert "telemetry: portal global filter URL state round-trips" \
 assert "telemetry: /api/session rejects missing/unknown harness ids" \
   node "${repo_root}/scripts/test/telemetry-session-harness-check.mjs"
 
+# Phase 6 of discoverable-harness-provider-architecture-plan.md: a genuinely third registered
+# provider (not just claude/codex) proves the shared telemetry analysis and capability-based
+# rate-limit check do not encode a two-provider assumption.
+assert "telemetry: synthetic third-provider analysis and rate-limit capability" \
+  node "${repo_root}/scripts/test/telemetry-synthetic-provider-check.mjs"
+
 # Telemetry "view docs" popup: heading-slug ids, table, and mermaid-fallback extensions to the
 # shared markdown renderer (also used by Config's skill-source popup).
 assert "markdown-render: heading ids, tables, mermaid fallback" \

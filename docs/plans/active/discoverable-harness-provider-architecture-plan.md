@@ -1478,14 +1478,40 @@ On first run:
   directly) covering missing-harness-rejected, unknown-harness-rejected, and known-harness-reaches-
   loadSession, using a minimal fake `res` satisfying `send()`'s `writeHead`/`end` contract rather than
   a real HTTP socket. 381/381 tests passing, doctor 100/100 clean.
-- [ ] Return provider display metadata with available telemetry harnesses.
+- [x] Return provider display metadata with available telemetry harnesses.
+  `cachedAnalysisEntry` (telemetry.mjs) now adds `report.harness_display_names`, an `{id:
+  displayName}` map built from `listHarnessProviders()`'s own manifests for whichever harnesses are
+  actually present in the spool — never a hardcoded `{claude: "Claude Code", codex: "Codex"}` table,
+  so a newly registered provider gets a real label automatically. Wired both portal consumers that
+  previously rendered the bare stable id as the visible label: `app.js`'s `updateHarnessFilter`
+  (the top cohort-bar buttons) and `analysis-explorer.js`'s `setHarnesses` (the A/B comparison
+  dropdowns) both now pass `displayNames[h] || h` as the label while keeping `h` (the stable id) as
+  the dataset key / option value — the id is still what round-trips through the URL and
+  `?harness=`/POST body, only the visible text changed. `templates.js`'s `harnessBtn` gained a third
+  `label` param documenting this id-vs-label split explicitly. 381/381 tests passing at the time this
+  item alone was verified (382/382 once item 9's new test landed alongside it), doctor 100/100 clean.
 - [x] Keep filters hidden when fewer than two harnesses exist.
   Already satisfied by existing code: `portal/telemetry/app.js`'s `updateHarnessFilter(harnesses)`
   hides the filter row (`harnesses.length <= 1`) and otherwise builds one button per harness generically
   (`harnesses.map((h) => tmpl.harnessBtn(h, ...))`, not hardcoded to two) — already N-harness-safe. No
   code changed.
-- [ ] Add a synthetic third-provider fixture to prove the shared analysis and filter do not encode a
+- [x] Add a synthetic third-provider fixture to prove the shared analysis and filter do not encode a
   two-provider assumption.
+  `registry.mjs`'s `PROVIDERS` map is a static import-time `Map` built from exactly two hardcoded
+  imports, so proving genuine N-provider behavior needs a real third entry, not just a third harness
+  string in event data. Reused the subprocess-isolation technique `package-catalog-harness-check.mjs`
+  already established for a fabricated-manifest capability-gap test: `telemetry-synthetic-provider-
+  check.mjs` copies `scripts/`, `globals/harnesses/`, and `modules/` into a temp app root, adds a
+  fabricated `acme` provider (manifest + minimal adapter implementing only the methods its declared
+  capabilities require) alongside real `claude`/`codex`, rewrites the copied `registry.mjs` to
+  register all three, then runs a probe script in a subprocess against that copy. Verifies: (1)
+  `analyzeTelemetry`'s `report.harnesses` is `['acme', 'claude', 'codex']`, not hardcoded to two; (2)
+  `acme` (which declares `telemetry-rate-limits` like Codex but has no `codex_rate_limits` payload in
+  its event) gets the same `rate_limit_unavailable` data-quality warning Codex would — proving item
+  4's capability-based check generalizes past a literal `"codex"` string match; (3)
+  `getHarnessProvider('acme').manifest.displayName` resolves to the fixture's real display name, not
+  its bare id; (4) `listHarnessProviders().length === 3`. 382/382 tests passing (up from 381 — this
+  test itself), doctor 100/100 clean.
 
 ### Phase 7: CLI and Config portal
 

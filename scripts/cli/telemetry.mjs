@@ -1171,6 +1171,12 @@ function cachedAnalysisEntry(window, harness, extra = {}) {
     if (t) s.title = t;
   }
   report.available_harnesses = availableHarnesses;
+  // Display names for whichever harnesses are actually present — sourced from each provider's own
+  // manifest (never a hardcoded "claude" -> "Claude Code" table here), so a new registered provider
+  // needs no change in this file to get a real label instead of falling back to its bare id.
+  report.harness_display_names = Object.fromEntries(
+    availableHarnesses.map((id) => [id, hasHarnessProvider(id) ? getHarnessProvider(id).manifest.displayName : id]),
+  );
   report.available_models = availableModels;
   report.available_repos = availableRepos;
   // Metric ids from the shared registry (plan: "available ... metric" dimension) so the Analysis

@@ -55,11 +55,14 @@ export function openAnalysisBtn(filterState) {
 }
 
 // One button in the harness filter row (app.js's updateHarnessFilter). harness is "all" or a
-// harness name; both the dataset key and label text.
-export function harnessBtn(harness, active) {
+// stable harness id — always the dataset key (and the value sent back as ?harness=), never
+// shown to the user. label is the human-facing text: the provider's own manifest displayName
+// (app.js's harness_display_names, sourced server-side from each provider's own manifest, never
+// a hardcoded id -> name table) for a real harness, or "all" for the reset button.
+export function harnessBtn(harness, active, label) {
   const node = tpl("tpl-harness-btn");
   node.dataset.harness = harness;
-  node.textContent = harness;
+  node.textContent = label;
   node.classList.toggle("active", active);
   return node;
 }

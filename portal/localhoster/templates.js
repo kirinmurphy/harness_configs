@@ -36,6 +36,15 @@ export function collapsibleGroup(title, meta, nodes) {
   return node;
 }
 
+// How a compose project's repository was established, weakest last. "auto-bind" is called out as
+// inferred because, unlike a compose working_dir (which Compose guarantees is the project
+// directory), it is derived from a container's bind-mount path — see collectGitForComposeProjects.
+const REPO_PROVENANCE = {
+  manual: "repo set manually",
+  auto: "repo from compose working dir",
+  "auto-bind": "repo inferred from mount path",
+};
+
 // One card per Docker Compose project, its containers listed as compact rows rather than each
 // getting its own top-level card — a Compose stack (app, db, proxy, mailhog...) is one logical
 // operation, not N unrelated ones. Each container is its own row (not each published port) since a
@@ -46,17 +55,38 @@ export function composeProjectCard(composeProject, actions) {
   const portCount = allInstances.length;
   // One CPU reading per container (not per port — a container's ports would otherwise multiply
   // its own CPU into the sum), same de-dup as composeContainerRow's own metrics line.
+  //
+  // Sums cpuPercentOfHost, never cpuPercent: docker stats reports percent of ONE core, so adding
+  // those across an 11-container project produced numbers like 161% that meant nothing (neither a
+  // share of the machine nor of a core). Percent-of-machine is the only figure that survives a sum.
   const aggregateCpu = composeProject.containers.reduce((sum, c) => {
-    const cpu = c.instances.find((i) => i.processMetrics)?.processMetrics?.cpuPercent;
+    const cpu = c.instances.find((i) => i.processMetrics)?.processMetrics?.cpuPercentOfHost;
     return cpu != null ? sum + cpu : sum;
   }, 0);
+  // CPU is deliberately absent from the persistent meta line: in practice these sit well under 1%,
+  // so printing the number every time spends permanent space on a fact that almost never warrants
+  // action. It moves to the tooltip, and only re-earns a persistent slot as a badge once it crosses
+  // the concern threshold (see applyResourceConcernBadge).
   const metaParts = [`${composeProject.containers.length} container${composeProject.containers.length === 1 ? "" : "s"}`, `${portCount} port${portCount === 1 ? "" : "s"}`];
-  if (aggregateCpu > 0) metaParts.push(`${aggregateCpu.toFixed(1)}% CPU`);
   const node = fill(tpl("tpl-compose-project-card"), {
     title: composeProject.name,
     meta: metaParts.join(" · "),
   });
-  applyGitBadge(node, node, composeProject.git, composeProject.providerUrl);
+  const tooltip = node.querySelector(".info-wrap > template").content;
+  const aggregateMemoryKb = composeProject.containers.reduce((sum, c) => {
+    const kb = c.instances.find((i) => i.processMetrics)?.processMetrics?.residentMemoryKb;
+    return kb != null ? sum + kb : sum;
+  }, 0);
+  fill(tooltip, {
+    containers: composeProject.containers.map((c) => c.name).join(", ") || "none",
+    "ports-detail": String(portCount),
+    resources: aggregateCpu > 0 || aggregateMemoryKb > 0
+      ? `${aggregateCpu.toFixed(1)}% of machine CPU · ${formatMemory(aggregateMemoryKb)} RSS`
+      : "unavailable",
+    identity: `compose · ${REPO_PROVENANCE[composeProject.resolvedFrom] || "repo unresolved"}`,
+  });
+  applyGitBadge(node, tooltip, composeProject.git, composeProject.providerUrl);
+  applyResourceConcernBadge(node, aggregateCpu);
   wireCopyBranchButton(node, composeProject.git);
   const rows = node.querySelector("[data-slot=rows]");
   for (const container of composeProject.containers) {
@@ -100,27 +130,31 @@ function composeContainerRow(container, actions) {
   const node = fill(tpl("tpl-compose-container-row"), {
     name: container.name,
   });
+  // One PID serves every port a container publishes, so metrics are read off the first instance
+  // that has them rather than repeated/recomputed per port.
+  const metricsSource = container.instances.find((i) => i.processMetrics)?.processMetrics;
+  const metricsParts = [];
+  // Both figures, because they answer different questions and `docker stats` only ever shows the
+  // per-core one — printing only percent-of-machine would not match what the CLI reports.
+  if (metricsSource?.cpuPercent != null) {
+    metricsParts.push(metricsSource.cpuPercentOfHost != null
+      ? `${metricsSource.cpuPercent}% of a core (${metricsSource.cpuPercentOfHost.toFixed(1)}% of machine)`
+      : `${metricsSource.cpuPercent}% CPU`);
+  }
+  if (metricsSource?.residentMemoryKb != null) metricsParts.push(`${formatMemory(metricsSource.residentMemoryKb)} RSS`);
+  if (metricsSource?.elapsedSeconds != null) metricsParts.push(`up ${formatElapsed(metricsSource.elapsedSeconds)}`);
   const tooltip = node.querySelector(".info-wrap > template").content;
   fill(tooltip, {
     image: container.image || "unknown",
     state: container.state || "unknown",
+    // Raw numbers live here rather than on the row — see composeProjectCard for why a sub-1% CPU
+    // reading does not earn permanent space.
+    resources: metricsParts.join(" · ") || "unavailable",
   });
-  // One PID serves every port a container publishes, so metrics are read off the first instance
-  // that has them rather than repeated/recomputed per port.
-  const metrics = node.querySelector("[data-slot=metrics]");
-  const metricsSource = container.instances.find((i) => i.processMetrics)?.processMetrics;
-  const metricsParts = [];
-  if (metricsSource?.cpuPercent != null) metricsParts.push(`${metricsSource.cpuPercent}% CPU`);
-  if (metricsSource?.residentMemoryKb != null) metricsParts.push(`${formatMemory(metricsSource.residentMemoryKb)} RSS`);
-  if (metricsSource?.elapsedSeconds != null) metricsParts.push(`up ${formatElapsed(metricsSource.elapsedSeconds)}`);
-  if (metricsParts.length) {
-    metrics.hidden = false;
-    metrics.textContent = metricsParts.join(" · ");
-  }
+  applyResourceConcernBadge(node, metricsSource?.cpuPercentOfHost);
   const ports = node.querySelector("[data-slot=ports]");
   for (const instance of container.instances) {
     const port = fill(tpl("tpl-compose-container-port"), {
-      port: `:${instance.bind.port}`,
       status: `${statusText(instance)} (${statusDetail(instance)})`,
     });
     const origin = port.querySelector("[data-slot=origin]");
@@ -128,12 +162,12 @@ function composeContainerRow(container, actions) {
       origin.textContent = displayOrigin(instance.origin);
       origin.href = instance.origin;
     } else {
-      origin.textContent = "—";
+      origin.textContent = `:${instance.bind.port}`;
       origin.removeAttribute("href");
     }
     const state = healthState(instance);
     if (state) port.dataset.health = state;
-    port.querySelector("[data-slot=status-dot]").dataset.active = String(state === "healthy");
+    applyPortHealthBadge(port, instance, state);
     const tooltip = port.querySelector(".info-wrap > template").content;
     fill(tooltip, {
       latency: instance.latencyMs == null ? "unknown" : `${instance.latencyMs}ms`,
@@ -174,9 +208,12 @@ export function instanceCard(project, instance, actions) {
   wireCopyBranchButton(node, gitInfo);
   applyDockerBadge(node, tooltip, instance.docker);
   applyProcessMetricsBadge(tooltip, instance.processMetrics);
+  applyResourceConcernBadge(node, instance.processMetrics?.cpuPercentOfHost);
   const origin = node.querySelector("[data-slot=origin]");
   if (instance.origin) {
-    origin.textContent = instance.origin;
+    // Display without the scheme (the href keeps it) — every origin on this page is http(s) by
+    // construction, so the prefix is noise. Same treatment the compose port rows already used.
+    origin.textContent = displayOrigin(instance.origin);
     origin.href = instance.origin;
   } else {
     origin.textContent = "origin unavailable";
@@ -251,17 +288,22 @@ export function settingsRow(title, meta, label, onClick) {
 // Render Git context, distinguishing "no uncommitted changes" from "we could not tell". A dirty
 // marker only appears for an explicit true; null means the subprocess could not answer, and drawing
 // nothing there is the honest choice — a card that implied "clean" would be acted on.
+// The row itself is cloned from the shared tpl-git-row rather than pre-authored inside each card
+// template: both card kinds expose only an empty [data-slot=git-row] container, so there is exactly
+// one authored copy of this markup and the two cards cannot drift apart again.
 function applyGitBadge(node, tooltip, git, providerUrl) {
-  const badge = node.querySelector("[data-slot=git]");
-  if (!badge || !git?.provider?.ok || (!git.branch && !git.shortHead)) return;
+  const row = node.querySelector("[data-slot=git-row]");
+  if (!row || !git?.provider?.ok || (!git.branch && !git.shortHead)) return;
 
+  const badge = tpl("tpl-git-row");
+  row.append(badge);
   badge.hidden = false;
-  node.querySelector("[data-slot=git-branch]").textContent = git.detached
+  badge.querySelector("[data-slot=git-branch]").textContent = git.detached
     ? "detached"
     : git.branch || "";
 
-  const repoLink = node.querySelector("[data-slot=git-repo-link]");
-  const repoName = node.querySelector("[data-slot=git-repo-name]");
+  const repoLink = badge.querySelector("[data-slot=git-repo-link]");
+  const repoName = badge.querySelector("[data-slot=git-repo-name]");
   if (providerUrl) {
     repoLink.hidden = false;
     repoLink.href = providerUrl;
@@ -276,11 +318,11 @@ function applyGitBadge(node, tooltip, git, providerUrl) {
   // A dot, not a badge/text label — commit hash and "clean/dirty" as a boolean are rarely acted
   // on day to day; both stay available in the hover detail for the rare case (reset, diff) that
   // actually needs them, rather than claiming permanent top-level space.
-  const dirty = node.querySelector("[data-slot=git-dirty]");
+  const dirty = badge.querySelector("[data-slot=git-dirty]");
   dirty.classList.toggle("is-dirty", git.dirty === true);
   dirty.title = git.dirty === true ? "Uncommitted changes" : git.dirty === false ? "No uncommitted changes" : "Dirty state unavailable";
 
-  const tracking = node.querySelector("[data-slot=git-tracking]");
+  const tracking = badge.querySelector("[data-slot=git-tracking]");
   const marks = [];
   if (git.ahead) marks.push(`↑${git.ahead}`);
   if (git.behind) marks.push(`↓${git.behind}`);
@@ -290,10 +332,42 @@ function applyGitBadge(node, tooltip, git, providerUrl) {
     tracking.title = `${git.ahead || 0} ahead, ${git.behind || 0} behind ${git.upstream || "upstream"}`;
   }
 
-  const summary = gitTooltip(git);
-  badge.title = summary;
-  tooltip.querySelector("[data-slot=git-detail]").hidden = false;
-  tooltip.querySelector("[data-slot=git-detail-text]").textContent = summary;
+  badge.title = gitTooltip(git);
+  applyGitTooltipFields(tooltip, git);
+}
+
+// Branch, commit, and working-tree state are three independent facts; crammed onto one
+// "main · b4c373f · no uncommitted changes · tracking origin/main" line they read as noise. Each
+// gets its own labeled row, and any field the provider could not answer stays hidden rather than
+// rendering an empty or guessed value.
+function applyGitTooltipFields(tooltip, git) {
+  const branch = tooltip.querySelector("[data-slot=git-detail]");
+  if (branch) {
+    branch.hidden = false;
+    const parts = [git.detached ? "detached" : git.branch || "unknown"];
+    if (git.isWorktree) parts.push("linked worktree");
+    if (git.upstream) parts.push(`tracking ${git.upstream}`);
+    tooltip.querySelector("[data-slot=git-detail-text]").textContent = parts.join(" · ");
+  }
+  const commit = tooltip.querySelector("[data-slot=git-commit-detail]");
+  if (commit && git.shortHead) {
+    commit.hidden = false;
+    const marks = [];
+    if (git.ahead) marks.push(`${git.ahead} ahead`);
+    if (git.behind) marks.push(`${git.behind} behind`);
+    tooltip.querySelector("[data-slot=git-commit-text]").textContent = marks.length
+      ? `${git.shortHead} · ${marks.join(", ")}`
+      : git.shortHead;
+  }
+  const status = tooltip.querySelector("[data-slot=git-status-detail]");
+  if (status) {
+    status.hidden = false;
+    tooltip.querySelector("[data-slot=git-status-text]").textContent = git.dirty === null
+      ? "dirty state unavailable"
+      : git.dirty
+        ? "uncommitted changes"
+        : "no uncommitted changes";
+  }
 }
 
 function wireCopyBranchButton(node, git) {
@@ -337,6 +411,56 @@ function applyProcessMetricsBadge(tooltip, metrics) {
 
   detail.hidden = false;
   tooltip.querySelector("[data-slot=process-metrics-detail-text]").textContent = parts.join(" · ");
+}
+
+// Thresholds are percent of the WHOLE machine, so they mean the same thing for a single native
+// process and for an 11-container Compose project. Measured against per-core percentages these
+// would have fired on container count rather than real load.
+//
+// CPU only earns persistent space once it is worth acting on; below the warn threshold the number
+// stays in the tooltip. Provisional fixed defaults — the plan doc's resource-threshold follow-up
+// covers spike detection and per-project overrides, which this intentionally does not attempt.
+const CPU_WARN_PERCENT_OF_HOST = 25;
+const CPU_ALERT_PERCENT_OF_HOST = 60;
+
+function applyResourceConcernBadge(node, cpuPercentOfHost) {
+  const badge = node.querySelector("[data-slot=resource-concern]");
+  if (!badge || cpuPercentOfHost == null || cpuPercentOfHost < CPU_WARN_PERCENT_OF_HOST) return;
+  badge.hidden = false;
+  badge.textContent = `${cpuPercentOfHost.toFixed(0)}% CPU`;
+  const alert = cpuPercentOfHost >= CPU_ALERT_PERCENT_OF_HOST;
+  badge.dataset.tone = alert ? "danger" : "warn";
+  badge.title = `${cpuPercentOfHost.toFixed(1)}% of total machine CPU — ${alert ? "very high" : "elevated"}`;
+}
+
+// `unknown` deliberately maps to neutral, not warn: an unconfigured listener answering a 4xx is not
+// a fault worth coloring, matching the same decision the card-level health accent already makes.
+const PORT_HEALTH_TONES = {
+  healthy: "ok",
+  degraded: "warn",
+  starting: "warn",
+  unhealthy: "danger",
+};
+
+// Leading column of a port row: the HTTP status code when the probe actually returned one, and an
+// explicit "No healthcheck" otherwise. A container port that never answers HTTP (Postgres, Redis)
+// is not unhealthy — it was never checked — so it gets a neutral badge rather than a red one or a
+// silently empty cell.
+function applyPortHealthBadge(port, instance, state) {
+  const badge = port.querySelector("[data-slot=health-badge]");
+  if (!badge) return;
+  if (instance.status) {
+    badge.textContent = String(instance.status);
+    badge.dataset.tone = PORT_HEALTH_TONES[state] || "neutral";
+    badge.title = `${statusText(instance)} · ${statusDetail(instance)}`;
+    return;
+  }
+  // "N/A", not "Not Found": this column also renders real 404s, and "Not Found" would make a
+  // never-probed listener read as a failed one. Kept to status-code width so the badge column stays
+  // aligned instead of one long label pushing every address out of line — full wording in the title.
+  badge.textContent = "N/A";
+  badge.dataset.tone = "neutral";
+  badge.title = `No HTTP healthcheck · ${statusDetail(instance)}`;
 }
 
 function formatMemory(kb) {

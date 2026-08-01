@@ -92,10 +92,74 @@ Two related gaps found during manual smoke testing surfaced the need for this pl
 - Manual validation against a real multi-container Compose stack (app + db + supporting services)
   to confirm the rollup count and associated-instance list match `docker ps` for that project.
 
+## Landed: Per-Container Metrics via `docker stats`
+
+Docker CPU/RSS were fundamentally wrong on macOS. `modules/localhoster/process-metrics.mjs` runs
+host-side `ps` against the PID that owns the listening socket, but every Docker-proxied container
+port on macOS is fronted by the single shared `com.docker.backend` VM-proxy process — so every
+container across every Compose project reported identical, meaningless CPU/RSS/uptime. Confirmed
+directly: two unrelated Compose projects showed the same PID and CPU%.
+
+Fixed by `modules/localhoster/docker-stats.mjs`: one
+`docker stats --no-stream --format '{{json .}}'` call per scan (same "N things, one call"
+discipline as `docker ps`), parsed into a `containerId -> {cpuPercent, residentMemoryKb}` map.
+`discovery.mjs` runs it in the existing concurrent provider batch and prefers it for any instance
+carrying a Docker match, falling back to the `ps` reading only for native (non-Docker) listeners.
+
+Chosen over the Docker API/socket route deliberately: every other Docker touchpoint in this module
+goes through the CLI, and a socket transport would add a second way of talking to Docker for no
+benefit the current feature set needs. Revisit only if live-streaming stats are wanted, which the
+API supports naturally and repeated CLI calls do not.
+
+Uptime is not carried by `docker stats`, so `elapsedSeconds` is null for Docker instances rather
+than reusing the host-proxy `ps` value, which would silently reintroduce the same bug. Both portal
+call sites already guard `!= null`, so the segment is simply omitted. Sourcing real container
+uptime from `docker ps`'s `Status` field remains unbuilt.
+
+## Landed: One Card Shape for Docker and Non-Docker Projects
+
+`tpl-card` and `tpl-compose-project-card` were structurally unrelated — the Compose card laid its
+title, meta, git badge, and action menu out as one flat flex row inside `<summary>`, with no
+`card-head`/`card-title` split and its own `h3` inheriting a larger size. Git context therefore
+rendered in a visibly different place and weight on the two card kinds even though the underlying
+data shapes had already converged.
+
+Both templates now emit the same persistent skeleton:
+
+```
+.card-head
+  .card-main            column one
+    .card-title         h3 + type-specific trailing content
+    .card-git-row       shared git row (empty => display:none)
+  .action-menu          column two
+```
+
+Only the title row's trailing content differs by kind — a URL for a plain listener, the
+`N containers · N ports · N% CPU` rollup plus the expand chevron for a Compose project — which is
+the intended axis of variation. The git row markup itself was extracted to a single `tpl-git-row`
+template that `applyGitBadge` clones into whichever card asked for it, so the two copies that had
+already drifted cannot drift again. The Compose card's `<summary>` is now layout-neutral
+(`display: block`) and exists only as the click target; `.card-head` inside it owns the layout.
+
+## Landed: Fixed Icon Size Scale
+
+There was no icon-size system: `<portal-icon>` defaulted to 15px and call sites passed arbitrary
+`width`/`height`, while page CSS shrank icons further with bare `svg { width }` rules — the git
+repo-link and copy-branch icons were forced to 10px, small enough to be unreadable.
+
+`portal/shared/icon.js` now exposes a fixed scale (`sm` 14 / `md` 16 / `lg` 20 / `xl` 24) selected
+via `size="…"`, with `md` the default; the `width`/`height` attribute escape hatch is gone and all
+19 existing call sites across localhoster/plans/config/widget-templates were migrated onto steps.
+`base.css` mirrors the same numbers as `--icon-sm|md|lg|xl` for elements sized by CSS rather than
+by the component (`.info-icon` is a text button, not an svg), and the sub-scale overrides in
+localhoster and plans now reference those tokens. `sm` is the floor — nothing should size an icon
+below it.
+
 ## Follow-up: Resource Threshold Alerting
 
 Not scoped into this plan's implementation — captured here during manual smoke testing as a
-distinct next feature, to be scoped and possibly branched separately.
+distinct next feature, to be scoped and possibly branched separately. Unblocked now that the
+per-container CPU/RSS numbers above are real rather than a shared VM-proxy artifact.
 
 Every quantifiable per-port/per-container stat currently surfaced is purely informational, with no
 threshold classification: health state, latency, CPU%, RSS, elapsed uptime. None of these get

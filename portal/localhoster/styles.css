@@ -110,23 +110,31 @@ main {
 }
 .instance-card {
   background: var(--panel);
-  padding: 10px 12px;
+  padding: 14px 12px;
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 
-.instance-card:not(:last-of-type) {
+/* :last-child, not :last-of-type — a plain card is an <article> and a Compose card is a <details>,
+ * so :last-of-type resolved per element type and the last card of each kind lost its separator
+ * regardless of where it actually sat in the list. */
+.instance-card:not(:last-child) {
   border-bottom: 1px solid var(--line);
 }
 
 .instance-card.is-offline {
   opacity: 0.5;
 }
-.instance-card.is-offline::after {
+/* Rendered inside the title row rather than as a block after the card, so going offline doesn't
+ * add a row and shift the layout of everything below it. */
+.instance-card.is-offline .card-title::after {
   content: "Offline";
-  justify-self: start;
+  padding: 1px 7px;
+  border-radius: 999px;
   font-size: var(--text-2xs);
-  color: var(--warn);
+  font-weight: 600;
+  background: var(--warn);
+  color: var(--panel);
 }
 .card-notice {
   margin: 0;
@@ -146,13 +154,27 @@ main {
   gap: 12px;
   flex-wrap: nowrap;
 }
+/* Column one of the card head: title row above, git row below. Shared by both card kinds so a
+ * Docker project and a plain listener present the same persistent shape — only the title row's
+ * trailing content (URL vs. container/port/CPU rollup) differs. */
+.card-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
 .card-title {
   display: flex;
   align-items: baseline;
   gap: 7px;
   min-width: 0;
-  flex: 1;
   flex-wrap: wrap;
+}
+/* Git context gets its own line rather than trailing the title: it is a second, independent fact
+ * about the project, and inlining it made the title row wrap unpredictably once a repo name,
+ * branch, and tracking marks were all present. Empty when the project has no resolvable git. */
+.card-git-row:empty {
+  display: none;
 }
 .card-head .action-menu {
   flex-shrink: 0;
@@ -191,8 +213,8 @@ main {
   place-items: center;
 }
 .card-title portal-info-icon .info-icon {
-  width: 15px;
-  height: 15px;
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 .menu-panel {
   position: absolute;
@@ -367,7 +389,7 @@ dialog::backdrop {
 .git-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.7rem;
   font-size: var(--text-2xs);
   color: var(--dim);
   white-space: nowrap;
@@ -390,13 +412,10 @@ dialog::backdrop {
   gap: 0.2rem;
   color: var(--accent);
 }
-.git-repo-link svg {
-  width: 10px;
-  height: 10px;
-}
+/* No `svg { width }` overrides here on purpose: icon size is owned by <portal-icon size="…">'s
+ * fixed scale (portal/shared/icon.js). These rules previously forced 10-11px, well below the
+ * scale's smallest legible step, which is what made the repo/branch icons unreadable. */
 .git-badge-icon {
-  width: 11px;
-  height: 11px;
   flex-shrink: 0;
 }
 .git-repo-name {
@@ -416,10 +435,6 @@ dialog::backdrop {
 }
 .git-branch-button:hover {
   color: var(--accent);
-}
-.git-branch-button svg {
-  width: 10px;
-  height: 10px;
 }
 .git-tracking {
   color: var(--desc-dim);
@@ -447,28 +462,25 @@ dialog::backdrop {
   color: var(--danger);
 }
 
+/* The summary is only the click target — .card-head inside it owns the layout, identical to a
+ * plain instance card's, so both kinds present the same persistent structure. */
 .compose-project-card > summary {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+  display: block;
   cursor: pointer;
   list-style: none;
 }
 .compose-project-card > summary::-webkit-details-marker {
   display: none;
 }
-.compose-project-card > summary .action-menu {
-  margin-left: auto;
+/* The expand affordance is the one element with no counterpart on a plain card, so it sits in the
+ * title row where the eye already is rather than adding a third column just for it. */
+.compose-project-chevron {
+  display: inline-flex;
+  color: var(--dim);
+  transition: transform 0.15s ease;
 }
-.compose-project-status {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--dim);
-  flex-shrink: 0;
-}
-.compose-project-status[data-active="true"] {
-  background: var(--ok);
+.compose-project-card[open] .compose-project-chevron {
+  transform: rotate(180deg);
 }
 .compose-project-meta {
   color: var(--dim);
@@ -480,61 +492,106 @@ dialog::backdrop {
   margin-top: 8px;
 }
 .compose-container-row {
-  padding: 6px 8px;
+  padding: 10px;
   background: var(--bg);
   border-radius: 4px;
 }
 .compose-container-head {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   font-size: var(--text-xs);
   flex-wrap: wrap;
 }
 .compose-container-name {
   font-weight: 600;
 }
-.compose-container-metrics {
-  color: var(--dim);
+/* Only rendered once CPU crosses the concern threshold — see applyResourceConcernBadge. A quiet
+ * container shows nothing here rather than a permanent "0.1% CPU". */
+.resource-concern-badge {
+  padding: 1px 7px;
+  border-radius: 999px;
   font-size: var(--text-2xs);
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--warn);
+  color: var(--panel);
+}
+.resource-concern-badge[data-tone="danger"] {
+  background: var(--danger);
 }
 .compose-container-head .info-wrap portal-info-icon .info-icon {
-  width: 12px;
-  height: 12px;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 .compose-container-ports {
   display: grid;
-  gap: 2px;
-  margin-top: 4px;
+  gap: 6px;
+  margin-top: 8px;
   padding-left: 12px;
 }
+/* Three columns: health badge, address (URL + its copy/info actions), history. The badge column is
+ * fixed-width so badges line up down the list instead of the addresses ragging left. */
 .compose-container-port {
   display: grid;
-  grid-template-columns: 60px 8px 1fr auto auto auto auto;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   font-size: var(--text-2xs);
 }
-.compose-container-port-num {
-  color: var(--desc-dim);
-  font-family: var(--mono);
+.compose-container-port-address {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 .compose-container-port-origin {
   color: var(--accent);
   font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Solid fill with inverted text — the badge is the row's status at a glance, and an outline-only
+ * chip reads as secondary next to the colored text elsewhere on the card. `neutral` is the honest
+ * default for a port that was never probed. */
+.port-health-badge {
+  justify-self: start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--dim);
+  color: var(--panel);
+}
+.port-health-badge[data-tone="ok"] {
+  background: var(--ok);
+}
+.port-health-badge[data-tone="warn"] {
+  background: var(--warn);
+}
+.port-health-badge[data-tone="danger"] {
+  background: var(--danger);
 }
 .compose-container-port .info-wrap portal-info-icon .info-icon {
-  width: 12px;
-  height: 12px;
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
+/* An inline action, not a chrome-bearing button: no border, background, or fixed hit-box — the
+ * icon is the control. Deliberately not .icon-button, whose 34px box dwarfs a compact port row. */
 .compose-container-port-action {
-  width: 20px;
-  height: 20px;
-  padding: 3px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--dim);
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
 }
-.compose-container-port-action svg {
-  width: 100%;
-  height: 100%;
+.compose-container-port-action:hover {
+  color: var(--accent);
+  background: none;
 }
 .compose-container-port-history {
   font-size: var(--text-2xs);
@@ -546,16 +603,6 @@ dialog::backdrop {
 }
 .compose-container-port-history:hover {
   color: var(--accent);
-}
-.compose-container-port[data-health="healthy"] .compose-container-port-status {
-  color: var(--ok);
-}
-.compose-container-port[data-health="degraded"] .compose-container-port-status,
-.compose-container-port[data-health="starting"] .compose-container-port-status {
-  color: var(--warn);
-}
-.compose-container-port[data-health="unhealthy"] .compose-container-port-status {
-  color: var(--danger);
 }
 
 .history-subject {

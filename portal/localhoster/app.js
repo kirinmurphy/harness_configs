@@ -247,7 +247,11 @@ function reconcileSection(section) {
       if (existing.node instanceof HTMLDetailsElement && node instanceof HTMLDetailsElement) {
         node.open = existing.node.open;
       }
+      const wasOffline = existing.offline;
       existing.node.replaceWith(node);
+      // A card coming back from offline was parked at the end of the grid by markCardOffline, so
+      // replacing in place would strand it below the live cards. Re-seat it at its live position.
+      if (wasOffline) grid.insertBefore(node, grid.children[index] || null);
       renderedCards.set(cardKey, { node, hash, offline: false });
     }
     index += 1;
@@ -283,11 +287,15 @@ function appendSection(section) {
   return groupEl;
 }
 
+// An offline card is a leftover from a previous render whose instance is gone. It stays visible as
+// a tombstone, but sinks to the end of its grid so the things actually running stay at the top —
+// otherwise a long-dead app holds a prime slot above live ones indefinitely.
 function markCardOffline(node) {
   node.classList.add("is-offline");
   const trigger = node.querySelector("[data-action=menu]");
   if (trigger) trigger.disabled = true;
   node.querySelector("[data-menu]")?.setAttribute("hidden", "");
+  node.parentNode?.append(node);
 }
 
 function renderWarnings(snapshot) {

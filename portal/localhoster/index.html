@@ -198,7 +198,7 @@
     <template id="tpl-toolbar-actions">
       <div class="toolbar-actions">
         <button id="refresh" type="button" class="icon-button" title="Refresh" aria-label="Refresh">
-          <portal-icon name="refresh"></portal-icon>
+          <portal-icon name="refresh" size="md"></portal-icon>
           <span class="spinner" hidden></span>
         </button>
         <button id="settings" type="button">Settings</button>
@@ -219,62 +219,82 @@
         <div class="instance-grid" data-slot="items"></div>
       </details>
     </template>
-    <!-- Instance card + quick links -->
+    <!-- Shared git row, cloned into both card kinds by applyGitBadge so a Docker project and a
+         plain listener render byte-identical git context. Authored once here rather than copied
+         into each card template — the two copies had already drifted (different row placement,
+         different sizing) before this was extracted. -->
+    <template id="tpl-git-row">
+      <span class="git-badge" data-slot="git" hidden>
+        <portal-icon name="git-branch" size="sm" class="git-badge-icon"></portal-icon>
+        <span class="git-dirty-dot" data-slot="git-dirty"></span>
+        <a class="git-repo-link" data-slot="git-repo-link" target="_blank" rel="noreferrer" hidden
+          >repo<portal-icon name="external-link" size="sm"></portal-icon
+        ></a>
+        <span class="git-repo-name" data-slot="git-repo-name" hidden></span>
+        <button type="button" class="git-branch-button" data-action="copy-branch" title="Copy branch name">
+          <span data-slot="git-branch"></span>
+          <portal-icon name="copy" size="sm"></portal-icon>
+        </button>
+        <span class="git-tracking" data-slot="git-tracking" hidden></span>
+      </span>
+    </template>
+    <!-- Instance card + quick links.
+         The persistent head is structurally identical to tpl-compose-project-card's: column one is
+         a title row plus a git row, column two is the action menu. Only the title row's trailing
+         content differs by card kind (a URL here, a container/port/CPU rollup there) — that
+         difference is the point of the split, everything else must stay shared. -->
     <template id="tpl-card">
       <article class="instance-card">
         <div class="card-head">
-          <div class="card-title">
-            <h3 data-slot="title"></h3>
-            <span class="title-separator">-</span>
-            <a data-slot="origin" target="_blank" rel="noreferrer"></a>
-            <span class="git-badge" data-slot="git" hidden>
-              <portal-icon name="git-branch" class="git-badge-icon"></portal-icon>
-              <span class="git-dirty-dot" data-slot="git-dirty"></span>
-              <a class="git-repo-link" data-slot="git-repo-link" target="_blank" rel="noreferrer" hidden
-                >repo<portal-icon name="external-link"></portal-icon
-              ></a>
-              <span class="git-repo-name" data-slot="git-repo-name" hidden></span>
-              <button type="button" class="git-branch-button" data-action="copy-branch" title="Copy branch name">
-                <span data-slot="git-branch"></span>
-                <portal-icon name="copy"></portal-icon>
-              </button>
-              <span class="git-tracking" data-slot="git-tracking" hidden></span>
-            </span>
-            <span class="docker-badge" data-slot="docker" hidden>
-              <span data-slot="docker-label"></span>
-            </span>
-            <span class="info-wrap" data-tip-html="template">
-              <portal-info-icon
-                aria-label="Show instance details"
-              ></portal-info-icon>
-              <template>
-                <span class="info-tooltip-content">
-                  <span
-                    ><strong>Health</strong><span data-slot="status"></span
-                  ></span>
-                  <span
-                    ><strong>Latency</strong><span data-slot="latency"></span
-                  ></span>
-                  <span
-                    ><strong>Process</strong><span data-slot="process"></span
-                  ></span>
-                  <span
-                    ><strong>Identity</strong><span data-slot="identity"></span
-                  ></span>
-                  <span><strong>Bind</strong><span data-slot="bind"></span></span>
-                  <span data-slot="git-detail" hidden
-                    ><strong>Git</strong><span data-slot="git-detail-text"></span
-                  ></span>
-                  <span data-slot="docker-detail" hidden
-                    ><strong>Container</strong><span data-slot="docker-detail-text"></span
-                  ></span>
-                  <span data-slot="process-metrics-detail" hidden
-                    ><strong>Resources</strong><span data-slot="process-metrics-detail-text"></span
-                  ></span>
-                  <span data-slot="warning" hidden></span>
-                </span>
-              </template>
-            </span>
+          <div class="card-main">
+            <div class="card-title">
+              <h3 data-slot="title"></h3>
+              <span class="title-separator">-</span>
+              <a data-slot="origin" target="_blank" rel="noreferrer"></a>
+              <span class="docker-badge" data-slot="docker" hidden>
+                <span data-slot="docker-label"></span>
+              </span>
+              <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
+              <span class="info-wrap" data-tip-html="template">
+                <portal-info-icon
+                  aria-label="Show instance details"
+                ></portal-info-icon>
+                <template>
+                  <span class="info-tooltip-content">
+                    <span
+                      ><strong>Health</strong><span data-slot="status"></span
+                    ></span>
+                    <span
+                      ><strong>Latency</strong><span data-slot="latency"></span
+                    ></span>
+                    <span
+                      ><strong>Process</strong><span data-slot="process"></span
+                    ></span>
+                    <span
+                      ><strong>Identity</strong><span data-slot="identity"></span
+                    ></span>
+                    <span><strong>Bind</strong><span data-slot="bind"></span></span>
+                    <span data-slot="git-detail" hidden
+                      ><strong>Branch</strong><span data-slot="git-detail-text"></span
+                    ></span>
+                    <span data-slot="git-commit-detail" hidden
+                      ><strong>Commit</strong><span data-slot="git-commit-text"></span
+                    ></span>
+                    <span data-slot="git-status-detail" hidden
+                      ><strong>Working tree</strong><span data-slot="git-status-text"></span
+                    ></span>
+                    <span data-slot="docker-detail" hidden
+                      ><strong>Container</strong><span data-slot="docker-detail-text"></span
+                    ></span>
+                    <span data-slot="process-metrics-detail" hidden
+                      ><strong>Resources</strong><span data-slot="process-metrics-detail-text"></span
+                    ></span>
+                    <span data-slot="warning" hidden></span>
+                  </span>
+                </template>
+              </span>
+            </div>
+            <div class="card-git-row" data-slot="git-row"></div>
           </div>
           <div class="action-menu">
             <button
@@ -315,36 +335,52 @@
     <template id="tpl-compose-project-card">
       <details class="instance-card compose-project-card">
         <summary>
-          <h3 data-slot="title"></h3>
-          <span class="compose-project-meta" data-slot="meta"></span>
-          <span class="git-badge" data-slot="git" hidden>
-            <portal-icon name="git-branch" class="git-badge-icon"></portal-icon>
-            <span class="git-dirty-dot" data-slot="git-dirty"></span>
-            <a class="git-repo-link" data-slot="git-repo-link" target="_blank" rel="noreferrer" hidden
-              >repo<portal-icon name="external-link"></portal-icon
-            ></a>
-            <span class="git-repo-name" data-slot="git-repo-name" hidden></span>
-            <button type="button" class="git-branch-button" data-action="copy-branch" title="Copy branch name">
-              <span data-slot="git-branch"></span>
-              <portal-icon name="copy"></portal-icon>
-            </button>
-            <span class="git-tracking" data-slot="git-tracking" hidden></span>
-          </span>
-          <span data-slot="git-detail" hidden><span data-slot="git-detail-text"></span></span>
-          <div class="action-menu">
-            <button
-              type="button"
-              class="menu-trigger"
-              data-action="menu"
-              aria-label="Actions"
-              aria-expanded="false"
-            >
-              <span></span><span></span><span></span>
-            </button>
-            <div class="menu-panel" data-menu hidden>
-              <button type="button" data-action="repo">Associate repo</button>
-              <button type="button" data-action="favorite">Toggle favorite</button>
-              <button type="button" data-action="hide">Hide</button>
+          <div class="card-head">
+            <div class="card-main">
+              <div class="card-title">
+                <h3 data-slot="title"></h3>
+                <span class="title-separator">-</span>
+                <span class="compose-project-meta" data-slot="meta"></span>
+                <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
+                <span class="info-wrap" data-tip-html="template">
+                  <portal-info-icon aria-label="Show project details"></portal-info-icon>
+                  <template>
+                    <span class="info-tooltip-content">
+                      <span><strong>Containers</strong><span data-slot="containers"></span></span>
+                      <span><strong>Ports</strong><span data-slot="ports-detail"></span></span>
+                      <span><strong>Resources</strong><span data-slot="resources"></span></span>
+                      <span><strong>Identity</strong><span data-slot="identity"></span></span>
+                      <span data-slot="git-detail" hidden
+                        ><strong>Branch</strong><span data-slot="git-detail-text"></span
+                      ></span>
+                      <span data-slot="git-commit-detail" hidden
+                        ><strong>Commit</strong><span data-slot="git-commit-text"></span
+                      ></span>
+                      <span data-slot="git-status-detail" hidden
+                        ><strong>Working tree</strong><span data-slot="git-status-text"></span
+                      ></span>
+                    </span>
+                  </template>
+                </span>
+                <portal-icon name="chevron" size="sm" class="compose-project-chevron"></portal-icon>
+              </div>
+              <div class="card-git-row" data-slot="git-row"></div>
+            </div>
+            <div class="action-menu">
+              <button
+                type="button"
+                class="menu-trigger"
+                data-action="menu"
+                aria-label="Actions"
+                aria-expanded="false"
+              >
+                <span></span><span></span><span></span>
+              </button>
+              <div class="menu-panel" data-menu hidden>
+                <button type="button" data-action="repo">Associate repo</button>
+                <button type="button" data-action="favorite">Toggle favorite</button>
+                <button type="button" data-action="hide">Hide</button>
+              </div>
             </div>
           </div>
         </summary>
@@ -363,13 +399,14 @@
       <div class="compose-container-row">
         <div class="compose-container-head">
           <span class="compose-container-name" data-slot="name"></span>
-          <span class="compose-container-metrics" data-slot="metrics" hidden></span>
+          <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
           <span class="info-wrap" data-tip-html="template">
             <portal-info-icon aria-label="Show container details"></portal-info-icon>
             <template>
               <span class="info-tooltip-content">
                 <span><strong>Image</strong><span data-slot="image"></span></span>
                 <span><strong>State</strong><span data-slot="state"></span></span>
+                <span><strong>Resources</strong><span data-slot="resources"></span></span>
               </span>
             </template>
           </span>
@@ -377,25 +414,29 @@
         <div class="compose-container-ports" data-slot="ports"></div>
       </div>
     </template>
+    <!-- Three columns: health badge, then the address with its per-address actions, then history.
+         The bare ":PORT" that used to lead the row was dropped — the origin further along the same
+         row already carries the port, so it was the same fact twice. -->
     <template id="tpl-compose-container-port">
       <div class="compose-container-port">
-        <span class="compose-container-port-num" data-slot="port"></span>
-        <span class="compose-project-status" data-slot="status-dot"></span>
-        <span class="compose-container-port-status" data-slot="status"></span>
-        <a class="compose-container-port-origin" data-slot="origin" target="_blank" rel="noreferrer"></a>
-        <span class="info-wrap" data-tip-html="template">
-          <portal-info-icon aria-label="Show port details"></portal-info-icon>
-          <template>
-            <span class="info-tooltip-content">
-              <span><strong>Latency</strong><span data-slot="latency"></span></span>
-              <span><strong>Bind</strong><span data-slot="bind"></span></span>
-              <span data-slot="warning" hidden></span>
-            </span>
-          </template>
+        <span class="port-health-badge" data-slot="health-badge"></span>
+        <span class="compose-container-port-address">
+          <a class="compose-container-port-origin" data-slot="origin" target="_blank" rel="noreferrer"></a>
+          <button type="button" class="compose-container-port-action" data-action="copy" title="Copy URL" aria-label="Copy URL">
+            <portal-icon name="copy" size="md"></portal-icon>
+          </button>
+          <span class="info-wrap" data-tip-html="template">
+            <portal-info-icon aria-label="Show port details"></portal-info-icon>
+            <template>
+              <span class="info-tooltip-content">
+                <span><strong>Health</strong><span data-slot="status"></span></span>
+                <span><strong>Latency</strong><span data-slot="latency"></span></span>
+                <span><strong>Bind</strong><span data-slot="bind"></span></span>
+                <span data-slot="warning" hidden></span>
+              </span>
+            </template>
+          </span>
         </span>
-        <button type="button" class="icon-button compose-container-port-action" data-action="copy" title="Copy URL" aria-label="Copy URL">
-          <portal-icon name="copy"></portal-icon>
-        </button>
         <button type="button" class="compose-container-port-history" data-action="history" title="View history">History</button>
       </div>
     </template>

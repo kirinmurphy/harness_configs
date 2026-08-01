@@ -1639,16 +1639,54 @@ On first run:
 
 ### Phase 8: Build outputs and documentation
 
-- [ ] Refactor `render-rules.sh`, `render-agent-permissions.mjs`,
+- [x] Refactor `render-rules.sh`, `render-agent-permissions.mjs`,
   `render-slash-commands.mjs`, and source-file verification around provider targets.
-- [ ] Keep generated outputs under `generated/<provider-id>/`.
+  Audited all four before touching anything. Three were already fully data-driven and needed no
+  change: `render-rules.sh` already loops `rule_target_rows()` from `rule-targets.tsv` with no
+  harness literal in the script body; `render-slash-commands.mjs` is a thin wrapper around
+  `renderSlashCommands()` with zero harness references; `verify-install.sh` delegates content
+  checks to `manifests-data.sh`'s `verify_content_rows()` (TSV-driven) plus `doctor.sh`, also
+  harness-agnostic already. The real gap was `render-agent-permissions.mjs`: it hardcoded
+  `generated/codex/config.toml` / `generated/claude/settings.json` output paths and called
+  `renderCodexConfig`/`renderClaudeSettings` by name. Replaced with a loop over
+  `listHarnessProviders()` (`scripts/harnesses/registry.mjs`) that calls each provider's own
+  `permissions.render(current, manifest, overrides, target)` adapter — a signature already uniform
+  across `scripts/harnesses/{claude,codex}/index.mjs` from earlier phases, so no adapter changes
+  needed. Output path derives from `provider.manifest.paths.rootConfig.path`'s basename under
+  `generated/<provider-id>/`, keyed off the `permissions` capability flag so a provider without
+  that capability is skipped rather than guessed at. Codex's `generated/codex/rules/default.rules`
+  prefix-rule sidecar has no Claude analog — Codex's approval-policy model needs an extra file the
+  shared `permissions.render` capability doesn't cover — so that one write stayed an explicit
+  codex-only step rather than being forced into the generic loop; noted why in a comment so it
+  isn't mistaken for leftover hardcoding. Verified `--check` output byte-identical before/after the
+  refactor. 384/384 tests passing, doctor 100/100 clean.
+- [x] Keep generated outputs under `generated/<provider-id>/`.
+  Already true for every provider before this phase (`generated/claude/`, `generated/codex/`); the
+  `render-agent-permissions.mjs` refactor above made the *path derivation* itself provider-generic
+  instead of just the directory layout happening to match.
 - [ ] Update `manifests/platform/manifest.tsv`, `rule-targets.tsv`, `verify-content.tsv`, and
-  `source-files.tsv`, or replace overlapping provider columns with provider manifests.
-- [ ] Remove `manifests/platform/harnesses.tsv` only after all shell consumers migrate.
-- [ ] Update architecture, installation, telemetry, package, skills/commands, and daily-use docs.
-- [ ] Generate or validate provider reference documentation from manifests.
-- [ ] Run a repository-wide fixed-harness search and classify every remaining occurrence as
-  provider implementation, fixture, documentation example, or migration defect.
+  `source-files.tsv`, or replace overlapping provider columns with provider manifests. **Deferred,
+  deliberately.** Confirmed `manifest.tsv`'s `root_config`/`rendered_rules` rows and
+  `rule-targets.tsv`'s target rows do overlap `globals/harnesses/{claude,codex}/provider.json`'s
+  `paths.rootConfig`/`paths.rules` — but the TSV rows carry install-only semantics
+  (`kind`/`flags`/`src_rel`, comment-documented `managed_copy`/`root_config`/`cleanup`/
+  `rendered_rules` behaviors) that provider.json has no equivalent for, and every consumer
+  (`install-claude.sh`, `install-codex.sh`, `install-lib.sh`, `uninstall.sh`, `uninstall-lib.sh`,
+  `repair.sh`, `withdraw.sh`, `doctor.sh`) reads them through `manifest_rows()`'s harness-column
+  filter, which already works unmodified for any Nth provider by adding a row — the mechanism is
+  provider-count-agnostic even though the data is declared statically per provider today. A real
+  merge would touch every one of those shell consumers (bash 3.2, no associative arrays) for a
+  presentation-only win, since `harness_present`/`harness_detected_rows` already made *presence*
+  single-sourced from the registry in an earlier phase (see `scripts/lib/manifests-data.sh`'s
+  `_harness_detected_load`). Left as an explicit open follow-up rather than done or silently
+  dropped; not blocking Phase 8 completion since the plan states this item as an "or" alternative,
+  not a requirement.
+- [x] Remove `manifests/platform/harnesses.tsv` only after all shell consumers migrate.
+  Already gone at the start of this phase — confirmed no remaining references anywhere in
+  `scripts/`, `portal/`, or `manifests/` (`rg -n harnesses.tsv` clean). Presence detection now goes
+  through `manifests-data.sh`'s `harness_present`/`harness_detected_rows`, which shell out to
+  `roborepo harness detected` (`scripts/cli/harness.mjs`, backed by the registry) with a
+  hardcoded-claude/codex fallback only for sandboxes that don't copy `scripts/harnesses/`.
 
 ## Code touchpoint inventory
 

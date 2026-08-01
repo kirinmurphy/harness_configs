@@ -1401,7 +1401,17 @@ On first run:
   `index.mjs` imports back into `telemetry.mjs` or `paths.mjs`'s registry-dependent half. 380/380 tests
   passing, doctor 100/100 clean.
 - [x] Move raw Claude and Codex parsing into provider adapters.
-- [ ] Keep normalized analysis independent of the provider count.
+- [x] Keep normalized analysis independent of the provider count.
+  Audited every analysis-touchpoint file the plan's own inventory table lists
+  (`telemetry-analyze.mjs`, `telemetry-metrics.mjs`, `telemetry-insights.mjs`, `telemetry-compare.mjs`,
+  `telemetry-policy.mjs`) for hardcoded `["claude", "codex"]` arrays, `has_claude`/`has_codex` boolean
+  pairs, or any `.length === 2`-shaped assumption. Found none needing a change: `report.harnesses` /
+  `available_harnesses` were already built by collecting whatever distinct `event.harness` values
+  actually appear in the spool into a `Set`, sorted — genuinely N-provider already, no code path
+  assumes exactly two. The only harness-specific branching found (`telemetry-analyze.mjs`'s three
+  `harness === "codex"` checks around rate-limit fields) is Codex-specific data shape handling, not a
+  provider-count assumption — that is item 6.4's job (normalize/namespace the rate-limit capability),
+  not this item's. No code changed; this item was already satisfied by existing generic aggregation.
 - [ ] Normalize rate-limit capability or namespace provider-specific rate-limit extensions.
 - [x] Move transcript roots, location, and parsing into transcript adapters.
   Items 2 and 5 turned out to be the same refactor once traced: `scripts/cli/telemetry-transcript.mjs`
@@ -1454,7 +1464,11 @@ On first run:
   loadSession, using a minimal fake `res` satisfying `send()`'s `writeHead`/`end` contract rather than
   a real HTTP socket. 381/381 tests passing, doctor 100/100 clean.
 - [ ] Return provider display metadata with available telemetry harnesses.
-- [ ] Keep filters hidden when fewer than two harnesses exist.
+- [x] Keep filters hidden when fewer than two harnesses exist.
+  Already satisfied by existing code: `portal/telemetry/app.js`'s `updateHarnessFilter(harnesses)`
+  hides the filter row (`harnesses.length <= 1`) and otherwise builds one button per harness generically
+  (`harnesses.map((h) => tmpl.harnessBtn(h, ...))`, not hardcoded to two) — already N-harness-safe. No
+  code changed.
 - [ ] Add a synthetic third-provider fixture to prove the shared analysis and filter do not encode a
   two-provider assumption.
 

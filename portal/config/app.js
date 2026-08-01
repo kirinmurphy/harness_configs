@@ -19,8 +19,9 @@ const modal = createConfigModal();
 
 function openSourceModal(inspect, itemCost = null) {
   const rules = lastSnapshot?.globals?.rules || {};
+  const harnesses = lastSnapshot?.harnesses || [];
   const chips = inspectChipSpecs(inspect, itemCost, lastSnapshot);
-  return modal.openSource(inspect, { rules, onDefaultClick: modal.openSnapshot, chips });
+  return modal.openSource(inspect, { rules, harnesses, onDefaultClick: modal.openSnapshot, chips });
 }
 
 // POST a bucket change for either a named behavior (behaviorId) or an arbitrary command

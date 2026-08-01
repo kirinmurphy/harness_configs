@@ -2,26 +2,32 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  loadPermissionManifest,
-  resolveBehaviors,
-  resolveArbitraryCommands,
-  renderCodexConfig,
-  renderCodexRules,
-  renderClaudeSettings,
-} from "../cli/permissions-render.mjs";
+import { loadPermissionManifest } from "../cli/permissions-render.mjs";
+import { renderCodexRules } from "../harnesses/permissions-render.mjs";
+import { listHarnessProviders } from "../harnesses/registry.mjs";
 
 // Build entrypoint: renders the manifest's default behaviors into the committed generated system
-// candidate (generated/). The reusable render core lives in scripts/cli/permissions-render.mjs so
-// the CLI stays self-contained; the config controls render the same logic into a consumer's LIVE
-// home config. `roborepo permissions` and doctor --check run this script. The generated candidate
-// never carries personal overrides — it always renders the manifest's own default buckets, unmodified.
+// candidate (generated/<provider-id>/). Per-provider rendering goes through each provider's own
+// `permissions.render` adapter (scripts/harnesses/{claude,codex}/index.mjs) so this script stays
+// generic over the provider registry instead of hardcoding Claude/Codex; the config controls render
+// the same adapter logic into a consumer's LIVE home config. `roborepo permissions` and
+// doctor --check run this script. The generated candidate never carries personal overrides — it
+// always renders the manifest's own default buckets, unmodified.
+//
+// Codex additionally renders a `rules/default.rules` prefix-rule sidecar with no analog in Claude's
+// settings.json — Codex's approval model needs an extra file the shared `permissions.render`
+// capability doesn't cover, so that one output stays an explicit codex-only step below rather than
+// forcing every provider's render into one shape.
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
-const codexConfigPath = path.join(repoRoot, "generated", "codex", "config.toml");
-const codexRulesPath = path.join(repoRoot, "generated", "codex", "rules", "default.rules");
-const claudeSettingsPath = path.join(repoRoot, "generated", "claude", "settings.json");
+
+// Provider manifest paths are home-relative (e.g. "~/.claude/settings.json"); the generated
+// candidate mirrors just the basename under generated/<provider-id>/.
+function generatedRootConfigPath(provider) {
+  const basename = path.basename(provider.manifest.paths.rootConfig.path);
+  return path.join(repoRoot, "generated", provider.id, basename);
+}
 
 let check = false;
 for (let i = 2; i < process.argv.length; i += 1) {
@@ -34,8 +40,6 @@ for (let i = 2; i < process.argv.length; i += 1) {
 }
 
 const manifest = loadPermissionManifest();
-const behaviors = resolveBehaviors(manifest);
-const arbitraryCommands = resolveArbitraryCommands(manifest);
 
 function checkOrWrite(target, rendered, label) {
   const current = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
@@ -54,9 +58,16 @@ function checkOrWrite(target, rendered, label) {
 
 let ok = true;
 try {
-  ok = checkOrWrite(codexConfigPath, renderCodexConfig(fs.readFileSync(codexConfigPath, "utf8"), behaviors, arbitraryCommands, codexConfigPath), "generated/codex/config.toml") && ok;
+  for (const provider of listHarnessProviders()) {
+    if (!provider.manifest.capabilities.includes("permissions")) continue;
+    const target = generatedRootConfigPath(provider);
+    const current = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
+    const rendered = provider.adapters.permissions.render(current, manifest, {}, target);
+    ok = checkOrWrite(target, rendered, path.relative(repoRoot, target)) && ok;
+  }
+
+  const codexRulesPath = path.join(repoRoot, "generated", "codex", "rules", "default.rules");
   ok = checkOrWrite(codexRulesPath, renderCodexRules(manifest), "generated/codex/rules/default.rules") && ok;
-  ok = checkOrWrite(claudeSettingsPath, renderClaudeSettings(fs.readFileSync(claudeSettingsPath, "utf8"), manifest), "generated/claude/settings.json") && ok;
 } catch (error) {
   console.error(error?.message || String(error));
   process.exit(1);

@@ -1905,6 +1905,54 @@ in Phase 8 because they are runtime CLI logic outside that phase's build-output/
 Take this as a follow-up plan or task, not silent debt: each site should route through the
 registry the same way `render-agent-permissions.mjs` was refactored in this phase.
 
+### Third-provider-readiness bugs found in wrap-up review
+
+A full-branch review at wrap-up (post-Phase-8, diffing the whole migration against `main`) found
+3 additional sites where a real *third* provider — not yet built, but structurally invited by the
+registry — would hit a mislabeling bug or a silent no-op instead of a clean reject, distinct from
+the 15 already-known hardcoded-pair sites above:
+
+- `scripts/cli/package-harness-config.mjs:88-99` (`applyPackageComponentResult`) — the merge side
+  (`mergeHarnessConfig`/`unmergeHarnessConfig`) dispatches generically through
+  `provider.adapters.rootConfig.mergePackageComponent`, but the write-back helper only knows two
+  shapes (Claude writes directly inside its own adapter; Codex returns `{changed, content}`) and
+  hardcodes `writeRootConfig("codex", codexConfigPath, content)` plus `"Codex ..."` log lines
+  regardless of which provider actually produced the result. A third provider following Codex's
+  `{changed, content}` convention would have its content written to **Codex's** config file, with
+  logs claiming it configured Codex. `scripts/cli/hook-composition.mjs`'s `writeHooksFile` handles
+  this same two-shape asymmetry correctly (codex special-cased, everything else falls through to a
+  generic `writeRootConfig(harness, ...)`) — `applyPackageComponentResult` should follow that
+  pattern instead.
+- `scripts/cli/mcp.mjs:110-135` (`mcpAdd`) — `--harness <id>` validates generically against
+  `hasHarnessProvider` (in `mcp-parse.mjs`), so an unrecognized-by-name third provider passes CLI
+  validation, but the function body only computes `applyClaude`/`applyCodex` booleans and only
+  calls the claude/codex adapters directly. `roborepo mcp add x --harness <third-provider>` would
+  pass validation, add nothing, but still call `recordMcpServer` claiming the server was
+  configured — a silent no-op logged as success, worse than the throw-loudly pattern the rest of
+  this migration uses (see `stub-adapter.mjs`'s `notYetMigrated`). Not exercised by the existing
+  synthetic-third-provider tests, which cover config-snapshot/telemetry genericness but not this
+  CLI dispatch path.
+- `scripts/lib/manifests-data.sh:121-131` (`_harness_detected_load`'s no-`node` fallback) — when
+  `node`/`scripts/cli/main.mjs` is unavailable, harness detection degrades to a hardcoded
+  `for id in claude codex` loop instead of the registry. Honestly commented, and only fires in a
+  degraded/sandboxed mode (not the normal runtime path), so lower real-world impact than the two
+  above — but it is a genuinely new hardcoded-pair site this branch introduced, not on the
+  known-15 list.
+
+(`scripts/install/install-windows.ps1`'s `$KnownHarnessIds = @("claude", "codex")` is also new and
+fixed-pair, but it's deliberately deferred with a comment pointing at
+`docs/plans/backlog/windows-provider-path-schema-plan.md` — same spirit as the known-15, already
+tracked, not a fresh gap.)
+
+Reviewed against the "reject don't default to claude/codex" principle otherwise holding up well:
+`registry.mjs`, `discovery.mjs`, `state.mjs`, the portal route guards, and `root-config-merge.mjs`'s
+`mergeRootConfig` (which now throws on an unrecognized harness where old code silently fell
+through to Claude) all reject correctly. The contract/schema layer's still-stubbed methods
+(`rules.render`, `skills.link`, `commands.render`, `session.launch`) throw loudly via
+`stub-adapter.mjs` and are not in any live call path, so they are inert future-capability markers,
+not bugs. 384/384 tests passing, doctor 100/100 clean (review was read-only; no fixes were
+mechanically safe enough to apply without a real behavior change).
+
 ## Open questions
 
 1. Should a provider detected with `possible` confidence appear in ordinary CLI/portal filters

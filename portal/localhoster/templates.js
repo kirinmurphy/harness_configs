@@ -138,12 +138,14 @@ function wireComposeCardActions(node, composeProject, actions) {
     actions.onCloseMenus();
     actions.onAssociateRepo(composeProject);
   });
-  node.querySelector("[data-action=favorite]").addEventListener("click", (event) => {
+  // Optional for the same reason as wireCardActions: these are removed on a compose card nested
+  // inside a repository card, where favorite and hide belong to the repository.
+  node.querySelector("[data-action=favorite]")?.addEventListener("click", (event) => {
     event.preventDefault();
     actions.onCloseMenus();
     actions.onToggleFavorite(composeProject);
   });
-  node.querySelector("[data-action=hide]").addEventListener("click", (event) => {
+  node.querySelector("[data-action=hide]")?.addEventListener("click", (event) => {
     event.preventDefault();
     actions.onCloseMenus();
     actions.onHide(composeProject);
@@ -780,11 +782,13 @@ function wireCardActions(node, project, instance, actions) {
     actions.onCloseMenus();
     actions.onAlias(project, instance);
   });
-  node.querySelector("[data-action=favorite]").addEventListener("click", () => {
+  // Optional: favorite and hide are repository-scoped, so a card nested inside a repository card has
+  // had these buttons removed before wiring runs. A standalone card still has them.
+  node.querySelector("[data-action=favorite]")?.addEventListener("click", () => {
     actions.onCloseMenus();
     actions.onToggleFavorite(project, instance);
   });
-  node.querySelector("[data-action=hide]").addEventListener("click", () => {
+  node.querySelector("[data-action=hide]")?.addEventListener("click", () => {
     actions.onCloseMenus();
     actions.onHide(project, instance);
   });

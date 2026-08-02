@@ -76,7 +76,7 @@ export function mergeHarnessConfig(pkg, component, options) {
   requireHarnessCapability(provider, "package-config");
   const config = readHarnessConfig(component, pkg);
   const result = provider.adapters.rootConfig.mergePackageComponent(pkg, config, options);
-  applyPackageComponentResult(options, result, "wired");
+  applyPackageComponentResult(component.harness, options, result, "wired");
 }
 
 export function unmergeHarnessConfig(pkg, component, options) {
@@ -84,22 +84,31 @@ export function unmergeHarnessConfig(pkg, component, options) {
   requireHarnessCapability(provider, "package-config");
   const config = readHarnessConfig(component, pkg);
   const result = provider.adapters.rootConfig.unmergePackageComponent(pkg, config, options);
-  applyPackageComponentResult(options, result, "removed");
+  applyPackageComponentResult(component.harness, options, result, "removed");
 }
 
-// Codex's mergePackageComponent/unmergePackageComponent return { changed, content } instead of
-// writing directly (see the comment above); Claude's write inline via writeSettings and return
-// undefined, so there is nothing to apply here.
-function applyPackageComponentResult({ codexConfigPath }, result, verb) {
+// Some providers' mergePackageComponent/unmergePackageComponent return { changed, content } instead
+// of writing directly (Codex's TOML path today; any future provider following that same
+// convention), so there is nothing to apply here for a provider that writes inline (Claude's JSON
+// path writes directly via the caller-supplied writeSettings and returns undefined). The target
+// path comes from the caller-supplied `options` (keyed `<harness>ConfigPath`, e.g.
+// `codexConfigPath`) rather than the registry's rootConfigActive map, since callers — including
+// this file's own characterization tests — legitimately point at a path other than the real active
+// root config (a scratch fixture, a roundtrip-test sandbox, etc.); the registry only knows the real
+// one. Dispatches generically off the harness id for the write call and log label, mirroring
+// hook-composition.mjs's writeHooksFile — the identical two-shape asymmetry, already solved there.
+function applyPackageComponentResult(harness, options, result, verb) {
   if (!result) return;
   const { changed, content } = result;
+  const configPath = options[`${harness}ConfigPath`];
+  const label = getHarnessProvider(harness).manifest.displayName;
   if (!changed) {
-    console.log(`  ok: Codex tui.status_line unchanged -> ${codexConfigPath}`);
+    console.log(`  ok: ${label} package config unchanged -> ${configPath}`);
     return;
   }
-  writeRootConfig("codex", codexConfigPath, content);
+  writeRootConfig(harness, configPath, content);
   const arrow = verb === "removed" ? "<-" : "->";
-  console.log(`  ${verb}: Codex tui.status_line ${arrow} ${codexConfigPath}`);
+  console.log(`  ${verb}: ${label} package config ${arrow} ${configPath}`);
 }
 
 export function codexStatusLineIncludes(configText, item) {

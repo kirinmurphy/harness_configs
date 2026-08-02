@@ -112,9 +112,11 @@ export function mcpApply({ dryRun = false } = {}) {
     const spec = { name: server.name, commandOrUrl: server.commandOrUrl, args: server.args };
     const applyClaude = server.harnesses.includes("claude");
     const applyCodex = server.harnesses.includes("codex");
+    const applyGemini = server.harnesses.includes("gemini");
     if (dryRun) {
       if (applyClaude) console.log(`would apply Claude MCP live store: ${server.name}`);
       if (applyCodex) console.log(`would apply Codex MCP active config: ${server.name}`);
+      if (applyGemini) console.log(`would apply Gemini MCP settings: ${server.name}`);
       continue;
     }
     if (applyClaude) {
@@ -125,6 +127,7 @@ export function mcpApply({ dryRun = false } = {}) {
       }
     }
     if (applyCodex) ensureCodexMcp(spec);
+    if (applyGemini) ensureGeminiMcp(spec);
   }
 }
 

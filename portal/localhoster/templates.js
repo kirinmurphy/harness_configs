@@ -54,7 +54,7 @@ const REPO_PROVENANCE = {
 // operation, not N unrelated ones. Each container is its own row (not each published port) since a
 // single container publishing several host ports (e.g. one Traefik proxy on 80/443/8080) is one
 // operational unit, not three. See docs/plans/active/localhoster-compose-project-grouping.md.
-export function composeProjectCard(composeProject, actions) {
+export function composeProjectCard(composeProject, actions, { isMember = false, repositoryName = null } = {}) {
   const allInstances = composeProject.containers.flatMap((c) => c.instances);
   const portCount = allInstances.length;
   // One CPU reading per container (not per port — a container's ports would otherwise multiply
@@ -72,10 +72,27 @@ export function composeProjectCard(composeProject, actions) {
   // action. It moves to the tooltip, and only re-earns a persistent slot as a badge once it crosses
   // the concern threshold (see applyResourceConcernBadge).
   const metaParts = [`${composeProject.containers.length} container${composeProject.containers.length === 1 ? "" : "s"}`, `${portCount} port${portCount === 1 ? "" : "s"}`];
+  // Compose names its project after the directory, so the stack name almost always repeats the
+  // repository heading it sits under ("menugoats" inside menugoats). Nothing guarantees that —
+  // COMPOSE_PROJECT_NAME can be anything — so the real name shows when it differs, and a generic
+  // label stands in when it would just be an echo. Members name what they do, not where they live.
+  const echoesRepository = repositoryName && composeProject.name === repositoryName;
   const node = fill(tpl("tpl-compose-project-card"), {
-    title: composeProject.name,
+    title: isMember && echoesRepository ? "Docker" : composeProject.name,
     meta: metaParts.join(" · "),
   });
+  if (isMember) {
+    node.classList.add("is-member");
+    // Containers are already visible on open — a second collapse toggle inside an expanded
+    // repository card is a drill-in with nothing behind it.
+    node.querySelector(".compose-project-chevron")?.remove();
+    node.open = true;
+    // Favorite and hide describe the whole repository and now live on its menu; leaving copies here
+    // would offer two controls for one setting. Repo association stays: it is specific to this
+    // stack, not to the repository it resolved into.
+    node.querySelector("[data-action=favorite]")?.remove();
+    node.querySelector("[data-action=hide]")?.remove();
+  }
   const tooltip = node.querySelector(".info-wrap > template").content;
   const aggregateMemoryKb = composeProject.containers.reduce((sum, c) => {
     const kb = c.instances.find((i) => i.processMetrics)?.processMetrics?.residentMemoryKb;
@@ -89,9 +106,13 @@ export function composeProjectCard(composeProject, actions) {
       : "unavailable",
     identity: `compose · ${REPO_PROVENANCE[composeProject.resolvedFrom] || "repo unresolved"}`,
   });
-  applyGitBadge(node, tooltip, composeProject.git, composeProject.providerUrl);
+  // Git context belongs to the repository, which already shows it once above; a member repeating it
+  // is the same branch and dirty state a few lines apart.
+  if (!isMember) {
+    applyGitBadge(node, tooltip, composeProject.git, composeProject.providerUrl);
+    wireCopyBranchButton(node, composeProject.git);
+  }
   applyResourceConcernBadge(node, aggregateCpu);
-  wireCopyBranchButton(node, composeProject.git);
   const rows = node.querySelector("[data-slot=rows]");
   for (const container of composeProject.containers) {
     rows.append(composeContainerRow(container, actions));
@@ -201,12 +222,15 @@ function composeContainerRow(container, actions) {
 // listener stays a full instance card (quick links, association, alias, history all keep working)
 // and a Compose stack stays its own sub-card, since `docker compose down` stops those containers as
 // one unit. Merging is a grouping change, not a redesign of what a member is.
-export function repositoryCard(repository, { instanceActions, composeActions, departedMembers = [] }) {
-  const memberCount = repository.members.length
-    + repository.composeGroups.reduce((sum, group) => sum + group.containers.length, 0);
+export function repositoryCard(repository, { instanceActions, composeActions, repositoryActions, departedMembers = [] }) {
+  // A Compose stack is ONE member that happens to contain containers, not N members. Counting its
+  // containers made menugoats read "4 members" while expanding to a single entry — the count has to
+  // match what the expanded card actually lists.
+  const memberCount = repository.members.length + repository.composeGroups.length;
   const metaParts = [`${memberCount} member${memberCount === 1 ? "" : "s"}`];
-  if (repository.composeGroups.length) {
-    metaParts.push(`${repository.composeGroups.length} compose stack${repository.composeGroups.length === 1 ? "" : "s"}`);
+  const containerCount = repository.composeGroups.reduce((sum, group) => sum + group.containers.length, 0);
+  if (containerCount) {
+    metaParts.push(`${containerCount} container${containerCount === 1 ? "" : "s"}`);
   }
   const node = fill(tpl("tpl-repository-card"), {
     title: repository.name,
@@ -235,6 +259,8 @@ export function repositoryCard(repository, { instanceActions, composeActions, de
   // Every user-facing origin promoted to the header, so reaching the app never requires expanding
   // the card. Entrypoints sort first, so this is the leading run of the member list; a project with
   // an app plus an admin panel and a dashboard surfaces all three.
+  wireRepositoryActions(node, repository, repositoryActions);
+
   const entrypointSlot = node.querySelector("[data-slot=entrypoint]");
   const entrypoints = repository.members.filter((member) => member.entrypoint && member.instance?.origin);
   if (entrypoints.length) {
@@ -265,7 +291,10 @@ export function repositoryCard(repository, { instanceActions, composeActions, de
 
   const members = node.querySelector("[data-slot=members]");
   for (const group of repository.composeGroups) {
-    members.append(composeProjectCard(group, composeActions));
+    members.append(composeProjectCard(group, composeActions, {
+      isMember: true,
+      repositoryName: repository.name,
+    }));
   }
   for (const member of repository.members) {
     const card = instanceCard(memberProject(repository, member), member.instance, instanceActions);
@@ -284,6 +313,30 @@ export function repositoryCard(repository, { instanceActions, composeActions, de
     members.append(card);
   }
   return node;
+}
+
+// The trigger sits inside <summary>, the only child a closed <details> keeps rendered, so its click
+// must not also toggle the card open/closed.
+function wireRepositoryActions(node, repository, actions) {
+  const trigger = node.querySelector("[data-action=menu]");
+  const menu = node.querySelector("[data-menu]");
+  if (!trigger || !actions) return;
+  trigger.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    actions.onToggleMenu(node);
+  });
+  node.querySelector("[data-action=favorite]")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    actions.onCloseMenus();
+    actions.onToggleFavorite(repository);
+  });
+  node.querySelector("[data-action=hide]")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    actions.onCloseMenus();
+    actions.onHide(repository);
+  });
+  menu?.addEventListener("click", (event) => event.stopPropagation());
 }
 
 // Other ports the same process holds. Rendered as plain text, not links: these are facts about the
@@ -322,7 +375,13 @@ export function instanceCard(project, instance, actions) {
   });
   // Nested inside a repository card: styling hook for the lighter heading treatment, since a member
   // should not compete visually with the repository name above it.
-  if (project.isMember) node.classList.add("is-member");
+  if (project.isMember) {
+    node.classList.add("is-member");
+    // Favorite and hide are repository-scoped and live on the repository menu; the actions left
+    // here (links, copy, open, history, association, alias) genuinely describe this one listener.
+    node.querySelector("[data-action=favorite]")?.remove();
+    node.querySelector("[data-action=hide]")?.remove();
+  }
   const tooltip = node.querySelector(".info-wrap > template").content;
   fill(tooltip, {
     status: `${statusText(instance)} (${statusDetail(instance)})`,
@@ -349,6 +408,8 @@ export function instanceCard(project, instance, actions) {
     // construction, so the prefix is noise. Same treatment the compose port rows already used.
     origin.textContent = displayOrigin(instance.origin);
     origin.href = instance.origin;
+    // The display is port-only, so the full origin lives here for identification and copying.
+    origin.title = instance.origin;
   } else {
     origin.textContent = "origin unavailable";
     origin.removeAttribute("href");
@@ -462,9 +523,11 @@ function applyGitBadge(node, tooltip, git, providerUrl) {
   dirty.title = git.dirty === true ? "Uncommitted changes" : git.dirty === false ? "No uncommitted changes" : "Dirty state unavailable";
 
   const tracking = badge.querySelector("[data-slot=git-tracking]");
+  // Words rather than arrows: "↑3" reads as a rating or a vote count out of context, and the
+  // direction an arrow implies is not self-evident when ahead and behind can both be true.
   const marks = [];
-  if (git.ahead) marks.push(`↑${git.ahead}`);
-  if (git.behind) marks.push(`↓${git.behind}`);
+  if (git.ahead) marks.push(`${git.ahead} ahead`);
+  if (git.behind) marks.push(`${git.behind} behind`);
   if (marks.length) {
     tracking.hidden = false;
     tracking.textContent = marks.join(" ");
@@ -643,8 +706,21 @@ function provenanceText(instance) {
   return label ? `${base} · ${label}` : base;
 }
 
+// Just the port. Every origin on this page is loopback by construction, so "localhost:" and
+// "127.0.0.1:" are the same prefix repeated on every row — the port is the only part that
+// identifies anything. The full origin stays on the link's href and title for copying and for the
+// rare case where the host actually differs.
 function displayOrigin(origin) {
-  return origin.replace(/^https?:\/\//, "");
+  try {
+    const url = new URL(origin);
+    // A non-loopback host is genuinely distinguishing, so it survives.
+    if (url.hostname !== "localhost" && url.hostname !== "127.0.0.1" && url.hostname !== "[::1]") {
+      return origin.replace(/^https?:\/\//, "");
+    }
+    return url.port ? `:${url.port}` : origin.replace(/^https?:\/\//, "");
+  } catch {
+    return origin.replace(/^https?:\/\//, "");
+  }
 }
 
 function repoNameFromProviderUrl(providerUrl) {

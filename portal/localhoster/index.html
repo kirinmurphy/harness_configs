@@ -440,9 +440,24 @@
               </div>
               <div class="card-git-row" data-slot="git-row"></div>
             </div>
-            <!-- No action menu: favorites and hiding are per-app or per-compose-project in the
-                 settings schema, and every member card still carries its own menu. A repository-level
-                 menu would need a settings surface that does not exist yet. -->
+            <!-- Repository-scoped actions only. Favorite and hide describe the whole repository,
+                 not one listener inside it; per-member actions (links, association, history) stay
+                 on the member cards where they apply. -->
+            <div class="action-menu">
+              <button
+                type="button"
+                class="menu-trigger"
+                data-action="menu"
+                aria-label="Actions"
+                aria-expanded="false"
+              >
+                <span></span><span></span><span></span>
+              </button>
+              <div class="menu-panel" data-menu hidden>
+                <button type="button" data-action="favorite">Toggle favorite</button>
+                <button type="button" data-action="hide">Hide</button>
+              </div>
+            </div>
           </div>
         </summary>
         <p class="card-notice" data-slot="duplicate-notice" hidden></p>

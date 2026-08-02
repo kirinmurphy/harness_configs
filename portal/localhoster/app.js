@@ -112,6 +112,7 @@ function render(snapshot, { reconcile }) {
           build: () => tmpl.repositoryCard(repository, {
             instanceActions: cardActions(),
             composeActions: composeProjectActions(),
+            repositoryActions: repositoryActions(),
             // Members that were present on the previous render but are gone from this snapshot.
             // The top-level offline sweep keys on card id, and a repository card outlives its
             // members — without this, a stopped member vanished silently instead of getting the
@@ -372,6 +373,78 @@ function cardActions() {
     onCloseMenus: closeActionMenus,
     onHistory: (project, instance) => historyView.open(project, instance),
   };
+}
+
+// Repository-scoped. Settings are keyed per-app and per-compose-project, so a repository action
+// fans out to every member it contains rather than writing a repository-level record that the
+// schema has no place for.
+function repositoryActions() {
+  return {
+    onToggleFavorite: toggleRepositoryFavorite,
+    onHide: hideRepository,
+    onToggleMenu: toggleActionMenu,
+    onCloseMenus: closeActionMenus,
+  };
+}
+
+async function toggleRepositoryFavorite(repository) {
+  // Favorited when anything under it is; the toggle therefore turns everything off if any member is
+  // currently on, and everything on otherwise.
+  const anyFavorite = repository.members.some((member) => member.instance?.app?.favorite === true)
+    || repository.composeGroups.some((group) => group.favorite === true);
+  try {
+    // Each write returns the next revision, so they are threaded rather than issued in parallel —
+    // a stale revision is rejected by the API as a conflicting edit.
+    let latest = null;
+    let revision = lastSnapshot.settingsRevision;
+    for (const group of repository.composeGroups) {
+      const result = await api.updateComposeProject({
+        revision,
+        composeProject: group.name,
+        favorite: !anyFavorite,
+      });
+      latest = result.localhoster || result;
+      revision = latest.settingsRevision;
+    }
+    for (const member of repository.members) {
+      const result = await api.updateProject({
+        revision,
+        projectIdentity: member.projectIdentity,
+        appId: member.instance?.app?.id || "web",
+        appFavorite: !anyFavorite,
+      });
+      latest = result.localhoster || result;
+      revision = latest.settingsRevision;
+    }
+    if (latest) applySnapshot(latest);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function hideRepository(repository) {
+  try {
+    let latest = null;
+    let revision = lastSnapshot.settingsRevision;
+    for (const group of repository.composeGroups) {
+      const result = await api.updateComposeProject({ revision, composeProject: group.name, hidden: true });
+      latest = result.localhoster || result;
+      revision = latest.settingsRevision;
+    }
+    for (const member of repository.members) {
+      const result = await api.updateProject({
+        revision,
+        projectIdentity: member.projectIdentity,
+        appId: member.instance?.app?.id || "web",
+        appHidden: true,
+      });
+      latest = result.localhoster || result;
+      revision = latest.settingsRevision;
+    }
+    if (latest) applySnapshot(latest);
+  } catch (err) {
+    showError(err.message);
+  }
 }
 
 function composeProjectActions() {

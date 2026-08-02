@@ -102,11 +102,17 @@ main {
 .expanded-head [data-btn="text"] {
   margin-left: auto;
 }
-.collapsed-group .instance-grid {
-  margin-top: 12px;
+.collapsed-group /* Breathing room between a card's heading and its git row — they were tight enough to read as one
+ * wrapped line rather than two facts. */
+.card-git-row:not(:empty) {
+  margin-top: 4px;
 }
+/* Cards sat flush against each other, so one card and the next read as a single continuous panel.
+ * The gap lets the page background separate them into distinct objects. */
 .instance-grid {
+  margin-top: 12px;
   display: grid;
+  gap: 10px;
 }
 .instance-card {
   background: var(--panel);
@@ -506,12 +512,13 @@ dialog::backdrop {
   padding-left: 12px;
   border-left: 1px solid var(--line);
 }
-/* A member is subordinate to the repository heading above it, so it reads at normal weight and a
- * step down in size rather than competing as a second card title. */
-.instance-card.is-member .card-title h3 {
-  font-weight: 400;
+/* A member is subordinate to the repository heading above it: a step down in size, but still bold,
+ * since at this size normal weight stopped reading as a title at all. Applies to compose members
+ * too, which are <details> rather than <article> but occupy the same tier. */
+.instance-card.is-member .card-title h3,
+.compose-project-card.is-member .card-title h3 {
   font-size: var(--text-xs);
-  color: var(--dim);
+  font-weight: 600;
 }
 /* Nested members drop the outer card chrome — the repository card already provides the container,
  * and stacked borders read as boxes inside boxes. */

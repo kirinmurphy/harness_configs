@@ -1932,26 +1932,30 @@ A full-branch review at wrap-up (post-Phase-8, diffing the whole migration again
 registry — would hit a mislabeling bug or a silent no-op instead of a clean reject, distinct from
 the 15 already-known hardcoded-pair sites above:
 
-- `scripts/cli/package-harness-config.mjs:88-99` (`applyPackageComponentResult`) — the merge side
-  (`mergeHarnessConfig`/`unmergeHarnessConfig`) dispatches generically through
-  `provider.adapters.rootConfig.mergePackageComponent`, but the write-back helper only knows two
+- ~~`scripts/cli/package-harness-config.mjs:88-99` (`applyPackageComponentResult`)~~ **Fixed** —
+  the merge side (`mergeHarnessConfig`/`unmergeHarnessConfig`) already dispatched generically through
+  `provider.adapters.rootConfig.mergePackageComponent`, but the write-back helper only knew two
   shapes (Claude writes directly inside its own adapter; Codex returns `{changed, content}`) and
-  hardcodes `writeRootConfig("codex", codexConfigPath, content)` plus `"Codex ..."` log lines
-  regardless of which provider actually produced the result. A third provider following Codex's
-  `{changed, content}` convention would have its content written to **Codex's** config file, with
-  logs claiming it configured Codex. `scripts/cli/hook-composition.mjs`'s `writeHooksFile` handles
-  this same two-shape asymmetry correctly (codex special-cased, everything else falls through to a
-  generic `writeRootConfig(harness, ...)`) — `applyPackageComponentResult` should follow that
-  pattern instead.
+  hardcoded `writeRootConfig("codex", codexConfigPath, content)` plus `"Codex ..."` log lines
+  regardless of which provider actually produced the result — exactly as predicted, this would have
+  written a third provider's content to **Codex's** config file with logs claiming Codex was
+  configured. [gemini-cli-provider-integration-plan.md](./gemini-cli-provider-integration-plan.md)
+  Phase 3 fixed it (not yet exercised by Gemini itself, since its manifest correctly omits the
+  `package-config` capability — fixed proactively since the pattern was already proven safe):
+  threads the harness id through from `mergeHarnessConfig`/`unmergeHarnessConfig`, looks up the
+  target path generically via the caller-supplied `options[`${harness}ConfigPath`]`, and derives the
+  log label from `provider.manifest.displayName`. Follows `scripts/cli/hook-composition.mjs`'s
+  `writeHooksFile` pattern (codex special-cased, everything else falls through to a generic
+  `writeRootConfig(harness, ...)`) as this section originally suggested.
 - ~~`scripts/cli/mcp.mjs:110-135` (`mcpAdd`)~~ **Fixed** —
   [gemini-cli-provider-integration-plan.md](./gemini-cli-provider-integration-plan.md) Phase 3
   confirmed this exact bug for real (`--harness gemini` validated cleanly but silently added
   nothing, exactly the predicted "silent no-op logged as success") and fixed it: `mcpAdd` now also
   computes an `applyGemini` branch calling a new `ensureGeminiMcp` helper (direct `mcpServers` JSON
-  read/write via the adapter's `addServer`, matching `ensureCodexMcp`'s shape). Note this only
-  covers the single-server `mcpAdd` path — the bulk package-sync `mcpApply` (a separate function in
-  the same file) still has the identical two-branch hardcoding and is not yet fixed; a fourth
-  provider would hit this same predicted bug there.
+  read/write via the adapter's `addServer`, matching `ensureCodexMcp`'s shape). The bulk
+  package-sync `mcpApply` (a separate function in the same file, same two-branch hardcoding) was
+  fixed the same way in the same Phase 3 pass — currently a no-op for Gemini since no package
+  declares `"gemini"` in a server's `harnesses` array yet, but forward-compatible now.
 - `scripts/lib/manifests-data.sh:121-131` (`_harness_detected_load`'s no-`node` fallback) — when
   `node`/`scripts/cli/main.mjs` is unavailable, harness detection degrades to a hardcoded
   `for id in claude codex` loop instead of the registry. Honestly commented, and only fires in a

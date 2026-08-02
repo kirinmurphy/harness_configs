@@ -1,7 +1,7 @@
 ---
 id: gemini-cli-provider-integration
 priority: medium
-next_action: Finish Phase 3 — the real proof-of-contract verification and 3 real bugs it surfaced (mergeRootConfig's hardcoded dispatcher, renderPermissionsTo missing a Gemini branch, mcpAdd missing a Gemini branch) are done and committed. Remaining: fix mcpApply's hardcoded claude/codex dispatch (package-level MCP server sync, distinct from the now-fixed single-server mcpAdd) and package-harness-config.mjs's applyPackageComponentResult hardcoding "codex" (both already logged in the parent plan's wrap-up review), triage the 6 files with literal ["claude","codex"] arrays, and update harness-anatomy.md/harnesses-explained.md to include Gemini as a third worked example.
+next_action: Finish Phase 3 — the real proof-of-contract verification and all 5 real bugs it surfaced (mergeRootConfig's hardcoded dispatcher, renderPermissionsTo missing a Gemini branch, mcpAdd missing a Gemini branch, mcpApply missing a Gemini branch, package-harness-config.mjs's applyPackageComponentResult hardcoding "codex") are done and committed, closing out both open items from the parent plan's wrap-up review. Remaining: triage the 6 files with literal ["claude","codex"] arrays (portal-usage.mjs, packages.mjs, telemetry.mjs, workspace-resources.mjs, package-probes.mjs, telemetry-schemas/snapshot-schema.mjs), and update harness-anatomy.md/harnesses-explained.md to include Gemini as a third worked example.
 blocked_by: []
 depends_on:
   - discoverable-harness-provider-architecture
@@ -287,14 +287,31 @@ questions (3-5) are now resolved enough to design Phase 2's permissions adapter 
     override propagation independently verified through Gemini's own adapter, mcpServers
     add/list/remove round-trip, http-transport shape). Full suite after all fixes: 385 passed, 0
     failed.
-- [ ] Revisit the two *still-open* follow-up items already logged in the parent plan's
-  "Third-provider-readiness bugs found in wrap-up review" section: `package-harness-config.mjs`'s
-  `applyPackageComponentResult` hardcoding `"codex"`, and `mcp.mjs`'s bulk `mcpApply` (package
-  server sync, distinct from the single-server `mcpAdd` fixed above) only acting on claude/codex —
-  `mcpApply` currently no-ops for Gemini correctly rather than crashing, since no package's
-  `mcp-servers.json` entry declares `"gemini"` in its `harnesses` array yet (an authoring gap, not
-  a code bug per se, but the dispatch logic itself is still hardcoded and needs the same
-  registry-driven fix as `mcpAdd` before any package can target Gemini).
+- [x] Revisited both follow-up items already logged in the parent plan's "Third-provider-readiness
+  bugs found in wrap-up review" section — both fixed:
+  - **`mcp.mjs`'s bulk `mcpApply`** (package server sync, distinct from the single-server `mcpAdd`
+    fixed above) only computed `applyClaude`/`applyCodex` from a server's declared `harnesses`
+    array. Added an `applyGemini` branch calling the existing `ensureGeminiMcp` helper. No current
+    package declares `"gemini"` in any server's `harnesses` array, so this is currently a no-op in
+    practice (confirmed via `roborepo mcp apply --dry-run` against the real repo, unchanged output)
+    — forward-compatible, not yet exercised by real package data.
+  - **`package-harness-config.mjs`'s `applyPackageComponentResult`** hardcoded
+    `"codex"`/`codexConfigPath` and `"Codex tui.status_line"` log wording regardless of which
+    provider's `mergePackageComponent` actually produced the `{changed, content}` result. Fixed by
+    threading the harness id through from `mergeHarnessConfig`/`unmergeHarnessConfig` and looking up
+    the target path generically via `options[`${harness}ConfigPath`]` (the caller-supplied path —
+    deliberately *not* the registry's `rootConfigActive` map, since callers, including this file's
+    own characterization tests, legitimately point at scratch/fixture paths other than the real
+    active root config) and the label via `provider.manifest.displayName`. Mirrors
+    `hook-composition.mjs`'s `writeHooksFile`, the same two-shape asymmetry already solved there.
+    Verified against `package-harness-config-characterization-check.mjs`,
+    `harness-package-config-roundtrip-check.mjs`, and a real `roborepo package enable
+    usage-statusline` smoke test writing correct Codex TOML content. **Not yet reachable by Gemini
+    specifically** — Gemini's manifest correctly omits the `package-config` capability
+    (`mergePackageComponent`/`unmergePackageComponent` are still stubbed), so
+    `requireHarnessCapability` rejects before this bug would ever fire for it; fixed anyway since it
+    follows an already-proven pattern and the parent plan had it logged as open. Full suite after
+    both fixes: 385 passed, 0 failed.
 - [ ] Two more hardcoded-two-provider spots found while scoping Phase 2, still untriaged: six files
   with a literal `["claude", "codex"]` array outside the adapters/tests — `portal-usage.mjs`,
   `packages.mjs`, `telemetry.mjs`, `workspace-resources.mjs`, `package-probes.mjs`,

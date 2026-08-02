@@ -102,18 +102,35 @@ function render(snapshot, { reconcile }) {
       // apps — otherwise those controls would vanish along with the empty-state fallback.
       alwaysShow: true,
       cards: [
-        ...snapshot.projects.flatMap((project) =>
-          project.instances.map((instance) => ({
-            key: instance.associationKey,
-            hash: JSON.stringify(instance) + JSON.stringify(project),
-            build: () => tmpl.instanceCard(project, instance, cardActions()),
-          })),
-        ),
-        ...snapshot.composeProjects.map((composeProject) => ({
-          key: `compose:${composeProject.name}`,
-          hash: JSON.stringify(composeProject),
-          build: () => tmpl.composeProjectCard(composeProject, composeProjectActions()),
+        // One card per repository, holding every instance that resolved to it however discovery
+        // found it. What used to be two separate card sources here — per-app instance cards and
+        // per-Compose-project cards — are now members inside these.
+        ...snapshot.repositories.map((repository) => ({
+          key: repository.repositoryId,
+          hash: JSON.stringify(repository),
+          build: () => tmpl.repositoryCard(repository, {
+            instanceActions: cardActions(),
+            composeActions: composeProjectActions(),
+          }),
         })),
+        // Instances with no repositoryId (a `process:` identity, or a Compose project whose repo
+        // never resolved) still get their own card — they have no repository to be a member of.
+        ...snapshot.projects
+          .filter((project) => !project.repositoryId)
+          .flatMap((project) =>
+            project.instances.map((instance) => ({
+              key: instance.associationKey,
+              hash: JSON.stringify(instance) + JSON.stringify(project),
+              build: () => tmpl.instanceCard(project, instance, cardActions()),
+            })),
+          ),
+        ...snapshot.composeProjects
+          .filter((composeProject) => !composeProject.repositoryId)
+          .map((composeProject) => ({
+            key: `compose:${composeProject.name}`,
+            hash: JSON.stringify(composeProject),
+            build: () => tmpl.composeProjectCard(composeProject, composeProjectActions()),
+          })),
       ],
     },
     {
@@ -121,7 +138,9 @@ function render(snapshot, { reconcile }) {
       kind: "collapsible",
       title: "Unrecognized listeners",
       meta: (n) => `${n} other hidden/noisy listeners`,
-      cards: snapshot.unmatchedInstances.map((instance) => ({
+      // An unmatched instance that resolved to a repository is already rendered as a member of that
+      // repository's card; only the genuinely unattributable ones stay here.
+      cards: snapshot.unmatchedInstances.filter((instance) => !instance.project?.repositoryId).map((instance) => ({
         key: instance.associationKey,
         hash: JSON.stringify(instance),
         build: () =>

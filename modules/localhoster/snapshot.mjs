@@ -232,11 +232,10 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances }) {
     // A Compose stack is one deploy unit — `docker compose down` stops every container at once —
     // so it stays a named sub-group rather than flattening 11 Supabase containers into the member
     // list ahead of the single dev server the user actually cares about.
+    // Carries the whole compose-project record (plus its own aggregate) so the portal renders the
+    // sub-group with the same card it used when this was a top-level entry.
     entry.composeGroups.push({
-      name: composeProject.name,
-      identity: composeProject.identity,
-      resolvedFrom: composeProject.resolvedFrom,
-      containers: composeProject.containers,
+      ...composeProject,
       cpuPercentOfHost: sumCpuPercentOfHost(composeProject.instances),
     });
   }
@@ -273,6 +272,9 @@ function toMember(instance, projectIdentity) {
   return {
     kind: instance.docker ? "container" : "listener",
     projectIdentity,
+    // The full instance record, so the portal can render a member with the same card it always
+    // used — merging regroups instances, it does not change what an instance is.
+    instance,
     opaqueKey: instance.opaqueKey,
     associationKey: instance.associationKey,
     name: memberName(instance),

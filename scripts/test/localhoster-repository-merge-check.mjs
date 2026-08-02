@@ -124,6 +124,23 @@ assert.equal(snapshot.composeProjects.length, 1);
 assert.ok(Array.isArray(snapshot.projects));
 assert.ok(Array.isArray(snapshot.unmatchedInstances));
 
+// Members carry their full instance record and Compose groups carry their whole project record, so
+// the portal renders each with the card it already used rather than a reduced shape.
+assert.ok(menugoats.members.every((member) => member.instance?.bind?.port === member.port));
+assert.equal(menugoats.composeGroups[0].name, "menugoats");
+assert.ok(Array.isArray(menugoats.composeGroups[0].containers));
+
+// An instance with a repositoryId appears in BOTH unmatchedInstances (legacy, kept during the
+// migration) and as a repository member. The portal de-duplicates by rendering only unmatched
+// instances without a repositoryId, so that filter must leave nothing double-rendered and nothing
+// dropped: the two partitions have to exactly reconstruct the legacy collection.
+const memberPorts = new Set(snapshot.repositories.flatMap((entry) => entry.members.map((member) => member.port)));
+const portalRenders = snapshot.unmatchedInstances.filter((item) => !item.project?.repositoryId);
+assert.ok(portalRenders.every((item) => !memberPorts.has(item.bind.port)));
+assert.ok(snapshot.unmatchedInstances
+  .filter((item) => item.project?.repositoryId)
+  .every((item) => memberPorts.has(item.bind.port)));
+
 // A repository with no measurable CPU reports null rather than a confident 0%.
 const unmeasured = buildLocalhosterSnapshot({
   discovery: {

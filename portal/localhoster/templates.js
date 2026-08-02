@@ -189,6 +189,67 @@ function composeContainerRow(container, actions) {
   return node;
 }
 
+// One card per repository, holding every instance that resolves to it however discovery found it —
+// a Compose stack, a dev server, and a tunnel launched from one repo previously rendered as three
+// unrelated cards in three page sections (localhoster-repository-card-merge).
+//
+// Members keep their existing card kinds rather than being flattened into a new compact row: a
+// listener stays a full instance card (quick links, association, alias, history all keep working)
+// and a Compose stack stays its own sub-card, since `docker compose down` stops those containers as
+// one unit. Merging is a grouping change, not a redesign of what a member is.
+export function repositoryCard(repository, { instanceActions, composeActions }) {
+  const memberCount = repository.members.length
+    + repository.composeGroups.reduce((sum, group) => sum + group.containers.length, 0);
+  const metaParts = [`${memberCount} member${memberCount === 1 ? "" : "s"}`];
+  if (repository.composeGroups.length) {
+    metaParts.push(`${repository.composeGroups.length} compose stack${repository.composeGroups.length === 1 ? "" : "s"}`);
+  }
+  const node = fill(tpl("tpl-repository-card"), {
+    title: repository.name,
+    meta: metaParts.join(" · "),
+  });
+  const tooltip = node.querySelector(".info-wrap > template").content;
+  const memberNames = [
+    ...repository.composeGroups.map((group) => `compose ${group.name}`),
+    ...repository.members.map((member) => member.name),
+  ];
+  fill(tooltip, {
+    "members-detail": memberNames.join(", ") || "none",
+    // Same discipline as composeProjectCard: the raw figure lives here, and only crosses onto the
+    // card as a badge once applyResourceConcernBadge decides it warrants action.
+    resources: repository.cpuPercentOfHost != null
+      ? `${repository.cpuPercentOfHost.toFixed(1)}% of machine CPU`
+      : "unavailable",
+    // A git: id is portable across machines and promotable to other pages; a local: id is stable
+    // but derived from this machine's path, so the distinction is worth stating outright.
+    identity: repository.identityKind === "git" ? "git repository" : "local repository (no remote)",
+  });
+  applyGitBadge(node, tooltip, repository.git, repository.providerUrl);
+  applyResourceConcernBadge(node, repository.cpuPercentOfHost);
+  wireCopyBranchButton(node, repository.git);
+
+  const members = node.querySelector("[data-slot=members]");
+  for (const group of repository.composeGroups) {
+    members.append(composeProjectCard(group, composeActions));
+  }
+  for (const member of repository.members) {
+    members.append(instanceCard(memberProject(repository, member), member.instance, instanceActions));
+  }
+  return node;
+}
+
+// Members arrive flattened for rendering, but instanceCard expects the project-shaped object the
+// legacy collections handed it. Rebuild just the fields it reads, preferring the repository's git
+// context (one root, one answer) over anything stale on the instance.
+function memberProject(repository, member) {
+  return {
+    name: repository.name,
+    identity: member.projectIdentity,
+    git: repository.git,
+    providerUrl: repository.providerUrl,
+  };
+}
+
 export function instanceCard(project, instance, actions) {
   const node = fill(tpl("tpl-card"), {
     title: instanceTitle(project, instance),

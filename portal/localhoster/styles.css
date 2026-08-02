@@ -464,12 +464,14 @@ dialog::backdrop {
 
 /* The summary is only the click target — .card-head inside it owns the layout, identical to a
  * plain instance card's, so both kinds present the same persistent structure. */
-.compose-project-card > summary {
+.compose-project-card > summary,
+.repository-card > summary {
   display: block;
   cursor: pointer;
   list-style: none;
 }
-.compose-project-card > summary::-webkit-details-marker {
+.compose-project-card > summary::-webkit-details-marker,
+.repository-card > summary::-webkit-details-marker {
   display: none;
 }
 /* The expand affordance is the one element with no counterpart on a plain card, so it sits in the
@@ -479,8 +481,18 @@ dialog::backdrop {
   color: var(--dim);
   transition: transform 0.15s ease;
 }
-.compose-project-card[open] .compose-project-chevron {
+.compose-project-card[open] .compose-project-chevron,
+.repository-card[open] > summary .compose-project-chevron {
   transform: rotate(180deg);
+}
+/* Members are whole cards, not compact rows, so they keep their own borders and spacing. The inset
+ * and left rule are what signal containment — without them a nested card reads as a sibling. */
+.repository-members {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
 }
 .compose-project-meta {
   color: var(--dim);

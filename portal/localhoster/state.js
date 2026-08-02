@@ -10,6 +10,9 @@ export function snapshotHash(snapshot) {
     capabilities: snapshot.capabilities,
     warnings: snapshot.warnings,
     projects: snapshot.projects,
+    // Repositories carry their own members, so a change confined to one (a member's health, a new
+    // container) has to reach the hash or the reconcile path would skip the re-render.
+    repositories: snapshot.repositories,
     unmatched: snapshot.unmatchedInstances,
     inactive: snapshot.inactiveProjects,
     hidden: snapshot.hiddenCount || 0,

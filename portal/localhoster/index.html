@@ -387,6 +387,56 @@
         <div class="compose-project-rows" data-slot="rows"></div>
       </details>
     </template>
+    <!-- Repository rollup card: one card per repositoryId, holding every instance that resolves to
+         it regardless of how discovery found it. Before this, a repo running a Compose stack, a dev
+         server, and a tunnel produced three unrelated cards in three page sections.
+         Members render as their existing card kinds nested inside [data-slot=members] — full
+         instance cards for listeners, compose sub-cards for stacks — so nothing (quick links,
+         association, alias, history) is lost by merging.
+         Head mirrors tpl-compose-project-card: title row + git row in column one, action menu in
+         column two, and the same "CPU only earns a persistent badge past the concern threshold"
+         rule (see applyResourceConcernBadge). -->
+    <template id="tpl-repository-card">
+      <details class="instance-card repository-card" open>
+        <summary>
+          <div class="card-head">
+            <div class="card-main">
+              <div class="card-title">
+                <h3 data-slot="title"></h3>
+                <span class="title-separator">-</span>
+                <span class="compose-project-meta" data-slot="meta"></span>
+                <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
+                <span class="info-wrap" data-tip-html="template">
+                  <portal-info-icon aria-label="Show repository details"></portal-info-icon>
+                  <template>
+                    <span class="info-tooltip-content">
+                      <span><strong>Members</strong><span data-slot="members-detail"></span></span>
+                      <span><strong>Resources</strong><span data-slot="resources"></span></span>
+                      <span><strong>Identity</strong><span data-slot="identity"></span></span>
+                      <span data-slot="git-detail" hidden
+                        ><strong>Branch</strong><span data-slot="git-detail-text"></span
+                      ></span>
+                      <span data-slot="git-commit-detail" hidden
+                        ><strong>Commit</strong><span data-slot="git-commit-text"></span
+                      ></span>
+                      <span data-slot="git-status-detail" hidden
+                        ><strong>Working tree</strong><span data-slot="git-status-text"></span
+                      ></span>
+                    </span>
+                  </template>
+                </span>
+                <portal-icon name="chevron" size="sm" class="compose-project-chevron"></portal-icon>
+              </div>
+              <div class="card-git-row" data-slot="git-row"></div>
+            </div>
+            <!-- No action menu: favorites and hiding are per-app or per-compose-project in the
+                 settings schema, and every member card still carries its own menu. A repository-level
+                 menu would need a settings surface that does not exist yet. -->
+          </div>
+        </summary>
+        <div class="repository-members" data-slot="members"></div>
+      </details>
+    </template>
     <!-- One row per container (not per published port) — a single container publishing several
          host ports lists them as nested port rows underneath, instead of repeating the container.
          Process metrics (CPU/RSS/elapsed) are container-level facts — one PID serves every port

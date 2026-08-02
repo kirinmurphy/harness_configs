@@ -7,6 +7,7 @@ import { buildLocalhosterSnapshot, defaultSettings } from "../../modules/localho
 
 const MENUGOATS = "git:github.com/ryanem/menugoats";
 const LOCAL = "local:616846d49a69fc81";
+const LOCAL_PATH = "path:/tmp/thing";
 
 // Discovery-shaped instance, as buildLocalhosterSnapshot expects it (pre-snapshot, so no opaqueKey).
 function instance({ pid, port, command, identity, repositoryId, docker = null, status = null, title = null, cpu = null }) {
@@ -140,6 +141,63 @@ assert.ok(portalRenders.every((item) => !memberPorts.has(item.bind.port)));
 assert.ok(snapshot.unmatchedInstances
   .filter((item) => item.project?.repositoryId)
   .every((item) => memberPorts.has(item.bind.port)));
+
+// One process on several ports is ONE member. A dev server binding a main port plus an HMR socket
+// previously rendered as two sibling members, overstating what was running.
+const multiPort = buildLocalhosterSnapshot({
+  discovery: {
+    capabilities: { discovery: "supported" },
+    warnings: [],
+    composeProjectGit: new Map(),
+    instances: [
+      instance({ pid: 700, port: 4321, command: "node", identity: LOCAL_PATH, repositoryId: LOCAL, status: 200, title: "Localhostr", cpu: 0.5 }),
+      instance({ pid: 700, port: 63359, command: "node", identity: LOCAL_PATH, repositoryId: LOCAL, status: 200, cpu: 0.5 }),
+      instance({ pid: 701, port: 63409, command: "deno", identity: LOCAL_PATH, repositoryId: LOCAL, status: 200, cpu: 0.1 }),
+    ],
+  },
+  settings: defaultSettings(),
+  now: new Date("2026-08-02T00:00:00.000Z"),
+});
+const collapsed = multiPort.repositories[0];
+assert.equal(collapsed.members.length, 2);
+
+// The titled port survives as the visible member; its untitled sibling becomes metadata.
+const survivor = collapsed.members.find((member) => member.port === 4321);
+assert.ok(survivor);
+assert.deepEqual(survivor.secondaryPorts, [63359]);
+assert.equal(survivor.entrypoint, true);
+
+// A port that answered with a page title is user-facing and must sort above infrastructure, so
+// opening the app stays one click from page load.
+assert.equal(collapsed.members[0].port, 4321);
+assert.equal(collapsed.members.find((member) => member.port === 63409).entrypoint, false);
+
+// Same-PID multi-port listeners are normal, not stale: no duplicate warning for them.
+assert.equal(collapsed.duplicateGroups.length, 0);
+
+// Several processes serving the same shape are the stale-instance case. The upstream shape pass
+// collapses them to one visible card and records their ports; the repository surfaces that as a
+// warning. Same signature (identical title + relative cwd + command) is what makes them duplicates.
+const staleInstances = [
+  instance({ pid: 800, port: 5173, command: "node", identity: LOCAL_PATH, repositoryId: LOCAL, status: 200, title: "App", cpu: 0.2 }),
+  instance({ pid: 801, port: 5174, command: "node", identity: LOCAL_PATH, repositoryId: LOCAL, status: 200, title: "App", cpu: 0.2 }),
+];
+for (const item of staleInstances) {
+  item.matchSignature = { ...item.matchSignature, key: "shared-shape", titleKey: "shared-shape-title" };
+  item.associationKey = "shared-shape";
+}
+const stale = buildLocalhosterSnapshot({
+  discovery: {
+    capabilities: { discovery: "supported" },
+    warnings: [],
+    composeProjectGit: new Map(),
+    instances: staleInstances,
+  },
+  settings: defaultSettings(),
+  now: new Date("2026-08-02T00:00:00.000Z"),
+});
+assert.equal(stale.repositories[0].duplicateGroups.length, 1);
+assert.deepEqual(stale.repositories[0].duplicateGroups[0].ports, [5173, 5174]);
 
 // A repository with no measurable CPU reports null rather than a confident 0%.
 const unmeasured = buildLocalhosterSnapshot({

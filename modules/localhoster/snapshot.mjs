@@ -251,6 +251,8 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances }) {
   }
 
   for (const entry of byRepository.values()) {
+    entry.members = collapseByPid(entry.members);
+    entry.duplicateGroups = findStaleDuplicates(entry.members);
     entry.members.sort(compareMembers);
     entry.composeGroups.sort((a, b) => a.name.localeCompare(b.name));
     // Every member counts toward the aggregate today. Tool processes that resolve to a repository
@@ -268,10 +270,85 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances }) {
   return [...byRepository.values()].sort(compareRepositories);
 }
 
+// One process listening on several ports is one member, not several. A dev server commonly binds a
+// main port plus an HMR/websocket port; rendering those as sibling members overstated what was
+// running (localhostr_web showed three "members" that were two processes). PID is exact here — no
+// heuristic needed — so the extra ports become metadata on the surviving member.
+//
+// The survivor is the port that answered with a page title: that is the one a user opens, and the
+// untitled siblings are the infrastructure ports behind it.
+function collapseByPid(members) {
+  const byPid = new Map();
+  const collapsed = [];
+  for (const member of members) {
+    // Containers are already one row per container upstream, and Docker's published ports do not
+    // share a host PID the way a dev server's do.
+    const pid = member.kind === "listener" ? member.instance?.process?.pid : null;
+    if (pid == null) {
+      collapsed.push(member);
+      continue;
+    }
+    if (!byPid.has(pid)) {
+      byPid.set(pid, { primary: member, siblings: [] });
+      collapsed.push(member);
+      continue;
+    }
+    const group = byPid.get(pid);
+    // Prefer a titled port as the visible member; otherwise keep the lowest-numbered one, which is
+    // conventionally the primary bind.
+    const incomingWins = isEntrypoint(member) && !isEntrypoint(group.primary);
+    const loser = incomingWins ? group.primary : member;
+    if (incomingWins) {
+      collapsed[collapsed.indexOf(group.primary)] = member;
+      group.primary = member;
+    }
+    group.siblings.push(loser);
+  }
+  for (const { primary, siblings } of byPid.values()) {
+    if (!siblings.length) continue;
+    // Non-interactive: these are facts about the process, not things to click.
+    primary.secondaryPorts = siblings
+      .map((sibling) => sibling.port)
+      .sort((a, b) => a - b);
+  }
+  return collapsed;
+}
+
+// A port that answered the HTTP probe with a page title is user-facing; an untitled one is an API,
+// a socket, or a service another process talks to. This is what separates menugoats' web app from
+// its Supabase containers without naming either.
+function isEntrypoint(member) {
+  return Boolean(member.instance?.title);
+}
+
+// Stale duplicates are already detected upstream: same-shape instances under one identity are
+// collapsed to a single visible card and their ports recorded on `duplicatePorts` (see the
+// duplicate handling around the shape-group pass). This surfaces that existing signal at repository
+// level so the merged card can warn once, rather than re-deriving it.
+//
+// Note this is a different condition from collapseByPid: that folds ONE process holding several
+// ports (normal — a dev server plus its HMR socket), while this reports SEVERAL processes serving
+// the same thing (a leftover you probably want to kill).
+function findStaleDuplicates(members) {
+  const groups = [];
+  for (const member of members) {
+    const ports = member.instance?.duplicatePorts || [];
+    if (ports.length > 1) {
+      groups.push({ name: member.name, ports: [...ports].sort((a, b) => a - b) });
+    }
+  }
+  return groups;
+}
+
 function toMember(instance, projectIdentity) {
   return {
     kind: instance.docker ? "container" : "listener",
     projectIdentity,
+    // Whether this port is something a user opens (it answered with a page title) or infrastructure
+    // behind one. Drives which members get a permanent, always-visible slot on the card.
+    entrypoint: Boolean(instance.title),
+    // Other ports held by the same process, shown as metadata rather than as separate members.
+    secondaryPorts: [],
     // The full instance record, so the portal can render a member with the same card it always
     // used — merging regroups instances, it does not change what an instance is.
     instance,
@@ -313,7 +390,10 @@ function sumValues(values) {
   return present.reduce((total, value) => total + value, 0);
 }
 
+// Entrypoints first: the point of the card is that opening the app is one click from page load, so
+// the ports a user actually visits must never sort below infrastructure.
 function compareMembers(a, b) {
+  if (a.entrypoint !== b.entrypoint) return a.entrypoint ? -1 : 1;
   return a.name.localeCompare(b.name) || a.port - b.port;
 }
 

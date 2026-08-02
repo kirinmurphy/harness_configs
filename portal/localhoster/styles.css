@@ -487,6 +487,18 @@ dialog::backdrop {
 }
 /* Members are whole cards, not compact rows, so they keep their own borders and spacing. The inset
  * and left rule are what signal containment — without them a nested card reads as a sibling. */
+/* Metadata, not an affordance — dim and non-interactive so it reads as a fact about the process
+ * rather than another thing to click. */
+.secondary-ports {
+  color: var(--dim);
+  font-size: var(--text-2xs);
+}
+/* A copy button with nothing to copy (on main/master) keeps the branch name but drops the
+ * button affordance entirely. */
+.git-branch-button.is-static {
+  cursor: default;
+  pointer-events: none;
+}
 .repository-members {
   display: grid;
   gap: 10px;
@@ -498,7 +510,11 @@ dialog::backdrop {
   color: var(--dim);
   font-size: var(--text-2xs);
 }
+/* Capped so a large stack (Supabase publishes 11 containers) scrolls instead of pushing every
+ * sibling card off the page. Sized to show roughly 5-6 rows before scrolling. */
 .compose-project-rows {
+  max-height: 320px;
+  overflow-y: auto;
   display: grid;
   gap: 10px;
   margin-top: 8px;

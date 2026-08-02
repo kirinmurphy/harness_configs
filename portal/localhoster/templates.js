@@ -36,6 +36,10 @@ export function collapsibleGroup(title, meta, nodes) {
   return node;
 }
 
+// Wider than the shared default (28), which is tuned for repo paths shown in a tighter slot. A
+// branch name gets the whole git row, so it can afford more characters before truncating.
+const BRANCH_NAME_MAX_LENGTH = 40;
+
 // How a compose project's repository was established, weakest last. "auto-bind" is called out as
 // inferred because, unlike a compose working_dir (which Compose guarantees is the project
 // directory), it is derived from a container's bind-mount path — see collectGitForComposeProjects.
@@ -228,25 +232,53 @@ export function repositoryCard(repository, { instanceActions, composeActions }) 
   applyResourceConcernBadge(node, repository.cpuPercentOfHost);
   wireCopyBranchButton(node, repository.git);
 
+  // Distinct processes serving the same thing — the real stale-instance case. Same-PID multi-port
+  // listeners are folded into one member upstream and deliberately do not warn: one process holding
+  // a main port plus an HMR socket is correct, not leftover.
+  const duplicateNotice = node.querySelector("[data-slot=duplicate-notice]");
+  if (repository.duplicateGroups?.length) {
+    duplicateNotice.hidden = false;
+    duplicateNotice.textContent = repository.duplicateGroups
+      .map((group) => `Duplicate members found: ${group.name} is running on ports ${group.ports.join(", ")}. You may have stale instances running.`)
+      .join(" ");
+  }
+
   const members = node.querySelector("[data-slot=members]");
   for (const group of repository.composeGroups) {
     members.append(composeProjectCard(group, composeActions));
   }
   for (const member of repository.members) {
-    members.append(instanceCard(memberProject(repository, member), member.instance, instanceActions));
+    const card = instanceCard(memberProject(repository, member), member.instance, instanceActions);
+    applySecondaryPorts(card, member.secondaryPorts);
+    members.append(card);
   }
   return node;
 }
 
+// Other ports the same process holds. Rendered as plain text, not links: these are facts about the
+// process (an HMR socket, an internal API) rather than things to open, and making them clickable
+// would compete with the one origin on the card that is actually worth visiting.
+function applySecondaryPorts(card, secondaryPorts) {
+  if (!secondaryPorts?.length) return;
+  const slot = card.querySelector("[data-slot=secondary-ports]");
+  if (!slot) return;
+  slot.hidden = false;
+  slot.textContent = `also :${secondaryPorts.join(" :")}`;
+  slot.title = `Same process also listening on ${secondaryPorts.join(", ")}`;
+}
+
 // Members arrive flattened for rendering, but instanceCard expects the project-shaped object the
-// legacy collections handed it. Rebuild just the fields it reads, preferring the repository's git
-// context (one root, one answer) over anything stale on the instance.
+// legacy collections handed it. Rebuild just the fields it reads.
+//
+// Git context is deliberately omitted: it is a property of the repository, identical for every
+// member, and the repository card already shows it once. Passing it down drew the same branch,
+// dirty dot, and ahead/behind marks on every member row — three identical git rows on a
+// three-member card.
 function memberProject(repository, member) {
   return {
     name: repository.name,
     identity: member.projectIdentity,
-    git: repository.git,
-    providerUrl: repository.providerUrl,
+    suppressGit: true,
   };
 }
 
@@ -264,7 +296,11 @@ export function instanceCard(project, instance, actions) {
   });
   const state = healthState(instance);
   if (state) node.dataset.health = state;
-  const gitInfo = instance.project?.git || project.git || null;
+  // `suppressGit` is set when this card is a member of a repository card, which already shows the
+  // git row once. Without it every member repeated the same branch/dirty/ahead marks — the git
+  // context belongs to the repository, not to each listener inside it. A standalone instance card
+  // (unmatched, or a repo-less project) still renders its own.
+  const gitInfo = project.suppressGit ? null : instance.project?.git || project.git || null;
   applyGitBadge(node, tooltip, gitInfo, project.providerUrl || instance.project?.providerUrl || null);
   wireCopyBranchButton(node, gitInfo);
   applyDockerBadge(node, tooltip, instance.docker);
@@ -359,9 +395,14 @@ function applyGitBadge(node, tooltip, git, providerUrl) {
   const badge = tpl("tpl-git-row");
   row.append(badge);
   badge.hidden = false;
-  badge.querySelector("[data-slot=git-branch]").textContent = git.detached
-    ? "detached"
-    : git.branch || "";
+  const branchName = git.detached ? "detached" : git.branch || "";
+  const branchSlot = badge.querySelector("[data-slot=git-branch]");
+  // Long branch names (ticket-prefixed, or a full feature description) would otherwise push the
+  // rest of the row off. Middle-truncated because the tail of a branch name is usually the part
+  // that identifies it — the shared helper's default cap is tuned for repo paths, so this passes
+  // its own wider cap.
+  branchSlot.textContent = portalMiddleEllipsis(branchName, BRANCH_NAME_MAX_LENGTH);
+  if (branchSlot.textContent !== branchName) branchSlot.title = branchName;
 
   const repoLink = badge.querySelector("[data-slot=git-repo-link]");
   const repoName = badge.querySelector("[data-slot=git-repo-name]");
@@ -404,11 +445,16 @@ function applyGitBadge(node, tooltip, git, providerUrl) {
 function applyGitTooltipFields(tooltip, git) {
   const branch = tooltip.querySelector("[data-slot=git-detail]");
   if (branch) {
-    branch.hidden = false;
-    const parts = [git.detached ? "detached" : git.branch || "unknown"];
+    // The branch name is already on the card's git row, so repeating it here would be the same
+    // fact twice in two places a few pixels apart. Only what the row cannot show survives: the
+    // upstream it tracks, and whether this root is a linked worktree.
+    const parts = [];
     if (git.isWorktree) parts.push("linked worktree");
     if (git.upstream) parts.push(`tracking ${git.upstream}`);
-    tooltip.querySelector("[data-slot=git-detail-text]").textContent = parts.join(" · ");
+    if (parts.length) {
+      branch.hidden = false;
+      tooltip.querySelector("[data-slot=git-detail-text]").textContent = parts.join(" · ");
+    }
   }
   const commit = tooltip.querySelector("[data-slot=git-commit-detail]");
   if (commit && git.shortHead) {
@@ -431,9 +477,19 @@ function applyGitTooltipFields(tooltip, git) {
   }
 }
 
+// Copying "main" is not something anyone needs — the button only earns its space on a branch whose
+// name you would actually paste into a checkout or a PR.
+const UNCOPYABLE_BRANCHES = new Set(["main", "master"]);
+
 function wireCopyBranchButton(node, git) {
   const button = node.querySelector("[data-action=copy-branch]");
   if (!button) return;
+  if (!git?.detached && UNCOPYABLE_BRANCHES.has(git?.branch)) {
+    // The branch name itself stays visible; only the copy affordance and its icon go.
+    button.querySelector("portal-icon")?.remove();
+    button.classList.add("is-static");
+    return;
+  }
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();

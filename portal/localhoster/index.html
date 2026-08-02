@@ -254,6 +254,9 @@
               <span class="docker-badge" data-slot="docker" hidden>
                 <span data-slot="docker-label"></span>
               </span>
+              <!-- Other ports held by this same process. Metadata, not links — see
+                   applySecondaryPorts. -->
+              <span class="secondary-ports" data-slot="secondary-ports" hidden></span>
               <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
               <span class="info-wrap" data-tip-html="template">
                 <portal-info-icon
@@ -275,7 +278,7 @@
                     ></span>
                     <span><strong>Bind</strong><span data-slot="bind"></span></span>
                     <span data-slot="git-detail" hidden
-                      ><strong>Branch</strong><span data-slot="git-detail-text"></span
+                      ><strong>Tracking</strong><span data-slot="git-detail-text"></span
                     ></span>
                     <span data-slot="git-commit-detail" hidden
                       ><strong>Commit</strong><span data-slot="git-commit-text"></span
@@ -332,8 +335,11 @@
          The action-menu trigger lives inside <summary> (the only child <details> keeps visible
          while closed) — its click handler must stopPropagation so opening the menu doesn't also
          toggle the details open/closed. -->
+    <!-- Defaults open: the repository card already collapses its members, so a second collapsed
+         layer buried the containers behind two clicks. The <details> wrapper stays so the component
+         can still be collapsed where it is used standalone. -->
     <template id="tpl-compose-project-card">
-      <details class="instance-card compose-project-card">
+      <details class="instance-card compose-project-card" open>
         <summary>
           <div class="card-head">
             <div class="card-main">
@@ -351,7 +357,7 @@
                       <span><strong>Resources</strong><span data-slot="resources"></span></span>
                       <span><strong>Identity</strong><span data-slot="identity"></span></span>
                       <span data-slot="git-detail" hidden
-                        ><strong>Branch</strong><span data-slot="git-detail-text"></span
+                        ><strong>Tracking</strong><span data-slot="git-detail-text"></span
                       ></span>
                       <span data-slot="git-commit-detail" hidden
                         ><strong>Commit</strong><span data-slot="git-commit-text"></span
@@ -414,7 +420,7 @@
                       <span><strong>Resources</strong><span data-slot="resources"></span></span>
                       <span><strong>Identity</strong><span data-slot="identity"></span></span>
                       <span data-slot="git-detail" hidden
-                        ><strong>Branch</strong><span data-slot="git-detail-text"></span
+                        ><strong>Tracking</strong><span data-slot="git-detail-text"></span
                       ></span>
                       <span data-slot="git-commit-detail" hidden
                         ><strong>Commit</strong><span data-slot="git-commit-text"></span
@@ -434,6 +440,7 @@
                  menu would need a settings surface that does not exist yet. -->
           </div>
         </summary>
+        <p class="card-notice" data-slot="duplicate-notice" hidden></p>
         <div class="repository-members" data-slot="members"></div>
       </details>
     </template>

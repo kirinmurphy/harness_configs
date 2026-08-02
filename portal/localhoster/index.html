@@ -402,14 +402,19 @@
          Head mirrors tpl-compose-project-card: title row + git row in column one, action menu in
          column two, and the same "CPU only earns a persistent badge past the concern threshold"
          rule (see applyResourceConcernBadge). -->
+    <!-- Defaults collapsed: the canonical entrypoint URL is lifted into the header, so the app is
+         reachable in one click without expanding. Members carry the detail you open the card for. -->
     <template id="tpl-repository-card">
-      <details class="instance-card repository-card" open>
+      <details class="instance-card repository-card">
         <summary>
           <div class="card-head">
             <div class="card-main">
               <div class="card-title">
                 <h3 data-slot="title"></h3>
                 <span class="title-separator">-</span>
+                <!-- The canonical entrypoint's URL, lifted out of its member so opening the app is
+                     one click from page load even while the member list is collapsed. -->
+                <a class="repository-entrypoint" data-slot="entrypoint" target="_blank" rel="noreferrer" hidden></a>
                 <span class="compose-project-meta" data-slot="meta"></span>
                 <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
                 <span class="info-wrap" data-tip-html="template">

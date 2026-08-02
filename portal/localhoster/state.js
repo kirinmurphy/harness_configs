@@ -51,6 +51,21 @@ export function healthState(instance) {
   return instance.health?.state || null;
 }
 
+// Phrasing for the provenance kinds resolved server-side in modules/localhoster/provenance.mjs.
+// Lives here rather than importing that module because the portal only loads browser-served code;
+// the kinds are a small stable set, and an unrecognized one renders nothing rather than guessing.
+const PROVENANCE_LABELS = {
+  child: "started by another listener here",
+  orphaned: "started outside a live session",
+  shell: "started from a terminal",
+};
+
+export function provenanceLabel(provenance) {
+  if (!provenance?.kind) return null;
+  if (PROVENANCE_LABELS[provenance.kind]) return PROVENANCE_LABELS[provenance.kind];
+  return provenance.label ? `started by ${provenance.label}` : null;
+}
+
 export function currentLinks(snapshot, projectIdentity, appId) {
   const app = currentAppSettings(snapshot, projectIdentity, appId);
   return app?.links?.map(({ id, label, path }) => ({ id, label, path })) || [];

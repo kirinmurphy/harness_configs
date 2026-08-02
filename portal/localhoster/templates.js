@@ -1,5 +1,5 @@
 import { portalCopyText, portalFillSlots as fill, portalMiddleEllipsis, portalTpl as tpl } from "/portal/shared/api.js";
-import { healthState, statusDetail, statusText, UNMATCHED_PROJECT_NAME } from "./state.js";
+import { healthState, provenanceLabel, statusDetail, statusText, UNMATCHED_PROJECT_NAME } from "./state.js";
 
 export function emptyState(title, body) {
   return fill(tpl("tpl-empty"), { title, body });
@@ -201,7 +201,7 @@ function composeContainerRow(container, actions) {
 // listener stays a full instance card (quick links, association, alias, history all keep working)
 // and a Compose stack stays its own sub-card, since `docker compose down` stops those containers as
 // one unit. Merging is a grouping change, not a redesign of what a member is.
-export function repositoryCard(repository, { instanceActions, composeActions }) {
+export function repositoryCard(repository, { instanceActions, composeActions, departedMembers = [] }) {
   const memberCount = repository.members.length
     + repository.composeGroups.reduce((sum, group) => sum + group.containers.length, 0);
   const metaParts = [`${memberCount} member${memberCount === 1 ? "" : "s"}`];
@@ -232,6 +232,26 @@ export function repositoryCard(repository, { instanceActions, composeActions }) 
   applyResourceConcernBadge(node, repository.cpuPercentOfHost);
   wireCopyBranchButton(node, repository.git);
 
+  // Every user-facing origin promoted to the header, so reaching the app never requires expanding
+  // the card. Entrypoints sort first, so this is the leading run of the member list; a project with
+  // an app plus an admin panel and a dashboard surfaces all three.
+  const entrypointSlot = node.querySelector("[data-slot=entrypoint]");
+  const entrypoints = repository.members.filter((member) => member.entrypoint && member.instance?.origin);
+  if (entrypoints.length) {
+    entrypointSlot.hidden = false;
+    entrypointSlot.textContent = displayOrigin(entrypoints[0].instance.origin);
+    entrypointSlot.href = entrypoints[0].instance.origin;
+    entrypointSlot.title = entrypoints[0].instance.origin;
+    // Additional entrypoints follow as their own links rather than being hidden behind the first.
+    for (const extra of entrypoints.slice(1)) {
+      const link = entrypointSlot.cloneNode(false);
+      link.textContent = displayOrigin(extra.instance.origin);
+      link.href = extra.instance.origin;
+      link.title = extra.instance.origin;
+      entrypointSlot.after(link);
+    }
+  }
+
   // Distinct processes serving the same thing — the real stale-instance case. Same-PID multi-port
   // listeners are folded into one member upstream and deliberately do not warn: one process holding
   // a main port plus an HMR socket is correct, not leftover.
@@ -250,6 +270,17 @@ export function repositoryCard(repository, { instanceActions, composeActions }) 
   for (const member of repository.members) {
     const card = instanceCard(memberProject(repository, member), member.instance, instanceActions);
     applySecondaryPorts(card, member.secondaryPorts);
+    // A non-entrypoint answered no page title: a runtime, a socket, an internal API. It is real and
+    // worth showing, but it is not something you open, so it reads quieter than the app above it.
+    if (!member.entrypoint) card.classList.add("is-support");
+    members.append(card);
+  }
+  // Members whose process is gone. Shown rather than silently removed, matching how a top-level
+  // card behaves when its instance exits — a member disappearing without a trace is the one case
+  // where the page stops answering "what was running here a moment ago".
+  for (const member of departedMembers) {
+    const card = instanceCard(memberProject(repository, member), member.instance, instanceActions);
+    card.classList.add("is-offline");
     members.append(card);
   }
   return node;
@@ -279,6 +310,9 @@ function memberProject(repository, member) {
     name: repository.name,
     identity: member.projectIdentity,
     suppressGit: true,
+    // Marks this card as nested, so it names itself rather than repeating the repository heading
+    // and renders at member weight rather than card-heading weight.
+    isMember: true,
   };
 }
 
@@ -286,11 +320,14 @@ export function instanceCard(project, instance, actions) {
   const node = fill(tpl("tpl-card"), {
     title: instanceTitle(project, instance),
   });
+  // Nested inside a repository card: styling hook for the lighter heading treatment, since a member
+  // should not compete visually with the repository name above it.
+  if (project.isMember) node.classList.add("is-member");
   const tooltip = node.querySelector(".info-wrap > template").content;
   fill(tooltip, {
     status: `${statusText(instance)} (${statusDetail(instance)})`,
     latency: instance.latencyMs == null ? "unknown" : `${instance.latencyMs}ms`,
-    process: `${instance.process.command} (${instance.process.pid})`,
+    process: provenanceText(instance),
     identity: `${instance.project?.evidence || project.evidence || "runtime"} · ${instance.project?.confidence || project.confidence || "low"}`,
     bind: `${instance.bind.address}:${instance.bind.port}`,
   });
@@ -597,6 +634,15 @@ function formatElapsed(seconds) {
 
 // Every localhost origin is http(s) by construction (see http-probe.mjs) — the scheme is never
 // informative here, only visual noise, so the link keeps its real href but displays without it.
+// Command and PID, plus who launched it when ancestry resolved. Several instances of one repo
+// started by hand usually means stale processes; one started by a coding agent is a working test
+// environment, and the page cannot tell those apart from ports alone.
+function provenanceText(instance) {
+  const base = `${instance.process.command} (${instance.process.pid})`;
+  const label = provenanceLabel(instance.provenance);
+  return label ? `${base} · ${label}` : base;
+}
+
 function displayOrigin(origin) {
   return origin.replace(/^https?:\/\//, "");
 }
@@ -669,7 +715,13 @@ function wireCardActions(node, project, instance, actions) {
   menu.addEventListener("click", (event) => event.stopPropagation());
 }
 
+// Inside a repository card the project name is already the card's own heading, so leading with it
+// again made every member read "roborepo — roborepo — :4317". A member names itself: its app label,
+// its page title, or failing both the process that owns it.
 function instanceTitle(project, instance) {
+  if (project.isMember) {
+    return instance.app?.name || instance.title || instance.process.command;
+  }
   const projectName = project.name === UNMATCHED_PROJECT_NAME ? null : project.name;
   return projectName || instance.app?.name || instance.title || instance.process.command;
 }

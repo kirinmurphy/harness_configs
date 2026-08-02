@@ -501,10 +501,37 @@ dialog::backdrop {
 }
 .repository-members {
   display: grid;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 4px;
+  margin-top: 8px;
   padding-left: 12px;
   border-left: 1px solid var(--line);
+}
+/* A member is subordinate to the repository heading above it, so it reads at normal weight and a
+ * step down in size rather than competing as a second card title. */
+.instance-card.is-member .card-title h3 {
+  font-weight: 400;
+  font-size: var(--text-xs);
+  color: var(--dim);
+}
+/* Nested members drop the outer card chrome — the repository card already provides the container,
+ * and stacked borders read as boxes inside boxes. */
+.instance-card.is-member {
+  border: 0;
+  background: none;
+  padding: 4px 0;
+}
+/* Support members (no page title: runtimes, sockets, internal APIs) stay visible but recede, so the
+ * entrypoints above them are unmistakably the things to click. */
+.instance-card.is-member.is-support {
+  opacity: 0.72;
+}
+/* The canonical entrypoint(s). Sits at heading level because reaching the running app is the
+ * card's primary job. */
+.repository-entrypoint {
+  font-size: var(--text-xs);
+}
+.repository-entrypoint + .repository-entrypoint {
+  margin-left: 8px;
 }
 .compose-project-meta {
   color: var(--dim);

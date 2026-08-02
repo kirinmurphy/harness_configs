@@ -91,6 +91,7 @@ function applySnapshot(snapshot, { reconcile = false } = {}) {
 
 function render(snapshot, { reconcile }) {
   renderWarnings(snapshot);
+  pruneDepartedTracking(snapshot);
 
   const sections = [
     {
@@ -111,6 +112,11 @@ function render(snapshot, { reconcile }) {
           build: () => tmpl.repositoryCard(repository, {
             instanceActions: cardActions(),
             composeActions: composeProjectActions(),
+            // Members that were present on the previous render but are gone from this snapshot.
+            // The top-level offline sweep keys on card id, and a repository card outlives its
+            // members — without this, a stopped member vanished silently instead of getting the
+            // greyed-out treatment every other card kind gets when its process exits.
+            departedMembers: departedMembersFor(repository),
           }),
         })),
         // Instances with no repositoryId (a `process:` identity, or a Compose project whose repo
@@ -293,6 +299,31 @@ function reconcileSection(section) {
     groupEl.querySelector("[data-slot=meta]").textContent =
       section.meta(visibleCount);
   }
+}
+
+// Members seen on the last render, per repository, so the next one can tell which disappeared.
+// Keyed by associationKey (stable across restarts and port changes) rather than port, so a dev
+// server that came back on a different port reads as the same member returning, not a new one.
+const lastMembersByRepository = new Map();
+
+// A repository with no cards left stops being tracked, so its members are not resurrected as
+// "departed" if it later reappears.
+function pruneDepartedTracking(snapshot) {
+  const live = new Set((snapshot.repositories || []).map((repository) => repository.repositoryId));
+  for (const key of lastMembersByRepository.keys()) {
+    if (!live.has(key)) lastMembersByRepository.delete(key);
+  }
+}
+
+function departedMembersFor(repository) {
+  const previous = lastMembersByRepository.get(repository.repositoryId) || new Map();
+  const current = new Map(repository.members.map((member) => [member.associationKey, member]));
+  const departed = [];
+  for (const [key, member] of previous) {
+    if (!current.has(key)) departed.push(member);
+  }
+  lastMembersByRepository.set(repository.repositoryId, current);
+  return departed;
 }
 
 function hasOpenMenu(node) {

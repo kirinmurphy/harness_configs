@@ -28,7 +28,40 @@ export async function collectProcessMetrics(pids, {
     // way, missing metrics for a scan is not an error the caller should see, just absence.
     return new Map();
   }
-  return parsePsOutput(result.stdout ?? result);
+  const byPid = parsePsOutput(result.stdout ?? result);
+  await collectAncestors(byPid, { runCommand, timeoutMs });
+  return byPid;
+}
+
+// Listener PIDs alone cannot answer "who launched this" — the answer lives further up the tree. One
+// extra batched `ps` per generation walks the chain, which on a dev machine terminates in two or
+// three rounds (node -> npm -> shell -> agent). Ancestors are merged into the same map so callers
+// see one lookup surface.
+//
+// Failure here is silent by design: provenance is an enrichment, and losing it must never cost the
+// caller the metrics that already resolved.
+async function collectAncestors(byPid, { runCommand, timeoutMs, maxGenerations = 6 }) {
+  const resolved = new Set(byPid.keys());
+  for (let generation = 0; generation < maxGenerations; generation += 1) {
+    const wanted = [...byPid.values()]
+      .map((entry) => entry.ppid)
+      .filter((ppid) => Number.isInteger(ppid) && ppid > 1 && !resolved.has(ppid));
+    if (!wanted.length) return;
+    const unique = [...new Set(wanted)];
+    for (const pid of unique) resolved.add(pid);
+
+    let result;
+    try {
+      result = await runCommand("ps", ["-o", "pid=,ppid=,pcpu=,rss=,etime=,comm=", "-p", unique.join(",")], { timeoutMs });
+    } catch {
+      return;
+    }
+    const parsed = parsePsOutput(result.stdout ?? result);
+    if (!parsed.size) return;
+    for (const [pid, entry] of parsed) {
+      if (!byPid.has(pid)) byPid.set(pid, entry);
+    }
+  }
 }
 
 // Fields are fixed-width via the `key=` (no header, empty label) form, but values are

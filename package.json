@@ -40,6 +40,7 @@
     "test:localhoster-docker-stats": "node scripts/test/localhoster-docker-stats-check.mjs",
     "test:localhoster-docker-mounts": "node scripts/test/localhoster-docker-mounts-check.mjs",
     "test:localhoster-compose-identity": "node scripts/test/localhoster-compose-identity-check.mjs",
+    "test:localhoster-repository-merge": "node scripts/test/localhoster-repository-merge-check.mjs",
     "test:localhoster-process": "node scripts/test/localhoster-process-check.mjs",
     "test:repositories": "node scripts/test/repositories-check.mjs",
     "test:repositories-service": "node scripts/test/repositories-service-check.mjs",

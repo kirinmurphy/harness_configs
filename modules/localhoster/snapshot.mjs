@@ -127,17 +127,24 @@ export function buildLocalhosterSnapshot({
     }
   }
 
+  const projects = [...activeByProject.values()].sort(compareProjects).map(sortProject);
+  const composeProjects = [...composeProjectsByName.values()]
+    .map((project) => ({ ...project, containers: groupByContainer(project.instances) }))
+    .sort(compareProjects);
+
   return {
     generatedAt: toIso(now),
     refresh,
     settingsRevision: settings.revision,
     capabilities: discovery.capabilities,
     warnings: discovery.warnings || [],
-    projects: [...activeByProject.values()].sort(compareProjects).map(sortProject),
-    composeProjects: [...composeProjectsByName.values()]
-      .map((project) => ({ ...project, containers: groupByContainer(project.instances) }))
-      .sort(compareProjects),
+    projects,
+    composeProjects,
     unmatchedInstances: unmatchedInstances.sort(compareInstances),
+    // Repository-keyed view over the same instances the three collections above hold. Built
+    // alongside them during the migration (localhoster-repository-card-merge) so existing consumers
+    // keep working while the portal moves over; the legacy three are removed once nothing reads them.
+    repositories: buildRepositories({ projects, composeProjects, unmatchedInstances }),
     inactiveProjects: inactiveProjects.sort(compareProjects),
     hiddenCount,
     settings: settingsSummary(settings),
@@ -177,6 +184,143 @@ function groupByContainer(instances) {
   return [...byContainer.values()]
     .map((container) => ({ ...container, instances: container.instances.sort(compareInstances) }))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// One card per repository, merging what the three legacy collections split by discovery mechanism.
+// A repository that runs a Compose stack, a dev server, and a tunnel previously produced three
+// unrelated cards in three sections; they share a repositoryId and belong together.
+//
+// Only a real repositoryId groups. `process:` identities resolve to null (canonicalRepositoryId
+// returns null for them — no repository exists to be a member of) and stay unmatched, as do
+// Compose projects whose repo never resolved.
+function buildRepositories({ projects, composeProjects, unmatchedInstances }) {
+  const byRepository = new Map();
+
+  const ensure = (repositoryId, source) => {
+    if (!byRepository.has(repositoryId)) {
+      byRepository.set(repositoryId, {
+        repositoryId,
+        // git: ids are portable across machines and promotable to other pages; local: ids are
+        // stable but path-derived, so they stay on this surface only.
+        identityKind: repositoryId.startsWith("git:") ? "git" : "local",
+        providerUrl: providerUrlForRepositoryId(repositoryId),
+        name: source.name,
+        favorite: false,
+        git: null,
+        composeGroups: [],
+        members: [],
+      });
+    }
+    return byRepository.get(repositoryId);
+  };
+
+  for (const project of projects) {
+    if (!project.repositoryId) continue;
+    const entry = ensure(project.repositoryId, project);
+    entry.favorite = entry.favorite || project.favorite === true;
+    entry.git = entry.git || project.git || null;
+    for (const instance of project.instances) {
+      entry.members.push(toMember(instance, project.identity));
+    }
+  }
+
+  for (const composeProject of composeProjects) {
+    if (!composeProject.repositoryId) continue;
+    const entry = ensure(composeProject.repositoryId, composeProject);
+    entry.favorite = entry.favorite || composeProject.favorite === true;
+    entry.git = entry.git || composeProject.git || null;
+    // A Compose stack is one deploy unit — `docker compose down` stops every container at once —
+    // so it stays a named sub-group rather than flattening 11 Supabase containers into the member
+    // list ahead of the single dev server the user actually cares about.
+    entry.composeGroups.push({
+      name: composeProject.name,
+      identity: composeProject.identity,
+      resolvedFrom: composeProject.resolvedFrom,
+      containers: composeProject.containers,
+      cpuPercentOfHost: sumCpuPercentOfHost(composeProject.instances),
+    });
+  }
+
+  for (const instance of unmatchedInstances) {
+    const repositoryId = instance.project?.repositoryId;
+    if (!repositoryId) continue;
+    const entry = ensure(repositoryId, {
+      name: inferredName(instance.project.identity, instance.project.projectRoot),
+    });
+    entry.git = entry.git || instance.project.git || null;
+    entry.members.push(toMember(instance, instance.project.identity));
+  }
+
+  for (const entry of byRepository.values()) {
+    entry.members.sort(compareMembers);
+    entry.composeGroups.sort((a, b) => a.name.localeCompare(b.name));
+    // Every member counts toward the aggregate today. Tool processes that resolve to a repository
+    // only by inherited working directory (a tunnel, a stray `npx`) arguably should not — their CPU
+    // tracks their own traffic, not application load — but no field currently separates them from a
+    // real dev server: on live data ngrok and a Next.js server agree on probe status, title,
+    // identity, confidence, and relative cwd, differing only in process command name. Excluding them
+    // needs a real signal rather than a name list; see the plan doc's open questions.
+    entry.cpuPercentOfHost = sumValues([
+      ...entry.composeGroups.map((group) => group.cpuPercentOfHost),
+      ...entry.members.map((member) => member.cpuPercentOfHost),
+    ]);
+  }
+
+  return [...byRepository.values()].sort(compareRepositories);
+}
+
+function toMember(instance, projectIdentity) {
+  return {
+    kind: instance.docker ? "container" : "listener",
+    projectIdentity,
+    opaqueKey: instance.opaqueKey,
+    associationKey: instance.associationKey,
+    name: memberName(instance),
+    port: instance.bind.port,
+    origin: instance.origin,
+    status: instance.status,
+    health: instance.health,
+    docker: instance.docker,
+    app: instance.app ?? null,
+    // Percent of the whole machine, not of one core. `docker stats` reports CPU relative to a single
+    // core, which is not summable across containers — cpuPercentOfHost is the normalized field, and
+    // summing the raw per-core value produced meaningless totals (161% for one 11-container project).
+    cpuPercentOfHost: instance.processMetrics?.cpuPercentOfHost ?? null,
+    residentMemoryKb: instance.processMetrics?.residentMemoryKb ?? null,
+  };
+}
+
+function memberName(instance) {
+  return instance.app?.name
+    || instance.docker?.composeService
+    || instance.docker?.name
+    || instance.title
+    || instance.process?.command
+    || `Port ${instance.bind.port}`;
+}
+
+function sumCpuPercentOfHost(instances) {
+  return sumValues(instances.map((instance) => instance.processMetrics?.cpuPercentOfHost ?? null));
+}
+
+// Null when nothing reported a usable number, so an unmeasured card renders as "unknown" rather
+// than claiming a confident 0%.
+function sumValues(values) {
+  const present = values.filter((value) => typeof value === "number" && Number.isFinite(value));
+  if (!present.length) return null;
+  return present.reduce((total, value) => total + value, 0);
+}
+
+function compareMembers(a, b) {
+  return a.name.localeCompare(b.name) || a.port - b.port;
+}
+
+// Favorites first, then portable git-backed repositories ahead of path-derived local ones. Offline
+// ordering within a group is unchanged — it still falls out of the member sort.
+function compareRepositories(a, b) {
+  if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+  if (a.identityKind !== b.identityKind) return a.identityKind === "git" ? -1 : 1;
+  return a.name.localeCompare(b.name) || a.repositoryId.localeCompare(b.repositoryId);
 }
 
 // Groups instances by project identity, then by "shape" (same page title + same relative cwd)

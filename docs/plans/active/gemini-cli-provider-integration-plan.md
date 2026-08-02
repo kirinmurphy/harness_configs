@@ -1,7 +1,7 @@
 ---
 id: gemini-cli-provider-integration
 priority: medium
-next_action: Begin Phase 3 — consumer verification. Run full test suite + doctor with Gemini manifest present but disabled (zero-additional-provider-enabled check), then enable Gemini in a sandboxed home and run roborepo update/doctor --installed/permissions --check/mcp add --harness gemini end to end. Also triage the newly-logged hardcoded-two-provider spots (mergeRootConfig dispatcher, 6 files with literal ["claude","codex"] arrays) alongside the two already-logged bugs from the parent plan's wrap-up review.
+next_action: Finish Phase 3 — the real proof-of-contract verification and 3 real bugs it surfaced (mergeRootConfig's hardcoded dispatcher, renderPermissionsTo missing a Gemini branch, mcpAdd missing a Gemini branch) are done and committed. Remaining: fix mcpApply's hardcoded claude/codex dispatch (package-level MCP server sync, distinct from the now-fixed single-server mcpAdd) and package-harness-config.mjs's applyPackageComponentResult hardcoding "codex" (both already logged in the parent plan's wrap-up review), triage the 6 files with literal ["claude","codex"] arrays, and update harness-anatomy.md/harnesses-explained.md to include Gemini as a third worked example.
 blocked_by: []
 depends_on:
   - discoverable-harness-provider-architecture
@@ -204,33 +204,102 @@ questions (3-5) are now resolved enough to design Phase 2's permissions adapter 
 
 ## Phase 3: Consumer verification
 
-- [ ] Run the full existing test suite and doctor with the Gemini provider manifest present but
-  disabled — confirms zero-additional-provider-enabled behavior is unaffected, matching the
-  "Zero detected providers leaves the RoboRepo CLI usable" validation criterion from the parent
-  plan.
-- [ ] Enable Gemini in a real or sandboxed home directory and run `roborepo update`, `roborepo
-  doctor --installed`, `roborepo permissions --check`, `roborepo rules --check`, `roborepo skill
-  render-commands --check`, `roborepo mcp add <test-server> --harness gemini` — this is the actual
-  proof-of-contract: real native files written and verified, not synthetic-provider assertions.
-- [ ] Revisit the two follow-up items already logged in the parent plan's "Third-provider-readiness
-  bugs found in wrap-up review" section (`package-harness-config.mjs`'s `applyPackageComponentResult`
-  hardcoding `"codex"`, `mcp.mjs`'s `mcpAdd` only acting on claude/codex) — Gemini is the concrete
-  case that turns those from "a hypothetical third provider would break this" into a real bug to
-  fix or a real pass to confirm, whichever it turns out to be.
-- [ ] Two more hardcoded-two-provider spots found while scoping Phase 2 (deliberately left
-  untouched — out of Phase 2's adapter-implementation scope, logged here so they aren't silently
-  forgotten): `scripts/cli/root-config-merge.mjs`'s `mergeRootConfig(harness, ...)` dispatcher
-  (`if (harness === "codex") ...; if (harness === "claude") ...; throw`) is called by
-  `scripts/cli/presets.mjs` and `scripts/cli/local-config-repair.mjs` — real orchestration code,
-  not a test fixture — and would throw `unsupported harness: gemini` if either of those call sites
-  is ever reached with Gemini enabled. Note this is a different function from the provider
-  adapters' own `rootConfig.merge`, which every adapter (including Gemini's) already implements
-  correctly — `mergeRootConfig` is a separate, older dispatcher that never got cut over. Also found
-  six files with a literal `["claude", "codex"]` array outside the adapters/tests: `portal-usage.mjs`,
+- [x] Ran the full existing test suite and doctor with the Gemini provider manifest present but
+  disabled (no test fixture or sandboxed HOME in the suite enables it by default — discovery-driven
+  enablement only fires when `~/.gemini`/the `gemini` executable are actually present, per
+  `scripts/harnesses/state.mjs`'s `applyDiscoveryToState`) — confirms zero-additional-provider-
+  enabled behavior is unaffected, matching the "Zero detected providers leaves the RoboRepo CLI
+  usable" validation criterion from the parent plan. 385/385 tests, 100/100 doctor checks, before
+  any Phase 3 code changes.
+- [x] Enabled Gemini in a sandboxed HOME (`~/.gemini/settings.json` seeded, `gemini` CLI genuinely
+  on `PATH` from Phase 1's install) and ran the real proof-of-contract commands end to end:
+  - `roborepo harness refresh`/`list`/`inspect gemini`: discovered as `confirmed` confidence
+    (executable + home + config all present) — the highest of the three providers in this sandbox,
+    since only `gemini` was actually installed on the test machine.
+  - `roborepo update`: surfaced the `mergeRootConfig` crash below on first run; after the fix,
+    completes cleanly (`updated root config claude`, `updated root config codex`, `added skill
+    roborepo-support gemini`) — Gemini's own settings.json stays `{}` since `rootConfig.merge` has
+    nothing to merge in yet (no repo-side `generated/gemini/settings.json` candidate exists —
+    Gemini's generated candidate is the Policy Engine file, not a settings.json fragment).
+  - `roborepo doctor --installed`: fails identically to Claude/Codex on the still-unmigrated `rules`
+    capability (`GEMINI.md missing`, matching `CLAUDE.md missing`/`AGENTS.md missing`) — consistent,
+    not a Gemini-specific regression, and expected per Phase 2's "rules/skills/commands stay stubbed"
+    note. Gemini's skill symlink is *not* flagged as broken, confirming `skills.link`'s underlying
+    mechanism (shared with Claude/Codex) worked correctly even though the capability itself is
+    stubbed at the adapter layer.
+  - `roborepo config rules check-home`: same expected `GEMINI.md missing` failure, consistent with
+    Claude/Codex — registry-driven, uniform, not a crash.
+  - `roborepo skill render-commands --check`: passes clean, but doesn't touch Gemini at all — no
+    package currently declares a command resource targeting `gemini`, and the renderer itself is
+    hardcoded to `.md` output (`scripts/cli/slash-commands.mjs`'s `renderPackageHarness`), which
+    would be structurally wrong for Gemini's TOML format even if a package did. Confirmed this is
+    exactly the already-scoped Phase 6 gap ("slash-command rendering: new format for the existing
+    renderer, not just a new output path") — not a bug to fix now.
+  - `roborepo mcp add test-server --harness gemini -- echo hello`: crashed (`mcpAdd` had no Gemini
+    branch) until fixed below; after the fix, writes the correct `mcpServers` JSON shape, correctly
+    reports "already present" on re-add, and correctly no-ops other harnesses' files.
+  - `roborepo mcp add ... --dry-run` with no `--harness` filter: prints lines for all three
+    providers now, matching the "selector appears for two or more relevant providers" pattern with
+    three real providers instead of two.
+- [x] Two real bugs found and fixed during the above (not the two originally logged in the parent
+  plan's wrap-up-review section — those two, `package-harness-config.mjs`'s
+  `applyPackageComponentResult` hardcoding `"codex"` and `mcp.mjs`'s bulk `mcpApply` only acting on
+  claude/codex, are still open; see below):
+  - **`scripts/cli/root-config-merge.mjs`'s `mergeRootConfig(harness, ...)` dispatcher** (hardcoded
+    `if (harness === "codex") ...; if (harness === "claude") ...; throw`) crashed real
+    `roborepo update` runs the moment Gemini was enabled — its two real callers,
+    `scripts/cli/presets.mjs` and `scripts/cli/local-config-repair.mjs`, now dispatch through
+    `getHarnessProvider(harness).adapters.rootConfig.merge` instead, which every registered
+    provider (including Gemini's) already implements correctly. `local-config-repair.mjs`'s
+    hardcoded `HARNESS_LABEL` map (`{claude: "...", codex: "..."}`) was fixed the same way, deriving
+    the label from `manifest.displayName` instead. The CLI-entrypoint subprocess block (invoked by
+    `install-lib.sh`'s `export_user_config`, the actual code path that crashed) now loads the
+    registry dynamically too, inside an async IIFE — a bare top-level `await` inside a conditional
+    left an unsettled-promise warning and a hung process in practice.
+  - **`scripts/cli/permissions-render.mjs`'s `renderPermissionsTo`** (the live home-config path
+    `config-mutate.mjs` calls on every behavior-bucket override change) only ever checked for
+    `.claude` and `.codex` — Gemini's Policy Engine file never got created or updated at all, so a
+    user changing a permission override through `roborepo`'s config controls would see the change
+    reflected in Claude/Codex but silently never reach `~/.gemini/policies/`. Fixed by adding a
+    third branch keyed off the manifest's own `permissionsStorage: "policy-engine-toml-directory"`
+    extension hint, writing `~/.gemini/policies/roborepo-permissions.toml` whenever `~/.gemini/` is
+    present (no Codex-style "don't fabricate" gate needed — Gemini fully owns this file, unlike
+    Codex's shared config.toml).
+  - **`scripts/cli/mcp.mjs`'s `mcpAdd`** only had `applyClaude`/`applyCodex` branches — despite
+    `--harness gemini` already validating cleanly against the registry (the parsing layer,
+    `mcp-parse.mjs`, was already fully generic), the execution layer silently did nothing for
+    Gemini. Fixed by adding `ensureGeminiMcp` (direct `mcpServers` JSON read/write via the adapter's
+    `addServer`, matching `ensureCodexMcp`'s shape) and wiring it into both the dry-run and
+    real-write paths. Also fixed the command manifest's stale `--only-claude|--only-codex` usage
+    text in `manifests/platform/cli/command-definitions/mcp/add.command.json` (the flag was
+    replaced by repeatable `--harness <id>` well before this plan, but the static description/usage
+    string was never updated).
+  - Also fixed, while verifying the above: a real test fragility in `test-roborepo.sh`'s mcp-add
+    block — on macOS `$TMPDIR` already ends in a slash, so
+    `"${TMPDIR:-/tmp}/roborepo-test.XXXXXX"` produces a double-slash path that bash preserves
+    literally in an exact-string `test =` assertion but Node normalizes away via `path.join` in its
+    printed output. Only surfaced now because the new Gemini dry-run line is the first to embed a
+    path in these particular assertions. Switched to `grep -Fq` substring checks (already this
+    file's convention for other path-bearing output), pre-normalizing the embedded path with
+    `tr -s /`.
+  - Extended `permissions-render-live-characterization-check.mjs` and
+    `mcp-add-characterization-check.mjs` with Gemini scenarios (policy file creation from nothing,
+    override propagation independently verified through Gemini's own adapter, mcpServers
+    add/list/remove round-trip, http-transport shape). Full suite after all fixes: 385 passed, 0
+    failed.
+- [ ] Revisit the two *still-open* follow-up items already logged in the parent plan's
+  "Third-provider-readiness bugs found in wrap-up review" section: `package-harness-config.mjs`'s
+  `applyPackageComponentResult` hardcoding `"codex"`, and `mcp.mjs`'s bulk `mcpApply` (package
+  server sync, distinct from the single-server `mcpAdd` fixed above) only acting on claude/codex —
+  `mcpApply` currently no-ops for Gemini correctly rather than crashing, since no package's
+  `mcp-servers.json` entry declares `"gemini"` in its `harnesses` array yet (an authoring gap, not
+  a code bug per se, but the dispatch logic itself is still hardcoded and needs the same
+  registry-driven fix as `mcpAdd` before any package can target Gemini).
+- [ ] Two more hardcoded-two-provider spots found while scoping Phase 2, still untriaged: six files
+  with a literal `["claude", "codex"]` array outside the adapters/tests — `portal-usage.mjs`,
   `packages.mjs`, `telemetry.mjs`, `workspace-resources.mjs`, `package-probes.mjs`,
-  `telemetry-schemas/snapshot-schema.mjs` — not yet individually triaged for whether each is a real
-  bug (silently drops Gemini) or an intentional two-provider-only scope; needs a pass same as the
-  two items above.
+  `telemetry-schemas/snapshot-schema.mjs`. Not yet individually triaged for whether each is a real
+  bug (silently drops Gemini) or an intentional two-provider-only scope.
 - [ ] Update `docs/reference/internal/harness-anatomy.md` and `harnesses-explained.md` to include
   Gemini as a third worked example, not just Claude/Codex — this is the first real chance to
   confirm those docs' "two harnesses" framing generalizes to "N harnesses" in prose, not just in

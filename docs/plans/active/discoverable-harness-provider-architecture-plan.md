@@ -1943,15 +1943,15 @@ the 15 already-known hardcoded-pair sites above:
   this same two-shape asymmetry correctly (codex special-cased, everything else falls through to a
   generic `writeRootConfig(harness, ...)`) — `applyPackageComponentResult` should follow that
   pattern instead.
-- `scripts/cli/mcp.mjs:110-135` (`mcpAdd`) — `--harness <id>` validates generically against
-  `hasHarnessProvider` (in `mcp-parse.mjs`), so an unrecognized-by-name third provider passes CLI
-  validation, but the function body only computes `applyClaude`/`applyCodex` booleans and only
-  calls the claude/codex adapters directly. `roborepo mcp add x --harness <third-provider>` would
-  pass validation, add nothing, but still call `recordMcpServer` claiming the server was
-  configured — a silent no-op logged as success, worse than the throw-loudly pattern the rest of
-  this migration uses (see `stub-adapter.mjs`'s `notYetMigrated`). Not exercised by the existing
-  synthetic-third-provider tests, which cover config-snapshot/telemetry genericness but not this
-  CLI dispatch path.
+- ~~`scripts/cli/mcp.mjs:110-135` (`mcpAdd`)~~ **Fixed** —
+  [gemini-cli-provider-integration-plan.md](./gemini-cli-provider-integration-plan.md) Phase 3
+  confirmed this exact bug for real (`--harness gemini` validated cleanly but silently added
+  nothing, exactly the predicted "silent no-op logged as success") and fixed it: `mcpAdd` now also
+  computes an `applyGemini` branch calling a new `ensureGeminiMcp` helper (direct `mcpServers` JSON
+  read/write via the adapter's `addServer`, matching `ensureCodexMcp`'s shape). Note this only
+  covers the single-server `mcpAdd` path — the bulk package-sync `mcpApply` (a separate function in
+  the same file) still has the identical two-branch hardcoding and is not yet fixed; a fourth
+  provider would hit this same predicted bug there.
 - `scripts/lib/manifests-data.sh:121-131` (`_harness_detected_load`'s no-`node` fallback) — when
   `node`/`scripts/cli/main.mjs` is unavailable, harness detection degrades to a hardcoded
   `for id in claude codex` loop instead of the registry. Honestly commented, and only fires in a
@@ -1965,13 +1965,21 @@ fixed-pair, but it's deliberately deferred with a comment pointing at
 tracked, not a fresh gap.)
 
 Reviewed against the "reject don't default to claude/codex" principle otherwise holding up well:
-`registry.mjs`, `discovery.mjs`, `state.mjs`, the portal route guards, and `root-config-merge.mjs`'s
-`mergeRootConfig` (which now throws on an unrecognized harness where old code silently fell
-through to Claude) all reject correctly. The contract/schema layer's still-stubbed methods
-(`rules.render`, `skills.link`, `commands.render`, `session.launch`) throw loudly via
-`stub-adapter.mjs` and are not in any live call path, so they are inert future-capability markers,
-not bugs. 384/384 tests passing, doctor 100/100 clean (review was read-only; no fixes were
-mechanically safe enough to apply without a real behavior change).
+`registry.mjs`, `discovery.mjs`, `state.mjs`, and the portal route guards all reject correctly.
+`root-config-merge.mjs`'s `mergeRootConfig` throwing on an *unrecognized* harness (vs. old code
+silently falling through to Claude) turned out to be too narrow a correctness bar once Gemini
+became a real *registered* provider: gemini-cli-provider-integration-plan.md Phase 3 hit this
+function crashing for real (`unsupported harness: gemini`) via `presets.mjs`/
+`local-config-repair.mjs`/the `install-lib.sh` subprocess entrypoint, since `mergeRootConfig` itself
+was still a hardcoded two-branch dispatcher that never got cut over to the registry the way every
+provider's own `rootConfig.merge` adapter had been — throwing loudly on a genuinely unknown id was
+correct, but Gemini wasn't unknown, just unreached by this one particular dispatcher. Fixed by
+routing those three call sites through `getHarnessProvider(harness).adapters.rootConfig.merge`
+directly instead. The contract/schema layer's still-stubbed methods (`rules.render`, `skills.link`,
+`commands.render`, `session.launch`) throw loudly via `stub-adapter.mjs` and are not in any live
+call path, so they are inert future-capability markers, not bugs. 384/384 tests passing, doctor
+100/100 clean (review was read-only; no fixes were mechanically safe enough to apply without a real
+behavior change).
 
 ## Open questions
 

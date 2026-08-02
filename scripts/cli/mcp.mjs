@@ -5,11 +5,32 @@ import { parseMcpAdd, resolveMcpHarnesses } from "./mcp-parse.mjs";
 import { claudeMcpArgs, ensureClaudeMcpPermission, shellQuote } from "./mcp-claude.mjs";
 import { ensureCodexMcp } from "./mcp-codex.mjs";
 import { MCP_SERVERS_PATH } from "./mcp-config.mjs";
-import { initializeWorkspace, packageMode, workspaceMcpServersPath } from "./paths.mjs";
+import { initializeWorkspace, packageMode, workspaceMcpServersPath, rootConfigActive } from "./paths.mjs";
 import { hasReplaceOverride, loadWorkspaceMcpServers, readWorkspaceOverrides } from "./workspace-resources.mjs";
+import { writeRootConfig } from "./root-config-writes.mjs";
 import { getHarnessProvider } from "../harnesses/registry.mjs";
 
 const mcpPresets = loadMcpPresets();
+
+// Gemini, like Codex, has a real config file to write into directly (settings.json's mcpServers
+// key) — no CLI shell-out like Claude needs. Its addServer adapter already returns {changed,
+// content} (scripts/harnesses/gemini/index.mjs), so this is a thin orchestrator wrapper matching
+// ensureCodexMcp's shape: resolve the active config path, call the adapter, write via
+// writeRootConfig for drift-tracking parity with every other root-config write.
+function ensureGeminiMcp(spec, { dryRun = false, configPath = rootConfigActive.gemini } = {}) {
+  const provider = getHarnessProvider("gemini");
+  if (provider.adapters.mcp.list({ configPath }).includes(spec.name)) {
+    console.log(`gemini MCP already present: ${spec.name}`);
+    return;
+  }
+  if (dryRun) {
+    console.log(`would add Gemini MCP: ${spec.name} -> ${configPath}`);
+    return;
+  }
+  const { content } = provider.adapters.mcp.addServer(spec, { configPath });
+  writeRootConfig("gemini", configPath, content);
+  console.log(`gemini MCP added: ${spec.name} -> ${configPath}`);
+}
 
 function readMcpServers() {
   let builtIn;
@@ -112,6 +133,7 @@ export function mcpAdd(rest) {
   const harnesses = resolveMcpHarnesses(opts);
   const applyClaude = harnesses.includes("claude");
   const applyCodex = harnesses.includes("codex");
+  const applyGemini = harnesses.includes("gemini");
   const args = claudeMcpArgs(opts, spec);
   const display = ["claude", ...args].map(shellQuote).join(" ");
 
@@ -121,6 +143,7 @@ export function mcpAdd(rest) {
       console.log(`would add permission: mcp__${spec.name} -> generated/claude/settings.json`);
     }
     if (applyCodex) ensureCodexMcp(spec, { dryRun: true });
+    if (applyGemini) ensureGeminiMcp(spec, { dryRun: true });
     return;
   }
 
@@ -129,6 +152,7 @@ export function mcpAdd(rest) {
     if (opts.updateClaudePermission) ensureClaudeMcpPermission(spec.name);
   }
   if (applyCodex) ensureCodexMcp(spec);
+  if (applyGemini) ensureGeminiMcp(spec);
   // Built-in package presets already live in the app's mcp-servers.json; recording them again would
   // duplicate a built-in into the user workspace and trip assertMcpRecordAllowed. Only user-added
   // servers get a workspace record.

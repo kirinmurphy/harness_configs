@@ -8,10 +8,9 @@ import { installStatePath, presetsStatePath } from "./state-paths.mjs";
 import { readConfigSnapshot, buildBehaviorView } from "./config.mjs";
 import { mutatePackage, setBehaviorBucket } from "./config-mutate.mjs";
 import { renderHomeRules, removeHomeRules, isRenderedRulesOutput } from "./rules-render.mjs";
-import { listHarnessProviders } from "../harnesses/registry.mjs";
+import { listHarnessProviders, getHarnessProvider } from "../harnesses/registry.mjs";
 import { confirmYesNo, makePrompter, selectMenu, wizard } from "./skill-lib.mjs";
 import { pathExists, findSiblingArtifact, copyTree, stageCandidate, backupOriginal } from "./staging-lib.mjs";
-import { mergeRootConfig } from "./root-config-merge.mjs";
 import { checkDrift, recordWrite } from "./root-config-state.mjs";
 
 const PRESET_MANIFEST = path.join(repoRoot, "manifests", "platform", "presets.json");
@@ -668,7 +667,7 @@ function copyItem(row, policy) {
     if (drift.status === "clean") {
       const repoText = fs.readFileSync(source, "utf8");
       const localText = fs.readFileSync(row.homeAbs, "utf8");
-      fs.writeFileSync(row.homeAbs, mergeRootConfig(row.harness, repoText, localText));
+      fs.writeFileSync(row.homeAbs, getHarnessProvider(row.harness).adapters.rootConfig.merge(repoText, localText));
       console.log(`update: ${row.homeAbs} <- ${source} (baseline changed, no local drift)`);
       // The merge just changed the file's content, so recordWrite must rehash post-write — there's
       // no precomputed hash to thread through here.
@@ -681,7 +680,7 @@ function copyItem(row, policy) {
     // replaceable managed copies.
     const repoText = fs.readFileSync(source, "utf8");
     const localText = fs.readFileSync(row.homeAbs, "utf8");
-    fs.writeFileSync(row.homeAbs, mergeRootConfig(row.harness, repoText, localText));
+    fs.writeFileSync(row.homeAbs, getHarnessProvider(row.harness).adapters.rootConfig.merge(repoText, localText));
     console.log(`merge: ${row.homeAbs} <- ${source} (local root config preserved)`);
     recordWrite(row.harness, row.homeAbs);
     return;

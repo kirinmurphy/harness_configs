@@ -985,11 +985,11 @@ mcp_dry_env="HOME='${mcp_dry_home}' ROBOREPO_STATE_DIR='${mcp_dry_home}/.roborep
 
 mcp_jdoc="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run" )"
 assert "mcp add: jdocmunch preset maps to Claude user-scope uvx command" \
-  test "${mcp_jdoc}" = $'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp\nwould add permission: mcp__jdocmunch -> generated/claude/settings.json\ncodex MCP already present: jdocmunch'
+  bash -c "echo '${mcp_jdoc}' | grep -Fq 'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp' && echo '${mcp_jdoc}' | grep -Fq 'would add permission: mcp__jdocmunch -> generated/claude/settings.json' && echo '${mcp_jdoc}' | grep -Fq 'codex MCP already present: jdocmunch' && echo '${mcp_jdoc}' | grep -Fq 'would add Gemini MCP: jdocmunch -> '"$( printf '%s' "${mcp_dry_home}" | tr -s / )"'/.gemini/settings.json'"
 
 mcp_jcode="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jcodemunch --dry-run" )"
 assert "mcp add: jcodemunch preset maps to Claude user-scope uvx command" \
-  test "${mcp_jcode}" = $'claude mcp add --scope user jcodemunch -- uvx jcodemunch-mcp\nwould add permission: mcp__jcodemunch -> generated/claude/settings.json\ncodex MCP already present: jcodemunch'
+  bash -c "echo '${mcp_jcode}' | grep -Fq 'claude mcp add --scope user jcodemunch -- uvx jcodemunch-mcp' && echo '${mcp_jcode}' | grep -Fq 'would add permission: mcp__jcodemunch -> generated/claude/settings.json' && echo '${mcp_jcode}' | grep -Fq 'codex MCP already present: jcodemunch' && echo '${mcp_jcode}' | grep -Fq 'would add Gemini MCP: jcodemunch -> '"$( printf '%s' "${mcp_dry_home}" | tr -s / )"'/.gemini/settings.json'"
 
 assert "mcp add: addMCP alias removed" \
   bash -c "! node '${cli}' addMCP jdocmunch --dry-run >/dev/null 2>&1"
@@ -1007,7 +1007,7 @@ assert "mcp add: URL defaults to http transport" \
 
 mcp_skip_permission="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --skip-claude-permission" )"
 assert "mcp add: --skip-claude-permission skips settings update" \
-  test "${mcp_skip_permission}" = $'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp\ncodex MCP already present: jdocmunch'
+  bash -c "echo '${mcp_skip_permission}' | grep -Fq 'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp' && ! echo '${mcp_skip_permission}' | grep -Fq 'would add permission' && echo '${mcp_skip_permission}' | grep -Fq 'codex MCP already present: jdocmunch' && echo '${mcp_skip_permission}' | grep -Fq 'would add Gemini MCP: jdocmunch -> '"$( printf '%s' "${mcp_dry_home}" | tr -s / )"'/.gemini/settings.json'"
 
 mcp_only_claude="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --harness claude" )"
 assert "mcp add: --harness claude skips Codex config update" \
@@ -1018,7 +1018,7 @@ assert "mcp add: --harness codex skips Claude registration and settings update" 
   test "${mcp_only_codex}" = "codex MCP already present: jdocmunch"
 
 mcp_harness_repeated="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --harness claude --harness codex" )"
-assert "mcp add: repeated --harness claude --harness codex is equivalent to omitting the flag" \
+assert "mcp add: repeated --harness claude --harness codex narrows to exactly those two, not every registered harness" \
   test "${mcp_harness_repeated}" = $'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp\nwould add permission: mcp__jdocmunch -> generated/claude/settings.json\ncodex MCP already present: jdocmunch'
 
 assert "mcp add: --harness with no value is rejected" \

@@ -4,11 +4,13 @@
 // provider-architecture-plan.md). Pins the dry-run display text (still must read "claude mcp add
 // ..."), repeatable --harness <id> gating (the --only-claude/--only-codex replacement -- omitting
 // --harness means every registered harness, a given --harness always narrows to exactly the ids
-// named), and a real (non-dry-run) Codex-only add's on-disk TOML output. Claude's real
-// (non-dry-run) add shells to the actual `claude` CLI and calls process.exit(0), so it is not
-// exercised here -- covered instead by harness-mcp-remove-characterization-check.mjs (removal) and
-// mcp-claude-permission-check.mjs (the permission-grant side effect), both of which don't require a
-// live `claude` binary.
+// named), a real (non-dry-run) Codex-only add's on-disk TOML output, and a real (non-dry-run)
+// Gemini-only add's on-disk mcpServers JSON output (gemini-cli-provider-integration-plan.md Phase
+// 3 -- mcpAdd previously only had Claude/Codex branches at all, a real bug this fixes: `--harness
+// gemini` used to silently do nothing). Claude's real (non-dry-run) add shells to the actual
+// `claude` CLI and calls process.exit(0), so it is not exercised here -- covered instead by
+// harness-mcp-remove-characterization-check.mjs (removal) and mcp-claude-permission-check.mjs (the
+// permission-grant side effect), both of which don't require a live `claude` binary.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -38,6 +40,8 @@ function makeHome() {
   fs.writeFileSync(path.join(tmp, ".claude", "settings.json"), "{}");
   fs.mkdirSync(path.join(tmp, ".codex"), { recursive: true });
   fs.writeFileSync(path.join(tmp, ".codex", "config.toml"), "");
+  fs.mkdirSync(path.join(tmp, ".gemini"), { recursive: true });
+  fs.writeFileSync(path.join(tmp, ".gemini", "settings.json"), "{}");
   return tmp;
 }
 
@@ -49,7 +53,8 @@ function run(home, args) {
   return spawnSync(process.execPath, [cli, "mcp", "add", ...args], { env, encoding: "utf8" });
 }
 
-// --- Dry-run, both harnesses: prints the claude CLI invocation text and the Codex dry-run line ---
+// --- Dry-run, every registered harness: prints the claude CLI invocation text, the Codex dry-run
+// line, and the Gemini dry-run line ---
 {
   const home = makeHome();
   try {
@@ -58,6 +63,32 @@ function run(home, args) {
     assert.match(result.stdout, /^claude mcp add --scope user char-test -- uvx char-test-mcp$/m, "dry-run prints the claude CLI invocation");
     assert.match(result.stdout, /would add permission: mcp__char-test/, "dry-run prints the Claude permission-grant line");
     assert.match(result.stdout, /would add Codex MCP: char-test/, "dry-run prints the Codex add line");
+    assert.match(result.stdout, /would add Gemini MCP: char-test/, "dry-run prints the Gemini add line");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+// --- Real (non-dry-run), --harness gemini: writes mcpServers JSON, Claude/Codex configs untouched ---
+{
+  const home = makeHome();
+  try {
+    const claudeBefore = fs.readFileSync(path.join(home, ".claude", "settings.json"), "utf8");
+    const codexBefore = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
+    const result = run(home, ["--harness", "gemini", "--name=char-test-gemini", "char-test-mcp"]);
+    assert.equal(result.status, 0, `--harness gemini add should exit 0: ${result.stderr}`);
+    assert.match(result.stdout, /gemini MCP added: char-test-gemini/, "--harness gemini prints the gemini add confirmation");
+
+    const settings = JSON.parse(fs.readFileSync(path.join(home, ".gemini", "settings.json"), "utf8"));
+    assert.deepEqual(settings.mcpServers["char-test-gemini"], { command: "uvx", args: ["char-test-mcp"] }, "Gemini's mcpServers entry matches the real `gemini mcp add` CLI's own output shape");
+
+    assert.equal(fs.readFileSync(path.join(home, ".claude", "settings.json"), "utf8"), claudeBefore, "--harness gemini must never touch the Claude settings");
+    assert.equal(fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8"), codexBefore, "--harness gemini must never touch the Codex config");
+
+    // Re-running the same add must detect the existing entry, not duplicate or error.
+    const again = run(home, ["--harness", "gemini", "--name=char-test-gemini", "char-test-mcp"]);
+    assert.equal(again.status, 0, "re-adding the same gemini server should still exit 0");
+    assert.match(again.stdout, /gemini MCP already present: char-test-gemini/, "re-adding an existing gemini server reports already-present, not a duplicate write");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

@@ -12,6 +12,7 @@ import {
   claudePermissions,
   renderClaudeSettings,
 } from "../harnesses/permissions-render.mjs";
+import { GENERATED_POLICY_FILENAME } from "../harnesses/gemini/policy-toml.mjs";
 
 // Orchestration + manifest loading for agent-permission rendering. The pure render core
 // (resolveBehaviors, renderClaudeSettings, renderCodexConfig, ...) lives in
@@ -29,20 +30,26 @@ export function loadPermissionManifest(p = manifestPath) {
   return JSON.parse(fs.readFileSync(p, "utf8"));
 }
 
-// Render the manifest (+ overrides) into the .claude/.codex config under `baseDir`. Always
-// global scope — no project override. `createClaude` retained for callers that might target a
-// fresh directory (e.g. a scratch/test harness home); default global-only usage never needs it.
+// Render the manifest (+ overrides) into each present harness's live config under `baseDir`.
+// Always global scope — no project override. `createClaude` retained for callers that might target
+// a fresh directory (e.g. a scratch/test harness home); default global-only usage never needs it.
 // `overrides` is the FULL override-file shape: { behaviors: {id: bucket}, commands: {key: {tokens, bucket}} }.
 //
 // Dispatches through each provider's permissions.render adapter for the actual render (Claude:
-// settings.json's permissions key; Codex: config.toml's generated marker block) — this function
-// keeps only the create/existence-gating policy, which is genuinely per-provider behavior, not a
-// render concern: Claude materializes settings.json from nothing when its dir exists (or
-// createClaude is set); Codex never fabricates config.toml, only rewrites one that already exists.
+// settings.json's permissions key; Codex: config.toml's generated marker block; Gemini: a whole
+// roborepo-owned *.toml file inside the Policy Engine's ~/.gemini/policies/ directory) — this
+// function keeps only the create/existence-gating policy, which is genuinely per-provider behavior,
+// not a render concern: Claude materializes settings.json from nothing when its dir exists (or
+// createClaude is set); Codex never fabricates config.toml, only rewrites one that already exists;
+// Gemini writes its one owned file whenever its home dir is present, same "create on first touch"
+// posture as Claude (Gemini's file is never a pre-existing user file to merge into — roborepo fully
+// owns it — so there's no Codex-style "don't fabricate" concern).
 export function renderPermissionsTo(baseDir, { manifest = loadPermissionManifest(), overrides = {}, createClaude = false } = {}) {
   const claudeDir = path.join(baseDir, ".claude");
   const claudeSettings = path.join(claudeDir, "settings.json");
   const codexConfig = path.join(baseDir, ".codex", "config.toml");
+  const geminiDir = path.join(baseDir, ".gemini");
+  const geminiPolicy = path.join(geminiDir, "policies", GENERATED_POLICY_FILENAME);
   const touched = [];
 
   if (createClaude || fs.existsSync(claudeDir)) {
@@ -59,6 +66,12 @@ export function renderPermissionsTo(baseDir, { manifest = loadPermissionManifest
     const rendered = getHarnessProvider("codex").adapters.permissions.render(cur, manifest, overrides, codexConfig);
     writeRootConfig("codex", codexConfig, rendered);
     touched.push(codexConfig);
+  }
+  if (fs.existsSync(geminiDir)) {
+    fs.mkdirSync(path.dirname(geminiPolicy), { recursive: true });
+    const rendered = getHarnessProvider("gemini").adapters.permissions.render("", manifest, overrides, geminiPolicy);
+    writeRootConfig("gemini", geminiPolicy, rendered);
+    touched.push(geminiPolicy);
   }
   return { touched };
 }

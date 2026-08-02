@@ -36,11 +36,12 @@ function loadFixture(name) {
 // Real app-owned manifests must validate cleanly.
 validateProviderManifest(loadFixture("valid-claude.json"));
 validateProviderManifest(loadFixture("valid-codex.json"));
+validateProviderManifest(loadFixture("valid-gemini.json"));
 validateProviderManifest(loadFixture("valid-with-extensions.json"));
 assert(true, "app-owned manifests validate");
 
 // Every capability referenced by the fixtures must be a known capability.
-for (const file of ["valid-claude.json", "valid-codex.json"]) {
+for (const file of ["valid-claude.json", "valid-codex.json", "valid-gemini.json"]) {
   const manifest = loadFixture(file);
   for (const capability of manifest.capabilities) {
     assert(HARNESS_CAPABILITIES.includes(capability), `${file}: capability "${capability}" missing from HARNESS_CAPABILITIES`);

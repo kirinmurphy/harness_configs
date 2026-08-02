@@ -1,13 +1,13 @@
 ---
 id: gemini-cli-provider-integration
 priority: medium
-next_action: Read the Gemini CLI Policy Engine docs (Open question 3) to decide the permissions adapter target, then write globals/harnesses/gemini/provider.json declaring the full verified capability set (root-config, rules, permissions, hooks, skills, slash-commands, mcp)
+next_action: Begin Phase 2 — add scripts/harnesses/gemini/index.mjs (defineHarnessProvider adapter) covering rootConfig, rules, permissions (Policy Engine TOML render), hooks, skills, slash-commands, and mcp; register it in scripts/harnesses/registry.mjs
 blocked_by: []
 depends_on:
   - discoverable-harness-provider-architecture
 related:
   - discoverable-harness-provider-architecture
-reviewed_commit: 06f887b7e40ca2fef38af01215f9eef900499f0b
+reviewed_commit: 2108bbeaddaba641e22e3752a5657a3faf6d3056
 ---
 
 # Gemini CLI Provider Integration
@@ -48,18 +48,19 @@ no chat).
 | Home dir | `~/.claude/` | `~/.codex/` | `~/.gemini/` |
 | Root config | `~/.claude/settings.json` (JSON) | `~/.codex/config.toml` (TOML) | `~/.gemini/settings.json` (JSON) |
 | Rules file | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | `~/.gemini/GEMINI.md` (global) + project/ancestor discovery up to `.git` or home, concatenated, filename configurable via `context.fileName`. Not independently re-verified hands-on (no chat session run), but corroborated by `gemini hooks migrate --from-claude` and the SKILL.md filename match below — Gemini's docs are consistent with Claude's model elsewhere, no contradicting evidence found. |
-| Permissions | `permissions.allow`/`deny`/`ask` arrays in `settings.json` | `approval_policy`/`sandbox_mode` in `config.toml` + `rules/default.rules` + runtime ask hook | `tools.allowed`/`tools.exclude`/`tools.core` arrays in `settings.json` (flagged `[DEPRECATED: Use Policy Engine instead]` in `gemini --help`), plus `--approval-mode default\|auto_edit\|yolo\|plan` and a `--policy`/`--admin-policy` flag pointing at a newer Policy Engine not yet researched in detail. Needs a closer look before the manifest is final — see Open questions. |
+| Permissions | `permissions.allow`/`deny`/`ask` arrays in `settings.json` | `approval_policy`/`sandbox_mode` in `config.toml` + `rules/default.rules` + runtime ask hook | **Policy Engine**, TOML rule files at `~/.gemini/policies/*.toml` (User tier; Admin tier at OS-specific system paths; Workspace/project tier currently non-functional per Gemini's own docs — issue #18186). Each `[[rule]]` has `toolName`/`commandPrefix`/`commandRegex`/`mcpName`/`argsPattern` conditions, a `decision` of `allow`/`deny`/`ask_user` (**real native 3-state**, no runtime-hook recovery needed unlike Codex), and a `priority` (0-999) combined with tier base (`final_priority = tier_base + priority/1000`) to resolve conflicts. The older `tools.allowed`/`tools.exclude` arrays in `settings.json` are explicitly deprecated in favor of this. Confirmed via the bundled `docs/reference/policy-engine.md` and `bundle/policies/*.toml` example files (`read-only.toml`, `yolo.toml`, `sandbox-default.toml`, etc.) — not yet exercised hands-on with a real rule file. |
 | Hooks | `settings.json` wiring, JSON control output the harness obeys | dedicated `hooks.json`, plain-text output the harness shows | **Confirmed real, inside `settings.json`'s `hooks` object** (`bundle/docs/hooks/reference.md`), not a separate file. Same location as Claude, and the output contract (`continue`, `stopReason`, `decision: "allow"\|"deny"`) is structurally close to Claude's obeyed-JSON-control-protocol model, not Codex's shown-text model. `gemini hooks migrate --from-claude` exists specifically to port Claude Code hooks — strong signal the two are meant to be compatible in shape. `gemini hooks <command>` is a first-class CLI subcommand. |
 | Skills | `~/.claude/skills/` | `~/.codex/skills/` | **Confirmed real**: `~/.gemini/skills/` (also aliased at `~/.agents/skills/`, an interop path shared across tools — `bundle/docs/cli/skills.md`), same `SKILL.md`-per-folder convention as Claude/Codex (confirmed via the bundled `examples/skills/skills/greeter/SKILL.md`). Full lifecycle CLI: `gemini skills list/enable/disable/install/link/uninstall`, closer to Claude's model than expected — not a capability gap after all. |
 | Slash commands | `~/.claude/commands/*.md` | `~/.codex/commands/*.md` | `~/.gemini/commands/*.toml` (global) + `.gemini/commands/*.toml` (project), namespaced by path (`git/commit.toml` → `/git:commit`). Different format (TOML, not Markdown) — confirmed via bundled `examples/custom-commands/`, real structural difference worth exercising the renderer against. Not re-verified hands-on this pass (no chat session run to invoke `/commands list`), but format is documented consistently across sources. |
 | MCP | Native live store + permission entries | `config.toml` `mcp_servers` table | **Confirmed via real `gemini mcp add test-server echo hello --scope user`**: writes to `~/.gemini/settings.json`'s `mcpServers` key exactly as researched — `{command, args}` for stdio (also supports `env`, `cwd`, `url`, `httpUrl`, `headers`, `timeout`, `trust`, `description`, `includeTools`, `excludeTools` per `gemini mcp add --help`). `gemini mcp add/remove/list/enable/disable` is a first-class CLI subcommand, `--scope user\|project` controls global vs. project-local, defaults to `project`. |
 | Root config format | JSON | TOML | JSON |
 
-Verification corrected two assumptions from the original doc-only research: hooks and skills are
-both real, well-supported, first-class features (not gaps) — closer to Claude's shape on both axes
-than Codex's. The remaining open item is the newer Policy Engine vs. the `tools.allowed`/`exclude`
-arrays, since `gemini --help` flags the array form as deprecated in favor of it and the Policy
-Engine wasn't researched in this pass.
+Verification corrected three assumptions from the original doc-only research: hooks, skills, and
+permissions are all real, well-supported, first-class features — and permissions specifically turn
+out to be the *strongest* of the three providers on this axis, not a gap. The Policy Engine's native
+`ask_user` decision is a real 3-state at the config layer, something neither Claude (JSON arrays,
+real `ask`) nor Codex (binary rules + a runtime hook to recover `ask`) gets for free in the same way
+— Gemini gets it from one declarative TOML rule file, no hook needed.
 
 ## Open questions
 
@@ -69,19 +70,27 @@ Engine wasn't researched in this pass.
 2. ~~Is there any Gemini CLI equivalent to Claude/Codex's on-demand skills model~~ **Resolved:
    yes**, `~/.gemini/skills/`, same `SKILL.md` convention, full CLI lifecycle. No further research
    needed here.
-3. `tools.allowed`/`tools.exclude` is flagged deprecated in favor of a Policy Engine
-   (`--policy`/`--admin-policy` flags exist; `geminicli.com/docs/core/policy-engine` was surfaced by
-   docs but not read in this pass). Before writing the permissions adapter: is the Policy Engine the
-   right target to render into instead of the deprecated arrays, and does it support a real 3-state
-   `ask` (unlike Codex's binary rules layer, which needed a runtime hook to recover `ask`)? This
-   could mean Gemini's permissions story is actually *better* than Codex's out of the box — needs
-   confirming before assuming Codex's ask-recovery-hook pattern needs porting over.
+3. ~~Is the Policy Engine the right permissions target, and does it support a real 3-state `ask`~~
+   **Resolved: yes to both.** `~/.gemini/policies/*.toml`, `decision = "allow"|"deny"|"ask_user"`,
+   confirmed via the bundled `docs/reference/policy-engine.md`. The renderer's job becomes: write one
+   or more `.toml` rule files into `~/.gemini/policies/`, each `[[rule]]` mapping one manifest
+   behavior to `toolName`/`commandPrefix` + `decision` + `priority`. Unlike Codex, no
+   `globals/system/hooks/gemini/permission-check.mjs`-equivalent runtime hook is needed to recover
+   `ask` — the config layer already has it. Not yet exercised hands-on with a real rule file (no
+   chat session run to confirm a written policy actually takes effect).
 4. `--approval-mode yolo`/`plan` are full-autonomy and read-only modes with no roborepo equivalent
    on Claude or Codex. Out of scope to design roborepo controls for either in this plan — noted so
    they aren't silently assumed away, not because they need solving here.
+5. The Policy Engine's Workspace (project-level) tier is currently non-functional per Gemini's own
+   docs (their issue #18186) — only User (`~/.gemini/policies/`) and Admin (OS-specific system
+   paths) tiers work. roborepo's permission model is inherently user/global-level anyway (it renders
+   one manifest into each harness's *global* config), so this likely doesn't matter, but worth
+   confirming in Phase 2 that nothing in the adapter design implicitly assumes a project-level
+   override path exists for Gemini the way `.cursor/cli.json` vs `~/.cursor/cli-config.json` did for
+   Cursor.
 
-None of these block Phase 1's remaining work (writing the manifest); question 3 blocks finalizing
-the permissions adapter design in Phase 2.
+None of these block Phase 1's remaining work (writing the manifest) — all three permissions
+questions (3-5) are now resolved enough to design Phase 2's permissions adapter with confidence.
 
 ## Phase 1: Verify and add the provider manifest
 
@@ -95,38 +104,54 @@ the permissions adapter design in Phase 2.
   directory were not independently re-verified hands-on this pass, though nothing contradicts the
   original doc research for either. See the shape table above for full detail and what's still
   unverified.
-- [ ] Resolve Open question 3 (Policy Engine vs. deprecated `tools.allowed`/`exclude` arrays, and
-  whether the Policy Engine supports a real 3-state `ask`) — read
-  `geminicli.com/docs/core/policy-engine` and/or the bundled `bundle/policies/` directory before
-  finalizing the permissions adapter design.
+- [x] Resolve Open question 3: read the bundled `docs/reference/policy-engine.md` and
+  `bundle/policies/*.toml` examples. Confirmed the Policy Engine (`~/.gemini/policies/*.toml`) is
+  the current target, not the deprecated `tools.allowed`/`tools.exclude` arrays, and that it has a
+  real native `ask_user` decision — better native `ask` support than Codex, no runtime hook needed.
 - [ ] If pursuing further hands-on verification, confirm `GEMINI.md` discovery/precedence and the
   `~/.gemini/commands/*.toml` format with a real authenticated session (requires Google auth, not
   needed for the manifest/adapter groundwork above).
-- [ ] Add `globals/harnesses/gemini/provider.json` following `provider-manifest.schema.json`, with
+- [x] Add `globals/harnesses/gemini/provider.json` following `provider-manifest.schema.json`:
   `detection.executables: ["gemini"]`, `detection.homeCandidates: ["~/.gemini"]`,
-  `detection.configCandidates: ["~/.gemini/settings.json"]`, and `paths` covering `home`,
-  `rootConfig`, `rules`, `commands`, `skills`, and `hooks` (all confirmed to exist — declare the
-  full capability set this time, unlike the original hedge to declare fewer).
-- [ ] Add Gemini manifest fixtures alongside the existing Claude/Codex ones in
-  `scripts/test/fixtures/harnesses/`.
-- [ ] Confirm `scripts/doctor.sh`'s `check_harness_manifests` and
-  `scripts/test/harness-manifest-check.mjs` validate the new manifest without changes to either
-  check — this is the first real test of whether Phase 1 of the original migration's schema work
-  generalizes past two providers' worth of real-world shape.
+  `detection.configCandidates: ["~/.gemini/settings.json"]`, `paths` covering `home`, `rootConfig`,
+  `rules`, `skills`, `commands`, plus a Gemini-specific `policies` path (`~/.gemini/policies`,
+  directory — no Claude/Codex analog, same pattern as Codex's `rulesOverride`/`hooks` extra path
+  entries) for the Policy Engine's rule-file directory. Declared the full verified capability set:
+  `root-config`, `rules`, `permissions`, `skills`, `slash-commands`, `hooks`, `mcp` — deliberately
+  omitted `package-config`/`telemetry-*`/`session-*`, since those were never researched or verified
+  for Gemini and declaring them unverified would violate this plan's own "declare only what's
+  confirmed" principle from Phase 1's first checklist item above. Validated directly against
+  `validateProviderManifest` (`scripts/harnesses/contract.mjs`) before running any repo-wide check —
+  passed clean on the first attempt.
+- [x] Add Gemini manifest fixture: `scripts/test/fixtures/harnesses/valid-gemini.json` (identical to
+  the real `provider.json`, matching the existing `valid-claude.json`/`valid-codex.json` pattern).
+  Wired it into `scripts/test/harness-manifest-check.mjs`'s "real app-owned manifests must validate
+  cleanly" block and its per-fixture capability-cross-check loop — the two places
+  `valid-claude.json`/`valid-codex.json` were named explicitly; the check does not auto-discover
+  fixture files by directory scan.
+- [x] Confirmed `scripts/doctor.sh`'s `check_harness_manifests` and
+  `scripts/test/harness-manifest-check.mjs` validate the new manifest without any change to either
+  check's logic — `check_harness_manifests` directory-scans `globals/harnesses/*/provider.json`
+  independent of the static adapter registry (`registry.mjs` only loads Claude/Codex via static
+  imports; Gemini has no adapter yet, by design — that's Phase 2), so it picked up the new manifest
+  automatically. This is the first real confirmation that Phase 1 of the original migration's schema
+  work generalizes past two providers' worth of real-world shape, not just synthetic fixtures: 100/100
+  doctor checks, 384/384 tests, both with zero code changes to either check.
 
 ## Phase 2: Adapter implementation
 
 - [ ] Add `scripts/harnesses/gemini/index.mjs` built via `defineHarnessProvider`, implementing
   `rootConfig` (JSON merge, closer to Claude's adapter than Codex's TOML one — expect to share more
   logic with `scripts/harnesses/claude/index.mjs` than with Codex's), `rules` (GEMINI.md render,
-  same generator pattern as CLAUDE.md/AGENTS.md), `permissions` (render into either the deprecated
-  `tools.allowed`/`tools.exclude` arrays or the Policy Engine — resolve Open question 3 first, since
-  it decides which target this adapter renders into), `hooks` (settings.json's `hooks` key, Claude-
-  shaped JSON control output — expect to share more logic with Claude's hooks wiring than Codex's
-  separate-file model), `skills` (`~/.gemini/skills/` symlink, same mechanism as Claude/Codex's
-  `skills` capability, not a new one), `slash-commands` (TOML render — new format for the existing
-  renderer, not just a new output path), and `mcp` (register into `settings.json`'s `mcpServers`
-  key).
+  same generator pattern as CLAUDE.md/AGENTS.md), `permissions` (render manifest behaviors into one
+  or more `~/.gemini/policies/*.toml` rule files — `decision = "allow"|"deny"|"ask_user"` maps
+  directly onto the manifest's existing three buckets with no lossy fallback needed, unlike Codex's
+  render step, which has to drop `ask`-bucket entries into a session-wide `approval_policy`), `hooks`
+  (settings.json's `hooks` key, Claude-shaped JSON control output — expect to share more logic with
+  Claude's hooks wiring than Codex's separate-file model), `skills` (`~/.gemini/skills/` symlink,
+  same mechanism as Claude/Codex's `skills` capability, not a new one), `slash-commands` (TOML
+  render — new format for the existing renderer, not just a new output path), and `mcp` (register
+  into `settings.json`'s `mcpServers` key).
 - [ ] Add characterization tests for the new adapter's render output, matching the style of
   `permissions-render-live-characterization-check.mjs` and `root-config-merge-characterization-check.mjs`.
 

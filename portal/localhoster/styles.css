@@ -105,7 +105,7 @@ main {
 .collapsed-group /* Breathing room between a card's heading and its git row — they were tight enough to read as one
  * wrapped line rather than two facts. */
 .card-git-row:not(:empty) {
-  margin-top: 4px;
+  margin-top: 10px;
 }
 /* Cards sat flush against each other, so one card and the next read as a single continuous panel.
  * The gap lets the page background separate them into distinct objects. */
@@ -517,15 +517,24 @@ dialog::backdrop {
  * too, which are <details> rather than <article> but occupy the same tier. */
 .instance-card.is-member .card-title h3,
 .compose-project-card.is-member .card-title h3 {
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   font-weight: 600;
 }
-/* Nested members drop the outer card chrome — the repository card already provides the container,
- * and stacked borders read as boxes inside boxes. */
-.instance-card.is-member {
+/* Members sit on their own surface so the boundary between one member and the next is visible
+ * without relying on whitespace alone. A translucent black/white wash rather than a fixed color, so
+ * it stays a consistent step away from --panel in both the dark and light themes. */
+.instance-card.is-member,
+.compose-project-card.is-member {
   border: 0;
-  background: none;
-  padding: 4px 0;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+/* Light theme is opt-in via data-theme (base.css has no prefers-color-scheme), where a dark wash
+ * would be far too heavy against a white panel. */
+:root[data-theme="light"] .instance-card.is-member,
+:root[data-theme="light"] .compose-project-card.is-member {
+  background: rgba(0, 0, 0, 0.04);
 }
 /* Support members (no page title: runtimes, sockets, internal APIs) stay visible but recede, so the
  * entrypoints above them are unmistakably the things to click. */

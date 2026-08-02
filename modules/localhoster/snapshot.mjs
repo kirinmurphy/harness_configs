@@ -347,6 +347,9 @@ function toMember(instance, projectIdentity) {
     // Whether this port is something a user opens (it answered with a page title) or infrastructure
     // behind one. Drives which members get a permanent, always-visible slot on the card.
     entrypoint: Boolean(instance.title),
+    // The page title in full. Prose about what the site is, which belongs in a tooltip rather than
+    // as the member's name — see memberName.
+    description: instance.title || null,
     // Other ports held by the same process, shown as metadata rather than as separate members.
     secondaryPorts: [],
     // The full instance record, so the portal can render a member with the same card it always
@@ -369,13 +372,28 @@ function toMember(instance, projectIdentity) {
   };
 }
 
+// A member's name should say what the process IS. A page <title> is written for site visitors, not
+// for an operator — "localhostr — one config, every agentic coding harness" is a marketing tagline
+// that identifies nothing on this page. So the title is demoted below the command name and only
+// used when nothing else exists, and even then it is trimmed to its leading segment: site titles
+// are conventionally "Name — tagline" or "Name | tagline", and only the leading part names anything.
+//
+// The full title survives as `description` for the tooltip, where prose belongs.
 function memberName(instance) {
   return instance.app?.name
     || instance.docker?.composeService
     || instance.docker?.name
-    || instance.title
     || instance.process?.command
+    || shortTitle(instance.title)
     || `Port ${instance.bind.port}`;
+}
+
+// Leading segment of a page title, before the first separator conventionally used to append a
+// tagline. Returns null for an empty or missing title so callers fall through to their next source.
+function shortTitle(title) {
+  if (typeof title !== "string") return null;
+  const lead = title.split(/\s+[—–|·:]\s+/)[0]?.trim();
+  return lead || null;
 }
 
 function sumCpuPercentOfHost(instances) {

@@ -264,6 +264,11 @@
                 ></portal-info-icon>
                 <template>
                   <span class="info-tooltip-content">
+                    <!-- The page's own <title>. Prose describing the site, kept out of the card
+                         heading where it says nothing about which process this is. -->
+                    <span data-slot="page-title-detail" hidden
+                      ><strong>Page title</strong><span data-slot="page-title-text"></span
+                    ></span>
                     <span
                       ><strong>Health</strong><span data-slot="status"></span
                     ></span>

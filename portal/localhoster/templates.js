@@ -267,13 +267,16 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
   const entrypoints = repository.members.filter((member) => member.entrypoint && member.instance?.origin);
   if (entrypoints.length) {
     entrypointSlot.hidden = false;
-    entrypointSlot.textContent = displayOrigin(entrypoints[0].instance.origin);
+    // Full host:port here, unlike the members below. This is the one place the address is the
+    // point — it identifies where the app actually lives and is the thing you copy — so the host
+    // that would be noise repeated on every member row earns its space once, at the top.
+    entrypointSlot.textContent = fullOrigin(entrypoints[0].instance.origin);
     entrypointSlot.href = entrypoints[0].instance.origin;
     entrypointSlot.title = entrypoints[0].instance.origin;
     // Additional entrypoints follow as their own links rather than being hidden behind the first.
     for (const extra of entrypoints.slice(1)) {
       const link = entrypointSlot.cloneNode(false);
-      link.textContent = displayOrigin(extra.instance.origin);
+      link.textContent = fullOrigin(extra.instance.origin);
       link.href = extra.instance.origin;
       link.title = extra.instance.origin;
       entrypointSlot.after(link);
@@ -392,6 +395,12 @@ export function instanceCard(project, instance, actions) {
     identity: `${instance.project?.evidence || project.evidence || "runtime"} · ${instance.project?.confidence || project.confidence || "low"}`,
     bind: `${instance.bind.address}:${instance.bind.port}`,
   });
+  // Shown only when it adds something the heading does not already say.
+  const pageTitleDetail = tooltip.querySelector("[data-slot=page-title-detail]");
+  if (pageTitleDetail && instance.title && instance.title !== instanceTitle(project, instance)) {
+    pageTitleDetail.hidden = false;
+    tooltip.querySelector("[data-slot=page-title-text]").textContent = instance.title;
+  }
   const state = healthState(instance);
   if (state) node.dataset.health = state;
   // `suppressGit` is set when this card is a member of a repository card, which already shows the
@@ -708,6 +717,12 @@ function provenanceText(instance) {
   return label ? `${base} · ${label}` : base;
 }
 
+// Host and port, minus the scheme. Used for a repository's canonical entrypoint, where the address
+// is the card's payload rather than a repeated row prefix.
+function fullOrigin(origin) {
+  return origin.replace(/^https?:\/\//, "");
+}
+
 // Just the port. Every origin on this page is loopback by construction, so "localhost:" and
 // "127.0.0.1:" are the same prefix repeated on every row — the port is the only part that
 // identifies anything. The full origin stays on the link's href and title for copying and for the
@@ -800,8 +815,17 @@ function wireCardActions(node, project, instance, actions) {
 // its page title, or failing both the process that owns it.
 function instanceTitle(project, instance) {
   if (project.isMember) {
-    return instance.app?.name || instance.title || instance.process.command;
+    // Command name before page title, for the same reason memberName prefers it: a <title> is
+    // written for site visitors ("localhostr — one config, every agentic coding harness") and names
+    // nothing an operator is looking at. The full title moves to the tooltip.
+    return instance.app?.name || instance.process.command || shortPageTitle(instance.title) || `Port ${instance.bind.port}`;
   }
   const projectName = project.name === UNMATCHED_PROJECT_NAME ? null : project.name;
   return projectName || instance.app?.name || instance.title || instance.process.command;
+}
+
+// Leading segment of a page title, before the separator sites use to append a tagline.
+function shortPageTitle(title) {
+  if (typeof title !== "string") return null;
+  return title.split(/\s+[—–|·:]\s+/)[0]?.trim() || null;
 }

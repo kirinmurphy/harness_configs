@@ -1,7 +1,7 @@
 ---
 id: gemini-cli-provider-integration
 priority: medium
-next_action: Begin Phase 2 — add scripts/harnesses/gemini/index.mjs (defineHarnessProvider adapter) covering rootConfig, rules, permissions (Policy Engine TOML render), hooks, skills, slash-commands, and mcp; register it in scripts/harnesses/registry.mjs
+next_action: Begin Phase 3 — consumer verification. Run full test suite + doctor with Gemini manifest present but disabled (zero-additional-provider-enabled check), then enable Gemini in a sandboxed home and run roborepo update/doctor --installed/permissions --check/mcp add --harness gemini end to end. Also triage the newly-logged hardcoded-two-provider spots (mergeRootConfig dispatcher, 6 files with literal ["claude","codex"] arrays) alongside the two already-logged bugs from the parent plan's wrap-up review.
 blocked_by: []
 depends_on:
   - discoverable-harness-provider-architecture
@@ -140,20 +140,67 @@ questions (3-5) are now resolved enough to design Phase 2's permissions adapter 
 
 ## Phase 2: Adapter implementation
 
-- [ ] Add `scripts/harnesses/gemini/index.mjs` built via `defineHarnessProvider`, implementing
-  `rootConfig` (JSON merge, closer to Claude's adapter than Codex's TOML one — expect to share more
-  logic with `scripts/harnesses/claude/index.mjs` than with Codex's), `rules` (GEMINI.md render,
-  same generator pattern as CLAUDE.md/AGENTS.md), `permissions` (render manifest behaviors into one
-  or more `~/.gemini/policies/*.toml` rule files — `decision = "allow"|"deny"|"ask_user"` maps
-  directly onto the manifest's existing three buckets with no lossy fallback needed, unlike Codex's
-  render step, which has to drop `ask`-bucket entries into a session-wide `approval_policy`), `hooks`
-  (settings.json's `hooks` key, Claude-shaped JSON control output — expect to share more logic with
-  Claude's hooks wiring than Codex's separate-file model), `skills` (`~/.gemini/skills/` symlink,
-  same mechanism as Claude/Codex's `skills` capability, not a new one), `slash-commands` (TOML
-  render — new format for the existing renderer, not just a new output path), and `mcp` (register
-  into `settings.json`'s `mcpServers` key).
-- [ ] Add characterization tests for the new adapter's render output, matching the style of
-  `permissions-render-live-characterization-check.mjs` and `root-config-merge-characterization-check.mjs`.
+- [x] Add `scripts/harnesses/gemini/index.mjs` built via `defineHarnessProvider`. Implemented for
+  real: `rootConfig` (plain-object deep merge + array dedupe, ported directly from Claude's
+  `mergeObjects`/`mergeArrays` rule in `root-config-merge.mjs` — Gemini's settings.json shares that
+  shape closely enough to reuse the rule rather than re-derive it), `permissions` (Policy Engine
+  TOML render in the new `scripts/harnesses/gemini/policy-toml.mjs` — see below), `hooks.merge`/
+  `hooks.unmerge` (settings.json's `hooks` key, reusing `hooks-merge.mjs`'s `isHooksMap`/
+  `mergeHooksMap`/`unmergeHooksMap` unchanged — confirmed safe by reading the hook-definition shape
+  in the installed package's `bundle/docs/hooks/reference.md`: `{matcher, sequential,
+  hooks:[{type, command, name, timeout, description}]}` keys off the same `entry.hooks[0].command`
+  identity Claude's hooks do), and `mcp.addServer`/`removeServer`/`list` (direct `mcpServers` JSON
+  object read/write — no CLI shell-out needed, unlike Claude; confirmed shape via the real `gemini
+  mcp add test-server echo hello --scope user` call from Phase 1, re-run again this phase to
+  double-check: `{"mcpServers":{"test-server":{"command":"echo","args":["hello"]}}}`). `rules`,
+  `skills`, `commands` (slash-commands), `hooks.read`/`write`, `mcp.add`/`remove` stay
+  `stubAdapterGroups` placeholders — this matches the **current** bar for Claude and Codex too
+  (both still stub these same methods; the real render/link logic for them hasn't migrated off
+  `scripts/cli/*.mjs` for *any* provider yet, tracked as Phase 3-6 backlog on the parent
+  `discoverable-harness-provider-architecture-plan.md`, not something specific to Gemini).
+- [x] Tool-name mapping for `kind:"tools"` behaviors (the write-files behavior's Claude-specific
+  `["Write","Edit"]` tool list) verified against the **installed package's own source constants**,
+  not docs or a live session: `chunk-2NH5AG3B.js` in `@google/gemini-cli@0.53.1`'s bundle defines
+  `WRITE_FILE_TOOL_NAME="write_file"`, `EDIT_TOOL_NAME="replace"`, `READ_FILE_TOOL_NAME="read_file"`
+  as the complete, exhaustive set of file-write/read tool names Gemini ships (grepped every
+  `*_TOOL_NAME` constant in the file — no other write-capable tool exists). This is stronger
+  verification than a live session would give (a live session only samples the tools actually
+  invoked in that run; the constants are the literal strings the Policy Engine matches against,
+  ground truth from the binary itself). `kind:"network"` (Codex-only sandbox concept) renders
+  nothing, same as `claudePermissions` skipping it.
+- [x] Caught and fixed one real bug before it shipped: initial render emitted `decision = "ask"` for
+  the manifest's `ask` bucket, but the Policy Engine's actual decision enum is
+  `allow`/`deny`/`ask_user` (confirmed in `bundle/docs/reference/policy-engine.md` and every bundled
+  example `.toml`) — `"ask"` is not a valid Gemini decision at all. Fixed via a `toGeminiDecision`
+  mapping function in `policy-toml.mjs`; caught by manually inspecting a real render before writing
+  any test, then pinned with an explicit characterization assertion
+  (`testPermissionsAskMapsToAskUser`) so it can't silently regress.
+- [x] Found and fixed a real registry-driven build-time bug while wiring Phase 2 in:
+  `scripts/build/render-agent-permissions.mjs` (which is already generic over
+  `listHarnessProviders()`, no hardcoded Claude/Codex list — this is exactly what the parent
+  migration wanted proven) assumed every provider's permissions render target is its `rootConfig`
+  file. True for Claude (settings.json) and Codex (config.toml), false for Gemini — Policy Engine
+  rules live in a **directory** of standalone `*.toml` files with no rootConfig involvement at all.
+  Fixed by branching on the manifest's own `extensions.roborepo.permissionsStorage ===
+  "policy-engine-toml-directory"` signal (already present in the Phase 1 manifest) to compute
+  `generated/gemini/policies/roborepo-permissions.toml` instead of `generated/gemini/settings.json`.
+  Also had to add a `fs.mkdirSync(path.dirname(target), {recursive:true})` before the write —
+  Claude/Codex never hit this because `generated/claude/` and `generated/codex/` already existed as
+  committed directories; Gemini's nested `generated/gemini/policies/` subdirectory did not.
+  `generated/gemini/policies/roborepo-permissions.toml` is now committed alongside
+  `generated/claude/settings.json` and `generated/codex/config.toml` as the same kind of build
+  artifact; `doctor.sh`'s existing `render-agent-permissions.mjs --check` run validates it with no
+  further doctor changes, matching Phase 1's "check already generalizes" pattern.
+- [x] Add characterization tests for the new adapter's render output, matching the style of
+  `permissions-render-live-characterization-check.mjs` and `root-config-merge-characterization-check.mjs`:
+  `scripts/test/gemini-adapter-characterization-check.mjs` (10 scenarios — rootConfig merge/render,
+  the `ask`→`ask_user` decision mapping, the tools-kind→Gemini-tool-name mapping, network-kind skip,
+  arbitrary-command rendering, permissions.render's `current`-independence, hooks merge/unmerge
+  round-trip, mcp add/list/remove round-trip, mcp http-transport shape), wired into
+  `test-roborepo.sh` next to the sibling harness-provider tests. Also updated
+  `harness-registry-check.mjs`'s real-registry assertion from `providers.length === 2` to `=== 3`
+  and added `gemini` to the `hasHarnessProvider` check — this test would otherwise have failed the
+  moment Gemini was registered, since it hardcoded the pre-Gemini provider count.
 
 ## Phase 3: Consumer verification
 
@@ -170,6 +217,20 @@ questions (3-5) are now resolved enough to design Phase 2's permissions adapter 
   hardcoding `"codex"`, `mcp.mjs`'s `mcpAdd` only acting on claude/codex) — Gemini is the concrete
   case that turns those from "a hypothetical third provider would break this" into a real bug to
   fix or a real pass to confirm, whichever it turns out to be.
+- [ ] Two more hardcoded-two-provider spots found while scoping Phase 2 (deliberately left
+  untouched — out of Phase 2's adapter-implementation scope, logged here so they aren't silently
+  forgotten): `scripts/cli/root-config-merge.mjs`'s `mergeRootConfig(harness, ...)` dispatcher
+  (`if (harness === "codex") ...; if (harness === "claude") ...; throw`) is called by
+  `scripts/cli/presets.mjs` and `scripts/cli/local-config-repair.mjs` — real orchestration code,
+  not a test fixture — and would throw `unsupported harness: gemini` if either of those call sites
+  is ever reached with Gemini enabled. Note this is a different function from the provider
+  adapters' own `rootConfig.merge`, which every adapter (including Gemini's) already implements
+  correctly — `mergeRootConfig` is a separate, older dispatcher that never got cut over. Also found
+  six files with a literal `["claude", "codex"]` array outside the adapters/tests: `portal-usage.mjs`,
+  `packages.mjs`, `telemetry.mjs`, `workspace-resources.mjs`, `package-probes.mjs`,
+  `telemetry-schemas/snapshot-schema.mjs` — not yet individually triaged for whether each is a real
+  bug (silently drops Gemini) or an intentional two-provider-only scope; needs a pass same as the
+  two items above.
 - [ ] Update `docs/reference/internal/harness-anatomy.md` and `harnesses-explained.md` to include
   Gemini as a third worked example, not just Claude/Codex — this is the first real chance to
   confirm those docs' "two harnesses" framing generalizes to "N harnesses" in prose, not just in

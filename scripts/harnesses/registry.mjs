@@ -4,10 +4,12 @@
 
 import { claudeProvider } from "./claude/index.mjs";
 import { codexProvider } from "./codex/index.mjs";
+import { geminiProvider } from "./gemini/index.mjs";
 
 const PROVIDERS = new Map([
   [claudeProvider.id, claudeProvider],
   [codexProvider.id, codexProvider],
+  [geminiProvider.id, geminiProvider],
 ]);
 
 export function listHarnessProviders() {

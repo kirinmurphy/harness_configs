@@ -1566,6 +1566,14 @@ assert "harness: provider manifest and schema validation" \
 assert "harness: registry, discovery, state, and runtime" \
   node "${repo_root}/scripts/test/harness-registry-check.mjs"
 
+# Gemini CLI provider adapter (gemini-cli-provider-integration-plan.md Phase 2): the first real
+# (non-synthetic) third harness provider. Pins Policy Engine TOML decision mapping (manifest "ask"
+# bucket -> Gemini's native "ask_user"), the verified Claude-tool-name -> Gemini-tool-name table
+# (write_file/replace/read_file), settings.json rootConfig merge, hooks embedded in settings.json
+# (Claude-shaped, not a Codex-style sidecar), and mcpServers JSON add/remove/list.
+assert "harness: gemini adapter (Policy Engine render, rootConfig, hooks, mcp)" \
+  node "${repo_root}/scripts/test/gemini-adapter-characterization-check.mjs"
+
 # Package harness validation resolves against the provider registry (Phase 5), not a hardcoded
 # local Set -- pins rejection of an unregistered harness id, acceptance of registered ones, and
 # rejection of a resource targeting a harness whose manifest doesn't declare the capability that

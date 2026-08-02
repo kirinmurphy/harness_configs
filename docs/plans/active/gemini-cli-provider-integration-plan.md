@@ -15,7 +15,7 @@ reviewed_commit: 2108bbeaddaba641e22e3752a5657a3faf6d3056
 ## Summary
 
 Implement Gemini CLI as roborepo's third harness provider — the first real (non-synthetic) test of
-the [discoverable harness provider architecture](../active/discoverable-harness-provider-architecture-plan.md)'s
+the [discoverable harness provider architecture](./discoverable-harness-provider-architecture-plan.md)'s
 registry/adapter contract. The synthetic third-provider tests added during that migration
 (`config-synthetic-provider-check.mjs`, `telemetry-synthetic-provider-check.mjs`,
 `root-config-merge-synthetic-provider-check.mjs`) prove the *plumbing* generalizes past two

@@ -27,7 +27,7 @@ function assertThrows(fn, label) {
 
 // --- Real registry: exactly claude + codex + gemini, all constructible and passing contract
 // validation. Gemini is the first real (non-synthetic) third provider — see
-// docs/plans/backlog/gemini-cli-provider-integration-plan.md. ---
+// docs/plans/active/gemini-cli-provider-integration-plan.md. ---
 const providers = listHarnessProviders();
 assert(providers.length === 3, `expected 3 registered providers, got ${providers.length}`);
 assert(hasHarnessProvider("claude") && hasHarnessProvider("codex") && hasHarnessProvider("gemini"), "registry must know claude, codex, and gemini");

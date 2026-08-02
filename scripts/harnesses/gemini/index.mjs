@@ -1,6 +1,6 @@
 // Gemini CLI harness provider — the first real (non-synthetic) third provider, proving the
 // registry/adapter contract against actual native config complexity. See
-// docs/plans/backlog/gemini-cli-provider-integration-plan.md for the full shape comparison against
+// docs/plans/active/gemini-cli-provider-integration-plan.md for the full shape comparison against
 // Claude/Codex and the verification trail behind each capability below.
 //
 // rules/skills/commands/hooks.read+write/mcp.add+remove stay stubbed (notYetMigrated), matching

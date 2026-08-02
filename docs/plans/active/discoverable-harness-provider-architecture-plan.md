@@ -10,6 +10,7 @@ related:
   - plan-terminal-session-launching-milestone-1
   - portal-telemetry-web-components
   - localhoster-docker-process-providers
+  - gemini-cli-provider-integration
 reviewed_commit: c1ce2b9be751e8d4ec40f09669a268df14367ecb
 ---
 
@@ -1879,7 +1880,7 @@ provider abstraction on this presentation change.
 After the migration, implement one real third provider in a separate plan. The synthetic provider
 proves contract independence but does not test real native configuration complexity.
 
-**Started:** see [Gemini CLI Provider Integration](../backlog/gemini-cli-provider-integration-plan.md).
+**In progress:** see [Gemini CLI Provider Integration](./gemini-cli-provider-integration-plan.md).
 Gemini CLI was chosen over Cursor CLI for this first real-provider pass because its config shape
 (global settings path, rules-file discovery, permissions model, MCP registration, custom-command
 mechanism) is fully documented; Cursor CLI's public docs left permissions storage, MCP registration

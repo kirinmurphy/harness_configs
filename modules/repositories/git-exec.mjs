@@ -29,7 +29,21 @@ export const GIT_MAX_BUFFER = 1024 * 1024;
 // Allow-list of Git subcommands this seam will run. Both are read-only and neither touches the
 // network. This exists so that "never fetch remotes, never invoke hooks" is enforced by the code
 // rather than by everyone remembering it — adding `fetch` here has to be a deliberate act.
-export const GIT_READONLY_COMMANDS = new Set(["status", "rev-list"]);
+// Deliberately a strict allow-list, not a deny-list of known-dangerous verbs: a subcommand nobody
+// considered must be refused by default, since we run these against arbitrary repositories on the
+// user's machine. Every entry is a local read that neither mutates the repo nor contacts a remote.
+//   status, rev-list        working-tree state and ahead/behind
+//   symbolic-ref, rev-parse resolving the base branch (origin/HEAD, then main/master)
+//   merge-base              where a branch last shared history with its base
+//   log                     commit timestamps, for drift measured in time rather than commits
+export const GIT_READONLY_COMMANDS = new Set([
+  "status",
+  "rev-list",
+  "symbolic-ref",
+  "rev-parse",
+  "merge-base",
+  "log",
+]);
 
 // Config overrides applied to every invocation.
 //   core.hooksPath=/dev/null  Neither `status` nor `rev-list` normally runs a hook, but a repo-local

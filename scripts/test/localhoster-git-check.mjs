@@ -129,8 +129,12 @@ try {
   });
   await collectGitContext(upstreamRepo, { runGit: spy.runGit });
   assert.ok(spy.calls.length >= 2, "both status and rev-list ran");
+  // Every subcommand this module may run. All are local reads: drift collection adds symbolic-ref
+  // and rev-parse (resolving the base branch), merge-base (where the branch left it), and log
+  // (commit timestamps). None of them contacts a remote.
+  const READ_ONLY = ["status", "rev-list", "symbolic-ref", "rev-parse", "merge-base", "log"];
   for (const call of spy.calls) {
-    assert.ok(["status", "rev-list"].includes(call[0]), `unexpected git subcommand: ${call[0]}`);
+    assert.ok(READ_ONLY.includes(call[0]), `unexpected git subcommand: ${call[0]}`);
     assert.ok(!call.includes("fetch") && !call.includes("pull"), "no network subcommand may appear");
   }
   console.log("ok  only read-only, offline git subcommands run");

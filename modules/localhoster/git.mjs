@@ -71,10 +71,15 @@ async function readGitContext(projectRoot, options) {
     ? parseUpstreamFromConfig(readText(fsApi, pathApi.join(resolved.commonDir, "config")), head.branch)
     : null;
 
-  // Both subprocess calls are independent, so pay for one round of latency rather than two.
-  const [dirty, aheadBehind] = await Promise.all([
+  // Every subprocess call here is independent, so pay for one round of latency rather than four.
+  const [dirty, aheadBehind, upstreamTipAt, drift] = await Promise.all([
     readDirty(projectRoot, runGit, timeoutMs),
     upstream ? readAheadBehind(projectRoot, upstream, runGit, timeoutMs) : Promise.resolve(null),
+    upstream ? readCommitTime(projectRoot, upstream, runGit, timeoutMs) : Promise.resolve(null),
+    // Gated on upstream for the same reason ahead/behind is: a branch with no upstream is either in
+    // a repo with no remote or one never pushed, and in both cases there is no shared baseline to
+    // measure drift against. Comparing to a local main would answer a different question.
+    upstream ? readBaseDrift(projectRoot, head.branch, runGit, timeoutMs) : Promise.resolve(null),
   ]);
 
   return {
@@ -86,9 +91,95 @@ async function readGitContext(projectRoot, options) {
     ahead: aheadBehind?.ahead ?? null,
     behind: aheadBehind?.behind ?? null,
     upstream,
+    // Unix seconds of the remote-tracking tip, i.e. the newest commit we know the remote had as of
+    // the last fetch. Paired with fetchedAt so the UI can tell "in sync" from "haven't looked".
+    upstreamTipAt,
+    // How far this branch has drifted from the repository's base branch. Null on the base branch
+    // itself and whenever the base could not be resolved — see resolveBaseBranch.
+    baseBranch: drift?.baseBranch ?? null,
+    baseBehind: drift?.behind ?? null,
+    baseMergeBaseAt: drift?.mergeBaseAt ?? null,
+    // Age of the last fetch, which bounds how much any of the above can be trusted. Nothing in this
+    // module contacts a remote, so every comparison is only as fresh as this timestamp.
+    fetchedAt: readFetchTime(fsApi, pathApi, resolved),
     isWorktree: resolved.isWorktree,
     provider: { ok: true, reason: null },
   };
+}
+
+// The repository's default branch, used as the drift baseline. `origin/HEAD` is the repo's own
+// answer when it is set; main/master are guesses that are right often enough to be worth trying.
+// When none resolve we return null and the caller reports no drift at all — a drift number measured
+// against the wrong base is worse than no number, since it would be acted on.
+async function resolveBaseBranch(cwd, runGit, timeoutMs) {
+  const symbolic = await runGit(cwd, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], {
+    timeoutMs,
+  });
+  if (symbolic?.ok) {
+    const ref = symbolic.stdout.trim();
+    if (ref) return ref.replace(/^refs\/remotes\//, "");
+  }
+  for (const candidate of ["origin/main", "origin/master", "main", "master"]) {
+    const verify = await runGit(cwd, ["rev-parse", "--verify", "--quiet", candidate], { timeoutMs });
+    if (verify?.ok && verify.stdout.trim()) return candidate;
+  }
+  return null;
+}
+
+// Two facts about the same relationship: how many commits landed on the base that this branch does
+// not have (volume of the deferred merge), and when the two last shared history (how stale the
+// branch point is). Time predicts conflict pain better than count, so the UI leads with it, but
+// both are cheap once the merge-base is known.
+async function readBaseDrift(cwd, branch, runGit, timeoutMs) {
+  const baseBranch = await resolveBaseBranch(cwd, runGit, timeoutMs);
+  if (!baseBranch) return null;
+  // On the base branch itself there is no drift to report; comparing it to itself always yields 0
+  // and would render a permanently reassuring badge that never means anything.
+  if (branch && (baseBranch === branch || baseBranch === `origin/${branch}`)) return null;
+
+  const mergeBase = await runGit(cwd, ["merge-base", "HEAD", baseBranch], { timeoutMs });
+  if (!mergeBase?.ok) return null;
+  const mergeBaseSha = mergeBase.stdout.trim();
+  if (!mergeBaseSha) return null;
+
+  const [behind, mergeBaseAt] = await Promise.all([
+    runGit(cwd, ["rev-list", "--count", `HEAD..${baseBranch}`], { timeoutMs }),
+    readCommitTime(cwd, mergeBaseSha, runGit, timeoutMs),
+  ]);
+  return {
+    baseBranch,
+    behind: behind?.ok ? toCount(behind.stdout) : null,
+    mergeBaseAt,
+  };
+}
+
+// Committer date in Unix seconds for any rev. `%ct` rather than `%at` so the number tracks when the
+// commit landed on this history, not when its patch was originally authored — a rebased commit
+// keeps an old author date that would overstate staleness.
+async function readCommitTime(cwd, rev, runGit, timeoutMs) {
+  const result = await runGit(cwd, ["log", "-1", "--format=%ct", rev], { timeoutMs });
+  if (!result?.ok) return null;
+  return toCount(result.stdout);
+}
+
+// FETCH_HEAD's mtime is when `git fetch` last wrote, which is the cheapest honest answer to "how
+// current is our picture of the remote". Read from the filesystem rather than a subprocess since it
+// is a single stat. Absent on a repo that has never fetched, which is correctly reported as null.
+function readFetchTime(fsApi, pathApi, resolved) {
+  for (const dir of uniqueDirs(resolved)) {
+    try {
+      const stat = fsApi.statSync(pathApi.join(dir, "FETCH_HEAD"));
+      return Math.floor(stat.mtimeMs / 1000);
+    } catch {
+      // Try the common dir before giving up: a linked worktree fetches into the primary repository.
+    }
+  }
+  return null;
+}
+
+function toCount(stdout) {
+  const value = Number.parseInt(String(stdout).trim(), 10);
+  return Number.isFinite(value) ? value : null;
 }
 
 // A branch ref lives either as a loose file under refs/ or packed into packed-refs. A linked
@@ -153,6 +244,11 @@ function unavailable(reason) {
     ahead: null,
     behind: null,
     upstream: null,
+    upstreamTipAt: null,
+    baseBranch: null,
+    baseBehind: null,
+    baseMergeBaseAt: null,
+    fetchedAt: null,
     isWorktree: false,
     provider: { ok: false, reason },
   };

@@ -384,6 +384,9 @@ function repositoryActions() {
     onHide: hideRepository,
     onToggleMenu: toggleActionMenu,
     onCloseMenus: closeActionMenus,
+    // Binding a repository path describes the whole repository, so the action lives on this menu
+    // rather than on the Compose card nested inside it. Same dialog either way.
+    onAssociateRepo: openComposeRepoDialog,
   };
 }
 

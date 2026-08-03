@@ -226,16 +226,28 @@
     <template id="tpl-git-row">
       <span class="git-badge" data-slot="git" hidden>
         <portal-icon name="git-branch" size="sm" class="git-badge-icon"></portal-icon>
-        <span class="git-dirty-dot" data-slot="git-dirty"></span>
+        <!-- Label is set from the provider host (see providerHostLabel), so this placeholder text
+             is replaced before the row is shown. It exists so firstChild is a text node. -->
+        <!-- No provider glyph here: the git row already leads with the branch icon, and a second
+             graph-shaped mark beside it read as noise rather than as identification. The label
+             (set from the provider host) plus the external-link icon carry it. -->
         <a class="git-repo-link" data-slot="git-repo-link" target="_blank" rel="noreferrer" hidden
-          >repo<portal-icon name="external-link" size="sm"></portal-icon
+          ><span data-slot="git-repo-label">repo</span
+          ><portal-icon name="external-link" size="sm"></portal-icon
         ></a>
         <span class="git-repo-name" data-slot="git-repo-name" hidden></span>
-        <button type="button" class="git-branch-button" data-action="copy-branch" title="Copy branch name">
-          <span data-slot="git-branch"></span>
-          <portal-icon name="copy" size="sm"></portal-icon>
+        <span class="git-sep" aria-hidden="true">·</span>
+        <button type="button" class="git-branch-button copy-affordance" data-action="copy-branch" aria-label="Copy branch name">
+          <span class="copy-affordance-label" data-slot="git-branch"></span>
+          <portal-icon name="copy" size="sm" class="copy-icon-idle"></portal-icon>
+          <portal-icon name="check" size="sm" class="copy-icon-done"></portal-icon>
         </button>
-        <span class="git-tracking" data-slot="git-tracking" hidden></span>
+        <span class="git-sep" aria-hidden="true">·</span>
+        <!-- The single most severe thing worth saying about sync state, or nothing at all. Silence
+             is the healthy state, so a badge appearing here always means something. Uncommitted
+             files and commits ahead are deliberately absent: they are normal mid-task and live in
+             the tooltip instead. -->
+        <span class="git-drift" data-slot="git-drift" hidden></span>
       </span>
     </template>
     <!-- Instance card + quick links.
@@ -251,7 +263,11 @@
               <h3 data-slot="title"></h3>
               <span class="title-separator">-</span>
               <a data-slot="origin" target="_blank" rel="noreferrer"></a>
+              <!-- The whale marks a Docker-run instance. Rendered only when the Docker provider
+                   actually observed this instance; on a repository member that is usually never,
+                   since docker data attaches to compose project instances. -->
               <span class="docker-badge" data-slot="docker" hidden>
+                <portal-icon name="docker" size="sm"></portal-icon>
                 <span data-slot="docker-label"></span>
               </span>
               <!-- Other ports held by this same process. Metadata, not links — see
@@ -315,10 +331,11 @@
               <span></span><span></span><span></span>
             </button>
             <div class="menu-panel" data-menu hidden>
+              <!-- Copy URL and Open were removed: the origin link in this same row already opens
+                   on click, and the row carries its own copy affordance. Both entries restated
+                   default link behavior rather than adding an action. -->
               <button type="button" data-action="link">Add link</button>
               <button type="button" data-action="edit">Edit links</button>
-              <button type="button" data-action="copy">Copy URL</button>
-              <button type="button" data-action="open">Open</button>
               <button type="button" data-action="history">View history</button>
               <button type="button" data-action="associate">
                 Change association
@@ -349,6 +366,11 @@
           <div class="card-head">
             <div class="card-main">
               <div class="card-title">
+                <!-- A Compose stack is Docker by definition, so the whale is unconditional here.
+                     It was previously placed on the member card's docker badge, which never
+                     renders: docker data hangs off compose project instances, not repository
+                     members, so that badge had no data to show. -->
+                <span class="tech-glyph"><portal-icon name="docker" size="sm"></portal-icon></span>
                 <h3 data-slot="title"></h3>
                 <span class="title-separator">-</span>
                 <span class="compose-project-meta" data-slot="meta"></span>
@@ -373,7 +395,9 @@
                     </span>
                   </template>
                 </span>
-                <portal-icon name="chevron" size="sm" class="compose-project-chevron"></portal-icon>
+                <!-- No chevron: this card is always open (the <details> carries `open` and its
+                     summary is not a toggle), so an expand affordance would advertise an
+                     interaction that does nothing. Containers are the point of a Compose card. -->
               </div>
               <div class="card-git-row" data-slot="git-row"></div>
             </div>
@@ -388,7 +412,8 @@
                 <span></span><span></span><span></span>
               </button>
               <div class="menu-panel" data-menu hidden>
-                <button type="button" data-action="repo">Associate repo</button>
+                <!-- "Associate repo" moved to the repository card's menu: it binds a path to the
+                     whole repository, not to this one Compose stack. -->
                 <button type="button" data-action="favorite">Toggle favorite</button>
                 <button type="button" data-action="hide">Hide</button>
               </div>
@@ -412,23 +437,34 @@
     <template id="tpl-repository-card">
       <details class="instance-card repository-card">
         <summary>
-          <div class="card-head">
+          <!-- Two independently padded bands, not a padded card: the git row needs its own
+               full-bleed background, which it cannot have while a shared parent insets it. The
+               action menu sits inside the title row rather than spanning both, so the git row can
+               reach the card's edges without the menu overlapping it. -->
+          <div class="card-head card-title-row">
             <div class="card-main">
               <div class="card-title">
                 <h3 data-slot="title"></h3>
-                <span class="title-separator">-</span>
+                <!-- The separator belongs to the URL, not the title: it only earns its space when
+                     there is a second thing to separate, so it is toggled with the entrypoint. -->
+                <span class="title-separator" data-slot="title-separator" hidden>—</span>
                 <!-- The canonical entrypoint's URL, lifted out of its member so opening the app is
                      one click from page load even while the member list is collapsed. -->
-                <a class="repository-entrypoint" data-slot="entrypoint" target="_blank" rel="noreferrer" hidden></a>
-                <span class="compose-project-meta" data-slot="meta"></span>
-                <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
-                <span class="info-wrap" data-tip-html="template">
+                <a class="repository-entrypoint repository-nested-control" data-slot="entrypoint" target="_blank" rel="noreferrer" hidden></a>
+                <!-- Info trails the URL (or the title when there is no URL) so it annotates the
+                     identity of the thing, rather than floating after the member count. -->
+                <span class="info-wrap repository-nested-control" data-tip-html="template">
                   <portal-info-icon aria-label="Show repository details"></portal-info-icon>
                   <template>
+                    <!-- Grouped rather than one flat list: the repository's own identity and its
+                         git position are two different questions, and a reader scanning for one
+                         should not have to filter out the other. -->
                     <span class="info-tooltip-content">
+                      <span class="info-tooltip-group">Repository</span>
                       <span><strong>Members</strong><span data-slot="members-detail"></span></span>
                       <span><strong>Resources</strong><span data-slot="resources"></span></span>
                       <span><strong>Identity</strong><span data-slot="identity"></span></span>
+                      <span class="info-tooltip-group">Git</span>
                       <span data-slot="git-detail" hidden
                         ><strong>Tracking</strong><span data-slot="git-detail-text"></span
                       ></span>
@@ -438,17 +474,25 @@
                       <span data-slot="git-status-detail" hidden
                         ><strong>Working tree</strong><span data-slot="git-status-text"></span
                       ></span>
+                      <span data-slot="git-drift-detail" hidden
+                        ><strong>Drift</strong><span data-slot="git-drift-text"></span
+                      ></span>
+                      <span data-slot="git-fetch-detail" hidden
+                        ><strong>Fetched</strong><span data-slot="git-fetch-text"></span
+                      ></span>
                     </span>
                   </template>
                 </span>
-                <portal-icon name="chevron" size="sm" class="compose-project-chevron"></portal-icon>
+                <!-- The member count and the chevron are one affordance: the count names what the
+                     drill-down contains, so they sit together at the far end of the row rather than
+                     the count reading as loose metadata beside the title. -->
+                <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
               </div>
-              <div class="card-git-row" data-slot="git-row"></div>
             </div>
             <!-- Repository-scoped actions only. Favorite and hide describe the whole repository,
                  not one listener inside it; per-member actions (links, association, history) stay
                  on the member cards where they apply. -->
-            <div class="action-menu">
+            <div class="action-menu repository-nested-control">
               <button
                 type="button"
                 class="menu-trigger"
@@ -459,14 +503,31 @@
                 <span></span><span></span><span></span>
               </button>
               <div class="menu-panel" data-menu hidden>
+                <button type="button" data-action="repo">Associate repo</button>
                 <button type="button" data-action="favorite">Toggle favorite</button>
                 <button type="button" data-action="hide">Hide</button>
               </div>
             </div>
           </div>
+          <!-- The drill-down sits directly above the drawer it opens, so the two read as one unit.
+               With the git row between them, the expand control was separated from the thing it
+               expanded by an unrelated fact. When open, this row joins the drawer visually (see
+               .repository-drilldown-row in styles.css) like a tab attached to its panel. -->
+          <div class="repository-drilldown-row">
+            <span class="repository-drilldown">
+              <span class="compose-project-meta" data-slot="meta"></span>
+              <portal-icon name="chevron" size="sm" class="compose-project-chevron"></portal-icon>
+            </span>
+          </div>
         </summary>
         <p class="card-notice" data-slot="duplicate-notice" hidden></p>
         <div class="repository-members" data-slot="members"></div>
+        <!-- Outside <summary>, and last: the requested reading order is title -> expand/collapse ->
+             members -> git. Only the title and the drill-down belong to the summary (the part a
+             closed card still shows); the git row is a sibling of the drawer, so plain document
+             order produces the layout with no CSS reordering. Its own band so it can carry a
+             full-bleed background reaching both card edges. Empty when git is unresolvable. -->
+        <div class="card-git-row" data-slot="git-row"></div>
       </details>
     </template>
     <!-- One row per container (not per published port) — a single container publishing several
@@ -480,6 +541,10 @@
     <template id="tpl-compose-container-row">
       <div class="compose-container-row">
         <div class="compose-container-head">
+          <!-- Monochrome tech glyph inferred from the container image (see glyphForImage). Hidden
+               unless the image is one we recognize — most are not, and a placeholder on every row
+               would add noise without distinguishing anything. -->
+          <span class="tech-glyph" data-slot="tech-glyph" hidden></span>
           <span class="compose-container-name" data-slot="name"></span>
           <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
           <span class="info-wrap" data-tip-html="template">
@@ -504,8 +569,14 @@
         <span class="port-health-badge" data-slot="health-badge"></span>
         <span class="compose-container-port-address">
           <a class="compose-container-port-origin" data-slot="origin" target="_blank" rel="noreferrer"></a>
-          <button type="button" class="compose-container-port-action" data-action="copy" title="Copy URL" aria-label="Copy URL">
-            <portal-icon name="copy" size="md"></portal-icon>
+          <!-- Labeled rather than icon-only: a bare copy glyph beside a link reads as ambiguous
+               (copy what — the link, the port, the row?). Default text color, not link color, so it
+               does not compete with the origin link it sits beside. The check icon is shown only in
+               the copied state; see .copy-affordance in styles.css. -->
+          <button type="button" class="compose-container-port-action copy-affordance" data-action="copy" aria-label="Copy URL">
+            <span class="copy-affordance-label">copy url</span>
+            <portal-icon name="copy" size="md" class="copy-icon-idle"></portal-icon>
+            <portal-icon name="check" size="md" class="copy-icon-done"></portal-icon>
           </button>
           <span class="info-wrap" data-tip-html="template">
             <portal-info-icon aria-label="Show port details"></portal-info-icon>

@@ -36,9 +36,15 @@ export function collapsibleGroup(title, meta, nodes) {
   return node;
 }
 
-// Wider than the shared default (28), which is tuned for repo paths shown in a tighter slot. A
-// branch name gets the whole git row, so it can afford more characters before truncating.
-const BRANCH_NAME_MAX_LENGTH = 40;
+// Well under the shared default (28). The git row's other content — the remote link and, past
+// threshold, a drift phrase — is either fixed-width or the thing actually worth reading, so the
+// branch name is what yields space when the row gets crowded.
+const BRANCH_NAME_MAX_LENGTH = 20;
+
+// The default branches. Two uses: they are not worth a copy button (nobody pastes "main" into a
+// checkout), and they are named by role — "main branch" rather than a bare "main", which would
+// read as just another branch name.
+const DEFAULT_BRANCHES = new Set(["main", "master"]);
 
 // How a compose project's repository was established, weakest last. "auto-bind" is called out as
 // inferred because, unlike a compose working_dir (which Compose guarantees is the project
@@ -126,6 +132,14 @@ export function composeProjectCard(composeProject, actions, { isMember = false, 
 // stopPropagation, any click on it would also toggle the details open/closed via the native
 // summary click behavior.
 function wireComposeCardActions(node, composeProject, actions) {
+  // The card stays open: its containers are the reason it exists, and collapsing it left a header
+  // that said nothing the repository card above it did not already say. Suppressing the summary's
+  // native toggle is what makes the missing chevron honest rather than a hidden interaction.
+  node.querySelector("summary")?.addEventListener("click", (event) => {
+    // Nested controls (menu trigger, copy, links) handle and stop their own clicks before this
+    // runs, so only a click on the summary's own surface reaches here.
+    event.preventDefault();
+  });
   const trigger = node.querySelector("[data-action=menu]");
   const menu = node.querySelector("[data-menu]");
   trigger.addEventListener("click", (event) => {
@@ -133,7 +147,11 @@ function wireComposeCardActions(node, composeProject, actions) {
     event.stopPropagation();
     actions.onToggleMenu(node);
   });
-  node.querySelector("[data-action=repo]").addEventListener("click", (event) => {
+  // "Associate repo" now lives on the repository card's menu (see wireRepositoryActions) because it
+  // binds a path to the whole repository rather than to this one stack. Optional-chained rather
+  // than deleted outright so a standalone Compose card — one with no repository card above it —
+  // still wires the action if its template ever carries the button again.
+  node.querySelector("[data-action=repo]")?.addEventListener("click", (event) => {
     event.preventDefault();
     actions.onCloseMenus();
     actions.onAssociateRepo(composeProject);
@@ -179,6 +197,7 @@ function composeContainerRow(container, actions) {
     resources: metricsParts.join(" · ") || "unavailable",
   });
   applyResourceConcernBadge(node, metricsSource?.cpuPercentOfHost);
+  applyTechGlyph(node, glyphForImage(container.image), container.image);
   const ports = node.querySelector("[data-slot=ports]");
   for (const instance of container.instances) {
     const port = fill(tpl("tpl-compose-container-port"), {
@@ -205,8 +224,9 @@ function composeContainerRow(container, actions) {
       warning.hidden = false;
       warning.textContent = instance.bind.warning;
     }
-    port.querySelector("[data-action=copy]").addEventListener("click", () => {
-      portalCopyText(instance.origin || "");
+    wireCopyAffordance(port.querySelector("[data-action=copy]"), {
+      getText: () => instance.origin || "",
+      hoverLabel: "copy url",
     });
     const history = port.querySelector("[data-action=history]");
     if (!instance.opaqueKey || !actions?.onHistory) history.hidden = true;
@@ -229,14 +249,12 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
   // containers made menugoats read "4 members" while expanding to a single entry — the count has to
   // match what the expanded card actually lists.
   const memberCount = repository.members.length + repository.composeGroups.length;
-  const metaParts = [`${memberCount} member${memberCount === 1 ? "" : "s"}`];
-  const containerCount = repository.composeGroups.reduce((sum, group) => sum + group.containers.length, 0);
-  if (containerCount) {
-    metaParts.push(`${containerCount} container${containerCount === 1 ? "" : "s"}`);
-  }
+  // Member count only. The container count was a second number competing with it in the collapsed
+  // view, and it answers a question you only have once the card is open — where the containers are
+  // listed anyway.
   const node = fill(tpl("tpl-repository-card"), {
     title: repository.name,
-    meta: metaParts.join(" · "),
+    meta: `${memberCount} member${memberCount === 1 ? "" : "s"}`,
   });
   const tooltip = node.querySelector(".info-wrap > template").content;
   const memberNames = [
@@ -267,6 +285,9 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
   const entrypoints = repository.members.filter((member) => member.entrypoint && member.instance?.origin);
   if (entrypoints.length) {
     entrypointSlot.hidden = false;
+    // The dash is a property of having a URL, not of the title, so it appears with the URL and a
+    // repository without an entrypoint shows its name with nothing trailing it.
+    node.querySelector("[data-slot=title-separator]").hidden = false;
     // Full host:port here, unlike the members below. This is the one place the address is the
     // point — it identifies where the app actually lives and is the thing you copy — so the host
     // that would be noise repeated on every member row earns its space once, at the top.
@@ -341,6 +362,21 @@ function wireRepositoryActions(node, repository, actions) {
     actions.onCloseMenus();
     actions.onHide(repository);
   });
+  // Repository-scoped: binds a filesystem path to the whole repository, which is why it moved here
+  // from the Compose card's menu. Only offered when the repository actually has a Compose group to
+  // bind — the dialog it opens is Compose-shaped.
+  const repoAction = node.querySelector("[data-action=repo]");
+  if (repoAction) {
+    const composeGroup = repository.composeGroups?.[0];
+    if (!composeGroup || !actions.onAssociateRepo) repoAction.hidden = true;
+    else {
+      repoAction.addEventListener("click", (event) => {
+        event.preventDefault();
+        actions.onCloseMenus();
+        actions.onAssociateRepo(composeGroup);
+      });
+    }
+  }
   menu?.addEventListener("click", (event) => event.stopPropagation());
 }
 
@@ -458,8 +494,6 @@ export function inactiveCard(project, actions) {
     bind: "no active listener",
   });
   node.querySelector("[data-slot=origin]").hidden = true;
-  node.querySelector("[data-action=copy]").hidden = true;
-  node.querySelector("[data-action=open]").hidden = true;
   node.querySelector("[data-action=associate]").hidden = true;
   wireCardActions(node, { identity: project.identity, name: project.name }, { app: project.app, origin: null }, actions);
   return node;
@@ -504,13 +538,18 @@ function applyGitBadge(node, tooltip, git, providerUrl) {
   const badge = tpl("tpl-git-row");
   row.append(badge);
   badge.hidden = false;
-  const branchName = git.detached ? "detached" : git.branch || "";
   const branchSlot = badge.querySelector("[data-slot=git-branch]");
+  // The default branch is named by its role, not its label: "main branch" reads as a fact about
+  // where you are, while a bare "main" reads as just another branch name among many.
+  const branchName = git.detached ? "detached" : git.branch || "";
+  const branchLabel = !git.detached && DEFAULT_BRANCHES.has(branchName)
+    ? `${branchName} branch`
+    : branchName;
   // Long branch names (ticket-prefixed, or a full feature description) would otherwise push the
   // rest of the row off. Middle-truncated because the tail of a branch name is usually the part
   // that identifies it — the shared helper's default cap is tuned for repo paths, so this passes
-  // its own wider cap.
-  branchSlot.textContent = portalMiddleEllipsis(branchName, BRANCH_NAME_MAX_LENGTH);
+  // its own cap.
+  branchSlot.textContent = portalMiddleEllipsis(branchLabel, BRANCH_NAME_MAX_LENGTH);
   if (branchSlot.textContent !== branchName) branchSlot.title = branchName;
 
   const repoLink = badge.querySelector("[data-slot=git-repo-link]");
@@ -518,35 +557,155 @@ function applyGitBadge(node, tooltip, git, providerUrl) {
   if (providerUrl) {
     repoLink.hidden = false;
     repoLink.href = providerUrl;
-    const fullName = repoNameFromProviderUrl(providerUrl);
-    repoLink.firstChild.textContent = portalMiddleEllipsis(fullName);
-    repoLink.title = fullName;
+    // Named by where it goes. Not the repo name (already the card's heading a few pixels above),
+    // and deliberately not a ref like "origin/main" — this URL is the repository's landing page,
+    // not a branch view, so naming a branch would promise something the link does not do.
+    repoLink.querySelector("[data-slot=git-repo-label]").textContent = providerHostLabel(providerUrl);
+    repoLink.title = repoNameFromProviderUrl(providerUrl);
   } else {
     repoName.hidden = false;
     repoName.textContent = "local repo";
   }
 
-  // A dot, not a badge/text label — commit hash and "clean/dirty" as a boolean are rarely acted
-  // on day to day; both stay available in the hover detail for the rare case (reset, diff) that
-  // actually needs them, rather than claiming permanent top-level space.
-  const dirty = badge.querySelector("[data-slot=git-dirty]");
-  dirty.classList.toggle("is-dirty", git.dirty === true);
-  dirty.title = git.dirty === true ? "Uncommitted changes" : git.dirty === false ? "No uncommitted changes" : "Dirty state unavailable";
-
-  const tracking = badge.querySelector("[data-slot=git-tracking]");
-  // Words rather than arrows: "↑3" reads as a rating or a vote count out of context, and the
-  // direction an arrow implies is not self-evident when ahead and behind can both be true.
-  const marks = [];
-  if (git.ahead) marks.push(`${git.ahead} ahead`);
-  if (git.behind) marks.push(`${git.behind} behind`);
-  if (marks.length) {
-    tracking.hidden = false;
-    tracking.textContent = marks.join(" ");
-    tracking.title = `${git.ahead || 0} ahead, ${git.behind || 0} behind ${git.upstream || "upstream"}`;
-  }
+  applyGitDrift(badge, git);
+  pruneSeparators(badge);
 
   badge.title = gitTooltip(git);
   applyGitTooltipFields(tooltip, git);
+}
+
+// The middots are authored into the template between fixed positions, but most of what they
+// separate is conditional — a clean repo has no sync cluster, a local-only repo has no link. Rather
+// than making each dot's visibility a special case of its neighbours, drop any that no longer sits
+// between two visible things. Keeps the markup declarative and the row free of trailing dots.
+function pruneSeparators(badge) {
+  const visible = (el) => el && !el.hidden && el.textContent.trim() !== "";
+  for (const sep of badge.querySelectorAll(".git-sep")) {
+    let before = sep.previousElementSibling;
+    while (before && !visible(before)) before = before.previousElementSibling;
+    let after = sep.nextElementSibling;
+    while (after && !visible(after)) after = after.nextElementSibling;
+    // The branch icon is decorative and never counts as content worth separating from.
+    if (!before || before.classList.contains("git-badge-icon") || !after) sep.remove();
+  }
+}
+
+// Past these ages the drift is worth interrupting for; under them the card stays silent. Silence
+// being the healthy state is the point — a badge that renders always is a badge nobody reads.
+const UNPUSHED_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+const BASE_DRIFT_THRESHOLD_MS = 4 * 24 * 60 * 60 * 1000;
+
+// The one thing this row says about sync state, chosen from a severity ladder. Everything the
+// ladder does not select — uncommitted files, commits ahead, exact counts — is available in the
+// tooltip. Those facts are real but rarely change what you do next: uncommitted work is normal
+// mid-task, and commits ahead are only a problem once they have sat unpushed for a while.
+//
+// Time triggers and count qualifies, deliberately. Being 40 commits behind a branch that moved this
+// morning is a trivial rebase; being 2 commits behind a branch point from last week is where things
+// get moved out from under you. Age predicts conflict pain, so age decides whether to speak at all
+// and the count only colors what is said.
+//
+// Ranked most severe first. Each entry returns null when it does not apply, so the first non-null
+// wins and nothing below it renders.
+const DRIFT_RULES = [
+  // Someone else pushed to your branch, or you pushed from another machine. Structurally impossible
+  // on solo work, which is exactly why it deserves the loudest treatment when it does happen: it is
+  // rare, it always means something, and the conflict is with your own work.
+  (git) => {
+    if (!git.behind) return null;
+    return {
+      level: "danger",
+      text: `${git.behind} behind remote`,
+      title: `${git.upstream || "The remote branch"} has ${git.behind} commit${git.behind === 1 ? "" : "s"} you do not have locally — pull before continuing`,
+    };
+  },
+  // The common case: a branch point old enough that main has likely moved underneath it.
+  (git, now) => {
+    const age = baseDriftAge(git, now);
+    if (age == null) return null;
+    const base = baseName(git);
+    const suffix = fetchOlderThan(git, age, now) ? "+" : "";
+    return git.baseBehind
+      ? {
+          level: "warn",
+          text: `${formatDuration(age)}${suffix} behind ${base} (${git.baseBehind})`,
+          title: driftTitle(git, base, now),
+        }
+      // Nothing landed on the base, so there is no merge to do — only a branch point that is
+      // getting old. Worth saying, but it is not the same warning as real divergence.
+      : {
+          level: "warn",
+          text: `${formatDuration(age)}${suffix} since ${base}`,
+          title: driftTitle(git, base, now),
+        };
+  },
+  // Work that exists only on this machine. Measured from the remote tip, since the question is how
+  // long the remote has been missing it, not when you last committed.
+  (git, now) => {
+    if (!git.ahead || !git.upstreamTipAt) return null;
+    const age = now - git.upstreamTipAt * 1000;
+    if (age <= UNPUSHED_THRESHOLD_MS) return null;
+    return {
+      level: "warn",
+      text: `${formatDuration(age)} unpushed`,
+      title: `${git.ahead} commit${git.ahead === 1 ? "" : "s"} not on ${git.upstream || "the remote"} — last shared commit was ${formatDuration(age)} ago`,
+    };
+  },
+];
+
+function applyGitDrift(badge, git) {
+  const slot = badge.querySelector("[data-slot=git-drift]");
+  if (!slot) return;
+  const now = Date.now();
+  for (const rule of DRIFT_RULES) {
+    const hit = rule(git, now);
+    if (!hit) continue;
+    slot.hidden = false;
+    slot.textContent = `⚠ ${hit.text}`;
+    slot.title = hit.title;
+    slot.dataset.level = hit.level;
+    return;
+  }
+}
+
+// Age of the branch point, or null when there is no base to compare against or it is still fresh.
+function baseDriftAge(git, now) {
+  if (!git.baseMergeBaseAt || !git.baseBranch) return null;
+  const age = now - git.baseMergeBaseAt * 1000;
+  return age > BASE_DRIFT_THRESHOLD_MS ? age : null;
+}
+
+function baseName(git) {
+  return String(git.baseBranch || "").replace(/^origin\//, "");
+}
+
+// Nothing in the snapshot pipeline contacts a remote, so every comparison is only as fresh as the
+// last fetch. When the fetch is older than the gap being reported, the gap is a lower bound.
+function fetchOlderThan(git, ageMs, now = Date.now()) {
+  if (!git.fetchedAt) return true;
+  return now - git.fetchedAt * 1000 > ageMs;
+}
+
+function driftTitle(git, base, now = Date.now()) {
+  const parts = [];
+  parts.push(git.baseBehind
+    ? `${git.baseBehind} commit${git.baseBehind === 1 ? "" : "s"} on ${base} not in this branch`
+    : `nothing new on ${base}; only the branch point is old`);
+  parts.push(git.fetchedAt
+    ? `fetched ${formatDuration(now - git.fetchedAt * 1000)} ago`
+    : "never fetched — counts may understate");
+  return parts.join(" · ");
+}
+
+// Coarse on purpose: at dashboard glance-level "5d" and "5d 4h" mean the same thing, and the extra
+// precision would imply the underlying refs are fresher than a fetch-bound measurement can be.
+function formatDuration(ms) {
+  const hours = Math.floor(ms / (60 * 60 * 1000));
+  if (hours < 1) return "under 1h";
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 14) return `${days}d`;
+  return `${Math.floor(days / 7)}w`;
 }
 
 // Branch, commit, and working-tree state are three independent facts; crammed onto one
@@ -586,26 +745,157 @@ function applyGitTooltipFields(tooltip, git) {
         ? "uncommitted changes"
         : "no uncommitted changes";
   }
+  // The full arithmetic behind the card's single drift phrase. The card shows only the worst
+  // relationship past threshold; here both the count and the age are always available.
+  const drift = tooltip.querySelector("[data-slot=git-drift-detail]");
+  if (drift && git.baseBranch && git.baseMergeBaseAt) {
+    const base = git.baseBranch.replace(/^origin\//, "");
+    const age = formatDuration(Date.now() - git.baseMergeBaseAt * 1000);
+    drift.hidden = false;
+    tooltip.querySelector("[data-slot=git-drift-text]").textContent = git.baseBehind
+      ? `${age} behind ${base} (${git.baseBehind} commit${git.baseBehind === 1 ? "" : "s"})`
+      : `up to date with ${base}`;
+  }
+  // Stated outright rather than implied: every number above is measured against remote-tracking
+  // refs, so this timestamp is the bound on how much any of them can be trusted.
+  const fetched = tooltip.querySelector("[data-slot=git-fetch-detail]");
+  if (fetched) {
+    fetched.hidden = false;
+    tooltip.querySelector("[data-slot=git-fetch-text]").textContent = git.fetchedAt
+      ? `${formatDuration(Date.now() - git.fetchedAt * 1000)} ago`
+      : "never — counts may understate";
+  }
 }
 
-// Copying "main" is not something anyone needs — the button only earns its space on a branch whose
-// name you would actually paste into a checkout or a PR.
-const UNCOPYABLE_BRANCHES = new Set(["main", "master"]);
+// How long "Copied" stays before the control returns to its resting state.
+const COPY_FEEDBACK_MS = 3000;
+
+// One copy affordance, used by both the branch button and the container port rows. All three states
+// live on one element and swap by data-attribute rather than by rewriting the label: the resting
+// text keeps its own width, so the row does not reflow when the hover or copied label replaces it.
+//
+// The overlay is absolutely positioned over the resting label rather than replacing it, which is
+// what keeps the control's width stable across all three states.
+function wireCopyAffordance(button, { getText, hoverLabel, copiedLabel = "copied" }) {
+  if (!button) return;
+  // The overlay covers the label only, not the whole button: the button also holds the trailing
+  // icon, and an overlay spanning both would right-align its text underneath that icon. Wrapping
+  // the label gives the overlay a box that ends exactly where the icon begins.
+  const label = button.querySelector(".copy-affordance-label");
+  if (!label) return;
+  const slot = document.createElement("span");
+  slot.className = "copy-affordance-slot";
+  label.replaceWith(slot);
+  slot.append(label);
+  const overlay = document.createElement("span");
+  overlay.className = "copy-overlay";
+  slot.append(overlay);
+
+  let timer = null;
+  const reset = () => {
+    button.dataset.copyState = "idle";
+    overlay.textContent = "";
+  };
+  const setHover = () => {
+    // A hover arriving while "Copied" is showing must not preempt it: the success message is the
+    // more important of the two, and it is on a timer the user did not ask to interrupt.
+    if (button.dataset.copyState === "copied") return;
+    button.dataset.copyState = "hover";
+    overlay.textContent = hoverLabel;
+  };
+
+  button.addEventListener("mouseenter", setHover);
+  button.addEventListener("focus", setHover);
+  button.addEventListener("mouseleave", () => {
+    if (button.dataset.copyState === "copied") return;
+    reset();
+  });
+  button.addEventListener("blur", () => {
+    if (button.dataset.copyState === "copied") return;
+    reset();
+  });
+
+  button.addEventListener("click", (event) => {
+    // Both call sites sit inside a <summary>, where an unhandled click would toggle the card.
+    event.preventDefault();
+    event.stopPropagation();
+    const text = getText();
+    if (!text) return;
+    portalCopyText(text);
+    button.dataset.copyState = "copied";
+    overlay.textContent = copiedLabel;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      // Clear the copied state FIRST. setHover() deliberately refuses to preempt "Copied", so
+      // calling it while still in that state would be a no-op and the message would never expire
+      // under a stationary cursor.
+      reset();
+      // Then return to hover rather than idle if the pointer never left, so the label does not
+      // flash to the resting state under a cursor that is still on the control.
+      if (button.matches(":hover")) setHover();
+    }, COPY_FEEDBACK_MS);
+  });
+
+  reset();
+}
 
 function wireCopyBranchButton(node, git) {
   const button = node.querySelector("[data-action=copy-branch]");
   if (!button) return;
-  if (!git?.detached && UNCOPYABLE_BRANCHES.has(git?.branch)) {
-    // The branch name itself stays visible; only the copy affordance and its icon go.
-    button.querySelector("portal-icon")?.remove();
+  if (!git?.detached && DEFAULT_BRANCHES.has(git?.branch)) {
+    // The branch name itself stays visible; only the copy affordance and its icons go. Plural:
+    // the button holds both the copy glyph and the copied-state check, so removing just the first
+    // would leave the check behind on a control that can never reach that state.
+    for (const icon of button.querySelectorAll("portal-icon")) icon.remove();
     button.classList.add("is-static");
     return;
   }
-  button.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    portalCopyText(git?.detached ? git.shortHead || "" : git?.branch || "");
+  wireCopyAffordance(button, {
+    getText: () => (git?.detached ? git.shortHead || "" : git?.branch || ""),
+    hoverLabel: "copy branch",
   });
+}
+
+// Maps a container image to one of the tech glyphs in portal/shared/icon.js. Matched against the
+// image reference, which is the only field that reliably names the software: container and Compose
+// service names are user-chosen ("db", "api") and say nothing about what is running.
+//
+// Patterns are anchored on the image *path* rather than a bare substring so a registry host cannot
+// produce a false positive — every Supabase image here is published as `public.ecr.aws/supabase/*`,
+// which a naive /supabase/ test would also match on an unrelated registry path.
+//
+// Ordered: the first match wins, so more specific patterns belong before general ones.
+const IMAGE_GLYPHS = [
+  [/(^|\/)supabase\//i, "supabase"],
+  // Tunnels expose a local port publicly. Grouped because they answer the same question on a card
+  // ("this address is reachable from outside"), not because the tools are otherwise alike.
+  [/(^|\/)(ngrok|cloudflare\/cloudflared|cloudflared|tailscale)\b/i, "tunnel"],
+  [/(^|\/)(node|nodejs)(:|$)/i, "node"],
+];
+
+// Null when nothing matches — most images are not one of the four we have glyphs for, and an
+// unrecognized image gets no icon rather than a generic placeholder that would add noise to every
+// row without distinguishing anything.
+export function glyphForImage(image) {
+  if (!image) return null;
+  for (const [pattern, name] of IMAGE_GLYPHS) {
+    if (pattern.test(image)) return name;
+  }
+  return null;
+}
+
+// Renders a tech glyph into a card's [data-slot=tech-glyph], or leaves the slot hidden when the
+// thing was not recognized. Titled with what it was inferred from, so the icon is never a claim the
+// user cannot check.
+function applyTechGlyph(node, glyph, source) {
+  const slot = node.querySelector("[data-slot=tech-glyph]");
+  if (!slot || !glyph) return;
+  const icon = document.createElement("portal-icon");
+  icon.setAttribute("name", glyph);
+  icon.setAttribute("size", "sm");
+  slot.append(icon);
+  slot.hidden = false;
+  slot.title = source ? `${glyph} — inferred from ${source}` : glyph;
 }
 
 // Docker/process fields are current-snapshot facts only — real provider data or nothing, never a
@@ -749,6 +1039,28 @@ function repoNameFromProviderUrl(providerUrl) {
   }
 }
 
+// Known forges, so the link is labeled by where it actually goes. Derived from the host rather than
+// hardcoded to "GitHub": a self-hosted GitLab or a Bitbucket remote should not claim to be GitHub.
+const PROVIDER_LABELS = [
+  [/(^|\.)github\.com$/i, "GitHub"],
+  [/(^|\.)gitlab\.com$/i, "GitLab"],
+  [/(^|\.)bitbucket\.org$/i, "Bitbucket"],
+];
+
+function providerHostLabel(providerUrl) {
+  try {
+    const host = new URL(providerUrl).hostname;
+    for (const [pattern, label] of PROVIDER_LABELS) {
+      if (pattern.test(host)) return label;
+    }
+    // An unrecognized forge (self-hosted GitLab, Gitea, an internal mirror) is named by its host,
+    // which is more informative than a generic "remote repo" and never claims the wrong vendor.
+    return host.replace(/^www\./i, "");
+  } catch {
+    return "remote repo";
+  }
+}
+
 function gitTooltip(git) {
   const parts = [git.detached ? `detached at ${git.shortHead}` : `${git.branch} · ${git.shortHead}`];
   if (git.isWorktree) parts.push("linked worktree");
@@ -772,14 +1084,8 @@ function wireCardActions(node, project, instance, actions) {
     actions.onCloseMenus();
     actions.onEditLinks(project, instance);
   });
-  node.querySelector("[data-action=copy]").addEventListener("click", () => {
-    actions.onCloseMenus();
-    portalCopyText(instance.origin || "");
-  });
-  node.querySelector("[data-action=open]").addEventListener("click", () => {
-    actions.onCloseMenus();
-    if (instance.origin) window.open(instance.origin, "_blank", "noopener,noreferrer");
-  });
+  // No copy/open wiring: those menu entries were removed because the origin link in the same row
+  // already opens on click and the row carries its own copy affordance.
   const history = node.querySelector("[data-action=history]");
   // Only an instance the current snapshot minted a key for has readable history.
   if (!instance.opaqueKey || !actions.onHistory) history.hidden = true;

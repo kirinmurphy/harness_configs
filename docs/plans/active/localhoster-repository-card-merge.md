@@ -251,9 +251,17 @@ Offline already sinks within its group; that behavior is preserved.
       `groupByContainer` helper for the sub-group's contents.
 - [x] Keep `projects`, `composeProjects`, and `unmatchedInstances` populated during the transition
       so existing consumers and `findCurrentInstanceByOpaqueKey` (`snapshot.mjs:147`) keep working.
-- [ ] Migrate the portal render paths in `portal/localhoster/` onto `repositories`; unify
-      `tpl-card` and `tpl-compose-project-card` into one card template with a member list. The two
-      templates already emit an identical head skeleton, so the merge is tractable.
+- [x] Migrate the portal render paths in `portal/localhoster/` onto `repositories`. `app.js` renders
+      `snapshot.repositories` first, then filters `projects`/`composeProjects`/`unmatchedInstances`
+      to entries **without** a `repositoryId` so nothing double-renders. Verified against live data:
+      4 repositories, 0 standalone leftovers, 0 instances appearing both as a member and as their
+      own card, and the unmatched bucket correctly dropped 13 → 10 as three listeners became members.
+- [ ] ~~Unify `tpl-card` and `tpl-compose-project-card` into one template.~~ Not done, and now
+      deliberate: a member keeps its own card kind. A listener stays a full instance card (quick
+      links, association, alias, history keep working) and a Compose stack stays its own sub-card,
+      since `docker compose down` stops those containers as one unit. Merging is a grouping change,
+      not a redesign of what a member is. The three kinds share `.card-head` and the band structure,
+      which is where the actual duplication was. Revisit only if the kinds converge further.
 - [ ] Apply the ordering rule above.
 - [ ] Remove the three legacy collections once no consumer reads them.
 - [ ] Update snapshot tests for the new shape.

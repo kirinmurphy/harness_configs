@@ -1,7 +1,7 @@
 ---
 id: localhoster-compose-project-grouping
 priority: high
-next_action: Implement composeProject grouping in discovery.mjs, then the project-card rollup render in app.js/templates.js
+next_action: Review for completion — the grouping and the project-card rollup have both landed (composeProjectCard renders standalone and as a repository-card sub-group; covered by localhoster-repository-merge-check). Confirm the Validation bullets, then move to completed with a Verification section.
 blocked_by: []
 depends_on:
   - localhoster-docker-process-providers

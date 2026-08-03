@@ -6,8 +6,8 @@ import { setPackageEnabled, renderHomeRules, effectiveEnabledIds, knownHarnessId
 import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog, BUILT_IN_PACKAGES_DIR, readPackageCategories } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 import { buildPackageLiveState } from "./package-probes.mjs";
-import { ensureCodexMcp, removeCodexMcp } from "./mcp-codex.mjs";
 import { ensureClaudeMcpPermission } from "./mcp-claude.mjs";
+import { configFileMcpProviders, ensureConfigFileMcp, removeConfigFileMcp } from "./mcp-config-file.mjs";
 import { loadMcpPresets } from "./mcp-presets.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
 import { hookFilePath, mergeHooksInto, unmergeHooksFrom, installHookScripts, removeHookScripts } from "./hook-composition.mjs";
@@ -310,11 +310,14 @@ function unmergeCodexToolApprovals(configPath, component) {
 
 
 function installMcpPreset(presetId) {
-  // Wires a built-in package's own MCP preset. Registers Claude and Codex independently (mirroring
-  // removeMcpPreset below) instead of delegating to a single `mcp add` subprocess: that combined path
-  // treats Claude CLI registration and the Codex config write as all-or-nothing (see mcpAdd), so an
-  // environment without the `claude` binary (e.g. CI) would silently skip the Codex write too, even
-  // though it has no external CLI dependency of its own.
+  // Wires a built-in package's own MCP preset. Registers Claude and every config-file-backed
+  // provider (Codex, Gemini, ...) independently (mirroring removeMcpPreset below) instead of
+  // delegating to a single `mcp add` subprocess: that combined path treats Claude CLI registration
+  // and the config-file writes as all-or-nothing (see mcpAdd), so an environment without the
+  // `claude` binary (e.g. CI) would silently skip the other writes too, even though they have no
+  // external CLI dependency of their own. configFileMcpProviders() (scripts/cli/mcp.mjs) iterates
+  // the registry rather than naming Codex/Gemini individually, so a future config-file-backed
+  // provider is wired here with no change to this function.
   if (process.env.ROBOREPO_SKIP_MCP === "1") { console.log(`skip: mcp ${presetId} (ROBOREPO_SKIP_MCP)`); return; }
   const spec = getMcpPresets().get(presetId.toLowerCase());
   if (!spec) throw new Error(`mcp add failed for preset: ${presetId} (unknown preset)`);
@@ -333,7 +336,7 @@ function installMcpPreset(presetId) {
     console.log(`  ok: claude CLI unavailable for mcp ${presetId}`);
   }
 
-  ensureCodexMcp(spec);
+  for (const provider of configFileMcpProviders()) ensureConfigFileMcp(provider, spec);
 }
 
 export async function enablePackage(rest, _seen = new Set()) {
@@ -549,7 +552,7 @@ function removeMcpPreset(presetId, dryRun) {
   // original's unconditional pruneClaudeMcpStore call.
   getHarnessProvider("claude").adapters.mcp.removeServer(presetId, { homePath: harnessHome.claude });
   console.log(`  removed: mcp ${presetId} from Claude scopes`);
-  removeCodexMcp(presetId);
+  for (const provider of configFileMcpProviders()) removeConfigFileMcp(provider, presetId);
 }
 
 export async function disablePackage(rest) {

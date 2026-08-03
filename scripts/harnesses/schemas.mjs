@@ -105,7 +105,10 @@ export function validateHarnessState(state) {
 }
 
 /**
- * @typedef {object} AdapterActionResult
+ * @typedef {object} AdapterActionResult A "write-and-report" adapter method's return shape — one
+ *   that performs (or dry-run-previews) its own side effect and reports what happened. Used by
+ *   e.g. mcp.addServer/removeServer/remove, hooks.write. Distinct from AdapterComputeResult below,
+ *   which a "compute-only" method returns for the orchestrator to write.
  * @property {boolean} ok
  * @property {boolean} changed
  * @property {string} providerId
@@ -134,4 +137,29 @@ export function validateAdapterActionResult(result) {
   }
 
   if (errors.length > 0) throw new Error(`invalid adapter action result:\n  ${errors.join("\n  ")}`);
+}
+
+/**
+ * @typedef {object} AdapterComputeResult A "compute-only" adapter method's return shape — no file
+ *   I/O, no path resolution; the caller (an orchestrator that already sits above the harness
+ *   registry in the dependency graph, e.g. hook-composition.mjs, package-harness-config.mjs,
+ *   mcp.mjs) performs the actual write via writeRootConfig or a plain file write. Used by e.g.
+ *   rootConfig.merge{,PackageComponent}, hooks.merge/unmerge, mcp.addServer/removeServer (the
+ *   config-file-backed providers' single-server shape, as opposed to Claude's CLI-shell-out
+ *   AdapterActionResult shape for the same capability).
+ * @property {boolean} changed
+ * @property {string} [content] Omitted when the method reports {changed:false} without computing
+ *   new content (e.g. removing a server that was never present).
+ */
+
+export function validateAdapterComputeResult(result) {
+  const errors = [];
+  if (typeof result !== "object" || result === null) {
+    throw new Error("adapter compute result must be an object");
+  }
+  if (typeof result.changed !== "boolean") errors.push("adapter compute result changed must be a boolean");
+  if (result.content !== undefined && typeof result.content !== "string") {
+    errors.push("adapter compute result content must be a string when present");
+  }
+  if (errors.length > 0) throw new Error(`invalid adapter compute result:\n  ${errors.join("\n  ")}`);
 }

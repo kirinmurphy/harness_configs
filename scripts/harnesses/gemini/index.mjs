@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { defineHarnessProvider } from "../contract.mjs";
 import { detectHarnessProvider } from "../discovery.mjs";
 import { stubAdapterGroups } from "../stub-adapter.mjs";
-import { isHooksMap, mergeHooksMap, unmergeHooksMap } from "../hooks-merge.mjs";
+import { mergeRootConfigHooks, unmergeRootConfigHooks } from "../root-config-hooks.mjs";
 import { renderGeminiPolicyFile, GENERATED_POLICY_FILENAME } from "./policy-toml.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -83,32 +83,12 @@ function normalizeGeminiRootConfig(content) {
   }
 }
 
-// Gemini stores hooks nested under settings.json's "hooks" key, same location as Claude's
-// settings.json (not a dedicated sidecar like Codex's hooks.json) — reuses the identical
-// isHooksMap/mergeHooksMap/unmergeHooksMap pure logic, since the hook-definition shape
-// ({matcher, sequential, hooks:[{type, command, ...}]}) keys off the same entry.hooks[0].command
-// identity Claude's hooks do (bundle/docs/hooks/reference.md's Configuration schema table).
-function readSettingsHooks(settingsPath) {
-  let settings = {};
-  try { settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")); } catch {}
-  return { settings, hooks: isHooksMap(settings.hooks) ? settings.hooks : {} };
-}
-
-function hooksMerge(settingsPath, hooksFragment) {
-  const { settings, hooks } = readSettingsHooks(settingsPath);
-  const { hooks: nextHooks, added } = mergeHooksMap(hooks, hooksFragment);
-  const nextSettings = { ...settings, hooks: nextHooks };
-  return { changed: added > 0, content: `${JSON.stringify(nextSettings, null, 2)}\n` };
-}
-
-function hooksUnmerge(settingsPath, hooksFragment) {
-  const { settings, hooks } = readSettingsHooks(settingsPath);
-  const { hooks: nextHooks, removed } = unmergeHooksMap(hooks, hooksFragment);
-  const nextSettings = { ...settings };
-  if (Object.keys(nextHooks).length > 0) nextSettings.hooks = nextHooks;
-  else delete nextSettings.hooks;
-  return { changed: removed > 0, content: `${JSON.stringify(nextSettings, null, 2)}\n` };
-}
+// Gemini stores hooks nested under settings.json's "hooks" key, same location and shape as
+// Claude's settings.json (not a dedicated sidecar like Codex's hooks.json) — the read/merge/
+// unmerge wrapper is shared via root-config-hooks.mjs rather than duplicated per provider, since
+// the hook-definition shape ({matcher, sequential, hooks:[{type, command, ...}]}) keys off the same
+// entry.hooks[0].command identity Claude's hooks do (bundle/docs/hooks/reference.md's
+// Configuration schema table).
 
 // Permissions render targets one whole roborepo-owned file inside ~/.gemini/policies/ (the Policy
 // Engine directory loads every *.toml file present and combines their rules — no generated-marker-
@@ -117,8 +97,14 @@ function hooksUnmerge(settingsPath, hooksFragment) {
 // as Claude/Codex's renderers, just expressed as "always fully regenerate the one file we own"
 // instead of "merge a marked block into a shared file." 4th param (target path) unused here, same
 // as Claude's render — kept for signature parity with permissions-render.mjs's uniform call site.
-function renderGeminiPermissions(_current, manifest, overrides) {
-  return renderGeminiPolicyFile(manifest, overrides);
+//
+// `behaviorManifest` here is manifests/inventory/agent-permissions.json's content (behaviors/
+// commands to render), distinct from this module's own `geminiManifest` (globals/harnesses/gemini/
+// provider.json, the harness provider manifest) — renderGeminiPolicyRules needs the LATTER too, for
+// its extensions.roborepo.toolNameMap tool-name translation table, so it's passed separately rather
+// than threaded through the call signature every other provider's render already uses.
+function renderGeminiPermissions(_current, behaviorManifest, overrides) {
+  return renderGeminiPolicyFile(geminiManifest, behaviorManifest, overrides);
 }
 
 // Single-server add/remove: Gemini has a real config file to write into directly (settings.json's
@@ -185,8 +171,8 @@ export const geminiProvider = defineHarnessProvider({
     },
     hooks: {
       ...stubGroups.hooks,
-      merge: hooksMerge,
-      unmerge: hooksUnmerge,
+      merge: mergeRootConfigHooks,
+      unmerge: unmergeRootConfigHooks,
     },
     mcp: {
       ...stubGroups.mcp,

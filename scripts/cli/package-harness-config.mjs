@@ -5,6 +5,7 @@ import { roborepoStateDir } from "./state-paths.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
 import { getHarnessProvider } from "../harnesses/registry.mjs";
 import { requireHarnessCapability } from "../harnesses/runtime.mjs";
+import { validateAdapterComputeResult } from "../harnesses/schemas.mjs";
 
 export function runtimeAssetDestination(pkg, component) {
   const target = component.target || path.basename(component.source);
@@ -99,6 +100,7 @@ export function unmergeHarnessConfig(pkg, component, options) {
 // hook-composition.mjs's writeHooksFile — the identical two-shape asymmetry, already solved there.
 function applyPackageComponentResult(harness, options, result, verb) {
   if (!result) return;
+  validateAdapterComputeResult(result);
   const { changed, content } = result;
   const configPath = options[`${harness}ConfigPath`];
   const label = getHarnessProvider(harness).manifest.displayName;

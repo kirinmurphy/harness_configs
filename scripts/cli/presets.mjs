@@ -935,9 +935,8 @@ function readManifestRows() {
 }
 
 function harnessAvailable(harness) {
-  if (harness === "claude") return fs.existsSync(MANIFEST_HOME.claude);
-  if (harness === "codex") return fs.existsSync(MANIFEST_HOME.codex);
-  return false;
+  const homePath = MANIFEST_HOME[harness];
+  return typeof homePath === "string" && fs.existsSync(homePath);
 }
 
 function readlink(target) {

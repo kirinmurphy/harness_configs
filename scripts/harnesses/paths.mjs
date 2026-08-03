@@ -6,7 +6,9 @@
 import os from "node:os";
 import path from "node:path";
 
-function expandHome(homeRelativePath) {
+// Shared with discovery.mjs (bounded evidence collection also expands manifest-declared home-
+// relative candidates) — exported so it isn't defined twice for the same one-line expansion.
+export function expandHome(homeRelativePath) {
   return path.join(os.homedir(), homeRelativePath.slice(2));
 }
 

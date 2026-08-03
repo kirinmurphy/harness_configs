@@ -33,7 +33,12 @@
       "rootConfigFormat": "json",
       "hooksStorage": "embedded-in-root-config",
       "mcpStorage": "json-mcpServers-key",
-      "permissionsStorage": "policy-engine-toml-directory"
+      "permissionsStorage": "policy-engine-toml-directory",
+      "toolNameMap": {
+        "Write": "write_file",
+        "Edit": "replace",
+        "Read": "read_file"
+      }
     }
   }
 }

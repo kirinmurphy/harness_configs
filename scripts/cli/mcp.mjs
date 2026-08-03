@@ -3,34 +3,20 @@ import path from "node:path";
 import { loadMcpPresets } from "./mcp-presets.mjs";
 import { parseMcpAdd, resolveMcpHarnesses } from "./mcp-parse.mjs";
 import { claudeMcpArgs, ensureClaudeMcpPermission, shellQuote } from "./mcp-claude.mjs";
-import { ensureCodexMcp } from "./mcp-codex.mjs";
 import { MCP_SERVERS_PATH } from "./mcp-config.mjs";
-import { initializeWorkspace, packageMode, workspaceMcpServersPath, rootConfigActive } from "./paths.mjs";
+import { initializeWorkspace, packageMode, workspaceMcpServersPath } from "./paths.mjs";
 import { hasReplaceOverride, loadWorkspaceMcpServers, readWorkspaceOverrides } from "./workspace-resources.mjs";
-import { writeRootConfig } from "./root-config-writes.mjs";
 import { getHarnessProvider } from "../harnesses/registry.mjs";
+import { validateAdapterActionResult } from "../harnesses/schemas.mjs";
+import { configFileMcpProviders, capitalize, ensureConfigFileMcp } from "./mcp-config-file.mjs";
+
+// Re-exported for packages.mjs, which needs these generic helpers but must not trigger this
+// module's eager loadMcpPresets() call below — import directly from mcp-config-file.mjs there
+// instead of through this module, so a missing/broken mcp-presets.json in a minimal sandbox can
+// never crash a package-mode command that has nothing to do with mcpAdd/mcpApply.
+export { configFileMcpProviders, ensureConfigFileMcp } from "./mcp-config-file.mjs";
 
 const mcpPresets = loadMcpPresets();
-
-// Gemini, like Codex, has a real config file to write into directly (settings.json's mcpServers
-// key) — no CLI shell-out like Claude needs. Its addServer adapter already returns {changed,
-// content} (scripts/harnesses/gemini/index.mjs), so this is a thin orchestrator wrapper matching
-// ensureCodexMcp's shape: resolve the active config path, call the adapter, write via
-// writeRootConfig for drift-tracking parity with every other root-config write.
-function ensureGeminiMcp(spec, { dryRun = false, configPath = rootConfigActive.gemini } = {}) {
-  const provider = getHarnessProvider("gemini");
-  if (provider.adapters.mcp.list({ configPath }).includes(spec.name)) {
-    console.log(`gemini MCP already present: ${spec.name}`);
-    return;
-  }
-  if (dryRun) {
-    console.log(`would add Gemini MCP: ${spec.name} -> ${configPath}`);
-    return;
-  }
-  const { content } = provider.adapters.mcp.addServer(spec, { configPath });
-  writeRootConfig("gemini", configPath, content);
-  console.log(`gemini MCP added: ${spec.name} -> ${configPath}`);
-}
 
 function readMcpServers() {
   let builtIn;
@@ -108,26 +94,29 @@ function claudeHasMcp(serverName) {
 
 export function mcpApply({ dryRun = false } = {}) {
   const data = readMcpServers();
+  const configFileProviders = configFileMcpProviders();
   for (const server of data.servers) {
     const spec = { name: server.name, commandOrUrl: server.commandOrUrl, args: server.args };
     const applyClaude = server.harnesses.includes("claude");
-    const applyCodex = server.harnesses.includes("codex");
-    const applyGemini = server.harnesses.includes("gemini");
     if (dryRun) {
       if (applyClaude) console.log(`would apply Claude MCP live store: ${server.name}`);
-      if (applyCodex) console.log(`would apply Codex MCP active config: ${server.name}`);
-      if (applyGemini) console.log(`would apply Gemini MCP settings: ${server.name}`);
+      for (const provider of configFileProviders) {
+        if (server.harnesses.includes(provider.id)) {
+          console.log(`would apply ${capitalize(provider.id)} MCP active config: ${server.name}`);
+        }
+      }
       continue;
     }
     if (applyClaude) {
       if (claudeHasMcp(spec.name)) {
         console.log(`claude MCP already present: ${server.name}`);
       } else {
-        getHarnessProvider("claude").adapters.mcp.addServer(spec, { scope: "user", transport: null });
+        validateAdapterActionResult(getHarnessProvider("claude").adapters.mcp.addServer(spec, { scope: "user", transport: null }));
       }
     }
-    if (applyCodex) ensureCodexMcp(spec);
-    if (applyGemini) ensureGeminiMcp(spec);
+    for (const provider of configFileProviders) {
+      if (server.harnesses.includes(provider.id)) ensureConfigFileMcp(provider, spec);
+    }
   }
 }
 
@@ -135,8 +124,7 @@ export function mcpAdd(rest) {
   const { opts, spec } = parseMcpAdd(rest, mcpPresets);
   const harnesses = resolveMcpHarnesses(opts);
   const applyClaude = harnesses.includes("claude");
-  const applyCodex = harnesses.includes("codex");
-  const applyGemini = harnesses.includes("gemini");
+  const targetProviders = configFileMcpProviders().filter((provider) => harnesses.includes(provider.id));
   const args = claudeMcpArgs(opts, spec);
   const display = ["claude", ...args].map(shellQuote).join(" ");
 
@@ -145,17 +133,15 @@ export function mcpAdd(rest) {
     if (applyClaude && opts.updateClaudePermission) {
       console.log(`would add permission: mcp__${spec.name} -> generated/claude/settings.json`);
     }
-    if (applyCodex) ensureCodexMcp(spec, { dryRun: true });
-    if (applyGemini) ensureGeminiMcp(spec, { dryRun: true });
+    for (const provider of targetProviders) ensureConfigFileMcp(provider, spec, { dryRun: true });
     return;
   }
 
   if (applyClaude) {
-    getHarnessProvider("claude").adapters.mcp.addServer(spec, { scope: opts.scope, transport: opts.transport });
+    validateAdapterActionResult(getHarnessProvider("claude").adapters.mcp.addServer(spec, { scope: opts.scope, transport: opts.transport }));
     if (opts.updateClaudePermission) ensureClaudeMcpPermission(spec.name);
   }
-  if (applyCodex) ensureCodexMcp(spec);
-  if (applyGemini) ensureGeminiMcp(spec);
+  for (const provider of targetProviders) ensureConfigFileMcp(provider, spec);
   // Built-in package presets already live in the app's mcp-servers.json; recording them again would
   // duplicate a built-in into the user workspace and trip assertMcpRecordAllowed. Only user-added
   // servers get a workspace record.

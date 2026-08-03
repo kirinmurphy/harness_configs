@@ -3,6 +3,7 @@ import path from "node:path";
 import { codexHooksPath, harnessHome } from "./paths.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
 import { getHarnessProvider } from "../harnesses/registry.mjs";
+import { validateAdapterComputeResult } from "../harnesses/schemas.mjs";
 
 // Cross-harness hook merge/unmerge. Both Claude (~/.claude/settings.json, hooks nested under a
 // `hooks` key alongside permissions/etc.) and Codex (~/.codex/hooks.json, a dedicated file whose
@@ -43,7 +44,9 @@ export function mergeHooksInto(harness, filePath, hooksFragment, { dryRun = fals
     console.log(`  [dry-run] merge hooks (${harness}) → ${filePath}`);
     return;
   }
-  const { changed, content } = getHarnessProvider(harness).adapters.hooks.merge(filePath, hooksFragment);
+  const result = getHarnessProvider(harness).adapters.hooks.merge(filePath, hooksFragment);
+  validateAdapterComputeResult(result);
+  const { changed, content } = result;
   if (changed) {
     writeHooksFile(harness, filePath, content);
     console.log(`wired: hook entries (${harness}) → ${filePath}`);
@@ -113,7 +116,9 @@ export function unmergeHooksFrom(harness, filePath, hooksFragment, { dryRun = fa
     console.log(`  [dry-run] remove hooks (${harness}) ← ${filePath}`);
     return;
   }
-  const { changed, content } = getHarnessProvider(harness).adapters.hooks.unmerge(filePath, hooksFragment);
+  const result = getHarnessProvider(harness).adapters.hooks.unmerge(filePath, hooksFragment);
+  validateAdapterComputeResult(result);
+  const { changed, content } = result;
   if (changed) {
     writeHooksFile(harness, filePath, content);
     console.log(`removed: hook entries (${harness}) ← ${filePath}`);

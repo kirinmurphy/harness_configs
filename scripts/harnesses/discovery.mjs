@@ -3,13 +3,8 @@
 // Never scans the filesystem broadly — only the locations a provider's manifest declares.
 
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { execFileSync } from "node:child_process";
-
-function expandHome(homeRelativePath) {
-  return path.join(os.homedir(), homeRelativePath.slice(2));
-}
+import { expandHome } from "./paths.mjs";
 
 function resolveExecutable(name) {
   const command = process.platform === "win32" ? "where" : "which";

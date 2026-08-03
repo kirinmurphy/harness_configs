@@ -140,12 +140,6 @@ while IFS=$'\t' read -r id home_path present display_name root_config_path; do
   fi
 done < <(harness_detected_rows)
 
-has_claude=0; has_codex=0
-if [[ "${#present_harness_ids[@]}" -gt 0 ]]; then
-  [[ " ${present_harness_ids[*]} " == *" claude "* ]] && has_claude=1
-  [[ " ${present_harness_ids[*]} " == *" codex "* ]] && has_codex=1
-fi
-
 preflight_shell_setup() {
   "${repo_root}/scripts/install/install-global-commands.sh" --dry-run
   "${repo_root}/scripts/install/install-shell-snippets.sh" --dry-run

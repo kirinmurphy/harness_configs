@@ -455,6 +455,16 @@ export function renderedRulesMatches(harness, filePath) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(`usage: rules-render.mjs [<${knownHarnessIds().join("|")}>] [--dry-run]
+       rules-render.mjs --check [--quiet]
+       rules-render.mjs [<harness>] --remove-managed [--dry-run]
+       rules-render.mjs <harness> --matches <file>
+
+Renders home rules (CLAUDE.md/AGENTS.md/...) from globals/system/rules fragments for one harness,
+or every known harness when none is given.`);
+    process.exit(0);
+  }
   const dryRun = args.includes("--dry-run");
   const checkMode = args.includes("--check") || args.includes("check");
   const harness = args.find((a) => knownHarnessIds().includes(a));

@@ -102,11 +102,20 @@ main {
 .expanded-head [data-btn="text"] {
   margin-left: auto;
 }
-.collapsed-group .instance-grid {
-  margin-top: 12px;
+.collapsed-group /* Breathing room between a card's heading and its git row — they were tight enough to read as one
+ * wrapped line rather than two facts. */
+.card-git-row:not(:empty) {
+  margin-top: 10px;
 }
+/* Cards sat flush against each other, so one card and the next read as a single continuous panel.
+ * The gap lets the page background separate them into distinct objects. */
+/* Cards are now multi-band objects (title row, git row, drawer) with their own internal rules, so
+ * they need more air between them than when they were flat panels — at 10px an adjacent card read
+ * as one more band of the card above it. */
 .instance-grid {
+  margin-top: 12px;
   display: grid;
+  gap: 18px;
 }
 .instance-card {
   background: var(--panel);
@@ -114,11 +123,57 @@ main {
   display: grid;
   gap: 6px;
 }
+/* A repository card is a container for two full-bleed bands (the summary and the expanded drawer)
+ * rather than a padded box: the drawer needs to reach the card's edges so it reads as a distinct
+ * surface, which it cannot do while the card's own padding insets it. Padding moves to the two
+ * bands, so each owns its spacing and the boundary between them spans the full width. */
+.instance-card.repository-card {
+  padding: 0;
+  gap: 0;
+  border-radius: 6px;
+  /* Bands stack in document order, no CSS reordering: the disclosure (title row + drill-down inside
+   * <summary>, then the members drawer) followed by the git row. The card is a plain wrapper rather
+   * than the <details> itself — that is what lets the git row sit below the drawer while staying
+   * outside the disclosure, so collapsing cannot hide it. Do not reach for flex `order` here: an
+   * earlier attempt did, and it silently did nothing because the row it targeted was inside the
+   * block-level <summary> rather than a child of this flex box. */
+  display: flex;
+  flex-direction: column;
+  /* Deliberately NOT overflow:hidden. Clipping is the obvious way to keep full-bleed bands inside
+   * the rounded corners, but it also clips the action menu, which is absolutely positioned inside
+   * this card and must escape it. The bands round their own outer corners instead (see the summary
+   * and drawer rules below). The info tooltip is unaffected either way — it renders in a shared
+   * position:fixed bubble outside the card entirely, which is why it never had this bug. */
+}
+/* The disclosure is pure structure — it groups the summary and the drawer so <details> can hide the
+ * latter, and contributes no box of its own. Its children are the real bands. */
+.repository-disclosure {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* The title row and the git row are separately padded bands, so each owns its spacing and neither
+ * depends on a shared parent's padding. Wider left/right than before to give the first row room. */
+.repository-card > .repository-disclosure > summary {
+  padding: 0;
+  /* Top corners only, in both states: the git row is always below the disclosure, so the summary is
+   * never the card's bottom edge. */
+  border-radius: 6px 6px 0 0;
+}
+.repository-card .card-title-row {
+  padding: 12px 16px;
+}
+.repository-card > .card-notice {
+  padding: 0 16px 10px;
+}
 
 /* :last-child, not :last-of-type — a plain card is an <article> and a Compose card is a <details>,
  * so :last-of-type resolved per element type and the last card of each kind lost its separator
  * regardless of where it actually sat in the list. */
-.instance-card:not(:last-child) {
+/* Repository cards separate by the grid gap alone — they are self-contained surfaces with their own
+ * radius, so a bottom rule read as a stray line hanging under the card rather than a divider.
+ * Non-repository cards keep the rule: they are flat panels where the gap alone is not enough. */
+.instance-card:not(:last-child):not(.repository-card) {
   border-bottom: 1px solid var(--line);
 }
 
@@ -148,9 +203,13 @@ main {
   gap: 8px;
   flex-wrap: wrap;
 }
+/* `center`, not `start`. With `start` the action menu pinned to the top of a head whose column one
+ * could be taller than one line, so the dots floated above the title they belong to — and on a card
+ * whose title row wrapped, the title sat in the first line of a two-line box while the menu stayed
+ * at the top, reading as a whole empty row. Centering aligns the menu with the title in every case. */
 .card-head {
   justify-content: space-between;
-  align-items: start;
+  align-items: center;
   gap: 12px;
   flex-wrap: nowrap;
 }
@@ -159,9 +218,17 @@ main {
  * trailing content (URL vs. container/port/CPU rollup) differs. */
 .card-main {
   display: grid;
-  gap: 2px;
+  gap: 0.5rem;
   min-width: 0;
   flex: 1;
+}
+/* A member card suppresses its git row (the repository above already shows it once), leaving an
+ * empty grid track whose gap became trailing space under the title — the title then sat high in a
+ * box taller than itself. `:empty` hides the row, but the grid gap survives it, so members that
+ * render only a title row collapse the gap entirely. */
+.instance-card.is-member .card-main:not(:has(.card-git-row:not(:empty))),
+.compose-project-card.is-member .card-main:not(:has(.card-git-row:not(:empty))) {
+  gap: 0;
 }
 .card-title {
   display: flex;
@@ -176,8 +243,41 @@ main {
 .card-git-row:empty {
   display: none;
 }
+/* On a repository card the git row is its own full-bleed band, one step further from --panel than
+ * the expanded drawer so the three surfaces (title row, git row, drawer) stay distinguishable. It
+ * spans the full card width; the action menu sits in the title row above, so nothing overlaps it. */
+/* A direct child of the card and a sibling of the disclosure, never inside it — that is what keeps
+ * it visible when the card is collapsed, since <details> hides everything but its <summary>. Always
+ * the card's last band, in both states, so it unconditionally carries the bottom radius. */
+.repository-card > .card-git-row:not(:empty) {
+  margin-top: 0;
+  padding: 8px 16px;
+  background: color-mix(in srgb, var(--ink) 9%, var(--panel));
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 6px 6px;
+}
+/* Light theme's --panel is white, so mixing toward --ink darkens rather than lightens. The band
+ * steps to --bg and the drawer below it goes one step further, preserving the ordering. */
+:root[data-theme="light"] .repository-card > .card-git-row:not(:empty) {
+  background: color-mix(in srgb, var(--bg) 55%, var(--panel));
+}
+/* Aligned to the first text line of column one, not to that column's box. `align-items: center` on
+ * .card-head centers the menu against the whole column — which includes the title row's wrap
+ * allowance and, on member cards, whatever vertical slack the title row carries. That is what left
+ * the dots sitting low even after the boxes were centered. Matching the title's own line-height and
+ * centering within it puts the menu on the row's through-line regardless of column height. */
 .card-head .action-menu {
   flex-shrink: 0;
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  /* The title row's effective line box: --text-md at the default 1.5 line-height. */
+  min-height: calc(var(--text-md) * 1.5);
+}
+/* A member's title is one step down (--text-sm), so its menu tracks that smaller line box. */
+.instance-card.is-member .card-head .action-menu,
+.compose-project-card.is-member .card-head .action-menu {
+  min-height: calc(var(--text-sm) * 1.5);
 }
 .card-title h3 {
   font-size: var(--text-md);
@@ -205,12 +305,27 @@ main {
 .action-menu {
   position: relative;
 }
+/* `.card-head .action-menu` sets display:flex, which outranks the UA's [hidden] { display: none }.
+ * Menus ship with the `hidden` attribute and are revealed by wiring (revealActionMenuIfUsable), so
+ * without this the attribute is inert and EVERY menu renders regardless — including the ones that
+ * never earn a reveal. Matches that rule's specificity and wins on order. */
+.card-head .action-menu[hidden] {
+  display: none;
+}
+/* Single definition. There were two competing .menu-trigger blocks (one setting padding:6px, the
+ * other padding:0), which is why the control's real box was hard to reason about.
+ *
+ * The trigger is an icon, not a button surface: base.css gives every <button> a border and panel
+ * background, which framed the dots in a box heavier than the row around it. */
 .menu-trigger {
-  width: 28px;
-  height: 28px;
-  padding: 6px;
+  width: 22px;
+  height: 22px;
   display: inline-grid;
   place-items: center;
+  gap: 1px;
+  border: 0;
+  background: none;
+  padding: 0;
 }
 .card-title portal-info-icon .info-icon {
   width: var(--icon-md);
@@ -234,26 +349,62 @@ main {
   gap: 6px;
   color: var(--desc-dim);
   font-size: var(--text-xs);
+  /* The bubble is sized by its content, so an unbounded value (a long member list, a deep upstream
+   * ref) stretched it past the viewport before the ellipsis below could ever apply. */
+  max-width: 340px;
 }
 .info-tooltip-content > span {
   display: grid;
-  grid-template-columns: 70px 1fr;
+  grid-template-columns: 70px minmax(0, 1fr);
   gap: 8px;
+}
+/* Wrap, never truncate. An earlier version clipped long values with an ellipsis, which kept the
+ * bubble tidy but hid content the user cannot recover — this tooltip is pointer-events:none, so
+ * there is no hovering, selecting, or scrolling to reveal the rest. A wrapped value makes the
+ * bubble taller, and the positioner (portal/shared/tooltip.js) now handles tall bubbles. */
+.info-tooltip-content > span > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .info-tooltip-content strong {
   color: var(--dim);
   font-weight: 600;
 }
+/* Section heading: spans both columns and reads as a divider rather than a labeled value, so the
+ * repository's identity and its git position are visibly two groups instead of one long list.
+ * The tinted band does the separating work a rule alone was too faint for — it is a wash of the
+ * page background rather than a fixed color, so it holds up in both themes. */
+.info-tooltip-group {
+  grid-template-columns: 1fr !important;
+  margin: 4px -10px 0;
+  padding: 4px 10px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--dim);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* The first group heads the bubble, so it needs no separating space above it. It also sits flush
+ * against the bubble's rounded top, so it inherits that radius — a square band over a 6px corner
+ * shows the tooltip background bleeding through at the corners. */
+.info-tooltip-content > .info-tooltip-group:first-child {
+  margin-top: -8px;
+  padding-top: 8px;
+  border-radius: 6px 6px 0 0;
+}
 .info-tooltip-content [data-slot="warning"] {
   grid-template-columns: 1fr;
   color: var(--warn);
 }
-.menu-trigger {
-  gap: 1px;
+.menu-trigger:hover {
+  border: 0;
+  background: none;
+  color: var(--accent);
 }
 .menu-trigger span {
-  width: 3px;
-  height: 3px;
+  width: 2.5px;
+  height: 2.5px;
   border-radius: 50%;
   background: currentColor;
 }
@@ -389,28 +540,47 @@ dialog::backdrop {
 .git-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.7rem;
+  /* Tighter than before because explicit middots now do the separating. The old 0.7rem gap was
+   * carrying that job on its own; keeping it alongside the dots read as double-spacing. */
+  gap: 0.35rem;
   font-size: var(--text-2xs);
   color: var(--dim);
-  white-space: nowrap;
+  /* The row can carry a repo link, branch, sync cluster and a drift phrase at once. Wrapping keeps
+   * a narrow card readable instead of running the drift warning off the edge, where the one item
+   * that renders only when it needs attention would be the first thing clipped. */
+  flex-wrap: wrap;
+  row-gap: 0.2rem;
 }
-/* Dirty-state dot, not a text badge — clean/dirty is a glanceable fact, the commit hash and full
- * clean/dirty wording live in the hover tooltip for the rare case that needs them. */
-.git-dirty-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ok);
-  flex-shrink: 0;
-}
-.git-dirty-dot.is-dirty {
-  background: var(--warn);
-}
+/* White, not accent-blue: this row already spends its one accent color on the branch-copy hover,
+ * and a blue link here competed with the entrypoint URL above — the one link on the card that is
+ * actually the point. The external-link icon carries the affordance instead. */
 .git-repo-link {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
+  color: var(--ink);
+}
+.git-repo-link:hover {
   color: var(--accent);
+}
+/* Middots between the row's facts. Dim and non-selectable so they read as punctuation rather than
+ * content, and hidden from assistive tech (aria-hidden on the element) since a screen reader
+ * announcing "middot" between every field is noise. */
+.git-sep {
+  color: var(--desc-dim);
+  user-select: none;
+}
+/* The drift phrase is the one thing on this row that renders only when it wants attention, so it
+ * is the only thing on the row that gets a color. Two levels: amber for drift you should get to,
+ * red reserved for the remote branch holding commits you do not have — the one case where you are
+ * about to conflict with your own work. */
+.git-drift {
+  color: var(--warn);
+  white-space: nowrap;
+}
+.git-drift[data-level="danger"] {
+  color: var(--danger);
+  font-weight: 600;
 }
 /* No `svg { width }` overrides here on purpose: icon size is owned by <portal-icon size="…">'s
  * fixed scale (portal/shared/icon.js). These rules previously forced 10-11px, well below the
@@ -433,20 +603,230 @@ dialog::backdrop {
   font-size: inherit;
   font-family: var(--mono, monospace);
 }
-.git-branch-button:hover {
+/* Not while showing "copied": that state is a static confirmation and must carry no interactive
+ * cues, so the accent hover is withdrawn for its duration. */
+.git-branch-button:hover:not([data-copy-state="copied"]) {
   color: var(--accent);
 }
-.git-tracking {
-  color: var(--desc-dim);
+
+/* Shared copy control, used by the branch button and the container port rows. Three states on one
+ * element, swapped via data-copy-state:
+ *   idle    the resting label (branch name, "copy url") plus the copy glyph
+ *   hover   an overlay label ("Copy branch" / "Copy URL") over the resting text
+ *   copied  the same overlay reading "Copied", with the glyph swapped for a green check
+ * The overlay is absolutely positioned over the label rather than replacing its text, so the
+ * control keeps one width across all three states and the row never reflows mid-interaction. */
+.copy-affordance {
+  position: relative;
+}
+/* Wraps the resting label so the overlay has a box that ends where the trailing icon begins.
+ * Created in wireCopyAffordance rather than authored into each template, so every call site gets
+ * the same structure without repeating it. */
+.copy-affordance-slot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+/* Right-aligned, so the label sits against the copy icon that follows it rather than drifting away
+ * from the affordance it describes. Pinned to the right edge of the control (`inset: 0 0 0 auto`)
+ * so "Copy branch" and "Copied" both end at the same point and the swap between them is stable. */
+/* Right-aligned against the icon that follows it. Opaque and raised rather than transparent: the
+ * message is often wider than the label it replaces, so without its own background it overlapped
+ * whatever sat to its left and read as two strings printed on top of each other. The padding keeps
+ * clear space between the message and that neighbour. */
+.copy-affordance .copy-overlay {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  text-align: right;
+  white-space: nowrap;
+  padding: 0 6px;
+  /* Matches the git row band it sits on, so the overlay reads as part of the row rather than as a
+   * floating chip. */
+  background: color-mix(in srgb, var(--ink) 9%, var(--panel));
+  z-index: 2;
+  pointer-events: none;
+}
+:root[data-theme="light"] .copy-affordance .copy-overlay {
+  background: color-mix(in srgb, var(--bg) 55%, var(--panel));
+}
+/* Container port rows sit on the drawer surface, not the git band. */
+.compose-container-port-action .copy-overlay {
+  background: color-mix(in srgb, var(--ink) 5%, var(--panel));
+}
+:root[data-theme="light"] .compose-container-port-action .copy-overlay {
+  background: var(--bg);
+}
+.copy-affordance[data-copy-state="hover"] .copy-overlay,
+.copy-affordance[data-copy-state="copied"] .copy-overlay {
+  display: flex;
+}
+/* The resting label stays in flow (it holds the control's width) but goes invisible rather than
+ * display:none, which would collapse that width and shift everything after it. */
+.copy-affordance[data-copy-state="hover"] .copy-affordance-label,
+.copy-affordance[data-copy-state="copied"] .copy-affordance-label {
+  visibility: hidden;
+}
+/* Underlined to read as actionable while staying default text color — these sit beside real links
+ * (the entrypoint URL, the container origin) and must not compete with them for "the blue thing to
+ * click". Underline on the label only, so the trailing icon is not struck through. */
+.copy-affordance .copy-affordance-label,
+.copy-affordance .copy-overlay {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* On main/master the copy affordance is removed entirely (wireCopyBranchButton drops the icon and
+ * adds .is-static, since nobody pastes "main" into a checkout). The branch name is then plain text,
+ * so every affordance cue has to go with it — an underline on something that does not respond to a
+ * click is the misleading half of the pair. */
+.git-branch-button.is-static .copy-affordance-label {
+  text-decoration: none;
+}
+/* The hover message is white, not the accent color the branch button takes on hover: it is a
+ * label telling you what the click does, not a link. Set on the overlay so it wins over the
+ * button's own :hover color rule. */
+.copy-affordance[data-copy-state="hover"] .copy-overlay {
+  color: var(--ink);
+}
+/* Copied is a static confirmation, not a control. Every interactive cue is withdrawn — no accent
+ * color from the button's :hover, no pointer cursor — so it cannot read as something to click
+ * during the seconds it is shown. */
+.copy-affordance[data-copy-state="copied"] {
+  color: var(--ok);
+  cursor: default;
+}
+.copy-affordance[data-copy-state="copied"]:hover {
+  color: var(--ok);
+}
+.copy-affordance[data-copy-state="copied"] .copy-overlay {
+  color: var(--ok);
+  text-decoration: none;
+}
+/* Exactly one glyph is visible at a time. Both are the same 16x16 box at the same size, so the
+ * swap does not move anything beside them. */
+.copy-icon-done {
+  display: none;
+}
+.copy-affordance[data-copy-state="copied"] .copy-icon-idle {
+  display: none;
+}
+.copy-affordance[data-copy-state="copied"] .copy-icon-done {
+  display: inline-flex;
+  color: var(--ok);
+}
+/* Port rows: default text color, not link color — this label sits beside the origin link and must
+ * not compete with it for "the thing to click". */
+.compose-container-port-action.copy-affordance {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--dim);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.compose-container-port-action.copy-affordance:hover {
+  color: var(--ink);
+}
+/* The drill-down's own row, between the title and the git row. Right-aligned so the control stays
+ * where the eye already expects it from the title row above. */
+.repository-drilldown-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 16px 8px;
+}
+/* This row toggles the card too, so it takes the same hover treatment as the title row — otherwise
+ * the control most obviously *for* expanding was the one part of the summary with no feedback.
+ * Closed only: once open the drill-down becomes a tab joined to the drawer (see below), and a hover
+ * tint over it would fight that connection. */
+.repository-disclosure:not([open]) > summary .repository-drilldown-row:hover .repository-drilldown {
+  background: var(--row-hover-overlay);
+  border-radius: 6px;
+}
+/* Hovering the drill-down underlines the title, matching the title row's own hover: both are the
+ * same click with the same result, so they name the same target. Needs :has() on the summary —
+ * the title row precedes this one, so no sibling combinator can reach backwards to it. */
+.repository-card > .repository-disclosure > summary:has(.repository-drilldown-row:hover) .card-title h3 {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* The member count and chevron are one drill-down affordance. Grouping them is what makes the count
+ * read as a label for what expanding reveals rather than loose metadata. */
+.repository-drilldown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 4px 10px;
+  /* Top corners only, so it can butt against the drawer as a tab when open (see below). */
+  border-radius: 6px 6px 0 0;
+  font-size: var(--text-xs);
+}
+/* Open: the control takes the drawer's surface and loses its bottom corners, so it reads as a tab
+ * attached to the panel below rather than a button floating above it. Valid because the drill-down
+ * row is the summary's last child and the drawer is the disclosure's next sibling — the two are
+ * adjacent, with the git row below both, outside the disclosure entirely. */
+.repository-disclosure[open] > summary .repository-drilldown {
+  background: color-mix(in srgb, var(--ink) 5%, var(--panel));
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  margin-bottom: -1px;
+}
+:root[data-theme="light"] .repository-disclosure[open] > summary .repository-drilldown {
+  background: var(--bg);
+}
+/* The whole title row is the click target, so the whole row takes the hover — feedback confined to
+ * the chevron understated how much of it was clickable.
+ *
+ * Uses --row-hover-overlay (portal/shared/base.css), the surface-relative sibling of --row-hover.
+ * Telemetry's clickable table rows keep the flat --row-hover: they sit on --bg, where it lands ~19
+ * luminance from its background and reads correctly. The two tokens are one system, picked by which
+ * surface the row sits on rather than by which page it is on.
+ *
+ * :has() lets the row withdraw its own hover while the pointer is over a nested control. Those
+ * controls stop propagation and do NOT toggle the card, so showing the expand affordance over them
+ * would promise a click that does something else entirely. */
+.repository-card > .repository-disclosure > summary .card-title-row:hover:not(:has(.repository-nested-control:hover)) {
+  /* Layered over the card's own surface rather than replacing it: --row-hover-overlay is a tint, so
+   * it composites onto --panel here and onto the drawer elsewhere, staying equally visible on both.
+   * The flat --row-hover it replaces was tuned against --bg and sat 1.5 luminance from --panel. */
+  background: linear-gradient(var(--row-hover-overlay), var(--row-hover-overlay)), var(--panel);
+}
+/* Underlining the title on hover is the convention for "this opens something", and it names what
+ * the click acts on. Applied from the row so hovering anywhere in it underlines the title, not only
+ * a direct hover over the text — and withdrawn over nested controls for the same reason as above. */
+.repository-card > .repository-disclosure > summary .card-title-row:hover:not(:has(.repository-nested-control:hover)) .card-title h3 {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* Keyboard parity: <summary> is focusable, and a keyboard user gets the same affordance a mouse
+ * user does rather than only the browser's default outline. */
+.repository-card > .repository-disclosure > summary:focus-visible .card-title h3 {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 /* Docker/Compose badge, styled like the Git badge for a consistent title-row language. */
 .docker-badge {
   display: inline-flex;
-  align-items: baseline;
+  /* `center`, not `baseline` — the badge now leads with an icon, which has no text baseline to
+   * align to and would otherwise hang below the label beside it. */
+  align-items: center;
   gap: 0.35rem;
   font-size: var(--text-2xs);
   color: var(--dim);
   white-space: nowrap;
+}
+/* Tech glyphs are identifying marks, not status: dimmer than body text so they label the row
+ * without competing with the name they sit beside. */
+.tech-glyph {
+  display: inline-flex;
+  align-items: center;
+  color: var(--dim);
+  flex-shrink: 0;
 }
 
 /* Health state accents the card's status text. `unknown` deliberately gets no color: an
@@ -464,12 +844,20 @@ dialog::backdrop {
 
 /* The summary is only the click target — .card-head inside it owns the layout, identical to a
  * plain instance card's, so both kinds present the same persistent structure. */
-.compose-project-card > summary {
+.compose-project-card > summary,
+.repository-card > .repository-disclosure > summary {
   display: block;
   cursor: pointer;
   list-style: none;
 }
-.compose-project-card > summary::-webkit-details-marker {
+/* A Compose card is always expanded, so its summary is a heading rather than a control: no pointer
+ * cursor, and clicks on it are ignored (see wireComposeCardActions) so it cannot collapse. Nested
+ * controls re-enable pointer events for themselves. */
+.compose-project-card > summary {
+  cursor: default;
+}
+.compose-project-card > summary::-webkit-details-marker,
+.repository-card > .repository-disclosure > summary::-webkit-details-marker {
   display: none;
 }
 /* The expand affordance is the one element with no counterpart on a plain card, so it sits in the
@@ -479,14 +867,149 @@ dialog::backdrop {
   color: var(--dim);
   transition: transform 0.15s ease;
 }
-.compose-project-card[open] .compose-project-chevron {
+/* Only the repository card toggles. The Compose card is permanently open and no longer renders a
+ * chevron at all, so it has no rotation state to express. */
+.repository-disclosure[open] > summary .compose-project-chevron {
   transform: rotate(180deg);
+}
+/* Members are whole cards, not compact rows, so they keep their own borders and spacing. The inset
+ * and left rule are what signal containment — without them a nested card reads as a sibling. */
+/* Metadata, not an affordance — dim and non-interactive so it reads as a fact about the process
+ * rather than another thing to click. */
+.secondary-ports {
+  color: var(--dim);
+  font-size: var(--text-2xs);
+}
+/* A copy button with nothing to copy (on main/master) keeps the branch name but drops the
+ * button affordance entirely. */
+.git-branch-button.is-static {
+  cursor: default;
+  pointer-events: none;
+}
+/* The expanded drawer is a lighter surface than the card, not a darker one: it is the layer nearer
+ * the viewer, and receding it made an open card read as a hole punched in the page. Full-bleed
+ * (the card's padding was moved onto its bands) with a top rule marking where the summary ends. */
+.repository-members {
+  display: grid;
+  /* No padding and no gap: members run flush to the card's edges and separate by border alone, so
+   * the drawer reads as one continuous surface rather than a stack of floating tiles. Each member
+   * owns its own padding (see .instance-card.is-member). */
+  gap: 0;
+  padding: 0;
+  background: color-mix(in srgb, var(--ink) 5%, var(--panel));
+  border-top: 1px solid var(--line);
+  /* No bottom radius: the git row is ordered after this, so the drawer is no longer the card's
+   * last band and rounding here would cut a notch above a square row. */
+  /* Deliberately NOT overflow:hidden, for the same reason the card itself is not (see
+   * .instance-card.repository-card): clipping would round the drawer's bottom corners but also trap
+   * every member's action menu inside the drawer. The last member rounds its own corners instead. */
+}
+/* Square: the git row sits below the drawer and is the card's bottom edge, so rounding here would
+ * cut a notch above it. The git row carries the radius instead. */
+.repository-members > :last-child {
+  border-radius: 0;
+}
+/* Light theme's --panel is pure white, so mixing toward --ink can only darken it — the opposite of
+ * the intent. There is no lighter surface available above white, so the drawer steps *down* to the
+ * page background instead: still a visible change of surface, still not a heavier one. */
+:root[data-theme="light"] .repository-members {
+  background: var(--bg);
+}
+/* A member is subordinate to the repository heading above it: a step down in size, but still bold,
+ * since at this size normal weight stopped reading as a title at all. Applies to compose members
+ * too, which are <details> rather than <article> but occupy the same tier. */
+.instance-card.is-member .card-title h3,
+.compose-project-card.is-member .card-title h3 {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+/* Members sit on their own surface so the boundary between one member and the next is visible
+ * without relying on whitespace alone. A translucent black/white wash rather than a fixed color, so
+ * it stays a consistent step away from --panel in both the dark and light themes. */
+/* Members carry no background of their own. A per-member surface fought the drawer's — the drawer
+ * is meant to read as one distinct region, and tiles floating on it undid that. Separation comes
+ * from a rule between members instead, and each member owns the padding the drawer gave up so it
+ * still sits flush with the card's edges. */
+.instance-card.is-member,
+.compose-project-card.is-member {
+  border: 0;
+  background: none;
+  border-radius: 0;
+  padding: 10px 16px;
+}
+.instance-card.is-member + .instance-card.is-member,
+.instance-card.is-member + .compose-project-card.is-member,
+.compose-project-card.is-member + .instance-card.is-member,
+.compose-project-card.is-member + .compose-project-card.is-member {
+  border-top: 1px solid var(--line);
+}
+/* Support members (no page title: runtimes, sockets, internal APIs) stay visible but recede, so the
+ * entrypoints above them are unmistakably the things to click.
+ *
+ * Deliberately NOT dimmed with opacity: .is-offline already owns that cue, and opacity alone is not
+ * readable in absolute terms — you can only perceive 0.72 by comparing it against an undimmed
+ * sibling, which a lone member card does not have. A support member that reads as "maybe offline" is
+ * worse than one that reads as fully present, so this recedes by desaturating the title only and
+ * leaves the card at full opacity. */
+.instance-card.is-member.is-support .card-title h3 {
+  color: var(--dim);
+  font-weight: 500;
+}
+/* 17px at weight 500 is below the 18.66px large-text threshold, so this needs 4.5:1 — and light
+ * theme's --dim lands at 4.35:1 on the drawer. --desc-dim restores AA (7.2:1) while still reading a
+ * clear step below the --ink titles beside it. Dark theme's --dim is 6.27:1 here and stays. */
+:root[data-theme="light"] .instance-card.is-member.is-support .card-title h3 {
+  color: var(--desc-dim);
+}
+/* Says what the member is, not that something is wrong with it. The data behind this class is
+ * exactly "answered no page title", so the label claims nothing more than that. Outline rather than
+ * the filled pill .is-offline uses: this is a standing property of the member, not a fault. */
+/* Offline wins if a card ever carries both: a departed process is the more urgent fact, and two
+ * stacked pills on one title would read as a single garbled badge. Today the two classes are
+ * assigned from disjoint lists so this cannot fire — it is here so that stops being load-bearing. */
+.instance-card.is-member.is-support:not(.is-offline) .card-title::after {
+  content: "No page";
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  /* --line is a divider color: 1.36:1 on this drawer, which is correct for a rule between rows and
+   * far too faint to describe a shape. As the pill's only edge it vanished and left bare floating
+   * text. A tinted fill carries the badge shape instead, and --neutral-tint gives the edge enough
+   * definition to read as deliberate without competing with --warn on the Offline pill. */
+  background: color-mix(in srgb, var(--neutral-tint) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--neutral-tint) 45%, transparent);
+  color: var(--dim);
+}
+/* The tinted fill darkens the backdrop, which pushes --dim to 3.66:1 here — under AA for text at
+ * --text-2xs. Light theme's --dim is already near the floor against a near-white drawer, so the pill
+ * steps to --desc-dim (the existing "dim but still body-readable" token) for 5.4:1. Dark theme needs
+ * no equivalent: --dim clears AA there at 5.06:1. */
+:root[data-theme="light"] .instance-card.is-member.is-support:not(.is-offline) .card-title::after {
+  color: var(--desc-dim);
+}
+/* The canonical entrypoint(s). Sits at heading level because reaching the running app is the
+ * card's primary job. */
+.repository-entrypoint {
+  font-size: var(--text-xs);
+}
+.repository-entrypoint + .repository-entrypoint {
+  margin-left: 8px;
 }
 .compose-project-meta {
   color: var(--dim);
   font-size: var(--text-2xs);
 }
+/* One step up from the surrounding meta text: this pairs with the chevron as the drill-down's
+ * label, so it is an affordance rather than fine print. */
+.repository-drilldown .compose-project-meta {
+  font-size: var(--text-xs);
+}
+/* Capped so a large stack (Supabase publishes 11 containers) scrolls instead of pushing every
+ * sibling card off the page. Sized to show roughly 5-6 rows before scrolling. */
 .compose-project-rows {
+  max-height: 320px;
+  overflow-y: auto;
   display: grid;
   gap: 10px;
   margin-top: 8px;
@@ -524,19 +1047,24 @@ dialog::backdrop {
   width: var(--icon-sm);
   height: var(--icon-sm);
 }
+/* Flush with the container title above rather than indented: the indent implied a hierarchy the
+ * ports do not have — they are the container's addresses, not a nested sub-list. */
 .compose-container-ports {
   display: grid;
   gap: 6px;
   margin-top: 8px;
-  padding-left: 12px;
+  padding-left: 0;
 }
 /* Three columns: health badge, address (URL + its copy/info actions), history. The badge column is
  * fixed-width so badges line up down the list instead of the addresses ragging left. */
+/* The health badge column was a fixed 76px, which left the badge floating in whitespace whenever
+ * its label was short. `auto` sizes it to the badge, so the badge starts flush with the container
+ * title above it and the address column begins right after it. */
 .compose-container-port {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   font-size: var(--text-2xs);
 }
 .compose-container-port-address {
@@ -555,6 +1083,8 @@ dialog::backdrop {
 /* Solid fill with inverted text — the badge is the row's status at a glance, and an outline-only
  * chip reads as secondary next to the colored text elsewhere on the card. `neutral` is the honest
  * default for a port that was never probed. */
+/* Explicitly the default arrow: the badge sits in a row full of links and buttons, and inheriting
+ * a pointer cursor from any of them would advertise a click this badge does not handle. */
 .port-health-badge {
   justify-self: start;
   padding: 2px 8px;
@@ -564,6 +1094,7 @@ dialog::backdrop {
   white-space: nowrap;
   background: var(--dim);
   color: var(--panel);
+  cursor: default;
 }
 .port-health-badge[data-tone="ok"] {
   background: var(--ok);

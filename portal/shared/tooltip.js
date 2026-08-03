@@ -44,12 +44,23 @@ function position(el) {
   const below = spaceBelow >= th || spaceBelow >= spaceAbove;
   const availableVertical = Math.max(below ? spaceBelow : spaceAbove, 0);
 
+  // A tooltip must never scroll. The bubble is pointer-events:none, so a scrollbar here is
+  // unreachable by definition — content past the fold is not "scrollable", it is invisible, and a
+  // tooltip that silently hides half its content is worse than one that is merely tall.
+  //
+  // So when the preferred side cannot fit the content, the bubble is allowed to use the full
+  // viewport height instead of being capped to that side, and is then clamped into view below.
+  // Being tall is fine: this is a transient overlay with nothing beside it competing for space.
   if (th > availableVertical) {
-    tip.style.maxHeight = `${Math.max(availableVertical, 80)}px`;
-    tip.style.overflowY = "auto";
+    tip.style.maxHeight = `${vh - MARGIN * 2}px`;
   }
 
-  const top = below ? r.bottom + GAP : Math.max(MARGIN, r.top - GAP - Math.min(th, availableVertical));
+  // Re-measure: the max-height above can change the height when it forces content to re-wrap.
+  const finalHeight = tip.offsetHeight;
+  // Anchor to the preferred side, then clamp so the whole bubble stays on screen. Clamping rather
+  // than capping is what lets a tall tooltip slide up into view instead of being truncated.
+  const preferredTop = below ? r.bottom + GAP : r.top - GAP - finalHeight;
+  const top = Math.max(MARGIN, Math.min(preferredTop, vh - finalHeight - MARGIN));
   tip.style.top = `${Math.round(top)}px`;
 
   const spaceRight = vw - r.left - MARGIN;

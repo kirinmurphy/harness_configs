@@ -91,6 +91,7 @@ function applySnapshot(snapshot, { reconcile = false } = {}) {
 
 function render(snapshot, { reconcile }) {
   renderWarnings(snapshot);
+  pruneDepartedTracking(snapshot);
 
   const sections = [
     {
@@ -102,18 +103,41 @@ function render(snapshot, { reconcile }) {
       // apps — otherwise those controls would vanish along with the empty-state fallback.
       alwaysShow: true,
       cards: [
-        ...snapshot.projects.flatMap((project) =>
-          project.instances.map((instance) => ({
-            key: instance.associationKey,
-            hash: JSON.stringify(instance) + JSON.stringify(project),
-            build: () => tmpl.instanceCard(project, instance, cardActions()),
-          })),
-        ),
-        ...snapshot.composeProjects.map((composeProject) => ({
-          key: `compose:${composeProject.name}`,
-          hash: JSON.stringify(composeProject),
-          build: () => tmpl.composeProjectCard(composeProject, composeProjectActions()),
+        // One card per repository, holding every instance that resolved to it however discovery
+        // found it. What used to be two separate card sources here — per-app instance cards and
+        // per-Compose-project cards — are now members inside these.
+        ...snapshot.repositories.map((repository) => ({
+          key: repository.repositoryId,
+          hash: JSON.stringify(repository),
+          build: () => tmpl.repositoryCard(repository, {
+            instanceActions: cardActions(),
+            composeActions: composeProjectActions(),
+            repositoryActions: repositoryActions(),
+            // Members that were present on the previous render but are gone from this snapshot.
+            // The top-level offline sweep keys on card id, and a repository card outlives its
+            // members — without this, a stopped member vanished silently instead of getting the
+            // greyed-out treatment every other card kind gets when its process exits.
+            departedMembers: departedMembersFor(repository),
+          }),
         })),
+        // Instances with no repositoryId (a `process:` identity, or a Compose project whose repo
+        // never resolved) still get their own card — they have no repository to be a member of.
+        ...snapshot.projects
+          .filter((project) => !project.repositoryId)
+          .flatMap((project) =>
+            project.instances.map((instance) => ({
+              key: instance.associationKey,
+              hash: JSON.stringify(instance) + JSON.stringify(project),
+              build: () => tmpl.instanceCard(project, instance, cardActions()),
+            })),
+          ),
+        ...snapshot.composeProjects
+          .filter((composeProject) => !composeProject.repositoryId)
+          .map((composeProject) => ({
+            key: `compose:${composeProject.name}`,
+            hash: JSON.stringify(composeProject),
+            build: () => tmpl.composeProjectCard(composeProject, composeProjectActions()),
+          })),
       ],
     },
     {
@@ -121,7 +145,9 @@ function render(snapshot, { reconcile }) {
       kind: "collapsible",
       title: "Unrecognized listeners",
       meta: (n) => `${n} other hidden/noisy listeners`,
-      cards: snapshot.unmatchedInstances.map((instance) => ({
+      // An unmatched instance that resolved to a repository is already rendered as a member of that
+      // repository's card; only the genuinely unattributable ones stay here.
+      cards: snapshot.unmatchedInstances.filter((instance) => !instance.project?.repositoryId).map((instance) => ({
         key: instance.associationKey,
         hash: JSON.stringify(instance),
         build: () =>
@@ -244,8 +270,16 @@ function reconcileSection(section) {
       // A poll-driven hash change (health/CPU/RSS ticking) shouldn't silently collapse a
       // <details> the operator opened — e.g. an expanded compose-project card — since the
       // rebuilt node is a fresh element with no memory of the old one's open state.
-      if (existing.node instanceof HTMLDetailsElement && node instanceof HTMLDetailsElement) {
-        node.open = existing.node.open;
+      //
+      // The card root is the <details> on most kinds, but a repository card is a plain wrapper
+      // holding one (its git row has to sit outside the disclosure to survive collapse), so the
+      // state lives one level down. Resolve to whichever this card is before copying.
+      const disclosureOf = (el) =>
+        el instanceof HTMLDetailsElement ? el : el.querySelector(":scope > details");
+      const prevDisclosure = disclosureOf(existing.node);
+      const nextDisclosure = disclosureOf(node);
+      if (prevDisclosure && nextDisclosure) {
+        nextDisclosure.open = prevDisclosure.open;
       }
       const wasOffline = existing.offline;
       existing.node.replaceWith(node);
@@ -276,9 +310,38 @@ function reconcileSection(section) {
   }
 }
 
+// Members seen on the last render, per repository, so the next one can tell which disappeared.
+// Keyed by associationKey (stable across restarts and port changes) rather than port, so a dev
+// server that came back on a different port reads as the same member returning, not a new one.
+const lastMembersByRepository = new Map();
+
+// A repository with no cards left stops being tracked, so its members are not resurrected as
+// "departed" if it later reappears.
+function pruneDepartedTracking(snapshot) {
+  const live = new Set((snapshot.repositories || []).map((repository) => repository.repositoryId));
+  for (const key of lastMembersByRepository.keys()) {
+    if (!live.has(key)) lastMembersByRepository.delete(key);
+  }
+}
+
+function departedMembersFor(repository) {
+  const previous = lastMembersByRepository.get(repository.repositoryId) || new Map();
+  const current = new Map(repository.members.map((member) => [member.associationKey, member]));
+  const departed = [];
+  for (const [key, member] of previous) {
+    if (!current.has(key)) departed.push(member);
+  }
+  lastMembersByRepository.set(repository.repositoryId, current);
+  return departed;
+}
+
+// Any open menu anywhere in the card, including a member's. The guard exists so a poll-driven
+// rebuild never yanks a card out from under an operator mid-interaction, and a repository card
+// destroys its members when it rebuilds — so a member's open menu has to block the rebuild just as
+// the card's own does. Checking only the first [data-menu] in the subtree found the card's own
+// menu, saw it closed, and rebuilt anyway.
 function hasOpenMenu(node) {
-  const menu = node.querySelector("[data-menu]");
-  return !!menu && !menu.hidden;
+  return [...node.querySelectorAll("[data-menu]")].some((menu) => !menu.hidden);
 }
 
 function appendSection(section) {
@@ -322,6 +385,81 @@ function cardActions() {
     onCloseMenus: closeActionMenus,
     onHistory: (project, instance) => historyView.open(project, instance),
   };
+}
+
+// Repository-scoped. Settings are keyed per-app and per-compose-project, so a repository action
+// fans out to every member it contains rather than writing a repository-level record that the
+// schema has no place for.
+function repositoryActions() {
+  return {
+    onToggleFavorite: toggleRepositoryFavorite,
+    onHide: hideRepository,
+    onToggleMenu: toggleActionMenu,
+    onCloseMenus: closeActionMenus,
+    // Binding a repository path describes the whole repository, so the action lives on this menu
+    // rather than on the Compose card nested inside it. Same dialog either way.
+    onAssociateRepo: openComposeRepoDialog,
+  };
+}
+
+async function toggleRepositoryFavorite(repository) {
+  // Favorited when anything under it is; the toggle therefore turns everything off if any member is
+  // currently on, and everything on otherwise.
+  const anyFavorite = repository.members.some((member) => member.instance?.app?.favorite === true)
+    || repository.composeGroups.some((group) => group.favorite === true);
+  try {
+    // Each write returns the next revision, so they are threaded rather than issued in parallel —
+    // a stale revision is rejected by the API as a conflicting edit.
+    let latest = null;
+    let revision = lastSnapshot.settingsRevision;
+    for (const group of repository.composeGroups) {
+      const result = await api.updateComposeProject({
+        revision,
+        composeProject: group.name,
+        favorite: !anyFavorite,
+      });
+      latest = result.localhoster || result;
+      revision = latest.settingsRevision;
+    }
+    for (const member of repository.members) {
+      const result = await api.updateProject({
+        revision,
+        projectIdentity: member.projectIdentity,
+        appId: member.instance?.app?.id || "web",
+        appFavorite: !anyFavorite,
+      });
+      latest = result.localhoster || result;
+      revision = latest.settingsRevision;
+    }
+    if (latest) applySnapshot(latest);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function hideRepository(repository) {
+  try {
+    let latest = null;
+    let revision = lastSnapshot.settingsRevision;
+    for (const group of repository.composeGroups) {
+      const result = await api.updateComposeProject({ revision, composeProject: group.name, hidden: true });
+      latest = result.localhoster || result;
+      revision = latest.settingsRevision;
+    }
+    for (const member of repository.members) {
+      const result = await api.updateProject({
+        revision,
+        projectIdentity: member.projectIdentity,
+        appId: member.instance?.app?.id || "web",
+        appHidden: true,
+      });
+      latest = result.localhoster || result;
+      revision = latest.settingsRevision;
+    }
+    if (latest) applySnapshot(latest);
+  } catch (err) {
+    showError(err.message);
+  }
 }
 
 function composeProjectActions() {

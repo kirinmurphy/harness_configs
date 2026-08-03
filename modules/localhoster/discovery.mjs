@@ -11,6 +11,7 @@ import { probeHttpCandidate } from "./http-probe.mjs";
 import { resolveProjectAlias } from "./settings.mjs";
 import { discoverDockerRecords, defaultRunCommand as defaultRunDockerCommand } from "./docker.mjs";
 import { collectProcessMetrics, defaultRunCommand as defaultRunPsCommand } from "./process-metrics.mjs";
+import { resolveProvenance } from "./provenance.mjs";
 import { collectDockerStats, defaultRunCommand as defaultRunDockerStatsCommand } from "./docker-stats.mjs";
 import { collectDockerMounts, defaultRunCommand as defaultRunDockerMountsCommand } from "./docker-mounts.mjs";
 
@@ -93,6 +94,9 @@ export async function discoverInstances(options = {}) {
   ]);
   warnings.push(...dockerResult.warnings);
   const dockerByHostPort = indexDockerContainersByHostPort(dockerResult.containers);
+  // Every PID that owns a discovered listener, so provenance can stop at the nearest one instead of
+  // walking past it — a runtime spawned by another listener here is that listener's child.
+  const listenerPids = new Set(pending.map((item) => item.listener.pid));
 
   // A manually-associated repo (settings.composeProjects[name].repoPath — see settings-schema.mjs
   // for why this is a path rather than an identity) has to be resolved here, not in
@@ -136,6 +140,9 @@ export async function discoverInstances(options = {}) {
       processMetrics: docker
         ? toDockerStatsFields(dockerStatsByContainerId.get(docker.containerId))
         : toProcessMetricsFields(processByPid.get(item.listener.pid)),
+      // Only meaningful for host processes: a Docker instance's host pid is Docker Desktop's shared
+      // proxy, so its ancestry describes Docker Desktop rather than whoever started the container.
+      provenance: docker ? null : resolveProvenance(item.listener.pid, processByPid, { listenerPids }),
     });
     context.set(instance, { probe, appSettings: item.appSettings });
     instances.push(instance);

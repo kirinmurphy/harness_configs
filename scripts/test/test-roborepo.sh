@@ -1717,6 +1717,11 @@ assert "localhoster: docker mounts provider" \
 assert "localhoster: compose project identity resolution" \
   node "${repo_root}/scripts/test/localhoster-compose-identity-check.mjs"
 
+# Repository-keyed card merging: instances sharing a repositoryId collapse onto one card, cwd-only
+# members stay secondary and out of the aggregate CPU, and a Compose stack stays a sub-group.
+assert "localhoster: repository card merge" \
+  node "${repo_root}/scripts/test/localhoster-repository-merge-check.mjs"
+
 # Root config drift VIEW (buildRootConfigView in root-config-view.mjs): the per-harness state the terminal
 # `config root inspect` report and the web /config drift chip both render from — not-installed /
 # unwritten / in-sync / drifted / staged-pending.

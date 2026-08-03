@@ -10,6 +10,9 @@ export function snapshotHash(snapshot) {
     capabilities: snapshot.capabilities,
     warnings: snapshot.warnings,
     projects: snapshot.projects,
+    // Repositories carry their own members, so a change confined to one (a member's health, a new
+    // container) has to reach the hash or the reconcile path would skip the re-render.
+    repositories: snapshot.repositories,
     unmatched: snapshot.unmatchedInstances,
     inactive: snapshot.inactiveProjects,
     hidden: snapshot.hiddenCount || 0,
@@ -46,6 +49,21 @@ export function statusDetail(instance) {
 
 export function healthState(instance) {
   return instance.health?.state || null;
+}
+
+// Phrasing for the provenance kinds resolved server-side in modules/localhoster/provenance.mjs.
+// Lives here rather than importing that module because the portal only loads browser-served code;
+// the kinds are a small stable set, and an unrecognized one renders nothing rather than guessing.
+const PROVENANCE_LABELS = {
+  child: "started by another listener here",
+  orphaned: "started outside a live session",
+  shell: "started from a terminal",
+};
+
+export function provenanceLabel(provenance) {
+  if (!provenance?.kind) return null;
+  if (PROVENANCE_LABELS[provenance.kind]) return PROVENANCE_LABELS[provenance.kind];
+  return provenance.label ? `started by ${provenance.label}` : null;
 }
 
 export function currentLinks(snapshot, projectIdentity, appId) {

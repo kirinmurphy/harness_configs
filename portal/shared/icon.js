@@ -35,6 +35,39 @@ const ICONS = {
     viewBox: "0 0 16 16",
     body: `<rect x="5.5" y="5.5" width="8.5" height="8.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" /><path fill="none" stroke="currentColor" stroke-width="1.3" d="M10.5 5.5V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />`,
   },
+  // Success confirmation, paired with `copy` — same 16x16 box and stroke weight so swapping one for
+  // the other does not shift the control's metrics.
+  check: {
+    viewBox: "0 0 16 16",
+    body: `<path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.2 3.2L13 5" />`,
+  },
+
+  // Technology glyphs. Deliberately monochrome silhouettes in this set's own style rather than
+  // vendor logos: real brand marks are trademarked (this repo installs onto other people's
+  // machines) and are multi-color, which would make them the only icons here that ignore
+  // currentColor and therefore the only ones that break in one of the two themes.
+  //
+  // Each is a suggestion of the tool's familiar shape, not a reproduction of its mark.
+  // Container ship: stacked deck boxes over a hull.
+  docker: {
+    viewBox: "0 0 16 16",
+    body: `<path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" d="M1.5 8.5h9.2c.9 0 1.6-.5 2-1.2M1.5 8.5c0 2.5 1.7 4.5 4.6 4.5 3.4 0 6-1.7 7-4.7" /><rect x="3" y="6.2" width="2" height="2" fill="none" stroke="currentColor" stroke-width="1.1" /><rect x="5.6" y="6.2" width="2" height="2" fill="none" stroke="currentColor" stroke-width="1.1" /><rect x="5.6" y="3.8" width="2" height="2" fill="none" stroke="currentColor" stroke-width="1.1" /><rect x="8.2" y="6.2" width="2" height="2" fill="none" stroke="currentColor" stroke-width="1.1" />`,
+  },
+  // Node: the hexagon that reads as "node" across the ecosystem.
+  node: {
+    viewBox: "0 0 16 16",
+    body: `<path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="M8 1.6l5.4 3.1v6.6L8 14.4 2.6 11.3V4.7L8 1.6Z" />`,
+  },
+  // Supabase: the lightning bolt of its mark, as an outline.
+  supabase: {
+    viewBox: "0 0 16 16",
+    body: `<path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="M8.8 1.6L3 8.6h4.2v5.8L13 7.4H8.8V1.6Z" />`,
+  },
+  // ngrok / tunnel: two endpoints joined through a constriction.
+  tunnel: {
+    viewBox: "0 0 16 16",
+    body: `<path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M1.8 8h3.4M10.8 8h3.4" /><circle cx="8" cy="8" r="2.4" fill="none" stroke="currentColor" stroke-width="1.3" />`,
+  },
   "git-branch": {
     viewBox: "0 0 16 16",
     body: `<circle cx="4" cy="3" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3" /><circle cx="4" cy="13" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3" /><circle cx="12" cy="6" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3" /><path fill="none" stroke="currentColor" stroke-width="1.3" d="M4 4.6V11.4" /><path fill="none" stroke="currentColor" stroke-width="1.3" d="M4 8c0-2.5 2-3.5 4.5-3.8" />`,

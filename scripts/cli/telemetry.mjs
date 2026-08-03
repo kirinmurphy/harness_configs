@@ -5,7 +5,7 @@ import path from "node:path";
 import net from "node:net";
 import { spawnSync, spawn } from "node:child_process";
 import { markTelemetrySelected } from "./presets.mjs";
-import { repoRoot, stateRoot } from "./paths.mjs";
+import { repoRoot, stateRoot, harnessHome, rootConfigActive } from "./paths.mjs";
 import { portalPidPathForPort, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir, repositoriesRegistryPath } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { readMarkers, readSnapshot, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
@@ -41,9 +41,10 @@ import {
 import { loadRegistry, updateRegistry, upsertRepository, recordDiscovery } from "../../modules/repositories/index.mjs";
 import { buildRepositoryHashIndex } from "./telemetry-repository.mjs";
 import { createHash } from "node:crypto";
-import { locateTranscript, extractHeavyTurns, transcriptTitle, buildAnalysisPrompt } from "./telemetry-transcript-locate.mjs";
+import { buildAnalysisPrompt } from "../harnesses/transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
-import { mergeHooksInto } from "./hook-composition.mjs";
+import { hookFilePath, writeHooksFile } from "./hook-composition.mjs";
+import { getHarnessProvider, hasHarnessProvider, listHarnessProviders } from "../harnesses/registry.mjs";
 
 export async function telemetryCommand(rest) {
   const [sub, ...args] = rest;
@@ -313,14 +314,11 @@ function telemetryInstall(args) {
   ensureTelemetryDirs();
   writeTelemetryState({ enabled: true });
   markTelemetrySelected(true);
-  // Wire capture hooks into whichever harness config files exist.
-  const claudeSettings = path.join(os.homedir(), ".claude", "settings.json");
-  if (fs.existsSync(path.join(os.homedir(), ".claude"))) {
-    wireCaptureHooks(claudeSettings, "claude");
-  }
-  const codexDir = path.join(os.homedir(), ".codex");
-  if (fs.existsSync(codexDir)) {
-    wireCaptureHooks(path.join(codexDir, "hooks.json"), "codex");
+  // Wire capture hooks into whichever registered providers are actually installed on this machine.
+  for (const provider of listHarnessProviders()) {
+    if (!provider.manifest.capabilities.includes("telemetry-capture")) continue;
+    if (!fs.existsSync(harnessHome[provider.id])) continue;
+    wireCaptureHooks(provider.id);
   }
   console.log("telemetry-only install complete.");
   console.log("capture is enabled.");
@@ -352,13 +350,19 @@ function wireBinSymlink() {
   console.log(`link: ${target} -> ${source}`);
 }
 
-// Thin wrapper over the canonical cross-harness hook composer (hook-composition.mjs), so the
-// standalone `roborepo telemetry install` path and the package-driven `enable telemetry` path
-// share one hook definition and one merge implementation — never two independently-maintained copies.
-function wireCaptureHooks(settingsPath, harness) {
-  const fragmentPath = path.join(repoRoot, "globals", "packages", "telemetry", `hooks-${harness}.json`);
-  const fragment = JSON.parse(fs.readFileSync(fragmentPath, "utf8"));
-  mergeHooksInto(harness, settingsPath, fragment);
+// Dispatches to the provider's own telemetry.wireCaptureHooks adapter (which merges its fixed
+// hooks-<id>.json fragment via the same hook-merge math the package-driven `enable telemetry` path
+// uses), then writes the result through the same drift-tracked-for-Claude/plain-for-Codex path
+// hook-composition.mjs uses — never two independently-maintained hook-write implementations.
+function wireCaptureHooks(harness) {
+  const filePath = hookFilePath(harness, { claudeSettingsPath: rootConfigActive.claude });
+  const { changed, content } = getHarnessProvider(harness).adapters.telemetry.wireCaptureHooks(filePath);
+  if (changed) {
+    writeHooksFile(harness, filePath, content);
+    console.log(`wired: telemetry capture hooks (${harness}) → ${filePath}`);
+  } else {
+    console.log(`ok: telemetry capture hooks already present (${harness}) → ${filePath}`);
+  }
 }
 
 async function telemetryEnable(args) {
@@ -1163,10 +1167,16 @@ function cachedAnalysisEntry(window, harness, extra = {}) {
   // sessions started before telemetry was enabled may have no spool title or a mid-chat title.
   // Cap at top 20 sessions to bound latency; titles are separately cached so 5s polls don't re-read.
   for (const s of report.sessions.slice(0, 20)) {
-    const t = cachedTranscriptTitle(s.session_id, s.harness || harness || "claude");
+    const t = cachedTranscriptTitle(s.session_id, s.harness);
     if (t) s.title = t;
   }
   report.available_harnesses = availableHarnesses;
+  // Display names for whichever harnesses are actually present — sourced from each provider's own
+  // manifest (never a hardcoded "claude" -> "Claude Code" table here), so a new registered provider
+  // needs no change in this file to get a real label instead of falling back to its bare id.
+  report.harness_display_names = Object.fromEntries(
+    availableHarnesses.map((id) => [id, hasHarnessProvider(id) ? getHarnessProvider(id).manifest.displayName : id]),
+  );
   report.available_models = availableModels;
   report.available_repos = availableRepos;
   // Metric ids from the shared registry (plan: "available ... metric" dimension) so the Analysis
@@ -1266,10 +1276,15 @@ function stopAnalysisRefresh() {
 // Title cache: transcripts are append-only so the first user message never changes. Cache by id so
 // the 5-second dashboard poll doesn't re-stat/re-read files for every session on every tick.
 const _titleCache = new Map();
+// No silent default to Claude: an unrecognized/missing harness is a data-quality problem on this
+// one session's spool record, not grounds to guess — this is a best-effort title backfill (a miss
+// just leaves the spool's own title, if any), so it degrades to null rather than throwing.
 function cachedTranscriptTitle(sessionId, harness) {
   if (_titleCache.has(sessionId)) return _titleCache.get(sessionId);
-  const p = locateTranscript(sessionId, harness || "claude");
-  const t = p ? transcriptTitle(p) : null;
+  if (!hasHarnessProvider(harness)) return null;
+  const adapters = getHarnessProvider(harness).adapters;
+  const p = adapters.transcripts.locate(sessionId);
+  const t = p ? adapters.transcripts.parse(p, { includeHeavyTurns: true }).title : null;
   if (t) _titleCache.set(sessionId, t);
   return t;
 }
@@ -1349,7 +1364,8 @@ function sessionSpoolContext(sessionId, markers) {
 // Resolve a flagged event to its chat: find the transcript, surface the heaviest turns, and build a
 // paste-ready analysis prompt. Best-effort — a missing transcript returns found:false, never throws.
 function loadSessionDetail({ id, harness, finding, repo, spoolContext = null }) {
-  const transcriptPath = locateTranscript(id, harness);
+  const adapters = getHarnessProvider(harness).adapters;
+  const transcriptPath = adapters.transcripts.locate(id);
   if (!transcriptPath) {
     return {
       found: false,
@@ -1359,13 +1375,14 @@ function loadSessionDetail({ id, harness, finding, repo, spoolContext = null }) 
       spool_context: spoolContext,
     };
   }
+  const { heavyTurns, title } = adapters.transcripts.parse(transcriptPath, { includeHeavyTurns: true });
   return {
     found: true,
     session_id: id,
     harness,
     transcript_path: transcriptPath,
-    title: transcriptTitle(transcriptPath),
-    heavy_turns: extractHeavyTurns(transcriptPath, { limit: 8 }),
+    title,
+    heavy_turns: heavyTurns,
     analysis_prompt: buildAnalysisPrompt({ sessionId: id, harness, repo, finding, transcriptPath }),
     spool_context: spoolContext,
   };
@@ -1377,20 +1394,20 @@ const DEEP_READ_PROMPT =
   "Give 3-5 terse, actionable conclusions a developer can act on: call out the biggest token cost, " +
   "any tail risks, and one concrete thing to change. No preamble.\n\n";
 
-// Find the first available AI CLI for the deeper-read feature: prefer claude, fall back to codex.
+// Find the first available AI CLI for the deeper-read feature: prefer claude, fall back to codex, then gemini.
 function findDeepReadCli() {
-  for (const cmd of ["claude", "codex"]) {
+  for (const cmd of ["claude", "codex", "gemini"]) {
     const check = spawnSync("which", [cmd], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
     if (check.status === 0 && check.stdout.trim()) return cmd;
   }
   return null;
 }
 
-// Run the optional LLM synthesis via the headless AI CLI (claude or codex, whichever is available).
+// Run the optional LLM synthesis via the headless AI CLI (claude, codex, or gemini — whichever is available).
 // Best-effort: returns { ok:false, note } when no CLI is available so callers degrade gracefully.
 function runDeepRead(report) {
   const cli = findDeepReadCli();
-  if (!cli) return { ok: false, note: "no AI CLI available (tried claude, codex)", cli: null };
+  if (!cli) return { ok: false, note: "no AI CLI available (tried claude, codex, gemini)", cli: null };
   const prompt = DEEP_READ_PROMPT + insightsSummary(report);
   let result;
   try {

@@ -1,0 +1,42 @@
+{
+  "$schema": "../../../scripts/harnesses/provider-manifest.schema.json",
+  "schemaVersion": 1,
+  "id": "claude",
+  "displayName": "Claude Code",
+  "commandName": "claude",
+  "adapter": "claude",
+  "detection": {
+    "executables": ["claude"],
+    "homeCandidates": ["~/.claude"],
+    "configCandidates": ["~/.claude/settings.json"],
+    "minimumConfidence": "probable"
+  },
+  "paths": {
+    "home": { "path": "~/.claude", "kind": "directory" },
+    "rootConfig": { "path": "~/.claude/settings.json", "kind": "file" },
+    "rules": { "path": "~/.claude/CLAUDE.md", "kind": "file" },
+    "skills": { "path": "~/.claude/skills", "kind": "directory" },
+    "commands": { "path": "~/.claude/commands", "kind": "directory" },
+    "mcpLiveStore": { "path": "~/.claude.json", "kind": "file" }
+  },
+  "capabilities": [
+    "root-config",
+    "rules",
+    "permissions",
+    "skills",
+    "slash-commands",
+    "hooks",
+    "mcp",
+    "package-config",
+    "telemetry-capture",
+    "telemetry-transcripts",
+    "session-launch"
+  ],
+  "extensions": {
+    "roborepo": {
+      "rootConfigFormat": "json",
+      "hooksStorage": "embedded-in-root-config",
+      "mcpStorage": "native-cli-and-sidecar-json"
+    }
+  }
+}

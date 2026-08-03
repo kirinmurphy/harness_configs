@@ -3,7 +3,11 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { telemetryCollectorDir, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
-import { mcpServerOf, transcriptStats } from "./telemetry-transcript.mjs";
+// Direct leaf-module import, not getHarnessProvider(...).adapters.transcripts.parse: this hot
+// PreToolUse/PostToolUse path must not pay to load either provider's full adapter module (root
+// config, permissions, MCP, etc.) just to append one JSONL line. The registry dispatch is for
+// on-demand callers (portal session drill-down) that already pay for a heavier import graph.
+import { mcpServerOf, transcriptStats } from "../harnesses/transcript-parse.mjs";
 import { classifyCommand, failureSignature } from "./telemetry-classify.mjs";
 import { generateCaptureId } from "./telemetry-schemas/capture-schema-v3.mjs";
 import { inferPhase } from "./telemetry-phase-infer.mjs";

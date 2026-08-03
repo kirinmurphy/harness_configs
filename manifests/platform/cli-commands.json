@@ -2,7 +2,6 @@
   "schemaVersion": 2,
   "commandName": "roborepo",
   "title": "RoboRepo",
-  "description": "manage Claude and Codex harness configuration",
   "helpLabels": {
     "usage": "Usage:",
     "openMenu": "Open the interactive menu",
@@ -52,6 +51,7 @@
     "update": { "runtime": "bash", "path": "scripts/install/main.sh" },
     "repair": { "runtime": "bash", "path": "scripts/install/repair.sh" },
     "uninstall": { "runtime": "bash", "path": "scripts/install/uninstall.sh" },
+    "harness-withdraw": { "runtime": "bash", "path": "scripts/install/withdraw.sh" },
     "doctor": { "runtime": "bash", "path": "scripts/doctor.sh" },
     "verify": { "runtime": "bash", "path": "scripts/verify-install.sh" },
     "rules": { "runtime": "bash", "path": "scripts/build/render-rules.sh", "requiresDevelopmentCheckout": true },

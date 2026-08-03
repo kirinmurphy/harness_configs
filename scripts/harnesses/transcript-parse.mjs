@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { readAppendedLines } from "./jsonl-tail.mjs";
+import { readAppendedLines } from "../cli/jsonl-tail.mjs";
 
 // Reads a harness transcript (JSONL) and derives the session-level context that explains token
 // spikes: cumulative token usage, turn/tool counts, and which tools/MCP servers were exercised.
@@ -293,7 +293,11 @@ function numberOrNull(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function privacySafeRateLimits(rateLimits) {
+// Codex's telemetry-rate-limits capability adapter (parseRateLimits): strips a raw rate_limits
+// payload down to the privacy-safe fields captured at parse time — same function transcriptStats
+// already calls inline via applyCodexEntry, exported here so the capability contract has a real
+// standalone method rather than a notYetMigrated stub.
+export function privacySafeRateLimits(rateLimits) {
   if (!Array.isArray(rateLimits)) return rateLimits && typeof rateLimits === "object" ? privacySafeRateLimit(rateLimits) : null;
   return rateLimits.map(privacySafeRateLimit).filter(Boolean);
 }

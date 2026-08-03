@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { validateObjectKeys, validateStringArray } from "./validators.mjs";
+import { hasHarnessProvider } from "../../harnesses/registry.mjs";
 
 export const SNAPSHOT_SCHEMA_VERSION = 1;
 
@@ -36,7 +37,7 @@ export function validateSnapshot(snapshot) {
     throw new Error("snapshot created_at must be an ISO timestamp");
   }
   if (snapshot.roborepo_version != null && typeof snapshot.roborepo_version !== "string") throw new Error("snapshot roborepo_version must be a string");
-  if (snapshot.harness != null && !["claude", "codex"].includes(snapshot.harness)) throw new Error(`unknown snapshot harness: ${snapshot.harness}`);
+  if (snapshot.harness != null && snapshot.harness !== "unknown" && !hasHarnessProvider(snapshot.harness)) throw new Error(`unknown snapshot harness: ${snapshot.harness}`);
   if (snapshot.harness_version != null && typeof snapshot.harness_version !== "string") throw new Error("snapshot harness_version must be a string");
   if (snapshot.model != null && typeof snapshot.model !== "string") throw new Error("snapshot model must be a string");
   validateStringArray(snapshot.packages, "snapshot packages");

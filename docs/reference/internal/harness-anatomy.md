@@ -1,17 +1,23 @@
 # Harness Anatomy and Parity
 
-This is the map of what a "harness" is made of in this repo, and how the two harnesses — Claude
-and Codex — are kept in parity. It is the hub: each element below says what it does, where its
-source lives, how parity is achieved across the two harnesses, and the exact command you run to
-maintain it. For the underlying filesystem/symlink mechanics, see
+This is the map of what a "harness" is made of in this repo, and how the three harnesses — Claude,
+Codex, and Gemini CLI — are kept in parity. It is the hub: each element below says what it does,
+where its source lives, how parity is achieved across the harnesses, and the exact command you run
+to maintain it. For the underlying filesystem/symlink mechanics, see
 [How It Works](../services/architecture.md). If you want the teaching version — what each harness
 does natively and why each element's parity is solved the way it is — read
 [How the Harnesses Work, and Why Parity Takes the Shape It Does](harnesses-explained.md) first.
 
+Gemini CLI is the newest of the three, added to prove the registry/adapter contract against a real
+third harness rather than a synthetic one. Its coverage is uneven by design: rootConfig,
+permissions, and MCP add/remove are real and verified; rules, skills, commands, bulk hooks, and
+bulk MCP stay stubbed (`notYetMigrated`), matching the current bar for Claude and Codex on those
+same capabilities — see each element's section below for exactly which side of that line it's on.
+
 Every element is authored once under `globals/` (or a `manifests/` data file) and fanned out to
-both harnesses by the build/link step — you never hand-maintain it in two places. This doc is the
-*what* and *how-to-change*; for *why* each element is solved its particular way, each section links
-the matching step in [the teaching doc](harnesses-explained.md).
+every harness by the build/link step — you never hand-maintain it in more than one place. This doc
+is the *what* and *how-to-change*; for *why* each element is solved its particular way, each
+section links the matching step in [the teaching doc](harnesses-explained.md).
 
 ## Elements at a glance
 
@@ -22,10 +28,10 @@ the matching step in [the teaching doc](harnesses-explained.md).
 | Slash commands | Named workflows the user starts explicitly (`/case-study`, etc.). | Package-scoped, generated: `generated/packages/<package>/claude/commands/` and `generated/packages/<package>/codex/commands/`, composed live only for enabled packages | `roborepo skill render-commands [--check]` |
 | Install bundles | Named groups of install-time file operations applied at install/update. Internal to the install pipeline — not a user-facing verb. | `manifests/platform/presets.json` | `roborepo update` (applies them); `roborepo bundle …` is an internal verb called by `scripts/install/main.sh` |
 | Hooks | Scripts the harness runs on lifecycle/tool events. | System hooks: `globals/system/hooks/claude/*.mjs` + `settings.json` wiring, `globals/system/hooks/codex/*.mjs` + `hooks.json`. Package-owned hooks (e.g. Caveman/JDocMunch Codex `SessionStart`, telemetry capture, JCodeMunch's Bash blocker) live under `globals/packages/<package>/hooks*` and are composed in only when that package is enabled | edit source, then `roborepo update` |
-| MCP servers | External tool servers (jcodemunch, jdocmunch, …) registered with both harnesses. | Claude: native live store<br>Codex: active `~/.codex/config.toml`, fully owned by each package's `mcp`/`codex_tool_approvals` components | `roborepo mcp add <name-or-url>` |
-| Permissions | Allowed, denied, and ask-before-run behavior for commands, tools, and network defaults. | Claude: `settings.json` `permissions.*`<br>Codex: `config.toml` + `rules/default.rules` + runtime ask hook | `roborepo permissions [--check]` |
-| Telemetry | Local capture + analysis of sessions, tools, MCP, and token usage; spike detection + cause attribution + dashboard; backup/reset. | Package-owned hooks (`globals/packages/telemetry/hooks-{claude,codex}.json`) feed `~/.roborepo/telemetry` | `roborepo telemetry enable\|disable\|status\|report\|serve\|backup\|purge` |
-| Root config | Mutable, machine-local settings (model, trust, hook approvals). | Claude: `generated/claude/settings.json` (baseline)<br>Codex: `generated/codex/config.toml` (baseline) | `roborepo update` (export/merge) |
+| MCP servers | External tool servers (jcodemunch, jdocmunch, …) registered with every enabled harness. | Claude: native live store<br>Codex: active `~/.codex/config.toml`, fully owned by each package's `mcp`/`codex_tool_approvals` components<br>Gemini: `mcpServers` key in `~/.gemini/settings.json`, direct JSON read/write | `roborepo mcp add <name-or-url>` |
+| Permissions | Allowed, denied, and ask-before-run behavior for commands, tools, and network defaults. | Claude: `settings.json` `permissions.*`<br>Codex: `config.toml` + `rules/default.rules` + runtime ask hook<br>Gemini: `~/.gemini/policies/roborepo-permissions.toml`, one fully-owned file in the Policy Engine's rule directory | `roborepo permissions [--check]` |
+| Telemetry | Local capture + analysis of sessions, tools, MCP, and token usage; spike detection + cause attribution + dashboard; backup/reset. | Package-owned hooks (`globals/packages/telemetry/hooks-{claude,codex}.json`) feed `~/.roborepo/telemetry`. Gemini sessions can appear in capture/analysis (harness id is a free-form CLI flag), but the package declares no Gemini hook wiring yet, so capture isn't wired in for it | `roborepo telemetry enable\|disable\|status\|report\|serve\|backup\|purge` |
+| Root config | Mutable, machine-local settings (model, trust, hook approvals). | Claude: `generated/claude/settings.json` (baseline)<br>Codex: `generated/codex/config.toml` (baseline)<br>Gemini: `~/.gemini/settings.json`, merged with the same recursive-object-merge rule as Claude's | `roborepo update` (export/merge) |
 
 The rest of this doc takes each element in turn: what it does, how parity works, and what you do
 to change it. For what survives an install/update per element — backups, drift, staged candidates —
@@ -139,19 +145,22 @@ Hook details: [Claude Hooks](../services/claude-hooks.md), [Codex Hooks](../serv
 **What they do:** external tool servers the agents call — `jcodemunch-mcp` for code,
 `jdocmunch-mcp` for docs, plus anything you add.
 
-**Parity model:** one command registers a server with **both** harnesses: writes the intent to
+**Parity model:** one command registers a server with **every enabled harness**: writes the intent to
 `manifests/inventory/mcp-servers.json` (state — "what is installed"), applies live to each harness
-in its native dialect (Claude → `claude mcp add`; Codex → block in active `~/.codex/config.toml`),
+in its native dialect (Claude → `claude mcp add`; Codex → block in active `~/.codex/config.toml`;
+Gemini → direct read/write of the `mcpServers` key in `~/.gemini/settings.json`, no shell-out needed),
 and adds matching Claude permissions in `settings.json`. `manifests/inventory/mcp-presets.json`
 stays the *catalog* ("what you can add"). `roborepo update` re-applies `mcp-servers.json` on any
-machine, making the MCP set portable. (Why a command, not a generator:
+machine, making the MCP set portable. No package currently declares `"gemini"` in a server's
+`harnesses` array, so `roborepo mcp apply`'s bulk sync is a real but currently-unexercised path for
+it. (Why a command, not a generator:
 [explained.md Step 5](harnesses-explained.md#step-5--when-rendering-doesnt-fit-mcp-servers).)
 
 **To register a server:**
 
 ```sh
-roborepo mcp add <name-or-url>            # both harnesses + Claude permissions + record in mcp-servers.json
-roborepo mcp add <name-or-url> --only-claude   # or --only-codex to scope it
+roborepo mcp add <name-or-url>            # every registered harness + Claude permissions + record in mcp-servers.json
+roborepo mcp add <name-or-url> --harness claude   # repeatable; omit for every registered harness
 roborepo mcp apply                        # re-apply mcp-servers.json to current machine (called by update)
 ```
 
@@ -162,15 +171,18 @@ such as sandboxing, approval policy, and Codex network access.
 
 **Parity model:** authored once in `manifests/inventory/agent-permissions.json`, rendered into each harness's
 native shape — Claude's `permissions.allow`/`permissions.deny`/`permissions.ask` in
-`settings.json`, and Codex's `config.toml` session defaults + `rules/default.rules` command policy.
-Codex's static rules cannot express per-command `ask`, so `globals/system/hooks/codex/permission-check.mjs`
-supplies that runtime decision from the same manifest. (Why one source, two output shapes:
-[explained.md Step 3](harnesses-explained.md#step-3--bridging-a-structural-gap-permissions).)
+`settings.json`, Codex's `config.toml` session defaults + `rules/default.rules` command policy, and
+Gemini's `~/.gemini/policies/roborepo-permissions.toml` — one fully-owned file inside the Policy
+Engine's rule directory, rather than a marked block inside a shared file. Codex's static rules cannot
+express per-command `ask`, so `globals/system/hooks/codex/permission-check.mjs` supplies that runtime
+decision from the same manifest; Gemini needs no such workaround — its Policy Engine has a native
+3-state `allow`/`deny`/`ask_user` decision at the config layer. (Why one source, per-harness output
+shapes: [explained.md Step 3](harnesses-explained.md#step-3--bridging-a-structural-gap-permissions).)
 
 **To change permissions:** edit `manifests/inventory/agent-permissions.json`, then:
 
 ```sh
-roborepo permissions          # render both harness outputs
+roborepo permissions          # render every harness's output
 roborepo permissions --check
 ```
 
@@ -184,7 +196,10 @@ drift.
 **Parity model:** no auto-parity by design — this is the layer where per-machine divergence is
 allowed. The repo baselines (`generated/claude/settings.json`, `generated/codex/config.toml`) receive
 generated permission and hook/package defaults; local edits are protected by root-config drift
-detection and the `keep` / `overwrite` / `abort` collision policy. (Why parity isn't the goal here:
+detection and the `keep` / `overwrite` / `abort` collision policy. Gemini has no repo-side generated
+baseline yet (no `generated/gemini/settings.json` candidate exists), so its `rootConfig.merge` runs
+with nothing to merge in — `roborepo update` still reports "updated root config gemini" but the file
+stays `{}` until a baseline is added. (Why parity isn't the goal here:
 [explained.md Step 7](harnesses-explained.md#step-7--when-parity-isnt-the-goal-root-config).)
 
 For exact update, backup, staged-candidate, and uninstall behavior, see

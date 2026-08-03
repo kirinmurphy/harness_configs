@@ -8,7 +8,9 @@ export function fetchAnalysis(qs) {
 }
 
 export function fetchSession({ id, harness, finding, repo }) {
-  const qs = "id=" + encodeURIComponent(id) + "&harness=" + encodeURIComponent(harness || "claude")
+  // No client-side default to "claude": the server now rejects a missing/unknown harness rather
+  // than silently assuming one.
+  const qs = "id=" + encodeURIComponent(id) + "&harness=" + encodeURIComponent(harness || "")
     + "&finding=" + encodeURIComponent(finding || "") + "&repo=" + encodeURIComponent(repo || "");
   return portalGetJson("/api/session?" + qs);
 }

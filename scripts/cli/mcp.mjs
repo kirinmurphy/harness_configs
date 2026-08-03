@@ -1,13 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { loadMcpPresets } from "./mcp-presets.mjs";
-import { parseMcpAdd } from "./mcp-parse.mjs";
-import { claudeMcpArgs, ensureClaudeMcpPermission, runClaudeMcpAdd, shellQuote } from "./mcp-claude.mjs";
-import { ensureCodexMcp } from "./mcp-codex.mjs";
+import { parseMcpAdd, resolveMcpHarnesses } from "./mcp-parse.mjs";
+import { claudeMcpArgs, ensureClaudeMcpPermission, shellQuote } from "./mcp-claude.mjs";
 import { MCP_SERVERS_PATH } from "./mcp-config.mjs";
 import { initializeWorkspace, packageMode, workspaceMcpServersPath } from "./paths.mjs";
 import { hasReplaceOverride, loadWorkspaceMcpServers, readWorkspaceOverrides } from "./workspace-resources.mjs";
+import { getHarnessProvider } from "../harnesses/registry.mjs";
+import { validateAdapterActionResult } from "../harnesses/schemas.mjs";
+import { configFileMcpProviders, capitalize, ensureConfigFileMcp } from "./mcp-config-file.mjs";
+
+// Re-exported for packages.mjs, which needs these generic helpers but must not trigger this
+// module's eager loadMcpPresets() call below — import directly from mcp-config-file.mjs there
+// instead of through this module, so a missing/broken mcp-presets.json in a minimal sandbox can
+// never crash a package-mode command that has nothing to do with mcpAdd/mcpApply.
+export { configFileMcpProviders, ensureConfigFileMcp } from "./mcp-config-file.mjs";
 
 const mcpPresets = loadMcpPresets();
 
@@ -37,15 +44,11 @@ function readRecordServers() {
   }
 }
 
-function recordMcpServer(spec, target) {
+function recordMcpServer(spec, harnesses) {
   if (packageMode) initializeWorkspace();
   if (packageMode) assertMcpRecordAllowed(spec.name);
   const data = readRecordServers();
   const existing = data.servers.find((s) => s.name === spec.name);
-  const harnesses =
-    target === "only-claude" ? ["claude"] :
-    target === "only-codex"  ? ["codex"] :
-    ["claude", "codex"];
 
   if (existing) {
     existing.commandOrUrl = spec.commandOrUrl;
@@ -85,60 +88,63 @@ function assertMcpRecordAllowed(name) {
 }
 
 function claudeHasMcp(serverName) {
-  try {
-    const result = spawnSync("claude", ["mcp", "list"], { encoding: "utf8" });
-    if (result.error || result.status !== 0) return false;
-    return result.stdout.includes(`${serverName}:`);
-  } catch {
-    return false;
-  }
+  const names = getHarnessProvider("claude").adapters.mcp.list();
+  return names.includes(serverName);
 }
 
 export function mcpApply({ dryRun = false } = {}) {
   const data = readMcpServers();
+  const configFileProviders = configFileMcpProviders();
   for (const server of data.servers) {
     const spec = { name: server.name, commandOrUrl: server.commandOrUrl, args: server.args };
     const applyClaude = server.harnesses.includes("claude");
-    const applyCodex = server.harnesses.includes("codex");
     if (dryRun) {
       if (applyClaude) console.log(`would apply Claude MCP live store: ${server.name}`);
-      if (applyCodex) console.log(`would apply Codex MCP active config: ${server.name}`);
+      for (const provider of configFileProviders) {
+        if (server.harnesses.includes(provider.id)) {
+          console.log(`would apply ${capitalize(provider.id)} MCP active config: ${server.name}`);
+        }
+      }
       continue;
     }
     if (applyClaude) {
       if (claudeHasMcp(spec.name)) {
         console.log(`claude MCP already present: ${server.name}`);
       } else {
-        const args = claudeMcpArgs({ scope: "user", transport: null }, spec);
-        runClaudeMcpAdd(args);
+        validateAdapterActionResult(getHarnessProvider("claude").adapters.mcp.addServer(spec, { scope: "user", transport: null }));
       }
     }
-    if (applyCodex) ensureCodexMcp(spec);
+    for (const provider of configFileProviders) {
+      if (server.harnesses.includes(provider.id)) ensureConfigFileMcp(provider, spec);
+    }
   }
 }
 
 export function mcpAdd(rest) {
   const { opts, spec } = parseMcpAdd(rest, mcpPresets);
+  const harnesses = resolveMcpHarnesses(opts);
+  const applyClaude = harnesses.includes("claude");
+  const targetProviders = configFileMcpProviders().filter((provider) => harnesses.includes(provider.id));
   const args = claudeMcpArgs(opts, spec);
   const display = ["claude", ...args].map(shellQuote).join(" ");
 
   if (opts.dryRun) {
-    if (opts.target !== "only-codex") console.log(display);
-    if (opts.target !== "only-codex" && opts.updateClaudePermission) {
+    if (applyClaude) console.log(display);
+    if (applyClaude && opts.updateClaudePermission) {
       console.log(`would add permission: mcp__${spec.name} -> generated/claude/settings.json`);
     }
-    if (opts.target !== "only-claude") ensureCodexMcp(spec, { dryRun: true });
+    for (const provider of targetProviders) ensureConfigFileMcp(provider, spec, { dryRun: true });
     return;
   }
 
-  if (opts.target !== "only-codex") {
-    runClaudeMcpAdd(args);
+  if (applyClaude) {
+    validateAdapterActionResult(getHarnessProvider("claude").adapters.mcp.addServer(spec, { scope: opts.scope, transport: opts.transport }));
     if (opts.updateClaudePermission) ensureClaudeMcpPermission(spec.name);
   }
-  if (opts.target !== "only-claude") ensureCodexMcp(spec);
+  for (const provider of targetProviders) ensureConfigFileMcp(provider, spec);
   // Built-in package presets already live in the app's mcp-servers.json; recording them again would
   // duplicate a built-in into the user workspace and trip assertMcpRecordAllowed. Only user-added
   // servers get a workspace record.
-  if (!opts.builtIn) recordMcpServer(spec, opts.target);
+  if (!opts.builtIn) recordMcpServer(spec, harnesses);
   process.exit(0);
 }

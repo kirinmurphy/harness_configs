@@ -7,6 +7,8 @@ import { loadPackageCatalog, unavailablePackageMessage } from "./package-catalog
 import { listSourceSkills } from "./skill-files.mjs";
 import { loadPermissionManifest, renderPermissionsTo, resolveBehaviors, resolveArbitraryCommands } from "./permissions-render.mjs";
 import { commandOverridesPath, roborepoSkillsDir } from "./state-paths.mjs";
+import { listHarnessProviders } from "../harnesses/registry.mjs";
+import { resolveHarnessPath } from "../harnesses/paths.mjs";
 
 // Shared mutation core for the interactive config controls (terminal `onboard` + web POST endpoints).
 // Every function here is harness-agnostic and returns a plain { ok, message } result instead of
@@ -17,11 +19,12 @@ const SHARED_SKILLS_DIR = path.join(repoRoot, "globals", "system", "skills");
 // Machine-local skill cache. Harness skill dirs point at these copies; the cache is the thing that
 // survives across harness presence/absence and gives us one shared install source per machine.
 const ROBOREPO_SKILLS_DIR = roborepoSkillsDir;
-// Both harnesses, matching link_global_skills in install-lib.sh. Only roots that exist are touched.
-const HARNESS_SKILL_DIRS = [
-  path.join(os.homedir(), ".claude", "skills"),
-  path.join(os.homedir(), ".codex", "skills"),
-];
+// Every registered provider's live skills dir (~/.claude/skills, ~/.codex/skills, ...), resolved
+// through the provider manifest's "skills" path — a live filesystem location this machine actually
+// reads/writes, so the expanded absolute path (not the raw "~/..." string) is correct here, unlike
+// skill-command-config.mjs's skillFilePath which renders that same path as portable text into a
+// repo-committed generated file. Only present roots are touched below.
+const HARNESS_SKILL_DIRS = listHarnessProviders().map((provider) => resolveHarnessPath(provider.manifest, "skills"));
 // Ownership marker written inside each roborepo-managed skill copy. Copies (not symlinks) carry no
 // intrinsic "this is ours" signal, so the marker is how prune / native-skill detection tell a
 // roborepo copy apart from a user's native skill of the same name.

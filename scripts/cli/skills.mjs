@@ -2,7 +2,6 @@
 // export the shared harness skills into a consumer repo (+ a shareable zip).
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
@@ -19,6 +18,16 @@ import {
 import { initializeWorkspace, packageMode, repoRoot, sharedSkillsDir, workspaceSkillsDir } from "./paths.mjs";
 import { formatSkillInspection, inspectSkill } from "./skill-inventory.mjs";
 import { loadPackageCatalog } from "./package-catalog.mjs";
+import { listHarnessProviders } from "../harnesses/registry.mjs";
+import { resolveHarnessPath } from "../harnesses/paths.mjs";
+
+// Every registered provider's skills directory, not a fixed Codex/Claude pair — a provider without
+// the skills capability (or a future one whose skills path isn't home-relative) is simply skipped.
+function harnessSkillDirs() {
+  return listHarnessProviders()
+    .filter((provider) => provider.manifest.capabilities.includes("skills"))
+    .map((provider) => resolveHarnessPath(provider.manifest, "skills"));
+}
 
 function runChecked(label, command, args) {
   const result = spawnSync(command, args, { cwd: repoRoot, stdio: "inherit" });
@@ -108,11 +117,10 @@ export function skillAdopt(args) {
     process.exit(2);
   }
 
-  const codexSrc = path.join(os.homedir(), ".codex", "skills", name);
-  const claudeSrc = path.join(os.homedir(), ".claude", "skills", name);
-
+  const candidateDirs = harnessSkillDirs();
   let src;
-  for (const candidate of [codexSrc, claudeSrc]) {
+  for (const skillsDir of candidateDirs) {
+    const candidate = path.join(skillsDir, name);
     try {
       const stat = fs.lstatSync(candidate);
       if (stat.isDirectory() && !stat.isSymbolicLink()) { src = candidate; break; }
@@ -120,7 +128,7 @@ export function skillAdopt(args) {
   }
 
   if (!src) {
-    console.error(`no unmanaged skill '${name}' found in ~/.codex/skills/ or ~/.claude/skills/`);
+    console.error(`no unmanaged skill '${name}' found in ${candidateDirs.join(" or ")}`);
     console.error("only real directories (not managed symlinks) can be adopted");
     process.exit(1);
   }

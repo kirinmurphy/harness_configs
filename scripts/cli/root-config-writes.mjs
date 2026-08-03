@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { checkDrift, recordWrite } from "./root-config-state.mjs";
 import { rootConfigActive, rootConfigBaseline } from "./paths.mjs";
+import { normalizeRootConfigContent } from "./root-config-merge.mjs";
 
 export function writeRootConfig(harness, filePath, content) {
   const shouldRecord = shouldRecordRootConfigWrite(harness, filePath);
@@ -34,13 +35,3 @@ function shouldRecordRootConfigWrite(harness, filePath) {
   }
 }
 
-function normalizeRootConfigContent(harness, content) {
-  if (harness !== "claude") return content;
-  try {
-    const settings = JSON.parse(content || "{}");
-    delete settings.model;
-    return `${JSON.stringify(settings, null, 2)}\n`;
-  } catch {
-    return content;
-  }
-}

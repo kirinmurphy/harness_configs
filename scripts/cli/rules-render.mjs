@@ -1,21 +1,31 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { repoRoot } from "./paths.mjs";
 import { enabledPackagesPath, roborepoStateDir } from "./state-paths.mjs";
 import { loadPackageCatalog } from "./package-catalog.mjs";
+import { listHarnessProviders, getHarnessProvider } from "../harnesses/registry.mjs";
+import { resolveHarnessPath, hasHarnessPath } from "../harnesses/paths.mjs";
 
-// Rule fragment source directories per harness, in render order.
-const RULE_DIRS = {
-  claude: ["globals/system/rules/shared", "globals/system/rules/claude"],
-  codex: ["globals/system/rules/shared", "globals/system/rules/codex"],
-};
+// Rule fragment source directories per harness, in render order. "shared" (harness-agnostic) is
+// always first; each provider's own fragments live at globals/system/rules/<id> — a uniform,
+// convention-derived location from the provider's own id, not manifest data, since every provider
+// follows the same globals/<resource>/<id>/ shape (see globals/harnesses/<id>/ for the analogous
+// per-provider metadata directory).
+export function ruleDirsFor(providerId) {
+  return ["globals/system/rules/shared", `globals/system/rules/${providerId}`];
+}
 
-const HOME_RULES = {
-  claude: path.join(os.homedir(), ".claude", "CLAUDE.md"),
-  codex: path.join(os.homedir(), ".codex", "AGENTS.md"),
-};
+export function knownHarnessIds() {
+  return listHarnessProviders().map((provider) => provider.id);
+}
+
+// Live home rules file path for a harness — the provider manifest's "rules" path
+// (~/.claude/CLAUDE.md, ~/.codex/AGENTS.md), resolved through the shared harness-path resolver
+// so nothing outside a provider hardcodes ~/.claude or ~/.codex.
+function homeRulesPath(harness) {
+  return resolveHarnessPath(getHarnessProvider(harness).manifest, "rules");
+}
 
 // Marker that distinguishes roborepo render output from user-authored content.
 const RENDER_HEADER = "# Generated Harness Rules";
@@ -114,7 +124,7 @@ function renderContent(harness, enabledIds) {
   parts.push("Enabled packages are appended. Run `roborepo update` to refresh.");
   parts.push("");
 
-  for (const dir of RULE_DIRS[harness]) {
+  for (const dir of ruleDirsFor(harness)) {
     const absDir = path.join(repoRoot, dir);
     if (!fs.existsSync(absDir)) continue;
     for (const file of fs.readdirSync(absDir).filter((f) => f.endsWith(".md")).sort()) {
@@ -166,8 +176,8 @@ export function renderSharedRulesPreview() {
 
 // Just one harness's harness-specific fragments (globals/system/rules/<harness>), excluding shared.
 export function renderHarnessRulesPreview(harness) {
-  const dirs = { claude: "globals/system/rules/claude", codex: "globals/system/rules/codex" };
-  return dirs[harness] ? readFragmentDir(dirs[harness]) : "";
+  if (!knownHarnessIds().includes(harness)) return "";
+  return readFragmentDir(`globals/system/rules/${harness}`);
 }
 
 export function renderEnabledPackageRulesPreview(enabledIds) {
@@ -334,17 +344,19 @@ function removeManagedBlocks(filePath, names, dryRun) {
 
 // Write rendered home rules for one or all harnesses:
 //   - Unlinks any legacy symlink into the repo first.
-//   - Writes Claude and Codex rules inline inside managed blocks.
-//   - Writes Codex rules into AGENTS.override.md too when present.
+//   - Writes rules inline inside managed blocks.
+//   - Mirrors into a provider's declared "rulesOverride" path too, when that path exists on disk
+//     and the provider declares one (currently Codex's AGENTS.override.md; a provider that doesn't
+//     declare "rulesOverride" — e.g. Claude — is skipped entirely, no per-harness branch needed).
 // Skips harnesses whose home dir does not exist (harness not installed on this machine).
 export function renderHomeRules({ dryRun = false, harness: targetHarness } = {}) {
   const registry = readEnabledPackagesRegistry();
   if (!registry.exists && !dryRun) writeRegistry([], []);
   const enabledIds = effectiveEnabledIds(loadPackageCatalog(), registry);
-  const harnesses = targetHarness ? [targetHarness] : Object.keys(HOME_RULES);
+  const harnesses = targetHarness ? [targetHarness] : knownHarnessIds();
 
   for (const harness of harnesses) {
-    const homeFile = HOME_RULES[harness];
+    const homeFile = homeRulesPath(harness);
     const homeDir = path.dirname(homeFile);
     if (!fs.existsSync(homeDir)) continue;
 
@@ -365,22 +377,28 @@ export function renderHomeRules({ dryRun = false, harness: targetHarness } = {})
 
     const content = renderContent(harness, enabledIds);
     writeRulesBlock(homeFile, content, dryRun);
+    // Claude's legacy pre-managed-block rules file predates this module and is Claude-specific
+    // migration cleanup, not a generalizable provider concept — kept as a literal check rather
+    // than registry-derived data.
     if (harness === "claude") removeLegacyClaudeRulesFile(dryRun);
-    const overrideFile = path.join(homeDir, "AGENTS.override.md");
-    if (harness === "codex" && fs.existsSync(overrideFile)) {
-      writeManagedBlock(overrideFile, CODE_STYLE_BLOCK, content, dryRun);
+    if (hasHarnessPath(getHarnessProvider(harness).manifest, "rulesOverride")) {
+      const overrideFile = resolveHarnessPath(getHarnessProvider(harness).manifest, "rulesOverride");
+      if (fs.existsSync(overrideFile)) {
+        writeManagedBlock(overrideFile, CODE_STYLE_BLOCK, content, dryRun);
+      }
     }
   }
 }
 
 export function removeHomeRules({ dryRun = false, harness: targetHarness } = {}) {
-  const harnesses = targetHarness ? [targetHarness] : Object.keys(HOME_RULES);
+  const harnesses = targetHarness ? [targetHarness] : knownHarnessIds();
   for (const harness of harnesses) {
-    const homeFile = HOME_RULES[harness];
+    const homeFile = homeRulesPath(harness);
     removeManagedBlocks(homeFile, [CODE_STYLE_BLOCK, AGENTS_IMPORT_BLOCK], dryRun);
     if (harness === "claude") removeLegacyClaudeRulesFile(dryRun);
-    const overrideFile = path.join(path.dirname(homeFile), "AGENTS.override.md");
-    if (harness === "codex") removeManagedBlock(overrideFile, CODE_STYLE_BLOCK, dryRun);
+    if (hasHarnessPath(getHarnessProvider(harness).manifest, "rulesOverride")) {
+      removeManagedBlock(resolveHarnessPath(getHarnessProvider(harness).manifest, "rulesOverride"), CODE_STYLE_BLOCK, dryRun);
+    }
   }
 }
 
@@ -389,7 +407,8 @@ export function removeHomeRules({ dryRun = false, harness: targetHarness } = {})
 export function checkHomeRules({ quiet = false } = {}) {
   const enabledIds = effectiveEnabledIds(loadPackageCatalog());
   let ok = true;
-  for (const [harness, homeFile] of Object.entries(HOME_RULES)) {
+  for (const harness of knownHarnessIds()) {
+    const homeFile = homeRulesPath(harness);
     if (!fs.existsSync(path.dirname(homeFile))) continue;
     if (!fs.existsSync(homeFile)) {
       console.error(`fail: ${homeFile} missing`);
@@ -405,8 +424,8 @@ export function checkHomeRules({ quiet = false } = {}) {
       console.error(`fail: ${homeFile} out of date (run roborepo update to refresh)`);
       ok = false;
     }
-    if (harness === "codex") {
-      const overrideFile = path.join(path.dirname(homeFile), "AGENTS.override.md");
+    if (hasHarnessPath(getHarnessProvider(harness).manifest, "rulesOverride")) {
+      const overrideFile = resolveHarnessPath(getHarnessProvider(harness).manifest, "rulesOverride");
       if (fs.existsSync(overrideFile)) {
         const override = fs.readFileSync(overrideFile, "utf8");
         if (!override.includes(blockText(CODE_STYLE_BLOCK, expected).trimEnd())) {
@@ -436,9 +455,19 @@ export function renderedRulesMatches(harness, filePath) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(`usage: rules-render.mjs [<${knownHarnessIds().join("|")}>] [--dry-run]
+       rules-render.mjs --check [--quiet]
+       rules-render.mjs [<harness>] --remove-managed [--dry-run]
+       rules-render.mjs <harness> --matches <file>
+
+Renders home rules (CLAUDE.md/AGENTS.md/...) from globals/system/rules fragments for one harness,
+or every known harness when none is given.`);
+    process.exit(0);
+  }
   const dryRun = args.includes("--dry-run");
   const checkMode = args.includes("--check") || args.includes("check");
-  const harness = args.find((a) => a === "claude" || a === "codex");
+  const harness = args.find((a) => knownHarnessIds().includes(a));
   if (checkMode) {
     process.exit(checkHomeRules({ quiet: args.includes("--quiet") }) ? 0 : 1);
   } else if (args.includes("--remove-managed")) {
@@ -446,7 +475,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   } else if (args.includes("--matches")) {
     const file = args[args.indexOf("--matches") + 1];
     if (!harness || !file) {
-      console.error("usage: rules-render.mjs <claude|codex> --matches <file>");
+      console.error(`usage: rules-render.mjs <${knownHarnessIds().join("|")}> --matches <file>`);
       process.exit(2);
     }
     process.exit(renderedRulesMatches(harness, file) ? 0 : 1);

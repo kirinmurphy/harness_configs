@@ -19,14 +19,15 @@ behavior: parsing, validation, prompting, linking, copying, pruning, and reporti
 
 | Area | Config or source of truth | Code that interprets it |
 | --- | --- | --- |
-| Managed home paths | `manifests/platform/manifest.tsv` | `install/main.sh`, `install-claude.sh`, `install-codex.sh`, `install-windows.ps1`, `verify-install.sh`, `doctor.sh` |
+| Managed home paths | `manifests/platform/manifest.tsv` | `install/main.sh`, `install-harness.sh`, `install-windows.ps1`, `doctor.sh` |
 | Required repo files | `manifests/platform/source-files.tsv` | `doctor.sh` |
 | Agent permission behaviors | `manifests/inventory/agent-permissions.json` | `scripts/build/render-agent-permissions.mjs`, `install/main.sh`, `doctor.sh` |
 | Agent rules | `globals/system/rules/{shared,claude,codex}/` | `scripts/build/render-rules.sh` |
 | Rule render targets | `manifests/platform/rule-targets.tsv` | `scripts/build/render-rules.sh` |
 | CLI menu/usage catalog | `manifests/platform/cli-commands.json` | `scripts/cli/main.mjs` |
 | MCP presets | `manifests/inventory/mcp-presets.json` | `scripts/cli/mcp.mjs` |
-| Harness presence metadata | `manifests/platform/harnesses.tsv` | `install/main.sh`, `install-codex.sh` |
+| Harness provider metadata | `globals/harnesses/<id>/provider.json` | `scripts/harnesses/registry.mjs`, `scripts/cli/harness.mjs` |
+| Harness presence detection | provider `detection` rules (executables, home/config candidates) inside `provider.json` | `scripts/harnesses/{claude,codex}/index.mjs`, `manifests-data.sh`'s `harness_present`/`harness_detected_rows` (shells out to `roborepo harness detected`) |
 | Verify content assertions | `manifests/platform/verify-content.tsv` | `verify-install.sh` |
 | Shell snippet installs | `manifests/platform/shell-snippets.tsv` | `install-shell-snippets.sh` |
 | Merge prompts | `manifests/platform/prompts/*.md` | `install-lib.sh` |

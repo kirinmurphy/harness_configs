@@ -7,48 +7,37 @@
     <main id="main" class="inner">
       {{LOADING}}
       <!-- Static shell shown until the first snapshot loads (see .page-loading in base.css). Mirrors
-       tpl-config-files below so the loading scrim sits over real structure instead of a blank page.
-       app.js's render() replaceChildren()s this away on first successful load(); the dynamic
-       behaviorView sections that follow it are genuinely server-computed and have no static
-       equivalent, so they simply aren't in this pre-hydration shell. -->
+       tpl-config-files's row spine so the loading scrim sits over real structure instead of a blank
+       page; the per-harness data columns aren't shown here since the real column count is only
+       known once the snapshot with its `harnesses` list arrives. app.js's render() replaceChildren()s
+       this away on first successful load(); the dynamic behaviorView sections that follow it are
+       genuinely server-computed and have no static equivalent, so they simply aren't in this
+       pre-hydration shell. -->
       <section class="panel wide">
         <div class="config-grid" role="table" aria-label="Agent files">
-          <div class="config-grid-head" role="row">
-            <div role="columnheader"></div>
-            <div role="columnheader">Claude</div>
-            <div role="columnheader">Codex</div>
-          </div>
           <div class="config-grid-row" role="row">
             <div class="config-type" role="cell">
               <strong>Usage</strong>
               <span>Startup context loaded automatically.</span>
             </div>
-            <div class="harness-provider" role="cell"></div>
-            <div class="harness-provider" role="cell"></div>
           </div>
           <div class="config-grid-row" role="row">
             <div class="config-type" role="cell">
               <strong>Rules</strong>
               <span>Global context for every session.</span>
             </div>
-            <div class="harness-provider" role="cell">CLAUDE.md</div>
-            <div class="harness-provider" role="cell">AGENTS.md</div>
           </div>
           <div class="config-grid-row" role="row">
             <div class="config-type" role="cell">
               <strong>Config</strong>
               <span>Settings, permissions, and runtime defaults.</span>
             </div>
-            <div class="harness-provider" role="cell">settings.json</div>
-            <div class="harness-provider" role="cell">config.toml</div>
           </div>
           <div class="config-grid-row" role="row">
             <div class="config-type" role="cell">
               <strong>Hooks</strong>
               <span>Automation triggered by lifecycle or tool events.</span>
             </div>
-            <div class="harness-provider" role="cell">settings.json</div>
-            <div class="harness-provider" role="cell">hooks.json</div>
           </div>
         </div>
       </section>
@@ -76,118 +65,67 @@
         </div>
       </portal-notice>
     </template>
+    <!-- Config grid shell: header + 4 row skeletons, one per config-type. The row-label cell
+     (strong + description) doesn't vary per harness so it's authored here; each row's per-harness
+     data cells start empty and are filled by cloning the matching tpl-config-*-cell template once
+     per registered provider (templates.js's configFiles/configGridColumn) — never JS-built markup. -->
     <template id="tpl-config-files">
       <section class="panel wide">
         <div class="config-grid" role="table" aria-label="Agent files">
-          <div class="config-grid-head" role="row">
+          <div class="config-grid-head" role="row" data-slot="head">
             <div role="columnheader"></div>
-            <div role="columnheader">Claude</div>
-            <div role="columnheader">Codex</div>
           </div>
-          <div id="usage-per-harness" class="config-grid-row" role="row">
+          <div class="config-grid-row" role="row" data-slot="row-usage">
             <div class="config-type" role="cell">
               <strong>Usage</strong>
               <span>Startup context loaded automatically.</span>
             </div>
-            <div class="harness-provider" role="cell">
-              <token-chip data-context-startup="claude"></token-chip>
-            </div>
-            <div class="harness-provider" role="cell">
-              <token-chip data-context-startup="codex"></token-chip>
-            </div>
           </div>
-          <div class="config-grid-row" role="row">
+          <div class="config-grid-row" role="row" data-slot="row-rules">
             <div class="config-type" role="cell">
               <strong>Rules</strong>
               <span>Global context for every session.</span>
             </div>
-            <div class="harness-provider" role="cell">
-              <button
-                class="text-link"
-                type="button"
-                data-config-kind="live-rules"
-                data-config-id="agent-rules"
-                data-config-harness="claude"
-              >
-                CLAUDE.md
-              </button>
-              <token-chip data-cost="rules-claude"></token-chip>
-            </div>
-            <div class="harness-provider" role="cell">
-              <button
-                class="text-link"
-                type="button"
-                data-config-kind="live-rules"
-                data-config-id="agent-rules"
-                data-config-harness="codex"
-              >
-                AGENTS.md
-              </button>
-              <token-chip data-cost="rules-codex"></token-chip>
-            </div>
           </div>
-          <div class="config-grid-row" role="row">
+          <div class="config-grid-row" role="row" data-slot="row-config">
             <div class="config-type" role="cell">
               <strong>Config</strong>
               <span>Settings, permissions, and runtime defaults.</span>
             </div>
-            <div class="harness-provider" role="cell">
-              <button
-                class="text-link"
-                type="button"
-                data-config-kind="config-file"
-                data-config-id="claude-settings"
-              >
-                settings.json
-              </button>
-              <span
-                class="drift-chip"
-                data-drift-harness="claude"
-                hidden
-              ></span>
-            </div>
-            <div class="harness-provider" role="cell">
-              <button
-                class="text-link"
-                type="button"
-                data-config-kind="config-file"
-                data-config-id="codex-config"
-              >
-                config.toml
-              </button>
-              <span class="drift-chip" data-drift-harness="codex" hidden></span>
-            </div>
           </div>
-          <div class="config-grid-row" role="row">
+          <div class="config-grid-row" role="row" data-slot="row-hooks">
             <div class="config-type" role="cell">
               <strong>Hooks</strong>
               <span>Automation triggered by lifecycle or tool events.</span>
             </div>
-            <div class="harness-provider" role="cell">
-              <button
-                class="text-link"
-                type="button"
-                data-config-kind="harness-hooks"
-                data-config-id="hooks"
-                data-config-harness="claude"
-              >
-                settings.json
-              </button>
-            </div>
-            <div class="harness-provider" role="cell">
-              <button
-                class="text-link"
-                type="button"
-                data-config-kind="harness-hooks"
-                data-config-id="hooks"
-                data-config-harness="codex"
-              >
-                hooks.json
-              </button>
-            </div>
           </div>
         </div>
       </section>
+    </template>
+    <template id="tpl-config-header-cell">
+      <div role="columnheader" data-slot="label"></div>
+    </template>
+    <template id="tpl-config-usage-cell">
+      <div class="harness-provider" role="cell">
+        <token-chip data-slot="chip"></token-chip>
+      </div>
+    </template>
+    <template id="tpl-config-rules-cell">
+      <div class="harness-provider" role="cell">
+        <button class="text-link" type="button" data-slot="button"></button>
+        <token-chip data-slot="chip"></token-chip>
+      </div>
+    </template>
+    <template id="tpl-config-config-cell">
+      <div class="harness-provider" role="cell">
+        <button class="text-link" type="button" data-slot="button"></button>
+        <span class="drift-chip" data-slot="drift" hidden></span>
+      </div>
+    </template>
+    <template id="tpl-config-hooks-cell">
+      <div class="harness-provider" role="cell">
+        <button class="text-link" type="button" data-slot="button"></button>
+      </div>
     </template>
     <template id="tpl-modal-defaults">
       <div class="globals-defaults">
@@ -202,22 +140,7 @@
             >
               Global baseline
             </button>
-            <button
-              class="globals-default"
-              type="button"
-              data-rule-key="claude"
-              data-rule-path="globals/rules/claude"
-            >
-              Claude specifics
-            </button>
-            <button
-              class="globals-default"
-              type="button"
-              data-rule-key="codex"
-              data-rule-path="globals/rules/codex"
-            >
-              Codex specifics
-            </button>
+            <div data-slot="per-harness"></div>
             <button
               class="globals-default"
               type="button"
@@ -229,6 +152,9 @@
           </div>
         </details>
       </div>
+    </template>
+    <template id="tpl-modal-defaults-harness-button">
+      <button class="globals-default" type="button" data-slot="button"></button>
     </template>
     <!-- Skill category sections + shared item/badge primitives -->
     <template id="tpl-section-token-optimization">

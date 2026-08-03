@@ -4,9 +4,9 @@ import {
   README_CATEGORY_HEADINGS,
   SKILL_NEW_KINDS,
   SKILL_RISKS,
-  SLASH_COMMAND_HARNESSES,
-  SLASH_COMMAND_HARNESS_NAMES,
+  isKnownSlashCommandHarness,
 } from "./skill-command-config.mjs";
+import { knownHarnessIds } from "./rules-render.mjs";
 
 function slugify(value, label) {
   const slug = String(value ?? "")
@@ -36,7 +36,7 @@ function parseNewArgs(args) {
     description: null,
     risk: "low",
     category: "code",
-    harnesses: SLASH_COMMAND_HARNESS_NAMES,
+    harnesses: knownHarnessIds(),
     provided: new Set(),
   };
 
@@ -113,8 +113,8 @@ function validateOptionSets(opts) {
   if (opts.kind === "auto") return;
   const seenHarnesses = new Set();
   for (const harness of opts.harnesses) {
-    if (!SLASH_COMMAND_HARNESSES[harness]) {
-      console.error(`--harnesses values must be: ${SLASH_COMMAND_HARNESS_NAMES.join(", ")}`);
+    if (!isKnownSlashCommandHarness(harness)) {
+      console.error(`--harnesses values must be: ${knownHarnessIds().join(", ")}`);
       process.exit(2);
     }
     if (seenHarnesses.has(harness)) {

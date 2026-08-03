@@ -1,18 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { claudeJsonPath, repoRoot, rootConfigActive, harnessHome, workspacePackagesDir, packageMode, initializeWorkspace } from "./paths.mjs";
-import { setPackageEnabled, renderHomeRules, effectiveEnabledIds } from "./rules-render.mjs";
+import { repoRoot, rootConfigActive, harnessHome, workspacePackagesDir, packageMode, initializeWorkspace } from "./paths.mjs";
+import { setPackageEnabled, renderHomeRules, effectiveEnabledIds, knownHarnessIds } from "./rules-render.mjs";
 import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog, BUILT_IN_PACKAGES_DIR, readPackageCategories } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 import { buildPackageLiveState } from "./package-probes.mjs";
-import { ensureCodexMcp, removeCodexMcp } from "./mcp-codex.mjs";
+import { ensureClaudeMcpPermission } from "./mcp-claude.mjs";
+import { configFileMcpProviders, ensureConfigFileMcp, removeConfigFileMcp } from "./mcp-config-file.mjs";
 import { loadMcpPresets } from "./mcp-presets.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
 import { hookFilePath, mergeHooksInto, unmergeHooksFrom, installHookScripts, removeHookScripts } from "./hook-composition.mjs";
 import { installRuntimeAsset, mergeHarnessConfig, removeRuntimeAsset, unmergeHarnessConfig } from "./package-harness-config.mjs";
 import { installPackageCommands, removePackageCommands } from "./slash-commands.mjs";
-import { SLASH_COMMAND_HARNESS_NAMES } from "./skill-command-config.mjs";
+import { getHarnessProvider } from "../harnesses/registry.mjs";
 
 export const USER_CLAUDE_SETTINGS = rootConfigActive.claude;
 export const USER_CODEX_CONFIG = rootConfigActive.codex;
@@ -308,39 +309,34 @@ function unmergeCodexToolApprovals(configPath, component) {
 }
 
 
-function mcpAlreadyPresent(serverName) {
-  const result = spawnSync("claude", ["mcp", "list"], { encoding: "utf8" });
-  return !result.error && result.status === 0 && result.stdout.includes(`${serverName}:`);
-}
-
 function installMcpPreset(presetId) {
-  // Wires a built-in package's own MCP preset. Registers Claude and Codex independently (mirroring
-  // removeMcpPreset below) instead of delegating to a single `mcp add` subprocess: that combined path
-  // treats Claude CLI registration and the Codex config write as all-or-nothing (see mcpAdd), so an
-  // environment without the `claude` binary (e.g. CI) would silently skip the Codex write too, even
-  // though it has no external CLI dependency of its own.
+  // Wires a built-in package's own MCP preset. Registers Claude and every config-file-backed
+  // provider (Codex, Gemini, ...) independently (mirroring removeMcpPreset below) instead of
+  // delegating to a single `mcp add` subprocess: that combined path treats Claude CLI registration
+  // and the config-file writes as all-or-nothing (see mcpAdd), so an environment without the
+  // `claude` binary (e.g. CI) would silently skip the other writes too, even though they have no
+  // external CLI dependency of their own. configFileMcpProviders() (scripts/cli/mcp.mjs) iterates
+  // the registry rather than naming Codex/Gemini individually, so a future config-file-backed
+  // provider is wired here with no change to this function.
   if (process.env.ROBOREPO_SKIP_MCP === "1") { console.log(`skip: mcp ${presetId} (ROBOREPO_SKIP_MCP)`); return; }
   const spec = getMcpPresets().get(presetId.toLowerCase());
   if (!spec) throw new Error(`mcp add failed for preset: ${presetId} (unknown preset)`);
 
   if (spawnSync("claude", ["--version"], { encoding: "utf8" }).status === 0) {
-    if (mcpAlreadyPresent(spec.name)) {
+    if (getHarnessProvider("claude").adapters.mcp.list().includes(spec.name)) {
       console.log(`  ok: claude mcp ${spec.name} already present`);
     } else {
-      const result = spawnSync(
-        process.execPath,
-        [path.join(repoRoot, "scripts", "cli", "main.mjs"), "mcp", "add", "--builtin", "--only-claude", presetId],
-        { encoding: "utf8", stdio: "inherit" }
-      );
-      if (result.status !== 0 && result.status !== null) {
-        throw new Error(`mcp add failed for preset: ${presetId}`);
-      }
+      const result = getHarnessProvider("claude").adapters.mcp.addServer(spec, { scope: "user", transport: null });
+      if (!result.ok) throw new Error(`mcp add failed for preset: ${presetId}`);
+      // The old subprocess call (`mcp add --builtin --only-claude`) never passed
+      // --skip-claude-permission, so updateClaudePermission defaulted true -- preserve that grant.
+      ensureClaudeMcpPermission(spec.name);
     }
   } else {
     console.log(`  ok: claude CLI unavailable for mcp ${presetId}`);
   }
 
-  ensureCodexMcp(spec);
+  for (const provider of configFileMcpProviders()) ensureConfigFileMcp(provider, spec);
 }
 
 export async function enablePackage(rest, _seen = new Set()) {
@@ -452,13 +448,13 @@ export async function enablePackage(rest, _seen = new Set()) {
       case "skill":
         if (dryRun) {
           console.log(`  [dry-run] install skill ${component.id}`);
-          for (const harnessName of SLASH_COMMAND_HARNESS_NAMES) {
+          for (const harnessName of knownHarnessIds()) {
             installPackageCommands(pkg, harnessHome[harnessName], harnessName, { dryRun: true });
           }
           break;
         }
         servicePromises.push(setSkillComponent(component.id, true));
-        for (const harnessName of SLASH_COMMAND_HARNESS_NAMES) {
+        for (const harnessName of knownHarnessIds()) {
           installPackageCommands(pkg, harnessHome[harnessName], harnessName);
         }
         break;
@@ -547,40 +543,16 @@ function unmergePermissions(settingsPath, allow) {
   console.log(`removed: ${existing.length - next.length} permissions ← ${settingsPath}`);
 }
 
-function pruneClaudeMcpStore(serverName) {
-  let data;
-  try {
-    data = JSON.parse(fs.readFileSync(claudeJsonPath, "utf8"));
-  } catch {
-    return;
-  }
-
-  let changed = false;
-  const prune = (mcpServers) => {
-    if (mcpServers && Object.hasOwn(mcpServers, serverName)) {
-      delete mcpServers[serverName];
-      changed = true;
-    }
-  };
-  prune(data.mcpServers);
-  for (const project of Object.values(data.projects || {})) prune(project.mcpServers);
-  if (!changed) return;
-  fs.writeFileSync(claudeJsonPath, `${JSON.stringify(data, null, 2)}\n`);
-  console.log(`  pruned: Claude MCP store ${serverName}`);
-}
-
 function removeMcpPreset(presetId, dryRun) {
   if (dryRun) { console.log(`  [dry-run] mcp remove ${presetId}`); return; }
-  if (spawnSync("claude", ["--version"], { encoding: "utf8" }).status === 0) {
-    for (const scope of ["user", "local", "project"]) {
-      spawnSync("claude", ["mcp", "remove", presetId, "--scope", scope], { encoding: "utf8" });
-    }
-    console.log(`  removed: mcp ${presetId} from Claude scopes`);
-  } else {
-    console.log(`  ok: claude CLI unavailable for mcp ${presetId}`);
-  }
-  pruneClaudeMcpStore(presetId);
-  removeCodexMcp(presetId);
+  // mcp.removeServer already does the same all-scope sweep + ~/.claude.json prune as the
+  // pruneClaudeMcpStore/multi-scope-remove pair this replaces (see mcpRemoveServer in
+  // scripts/harnesses/claude/index.mjs) -- including its own internal CLI-availability check, so
+  // the ~/.claude.json prune still runs even when the `claude` binary is absent, matching the
+  // original's unconditional pruneClaudeMcpStore call.
+  getHarnessProvider("claude").adapters.mcp.removeServer(presetId, { homePath: harnessHome.claude });
+  console.log(`  removed: mcp ${presetId} from Claude scopes`);
+  for (const provider of configFileMcpProviders()) removeConfigFileMcp(provider, presetId);
 }
 
 export async function disablePackage(rest) {
@@ -675,13 +647,13 @@ export async function disablePackage(rest) {
       case "skill":
         if (dryRun) {
           console.log(`  [dry-run] remove skill ${component.id}`);
-          for (const harnessName of SLASH_COMMAND_HARNESS_NAMES) {
+          for (const harnessName of knownHarnessIds()) {
             removePackageCommands(pkg, harnessHome[harnessName], harnessName, { dryRun: true });
           }
           break;
         }
         servicePromises.push(setSkillComponent(component.id, false));
-        for (const harnessName of SLASH_COMMAND_HARNESS_NAMES) {
+        for (const harnessName of knownHarnessIds()) {
           removePackageCommands(pkg, harnessHome[harnessName], harnessName);
         }
         break;

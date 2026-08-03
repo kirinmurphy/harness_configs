@@ -1,36 +1,12 @@
 import fs from "node:fs";
 import { ACTIVE_CODEX_CONFIG_PATH, displayPath } from "./mcp-config.mjs";
-import { isHttpUrl } from "./mcp-parse.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
+import { addCodexMcpBlock, removeCodexMcpBlock, codexHasMcp } from "../harnesses/mcp-codex-toml.mjs";
 
-function tomlString(value) {
-  return JSON.stringify(value);
-}
-
-function tomlArray(values) {
-  return `[${values.map(tomlString).join(", ")}]`;
-}
-
-function tomlTableKey(key) {
-  return /^[A-Za-z0-9_-]+$/.test(key) ? key : tomlString(key);
-}
-
-function codexMcpBlock(spec) {
-  const lines = [`[mcp_servers.${tomlTableKey(spec.name)}]`];
-  if (isHttpUrl(spec.commandOrUrl)) {
-    lines.push(`url = ${tomlString(spec.commandOrUrl)}`);
-  } else {
-    lines.push(`command = ${tomlString(spec.commandOrUrl)}`);
-    lines.push(`args = ${tomlArray(spec.args)}`);
-  }
-  return lines.join("\n");
-}
-
-function codexHasMcp(configText, serverName) {
-  const bare = serverName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const quoted = tomlString(serverName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`^\\[mcp_servers\\.(?:${bare}|${quoted})\\]$`, "m").test(configText);
-}
+// The pure TOML block math (addCodexMcpBlock/removeCodexMcpBlock) lives in
+// scripts/harnesses/mcp-codex-toml.mjs (a leaf module with zero registry-touching imports) so the
+// Codex provider adapter can call it directly; re-exported here as thin orchestrator wrappers that
+// add the file read/write and console logging existing callers (mcp.mjs, packages.mjs) expect.
 
 export function ensureCodexMcp(spec, { dryRun = false, configPath = ACTIVE_CODEX_CONFIG_PATH } = {}) {
   let configText;
@@ -49,15 +25,15 @@ export function ensureCodexMcp(spec, { dryRun = false, configPath = ACTIVE_CODEX
     return;
   }
 
-  const block = codexMcpBlock(spec);
   if (dryRun) {
+    const { content } = addCodexMcpBlock(configText, spec);
     console.log(`would add Codex MCP: ${spec.name} -> ${configPath}`);
-    console.log(block);
+    console.log(content.slice(configText.length).trim());
     return;
   }
 
-  const prefix = configText.endsWith("\n") ? configText : `${configText}\n`;
-  writeRootConfig("codex", configPath, `${prefix}\n${block}\n`);
+  const { content } = addCodexMcpBlock(configText, spec);
+  writeRootConfig("codex", configPath, content);
   console.log(`codex MCP added: ${spec.name} -> ${displayPath(configPath)}`);
 }
 
@@ -70,23 +46,8 @@ export function removeCodexMcp(serverName, { dryRun = false, configPath = ACTIVE
     return;
   }
 
-  // Header-boundary removal. A char-class scan like `[^[]*` truncates blocks whose values contain
-  // `[` (TOML arrays such as `args = ["--foo"]`), so we split on top-level [section] headers and
-  // drop the block whose header is `[mcp_servers.<name>]`.
-  const targetHeaders = new Set([`[mcp_servers.${serverName}]`, `[mcp_servers.${JSON.stringify(serverName)}]`]);
-  const lines = configText.split(/\r?\n/);
-  const kept = [];
-  let dropping = false;
-  let removed = false;
-  for (const line of lines) {
-    if (/^\[[^\]]+\]\s*$/.test(line.trim())) {
-      dropping = targetHeaders.has(line.trim());
-      if (dropping) removed = true;
-    }
-    if (!dropping) kept.push(line);
-  }
-
-  if (!removed) {
+  const { changed, content } = removeCodexMcpBlock(configText, serverName);
+  if (!changed) {
     console.log(`ok: Codex MCP already absent: ${serverName}`);
     return;
   }
@@ -95,7 +56,6 @@ export function removeCodexMcp(serverName, { dryRun = false, configPath = ACTIVE
     return;
   }
 
-  const next = `${kept.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`;
-  writeRootConfig("codex", configPath, next);
+  writeRootConfig("codex", configPath, content);
   console.log(`codex MCP removed: ${serverName} <- ${displayPath(configPath)}`);
 }

@@ -1,0 +1,39 @@
+{
+  "$schema": "../../../scripts/harnesses/provider-manifest.schema.json",
+  "schemaVersion": 1,
+  "id": "gemini",
+  "displayName": "Gemini CLI",
+  "commandName": "gemini",
+  "adapter": "gemini",
+  "detection": {
+    "executables": ["gemini"],
+    "homeCandidates": ["~/.gemini"],
+    "configCandidates": ["~/.gemini/settings.json"],
+    "minimumConfidence": "probable"
+  },
+  "paths": {
+    "home": { "path": "~/.gemini", "kind": "directory" },
+    "rootConfig": { "path": "~/.gemini/settings.json", "kind": "file" },
+    "rules": { "path": "~/.gemini/GEMINI.md", "kind": "file" },
+    "skills": { "path": "~/.gemini/skills", "kind": "directory" },
+    "commands": { "path": "~/.gemini/commands", "kind": "directory" },
+    "policies": { "path": "~/.gemini/policies", "kind": "directory" }
+  },
+  "capabilities": [
+    "root-config",
+    "rules",
+    "permissions",
+    "skills",
+    "slash-commands",
+    "hooks",
+    "mcp"
+  ],
+  "extensions": {
+    "roborepo": {
+      "rootConfigFormat": "json",
+      "hooksStorage": "embedded-in-root-config",
+      "mcpStorage": "json-mcpServers-key",
+      "permissionsStorage": "policy-engine-toml-directory"
+    }
+  }
+}

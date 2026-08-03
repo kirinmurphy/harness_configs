@@ -43,22 +43,22 @@ export function createAnalysisExplorer() {
     metricSelect.replaceChildren(...metrics.map((m) => tmpl.selectOption(m, m)));
   }
 
-  function setHarnesses(harnesses) {
+  function setHarnesses(harnesses, displayNames) {
     if (!harnesses || !harnesses.length) return;
     const cur = knownHarnesses.join(",");
     if (cur === harnesses.join(",")) return;
     knownHarnesses = harnesses;
     for (const select of [aHarnessSelect, bHarnessSelect]) {
       for (const o of [...select.querySelectorAll("option[value]:not([value=''])")]) o.remove();
-      select.append(...harnesses.map((h) => tmpl.selectOption(h, h)));
+      select.append(...harnesses.map((h) => tmpl.selectOption(h, displayNames[h] || h)));
     }
   }
 
   // Refreshes the marker dropdown from the current window-scoped markers (same list app.js's cohort
   // filter bar uses) — only "change" markers make sense as a marker-relative comparison anchor.
-  function refresh({ markers, metrics, harnesses } = {}) {
+  function refresh({ markers, metrics, harnesses, harnessDisplayNames = {} } = {}) {
     if (metrics) setMetrics(metrics);
-    if (harnesses) setHarnesses(harnesses);
+    if (harnesses) setHarnesses(harnesses, harnessDisplayNames);
     if (markers) {
       currentMarkers = markers.filter((m) => m.type === "change" || m.type === "experiment-start");
       const cur = [...markerSelect.querySelectorAll("option[value]:not([value=''])")].map((o) => o.value).join(",");

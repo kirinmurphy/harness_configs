@@ -1,0 +1,14 @@
+{
+  "path": ["harness", "inspect"],
+  "kind": "command",
+  "title": "Inspect harness",
+  "description": "Show a harness provider's manifest and persisted state",
+  "order": 20,
+  "usage": "roborepo harness inspect <id>",
+  "arguments": [{ "name": "id", "required": true, "interactive": { "prompt": "Harness id" } }],
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/harness.mjs",
+    "export": "harnessInspect"
+  }
+}

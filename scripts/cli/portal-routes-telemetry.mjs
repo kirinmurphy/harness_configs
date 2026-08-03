@@ -5,6 +5,7 @@
 // loadInsightsLlm, plus the Phase 5/6 marker/experiment/analysis handlers, all from telemetry.mjs's
 // wiring).
 import { send, readJsonBody } from "./portal-routes-http.mjs";
+import { hasHarnessProvider } from "../harnesses/registry.mjs";
 
 export function handleTelemetryApi(req, res, urlPath, qs, handlers) {
   const {
@@ -53,11 +54,17 @@ export function handleTelemetryApi(req, res, urlPath, qs, handlers) {
     // so the server stays I/O-free, mirroring loadAnalysis.
     const params = new URLSearchParams(qs);
     const id = params.get("id");
-    const harness = params.get("harness") || "claude";
+    const harness = params.get("harness");
     const finding = params.get("finding") || "abnormal token usage";
     const repo = params.get("repo") || null;
     if (!id) {
       send(res, 400, "application/json", JSON.stringify({ error: "missing id" }));
+      return true;
+    }
+    // No silent default to Claude: a session lookup with a missing or unrecognized harness id is a
+    // client error, not "assume Claude" — hasHarnessProvider rejects both the same way.
+    if (!harness || !hasHarnessProvider(harness)) {
+      send(res, 400, "application/json", JSON.stringify({ error: `missing or unknown harness: ${harness ?? "(none)"}` }));
       return true;
     }
     send(res, 200, "application/json", JSON.stringify(loadSession({ id, harness, finding, repo })));

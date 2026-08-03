@@ -1,0 +1,7 @@
+{
+  "path": ["harness"],
+  "kind": "namespace",
+  "title": "Harnesses",
+  "description": "Manage discoverable harness providers (Claude, Codex, ...)",
+  "order": 150
+}

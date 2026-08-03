@@ -127,7 +127,7 @@ roborepo skill render-commands [--check]
 
 roborepo index code  [path]
 roborepo index docs  [path]
-roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--dry-run] [--only-claude|--only-codex] [--skip-claude-permission]
+roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--dry-run] [--harness <id>] [--skip-claude-permission]
 roborepo index code [path] --watch
 roborepo setup [--dry-run]
 roborepo apply [--dry-run]
@@ -407,7 +407,8 @@ common MCP setup is repeatable instead of hand-typed. After Claude registration 
   `--skip-claude-permission`), and
 - adds an MCP block to active `~/.codex/config.toml` so Codex can use it immediately.
 
-Default target is both harnesses; `--only-claude` / `--only-codex` scope it. Presets exist for the
+Default target is every registered harness; repeat `--harness <id>` (e.g. `--harness claude`) to
+scope it to a subset. Presets exist for the
 two bundled servers (`jcodemunch`, `jdocmunch`, both `uvx`-based); any other non-URL value is
 treated as a `uvx` package, and HTTP URLs default to `--transport http` and are written to Codex as
 a `url = "..."` block. Use `--dry-run` to print the exact

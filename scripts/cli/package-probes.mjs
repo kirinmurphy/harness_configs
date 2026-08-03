@@ -36,8 +36,9 @@ function firstNonblankLine(relPath) {
 }
 
 // True when a boolean scalar under [tui] equals `value` in live Codex config. Mirrors the writer in
-// package-harness-config.mjs (setTomlScalar) — scoped to the [tui] block so an unrelated same-named
-// key elsewhere can't produce a false match.
+// scripts/harnesses/codex/index.mjs (setTomlScalar, behind the Codex provider's
+// rootConfig.mergePackageComponent) — scoped to the [tui] block so an unrelated same-named key
+// elsewhere can't produce a false match.
 function codexScalarMatches(configText, key, value) {
   const block = configText.match(/^\[tui\]\s*\n([\s\S]*?)(?=^\[|\s*$)/m);
   if (!block) return false;

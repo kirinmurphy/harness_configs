@@ -64,9 +64,14 @@ assert "source layout: legacy globals/rules absent" bash -c "! test -e '${repo_r
 pkg_app="${work}/pkg-app"
 pkg_state="${work}/pkg-state"
 pkg_workspace="${work}/pkg-workspace"
-mkdir -p "${pkg_app}/manifests/platform" "${pkg_app}/scripts/build" "${pkg_app}/scripts/cli"
+mkdir -p "${pkg_app}/manifests/platform" "${pkg_app}/scripts/build" "${pkg_app}/scripts/cli" "${pkg_app}/scripts/harnesses" "${pkg_app}/globals/harnesses"
 cp "${repo_root}/package.json" "${pkg_app}/package.json"
 cp -R "${repo_root}/scripts/cli/." "${pkg_app}/scripts/cli/"
+# scripts/cli/paths.mjs (Phase 3) derives harness paths from the provider registry, so a sandboxed
+# CLI root needs that module graph and the manifests it reads too — see the mcp_harness copy below
+# for the same requirement, first hit there.
+cp -R "${repo_root}/scripts/harnesses/." "${pkg_app}/scripts/harnesses/"
+cp -R "${repo_root}/globals/harnesses/." "${pkg_app}/globals/harnesses/"
 cp "${repo_root}/manifests/platform/cli-commands.json" "${pkg_app}/manifests/platform/cli-commands.json"
 cp "${repo_root}/manifests/platform/context-cost-thresholds.json" "${pkg_app}/manifests/platform/context-cost-thresholds.json"
 cp -R "${repo_root}/manifests/platform/cli" "${pkg_app}/manifests/platform/cli"
@@ -336,13 +341,19 @@ assert "package validation: manual-only skill requires an entrypoint" \
 new_harness="${work}/new-harness"
 mkdir -p \
   "${new_harness}/scripts/cli" \
+  "${new_harness}/scripts/harnesses" \
   "${new_harness}/scripts/build" \
   "${new_harness}/manifests/inventory" \
   "${new_harness}/manifests/platform" \
   "${new_harness}/globals/system/skills" \
   "${new_harness}/globals/packages" \
+  "${new_harness}/globals/harnesses" \
   "${new_harness}/local/skills"
 cp -R "${repo_root}/scripts/cli/." "${new_harness}/scripts/cli/"
+# See the mcp_harness copy below for why scripts/harnesses/ and globals/harnesses/ must travel
+# with scripts/cli/ now that paths.mjs (Phase 3) derives harness paths from the provider registry.
+cp -R "${repo_root}/scripts/harnesses/." "${new_harness}/scripts/harnesses/"
+cp -R "${repo_root}/globals/harnesses/." "${new_harness}/globals/harnesses/"
 cp "${repo_root}/scripts/build/link-skills.sh" "${new_harness}/scripts/build/link-skills.sh"
 cp "${repo_root}/scripts/build/link-global-skills.sh" "${new_harness}/scripts/build/link-global-skills.sh"
 cp "${repo_root}/scripts/build/skill-lib.sh" "${new_harness}/scripts/build/skill-lib.sh"
@@ -974,11 +985,11 @@ mcp_dry_env="HOME='${mcp_dry_home}' ROBOREPO_STATE_DIR='${mcp_dry_home}/.roborep
 
 mcp_jdoc="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run" )"
 assert "mcp add: jdocmunch preset maps to Claude user-scope uvx command" \
-  test "${mcp_jdoc}" = $'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp\nwould add permission: mcp__jdocmunch -> generated/claude/settings.json\ncodex MCP already present: jdocmunch'
+  bash -c "echo '${mcp_jdoc}' | grep -Fq 'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp' && echo '${mcp_jdoc}' | grep -Fq 'would add permission: mcp__jdocmunch -> generated/claude/settings.json' && echo '${mcp_jdoc}' | grep -Fq 'codex MCP already present: jdocmunch' && echo '${mcp_jdoc}' | grep -Fq 'would add Gemini MCP: jdocmunch -> '"$( printf '%s' "${mcp_dry_home}" | tr -s / )"'/.gemini/settings.json'"
 
 mcp_jcode="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jcodemunch --dry-run" )"
 assert "mcp add: jcodemunch preset maps to Claude user-scope uvx command" \
-  test "${mcp_jcode}" = $'claude mcp add --scope user jcodemunch -- uvx jcodemunch-mcp\nwould add permission: mcp__jcodemunch -> generated/claude/settings.json\ncodex MCP already present: jcodemunch'
+  bash -c "echo '${mcp_jcode}' | grep -Fq 'claude mcp add --scope user jcodemunch -- uvx jcodemunch-mcp' && echo '${mcp_jcode}' | grep -Fq 'would add permission: mcp__jcodemunch -> generated/claude/settings.json' && echo '${mcp_jcode}' | grep -Fq 'codex MCP already present: jcodemunch' && echo '${mcp_jcode}' | grep -Fq 'would add Gemini MCP: jcodemunch -> '"$( printf '%s' "${mcp_dry_home}" | tr -s / )"'/.gemini/settings.json'"
 
 assert "mcp add: addMCP alias removed" \
   bash -c "! node '${cli}' addMCP jdocmunch --dry-run >/dev/null 2>&1"
@@ -996,18 +1007,25 @@ assert "mcp add: URL defaults to http transport" \
 
 mcp_skip_permission="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --skip-claude-permission" )"
 assert "mcp add: --skip-claude-permission skips settings update" \
-  test "${mcp_skip_permission}" = $'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp\ncodex MCP already present: jdocmunch'
+  bash -c "echo '${mcp_skip_permission}' | grep -Fq 'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp' && ! echo '${mcp_skip_permission}' | grep -Fq 'would add permission' && echo '${mcp_skip_permission}' | grep -Fq 'codex MCP already present: jdocmunch' && echo '${mcp_skip_permission}' | grep -Fq 'would add Gemini MCP: jdocmunch -> '"$( printf '%s' "${mcp_dry_home}" | tr -s / )"'/.gemini/settings.json'"
 
-mcp_only_claude="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --only-claude" )"
-assert "mcp add: --only-claude skips Codex config update" \
+mcp_only_claude="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --harness claude" )"
+assert "mcp add: --harness claude skips Codex config update" \
   test "${mcp_only_claude}" = $'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp\nwould add permission: mcp__jdocmunch -> generated/claude/settings.json'
 
-mcp_only_codex="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --only-codex" )"
-assert "mcp add: --only-codex skips Claude registration and settings update" \
+mcp_only_codex="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --harness codex" )"
+assert "mcp add: --harness codex skips Claude registration and settings update" \
   test "${mcp_only_codex}" = "codex MCP already present: jdocmunch"
 
-assert "mcp add: only flags are mutually exclusive" \
-  bash -c "! node '${cli}' mcp add jdocmunch --only-claude --only-codex --dry-run >/dev/null 2>&1"
+mcp_harness_repeated="$( bash -c "${mcp_dry_env} node '${cli}' mcp add jdocmunch --dry-run --harness claude --harness codex" )"
+assert "mcp add: repeated --harness claude --harness codex narrows to exactly those two, not every registered harness" \
+  test "${mcp_harness_repeated}" = $'claude mcp add --scope user jdocmunch -- uvx jdocmunch-mcp\nwould add permission: mcp__jdocmunch -> generated/claude/settings.json\ncodex MCP already present: jdocmunch'
+
+assert "mcp add: --harness with no value is rejected" \
+  bash -c "! node '${cli}' mcp add jdocmunch --harness --dry-run >/dev/null 2>&1"
+
+assert "mcp add: unregistered --harness id is rejected" \
+  bash -c "! node '${cli}' mcp add jdocmunch --harness nonexistent --dry-run >/dev/null 2>&1"
 
 assert "mcp add: invalid scope rejected" \
   bash -c "! node '${cli}' mcp add jdocmunch --scope=team --dry-run >/dev/null 2>&1"
@@ -1066,12 +1084,18 @@ assert "package command: index docs preserves marker contract" \
 # Real write tests run against a throwaway harness root. roborepo derives repoRoot from
 # scripts/cli/paths.mjs (two levels up), so copying scripts/cli/ (which holds the entry main.mjs
 # plus every module) lets us test writes without touching this repo. main.mjs imports every
-# cli/ module at load time.
+# cli/ module at load time. scripts/harnesses/ and globals/harnesses/ are copied too: paths.mjs
+# (Phase 3) now derives harnessHome/rootConfigActive/etc. from the provider registry instead of
+# hardcoding them, so the registry's module graph and the provider.json manifests it reads are
+# part of this sandbox's real dependency footprint, not an implementation detail scripts/cli/ owns
+# alone anymore.
 mcp_harness="${work}/mcp-harness"
 mcp_home="${work}/mcp-home"
-mkdir -p "${mcp_harness}/scripts/cli" "${mcp_harness}/generated/codex" "${mcp_harness}/generated/claude" "${mcp_harness}/manifests/inventory" "${mcp_harness}/manifests/platform"
+mkdir -p "${mcp_harness}/scripts/cli" "${mcp_harness}/scripts/harnesses" "${mcp_harness}/generated/codex" "${mcp_harness}/generated/claude" "${mcp_harness}/globals/harnesses" "${mcp_harness}/manifests/inventory" "${mcp_harness}/manifests/platform"
 mkdir -p "${mcp_home}/.codex" "${mcp_home}/.claude"
 cp -R "${repo_root}/scripts/cli/." "${mcp_harness}/scripts/cli/"
+cp -R "${repo_root}/scripts/harnesses/." "${mcp_harness}/scripts/harnesses/"
+cp -R "${repo_root}/globals/harnesses/." "${mcp_harness}/globals/harnesses/"
 cp "${repo_root}/manifests/inventory/mcp-presets.json" "${mcp_harness}/manifests/inventory/mcp-presets.json"
 cp "${repo_root}/manifests/platform/cli-commands.json" "${mcp_harness}/manifests/platform/cli-commands.json"
 cp "${repo_root}/manifests/platform/context-cost-thresholds.json" "${mcp_harness}/manifests/platform/context-cost-thresholds.json"
@@ -1081,17 +1105,17 @@ printf '{"permissions":{"allow":["Read"]}}\n' > "${mcp_harness}/generated/claude
 printf '[features]\nhooks = true\n' > "${mcp_home}/.codex/config.toml"
 printf '{"permissions":{"allow":["Read"]}}\n' > "${mcp_home}/.claude/settings.json"
 
-( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add https://mcp.example.com/mcp --name=example --only-codex >/dev/null )
+( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add https://mcp.example.com/mcp --name=example --harness codex >/dev/null )
 assert "mcp add: writes Codex HTTP url block" \
   grep -q 'url = "https://mcp.example.com/mcp"' "${mcp_home}/.codex/config.toml"
 
-( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add example-mcp --name=stdio-example --only-codex -- --flag value >/dev/null )
+( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add example-mcp --name=stdio-example --harness codex -- --flag value >/dev/null )
 assert "mcp add: writes Codex stdio command block" \
   grep -q 'command = "uvx"' "${mcp_home}/.codex/config.toml"
 assert "mcp add: writes Codex stdio args block" \
   grep -q 'args = \["example-mcp", "--flag", "value"\]' "${mcp_home}/.codex/config.toml"
 
-( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add https://mcp.example.com/mcp --name=example --only-codex >/dev/null )
+( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" node "${mcp_harness}/scripts/cli/main.mjs" mcp add https://mcp.example.com/mcp --name=example --harness codex >/dev/null )
 assert "mcp add: Codex write is idempotent" \
   bash -c "test \"\$(grep -c '^\\[mcp_servers.example\\]' '${mcp_home}/.codex/config.toml')\" = 1"
 
@@ -1102,7 +1126,7 @@ mkdir -p "${fake_bin}"
   printf 'printf "%%s\\n" "$*" > "%s"\n' "${work}/fake-claude-args.txt"
 } > "${fake_bin}/claude"
 chmod +x "${fake_bin}/claude"
-( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" PATH="${fake_bin}:${PATH}" node "${mcp_harness}/scripts/cli/main.mjs" mcp add perm-mcp --name=permtest --only-claude >/dev/null )
+( cd "${work}" && HOME="${mcp_home}" ROBOREPO_STATE_DIR="${mcp_home}/.roborepo" PATH="${fake_bin}:${PATH}" node "${mcp_harness}/scripts/cli/main.mjs" mcp add perm-mcp --name=permtest --harness claude >/dev/null )
 assert "mcp add: Claude registration command invoked" \
   grep -q 'mcp add --scope user permtest -- uvx perm-mcp' "${work}/fake-claude-args.txt"
 # The grant targets the ACTIVE settings the harness reads (~/.claude/settings.json), never the repo
@@ -1413,6 +1437,76 @@ HOME="${lu_home}" ROBOREPO_STATE_DIR="${lu_home}/.roborepo" ROBOREPO_ASSUME_INTE
 assert "legacy: real ~/.agents/skills user dir is preserved, not reclaimed" \
   bash -c "test -d '${lu_home}/.agents/skills/mine'"
 
+# ---------------------------------------------------------------------------
+# main.sh presence-scenario coverage (Phase 4 checklist's last item): zero, Claude-only, and
+# Codex-only harness presence at install time, in addition to the "both" coverage every other
+# install scenario in this file already exercises. Zero-harness caught a real bash 3.2 "unbound
+# variable" crash during this Phase 4 pass (main.sh iterated `"${present_harness_rows[@]}"` /
+# `"${present_harness_ids[*]}"` with no length guard — empty-array expansion under `set -u` throws
+# on this repo's target bash), fixed by guarding every such expansion with a `${#arr[@]} -gt 0`
+# check first. These scenarios exist specifically to keep that class of regression caught by CI
+# instead of only surfacing on a machine with zero or one harness actually installed.
+# ---------------------------------------------------------------------------
+zero_home="${reloc_root}/presence-zero/home"
+mkdir -p "${zero_home}/.local/bin"
+zero_out="$(HOME="${zero_home}" ROBOREPO_STATE_DIR="${zero_home}/.roborepo" ROBOREPO_ASSUME_INTERACTIVE=0 \
+  ROBOREPO_ON_CONFLICT=overwrite bash "${repo_root}/scripts/install/main.sh" 2>&1)"
+assert "install: zero harnesses present does not crash (no unbound variable)" \
+  bash -c "! echo '${zero_out}' | grep -q 'unbound variable'"
+assert "install: zero-harness summary shows both as not installed" \
+  bash -c "echo '${zero_out}' | grep -q 'Claude Code.*not installed' && echo '${zero_out}' | grep -q 'Codex.*not installed'"
+
+claude_only_home="${reloc_root}/presence-claude-only/home"
+mkdir -p "${claude_only_home}/.claude" "${claude_only_home}/.local/bin"
+claude_only_out="$(HOME="${claude_only_home}" ROBOREPO_STATE_DIR="${claude_only_home}/.roborepo" ROBOREPO_ASSUME_INTERACTIVE=0 \
+  ROBOREPO_ON_CONFLICT=overwrite bash "${repo_root}/scripts/install/main.sh" 2>&1)"
+assert "install: Claude-only presence does not crash" \
+  bash -c "! echo '${claude_only_out}' | grep -q 'unbound variable'"
+assert "install: Claude-only summary shows Claude available" \
+  bash -c "echo '${claude_only_out}' | grep -q 'Claude Code.*available'"
+assert "install: Claude-only links the base skill into .claude" \
+  bash -c "test -e '${claude_only_home}/.claude/skills/roborepo-support'"
+
+codex_only_home="${reloc_root}/presence-codex-only/home"
+mkdir -p "${codex_only_home}/.codex" "${codex_only_home}/.local/bin"
+codex_only_out="$(HOME="${codex_only_home}" ROBOREPO_STATE_DIR="${codex_only_home}/.roborepo" ROBOREPO_ASSUME_INTERACTIVE=0 \
+  ROBOREPO_ON_CONFLICT=overwrite bash "${repo_root}/scripts/install/main.sh" 2>&1)"
+assert "install: Codex-only presence does not crash" \
+  bash -c "! echo '${codex_only_out}' | grep -q 'unbound variable'"
+assert "install: Codex-only summary shows Codex available" \
+  bash -c "echo '${codex_only_out}' | grep -q 'Codex.*available'"
+assert "install: Codex-only links the base skill into .codex" \
+  bash -c "test -e '${codex_only_home}/.codex/skills/roborepo-support'"
+
+# ---------------------------------------------------------------------------
+# `roborepo harness withdraw <id>` (Phase 4): actively unmerges RoboRepo's content from ONE
+# provider's live config, distinct from `harness disable` (state-bit only). Verifies the sibling
+# harness is left untouched, unsupported capabilities (Codex hooks/mcp) are reported rather than
+# silently skipped, dry-run makes no change, and an unknown id is rejected.
+# ---------------------------------------------------------------------------
+wd_home="${reloc_root}/withdraw/home"
+mkdir -p "${wd_home}/.claude" "${wd_home}/.codex" "${wd_home}/.local/bin"
+HOME="${wd_home}" ROBOREPO_STATE_DIR="${wd_home}/.roborepo" ROBOREPO_ASSUME_INTERACTIVE=0 \
+  ROBOREPO_ON_CONFLICT=overwrite bash "${repo_root}/scripts/install/main.sh" >/dev/null 2>&1 || true
+assert "harness withdraw: unknown id is rejected" \
+  bash -c "! HOME='${wd_home}' ROBOREPO_STATE_DIR='${wd_home}/.roborepo' node '${cli}' harness withdraw bogus-harness >/dev/null 2>&1"
+assert "harness withdraw: dry-run makes no change" \
+  bash -c "HOME='${wd_home}' ROBOREPO_STATE_DIR='${wd_home}/.roborepo' node '${cli}' harness withdraw claude --dry-run >/dev/null 2>&1 && test -f '${wd_home}/.claude/settings.json'"
+HOME="${wd_home}" ROBOREPO_STATE_DIR="${wd_home}/.roborepo" node "${cli}" harness withdraw claude --yes >/dev/null 2>&1
+assert "harness withdraw: removes the target provider's root config" \
+  bash -c "! test -f '${wd_home}/.claude/settings.json'"
+assert "harness withdraw: leaves the sibling provider's root config untouched" \
+  bash -c "test -f '${wd_home}/.codex/config.toml'"
+assert "harness withdraw: removes the target provider's linked base skill" \
+  bash -c "! test -e '${wd_home}/.claude/skills/roborepo-support'"
+assert "harness withdraw: leaves the sibling provider's linked base skill untouched" \
+  bash -c "test -e '${wd_home}/.codex/skills/roborepo-support'"
+withdraw_codex_out="$(HOME="${wd_home}" ROBOREPO_STATE_DIR="${wd_home}/.roborepo" node "${cli}" harness withdraw codex --yes 2>&1)"
+assert "harness withdraw: unsupported hooks.write capability is reported for codex" \
+  bash -c "echo '${withdraw_codex_out}' | grep -q 'unsupported: hooks.write has no codex adapter'"
+assert "harness withdraw: unsupported mcp.remove capability is reported for codex" \
+  bash -c "echo '${withdraw_codex_out}' | grep -q 'unsupported: mcp.remove has no codex adapter'"
+
 # --------------------------------------------------------------------------- onboarding / defaults
 # Minimal default: install seeds only the `base` bundle; everything else is opt-in via the wizard.
 assert "onboard: presets.json default is base-only" \
@@ -1460,6 +1554,115 @@ assert "mcp: enabling a built-in MCP package does not record it into the workspa
 
 assert "workspace: built-in conflicts require a typed replace override" \
   node "${repo_root}/scripts/test/workspace-resources-check.mjs"
+
+# Harness provider contract (Phase 1): manifest schema, capability enum, discovery/state shape
+# validators. See docs/plans/active/discoverable-harness-provider-architecture-plan.md.
+assert "harness: provider manifest and schema validation" \
+  node "${repo_root}/scripts/test/harness-manifest-check.mjs"
+
+# Harness provider registry, discovery, state, and runtime (Phase 2): zero/one/multi enabled
+# provider scenarios, explicit-disable survives refresh, synthetic third provider proves no
+# hardcoded two-provider assumption. See discoverable-harness-provider-architecture-plan.md Phase 2.
+assert "harness: registry, discovery, state, and runtime" \
+  node "${repo_root}/scripts/test/harness-registry-check.mjs"
+
+# Gemini CLI provider adapter (gemini-cli-provider-integration-plan.md Phase 2): the first real
+# (non-synthetic) third harness provider. Pins Policy Engine TOML decision mapping (manifest "ask"
+# bucket -> Gemini's native "ask_user"), the verified Claude-tool-name -> Gemini-tool-name table
+# (write_file/replace/read_file), settings.json rootConfig merge, hooks embedded in settings.json
+# (Claude-shaped, not a Codex-style sidecar), and mcpServers JSON add/remove/list.
+assert "harness: gemini adapter (Policy Engine render, rootConfig, hooks, mcp)" \
+  node "${repo_root}/scripts/test/gemini-adapter-characterization-check.mjs"
+
+# Package harness validation resolves against the provider registry (Phase 5), not a hardcoded
+# local Set -- pins rejection of an unregistered harness id, acceptance of registered ones, and
+# rejection of a resource targeting a harness whose manifest doesn't declare the capability that
+# resource type needs (e.g. a hooks resource pointed at a harness with no "hooks" capability).
+assert "harness: package-catalog harness validation is registry-backed" \
+  node "${repo_root}/scripts/test/package-catalog-harness-check.mjs"
+
+# Rules rendering through provider rule targets (Phase 5): HOME_RULES/RULE_DIRS replaced by
+# registry-driven lookups (provider manifest "rules"/"rulesOverride" paths, globals/system/rules/
+# <id> convention). Pins Codex's AGENTS.override.md mirror and Claude's legacy-file cleanup
+# byte-for-byte across the refactor.
+assert "harness: rules rendering is registry-backed (Codex override mirror, Claude legacy cleanup)" \
+  node "${repo_root}/scripts/test/rules-render-characterization-check.mjs"
+
+# Slash-command rendering through provider command adapters (Phase 5): SLASH_COMMAND_HARNESSES'
+# genDir/liveDir/skillPath replaced by registry-driven lookups (skill-command-config.mjs). Pins the
+# runtime install/remove path's copy/refuse-to-clobber/remove/refuse-to-delete behavior; the
+# build-time render path is separately covered by doctor's `render-slash-commands.mjs --check`
+# against the real generated tree.
+assert "harness: slash-command install/remove is registry-backed" \
+  node "${repo_root}/scripts/test/slash-commands-characterization-check.mjs"
+
+# Skill linking through provider skill paths (Phase 5): config-mutate.mjs's hardcoded
+# HARNESS_SKILL_DIRS ([~/.claude/skills, ~/.codex/skills]) and skill-inventory.mjs's HARNESSES
+# array both replaced by registry-driven resolveHarnessPath lookups. Pins the machine-local
+# cache + per-harness symlink round trip, present-harness-only gating, and native-skill
+# non-overwrite behavior.
+assert "harness: skill linking (machine-local cache + symlinks) is registry-backed" \
+  node "${repo_root}/scripts/test/config-mutate-skill-characterization-check.mjs"
+
+# Permission rendering through provider permission adapters (Phase 5): renderPermissionsTo (the
+# LIVE home-config path, distinct from render-agent-permissions.mjs's build-time repo SOURCE
+# render, which stays Phase 8 scope) now dispatches through getHarnessProvider(id).adapters.
+# permissions.render instead of two hardcoded if-blocks. Pure render core extracted into
+# scripts/harnesses/permissions-render.mjs so provider adapters can import it without cycling
+# back through the registry.
+assert "harness: live permission rendering is registry-backed" \
+  node "${repo_root}/scripts/test/permissions-render-live-characterization-check.mjs"
+
+# MCP add/remove/list through provider MCP adapters (Phase 5): mcp.mjs's mcpAdd/mcpApply and
+# packages.mjs's installMcpPreset/removeMcpPreset (previously three independent, duplicated
+# Claude-shell-out+Codex-TOML implementations) now dispatch through
+# getHarnessProvider(id).adapters.mcp.addServer/removeServer/list. Distinct names from Phase 4's
+# existing bulk mcp.remove (withdraw's "strip every server this package owns" sweep) -- same
+# merge/unmerge-vs-write naming lesson as hooks. Pure Claude CLI-arg and Codex TOML-block logic
+# extracted into scripts/harnesses/{mcp-claude-cli,mcp-codex-toml}.mjs so provider adapters can
+# import them without cycling back through the registry.
+assert "harness: single-server MCP add is registry-backed (dry-run display, --only-* gating)" \
+  node "${repo_root}/scripts/test/mcp-add-characterization-check.mjs"
+assert "harness: package-lifecycle MCP wiring is registry-backed (ROBOREPO_SKIP_MCP, independent Claude/Codex)" \
+  node "${repo_root}/scripts/test/mcp-package-lifecycle-characterization-check.mjs"
+
+assert "harness: CLI list/inspect/refresh/enable/disable end to end" \
+  node "${repo_root}/scripts/test/harness-cli-check.mjs"
+
+# Root-config merge characterization (Phase 3 safety net): pins mergeClaudeSettings/
+# mergeCodexConfig's exact current output (TOML comment reattachment, bracket-in-value sections,
+# permissions dedupe, the Claude-only model-key strip) BEFORE this logic moves into provider
+# adapters, so the Phase 3 refactor can be checked byte-for-byte instead of by re-reading the merge
+# logic and hoping the port is faithful. Must keep passing unchanged through Phase 3.
+assert "harness: root-config merge characterization (pre-Phase-3 baseline)" \
+  node "${repo_root}/scripts/test/root-config-merge-characterization-check.mjs"
+
+# Package-harness-config characterization (Phase 3 safety net): pins mergeHarnessConfig/
+# unmergeHarnessConfig's exact current behavior (Claude statusLine conflict preservation, Codex TUI
+# status_line array dedupe/table-creation-from-scratch, the color-scalar ownership-provenance
+# round-trip) BEFORE package-harness-config.mjs's orchestrator refactor. Must keep passing
+# unchanged through that refactor.
+assert "harness: package-harness-config characterization (pre-refactor baseline)" \
+  node "${repo_root}/scripts/test/package-harness-config-characterization-check.mjs"
+
+# Package-config round-trip (Phase 3 checklist item): author a package config, enable it, disable
+# it, re-enable it, and assert the final state matches the first-enable state byte-for-byte, for
+# both Claude and Codex, including a Codex case with an unowned neighbor entry that must survive
+# the whole cycle untouched.
+assert "harness: package-config round-trip (enable/disable/enable parity)" \
+  node "${repo_root}/scripts/test/harness-package-config-roundtrip-check.mjs"
+
+# Claude mcp.remove adapter characterization (Phase 4): pins the ported behavior of
+# scripts/install/uninstall.sh's former remove_mcp_servers before uninstall.sh calls the adapter
+# instead of its own inline bash+node.
+assert "harness: Claude mcp.remove adapter characterization" \
+  node "${repo_root}/scripts/test/harness-mcp-remove-characterization-check.mjs"
+
+# Claude hooks.write (removal semantics) adapter characterization (Phase 4): pins the ported
+# behavior of scripts/install/uninstall.sh's former strip_package_hooks before uninstall.sh calls
+# the adapter instead of its own inline bash+node.
+assert "harness: Claude hooks.write (removal) adapter characterization" \
+  node "${repo_root}/scripts/test/harness-hooks-write-remove-characterization-check.mjs"
 
 # Canonical repository identity (modules/repositories): shared resolver extraction, normalization
 # equivalence, worktree/clone roots, versioned registry persistence, aliases, associations,
@@ -1582,6 +1785,29 @@ assert "telemetry: package telemetry policy validation and evaluation" \
 # Phase 6: portal global-filter <-> URL state round-trip (state.js's pure helpers, no DOM needed).
 assert "telemetry: portal global filter URL state round-trips" \
   node "${repo_root}/scripts/test/telemetry-portal-state-check.mjs"
+
+# Phase 6 of docs/plans/active/discoverable-harness-provider-architecture-plan.md: /api/session
+# rejects a missing/unrecognized harness id instead of silently defaulting to Claude.
+assert "telemetry: /api/session rejects missing/unknown harness ids" \
+  node "${repo_root}/scripts/test/telemetry-session-harness-check.mjs"
+
+# Phase 6 of discoverable-harness-provider-architecture-plan.md: a genuinely third registered
+# provider (not just claude/codex) proves the shared telemetry analysis and capability-based
+# rate-limit check do not encode a two-provider assumption.
+assert "telemetry: synthetic third-provider analysis and rate-limit capability" \
+  node "${repo_root}/scripts/test/telemetry-synthetic-provider-check.mjs"
+
+# Phase 7 of discoverable-harness-provider-architecture-plan.md: /api/config/source rejects a
+# missing/unrecognized harness id for harness-scoped kinds instead of silently defaulting to
+# Claude, and the Config snapshot's harnesses list stays registry-driven.
+assert "config: /api/config/source rejects missing/unknown harness ids" \
+  node "${repo_root}/scripts/test/config-source-harness-check.mjs"
+
+# Phase 7 of discoverable-harness-provider-architecture-plan.md: a genuinely third registered
+# provider proves the Config snapshot's harnesses list (grid columns, defaults popover) and the
+# rootConfigBaseline/Active path maps do not encode a two-provider assumption.
+assert "config: synthetic third-provider harnesses list and root-config paths" \
+  node "${repo_root}/scripts/test/config-synthetic-provider-check.mjs"
 
 # Telemetry "view docs" popup: heading-slug ids, table, and mermaid-fallback extensions to the
 # shared markdown renderer (also used by Config's skill-source popup).

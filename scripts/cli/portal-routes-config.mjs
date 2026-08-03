@@ -58,7 +58,7 @@ export function handleConfigApi(req, res, urlPath, qs, handlers) {
     const result = loadConfigSource({
       kind: params.get("kind"),
       id: params.get("id"),
-      harness: params.get("harness") || "claude",
+      harness: params.get("harness"),
     });
     send(res, result.ok ? 200 : 400, "application/json", JSON.stringify(result));
     return true;

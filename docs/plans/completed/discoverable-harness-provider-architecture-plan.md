@@ -1,7 +1,7 @@
 ---
 id: discoverable-harness-provider-architecture
 priority: high
-next_action: Start Phase 3 (paths and config adapters) — Phase 2 registry, state, and discovery are complete
+next_action:
 blocked_by: []
 depends_on: []
 related:
@@ -11,7 +11,7 @@ related:
   - portal-telemetry-web-components
   - localhoster-docker-process-providers
   - gemini-cli-provider-integration
-reviewed_commit: c1ce2b9be751e8d4ec40f09669a268df14367ecb
+reviewed_commit: 179a31d0beaf9c8abb4ce6b4fe5756e130dc84ad
 ---
 
 # Discoverable Harness Provider Architecture
@@ -1857,6 +1857,44 @@ Valid remaining hits should be limited to:
 - provider-specific fixtures;
 - migration documentation;
 - user-facing examples explicitly about that provider.
+
+## Verification
+
+All 8 implementation phases complete. Every checkbox is `[x]` except one, deliberately deferred with
+its own stated justification (TSV/manifest.json overlap merge — presentation-only win, touches 7+
+bash 3.2 consumer scripts with no associative arrays, explicitly logged as an "or"-alternative in the
+task itself, not a requirement).
+
+Prescribed validation commands re-run clean at completion:
+
+```
+node scripts/test/package-lifecycle-check.mjs        -> ok: package lifecycle contract (19 packages)
+node scripts/test/hook-composition-check.mjs         -> ok: cross-harness hook composition round-trips
+node scripts/test/root-config-state-check.mjs        -> root-config-state ok
+./scripts/build/render-rules.sh --check              -> ok: both generated rules files current
+node scripts/build/render-agent-permissions.mjs --check -> ok: all four generated permission outputs
+                                                            current, including Gemini's Policy Engine
+                                                            TOML — confirms registry-driven rendering
+                                                            for real, not just synthetically
+bash scripts/test/test-roborepo.sh --quiet           -> 385/385 passed, 0 failed
+bash scripts/doctor.sh --quiet                       -> 100/100 checks passed
+```
+
+The plan's explicit non-goal ("Implementing a new third harness as part of the abstraction
+migration") was deliberately deferred to a separate plan
+([gemini-cli-provider-integration-plan.md](../completed/gemini-cli-provider-integration-plan.md),
+completed) — that plan proved this migration's registry/adapter contract against a real third
+provider with genuinely different native config shape (JSON root config closer to Claude's than
+Codex's, a Policy Engine directory model for permissions distinct from both, TOML slash commands),
+closing the loop this plan's Goals section opened without the synthetic-provider tests alone. Two
+real bugs the synthetic tests had missed (`root-config-merge.mjs`'s dispatcher,
+`permissions-render.mjs` missing a branch) were found only by that real-third-provider exercise and
+fixed directly in this migration's own code, not deferred.
+
+Contract, discovery/state, behavior, and portal/CLI validation criteria above are all satisfied by
+the phase-level evidence cited throughout the Implementation plan section; nothing here was taken on
+faith from checked boxes alone — the commands above were re-run at review time, not just quoted from
+earlier phase notes.
 
 ## Risks and mitigations
 

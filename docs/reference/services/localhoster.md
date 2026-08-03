@@ -75,16 +75,25 @@ position. Collection is deliberately split by what can be read correctly:
   the `git` binary is missing. A linked worktree reads its own HEAD and refs while sharing
   `packed-refs` and config through `commondir`, which is why a worktree reports its own branch but
   the same canonical repository as its primary clone.
-- **A subprocess** supplies dirty state and ahead/behind. Both need work no filesystem read can do
-  correctly: dirty state requires parsing the binary index and stat-comparing the worktree against
-  it, and ahead/behind requires walking the commit graph through loose objects and packfiles.
+- **A subprocess** supplies dirty state, ahead/behind, and base-branch drift. These need work no
+  filesystem read can do correctly: dirty state requires parsing the binary index and
+  stat-comparing the worktree against it, and the commit-graph questions require walking loose
+  objects and packfiles.
 
-Exactly two Git subcommands ever run, both read-only and neither touching the network:
+Six Git subcommands may run, all read-only and none touching the network:
 
 ```text
-git status  --porcelain=v1 --untracked-files=normal -z
-git rev-list --left-right --count <upstream>...HEAD
+git status       --porcelain=v1 --untracked-files=normal -z
+git rev-list     --left-right --count <upstream>...HEAD
+git symbolic-ref --quiet refs/remotes/origin/HEAD
+git rev-parse    --verify --quiet <candidate-base>
+git merge-base   HEAD <base>
+git log          -1 --format=%ct <rev>
 ```
+
+The last four support base-branch drift: resolving which branch is the base (`origin/HEAD`, else
+`main`/`master`), finding where the current branch left it, and reading commit timestamps so drift
+can be reported in elapsed time rather than only in commit counts.
 
 `modules/repositories/git-exec.mjs` enforces that with an allow-list, so adding a network subcommand
 has to be a deliberate edit rather than an accident. Every invocation is hardened:
@@ -100,11 +109,18 @@ has to be a deliberate edit rather than an accident. Every invocation is hardene
 - A timeout and `maxBuffer` are always set, so a slow or hung repository degrades one field rather
   than stalling the scan.
 
-RoboRepo never fetches. Ahead/behind reflects the remote-tracking ref as of your last fetch.
+RoboRepo never fetches. Ahead/behind and base drift reflect remote-tracking refs as of your last
+fetch, so `fetchedAt` (the mtime of `.git/FETCH_HEAD`) is collected alongside them as the bound on
+how current any of those numbers can be. The portal uses it to widen a claim rather than overstate
+it: when the fetch is older than the drift being reported, the figure renders with a `+` suffix,
+meaning "at least this much."
 
 `dirty`, `ahead`, and `behind` are `null` — never `false` or `0` — when the subprocess could not
 answer. The portal renders nothing in that case rather than implying a clean tree, because a wrongly
-reported "clean" is a claim a user would act on.
+reported "clean" is a claim a user would act on. `baseBranch`, `baseBehind`, and `baseMergeBaseAt`
+are likewise `null` when the base branch cannot be resolved, when the branch has no upstream, or on
+the base branch itself — no drift badge renders in any of those cases, since a drift figure measured
+against a guessed base would be worse than none.
 
 Git results are cached per scan, keyed by repository root realpath
 (`modules/repositories/scan-cache.mjs`), so N apps running out of one repository cost one collection.

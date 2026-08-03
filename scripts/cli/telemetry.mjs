@@ -1394,20 +1394,20 @@ const DEEP_READ_PROMPT =
   "Give 3-5 terse, actionable conclusions a developer can act on: call out the biggest token cost, " +
   "any tail risks, and one concrete thing to change. No preamble.\n\n";
 
-// Find the first available AI CLI for the deeper-read feature: prefer claude, fall back to codex.
+// Find the first available AI CLI for the deeper-read feature: prefer claude, fall back to codex, then gemini.
 function findDeepReadCli() {
-  for (const cmd of ["claude", "codex"]) {
+  for (const cmd of ["claude", "codex", "gemini"]) {
     const check = spawnSync("which", [cmd], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
     if (check.status === 0 && check.stdout.trim()) return cmd;
   }
   return null;
 }
 
-// Run the optional LLM synthesis via the headless AI CLI (claude or codex, whichever is available).
+// Run the optional LLM synthesis via the headless AI CLI (claude, codex, or gemini — whichever is available).
 // Best-effort: returns { ok:false, note } when no CLI is available so callers degrade gracefully.
 function runDeepRead(report) {
   const cli = findDeepReadCli();
-  if (!cli) return { ok: false, note: "no AI CLI available (tried claude, codex)", cli: null };
+  if (!cli) return { ok: false, note: "no AI CLI available (tried claude, codex, gemini)", cli: null };
   const prompt = DEEP_READ_PROMPT + insightsSummary(report);
   let result;
   try {

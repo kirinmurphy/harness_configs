@@ -12,6 +12,7 @@ import {
   workspaceRoot,
   workspaceSkillsDir,
 } from "./paths.mjs";
+import { hasHarnessProvider } from "../harnesses/registry.mjs";
 
 const OVERRIDES_FILE = path.join(workspaceOverridesDir, "resources.json");
 const WORKSPACE_COMMAND_MARKER = "<!-- roborepo-workspace-command -->";
@@ -355,7 +356,7 @@ function validateMcpServer(server, file) {
   if (!Array.isArray(server.args)) throw new Error(`MCP server '${server.name}' needs args array`);
   if (!Array.isArray(server.harnesses)) throw new Error(`MCP server '${server.name}' needs harnesses array`);
   for (const harness of server.harnesses) {
-    if (harness !== "claude" && harness !== "codex") throw new Error(`MCP server '${server.name}' has invalid harness: ${harness}`);
+    if (!hasHarnessProvider(harness)) throw new Error(`MCP server '${server.name}' has invalid harness: ${harness}`);
   }
 }
 

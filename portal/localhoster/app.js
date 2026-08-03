@@ -270,8 +270,16 @@ function reconcileSection(section) {
       // A poll-driven hash change (health/CPU/RSS ticking) shouldn't silently collapse a
       // <details> the operator opened — e.g. an expanded compose-project card — since the
       // rebuilt node is a fresh element with no memory of the old one's open state.
-      if (existing.node instanceof HTMLDetailsElement && node instanceof HTMLDetailsElement) {
-        node.open = existing.node.open;
+      //
+      // The card root is the <details> on most kinds, but a repository card is a plain wrapper
+      // holding one (its git row has to sit outside the disclosure to survive collapse), so the
+      // state lives one level down. Resolve to whichever this card is before copying.
+      const disclosureOf = (el) =>
+        el instanceof HTMLDetailsElement ? el : el.querySelector(":scope > details");
+      const prevDisclosure = disclosureOf(existing.node);
+      const nextDisclosure = disclosureOf(node);
+      if (prevDisclosure && nextDisclosure) {
+        nextDisclosure.open = prevDisclosure.open;
       }
       const wasOffline = existing.offline;
       existing.node.replaceWith(node);
@@ -327,9 +335,13 @@ function departedMembersFor(repository) {
   return departed;
 }
 
+// Any open menu anywhere in the card, including a member's. The guard exists so a poll-driven
+// rebuild never yanks a card out from under an operator mid-interaction, and a repository card
+// destroys its members when it rebuilds — so a member's open menu has to block the rebuild just as
+// the card's own does. Checking only the first [data-menu] in the subtree found the card's own
+// menu, saw it closed, and rebuilt anyway.
 function hasOpenMenu(node) {
-  const menu = node.querySelector("[data-menu]");
-  return !!menu && !menu.hidden;
+  return [...node.querySelectorAll("[data-menu]")].some((menu) => !menu.hidden);
 }
 
 function appendSection(section) {

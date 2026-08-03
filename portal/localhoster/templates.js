@@ -127,6 +127,43 @@ export function composeProjectCard(composeProject, actions, { isMember = false, 
   return node;
 }
 
+// A trigger with nothing behind it is a control that lies: it looks actionable, and clicking it
+// opens an empty panel. Menus are assembled subtractively — items are removed or hidden per card
+// kind (favorite/hide move to the repository menu on members, history needs an opaqueKey) — so a
+// card kind that loses every item ends up with a live trigger and no actions. That is the state a
+// Compose card nested in a repository card is in: favorite and hide are its only two entries and
+// both get removed.
+//
+// The menu ships hidden in the template and is revealed here, rather than shipping visible and
+// being retracted: a missed call site then renders no menu instead of an empty one. Same
+// correct-or-absent discipline the cards follow elsewhere — a control has to earn its way onto the
+// page. (It is not about flashing; cards are built detached and inserted already-resolved.)
+//
+// Called at the END of each wire function, after every removal and every `.hidden` assignment, so
+// it sees the menu's final contents. Counts hidden buttons as absent — items disappear both ways
+// here, and a menu holding only hidden items is just as empty to the operator.
+function revealActionMenuIfUsable(node) {
+  // Scoped to THIS card's own menu. A repository card contains member cards that have menus of
+  // their own, and a bare querySelector would find whichever comes first in the subtree. That is
+  // currently the card's own — members are appended after wiring — but relying on that ordering
+  // would make this quietly reveal a member's menu the day the calls are reordered.
+  const menu = ownActionMenu(node);
+  if (!menu) return;
+  if (!menu.querySelector("button:not([hidden])")) return;
+  // Reveals the whole .action-menu, not just the panel: the panel has its own `hidden`, toggled by
+  // the open/close handlers, and must stay hidden until the trigger is actually clicked.
+  menu.closest(".action-menu")?.removeAttribute("hidden");
+}
+
+// The card's own action menu, never a nested card's. All three card kinds place the menu as a
+// direct child of a .card-head, at varying depths (a plain card heads itself; a compose card wraps
+// it in <summary>; a repository card adds a .repository-disclosure above that). The card's own
+// .card-head is always the first in document order, since nested member cards come after it.
+function ownActionMenu(node) {
+  const header = node.querySelector(".card-head");
+  return header?.querySelector(":scope > .action-menu [data-menu]") || null;
+}
+
 // The action-menu trigger lives inside <summary> (the only child a closed <details> keeps
 // rendered — everything else gets force-hidden by the UA stylesheet). Without preventDefault +
 // stopPropagation, any click on it would also toggle the details open/closed via the native
@@ -169,6 +206,7 @@ function wireComposeCardActions(node, composeProject, actions) {
     actions.onHide(composeProject);
   });
   menu.addEventListener("click", (event) => event.stopPropagation());
+  revealActionMenuIfUsable(node);
 }
 
 function composeContainerRow(container, actions) {
@@ -346,6 +384,9 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
 function wireRepositoryActions(node, repository, actions) {
   const trigger = node.querySelector("[data-action=menu]");
   const menu = node.querySelector("[data-menu]");
+  // No actions means every button here would be inert. Returning before the reveal at the end of
+  // this function is all it takes to leave the menu off the card — the affirmative default handles
+  // a case that previously needed its own explicit hide.
   if (!trigger || !actions) return;
   trigger.addEventListener("click", (event) => {
     event.preventDefault();
@@ -378,6 +419,7 @@ function wireRepositoryActions(node, repository, actions) {
     }
   }
   menu?.addEventListener("click", (event) => event.stopPropagation());
+  revealActionMenuIfUsable(node);
 }
 
 // Other ports the same process holds. Rendered as plain text, not links: these are facts about the
@@ -1114,6 +1156,7 @@ function wireCardActions(node, project, instance, actions) {
     actions.onHide(project, instance);
   });
   menu.addEventListener("click", (event) => event.stopPropagation());
+  revealActionMenuIfUsable(node);
 }
 
 // Inside a repository card the project name is already the card's own heading, so leading with it

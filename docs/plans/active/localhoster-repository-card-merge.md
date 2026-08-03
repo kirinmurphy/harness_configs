@@ -151,6 +151,51 @@ without it. The exclusion still matters for the threshold work (25% warn / 60% a
 exists to answer "is my app misbehaving", and a tunnel's CPU tracks its own traffic), so it returns
 once a real signal exists — see Open questions.
 
+There is one honest distinction the data does support, and it is rendering-only rather than tiering:
+a member that answered **no page title** (`!member.entrypoint` — a runtime, a socket, an internal
+API) is not something you open. Those carry `.is-support`: a desaturated title plus a quiet outlined
+"No page" pill. Deliberately **not** an opacity dim, which `.is-offline` already owns — opacity is
+unreadable in absolute terms, so a lone support member read as possibly-offline. The label states
+only what the data says and claims nothing about health. `deno` under `localhostr_web` is the live
+example on this machine.
+
+### Card structure is load-bearing
+
+The repository card's DOM shape encodes three requirements that fight each other, and each was
+arrived at by breaking it the other way first. Recorded here because none of it is recoverable by
+reading the markup.
+
+**The card is a plain `<article>` wrapper, not the `<details>` itself.**
+
+```text
+<article class="instance-card repository-card">
+  <details class="repository-disclosure">
+    <summary>  title row + drill-down control  </summary>
+    members drawer
+  </details>
+  git row                                 ← outside <details>
+</article>
+```
+
+`<details>` renders only `<summary>` when closed, so anything that must survive collapse has to sit
+outside it entirely. The requirements — git row persistent, members behind the toggle, members
+*above* git — are unsatisfiable while the card itself is the `<details>`: document order forces the
+persistent row above the drawer. Wrapping is what resolves it. Two earlier attempts failed here — a
+flex `order` on a row inside the block-level `<summary>` (inert), and moving the git row outside
+`<summary>` but still inside `<details>` (hidden on collapse).
+
+**Neither the card nor the members drawer may set `overflow: hidden`.** Both had it for rounded
+corners; both clipped the absolutely-positioned action menus. Bands round their own outer corners
+instead.
+
+**Action menus are hidden by default and revealed on wiring**, not rendered and retracted
+(`revealActionMenuIfUsable` in `templates.js`). Menus are assembled subtractively, so a card kind
+that loses every item — a Compose card nested as a member, whose only two entries are favorite and
+hide — ends up with a live trigger over an empty panel. Affirmative reveal means a missed call site
+renders no menu rather than a lying one. This needs `.card-head .action-menu[hidden] { display:none }`
+in `styles.css`: the container's `display:flex` outranks the UA `[hidden]` rule, so without it the
+attribute is inert and every menu renders regardless.
+
 ## Proposed design
 
 One card per `repositoryId`. A card holds **members**; a member is either a container (with its

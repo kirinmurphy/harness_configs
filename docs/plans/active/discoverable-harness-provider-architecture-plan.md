@@ -1679,7 +1679,7 @@ On first run:
   `paths.rootConfig`/`paths.rules` — but the TSV rows carry install-only semantics
   (`kind`/`flags`/`src_rel`, comment-documented `managed_copy`/`root_config`/`cleanup`/
   `rendered_rules` behaviors) that provider.json has no equivalent for, and every consumer
-  (`install-claude.sh`, `install-codex.sh`, `install-lib.sh`, `uninstall.sh`, `uninstall-lib.sh`,
+  (`install-harness.sh`, `install-lib.sh`, `uninstall.sh`, `uninstall-lib.sh`,
   `repair.sh`, `withdraw.sh`, `doctor.sh`) reads them through `manifest_rows()`'s harness-column
   filter, which already works unmodified for any Nth provider by adding a row — the mechanism is
   provider-count-agnostic even though the data is declared statically per provider today. A real
@@ -1918,19 +1918,30 @@ Phase 8's repository-wide audit found 15 sites that still hardcode or branch on 
 instead of going through `listHarnessProviders()`/`hasHarnessProvider()`. Logged rather than fixed
 in Phase 8 because they are runtime CLI logic outside that phase's build-output/doc scope:
 
-- `scripts/cli/workspace-resources.mjs` — 4 hits, no registry import at all.
-- `scripts/cli/presets.mjs:938-940` — `harnessAvailable` hardcodes the pair instead of calling
-  `hasHarnessProvider`.
-- `scripts/cli/telemetry-schemas/snapshot-schema.mjs:39`.
-- `scripts/install/install-claude.sh` vs `install-codex.sh` — structural divergence a generic
-  installer driven by provider manifests could collapse.
-- `scripts/cli/package-probes.mjs:49` — `"both"` expansion hardcodes the two provider IDs.
-- `scripts/cli/packages.mjs` — scaffold templates reference the two providers by name.
-- `scripts/cli/skills.mjs` — `skillAdopt`.
-- `scripts/install/main.sh` — dead harness-specific vars.
+- **Fixed** (`gemini-cli-provider-integration-plan.md` Phase 3's six-file triage,
+  commit `2f315aa`): `scripts/cli/workspace-resources.mjs`'s `validateMcpServer` — was 1 of the
+  original 4 hits here, the other 3 (skill/command-linking loops) confirmed intentional scope,
+  blocked on the still-stubbed `skills.link`/`commands.render` capability, not a registry-import gap.
+- Still open: `scripts/cli/presets.mjs:938-940` — `harnessAvailable` hardcodes the pair instead of
+  calling `hasHarnessProvider`.
+- **Fixed** (same Phase 3 triage, commit `2f315aa`): `scripts/cli/telemetry-schemas/
+  snapshot-schema.mjs:39` — `validateSnapshot` now checks `hasHarnessProvider()`.
+- **Fixed** (this session): `scripts/install/install-claude.sh` vs `install-codex.sh` — collapsed
+  into one generic `scripts/install/install-harness.sh <id>`, driven by `harness_detected_rows()`
+  rather than two copy-pasted scripts differing only in a harness-id literal.
+- Confirmed intentional scope, not a bug (same Phase 3 triage): `scripts/cli/package-probes.mjs:49`
+  — `"both"` expansion hardcodes claude/codex because Gemini's adapter has no
+  `rootConfig.mergePackageComponent` to probe state from yet; extending it would probe a capability
+  that doesn't exist.
+- Confirmed intentional scope, not a bug (same Phase 3 triage): `scripts/cli/packages.mjs` —
+  scaffold templates reference the two providers by name because the slash-command renderer is
+  Markdown-only; scaffolding a Gemini entry would claim support the renderer can't produce (Phase 6
+  gap).
+- Still open: `scripts/cli/skills.mjs` — `skillAdopt`.
+- Still open: `scripts/install/main.sh` — dead harness-specific vars.
 
-Take this as a follow-up plan or task, not silent debt: each site should route through the
-registry the same way `render-agent-permissions.mjs` was refactored in this phase.
+Take the still-open sites as a follow-up plan or task, not silent debt: each should route through
+the registry the same way `render-agent-permissions.mjs` was refactored in this phase.
 
 ### Third-provider-readiness bugs found in wrap-up review
 

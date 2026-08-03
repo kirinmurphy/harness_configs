@@ -19,7 +19,7 @@ behavior: parsing, validation, prompting, linking, copying, pruning, and reporti
 
 | Area | Config or source of truth | Code that interprets it |
 | --- | --- | --- |
-| Managed home paths | `manifests/platform/manifest.tsv` | `install/main.sh`, `install-claude.sh`, `install-codex.sh`, `install-windows.ps1`, `verify-install.sh`, `doctor.sh` |
+| Managed home paths | `manifests/platform/manifest.tsv` | `install/main.sh`, `install-harness.sh`, `install-windows.ps1`, `doctor.sh` |
 | Required repo files | `manifests/platform/source-files.tsv` | `doctor.sh` |
 | Agent permission behaviors | `manifests/inventory/agent-permissions.json` | `scripts/build/render-agent-permissions.mjs`, `install/main.sh`, `doctor.sh` |
 | Agent rules | `globals/system/rules/{shared,claude,codex}/` | `scripts/build/render-rules.sh` |

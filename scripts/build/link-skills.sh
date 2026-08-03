@@ -12,10 +12,10 @@ set -euo pipefail
 #
 # SHARED layer (global, per-harness native dirs):
 #   globals/system/skills/<name>  ->  ~/.claude/skills/<name>  AND  ~/.codex/skills/<name>
-#   The install scripts (install-claude.sh, install-codex.sh) handle shared skill linking at
-#   install time by enumerating globals/system/skills/* and linking per-skill into each harness's
-#   native dir. This build script does NOT manage shared skill links — they are a runtime install
-#   concern, not a build/repo-structure concern. See install-lib.sh:link_global_skills.
+#   install-harness.sh (one script, called once per detected harness id) handles shared skill
+#   linking at install time by enumerating globals/system/skills/* and linking per-skill into that
+#   harness's native dir. This build script does NOT manage shared skill links — they are a
+#   runtime install concern, not a build/repo-structure concern. See install-lib.sh:link_global_skills.
 #
 # Idempotent: creates what's missing, prunes symlinks whose source is gone, leaves correct
 # links untouched. Run after adding/removing a skill, or anytime to heal drift. Use --check

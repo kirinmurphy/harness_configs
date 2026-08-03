@@ -948,12 +948,12 @@ On first run:
   `scripts/harnesses/` and `globals/harnesses/`, so those sandboxes now copy those directories too.
   Caught by `cli-surface-integration-check.mjs` failing in the full suite (not by the targeted
   checks, which don't build an isolated sandbox).
-- [ ] Refactor `root-config-state.mjs` and `local-config-repair.mjs` to accept resolved providers.
-  Not yet done: both already iterate `Object.keys(rootConfigActive)` (now registry-derived, so
-  already provider-count-agnostic in practice), but `local-config-repair.mjs`'s
-  `diffConfigKeys`/`harness === "codex" ? diffTomlKeys : diffJsonKeys` ternary is a real
-  default-to-JSON-diff gap for an unrecognized harness, lower severity than the merge dispatch bug
-  (read-only diff display, not a write-path correctness bug) but still open.
+- [x] Refactor `root-config-state.mjs` and `local-config-repair.mjs` to accept resolved providers.
+  Duplicate of the checked item further down this phase ("Refactor `root-config-state.mjs` and
+  `local-config-repair.mjs`..." below `paths.mjs`'s import-cycle fix) — left unchecked here by
+  oversight when the task was completed. Verified against current source:
+  `local-config-repair.mjs`'s `diffConfigKeys` throws `unsupported harness: ${harness}` for any id
+  outside `codex`/`claude` (line 130), not a silent default-to-JSON-diff fallback.
 - [x] Refactor `package-harness-config.mjs` into a short orchestrator.
   `mergeHarnessConfig`/`unmergeHarnessConfig` now read the component config once and dispatch to
   `getHarnessProvider(component.harness).adapters.rootConfig.mergePackageComponent`/
@@ -1058,7 +1058,14 @@ On first run:
   no-opping. Prompts for confirmation unless `--yes`; requires `--yes` or `--dry-run` in a
   non-interactive shell. Distinct from `harness disable` (Phase 2, state-bit only, never touches
   files) per the plan's "Disable vs. withdraw" section.
-- [ ] Refactor repair, verify, and doctor to provider iteration.
+- [x] Refactor repair, verify, and doctor to provider iteration. Left unchecked by oversight —
+  verified against current source: `repair.sh`'s `repair_cleanup_rows`/`repair_skill_links` calls
+  both loop `harness_detected_rows()` (comment cites this plan's Phase 4 directly), no hardcoded
+  Claude/Codex pair; `doctor.sh` uses `listHarnessProviders()` for manifest checks and
+  `harness_detected_rows()` for presence-scoped checks. `verify-install.sh` doesn't exist as a
+  separate file — its content-verification responsibility was already folded into
+  `manifests-data.sh`'s TSV-driven `verify_content_rows()` plus `doctor.sh` before this phase (see
+  the Phase 8 item above), so there was nothing separate left to refactor here.
 - [x] Test zero, Claude-only, Codex-only, both, disabled, stale-home, and executable-only scenarios.
   Added dedicated `main.sh` presence scenarios to `test-roborepo.sh`: zero harnesses present,
   Claude-only, Codex-only (each asserting no crash, correct summary line, and correct base-skill

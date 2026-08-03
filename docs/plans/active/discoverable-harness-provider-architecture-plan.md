@@ -1013,7 +1013,14 @@ On first run:
   `all_harness_rows` from `harness_detected_rows` and loops over them for skill linking,
   root-config export, and the summary; `has_claude`/`has_codex` booleans stay as derived
   convenience flags for the two remaining early-exit checks, not as the source of truth.
-- [ ] Retain provider-scoped shell scripts only where they implement native execution.
+- [x] Retain provider-scoped shell scripts only where they implement native execution.
+  `install-claude.sh`/`install-codex.sh` were the one remaining pair — byte-identical except for
+  the harness id literal, no native-execution logic in either. Collapsed into one generic
+  `scripts/install/install-harness.sh <id>`, resolving presence/home path from
+  `harness_detected_rows()` instead of a hardcoded pair (commits `d70f30f`, `1d4799a`). Every other
+  provider-scoped script (`scripts/harnesses/{claude,codex,gemini}/index.mjs` adapters,
+  `install-windows.ps1`'s native path handling) already earns its separateness by wrapping a
+  genuinely harness-specific native call, not a copy-paste template.
 - [x] Make base-skill linking iterate providers with the `skills` capability.
   `main.sh`'s "Base Skill" section loops `present_harness_rows` instead of two `[[ $has_X -eq 1 ]]`
   branches.

@@ -312,11 +312,44 @@ questions (3-5) are now resolved enough to design Phase 2's permissions adapter 
     `requireHarnessCapability` rejects before this bug would ever fire for it; fixed anyway since it
     follows an already-proven pattern and the parent plan had it logged as open. Full suite after
     both fixes: 385 passed, 0 failed.
-- [ ] Two more hardcoded-two-provider spots found while scoping Phase 2, still untriaged: six files
-  with a literal `["claude", "codex"]` array outside the adapters/tests — `portal-usage.mjs`,
-  `packages.mjs`, `telemetry.mjs`, `workspace-resources.mjs`, `package-probes.mjs`,
-  `telemetry-schemas/snapshot-schema.mjs`. Not yet individually triaged for whether each is a real
-  bug (silently drops Gemini) or an intentional two-provider-only scope.
+- [x] Triaged the six hardcoded-two-provider spots found while scoping Phase 2 (literal
+  `["claude", "codex"]` arrays outside the adapters/tests). Three real bugs, fixed; three intentional
+  scope, left as-is:
+  - **Real bugs (fixed, commit `2f315aa`)**:
+    - `telemetry.mjs`'s `findDeepReadCli` — the headless deeper-read feature only tried `claude`/
+      `codex` on `PATH`; `gemini -p <prompt>` supports the identical non-interactive flag shape
+      (confirmed via `gemini --help`), so it was silently never offered even when installed. Added
+      as a third fallback candidate.
+    - `workspace-resources.mjs`'s `validateMcpServer` — rejected `harness: "gemini"` in
+      workspace-declared MCP server resources with "invalid harness", even though `mcpAdd`/`mcpApply`
+      already support Gemini end to end since the earlier Phase 3 fixes. Switched the check to
+      `hasHarnessProvider()` from the registry instead of the hardcoded pair.
+    - `telemetry-schemas/snapshot-schema.mjs`'s `validateSnapshot` — rejected `snapshot.harness ===
+      "gemini"` as "unknown snapshot harness", even though `--harness` is a free-form CLI flag on
+      `telemetry-capture.mjs` and real Gemini hook traffic now sets it. Switched to
+      `hasHarnessProvider()`, preserving the `"unknown"` sentinel `telemetry-capture.mjs` defaults to
+      when no `--harness` flag is passed (that value predates and is unrelated to the harness id
+      check, would have broken under a strict registry-lookup swap).
+  - **Intentional two-provider scope (left as-is)**, each blocked on a capability Gemini's adapter
+    doesn't implement yet, confirmed by reading the actual adapter/package data rather than guessing:
+    - `portal-usage.mjs`'s `HARNESSES` — the `usage-statusline` package has zero Gemini data source;
+      only `claude-statusline.mjs` (hook-based) and `usage-adapters.mjs`'s `codex-app-server` path
+      write snapshots. Nothing to read for a third harness yet.
+    - `packages.mjs`'s package-scaffold templates — new slash-command resources are hardcoded to
+      `harnesses: ["claude", "codex"]`; adding Gemini would scaffold packages claiming support the
+      renderer can't produce (`slash-commands.mjs`'s `renderPackageHarness` is hardcoded to `.md`
+      output, wrong format for Gemini's TOML commands) — the already-scoped Phase 6 gap.
+    - `package-probes.mjs`'s `targetHarnesses` — expands a component's `harness: "both"` to
+      `["claude", "codex"]` for package-config install-state probing; Gemini's adapter
+      (`scripts/harnesses/gemini/index.mjs`) has no `rootConfig.mergePackageComponent` at all, only
+      `merge`/`render`, so there is no state to probe for it yet (matches the parent plan's
+      already-noted package-config gap).
+    - `workspace-resources.mjs`'s skill/command linking loops (`validateWorkspaceCommands`,
+      `applyWorkspaceSkills`/`linkHarnessSkill`, `applyWorkspaceCommands`, `importCommandFiles`) —
+      all sit on top of `skills.link`/`commands.render`, which stay stubbed for all three providers
+      per Phase 2's adapter comment (`scripts/harnesses/gemini/index.mjs:6-7`), predating and outside
+      Gemini-specific scope.
+  - Full suite after the three fixes: 385 passed, 0 failed. Doctor: 100/100.
 - [ ] Update `docs/reference/internal/harness-anatomy.md` and `harnesses-explained.md` to include
   Gemini as a third worked example, not just Claude/Codex — this is the first real chance to
   confirm those docs' "two harnesses" framing generalizes to "N harnesses" in prose, not just in

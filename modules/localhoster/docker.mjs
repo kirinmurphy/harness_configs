@@ -14,7 +14,14 @@ import { promisify } from "node:util";
 // directly, so they run measurably slower than lsof/ps and need more headroom than the 1500ms used
 // for those. Verified against a live `docker ps` on a machine with a running Compose stack, where a
 // 1500ms budget intermittently killed the call mid-flight (code 143/SIGTERM).
-export const DOCKER_DISCOVERY_TIMEOUT_MS = 6000;
+//
+// Raised again from 6000ms for the same reason one tier up: on a machine running ~11 containers,
+// a cold or contended `docker ps` was measured at 2.1-4.0s while a warm one returns in ~0.7s. A 6s
+// ceiling over a 4s worst case left almost no margin, so the scan failed intermittently — visible
+// as a "docker discovery failed" warning that came and went with no change on the user's part.
+// The cost of a generous ceiling is bounded (one call per scan, and it only waits when Docker is
+// genuinely slow); the cost of a tight one is a dashboard that randomly drops every container.
+export const DOCKER_DISCOVERY_TIMEOUT_MS = 15000;
 
 const execFileAsync = promisify(execFile);
 
@@ -29,7 +36,7 @@ export async function discoverDockerRecords({
   try {
     result = await runCommand("docker", ["ps", "--format", "{{json .}}"], { timeoutMs });
   } catch (err) {
-    return { warnings: [dockerFailureWarning(err)], containers: [] };
+    return { warnings: [dockerFailureWarning(err, timeoutMs)], containers: [] };
   }
   return { warnings: [], containers: parseDockerPsOutput(result.stdout ?? result) };
 }
@@ -101,9 +108,15 @@ function parsePublishedPorts(value) {
 
 // Distinguishes "Docker Desktop not running" / "docker not installed" from a genuine permission
 // failure, so the warning is actionable rather than a raw ENOENT/errno dump.
-function dockerFailureWarning(err) {
+function dockerFailureWarning(err, timeoutMs = DOCKER_DISCOVERY_TIMEOUT_MS) {
   if (err.code === "ENOENT") return "docker discovery skipped: docker CLI not found";
   const message = String(err.message || "");
+  // A timeout kills the child with SIGTERM, so execFile reports the generic "Command failed" with
+  // no reason attached — which is exactly the uninformative warning that made this hard to
+  // diagnose from the UI. Named explicitly, and pointed at the cause the user can act on.
+  if (err.killed || err.signal === "SIGTERM" || err.code === "ETIMEDOUT") {
+    return `docker discovery timed out after ${timeoutMs}ms — Docker may be slow to respond or starting up`;
+  }
   if (/permission denied/i.test(message)) return `docker discovery failed: permission denied (${message})`;
   if (/cannot connect to the docker daemon|dial unix|no such file or directory/i.test(message)) {
     return "docker discovery skipped: docker daemon is not running";

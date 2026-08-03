@@ -1880,7 +1880,7 @@ provider abstraction on this presentation change.
 After the migration, implement one real third provider in a separate plan. The synthetic provider
 proves contract independence but does not test real native configuration complexity.
 
-**In progress:** see [Gemini CLI Provider Integration](./gemini-cli-provider-integration-plan.md).
+**Complete:** see [Gemini CLI Provider Integration](../completed/gemini-cli-provider-integration-plan.md).
 Gemini CLI was chosen over Cursor CLI for this first real-provider pass because its config shape
 (global settings path, rules-file discovery, permissions model, MCP registration, custom-command
 mechanism) is fully documented; Cursor CLI's public docs left permissions storage, MCP registration
@@ -1939,7 +1939,7 @@ the 15 already-known hardcoded-pair sites above:
   hardcoded `writeRootConfig("codex", codexConfigPath, content)` plus `"Codex ..."` log lines
   regardless of which provider actually produced the result — exactly as predicted, this would have
   written a third provider's content to **Codex's** config file with logs claiming Codex was
-  configured. [gemini-cli-provider-integration-plan.md](./gemini-cli-provider-integration-plan.md)
+  configured. [gemini-cli-provider-integration-plan.md](../completed/gemini-cli-provider-integration-plan.md)
   Phase 3 fixed it (not yet exercised by Gemini itself, since its manifest correctly omits the
   `package-config` capability — fixed proactively since the pattern was already proven safe):
   threads the harness id through from `mergeHarnessConfig`/`unmergeHarnessConfig`, looks up the
@@ -1948,7 +1948,7 @@ the 15 already-known hardcoded-pair sites above:
   `writeHooksFile` pattern (codex special-cased, everything else falls through to a generic
   `writeRootConfig(harness, ...)`) as this section originally suggested.
 - ~~`scripts/cli/mcp.mjs:110-135` (`mcpAdd`)~~ **Fixed** —
-  [gemini-cli-provider-integration-plan.md](./gemini-cli-provider-integration-plan.md) Phase 3
+  [gemini-cli-provider-integration-plan.md](../completed/gemini-cli-provider-integration-plan.md) Phase 3
   confirmed this exact bug for real (`--harness gemini` validated cleanly but silently added
   nothing, exactly the predicted "silent no-op logged as success") and fixed it: `mcpAdd` now also
   computes an `applyGemini` branch calling a new `ensureGeminiMcp` helper (direct `mcpServers` JSON

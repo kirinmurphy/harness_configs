@@ -1,13 +1,13 @@
 ---
 id: gemini-cli-provider-integration
 priority: medium
-next_action: Finish Phase 3 — the real proof-of-contract verification and all 5 real bugs it surfaced (mergeRootConfig's hardcoded dispatcher, renderPermissionsTo missing a Gemini branch, mcpAdd missing a Gemini branch, mcpApply missing a Gemini branch, package-harness-config.mjs's applyPackageComponentResult hardcoding "codex") are done and committed, closing out both open items from the parent plan's wrap-up review. Remaining: triage the 6 files with literal ["claude","codex"] arrays (portal-usage.mjs, packages.mjs, telemetry.mjs, workspace-resources.mjs, package-probes.mjs, telemetry-schemas/snapshot-schema.mjs), and update harness-anatomy.md/harnesses-explained.md to include Gemini as a third worked example.
+next_action:
 blocked_by: []
 depends_on:
   - discoverable-harness-provider-architecture
 related:
   - discoverable-harness-provider-architecture
-reviewed_commit: 2108bbeaddaba641e22e3752a5657a3faf6d3056
+reviewed_commit: 93083b1403ffb655a733369c39e0df8e5aa30221
 ---
 
 # Gemini CLI Provider Integration
@@ -350,10 +350,33 @@ questions (3-5) are now resolved enough to design Phase 2's permissions adapter 
       per Phase 2's adapter comment (`scripts/harnesses/gemini/index.mjs:6-7`), predating and outside
       Gemini-specific scope.
   - Full suite after the three fixes: 385 passed, 0 failed. Doctor: 100/100.
-- [ ] Update `docs/reference/internal/harness-anatomy.md` and `harnesses-explained.md` to include
-  Gemini as a third worked example, not just Claude/Codex — this is the first real chance to
-  confirm those docs' "two harnesses" framing generalizes to "N harnesses" in prose, not just in
-  code.
+- [x] Updated `docs/reference/internal/harness-anatomy.md` and `harnesses-explained.md` to include
+  Gemini as a third worked example, not just Claude/Codex (commit `93083b1`). Confirms the "two
+  harnesses" framing generalizes to "N harnesses" in prose, not just in code — with real per-element
+  material drawn from the adapter code, not padding:
+  - `harnesses-explained.md`'s axis table and per-harness matrix extended to three columns; the
+    slash-commands row actually changes score (✅→❌ on format) since Gemini's commands are TOML,
+    not Markdown — the first axis where a third harness changes a row's answer, not just its count.
+  - Step 1 (slash commands) documents the real gap this causes: `commands.render` has no Gemini
+    branch because the renderer is Markdown-only, a format problem, not a location problem like
+    every other gap in that step.
+  - Step 3 (permissions) gets the richest addition: Gemini's Policy Engine loads every `*.toml` file
+    in `~/.gemini/policies/`, so the renderer owns one whole file (`roborepo-permissions.toml`)
+    rather than a marked block inside a shared file — a fourth parity shape the doc hadn't needed
+    yet, plus Gemini's native 3-state `allow`/`deny`/`ask_user` decision needs no Codex-style
+    runtime-hook workaround for `ask`.
+  - Steps 4-7 (skills, MCP, hooks, root config) each get one honest paragraph on Gemini's actual
+    status — MCP's direct `mcpServers` JSON read/write (no CLI shell-out, unlike Claude), root
+    config's reused recursive-merge function, skills/hooks' stub status stated plainly rather than
+    glossed over.
+  - `harness-anatomy.md`'s intro states Gemini's uneven capability coverage up front; the elements
+    table and the MCP servers/permissions/telemetry/root config prose sections get Gemini's real
+    source path. Global rules/skills/slash-commands sections stay worded as Claude/Codex-only since
+    those capabilities are genuinely still stubbed for Gemini, not stale phrasing.
+  - Every claim added was verified against `scripts/harnesses/gemini/index.mjs` and
+    `scripts/harnesses/gemini/policy-toml.mjs` directly (Policy Engine directory-load behavior,
+    settings.json merge reuse, MCP JSON shape) rather than assumed from the Claude/Codex pattern.
+    No code changed; doctor 100/100 after.
 
 ## Validation
 
@@ -365,3 +388,32 @@ specifically:
   two or more relevant providers" criterion with three real providers instead of two.
 - Config and Telemetry portal views render Gemini without source changes (this was already proven
   synthetically; this plan proves it with a provider that has genuinely different native shape).
+
+## Verification
+
+All three phases complete and committed. Every checkbox across Phases 1-3 is checked except one
+explicitly-conditional Phase 1 item ("if pursuing further hands-on verification, confirm `GEMINI.md`
+discovery/precedence and the `~/.gemini/commands/*.toml` format with a real authenticated session") —
+gated on Google auth, stated in its own text as not needed for the manifest/adapter groundwork this
+plan delivers, and left open on purpose as a future stretch item rather than a blocker.
+
+- **Phase 1** (manifest): `globals/harnesses/gemini/provider.json` validates clean against
+  `validateProviderManifest` and `check_harness_manifests`; fixture wired into
+  `harness-manifest-check.mjs`. 384/384 tests, 100/100 doctor, zero changes to either check's logic —
+  confirms the schema work from the parent migration generalizes past two providers.
+- **Phase 2** (adapter): `scripts/harnesses/gemini/index.mjs` implements `rootConfig`, `permissions`,
+  and `mcp.addServer`/`removeServer`/`list`; `rules`/`skills`/`commands`/`hooks.read+write`/
+  `mcp.add+remove` stay stubbed via `stubAdapterGroups`, matching the current bar for Claude/Codex on
+  those same capabilities.
+- **Phase 3** (consumer verification): exercised end to end in a sandboxed HOME with the real
+  `gemini` CLI installed — `roborepo harness refresh/list/inspect`, `roborepo update`,
+  `roborepo doctor --installed`, `roborepo mcp add --harness gemini`. Found and fixed 7 real bugs
+  total across this plan's lifetime (commits `7608625`, `531b28b`, `2f315aa`): the root-config-merge
+  dispatcher, permissions-render missing a Gemini branch, mcpAdd/mcpApply missing Gemini branches,
+  package-harness-config.mjs's hardcoded `"codex"`, plus the telemetry deep-read CLI fallback and
+  workspace MCP validator caught in the six-file triage. Triaged all six flagged
+  hardcoded-two-provider files individually (three real bugs fixed, three confirmed intentional scope
+  with cited reasons — see Phase 3's checkbox for the full breakdown). Updated
+  `harness-anatomy.md`/`harnesses-explained.md` to carry Gemini as a real third worked example, with
+  claims verified against the adapter source rather than assumed. Final state: 385/385 tests,
+  100/100 doctor, clean tree, commits `167bb1f` through `93083b1`.

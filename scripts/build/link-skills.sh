@@ -33,6 +33,10 @@ cd "${repo_root}"
 
 # shellcheck source=scripts/build/skill-lib.sh
 source "${repo_root}/scripts/build/skill-lib.sh"
+# provides repo_internal_skill_dirs. Optional: sandboxed test harnesses copy only scripts/cli/ and
+# scripts/build/, so this file may legitimately be absent — the fallback below covers that case.
+# shellcheck source=scripts/lib/manifests-data.sh
+[[ -f "${repo_root}/scripts/lib/manifests-data.sh" ]] && source "${repo_root}/scripts/lib/manifests-data.sh"
 
 check_only=0
 quiet=0
@@ -130,9 +134,25 @@ prune_layer() {
   done
 }
 
-# INTERNAL layer (repo-only): Claude project dir and Codex project dir.
-link_layer  "local/skills" "../../local/skills" ".claude/skills" ".codex/skills"
-prune_layer "local/skills" "../../local/skills" ".claude/skills" ".codex/skills"
+# INTERNAL layer (repo-only): one project-scope skills dir per harness that supports skills.
+#
+# Derived from the provider registry rather than a literal .claude/.codex pair, so a newly
+# registered provider gets its repo-local skills without editing this script. The dir name comes
+# from the provider's own home path (~/.gemini -> .gemini), not from its id, since a provider's
+# home directory is not required to be named after it.
+#
+# repo_internal_skill_dirs (scripts/lib/manifests-data.sh) is the single definition, shared with
+# scripts/doctor.sh so the script that creates these links and the script that verifies them can
+# never disagree about which dirs should exist. When that lib is absent (sandboxed test harness),
+# fall back to the historical pair rather than failing the link step.
+if declare -F repo_internal_skill_dirs >/dev/null 2>&1; then
+  read -r -a internal_skill_dirs <<< "$(repo_internal_skill_dirs)"
+else
+  internal_skill_dirs=(".claude/skills" ".codex/skills")
+fi
+
+link_layer  "local/skills" "../../local/skills" "${internal_skill_dirs[@]}"
+prune_layer "local/skills" "../../local/skills" "${internal_skill_dirs[@]}"
 
 if [[ ${check_only} -eq 1 ]]; then
   if [[ ${missing} -gt 0 || ${orphans} -gt 0 ]]; then

@@ -22,5 +22,22 @@ source "${repo_root}/scripts/install/install-lib.sh"
 # shellcheck source=scripts/lib/manifests-data.sh
 source "${repo_root}/scripts/lib/manifests-data.sh"
 
-harness_present claude && link_global_skills "${HOME}/.claude"
-harness_present codex  && link_global_skills "${HOME}/.codex"
+# Every present provider that declares the "skills" capability, using its own declared home path
+# from `harness detected` (column 2) rather than a literal ~/.claude/~/.codex pair — so a newly
+# registered harness receives global skills with no edit here. A provider that does not declare
+# "skills" is skipped by contract, not by omission. `|| true` keeps one provider's link failure
+# from aborting the rest under `set -e`.
+skills_capable="$(node -e '
+  import(process.argv[1] + "/scripts/harnesses/registry.mjs").then(({ listHarnessProviders }) => {
+    const ids = listHarnessProviders()
+      .filter((p) => p.manifest.capabilities.includes("skills"))
+      .map((p) => p.id);
+    process.stdout.write(" " + ids.join(" ") + " ");
+  }).catch(() => process.exit(1));
+' "${repo_root}" 2>/dev/null || echo " claude codex ")"
+
+while IFS=$'\t' read -r id home_path present _display_name _root_config_path; do
+  [[ -n "${home_path}" && "${present}" == "1" ]] || continue
+  [[ "${skills_capable}" == *" ${id} "* ]] || continue
+  link_global_skills "${home_path}" || true
+done < <(harness_detected_rows)

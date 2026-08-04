@@ -76,7 +76,7 @@ See [roborepo Skills Interface](roborepo-skills.md) for the managed/native bound
 
 |                                  |                                                                                                      |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `roborepo mcp add <name-or-url>` | Registers an MCP server with Claude and Codex, including matching Claude permissions unless skipped. |
+| `roborepo mcp add <name-or-url>` | Registers an MCP server with every managed harness that supports MCP (Claude, Codex, Gemini), including matching Claude permissions unless skipped. Scope it with `--harness <id>`. |
 
 ## Command Output
 

@@ -14,13 +14,16 @@ doc of record first; supporting docs should add context, not redefine the behavi
 | See token/tool cost and mark changes over time | [Telemetry Walkthrough](guides/telemetry.md) | [Telemetry Service Reference](reference/services/telemetry.md) |
 | Understand collision behavior | [Config Collision Handling](reference/internal/config-collision-handling.md) | [Install Workflows](guides/install-workflows.md) |
 | Use the CLI | [roborepo CLI Commands](reference/services/roborepo-cli.md) | [roborepo CLI Reference](reference/services/roborepo.md) |
+| Know which agent CLIs roborepo manages | [Supported Harnesses](guides/harnesses/supported-harnesses.md) | [Harness Provider Interface](guides/harnesses/harness-provider-interface.md) |
 | Choose or inspect behavior packages | [Config Control Panel](reference/services/config-control-panel.md) | [Setup and Daily Use](guides/setup-and-daily-use.md) |
 
 ## Harness Architecture
 
 | I need to... | Start here | Then read |
 | --- | --- | --- |
-| Understand why Claude and Codex parity has different mechanisms | [How the Harnesses Work](reference/internal/harnesses-explained.md) | [Harness Anatomy and Parity](reference/internal/harness-anatomy.md) |
+| See which harnesses are supported and what each receives | [Supported Harnesses](guides/harnesses/supported-harnesses.md) | [How the Harnesses Work](reference/internal/harnesses-explained.md) |
+| Add support for a new harness | [Harness Provider Interface](guides/harnesses/harness-provider-interface.md) | [Harness Anatomy and Parity](reference/internal/harness-anatomy.md) |
+| Understand why harness parity uses different mechanisms per tool | [How the Harnesses Work](reference/internal/harnesses-explained.md) | [Harness Anatomy and Parity](reference/internal/harness-anatomy.md) |
 | Change a harness element | [Harness Anatomy and Parity](reference/internal/harness-anatomy.md) | [How It Works](reference/services/architecture.md) |
 | Understand filesystem materialization | [How It Works](reference/services/architecture.md) | [Manifest And Materialization](architecture/manifest-and-symlinks.md) |
 | Understand config vs. code boundaries | [Config-Code Separation](architecture/config-code-separation.md) | [Documentation Map And Audit](architecture/documentation-map-and-audit.md) |

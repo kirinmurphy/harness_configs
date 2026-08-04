@@ -156,7 +156,7 @@ canonical source lives once in `globals/packages/<package>/skills/<name>/`. If y
 out-of-band:
 
 ```sh
-roborepo skill new              # scaffold + refresh shared skill cache + both harness views
+roborepo skill new              # scaffold + refresh shared skill cache + every harness view
 roborepo skill adopt <name>     # ingest a skill created natively (init_skill.py / by hand)
 roborepo skill inspect <name>   # inspect ownership, native metadata, collisions, and install state
 roborepo skill native           # summarize native Claude/Codex plugin entrypoints
@@ -178,12 +178,16 @@ Global instruction files are generated tracked outputs:
 
 - `generated/claude/CLAUDE.md`
 - `generated/codex/AGENTS.md`
+- `generated/gemini/GEMINI.md`
 
 Edit source fragments instead:
 
-- `globals/system/rules/shared/` for behavior shared by Claude and Codex
-- `globals/system/rules/claude/` for Claude-only behavior
-- `globals/system/rules/codex/` for Codex-only behavior
+- `globals/system/rules/shared/` for behavior shared by every harness
+- `globals/system/rules/<harness-id>/` for behavior specific to one harness
+  (`claude/`, `codex/`; add `gemini/` if Gemini ever needs its own fragments)
+
+Shared fragments render into every managed harness. A per-harness directory is created only when
+that harness needs rules the others should not get.
 
 Then render and check:
 

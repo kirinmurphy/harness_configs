@@ -13,7 +13,16 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Development happens on macOS, so Linux is the leg that actually catches portability
+    # regressions (GNU vs BSD coreutils flags, case-sensitive filesystems, path assumptions).
+    # Both run the identical suite -- the platform-dependent code paths take their platform as an
+    # injected argument rather than reading process.platform, so the same assertions are
+    # meaningful on both runners.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,3 +42,20 @@ jobs:
           npm run --silent test:packages
           npm run --silent test:package-lifecycle
           npm run --silent test:package-default-enabled
+
+  # The Windows installer is PowerShell and is never exercised by the bash suite above. This job
+  # does not install anything -- it parses install-windows.ps1 through PowerShell's own parser and
+  # asserts the script's harness list is derived from the provider manifests rather than hardcoded,
+  # which is the drift that silently left Gemini invisible on Windows.
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: PowerShell syntax + harness parity
+        shell: pwsh
+        run: pwsh -File scripts/test/windows-installer-check.ps1

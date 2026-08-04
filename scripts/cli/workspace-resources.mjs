@@ -12,7 +12,28 @@ import {
   workspaceRoot,
   workspaceSkillsDir,
 } from "./paths.mjs";
-import { hasHarnessProvider } from "../harnesses/registry.mjs";
+import { hasHarnessProvider, listHarnessProviders } from "../harnesses/registry.mjs";
+import { resolveHarnessPath } from "../harnesses/paths.mjs";
+
+// Providers that declare a capability, paired with the path that capability writes to. Workspace
+// resource delivery iterates these rather than a fixed id list, so registering a new provider
+// delivers its workspace skills/commands without editing this file. Resolving the path through the
+// manifest (not `~/.${id}`) keeps it correct for providers whose home dir is not named after their
+// id — e.g. Claude's %APPDATA%\Claude on Windows.
+function providersWith(capability, pathKey) {
+  const targets = [];
+  for (const provider of listHarnessProviders()) {
+    if (!provider.manifest.capabilities.includes(capability)) continue;
+    let resolved = null;
+    try {
+      resolved = resolveHarnessPath(provider.manifest, pathKey);
+    } catch {
+      resolved = null;
+    }
+    if (resolved) targets.push({ id: provider.id, path: resolved });
+  }
+  return targets;
+}
 
 const OVERRIDES_FILE = path.join(workspaceOverridesDir, "resources.json");
 const WORKSPACE_COMMAND_MARKER = "<!-- roborepo-workspace-command -->";
@@ -145,10 +166,10 @@ function validateWorkspaceCommands() {
   for (const file of markdownFiles(workspaceCommandsDir)) {
     const name = path.basename(file, ".md");
     if (!isSlug(name)) throw new Error(`workspace command file has invalid name: ${path.basename(file)}`);
-    for (const harness of ["claude", "codex"]) {
-      const builtIn = path.join(appRoot, "globals", harness, "commands", `${name}.md`);
+    for (const { id } of providersWith("slash-commands", "commands")) {
+      const builtIn = path.join(appRoot, "globals", id, "commands", `${name}.md`);
       if (fs.existsSync(builtIn)) {
-        throw new Error(`workspace command '${name}' conflicts with a built-in ${harness} command; command overrides are not supported`);
+        throw new Error(`workspace command '${name}' conflicts with a built-in ${id} command; command overrides are not supported`);
       }
     }
   }
@@ -165,8 +186,8 @@ function applyWorkspaceSkills({ dryRun }) {
       fs.cpSync(src, cache, { recursive: true, dereference: true });
       fs.closeSync(fs.openSync(path.join(cache, MANAGED_MARKER), "w"));
     }
-    for (const harness of ["claude", "codex"]) {
-      linkHarnessSkill(harness, name, cache, dryRun);
+    for (const { id } of providersWith("skills", "skills")) {
+      linkHarnessSkill(id, name, cache, dryRun);
     }
     count += 1;
   }
@@ -199,8 +220,7 @@ function applyWorkspaceCommands({ dryRun }) {
     const name = path.basename(file);
     const text = fs.readFileSync(file, "utf8");
     const rendered = `${WORKSPACE_COMMAND_MARKER}\n${text.trimEnd()}\n`;
-    for (const harness of ["claude", "codex"]) {
-      const commandDir = path.join(os.homedir(), `.${harness}`, "commands");
+    for (const { path: commandDir } of providersWith("slash-commands", "commands")) {
       if (!fs.existsSync(path.dirname(commandDir))) continue;
       const target = path.join(commandDir, name);
       writeManagedCommand(target, rendered, dryRun);
@@ -243,7 +263,7 @@ function importSkillDirs(srcDir, report, dryRun) {
 function importCommandFiles(srcDir, report, dryRun) {
   for (const file of markdownFiles(srcDir)) {
     const name = path.basename(file);
-    const builtIns = ["claude", "codex"].map((harness) => path.join(appRoot, "globals", harness, "commands", name));
+    const builtIns = providersWith("slash-commands", "commands").map(({ id }) => path.join(appRoot, "globals", id, "commands", name));
     if (builtIns.some((candidate) => fs.existsSync(candidate))) {
       if (!builtIns.some((candidate) => fs.existsSync(candidate) && sameFile(file, candidate))) {
         report.changedBuiltIns.push(`command:${name}`);

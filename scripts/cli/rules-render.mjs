@@ -20,6 +20,16 @@ export function knownHarnessIds() {
   return listHarnessProviders().map((provider) => provider.id);
 }
 
+// Harness ids that declare a given capability. Use this instead of a literal id list anywhere a
+// resource is being targeted at "the harnesses that support X" — a new provider then opts in by
+// declaring the capability in its manifest, with no edit to the calling site. Returns ids in
+// registry order so generated output (manifests, scaffolds) stays stable.
+export function harnessIdsWithCapability(capability) {
+  return listHarnessProviders()
+    .filter((provider) => provider.manifest.capabilities.includes(capability))
+    .map((provider) => provider.id);
+}
+
 // Live home rules file path for a harness — the provider manifest's "rules" path
 // (~/.claude/CLAUDE.md, ~/.codex/AGENTS.md), resolved through the shared harness-path resolver
 // so nothing outside a provider hardcodes ~/.claude or ~/.codex.

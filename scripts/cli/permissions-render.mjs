@@ -3,7 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { repoRoot } from "./paths.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
-import { getHarnessProvider } from "../harnesses/registry.mjs";
+import { listHarnessProviders } from "../harnesses/registry.mjs";
 import {
   resolveBehaviors,
   resolveArbitraryCommands,
@@ -30,49 +30,68 @@ export function loadPermissionManifest(p = manifestPath) {
   return JSON.parse(fs.readFileSync(p, "utf8"));
 }
 
+// Where a provider's rendered permissions land, relative to its home dir, and whether roborepo may
+// create the file from nothing. Derived from the provider manifest's declared permissionsStorage
+// so a new provider needs no edit here:
+//
+//   - "generated-file-in-directory": roborepo fully owns a dedicated file (Gemini's Policy Engine
+//     TOML in ~/.gemini/policies/). Never a pre-existing user file, so always safe to create.
+//   - anything else: the permissions live inside the provider's own root config, which the user
+//     may also hand-edit. Created only when the harness home already exists, and (for providers
+//     whose root config roborepo does not fabricate) only when the file itself already exists.
+//
+// The render itself is entirely the provider's business — this function owns only the
+// create/existence gating, which is platform policy about not fabricating user files.
+function permissionsTargetFor(manifest, baseDir) {
+  const roborepo = manifest.extensions?.roborepo ?? {};
+  const homeRel = manifest.paths?.home?.path?.replace(/^~\//, "");
+  if (!homeRel) return null;
+  const homeDir = path.join(baseDir, homeRel);
+
+  if (roborepo.permissionsStorage === "policy-engine-toml-directory") {
+    const dirRel = manifest.paths?.policies?.path?.replace(/^~\//, "");
+    if (!dirRel) return null;
+    return { file: path.join(baseDir, dirRel, GENERATED_POLICY_FILENAME), homeDir, mayCreate: true, seedCurrent: false };
+  }
+
+  const rootRel = manifest.paths?.rootConfig?.path?.replace(/^~\//, "");
+  if (!rootRel) return null;
+  // JSON root configs are materialized from nothing (Claude's settings.json); non-JSON ones are
+  // only rewritten in place (Codex's config.toml is never fabricated by roborepo).
+  const mayCreate = roborepo.rootConfigFormat === "json";
+  return { file: path.join(baseDir, rootRel), homeDir, mayCreate, seedCurrent: true };
+}
+
 // Render the manifest (+ overrides) into each present harness's live config under `baseDir`.
 // Always global scope — no project override. `createClaude` retained for callers that might target
 // a fresh directory (e.g. a scratch/test harness home); default global-only usage never needs it.
 // `overrides` is the FULL override-file shape: { behaviors: {id: bucket}, commands: {key: {tokens, bucket}} }.
 //
-// Dispatches through each provider's permissions.render adapter for the actual render (Claude:
-// settings.json's permissions key; Codex: config.toml's generated marker block; Gemini: a whole
-// roborepo-owned *.toml file inside the Policy Engine's ~/.gemini/policies/ directory) — this
-// function keeps only the create/existence-gating policy, which is genuinely per-provider behavior,
-// not a render concern: Claude materializes settings.json from nothing when its dir exists (or
-// createClaude is set); Codex never fabricates config.toml, only rewrites one that already exists;
-// Gemini writes its one owned file whenever its home dir is present, same "create on first touch"
-// posture as Claude (Gemini's file is never a pre-existing user file to merge into — roborepo fully
-// owns it — so there's no Codex-style "don't fabricate" concern).
+// Iterates the provider registry rather than a fixed provider list, so a newly registered harness
+// receives permissions without editing this function. A provider that does not declare the
+// "permissions" capability is skipped by contract, not by omission.
 export function renderPermissionsTo(baseDir, { manifest = loadPermissionManifest(), overrides = {}, createClaude = false } = {}) {
-  const claudeDir = path.join(baseDir, ".claude");
-  const claudeSettings = path.join(claudeDir, "settings.json");
-  const codexConfig = path.join(baseDir, ".codex", "config.toml");
-  const geminiDir = path.join(baseDir, ".gemini");
-  const geminiPolicy = path.join(geminiDir, "policies", GENERATED_POLICY_FILENAME);
   const touched = [];
 
-  if (createClaude || fs.existsSync(claudeDir)) {
-    fs.mkdirSync(claudeDir, { recursive: true });
-    const cur = fs.existsSync(claudeSettings) ? fs.readFileSync(claudeSettings, "utf8") : "";
-    const rendered = getHarnessProvider("claude").adapters.permissions.render(cur, manifest, overrides, claudeSettings);
-    writeRootConfig("claude", claudeSettings, rendered);
-    touched.push(claudeSettings);
+  for (const provider of listHarnessProviders()) {
+    if (!provider.manifest.capabilities.includes("permissions")) continue;
+    const target = permissionsTargetFor(provider.manifest, baseDir);
+    if (!target) continue;
+
+    // `createClaude` is a legacy caller affordance for materializing a scratch harness home; it
+    // applies to whichever provider roborepo may create a root config for.
+    const forceCreate = createClaude && target.mayCreate;
+    const homeExists = fs.existsSync(target.homeDir);
+    const fileExists = fs.existsSync(target.file);
+    if (!forceCreate && !fileExists && !(homeExists && target.mayCreate)) continue;
+
+    fs.mkdirSync(path.dirname(target.file), { recursive: true });
+    const cur = target.seedCurrent && fileExists ? fs.readFileSync(target.file, "utf8") : "";
+    const rendered = provider.adapters.permissions.render(cur, manifest, overrides, target.file);
+    writeRootConfig(provider.id, target.file, rendered);
+    touched.push(target.file);
   }
-  if (fs.existsSync(codexConfig)) {
-    // Only rewrite Codex config if it already exists — we merge into a generated marker block and
-    // don't want to fabricate a config.toml from nothing.
-    const cur = fs.readFileSync(codexConfig, "utf8");
-    const rendered = getHarnessProvider("codex").adapters.permissions.render(cur, manifest, overrides, codexConfig);
-    writeRootConfig("codex", codexConfig, rendered);
-    touched.push(codexConfig);
-  }
-  if (fs.existsSync(geminiDir)) {
-    fs.mkdirSync(path.dirname(geminiPolicy), { recursive: true });
-    const rendered = getHarnessProvider("gemini").adapters.permissions.render("", manifest, overrides, geminiPolicy);
-    writeRootConfig("gemini", geminiPolicy, rendered);
-    touched.push(geminiPolicy);
-  }
+
   return { touched };
 }
 

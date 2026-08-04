@@ -27,17 +27,22 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 # a provider-manifest schema change (a platforms.win32 path override plus a new path-expansion
 # form), tracked as follow-up work rather than bundled into this iteration-only pass. See
 # docs/plans/active/discoverable-harness-provider-architecture-plan.md Phase 4.
-$KnownHarnessIds = @("claude", "codex")
+$KnownHarnessIds = @("claude", "codex", "gemini")
 $adoptRootConfig = @{
   claude = $false
   codex = $false
+  gemini = $false
 }
 
+# Kept in sync with globals/harnesses/*/provider.json by scripts/test/windows-installer-check.ps1,
+# which fails CI if a provider is added there without being handled here. Codex and Gemini use
+# plain ~/-relative homes that match their manifests directly; only Claude diverges on Windows.
 function Resolve-ManifestHomeRoot {
   param($HomeRoot)
   switch ($HomeRoot) {
     "claude" { return (Join-Path $env:APPDATA "Claude") }
     "codex"  { return (Join-Path $env:USERPROFILE ".codex") }
+    "gemini" { return (Join-Path $env:USERPROFILE ".gemini") }
     default { throw "manifest: unknown home_root '$HomeRoot'" }
   }
 }
@@ -653,8 +658,8 @@ foreach ($id in $KnownHarnessIds) {
 }
 
 if (-not ($HarnessPresence.Values -contains $true)) {
-  Write-Warning "Neither Claude Code (~AppData\Roaming\Claude) nor Codex (~\.codex) found."
-  Write-Warning "Install Claude Code or Codex first, then re-run this script."
+  Write-Warning "No supported harness found (Claude Code: ~AppData\Roaming\Claude, Codex: ~\.codex, Gemini CLI: ~\.gemini)."
+  Write-Warning "Install one of them first, then re-run this script."
   exit 1
 }
 
@@ -662,7 +667,7 @@ Invoke-CleanTargetPreflight
 Invoke-RootConfigPreflight
 
 # Per-harness managed links, root config export, and per-skill links.
-$HarnessDisplayNames = @{ claude = "Claude"; codex = "Codex" }
+$HarnessDisplayNames = @{ claude = "Claude"; codex = "Codex"; gemini = "Gemini CLI" }
 foreach ($id in $KnownHarnessIds) {
   if ($HarnessPresence[$id]) {
     Invoke-ManifestRows $HarnessDisplayNames[$id] @($id)

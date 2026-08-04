@@ -183,3 +183,24 @@ harness_detected_rows() {
   _harness_detected_load
   printf '%s\n' "${_HARNESS_DETECTED_ROWS}"
 }
+
+# Repo-local (project-scope) skills dirs, one per provider that declares the "skills" capability —
+# e.g. ".claude/skills .codex/skills .gemini/skills". These are the in-repo dotdirs that hold
+# local/skills/ links for agents working inside this checkout; they are NOT the global ~/ dirs.
+#
+# Derived from each provider's declared home path rather than its id, since a home directory is not
+# required to be named after the provider. Shared by scripts/build/link-skills.sh (which creates the
+# links) and scripts/doctor.sh (which verifies them), so the two can never disagree about which
+# dirs should exist. Falls back to the historical claude/codex pair if node is unavailable.
+repo_internal_skill_dirs() {
+  node -e '
+    import(process.argv[1] + "/scripts/harnesses/registry.mjs").then(({ listHarnessProviders }) => {
+      const dirs = listHarnessProviders()
+        .filter((p) => p.manifest.capabilities.includes("skills"))
+        .map((p) => p.manifest.paths?.home?.path)
+        .filter((home) => typeof home === "string" && home.startsWith("~/"))
+        .map((home) => home.slice(2) + "/skills");
+      process.stdout.write(dirs.join(" "));
+    }).catch(() => process.exit(1));
+  ' "${repo_root}" 2>/dev/null || echo ".claude/skills .codex/skills"
+}

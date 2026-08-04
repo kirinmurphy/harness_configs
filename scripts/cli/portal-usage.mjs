@@ -3,8 +3,18 @@
 // leak-free view. Kept separate from portal-routes-usage.mjs so the route stays a thin HTTP shim.
 import { readLatestSnapshot } from "../../globals/packages/usage-statusline/scripts/usage-snapshot-store.mjs";
 import { assessUsage } from "../../globals/packages/usage-statusline/scripts/usage-domain.mjs";
+import { harnessIdsWithCapability } from "./rules-render.mjs";
 
-const HARNESSES = ["claude", "codex"];
+// Usage snapshots come from the usage-statusline package's status-line integration, which is
+// delivered as a harness-config resource — so a harness has usage to show exactly when it supports
+// package-config. Derived from the provider manifests rather than listed literally, so a new
+// provider appears here when it declares the capability, and one that cannot host the status line
+// (Gemini CLI today) is absent by contract rather than by an omission someone has to remember.
+//
+// Deliberately NOT telemetry-rate-limits: that capability describes parsing rate-limit headers out
+// of transcripts (Codex only), which is a different subsystem from the status-line snapshot store
+// this route reads. Claude writes usage snapshots without declaring it.
+const HARNESSES = harnessIdsWithCapability("package-config");
 
 // A window's public shape: used + severity always; pacing fields only when elapsed was computable.
 function windowView(assessed) {

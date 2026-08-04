@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { repoRoot, rootConfigActive, harnessHome, workspacePackagesDir, packageMode, initializeWorkspace } from "./paths.mjs";
-import { setPackageEnabled, renderHomeRules, effectiveEnabledIds, knownHarnessIds } from "./rules-render.mjs";
+import { setPackageEnabled, renderHomeRules, effectiveEnabledIds, knownHarnessIds, harnessIdsWithCapability } from "./rules-render.mjs";
 import { loadPackageCatalog, unavailablePackageMessage, validatePackageCatalog, BUILT_IN_PACKAGES_DIR, readPackageCategories } from "./package-catalog.mjs";
 import { packageCommandNames, validatePackageCommandOwnership } from "./package-commands.mjs";
 import { buildPackageLiveState } from "./package-probes.mjs";
@@ -134,7 +134,7 @@ function packageTemplate(opts) {
       invocation: "manual",
       risk: "medium",
       entrypoints: [
-        { type: "slash-command", name: opts.command, description: opts.description, harnesses: ["claude", "codex"] },
+        { type: "slash-command", name: opts.command, description: opts.description, harnesses: harnessIdsWithCapability("slash-commands") },
       ],
     });
   } else if (opts.kind === "standalone-command") {
@@ -144,7 +144,7 @@ function packageTemplate(opts) {
       name: opts.command,
       source: `commands/${opts.command}.md`,
       description: opts.description,
-      harnesses: ["claude", "codex"],
+      harnesses: harnessIdsWithCapability("slash-commands"),
     });
   } else if (opts.kind !== "empty") {
     throw new Error(`unknown package template: ${opts.kind}`);

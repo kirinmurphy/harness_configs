@@ -417,8 +417,11 @@ for skill_src in "${repo_root}"/local/skills/*/SKILL.md; do
   [[ -e "${skill_src}" ]] || continue
   skill_name="$(basename "$(dirname "${skill_src}")")"
   check_file "local/skills/${skill_name}/SKILL.md"
-  check_repo_symlink ".claude/skills/${skill_name}" "../../local/skills/${skill_name}"
-  check_repo_symlink ".codex/skills/${skill_name}" "../../local/skills/${skill_name}"
+  # One project-scope dir per skills-capable provider, derived from the registry so this check
+  # covers a newly registered harness automatically (matches scripts/build/link-skills.sh).
+  for internal_dir in $(repo_internal_skill_dirs); do
+    check_repo_symlink "${internal_dir}/${skill_name}" "../../local/skills/${skill_name}"
+  done
 done
 check_skill_lib_parity
 check_package_command_catalog

@@ -4,7 +4,7 @@ import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 import { roborepoSkillsDir, telemetryDir } from "./state-paths.mjs";
 import { codexStatusLineIncludes, readHarnessConfig, runtimeAssetDestination } from "./package-harness-config.mjs";
-import { effectiveEnabledIds } from "./rules-render.mjs";
+import { effectiveEnabledIds, knownHarnessIds } from "./rules-render.mjs";
 
 const CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
 const CODEX_CONFIG = path.join(os.homedir(), ".codex", "config.toml");
@@ -45,8 +45,13 @@ function codexScalarMatches(configText, key, value) {
   return new RegExp(`^${key}\\s*=\\s*${value ? "true" : "false"}\\b`, "m").test(block[1]);
 }
 
+// "both" is a legacy sentinel meaning "every harness", from when there were exactly two. Every
+// other consumer already treats it that way (rules-render.mjs and context-cost.mjs match it against
+// any harness; packages.mjs maps it to renderHomeRules's all-harnesses form), so it must expand to
+// the full registry here too — expanding it to a literal pair silently skipped probing a
+// "both"-declared component's live state on any third harness.
 function targetHarnesses(component) {
-  if (component.harness === "both" || !component.harness) return ["claude", "codex"];
+  if (component.harness === "both" || !component.harness) return knownHarnessIds();
   return [component.harness];
 }
 

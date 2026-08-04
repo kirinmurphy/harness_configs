@@ -25,7 +25,7 @@ Windows support is there, but not really tested.
 
 After install, you will have a `roborepo` command line tool.
 
-Use the CLI to update items and configuration in your global setup so they work across both harnesses.
+Use the CLI to update items and configuration in your global setup so they work across every harness roborepo manages.
 
 | Command                          | What it does                                                                                         |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
@@ -171,6 +171,8 @@ for the build/parity model; see **Under The Hood** below for the full doc set.
 - [First-Time Setup](docs/guides/first-time-setup.md)
 - [Setup and Daily Use](docs/guides/setup-and-daily-use.md)
 - [Install Workflow Choices](docs/guides/install-workflows.md)
+- [Supported Harnesses](docs/guides/harnesses/supported-harnesses.md)
+- [Harness Provider Interface](docs/guides/harnesses/harness-provider-interface.md)
 - [Plan Docs Walkthrough](docs/guides/plan/lifecycle/plan-docs.md)
 - [Integration Check Walkthrough](docs/guides/plan/lifecycle/integration-check.md)
 - [roborepo CLI Commands](docs/reference/services/roborepo-cli.md)

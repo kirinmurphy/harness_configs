@@ -48,7 +48,7 @@ packages; see [rules-parity-and-layering.md](rules-parity-and-layering.md).)
 fragments under `globals/system/rules/claude/` and `globals/system/rules/codex/`. You never edit `CLAUDE.md` or
 `AGENTS.md` directly — they carry a generated-file header. (Why a generator: [explained.md Step 2](harnesses-explained.md#step-2--bridging-a-cosmetic-gap-global-rules).)
 
-**To change behavior in both harnesses:** edit a fragment in `globals/system/rules/shared/`, then render:
+**To change behavior in every harness:** edit a fragment in `globals/system/rules/shared/`, then render:
 
 ```sh
 roborepo rules          # render generated/claude/CLAUDE.md and generated/codex/AGENTS.md
@@ -110,7 +110,7 @@ generated. (Why just a stamped copy: [explained.md Step 1](harnesses-explained.m
 **To add or change a command:** edit the owning package's `package.config.json`, then:
 
 ```sh
-roborepo skill render-commands         # render into both harness command dirs
+roborepo skill render-commands         # render into every harness's command dir
 roborepo skill render-commands --check
 ```
 

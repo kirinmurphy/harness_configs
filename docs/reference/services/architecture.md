@@ -2,27 +2,39 @@
 
 ## Relationship
 
+The three harnesses below are the ones registered today, not a fixed set. roborepo renders one
+generated tree and one home directory per *discovered* provider, so this diagram grows a branch
+whenever a provider is added — see
+[Harness Provider Interface](../../guides/harnesses/harness-provider-interface.md).
+
 ```mermaid
 flowchart LR
   repo["roborepo"]
   codexGen["generated/codex/"]
   claudeGen["generated/claude/"]
+  geminiGen["generated/gemini/"]
   codexHome["~/.codex"]
   claudeHome["~/.claude"]
+  geminiHome["~/.gemini"]
   codexRuntime["Codex runtime state<br/>auth, logs, history, sqlite, cache, sessions"]
   claudeRuntime["Claude runtime state<br/>local settings, logs, history, cache, sessions, todos"]
+  geminiRuntime["Gemini CLI runtime state<br/>auth, logs, cache, sessions"]
 
   repo --> codexGen
   repo --> claudeGen
+  repo --> geminiGen
 
   codexGen -. copy/render plus root config export .-> codexHome
   claudeGen -. copy/render plus root config export .-> claudeHome
+  geminiGen -. copy/render plus root config export .-> geminiHome
 
   codexRuntime --- codexHome
   claudeRuntime --- claudeHome
+  geminiRuntime --- geminiHome
 
   codexRuntime -. ignored .-> gitignore[".gitignore"]
   claudeRuntime -. ignored .-> gitignore
+  geminiRuntime -. ignored .-> gitignore
 
   shellRepo["shell/"]
   globalsRepo["globals/"]

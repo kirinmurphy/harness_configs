@@ -1814,6 +1814,25 @@ assert "config: /api/config/source rejects missing/unknown harness ids" \
 assert "config: synthetic third-provider harnesses list and root-config paths" \
   node "${repo_root}/scripts/test/config-synthetic-provider-check.mjs"
 
+# The install-side counterpart to the above: proves artifact DELIVERY (live permission rendering,
+# capability/path coherence, the shared harness-id helper) reaches a provider that is not in any
+# hardcoded id list. Guards the bug class that let Gemini pass 108 doctor checks while missing two
+# whole artifact classes -- being outside a delivery loop produces no failing rows, which reads
+# identically to passing.
+assert "delivery: synthetic third-provider receives permissions and resolves capability paths" \
+  node "${repo_root}/scripts/test/delivery-synthetic-provider-check.mjs"
+
+# Windows installer parity. install-windows.ps1 is PowerShell and is otherwise untouched by this
+# bash suite, so its harness list can silently drift from globals/harnesses/ (it did: Gemini shipped
+# with no Windows support at all). CI runs this on windows-latest unconditionally; locally it runs
+# only when PowerShell Core happens to be installed (`brew install --cask powershell@preview`),
+# since it is static analysis and needs no Windows.
+pwsh_bin="$(command -v pwsh 2>/dev/null || command -v pwsh-preview 2>/dev/null || true)"
+if [[ -n "${pwsh_bin}" ]]; then
+  assert "windows: install-windows.ps1 parses and matches provider manifests" \
+    "${pwsh_bin}" -File "${repo_root}/scripts/test/windows-installer-check.ps1"
+fi
+
 # Telemetry "view docs" popup: heading-slug ids, table, and mermaid-fallback extensions to the
 # shared markdown renderer (also used by Config's skill-source popup).
 assert "markdown-render: heading ids, tables, mermaid fallback" \

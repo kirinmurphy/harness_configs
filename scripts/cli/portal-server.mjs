@@ -37,6 +37,10 @@ const STATIC_TYPES = {
 // existing docs, tests, and saved browser links.
 export const PAGES = [
   { path: "/plans", id: "plans", title: "Plans", dir: "plans" },
+  // Path and title say "tokens" while id and dir say "telemetry", deliberately: the system captures
+  // agent-session telemetry broadly (test-failure streaks, edit/read counts, phase signals, tool
+  // provenance) and tokens are one field of it — but token cost is what a user opens this page to
+  // read. The identifier stays accurate to the system; the URL and tab stay honest about the draw.
   { path: "/tokens", id: "telemetry", title: "Tokens", dir: "telemetry" },
   { path: "/", id: "config", title: "Agents", dir: "config", default: true },
   {

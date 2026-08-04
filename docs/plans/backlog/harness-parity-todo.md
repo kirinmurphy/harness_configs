@@ -25,7 +25,7 @@ backlog reads honestly.
   Links a target repo's `.codex/skills` into `.claude/skills` without losing global
   skill parity. (Originally listed under the stale name `skill symlink-local`.)
 - **Skill / plugin / MCP / memory native alignment — DONE** (see
-  [`native-alignment.md`](completed/native-alignment.md)).
+  [`native-alignment.md`](../completed/native-alignment.md)).
   Skills now use each harness's native dir (`~/.claude/skills`, `~/.codex/skills`)
   instead of the invented `~/.agents` path; package-gated global skills are copied into
   those dirs by install/update, while project-local skills still use repo-local symlinks.
@@ -34,12 +34,12 @@ backlog reads honestly.
   memory is a documented Defer surface. This closed most of the "two source-of-truth stores"
   parity gaps that motivated this backlog.
 - **Relocation / repair — DONE** (see
-  [`completed/portable-install-relocation.md`](completed/portable-install-relocation.md)).
+  [`completed/portable-install-relocation.md`](../completed/portable-install-relocation.md)).
   `roborepo repair` relinks a moved checkout; uninstall and the bin-link heal handle
   stale prior-checkout links. This was part of the original "redesign the
   managed/adopt/update installer" item.
 - **Copy/render materialization + package-gated install — DONE** (see
-  [`completed/package-gated-install.md`](completed/package-gated-install.md)).
+  [`completed/package-gated-install.md`](../completed/package-gated-install.md)).
   Home rules are rendered from fragments plus the enabled package registry; shared skills are copied
   with `.roborepo-managed` markers; optional packages gate rules/hooks/permissions/MCP/skills.
 - **Placement of global coding conventions — RESOLVED.** Decision: conventions live
@@ -80,9 +80,9 @@ it last wrote per harness and, on the next install/update/repair/uninstall, comp
 the on-disk file to that hash. A clean file (baseline moved on, no local edit) updates
 silently; a drifted file (edited since roborepo's last write) is never silently merged
 or deleted — it is surfaced and staged using the same collision convention install
-already uses. See [`completed/root-config-layered-inheritance.md`](completed/root-config-layered-inheritance.md)
+already uses. See [`completed/root-config-layered-inheritance.md`](../completed/root-config-layered-inheritance.md)
 (full design + implementation status) and
-[`../reference/internal/config-collision-handling.md`](../reference/internal/config-collision-handling.md).
+[`../reference/internal/config-collision-handling.md`](../../reference/internal/config-collision-handling.md).
 
 Delivered across all three install paths (`presets.mjs`, `install-lib.sh`,
 `install-windows.ps1`), plus `roborepo config root inspect`, uninstall drift-awareness,
@@ -109,12 +109,12 @@ shape — track it there, not here.
 
 ## Cross-References
 
-- [`native-alignment.md`](completed/native-alignment.md) — runtime-store parity (skills, MCP,
+- [`native-alignment.md`](../completed/native-alignment.md) — runtime-store parity (skills, MCP,
   plugins, memory); complete.
-- [`completed/package-gated-install.md`](completed/package-gated-install.md) —
+- [`completed/package-gated-install.md`](../completed/package-gated-install.md) —
   copy/render materialization, package-gated optional behavior, rendered home rules, and update
   reporting; complete.
 - [`skills-vs-commands-invocation-policy.md`](skills-vs-commands-invocation-policy.md)
   — how context (rules / skills / commands) enters each harness; owns item 3.
-- [`completed/portable-install-relocation.md`](completed/portable-install-relocation.md)
+- [`completed/portable-install-relocation.md`](../completed/portable-install-relocation.md)
   — relocation/repair, shipped.

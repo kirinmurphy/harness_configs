@@ -1,0 +1,44 @@
+{
+  "$schema": "../../../scripts/harnesses/provider-manifest.schema.json",
+  "schemaVersion": 1,
+  "id": "codex",
+  "displayName": "Codex",
+  "commandName": "codex",
+  "adapter": "codex",
+  "detection": {
+    "executables": ["codex"],
+    "homeCandidates": ["~/.codex"],
+    "configCandidates": ["~/.codex/config.toml"],
+    "minimumConfidence": "probable"
+  },
+  "paths": {
+    "home": { "path": "~/.codex", "kind": "directory" },
+    "rootConfig": { "path": "~/.codex/config.toml", "kind": "file" },
+    "rules": { "path": "~/.codex/AGENTS.md", "kind": "file" },
+    "rulesOverride": { "path": "~/.codex/AGENTS.override.md", "kind": "file" },
+    "skills": { "path": "~/.codex/skills", "kind": "directory" },
+    "commands": { "path": "~/.codex/commands", "kind": "directory" },
+    "hooks": { "path": "~/.codex/hooks.json", "kind": "file" }
+  },
+  "capabilities": [
+    "root-config",
+    "rules",
+    "permissions",
+    "skills",
+    "slash-commands",
+    "hooks",
+    "mcp",
+    "package-config",
+    "telemetry-capture",
+    "telemetry-rate-limits",
+    "telemetry-transcripts",
+    "session-launch"
+  ],
+  "extensions": {
+    "roborepo": {
+      "rootConfigFormat": "toml",
+      "hooksStorage": "dedicated-json-sidecar",
+      "mcpStorage": "toml-mcp_servers-table"
+    }
+  }
+}

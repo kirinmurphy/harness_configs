@@ -34,7 +34,7 @@
           "type": "slash-command",
           "name": "telemetry-marker",
           "description": "Record a telemetry marker or manage an experiment.",
-          "harnesses": ["claude", "codex"]
+          "harnesses": ["claude", "codex", "gemini"]
         }
       ]
     }

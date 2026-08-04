@@ -4,8 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { packageMode, repoRoot, harnessHome } from "./paths.mjs";
-import { enabledPackagesPath } from "./state-paths.mjs";
+import { enabledPackagesPath, roborepoSkillsDir } from "./state-paths.mjs";
 import { buildLocalConfigRepairPlans } from "./local-config-repair.mjs";
+import { findOrphanSkillLinks } from "./skill-prune-orphans.mjs";
 
 const HARNESS_HOME = harnessHome;
 
@@ -71,7 +72,8 @@ function snapshotInstallState() {
     hooks: snapshotNamedRows(rows, new Set(["hooks", "hooks.json"])),
     permissions: snapshotNamedRows(rows, new Set(["rules"])),
     packageRegistry: fileDigest(enabledPackagesPath),
-    skills: snapshotManagedSkills(),
+    skills: snapshotSkillBodies(),
+    skillLinks: snapshotManagedSkills(),
   };
 }
 
@@ -122,6 +124,27 @@ function labelForRow(row) {
   return `${row.homeSub.replaceAll("/", " ")} ${row.harness}`;
 }
 
+// There is exactly one copy of each skill body, in <state>/skills/<name>. A harness never gets its
+// own copy — it gets a symlink pointing back here. So "a skill changed" is a fact about this dir
+// alone, and is snapshotted separately from the per-harness pointers below.
+function snapshotSkillBodies() {
+  const entries = [];
+  if (!fs.existsSync(roborepoSkillsDir)) return entries;
+  for (const name of fs.readdirSync(roborepoSkillsDir).sort()) {
+    const skillDir = path.join(roborepoSkillsDir, name);
+    if (!isDirectorySafe(skillDir)) continue;
+    entries.push({
+      key: name,
+      label: `skill ${name}`,
+      digest: pathDigest(skillDir),
+    });
+  }
+  return entries;
+}
+
+// The per-harness pointers. Adding a harness fans an already-installed skill out to one more dir;
+// that is a link, not a new skill, so these entries stay out of the skills group and are folded
+// into link details by linkDetails().
 function snapshotManagedSkills() {
   const entries = [];
   for (const [harness, home] of Object.entries(HARNESS_HOME)) {
@@ -129,15 +152,40 @@ function snapshotManagedSkills() {
     if (!fs.existsSync(skillsDir)) continue;
     for (const name of fs.readdirSync(skillsDir).sort()) {
       const skillDir = path.join(skillsDir, name);
-      if (!fs.existsSync(path.join(skillDir, MANAGED_MARKER))) continue;
+      if (!isManagedSkillLink(skillDir)) continue;
       entries.push({
         key: `${harness}:${name}`,
+        skill: name,
+        harness,
         label: `skill ${name} ${harness}`,
         digest: pathDigest(skillDir),
       });
     }
   }
   return entries;
+}
+
+// statSync follows symlinks and throws on a dangling one, which a half-finished install can leave
+// behind — a broken cache entry should be skipped, not crash the whole update report.
+function isDirectorySafe(target) {
+  try {
+    return fs.statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+// A managed entry is either a symlink into the shared cache (the normal case) or a real dir
+// carrying the marker (legacy/copied installs), so both shapes stay visible to the report.
+function isManagedSkillLink(skillDir) {
+  try {
+    if (fs.lstatSync(skillDir).isSymbolicLink()) {
+      return path.resolve(path.dirname(skillDir), fs.readlinkSync(skillDir)).startsWith(roborepoSkillsDir);
+    }
+  } catch {
+    return false;
+  }
+  return fs.existsSync(path.join(skillDir, MANAGED_MARKER));
 }
 
 function fileDigest(file) {
@@ -197,7 +245,7 @@ function printUpdateReport(before, after, { verbose = false, installOutput = "" 
     ["rules", compareEntries(before.renderedRules, after.renderedRules)],
     ["root config", compareEntries(before.rootConfig, after.rootConfig)],
     ["copied files", compareEntries(before.copied, after.copied)],
-    ["skills", compareEntries(before.skills, after.skills)],
+    ["skills", compareSkills(before, after)],
     ["package registry", compareScalar(before.packageRegistry, after.packageRegistry, "package registry")],
     ["hooks", compareEntries(before.hooks, after.hooks)],
     ["permissions", compareEntries(before.permissions, after.permissions)],
@@ -206,6 +254,7 @@ function printUpdateReport(before, after, { verbose = false, installOutput = "" 
   console.log("Update change report:");
   printReportGroups(groups, { verbose });
   printLocalConfigRepairHint();
+  printOrphanSkillHint();
 }
 
 function compareScalar(before, after, label) {
@@ -229,6 +278,53 @@ function compareEntries(beforeEntries, afterEntries) {
     if (!after.has(key)) changed.push({ label: entry.label, verb: "removed" });
   }
   return { changed, unchanged };
+}
+
+// Skills report as one line per skill, with harness fan-out as a detail. A new harness produces
+// "linked skill X (gemini)" rather than an "added" row per skill, so a run that only wired up an
+// extra harness never reads as N brand-new skills.
+function compareSkills(before, after) {
+  const bodies = compareEntries(before.skills, after.skills);
+  const links = compareEntries(before.skillLinks, after.skillLinks);
+  const bodyVerbs = new Map(bodies.changed.map((entry) => [entry.label, entry.verb]));
+  const linksBySkill = groupLinksBySkill(before.skillLinks, after.skillLinks, links.changed);
+
+  const changed = bodies.changed.map((entry) => {
+    const detail = linkDetails(linksBySkill.get(entry.label));
+    return detail ? { ...entry, label: `${entry.label} ${detail}` } : entry;
+  });
+  // Skills whose body is untouched but whose harness coverage moved — the pure fan-out case.
+  for (const [label, moves] of linksBySkill) {
+    if (bodyVerbs.has(label)) continue;
+    const verb = moves.every((move) => move.verb === "removed") ? "unlinked" : "linked";
+    changed.push({ label: `${label} ${linkDetails(moves)}`, verb });
+  }
+  return { changed, unchanged: bodies.unchanged };
+}
+
+function groupLinksBySkill(beforeLinks, afterLinks, changedLinks) {
+  const harnessByLabel = new Map(
+    [...beforeLinks, ...afterLinks].map((entry) => [entry.label, entry]),
+  );
+  const bySkill = new Map();
+  for (const change of changedLinks) {
+    const entry = harnessByLabel.get(change.label);
+    if (!entry) continue;
+    const key = `skill ${entry.skill}`;
+    if (!bySkill.has(key)) bySkill.set(key, []);
+    bySkill.get(key).push({ harness: entry.harness, verb: change.verb });
+  }
+  return bySkill;
+}
+
+function linkDetails(moves) {
+  if (!moves?.length) return "";
+  const added = moves.filter((move) => move.verb !== "removed").map((move) => move.harness).sort();
+  const removed = moves.filter((move) => move.verb === "removed").map((move) => move.harness).sort();
+  const parts = [];
+  if (added.length) parts.push(`+${added.join(", ")}`);
+  if (removed.length) parts.push(`-${removed.join(", ")}`);
+  return `(${parts.join(" ")})`;
 }
 
 function printUpdateSummary(groups, installOutput) {
@@ -284,6 +380,17 @@ function unique(values) {
 function uniqueChanges(entries) {
   const byLabel = new Map(entries.map((entry) => [entry.label, entry]));
   return [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+// Surfaced here as well as in doctor because a skill removed from the repo leaves its per-harness
+// pointer behind on the very run that removes it — update is where the user is standing when the
+// orphan appears, and a stale link is otherwise silent until someone runs doctor.
+function printOrphanSkillHint() {
+  const orphans = findOrphanSkillLinks();
+  if (!orphans.length) return;
+  console.log("");
+  console.log(`Orphaned skill link(s) found (${orphans.map((orphan) => `${orphan.name}/${orphan.harness}`).join(", ")}).`);
+  console.log("Run: roborepo skill prune-orphans");
 }
 
 function printLocalConfigRepairHint() {

@@ -1,0 +1,13 @@
+{
+  "path": ["harness", "list"],
+  "kind": "command",
+  "title": "List harnesses",
+  "description": "List known harness providers and their enabled/discovery state",
+  "order": 10,
+  "usage": "roborepo harness list",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/harness.mjs",
+    "export": "harnessList"
+  }
+}

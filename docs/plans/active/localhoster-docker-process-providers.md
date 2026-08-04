@@ -1,7 +1,7 @@
 ---
 id: localhoster-docker-process-providers
 priority: high
-next_action: Implement Docker/Compose and process-metrics providers behind Localhoster capability reporting
+next_action:
 blocked_by: []
 depends_on:
   - localhoster-final
@@ -62,3 +62,40 @@ Include `repositoryId` (and local `rootId` where relevant) on merged provider ob
 - `npm run test:localhoster`.
 - Manual Docker validation on macOS when Docker Desktop is available; otherwise record the limit in
   this plan before completion.
+
+## Verification
+
+Implemented in worktree `localhoster-docker-process-providers` (branch of the same name), not yet
+merged/committed to `main`.
+
+- `modules/localhoster/docker.mjs` and `process-metrics.mjs` added, mirroring the `lsof.mjs`/
+  `listeners.mjs` subprocess-orchestrator/pure-parser split.
+- Docker/process collection run inside `discoverInstances`'s existing `Promise.all`, same cadence
+  as git/probe — no separate on-demand trigger.
+- Docker merges onto listener instances by published host port (not PID): Docker Desktop on macOS
+  proxies published ports through a host-side listener owned by Docker's own process, whose PID
+  never matches the container's PID. Confirmed live (see below).
+- `node --check` passed on all new/touched files.
+- New fixture-driven suites `test:localhoster-docker` and `test:localhoster-process` cover Compose
+  labels, daemon unavailable, permission failure, malformed/duplicate port lines, exited process,
+  malformed `etime`, and batched multi-PID parsing. Both pass.
+- Full regression run clean: `test:localhoster`, `test:localhoster-git`, `test:localhoster-health`,
+  `test:localhoster-history` (existing `discoverInstances` callers updated to pass hermetic
+  `discoverDocker`/`collectProcess` no-op stubs so they don't shell out to a real `docker`/`ps`).
+- Portal: read-only Docker/Compose badge and CPU/RSS/elapsed line added to the instance card,
+  rendered only when the corresponding field is non-null.
+- Docs: `docs/reference/services/localhoster.md` updated with a "Docker and process metrics"
+  section; "Current Limits" no longer lists Docker/process as uncollected.
+- **Live manual validation performed** (Docker Desktop was available after a stuck-process restart):
+  ran `discoverDockerRecords` and full `discoverInstances` against a real running Compose stack
+  (10-container Supabase project) plus a freshly-launched labeled `nginx:alpine` container. Real
+  output matched fixture shapes exactly, including dual-stack port-binding dedup. End-to-end merge
+  confirmed on the real system: the container's host-side proxy listener (different PID than the
+  container) merged correctly by port, with `processMetrics` populated on the same instance.
+  - **Bug found and fixed during validation**: `DOCKER_DISCOVERY_TIMEOUT_MS` was 1500ms, but a real
+    `docker ps` call measured ~1.77s (Docker CLI crosses Docker Desktop's VM proxy, unlike `lsof`/
+    `ps`), causing intermittent SIGTERM kills. Bumped to 4000ms; re-verified fixture and regression
+    tests pass after the fix.
+- Not yet done: commit/PR and merge to `main`. `next_action` is cleared because no further
+  implementation work remains in this plan's scope — committing the worktree is a repo-workflow
+  step, not a task tracked by this document.

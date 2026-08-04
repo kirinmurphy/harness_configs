@@ -20,7 +20,7 @@
           "type": "slash-command",
           "name": "case-study",
           "description": "Write a long-form architecture case study about a real design decision.",
-          "harnesses": ["claude", "codex"]
+          "harnesses": ["claude", "codex", "gemini"]
         }
       ]
     }

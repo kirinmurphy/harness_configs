@@ -20,7 +20,7 @@
           "type": "slash-command",
           "name": "tighten",
           "description": "Clean up code against this project's own patterns with specific, anchored callouts.",
-          "harnesses": ["claude", "codex"]
+          "harnesses": ["claude", "codex", "gemini"]
         }
       ]
     }

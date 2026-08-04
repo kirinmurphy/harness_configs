@@ -103,7 +103,10 @@ export function discoverRepositories(settings) {
   // (has a .git entry) — a repo's internal subfolders are never re-scanned as repo candidates.
   const walk = (dir, depth) => {
     if (truncated) return;
-    if (Date.now() > deadline) {
+    // >= not >: with a 0ms budget the deadline equals the start time, and a walk that begins within
+    // the same millisecond would otherwise skip the check entirely. Identical behavior at the real
+    // 5000ms budget; only makes the exhausted-budget case deterministic.
+    if (Date.now() >= deadline) {
       truncated = true;
       return;
     }

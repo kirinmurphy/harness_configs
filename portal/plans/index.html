@@ -23,10 +23,8 @@
                   aria-label="Update project folders"
                   title="Update project folders"
                 >
-                  <portal-icon
+                  <portal-icon size="lg"
                     name="pencil"
-                    width="20"
-                    height="20"
                   ></portal-icon>
                 </button>
                 <button
@@ -37,10 +35,8 @@
                   aria-label="Refresh"
                   title="Refresh"
                 >
-                  <portal-icon
+                  <portal-icon size="lg"
                     name="refresh"
-                    width="20"
-                    height="20"
                   ></portal-icon>
                   <span class="spinner" hidden></span>
                 </button>
@@ -53,7 +49,7 @@
                 class="control-item-action"
                 id="filters-toggle"
               >
-                <portal-icon name="filter" width="20" height="20"></portal-icon>
+                <portal-icon name="filter" size="lg"></portal-icon>
                 Filters
               </button>
               <button
@@ -65,10 +61,8 @@
                 aria-label="Agent prompts"
                 title="Agent prompts"
               >
-                <portal-icon
+                <portal-icon size="lg"
                   name="agent-prompt"
-                  width="20"
-                  height="20"
                 ></portal-icon>
               </button>
             </div>
@@ -274,7 +268,7 @@
     <dialog id="lifecycle-error-modal" aria-labelledby="lifecycle-error-modal-title">
       <div class="modal-head">
         <span class="modal-title lifecycle-error-title" id="lifecycle-error-modal-title">
-          <portal-icon name="warning" width="20" height="20"></portal-icon>
+          <portal-icon name="warning" size="lg"></portal-icon>
           <span data-slot="title"></span>
         </span>
         <portal-close-button
@@ -336,7 +330,7 @@
           hidden
         >
           <h3>
-            <portal-icon name="warning" width="14" height="14"></portal-icon>
+            <portal-icon name="warning" size="sm"></portal-icon>
             Blocked by
           </h3>
           <div class="drawer-blocker-links" id="drawer-blocked-by-links"></div>
@@ -347,7 +341,7 @@
           hidden
         >
           <h3>
-            <portal-icon name="warning" width="14" height="14"></portal-icon>
+            <portal-icon name="warning" size="sm"></portal-icon>
             Blocking
           </h3>
           <div class="drawer-blocker-links" id="drawer-blocking-links"></div>
@@ -358,7 +352,7 @@
           hidden
         >
           <h3>
-            <portal-icon name="warning" width="14" height="14"></portal-icon>
+            <portal-icon name="warning" size="sm"></portal-icon>
             Warnings
           </h3>
           <ul id="drawer-warnings"></ul>
@@ -464,10 +458,8 @@
     </template>
     <template id="tpl-menu-item">
       <button type="button" class="menu-button-item">
-        <portal-icon
+        <portal-icon size="sm"
           data-slot="icon"
-          width="14"
-          height="14"
           class="menu-button-item-icon"
         ></portal-icon>
         <div class="menu-button-item-body">

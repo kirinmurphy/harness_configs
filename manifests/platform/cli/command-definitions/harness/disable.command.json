@@ -1,0 +1,14 @@
+{
+  "path": ["harness", "disable"],
+  "kind": "command",
+  "title": "Disable harness",
+  "description": "Disable a harness provider",
+  "order": 50,
+  "usage": "roborepo harness disable <id>",
+  "arguments": [{ "name": "id", "required": true, "interactive": { "prompt": "Harness id" } }],
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/harness.mjs",
+    "export": "harnessDisable"
+  }
+}

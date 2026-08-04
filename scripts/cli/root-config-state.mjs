@@ -38,10 +38,11 @@ export function writeState(state) {
 //
 // Re-reads state immediately before merging, rather than reusing a possibly-stale state object
 // passed in from an earlier checkDrift call, and only ever assigns this harness's own key. Two
-// processes recording different harnesses concurrently (e.g. a user manually parallelizing
-// install-claude.sh and install-codex.sh) can still interleave their read-modify-write, but each
-// only ever overwrites its own harness's key with its own freshly-read view of the rest of the
-// object, narrowing (not eliminating) the clobber window inherent to a lock-free JSON file.
+// processes recording different harnesses concurrently (e.g. a user manually parallelizing two
+// install-harness.sh invocations for different harness ids) can still interleave their
+// read-modify-write, but each only ever overwrites its own harness's key with its own freshly-read
+// view of the rest of the object, narrowing (not eliminating) the clobber window inherent to a
+// lock-free JSON file.
 export function recordWrite(harness, filePath, precomputed = {}) {
   const hash = precomputed.hash ?? hashFile(filePath);
   if (hash === null) return;

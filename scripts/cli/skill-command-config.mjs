@@ -1,5 +1,7 @@
 import path from "node:path";
 import { repoRoot } from "./paths.mjs";
+import { getHarnessProvider } from "../harnesses/registry.mjs";
+import { knownHarnessIds } from "./rules-render.mjs";
 
 export const README_PATH = path.join(repoRoot, "README.md");
 
@@ -11,19 +13,38 @@ export const LEGACY_GENERATED_COMMAND_MARKER =
 // package's wrappers without touching another's or the user's own native commands.
 export const packageOwnerMarker = (packageId) => `Owned by package: ${packageId}`;
 
-export const SLASH_COMMAND_HARNESSES = {
-  claude: {
-    genDir: (packageId) => `generated/packages/${packageId}/claude/commands`,
-    liveDir: "commands",
-    skillPath: (skill) => `~/.claude/skills/${skill}/SKILL.md`,
-  },
-  codex: {
-    genDir: (packageId) => `generated/packages/${packageId}/codex/commands`,
-    liveDir: "commands",
-    skillPath: (skill) => `~/.codex/skills/${skill}/SKILL.md`,
-  },
-};
-export const SLASH_COMMAND_HARNESS_NAMES = Object.keys(SLASH_COMMAND_HARNESSES);
+// Generated build-output location for one package's slash-command wrappers, one harness. A
+// uniform, id-derived convention (generated/packages/<packageId>/<harnessId>/commands) — not
+// manifest data — matching the same globals/<resource>/<id>/ shape rules-render.mjs's
+// ruleDirsFor() and globals/harnesses/<id>/ already use.
+export function slashCommandGenDir(packageId, harnessId) {
+  return `generated/packages/${packageId}/${harnessId}/commands`;
+}
+
+// Live commands directory name for a harness, relative to its home — the basename of the provider
+// manifest's raw "commands" path (~/.claude/commands -> "commands"). Callers already have a
+// resolved harness-home path (paths.mjs's registry-derived harnessHome map) and join this onto it,
+// so this returns the relative segment from the manifest's raw string, not an independently
+// re-expanded absolute path.
+export function slashCommandLiveDir(harnessId) {
+  const rawPath = getHarnessProvider(harnessId).manifest.paths.commands.path;
+  return path.basename(rawPath);
+}
+
+// Path text a skill-backed command wrapper tells the user/agent to read for the skill's workflow —
+// derived from the provider manifest's "skills" path (~/.claude/skills, ~/.codex/skills). Uses the
+// manifest's raw home-relative string (paths.skills.path), NOT resolveHarnessPath's expanded
+// absolute path: this text is written into a generated file committed to the repo and read on
+// every machine, so it must stay a literal "~/..." string rather than get baked to whichever
+// machine's home directory rendered it.
+export function skillFilePath(harnessId, skill) {
+  const rawPath = getHarnessProvider(harnessId).manifest.paths.skills.path;
+  return `${rawPath}/${skill}/SKILL.md`;
+}
+
+export function isKnownSlashCommandHarness(harnessId) {
+  return knownHarnessIds().includes(harnessId);
+}
 
 export const SKILL_RISKS = ["low", "medium", "high"];
 export const SLASH_COMMAND_KINDS = ["skill-backed", "standalone"];

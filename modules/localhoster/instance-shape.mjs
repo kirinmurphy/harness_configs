@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { classifyHealth } from "./health.mjs";
 
-export function toInstance({ listener, identity, candidates, probe, cwd, git = null, health = null }) {
+export function toInstance({ listener, identity, candidates, probe, cwd, git = null, health = null, docker = null, processMetrics = null, provenance = null }) {
   const origin = probe?.origin || candidates[0]?.origin || null;
   const matchSignature = buildMatchSignature(identity, listener.command, cwd, probe?.title);
   return {
@@ -32,7 +32,16 @@ export function toInstance({ listener, identity, candidates, probe, cwd, git = n
     tls: probe?.tls ?? null,
     title: probe?.title ?? null,
     health,
+    // null when the container/metrics provider is unsupported, failed, or found nothing for this
+    // instance — never a fabricated empty object, matching the correct-or-absent discipline git
+    // already follows for dirty/ahead/behind.
+    docker,
+    processMetrics,
     process: { pid: listener.pid, command: listener.command },
+    // Who launched this listener, derived by walking the process tree to a recognizable ancestor.
+    // Null when ancestry could not be resolved (non-darwin, or the walk hit an unknown parent) —
+    // absent rather than guessed, matching the discipline the rest of this record follows.
+    provenance,
     project: git ? { ...identity, git } : identity,
   };
 }

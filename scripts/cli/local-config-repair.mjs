@@ -3,13 +3,22 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { rootConfigActive, rootConfigBaseline } from "./paths.mjs";
-import { mergeRootConfig } from "./root-config-merge.mjs";
+import { getHarnessProvider } from "../harnesses/registry.mjs";
 import { recordWrite } from "./root-config-state.mjs";
 
-const HARNESS_LABEL = {
-  claude: "Claude settings",
-  codex: "Codex config",
-};
+// Registry-driven label ("<Display Name> settings"), not a hardcoded claude/codex map — every
+// registered provider's rootConfig gets a sensible label with no per-provider entry needed.
+function harnessLabel(harness) {
+  try {
+    return `${getHarnessProvider(harness).manifest.displayName} settings`;
+  } catch {
+    return harness;
+  }
+}
+
+function mergeRootConfig(harness, repoText, localText) {
+  return getHarnessProvider(harness).adapters.rootConfig.merge(repoText, localText);
+}
 
 const MARKER_LINES = new Set([
   "# BEGIN GENERATED AGENT PERMISSIONS",
@@ -110,15 +119,15 @@ function buildHarnessPlan(harness) {
 }
 
 function repairPlan(harness, activePath, repaired, issues) {
-  return { harness, label: HARNESS_LABEL[harness] || harness, activePath, repaired, issues };
+  return { harness, label: harnessLabel(harness), activePath, repaired, issues };
 }
 
 // Structural diff (parsed keys, not raw text) so hook/section reordering that mergeRootConfig
 // re-serializes differently from the active file doesn't get reported as a real setting change.
 function diffConfigKeys(harness, activeText, repairedText) {
-  return harness === "codex"
-    ? diffTomlKeys(activeText, repairedText)
-    : diffJsonKeys(activeText, repairedText);
+  if (harness === "codex") return diffTomlKeys(activeText, repairedText);
+  if (harness === "claude") return diffJsonKeys(activeText, repairedText);
+  throw new Error(`unsupported harness: ${harness}`);
 }
 
 function flattenObject(value, prefix = "", out = new Map()) {

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "Claude",
+  "displayName": "Claude Code",
+  "commandName": "claude",
+  "adapter": "claude",
+  "detection": {
+    "executables": ["claude"],
+    "minimumConfidence": "probable"
+  },
+  "paths": {
+    "home": { "path": "~/.claude", "kind": "directory" }
+  },
+  "capabilities": ["root-config"]
+}

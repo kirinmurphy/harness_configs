@@ -259,6 +259,72 @@ check_package_command_catalog() {
   fi
 }
 
+# Harness provider manifests (Phase 1 of the discoverable-harness-provider-architecture plan):
+# validate every globals/harnesses/<id>/provider.json against the shared contract so a malformed
+# manifest fails doctor instead of surfacing later as a confusing runtime error.
+check_harness_manifests() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped harness provider manifest check"
+    return 0
+  fi
+  local output
+  if output="$(node -e '
+    import(process.argv[1]).then(async (m) => {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const root = process.argv[2];
+      const dir = path.join(root, "globals", "harnesses");
+      for (const id of fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)) {
+        const manifestPath = path.join(dir, id, "provider.json");
+        if (!fs.existsSync(manifestPath)) continue;
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        m.validateProviderManifest(manifest);
+        if (manifest.id !== id) throw new Error(`${manifestPath}: manifest id "${manifest.id}" does not match directory "${id}"`);
+      }
+    }).catch((err) => {
+      console.error(err?.stack || String(err));
+      process.exit(1);
+    });
+  ' "${repo_root}/scripts/harnesses/contract.mjs" "${repo_root}" 2>&1)"; then
+    ok "harness provider manifests valid"
+  else
+    fail "harness provider manifest invalid"
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && echo "  ${line}" >&2
+    done <<< "${output}"
+  fi
+}
+
+# Harness provider registry (Phase 2): construct the real static adapter registry, which exercises
+# validateCapabilityAdapters against each provider's actual adapter object — catching a declared
+# capability with a missing/malformed adapter method that the manifest-only check above can't see.
+check_harness_registry() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped harness provider registry check"
+    return 0
+  fi
+  local output
+  if output="$(node -e '
+    import(process.argv[1]).then((m) => {
+      const providers = m.listHarnessProviders();
+      if (providers.length === 0) throw new Error("registry constructed zero providers");
+      for (const provider of providers) {
+        if (!provider.manifest?.capabilities?.length) throw new Error(`${provider.id}: no declared capabilities`);
+      }
+    }).catch((err) => {
+      console.error(err?.stack || String(err));
+      process.exit(1);
+    });
+  ' "${repo_root}/scripts/harnesses/registry.mjs" 2>&1)"; then
+    ok "harness provider registry constructs cleanly"
+  else
+    fail "harness provider registry failed to construct"
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && echo "  ${line}" >&2
+    done <<< "${output}"
+  fi
+}
+
 check_local_config_repair_candidates() {
   if ! command -v node >/dev/null 2>&1; then
     ok "node unavailable; skipped local config repair check"
@@ -351,12 +417,17 @@ for skill_src in "${repo_root}"/local/skills/*/SKILL.md; do
   [[ -e "${skill_src}" ]] || continue
   skill_name="$(basename "$(dirname "${skill_src}")")"
   check_file "local/skills/${skill_name}/SKILL.md"
-  check_repo_symlink ".claude/skills/${skill_name}" "../../local/skills/${skill_name}"
-  check_repo_symlink ".codex/skills/${skill_name}" "../../local/skills/${skill_name}"
+  # One project-scope dir per skills-capable provider, derived from the registry so this check
+  # covers a newly registered harness automatically (matches scripts/build/link-skills.sh).
+  for internal_dir in $(repo_internal_skill_dirs); do
+    check_repo_symlink "${internal_dir}/${skill_name}" "../../local/skills/${skill_name}"
+  done
 done
 check_skill_lib_parity
 check_package_command_catalog
 check_manifest_sources
+check_harness_manifests
+check_harness_registry
 check_json "generated/codex/hooks.json"
 check_json "generated/claude/settings.json"
 check_toml "generated/codex/config.toml"
@@ -402,15 +473,18 @@ if [[ "${check_installed}" -eq 1 ]]; then
   fi
   check_local_config_repair_candidates
   # Base install owns only roborepo-support. Optional skills are checked through their package/toggle
-  # state, not as unconditional install payload.
-  installed_has_claude=0; installed_has_codex=0
-  harness_present claude && installed_has_claude=1
-  harness_present codex  && installed_has_codex=1
-  [[ "${installed_has_claude}" -eq 1 ]] && check_managed_skill "globals/system/skills/roborepo-support" "${HOME}/.claude/skills/roborepo-support"
-  [[ "${installed_has_codex}"  -eq 1 ]] && check_managed_skill "globals/system/skills/roborepo-support" "${HOME}/.codex/skills/roborepo-support"
+  # state, not as unconditional install payload. Provider iteration (docs/plans/active/
+  # discoverable-harness-provider-architecture-plan.md Phase 4) instead of a fixed Claude/Codex pair.
+  while IFS=$'\t' read -r doctor_harness_id doctor_home_path doctor_present _display_name _root_config_path; do
+    [[ -z "${doctor_harness_id}" ]] && continue
+    [[ "${doctor_present}" == "1" ]] || continue
+    check_managed_skill "globals/system/skills/roborepo-support" "${doctor_home_path}/skills/roborepo-support"
+  done < <(harness_detected_rows)
   # Drift report: unmanaged skills in native dirs (real dirs without our managed marker).
   drift_count=0
-  for skills_home in "${HOME}/.claude/skills" "${HOME}/.codex/skills"; do
+  while IFS=$'\t' read -r _doctor_harness_id doctor_home_path _doctor_present _display_name _root_config_path; do
+    [[ -z "${doctor_home_path}" ]] && continue
+    skills_home="${doctor_home_path}/skills"
     [[ -d "${skills_home}" ]] || continue
     for skill_dir in "${skills_home}"/*/; do
       [[ -d "${skill_dir}" ]] || continue
@@ -421,8 +495,68 @@ if [[ "${check_installed}" -eq 1 ]]; then
       echo "drift: ${skill_dir} is unmanaged — run: roborepo skill adopt ${skill_name}"
       drift_count=$((drift_count + 1))
     done
-  done
+  done < <(harness_detected_rows)
   [[ "${drift_count}" -gt 0 ]] || ok "no unmanaged skills found in harness skill dirs"
+
+  # Orphan report: symlinks pointing at a cache entry that no longer exists. These are invisible to
+  # the drift sweep above, whose "${skills_home}"/*/ glob only matches directories that resolve — a
+  # dangling link never does. They are also invisible to check_managed_skill, which is driven by the
+  # list of skills roborepo expects rather than by what is actually on disk, so nothing enumerated
+  # an entry roborepo no longer knows about. A harness reading one of these finds no SKILL.md at
+  # all: it sees a name it cannot load and cannot describe.
+  # Capability/path parity: a provider that declares a capability and supplies a path for it should
+  # have that path on disk once installed. Gemini declared `slash-commands` with a `commands` path
+  # and had no commands directory at all for its entire existence, while doctor passed 108 checks —
+  # nothing compared what a provider promises against what it received. Advisory rather than fail:
+  # a capability can be legitimately unused (no package ships that resource type yet), so this
+  # reports a suspicion, not a defect.
+  parity_count=0
+  if command -v node >/dev/null 2>&1 && [[ -f "${repo_root}/scripts/harnesses/registry.mjs" ]]; then
+    while IFS=$'\t' read -r parity_id parity_capability parity_path; do
+      [[ -z "${parity_id}" ]] && continue
+      echo "parity: ${parity_id} declares '${parity_capability}' and path ${parity_path}, which does not exist"
+      parity_count=$((parity_count + 1))
+    done < <(node -e '
+      import(process.argv[1]).then(async (m) => {
+        const os = await import("node:os");
+        const fs = await import("node:fs");
+        const path = await import("node:path");
+        // Only capabilities whose delivery is a directory of installed artifacts. root-config and
+        // rules are single files written on demand, and hooks/mcp live inside another file.
+        const pathForCapability = { skills: "skills", "slash-commands": "commands" };
+        for (const provider of m.listHarnessProviders()) {
+          for (const [capability, pathKey] of Object.entries(pathForCapability)) {
+            if (!provider.manifest.capabilities.includes(capability)) continue;
+            const declared = provider.manifest.paths?.[pathKey]?.path;
+            if (!declared) continue;
+            const abs = declared.replace(/^~/, os.homedir());
+            if (fs.existsSync(abs)) continue;
+            // Only report for providers actually present on this machine.
+            const home = provider.manifest.paths?.rootConfig?.path?.replace(/^~/, os.homedir());
+            if (!home || !fs.existsSync(path.dirname(home))) continue;
+            console.log([provider.id, capability, declared].join("\t"));
+          }
+        }
+      }).catch(() => {});
+    ' "${repo_root}/scripts/harnesses/registry.mjs" 2>/dev/null)
+  fi
+  [[ "${parity_count}" -gt 0 ]] || ok "declared harness capability paths all exist"
+
+  orphan_count=0
+  while IFS=$'\t' read -r _doctor_harness_id doctor_home_path _doctor_present _display_name _root_config_path; do
+    [[ -z "${doctor_home_path}" ]] && continue
+    skills_home="${doctor_home_path}/skills"
+    [[ -d "${skills_home}" ]] || continue
+    for skill_link in "${skills_home}"/*; do
+      skill_name="$(basename "${skill_link}")"
+      case "${skill_name}" in .*|'*') continue ;; esac
+      [[ -L "${skill_link}" ]] || continue
+      [[ -e "${skill_link}" ]] && continue  # resolves fine
+      echo "orphan: ${skill_link} -> $(readlink "${skill_link}") (target gone) — run: roborepo skill prune-orphans"
+      orphan_count=$((orphan_count + 1))
+    done
+  done < <(harness_detected_rows)
+  [[ "${orphan_count}" -gt 0 ]] || ok "no orphaned skill links found in harness skill dirs"
 fi
 
 if [[ "${failed}" -ne 0 ]]; then

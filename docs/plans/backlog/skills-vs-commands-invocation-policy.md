@@ -1,7 +1,7 @@
 ---
 id: skills-vs-commands-invocation-policy
 priority: low
-next_action: Fill in the next concrete task.
+next_action: Decide how skill-backed commands should present in Claude Code, where the skill and its generated command shim both list (see section 3a option table); applies to all seven packages that ship one.
 blocked_by: []
 depends_on: []
 related: []
@@ -234,6 +234,63 @@ skills that are safe as helpers but better when users have a memorable explicit
 entry point, such as planning, blog, or frontend-design workflows. Standalone
 commands are best for command-specific workflows such as capture.
 
+## 3a. Skill-Backed Commands Double-List In Claude Code
+
+### What is wrong
+
+Claude Code enumerates skills and slash commands as two separate registries. A skill-backed command
+therefore appears **twice** in the user-facing list — once from `~/.claude/skills/<name>/SKILL.md`
+and once from `~/.claude/commands/<name>.md`. This is inherent to the wrapper pattern in §3, not a
+rendering bug: the command file is a three-line shim whose body is "Read the skill, then follow its
+workflow," so both entries run identical work.
+
+It reads as two different commands because the two descriptions are written for different jobs and
+have drifted apart. Observed for `/wrap-up`:
+
+```text
+/wrap-up    Use ONLY when the user explicitly asks to wrap up, close out, finish…   ← SKILL.md
+/wrap-up    End a work session cleanly: self-review added code, sync docs, commit…  ← command shim
+```
+
+All seven packages with a skill-backed command are affected. Six of the seven have diverging text:
+
+| Package | Skill vs. command description |
+| --- | --- |
+| `case-study-pack` | identical |
+| `frontend-design` | diverges |
+| `plan-docs` | diverges |
+| `technical-writing` | diverges |
+| `telemetry` | diverges |
+| `tighten` | diverges |
+| `wrap-up` | diverges |
+
+The divergence is structural, not sloppiness. `package.config.json` holds one description reused for
+both the package label and the command shim, and it is written as *what the workflow does*. The
+`SKILL.md` description is written as *when to trigger*, which §1 of this policy actively requires.
+Both are correct for their own registry.
+
+The shim cannot simply be dropped: `harnesses: ["claude", "codex"]` exists because Codex has no
+skill autodiscovery, so the generated command is the only entry point there. Removing `"claude"`
+would leave Claude Code relying purely on skill autodiscovery for `/name` invocation.
+
+### What to do
+
+Unresolved — see Open Decisions. The options, in increasing cost:
+
+| Option | Effect | Cost |
+| --- | --- | --- |
+| Accept it | One duplicated list entry per skill-backed command | None; status quo |
+| Align descriptions | Both lines read identically, so the pair is obviously one workflow listed twice rather than two commands | Edit 6 `package.config.json` files; loses the what-vs-when split |
+| Prefix the command description | e.g. `(skill) End a work session cleanly…` — keeps both texts, marks the shim as an alias | Edit 6 files; adds noise to the Codex surface where there is no duplicate |
+| Emit Codex-only shims | Drop `"claude"` from `harnesses`; removes the duplicate outright | Claude `/name` then depends solely on skill autodiscovery — a real behavioral dependency traded for a cosmetic fix |
+
+Decide before adding more skill-backed commands, since each one adds another duplicate pair.
+
+### What improves
+
+The command palette stops showing what look like two competing entries for one workflow, and the
+policy records why the duplication exists so it is not "fixed" by deleting the Codex entry point.
+
 ## 4. Classify Skill Risk
 
 ### What is wrong
@@ -386,9 +443,12 @@ read-only skills lightweight.
 
 Do these before making more behavior changes:
 
-1. Expand trigger fixtures beyond the initial medium-risk set and tune descriptions when examples
+1. Decide how skill-backed commands should present in Claude Code, where each one double-lists
+   (§3a). Cheapest to settle first: it is a one-line decision per package, and every new
+   skill-backed command adds another duplicate pair until it is resolved.
+2. Expand trigger fixtures beyond the initial medium-risk set and tune descriptions when examples
    reveal over-broad or missing trigger language.
-2. Add rendered harness-specific manual-only metadata only when a skill is intentionally converted
+3. Add rendered harness-specific manual-only metadata only when a skill is intentionally converted
    away from implicit invocation.
 
 This gives the repo a control plane before converting more skills to commands or
@@ -416,6 +476,8 @@ itself.
 
 ## Open Decisions
 
+- How should skill-backed commands present themselves in Claude Code, where the skill and its
+  command shim both list? See §3a for the option table. Affects all seven packages that ship one.
 - Can either harness expose loaded-skill metadata to hooks or status output?
 - Should command docs link directly to owning package configs, or describe only the generated
   outputs?

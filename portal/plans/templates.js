@@ -122,7 +122,7 @@ function planCardElement(record, cardActions) {
 // The /plan-docs lifecycle actions. Label is the plain, in-context verb (we're already in the
 // plan-docs universe, so no "/plan-docs" prefix); mode is the skill action; description is the
 // one-line effect. Every one of these produces a clipboard prompt — the agent runs the skill after
-// you paste. Wording tracks docs/guides/plan-docs.md's "Common modes".
+// you paste. Wording tracks docs/guides/plan/lifecycle/plan-docs.md's "Common modes".
 const PLAN_DOCS_ACTIONS = [
   ["start", "Start", "Move this plan into active and begin."],
   ["sync", "Sync", "Update the plan from completed session work."],

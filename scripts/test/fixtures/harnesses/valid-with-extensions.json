@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic",
+  "displayName": "Synthetic Provider",
+  "commandName": "synthetic",
+  "adapter": "synthetic",
+  "detection": {
+    "executables": ["synthetic"],
+    "homeCandidates": ["~/.synthetic"],
+    "minimumConfidence": "possible"
+  },
+  "paths": {
+    "home": { "path": "~/.synthetic", "kind": "directory" }
+  },
+  "capabilities": ["root-config"],
+  "extensions": {
+    "roborepo": {
+      "rootConfigFormat": "yaml",
+      "note": "synthetic fixture proving namespaced extensions round-trip validation"
+    }
+  }
+}

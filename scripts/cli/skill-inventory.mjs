@@ -1,15 +1,18 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { repoRoot, sharedSkillsDir } from "./paths.mjs";
 import { roborepoSkillsDir } from "./state-paths.mjs";
 import { listSourceSkills } from "./skill-lib.mjs";
 import { loadPackageCatalog } from "./package-catalog.mjs";
+import { listHarnessProviders } from "../harnesses/registry.mjs";
+import { resolveHarnessPath } from "../harnesses/paths.mjs";
 
-const HARNESSES = [
-  { id: "claude", dir: path.join(os.homedir(), ".claude", "skills") },
-  { id: "codex", dir: path.join(os.homedir(), ".codex", "skills") },
-];
+// Every registered provider's live skills dir — a real filesystem location this machine reads, so
+// the expanded absolute path (resolveHarnessPath) is correct here, not the manifest's raw string.
+const HARNESSES = listHarnessProviders().map((provider) => ({
+  id: provider.id,
+  dir: resolveHarnessPath(provider.manifest, "skills"),
+}));
 
 function exists(filePath) {
   try {

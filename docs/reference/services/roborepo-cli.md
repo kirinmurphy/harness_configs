@@ -42,7 +42,7 @@ See [Package Development](../../../local/skills/roborepo-development/references/
 | `roborepo localhoster [--json] [--open]` | Lists active localhost HTTP apps, prints the portal snapshot as JSON, or opens `/localhoster`. |
 
 The `/plans` page scans configured roots for `docs/plans/**/*.md`. See
-[Plan Docs Walkthrough](../../guides/plan-docs.md) and
+[Plan Docs Walkthrough](../../guides/plan/lifecycle/plan-docs.md) and
 [Plans Portal Technical Reference](plans-portal.md).
 
 The `/localhoster` page discovers local HTTP apps on macOS, keeps machine-local saved links under
@@ -76,7 +76,7 @@ See [roborepo Skills Interface](roborepo-skills.md) for the managed/native bound
 
 |                                  |                                                                                                      |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `roborepo mcp add <name-or-url>` | Registers an MCP server with Claude and Codex, including matching Claude permissions unless skipped. |
+| `roborepo mcp add <name-or-url>` | Registers an MCP server with every managed harness that supports MCP (Claude, Codex, Gemini), including matching Claude permissions unless skipped. Scope it with `--harness <id>`. |
 
 ## Command Output
 

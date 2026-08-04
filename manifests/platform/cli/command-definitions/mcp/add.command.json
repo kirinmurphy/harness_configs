@@ -2,9 +2,9 @@
   "path": ["mcp", "add"],
   "kind": "command",
   "title": "Add MCP",
-  "description": "Register an MCP server with Claude and Codex",
+  "description": "Register an MCP server with an enabled harness",
   "order": 10,
-  "usage": "roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--dry-run] [--only-claude|--only-codex] [--skip-claude-permission]",
+  "usage": "roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--dry-run] [--harness <id>] [--skip-claude-permission]",
   "arguments": [{ "name": "name-or-url", "required": true, "interactive": { "prompt": "MCP name or URL" } }],
   "execution": {
     "adapter": "module",

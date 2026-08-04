@@ -72,14 +72,25 @@ function tokenWarningItem({ name, suffix, spec, info }) {
   return row;
 }
 
-export function modalDefaults(rules, onDefaultClick) {
+function wireDefaultButton(btn, ruleKey, rulePath, label, rules, onDefaultClick) {
+  btn.dataset.ruleKey = ruleKey;
+  btn.dataset.rulePath = rulePath;
+  btn.textContent = label;
+  const entry = rules[ruleKey];
+  btn.disabled = !entry?.html;
+  btn.addEventListener("click", () => onDefaultClick(label, rulePath, entry));
+}
+
+export function modalDefaults(rules, harnesses, onDefaultClick) {
   const defaults = tpl("tpl-modal-defaults");
   for (const btn of defaults.querySelectorAll("[data-rule-key]")) {
-    const entry = rules[btn.dataset.ruleKey];
-    btn.disabled = !entry?.html;
-    btn.addEventListener("click", () =>
-      onDefaultClick(btn.textContent, btn.dataset.rulePath, entry),
-    );
+    wireDefaultButton(btn, btn.dataset.ruleKey, btn.dataset.rulePath, btn.textContent.trim(), rules, onDefaultClick);
+  }
+  const slot = defaults.querySelector("[data-slot=\"per-harness\"]");
+  for (const harness of harnesses || []) {
+    const btn = tpl("tpl-modal-defaults-harness-button");
+    wireDefaultButton(btn, harness.id, `globals/rules/${harness.id}`, `${harness.displayName} specifics`, rules, onDefaultClick);
+    slot.append(btn);
   }
   return defaults;
 }
@@ -243,32 +254,61 @@ export function contextWarnings(snap) {
   return panel;
 }
 
-export function configFiles(snap, { onInspectClick }) {
-  const panel = tpl("tpl-config-files");
-  for (const chip of panel.querySelectorAll("[data-context-startup]")) {
-    applyTokenChip(chip, harnessChipSpec(snap.contextCost, chip.dataset.contextStartup));
-  }
-  for (const chip of panel.querySelectorAll("[data-cost^=\"rules-\"]")) {
-    applyWarningTokenChip(chip, rulesChipSpec(snap.contextCost, chip.dataset.cost.slice("rules-".length)));
-  }
-  for (const btn of panel.querySelectorAll("[data-config-kind]")) {
-    const kind = btn.dataset.configKind;
-    const id = btn.dataset.configId;
-    const harness = btn.dataset.configHarness;
-    btn.addEventListener("click", () =>
-      onInspectClick({ kind, id, harness, label: btn.textContent }),
-    );
-  }
-  for (const chip of panel.querySelectorAll("[data-drift-harness]")) {
-    const spec = resolveDriftChip(snap.rootConfig, chip.dataset.driftHarness);
-    if (!spec) {
-      chip.hidden = true;
-      continue;
-    }
+function wireInspectButton(btn, kind, id, harness, label, onInspectClick) {
+  btn.textContent = label;
+  btn.addEventListener("click", () => onInspectClick({ kind, id, harness, label }));
+}
+
+function configUsageCell(harness, snap) {
+  const cell = tpl("tpl-config-usage-cell");
+  applyTokenChip(cell.querySelector("[data-slot=chip]"), harnessChipSpec(snap.contextCost, harness.id));
+  return cell;
+}
+
+function configRulesCell(harness, snap, onInspectClick) {
+  const cell = tpl("tpl-config-rules-cell");
+  wireInspectButton(cell.querySelector("[data-slot=button]"), "live-rules", "agent-rules", harness.id, harness.rulesFile, onInspectClick);
+  applyWarningTokenChip(cell.querySelector("[data-slot=chip]"), rulesChipSpec(snap.contextCost, harness.id));
+  return cell;
+}
+
+function configConfigCell(harness, snap, onInspectClick) {
+  const cell = tpl("tpl-config-config-cell");
+  wireInspectButton(cell.querySelector("[data-slot=button]"), "config-file", `${harness.id}-settings`, undefined, harness.settingsFile, onInspectClick);
+  const chip = cell.querySelector("[data-slot=drift]");
+  const spec = resolveDriftChip(snap.rootConfig, harness.id);
+  if (spec) {
     chip.hidden = false;
     chip.className = "drift-chip " + spec.cls;
     chip.textContent = spec.label;
     chip.title = spec.title;
+  }
+  return cell;
+}
+
+function configHooksCell(harness, onInspectClick) {
+  const cell = tpl("tpl-config-hooks-cell");
+  wireInspectButton(cell.querySelector("[data-slot=button]"), "harness-hooks", "hooks", harness.id, harness.hooksFile, onInspectClick);
+  return cell;
+}
+
+export function configFiles(snap, { onInspectClick }) {
+  const panel = tpl("tpl-config-files");
+  const harnesses = snap.harnesses || [];
+  panel.querySelector(".config-grid").style.setProperty("--provider-count", harnesses.length);
+  const head = panel.querySelector("[data-slot=head]");
+  const rows = {
+    usage: panel.querySelector("[data-slot=row-usage]"),
+    rules: panel.querySelector("[data-slot=row-rules]"),
+    config: panel.querySelector("[data-slot=row-config]"),
+    hooks: panel.querySelector("[data-slot=row-hooks]"),
+  };
+  for (const harness of harnesses) {
+    head.append(fill(tpl("tpl-config-header-cell"), { label: harness.displayName }));
+    rows.usage.append(configUsageCell(harness, snap));
+    rows.rules.append(configRulesCell(harness, snap, onInspectClick));
+    rows.config.append(configConfigCell(harness, snap, onInspectClick));
+    rows.hooks.append(configHooksCell(harness, onInspectClick));
   }
   return panel;
 }

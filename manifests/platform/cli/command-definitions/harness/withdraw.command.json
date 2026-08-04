@@ -1,0 +1,13 @@
+{
+  "path": ["harness", "withdraw"],
+  "kind": "command",
+  "title": "Withdraw harness",
+  "description": "Actively unmerge RoboRepo's previously-written content out of a harness provider's live config (root config, hooks, MCP entries, linked skills/commands). Distinct from `harness disable`, which only stops RoboRepo from managing it going forward and never touches files.",
+  "order": 50,
+  "advanced": true,
+  "usage": "roborepo harness withdraw <id> [--dry-run] [--yes]",
+  "execution": {
+    "adapter": "repoScript",
+    "script": "harness-withdraw"
+  }
+}

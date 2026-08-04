@@ -99,8 +99,9 @@ function splitWarningLabel(label) {
   return match ? { name: match[1], suffix: match[2] } : { name: String(label), suffix: "" };
 }
 
-function discoveryWarning(contextCost) {
+function discoveryWarning(contextCost, harnesses) {
   const legend = contextCost?.skillDiscoveryThresholds || contextCost?.thresholds;
+  const displayNameOf = new Map((harnesses || []).map((h) => [h.id, h.displayName]));
   const rows = Object.entries(contextCost?.harnesses || {}).map(([harness, cost]) => ({
     harness,
     tokens: cost.breakdown?.skillDiscoveryTokens || 0,
@@ -111,7 +112,7 @@ function discoveryWarning(contextCost) {
     level: levelFor(max.tokens, legend),
     detail: "Total skill discovery descriptions loaded at chat start while enabled.",
     breakdown: rows.map((row) => ({
-      label: row.harness === "codex" ? "Codex" : "Claude",
+      label: displayNameOf.get(row.harness) || row.harness,
       tokens: row.tokens,
     })),
     legend,
@@ -185,10 +186,10 @@ function compareWarningEntries(a, b) {
 export function tokenWarningEntries(snap) {
   const contextCost = snap?.contextCost;
   if (!contextCost) return [];
+  const harnesses = snap.harnesses || [];
   const entries = [
-    warningEntry("CLAUDE.md", rulesChipSpec(contextCost, "claude")),
-    warningEntry("AGENTS.md", rulesChipSpec(contextCost, "codex")),
-    discoveryWarning(contextCost),
+    ...harnesses.map((h) => warningEntry(h.rulesFile, rulesChipSpec(contextCost, h.id))),
+    discoveryWarning(contextCost, harnesses),
     ...(snap.behaviorView || [])
       .flatMap((section) => section.items || [])
       .map((item) => itemWarningEntry(item, contextCost)),
@@ -206,7 +207,7 @@ export function inspectChipSpecs(inspect, itemCost, snap) {
   const contextCost = snap?.contextCost;
   if (!inspect || !contextCost) return [];
   if (inspect.kind === "live-rules") {
-    const spec = rulesChipSpec(contextCost, inspect.harness || "claude");
+    const spec = inspect.harness ? rulesChipSpec(contextCost, inspect.harness) : null;
     return spec ? [{ label: "Startup", spec }] : [];
   }
   if (!itemCost) return [];
@@ -260,7 +261,7 @@ export function contextCostChipSpecs(item, contextCost) {
   if (!cost || !contextCost) return [];
   const chips = [];
   const isCommand = item.inspect?.kind === "command-skill";
-  const differNote = cost.harnessesDiffer ? " Claude and Codex costs differ; the larger is shown." : "";
+  const differNote = cost.harnessesDiffer ? " Costs differ by harness; the larger is shown." : "";
 
   if (cost.onDemandTokens > 0 && cost.onDemandLevel && cost.onDemandLevel !== "low") {
     chips.push({

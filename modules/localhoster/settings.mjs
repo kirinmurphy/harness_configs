@@ -12,6 +12,7 @@ import {
   normalizeMatch,
   normalizeRoutePath,
   resolveProjectAlias,
+  safeAbsolutePath,
   safeBoolean,
   safeId,
   safeIdentity,
@@ -81,6 +82,7 @@ function applyMutation(settings, input) {
   if (input.type === "links") return mutateLinks(settings, input);
   if (input.type === "association") return mutateAssociation(settings, input);
   if (input.type === "alias") return mutateAlias(settings, input);
+  if (input.type === "composeProject") return mutateComposeProject(settings, input);
   throw new Error("unknown localhoster settings mutation");
 }
 
@@ -128,6 +130,29 @@ function mutateAssociation(settings, input) {
   };
 }
 
+// Keyed by the raw Docker Compose project name (e.g. "trpc_starter"), not a listener-derived
+// associationKey — a Compose project is one operation spanning several containers/ports, and
+// there is no single listener to key it off of the way per-app associations are. repoIdentity is
+// the "assign the spawning repo to this project" link: once set, the compose card's git badge and
+// info tooltip resolve git context from that repo instead of showing nothing (Docker containers
+// have no cwd of their own for the existing git-by-cwd resolution to work from).
+function mutateComposeProject(settings, input) {
+  settings.composeProjects ||= {};
+  const name = input.composeProject;
+  if (typeof name !== "string" || !name.trim()) throw new Error("composeProject mutation requires composeProject name");
+  if (input.remove) {
+    delete settings.composeProjects[name];
+    return;
+  }
+  const current = settings.composeProjects[name] || {};
+  const next = { ...current };
+  if (input.name != null) next.name = safeLabel(input.name, "compose project name");
+  if (input.favorite != null) next.favorite = safeBoolean(input.favorite, "compose project favorite");
+  if (input.hidden != null) next.hidden = safeBoolean(input.hidden, "compose project hidden");
+  if (input.repoPath != null) next.repoPath = input.repoPath === "" ? undefined : safeAbsolutePath(input.repoPath, "compose project repoPath");
+  settings.composeProjects[name] = next;
+}
+
 function mutateAlias(settings, input) {
   const from = safeIdentity(input.from);
   if (input.remove) {
@@ -146,7 +171,10 @@ function mutateAlias(settings, input) {
 
 function migrateSettings(settings) {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) throw new Error("settings must be an object");
-  if (settings.version === SETTINGS_VERSION) return validateSettings(settings);
+  // composeProjects is new within SETTINGS_VERSION 2 itself (added after the initial v2 rollout),
+  // so an on-disk v2 file from before this field existed still needs a default backfilled here —
+  // a version bump alone wouldn't have caught it since migrateSettings only branches on version.
+  if (settings.version === SETTINGS_VERSION) return validateSettings({ composeProjects: {}, ...settings });
   if (settings.version !== LEGACY_SETTINGS_VERSION) throw new Error(`unsupported localhoster settings version: ${settings.version}`);
   validateLegacySettings(settings);
   return validateSettings({
@@ -155,6 +183,7 @@ function migrateSettings(settings) {
     projects: Object.fromEntries(Object.entries(settings.projects).map(([identity, project]) => [identity, migrateProject(project)])),
     associations: { ...settings.associations },
     aliases: {},
+    composeProjects: {},
     preferences: { ...DEFAULT_PREFERENCES },
   });
 }

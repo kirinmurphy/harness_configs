@@ -62,14 +62,29 @@ const fs = require("fs");
 const path = require("path");
 const [stateFile, repoRoot, onConflict] = process.argv.slice(1);
 const persistedOnConflict = onConflict === "overwrite" || onConflict === "keep" ? onConflict : undefined;
+
+// One entry per registered provider, so install state covers a newly added harness without an
+// edit here. Read straight from the provider manifests rather than importing the ESM registry:
+// this runs under `node -e` alongside require(), where a top-level await is a hard parse error.
+// Falls back to the historical claude/codex pair if the manifests cannot be read (bare checkouts
+// and copied-CLI test harnesses), matching this script'"'"'s other soft-fail paths.
+let harnessIds = ["claude", "codex"];
+try {
+  const harnessDir = path.join(repoRoot, "globals", "harnesses");
+  const discovered = fs.readdirSync(harnessDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(harnessDir, entry.name, "provider.json"))
+    .filter((file) => fs.existsSync(file))
+    .map((file) => JSON.parse(fs.readFileSync(file, "utf8")).id)
+    .filter((id) => typeof id === "string" && id !== "");
+  if (discovered.length > 0) harnessIds = discovered;
+} catch {}
+
 const state = {
   repo: repoRoot,
   onConflict: persistedOnConflict,
   updatedAt: new Date().toISOString(),
-  harnesses: {
-    claude: { onConflict: persistedOnConflict },
-    codex: { onConflict: persistedOnConflict },
-  },
+  harnesses: Object.fromEntries(harnessIds.map((id) => [id, { onConflict: persistedOnConflict }])),
 };
 fs.mkdirSync(path.dirname(stateFile), { recursive: true });
 fs.writeFileSync(stateFile, JSON.stringify(state, null, 2) + "\n");

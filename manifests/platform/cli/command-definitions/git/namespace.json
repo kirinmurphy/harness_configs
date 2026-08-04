@@ -1,0 +1,7 @@
+{
+  "path": ["git"],
+  "kind": "namespace",
+  "title": "Git",
+  "description": "Inspect local git repositories",
+  "order": 450
+}

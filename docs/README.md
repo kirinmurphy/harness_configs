@@ -9,17 +9,21 @@ doc of record first; supporting docs should add context, not redefine the behavi
 | --- | --- | --- |
 | Install roborepo on a machine | [First-Time Setup](guides/first-time-setup.md) | [Install Workflows](guides/install-workflows.md) |
 | Use roborepo day to day | [Setup and Daily Use](guides/setup-and-daily-use.md) | [roborepo CLI Commands](reference/services/roborepo-cli.md) |
-| Browse and manage plan docs | [Plan Docs Walkthrough](guides/plan-docs.md) | [Plans Portal Technical Reference](reference/services/plans-portal.md) |
+| Browse and manage plan docs | [Plan Docs Walkthrough](guides/plan/lifecycle/plan-docs.md) | [Plans Portal Technical Reference](reference/services/plans-portal.md) |
+| Review an integration branch | [Integration Check Walkthrough](guides/plan/lifecycle/integration-check.md) | — |
 | See token/tool cost and mark changes over time | [Telemetry Walkthrough](guides/telemetry.md) | [Telemetry Service Reference](reference/services/telemetry.md) |
 | Understand collision behavior | [Config Collision Handling](reference/internal/config-collision-handling.md) | [Install Workflows](guides/install-workflows.md) |
 | Use the CLI | [roborepo CLI Commands](reference/services/roborepo-cli.md) | [roborepo CLI Reference](reference/services/roborepo.md) |
+| Know which agent CLIs roborepo manages | [Supported Harnesses](guides/harnesses/supported-harnesses.md) | [Harness Provider Interface](guides/harnesses/harness-provider-interface.md) |
 | Choose or inspect behavior packages | [Config Control Panel](reference/services/config-control-panel.md) | [Setup and Daily Use](guides/setup-and-daily-use.md) |
 
 ## Harness Architecture
 
 | I need to... | Start here | Then read |
 | --- | --- | --- |
-| Understand why Claude and Codex parity has different mechanisms | [How the Harnesses Work](reference/internal/harnesses-explained.md) | [Harness Anatomy and Parity](reference/internal/harness-anatomy.md) |
+| See which harnesses are supported and what each receives | [Supported Harnesses](guides/harnesses/supported-harnesses.md) | [How the Harnesses Work](reference/internal/harnesses-explained.md) |
+| Add support for a new harness | [Harness Provider Interface](guides/harnesses/harness-provider-interface.md) | [Harness Anatomy and Parity](reference/internal/harness-anatomy.md) |
+| Understand why harness parity uses different mechanisms per tool | [How the Harnesses Work](reference/internal/harnesses-explained.md) | [Harness Anatomy and Parity](reference/internal/harness-anatomy.md) |
 | Change a harness element | [Harness Anatomy and Parity](reference/internal/harness-anatomy.md) | [How It Works](reference/services/architecture.md) |
 | Understand filesystem materialization | [How It Works](reference/services/architecture.md) | [Manifest And Materialization](architecture/manifest-and-symlinks.md) |
 | Understand config vs. code boundaries | [Config-Code Separation](architecture/config-code-separation.md) | [Documentation Map And Audit](architecture/documentation-map-and-audit.md) |
@@ -35,7 +39,7 @@ doc of record first; supporting docs should add context, not redefine the behavi
 | Code indexing | [jcodemunch](reference/services/jcodemunch.md) | [roborepo CLI Commands](reference/services/roborepo-cli.md#index-code-and-docs) |
 | Docs indexing | [jdocmunch](reference/services/jdocmunch.md) | [roborepo CLI Commands](reference/services/roborepo-cli.md#index-code-and-docs) |
 | Convention capture | [Convention Capture](reference/services/convention-capture.md) | [Config Control Panel](reference/services/config-control-panel.md) |
-| Plans portal and workflows | [Plans Portal Technical Reference](reference/services/plans-portal.md) | [Plan Docs Walkthrough](guides/plan-docs.md) |
+| Plans portal and workflows | [Plans Portal Technical Reference](reference/services/plans-portal.md) | [Plan Docs Walkthrough](guides/plan/lifecycle/plan-docs.md) |
 | Telemetry and the telemetry portal | [Telemetry Service Reference](reference/services/telemetry.md) | [Telemetry Walkthrough](guides/telemetry.md) |
 | Inventory manifests | [Inventory Manifest README](../manifests/inventory/README.md) | [Config-Code Separation](architecture/config-code-separation.md) |
 

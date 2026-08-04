@@ -198,22 +198,50 @@ export function mergeCodexConfig(repoText, localText) {
 }
 
 export function mergeRootConfig(harness, repoText, localText) {
-  return harness === "codex"
-    ? mergeCodexConfig(repoText, localText)
-    : mergeClaudeSettings(repoText, localText);
+  if (harness === "codex") return mergeCodexConfig(repoText, localText);
+  if (harness === "claude") return mergeClaudeSettings(repoText, localText);
+  throw new Error(`unsupported harness: ${harness}`);
 }
 
+// Final content transform applied at write time, after merge. Lives here (not
+// root-config-writes.mjs) alongside mergeClaudeSettings/mergeCodexConfig, and imports nothing
+// beyond node builtins, so both root-config-writes.mjs and the Claude provider adapter
+// (scripts/harnesses/claude/index.mjs) can depend on it without a cycle through paths.mjs's
+// harness registry import.
+export function normalizeRootConfigContent(harness, content) {
+  if (harness !== "claude") return content;
+  try {
+    const settings = JSON.parse(content || "{}");
+    delete settings.model;
+    return `${JSON.stringify(settings, null, 2)}\n`;
+  } catch {
+    return content;
+  }
+}
+
+// This block runs only as a standalone subprocess (scripts/install/install-lib.sh's
+// export_user_config shells out to it as `node root-config-merge.mjs <harness> ...`) — never as an
+// import, so it can safely load the provider registry here without the cycle every other export in
+// this file avoids (registry.mjs's provider adapters import mergeClaudeSettings/mergeCodexConfig
+// from this same file). Dispatches through the harness's own rootConfig.merge adapter instead of
+// mergeRootConfig's hardcoded claude/codex branches, so any registered provider (Gemini included)
+// works here with no further changes. Wrapped in an async IIFE (not a bare top-level await) since
+// Node's top-level-await support inside a conditional block left an unsettled-promise warning and
+// a hung process in practice.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [harness, repoPath, localPath, outPath] = process.argv.slice(2);
   if (!harness || !repoPath || !localPath || !outPath) {
-    console.error("usage: root-config-merge.mjs claude|codex <repoPath> <localPath> <outPath>");
+    console.error("usage: root-config-merge.mjs <harness> <repoPath> <localPath> <outPath>");
     process.exit(2);
   }
 
-  const repoText = fs.existsSync(repoPath) ? fs.readFileSync(repoPath, "utf8") : "";
-  const localText = fs.existsSync(localPath) ? fs.readFileSync(localPath, "utf8") : "";
-  const merged = mergeRootConfig(harness, repoText, localText);
+  (async () => {
+    const { getHarnessProvider } = await import("../harnesses/registry.mjs");
+    const repoText = fs.existsSync(repoPath) ? fs.readFileSync(repoPath, "utf8") : "";
+    const localText = fs.existsSync(localPath) ? fs.readFileSync(localPath, "utf8") : "";
+    const merged = getHarnessProvider(harness).adapters.rootConfig.merge(repoText, localText);
 
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, merged);
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    fs.writeFileSync(outPath, merged);
+  })();
 }

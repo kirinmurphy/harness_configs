@@ -1,0 +1,13 @@
+{
+  "path": ["harness", "detected"],
+  "kind": "command",
+  "title": "Detected harnesses",
+  "description": "Emit id/home-path/present/display-name/root-config-path rows for every known harness provider, from live filesystem discovery (no persisted state required). This is the row source shell install/uninstall/repair/doctor scripts consume.",
+  "order": 15,
+  "usage": "roborepo harness detected",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/harness.mjs",
+    "export": "harnessDetected"
+  }
+}

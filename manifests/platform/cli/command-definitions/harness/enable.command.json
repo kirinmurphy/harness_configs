@@ -1,0 +1,14 @@
+{
+  "path": ["harness", "enable"],
+  "kind": "command",
+  "title": "Enable harness",
+  "description": "Enable a harness provider",
+  "order": 40,
+  "usage": "roborepo harness enable <id>",
+  "arguments": [{ "name": "id", "required": true, "interactive": { "prompt": "Harness id" } }],
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/harness.mjs",
+    "export": "harnessEnable"
+  }
+}

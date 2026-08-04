@@ -1,31 +1,13 @@
 import fs from "node:fs";
-import { spawnSync } from "node:child_process";
 import { rootConfigActive, rootConfigBaseline } from "./paths.mjs";
 import { displayPath } from "./mcp-config.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
+import { shellQuote, claudeMcpArgs, runClaudeMcpAdd } from "../harnesses/mcp-claude-cli.mjs";
 
-export function shellQuote(arg) {
-  if (/^[a-zA-Z0-9_./:=@%+-]+$/.test(arg)) return arg;
-  return `'${arg.replace(/'/g, `'\\''`)}'`;
-}
-
-export function claudeMcpArgs(opts, spec) {
-  const args = ["mcp", "add", "--scope", opts.scope];
-  if (opts.transport) args.push("--transport", opts.transport);
-  args.push(spec.name);
-  if (!opts.transport || opts.transport === "stdio") args.push("--");
-  args.push(spec.commandOrUrl, ...spec.args);
-  return args;
-}
-
-export function runClaudeMcpAdd(args) {
-  const result = spawnSync("claude", args, { stdio: "inherit" });
-  if (result.error) {
-    console.error(`failed to run claude: ${result.error.message}`);
-    process.exit(1);
-  }
-  if ((result.status ?? 1) !== 0) process.exit(result.status ?? 1);
-}
+// shellQuote/claudeMcpArgs/runClaudeMcpAdd live in scripts/harnesses/mcp-claude-cli.mjs (a leaf
+// module with zero registry-touching imports) so the Claude provider adapter can call them
+// directly; re-exported here for existing consumers (mcp.mjs).
+export { shellQuote, claudeMcpArgs, runClaudeMcpAdd };
 
 // The MCP permission grant targets the ACTIVE Claude settings (~/.claude/settings.json) — the file
 // the harness actually reads — not the repo baseline template. In package mode there is no writable

@@ -41,8 +41,8 @@ their native skill dir via symlink:
 - `~/.codex/skills/<name>` -> `~/.roborepo/skills/<name>`
 
 These managed cache entries are created by the installer's enumerate-step
-(`install-lib.sh:link_global_skills`), called from `install-claude.sh`, `install-codex.sh`, and
-`scripts/build/link-global-skills.sh` (run by `skill new`). Each managed cache entry carries a
+(`install-lib.sh:link_global_skills`), called from `install-harness.sh` (once per detected harness),
+and `scripts/build/link-global-skills.sh` (run by `skill new`). Each managed cache entry carries a
 `.roborepo-managed` marker. There is no intermediate `globals/claude/skills/` directory.
 
 `roborepo doctor --installed` verifies the live cache entry and harness symlinks are current.

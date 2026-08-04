@@ -25,12 +25,22 @@ import { markLocalhosterRefreshFailed } from "../cli/localhoster.mjs";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-localhoster-"));
 const cloneJson = (value) => JSON.parse(JSON.stringify(value));
+// Docker/process-metrics providers are exercised in their own fixture-driven check scripts; core
+// discovery tests here stub them to no-ops so they stay hermetic and don't shell out to a real
+// `docker`/`ps` binary just because this machine happens to have one.
+const noProviders = {
+  discoverDocker: async () => ({ warnings: [], containers: [] }),
+  collectProcess: async () => new Map(),
+};
 try {
   assert.equal(capabilityForPlatform("win32").discovery, "unsupported");
   assert.match(capabilityForPlatform("win32").message, /Windows/);
   assert.equal(capabilityForPlatform("darwin").providers.listeners.state, "supported");
-  assert.equal(capabilityForPlatform("darwin").providers.docker.state, "unsupported");
-  assert.ok(capabilityForPlatform("darwin").unavailable.includes("docker"));
+  assert.equal(capabilityForPlatform("darwin").providers.docker.state, "supported");
+  assert.equal(capabilityForPlatform("darwin").providers.processMetrics.state, "supported");
+  assert.ok(capabilityForPlatform("darwin").unavailable.includes("metadata"));
+  assert.ok(!capabilityForPlatform("darwin").unavailable.includes("docker"));
+  assert.equal(capabilityForPlatform("linux").providers.docker.state, "unsupported");
 
   const listeners = parseLsofFieldOutput([
     "p101",
@@ -98,6 +108,7 @@ try {
     projects: {},
     associations: {},
     aliases: {},
+    composeProjects: {},
     preferences: { showNonHttp: false, historyRetentionDays: 14 },
   });
   const legacyStateRoot = path.join(tempRoot, "legacy-state");
@@ -184,8 +195,8 @@ try {
   assert.equal(renamed.projects["git:github.com/kirinmurphy/visa_planner"].apps.web.originPreference, "127.0.0.1");
   assert.ok(fs.existsSync(settingsPathFor(stateRoot)));
   assert.throws(() => updateSettings({ stateRoot, input: { revision: 1, type: "project", projectIdentity: "git:github.com/x/y", name: "Y" } }), /revision conflict/);
-  assert.throws(() => validateSettings({ version: 2, revision: 1, projects: {}, associations: {}, aliases: {}, preferences: { showNonHttp: false, historyRetentionDays: 14 }, future: true }), /unknown/);
-  assert.throws(() => validateSettings({ version: 2, revision: 1, projects: { "git:github.com/x/y": { apps: { web: { links: [{ id: "x", label: "X", path: "/x" }, { id: "x", label: "X2", path: "/x2" }] } } } }, associations: {}, aliases: {}, preferences: { showNonHttp: false, historyRetentionDays: 14 } }), /duplicate/);
+  assert.throws(() => validateSettings({ version: 2, revision: 1, projects: {}, associations: {}, aliases: {}, composeProjects: {}, preferences: { showNonHttp: false, historyRetentionDays: 14 }, future: true }), /unknown/);
+  assert.throws(() => validateSettings({ version: 2, revision: 1, projects: { "git:github.com/x/y": { apps: { web: { links: [{ id: "x", label: "X", path: "/x" }, { id: "x", label: "X2", path: "/x2" }] } } } }, associations: {}, aliases: {}, composeProjects: {}, preferences: { showNonHttp: false, historyRetentionDays: 14 } }), /duplicate/);
   const aliased = updateSettings({
     stateRoot,
     input: {
@@ -239,6 +250,7 @@ try {
   const discovery = await discoverInstances({
     platform: "darwin",
     runCommand,
+    ...noProviders,
     probeHttp: async (candidate) => (
       candidate.port === 9000
         ? { http: false }
@@ -348,6 +360,7 @@ try {
       if (args.includes("701")) return { stdout: `n${appDir}\n` };
       throw new Error("unexpected command");
     },
+    ...noProviders,
     probeHttp: async (candidate) => ({ http: true, status: 200, latencyMs: 6, protocol: "http", title: `Web ${candidate.port}` }),
   });
   const restarted = updateSettings({
@@ -372,6 +385,7 @@ try {
       if (args.includes("802")) return { stdout: `n${apiDir}\n` };
       throw new Error("unexpected command");
     },
+    ...noProviders,
     probeHttp: async (candidate) => ({ http: true, status: 200, latencyMs: 7, protocol: "http", title: candidate.port === 62345 ? "Web 62345" : "API" }),
   });
   assert.equal(restartAfter.instances.find((instance) => instance.bind.port === 62345).associationKey, restartBefore.instances[0].associationKey);
@@ -423,6 +437,7 @@ try {
       if (args.includes("-iTCP")) return { stdout: manyListeners };
       return { stdout: `n${appDir}\n` };
     },
+    ...noProviders,
     probeConcurrency: 4,
     probeHttp: async () => {
       activeProbes += 1;

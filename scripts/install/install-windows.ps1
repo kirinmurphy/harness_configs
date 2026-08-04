@@ -18,16 +18,31 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+
+# Known harness ids and their Windows home roots. Not yet derived from the Node provider registry
+# (scripts/harnesses/) the way the bash installers are (see harness_detected_rows in
+# scripts/lib/manifests-data.sh) — Claude's Windows home (%APPDATA%\Claude) is an absolute
+# environment-variable path, not `~`-relative like every other platform, and
+# scripts/harnesses/paths.mjs's expandHome() has no token for that yet. Modeling it properly needs
+# a provider-manifest schema change (a platforms.win32 path override plus a new path-expansion
+# form), tracked as follow-up work rather than bundled into this iteration-only pass. See
+# docs/plans/active/discoverable-harness-provider-architecture-plan.md Phase 4.
+$KnownHarnessIds = @("claude", "codex", "gemini")
 $adoptRootConfig = @{
   claude = $false
   codex = $false
+  gemini = $false
 }
 
+# Kept in sync with globals/harnesses/*/provider.json by scripts/test/windows-installer-check.ps1,
+# which fails CI if a provider is added there without being handled here. Codex and Gemini use
+# plain ~/-relative homes that match their manifests directly; only Claude diverges on Windows.
 function Resolve-ManifestHomeRoot {
   param($HomeRoot)
   switch ($HomeRoot) {
     "claude" { return (Join-Path $env:APPDATA "Claude") }
     "codex"  { return (Join-Path $env:USERPROFILE ".codex") }
+    "gemini" { return (Join-Path $env:USERPROFILE ".gemini") }
     default { throw "manifest: unknown home_root '$HomeRoot'" }
   }
 }
@@ -460,11 +475,10 @@ function Invoke-RootConfigPreflight {
 
 function Get-PresentHarnesses {
   $harnesses = @()
-  if ($hasClaude) {
-    $harnesses += "claude"
-  }
-  if ($hasCodex) {
-    $harnesses += "codex"
+  foreach ($id in $KnownHarnessIds) {
+    if ($HarnessPresence[$id]) {
+      $harnesses += $id
+    }
   }
   return $harnesses
 }
@@ -637,44 +651,41 @@ function Invoke-ManifestRows {
   }
 }
 
-# Detect which harnesses are present
-$hasClaude = Test-Path (Join-Path $env:APPDATA "Claude")
-$hasCodex  = Test-Path (Join-Path $env:USERPROFILE ".codex")
+# Detect which harnesses are present, from the same known-id set Get-PresentHarnesses iterates.
+$HarnessPresence = @{}
+foreach ($id in $KnownHarnessIds) {
+  $HarnessPresence[$id] = Test-Path (Resolve-ManifestHomeRoot $id)
+}
 
-if (-not $hasClaude -and -not $hasCodex) {
-  Write-Warning "Neither Claude Code (~AppData\Roaming\Claude) nor Codex (~\.codex) found."
-  Write-Warning "Install Claude Code or Codex first, then re-run this script."
+if (-not ($HarnessPresence.Values -contains $true)) {
+  Write-Warning "No supported harness found (Claude Code: ~AppData\Roaming\Claude, Codex: ~\.codex, Gemini CLI: ~\.gemini)."
+  Write-Warning "Install one of them first, then re-run this script."
   exit 1
 }
 
 Invoke-CleanTargetPreflight
 Invoke-RootConfigPreflight
 
-# Claude managed links, root config export, and per-skill links
-if ($hasClaude) {
-  Invoke-ManifestRows "Claude" @("claude")
-  Render-HomeRules "claude"
-  $claudeHome = Resolve-ManifestHomeRoot "claude"
-  Copy-GlobalSkills $claudeHome @("roborepo-support")
-} else {
-  Write-Host "skip: Claude — AppData\Roaming\Claude not found"
-}
-
-# Codex managed links, root config export, and per-skill links
-if ($hasCodex) {
-  Invoke-ManifestRows "Codex" @("codex")
-  Render-HomeRules "codex"
-  $codexHome = Resolve-ManifestHomeRoot "codex"
-  Copy-GlobalSkills $codexHome @("roborepo-support")
-} else {
-  Write-Host "skip: Codex — ~/.codex not found"
+# Per-harness managed links, root config export, and per-skill links.
+$HarnessDisplayNames = @{ claude = "Claude"; codex = "Codex"; gemini = "Gemini CLI" }
+foreach ($id in $KnownHarnessIds) {
+  if ($HarnessPresence[$id]) {
+    Invoke-ManifestRows $HarnessDisplayNames[$id] @($id)
+    Render-HomeRules $id
+    $harnessHome = Resolve-ManifestHomeRoot $id
+    Copy-GlobalSkills $harnessHome @("roborepo-support")
+  } else {
+    Write-Host "skip: $($HarnessDisplayNames[$id]) — not found"
+  }
 }
 
 # Post-install summary
 Write-Host ""
 Write-Host "Install complete."
-Write-Host "  Claude: $(if ($hasClaude) { 'installed' } else { 'skipped — not installed' })"
-Write-Host "  Codex:  $(if ($hasCodex)  { 'installed' } else { 'skipped — not installed' })"
+foreach ($id in $KnownHarnessIds) {
+  $status = if ($HarnessPresence[$id]) { "installed" } else { "skipped — not installed" }
+  Write-Host "  $($HarnessDisplayNames[$id]): $status"
+}
 Write-Host ""
 Write-Host "IMPORTANT: Hook scripts and bin/ commands require bash."
 Write-Host "  Install Git for Windows: https://git-scm.com"

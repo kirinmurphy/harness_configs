@@ -29,3 +29,7 @@ export function updateProject(payload) {
 export function updateAlias(payload) {
   return portalPostJson("/api/localhoster/alias", payload);
 }
+
+export function updateComposeProject(payload) {
+  return portalPostJson("/api/localhoster/compose-project", payload);
+}

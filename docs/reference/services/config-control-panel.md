@@ -74,7 +74,7 @@ panel renders:
   Toggle installs/removes the skill link.
 - **Code Conventions** — auto-loaded skills (no command). Same skill-link toggle.
 - **Chat-Time Output** — the inline chat-note behaviors (convention capture, impact
-  awareness, skill visibility), each a `rules` package merged into both harnesses. On by
+  awareness, skill visibility), each a `rules` package merged into every managed harness. On by
   default; toggling adds/removes the behavior's rules block.
 - **Permissions** — flat behavior and command buckets. Named behaviors and arbitrary commands can
   be set to `allow`, `ask`, `deny`, or reset to the manifest default.

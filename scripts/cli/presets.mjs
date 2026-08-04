@@ -8,9 +8,9 @@ import { installStatePath, presetsStatePath } from "./state-paths.mjs";
 import { readConfigSnapshot, buildBehaviorView } from "./config.mjs";
 import { mutatePackage, setBehaviorBucket } from "./config-mutate.mjs";
 import { renderHomeRules, removeHomeRules, isRenderedRulesOutput } from "./rules-render.mjs";
+import { listHarnessProviders, getHarnessProvider } from "../harnesses/registry.mjs";
 import { confirmYesNo, makePrompter, selectMenu, wizard } from "./skill-lib.mjs";
 import { pathExists, findSiblingArtifact, copyTree, stageCandidate, backupOriginal } from "./staging-lib.mjs";
-import { mergeRootConfig } from "./root-config-merge.mjs";
 import { checkDrift, recordWrite } from "./root-config-state.mjs";
 
 const PRESET_MANIFEST = path.join(repoRoot, "manifests", "platform", "presets.json");
@@ -349,8 +349,14 @@ function printIntroBanner() {
   console.log(`\n${rule}\n${rule}\n${label}${tail}\n${rule}\n${rule}\n`);
 }
 
+function providerNameList() {
+  const names = listHarnessProviders().map((provider) => provider.manifest.displayName);
+  if (names.length <= 1) return names.join("") || "your harness";
+  return names.length === 2 ? names.join("/") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
 function printIntroWelcome() {
-  console.log("roborepo — version-controlled Claude/Codex harness config.\n");
+  console.log(`roborepo — version-controlled ${providerNameList()} harness config.\n`);
   console.log("Main commands");
   console.log("  roborepo web        manage your settings online");
   console.log("  roborepo package manage    choose which behaviors are enabled");
@@ -661,7 +667,7 @@ function copyItem(row, policy) {
     if (drift.status === "clean") {
       const repoText = fs.readFileSync(source, "utf8");
       const localText = fs.readFileSync(row.homeAbs, "utf8");
-      fs.writeFileSync(row.homeAbs, mergeRootConfig(row.harness, repoText, localText));
+      fs.writeFileSync(row.homeAbs, getHarnessProvider(row.harness).adapters.rootConfig.merge(repoText, localText));
       console.log(`update: ${row.homeAbs} <- ${source} (baseline changed, no local drift)`);
       // The merge just changed the file's content, so recordWrite must rehash post-write — there's
       // no precomputed hash to thread through here.
@@ -674,7 +680,7 @@ function copyItem(row, policy) {
     // replaceable managed copies.
     const repoText = fs.readFileSync(source, "utf8");
     const localText = fs.readFileSync(row.homeAbs, "utf8");
-    fs.writeFileSync(row.homeAbs, mergeRootConfig(row.harness, repoText, localText));
+    fs.writeFileSync(row.homeAbs, getHarnessProvider(row.harness).adapters.rootConfig.merge(repoText, localText));
     console.log(`merge: ${row.homeAbs} <- ${source} (local root config preserved)`);
     recordWrite(row.harness, row.homeAbs);
     return;
@@ -929,9 +935,8 @@ function readManifestRows() {
 }
 
 function harnessAvailable(harness) {
-  if (harness === "claude") return fs.existsSync(MANIFEST_HOME.claude);
-  if (harness === "codex") return fs.existsSync(MANIFEST_HOME.codex);
-  return false;
+  const homePath = MANIFEST_HOME[harness];
+  return typeof homePath === "string" && fs.existsSync(homePath);
 }
 
 function readlink(target) {

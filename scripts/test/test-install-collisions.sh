@@ -133,8 +133,8 @@ run_harness_install_args() {
   local output="$2"
   shift 2
 
-  HOME="$home_dir" "$repo_root/scripts/install/install-claude.sh" "$@" >"$output" 2>&1
-  HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" "$@" >>"$output" 2>&1
+  HOME="$home_dir" "$repo_root/scripts/install/install-harness.sh" claude "$@" >"$output" 2>&1
+  HOME="$home_dir" "$repo_root/scripts/install/install-harness.sh" codex "$@" >>"$output" 2>&1
 }
 
 test_fresh_managed() {
@@ -233,8 +233,8 @@ test_existing_root_symlinks_convert_to_local_copies() {
   ln -s "$repo_root/generated/claude/settings.json" "$home_dir/.claude/settings.json"
   ln -s "$repo_root/generated/codex/config.toml" "$home_dir/.codex/config.toml"
 
-  HOME="$home_dir" "$repo_root/scripts/install/install-claude.sh" >"$home_dir/claude.out"
-  HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" >"$home_dir/codex.out"
+  HOME="$home_dir" "$repo_root/scripts/install/install-harness.sh" claude >"$home_dir/claude.out"
+  HOME="$home_dir" "$repo_root/scripts/install/install-harness.sh" codex >"$home_dir/codex.out"
 
   assert_file_contains "$home_dir/claude.out" "converted from repo symlink" "managed Claude root config symlinks are converted"
   assert_file_contains "$home_dir/codex.out" "converted from repo symlink" "managed Codex root config symlinks are converted"
@@ -246,8 +246,8 @@ test_direct_harness_installers_export_root_configs() {
   local home_dir
   home_dir="$(make_home)"
 
-  HOME="$home_dir" "$repo_root/scripts/install/install-claude.sh" >"$home_dir/claude.out"
-  HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" >"$home_dir/codex.out"
+  HOME="$home_dir" "$repo_root/scripts/install/install-harness.sh" claude >"$home_dir/claude.out"
+  HOME="$home_dir" "$repo_root/scripts/install/install-harness.sh" codex >"$home_dir/codex.out"
 
   assert_regular_file_contains "$home_dir/.claude/settings.json" "permissions" "direct Claude installer copies root config as local file"
   assert_regular_file_contains "$home_dir/.codex/config.toml" "approval_policy" "direct Codex installer copies root config as local file"
@@ -264,8 +264,8 @@ test_direct_harness_installers_convert_root_symlinks() {
   ln -s "$repo_root/generated/claude/settings.json" "$home_dir/.claude/settings.json"
   ln -s "$repo_root/generated/codex/config.toml" "$home_dir/.codex/config.toml"
 
-  HOME="$home_dir" "$repo_root/scripts/install/install-claude.sh" >"$home_dir/claude.out"
-  HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" >"$home_dir/codex.out"
+  HOME="$home_dir" "$repo_root/scripts/install/install-harness.sh" claude >"$home_dir/claude.out"
+  HOME="$home_dir" "$repo_root/scripts/install/install-harness.sh" codex >"$home_dir/codex.out"
 
   assert_file_contains "$home_dir/claude.out" "converted from repo symlink" "direct Claude installer converts stale root symlink"
   assert_file_contains "$home_dir/codex.out" "converted from repo symlink" "direct Codex installer converts stale root symlink"
@@ -312,7 +312,7 @@ test_direct_claude_installer_removes_stale_retired_symlink() {
   home_dir="$(make_home)"
   ln -s "$repo_root/claude/MANAGED_BY_HARNESS_CONFIGS.md" "$home_dir/.claude/MANAGED_BY_HARNESS_CONFIGS.md"
 
-  HOME="$home_dir" "$repo_root/scripts/install/install-claude.sh" >"$home_dir/out"
+  HOME="$home_dir" "$repo_root/scripts/install/install-harness.sh" claude >"$home_dir/out"
 
   [[ ! -e "$home_dir/.claude/MANAGED_BY_HARNESS_CONFIGS.md" && ! -L "$home_dir/.claude/MANAGED_BY_HARNESS_CONFIGS.md" ]] \
     && pass "direct Claude installer removes stale retired symlink" \
@@ -443,7 +443,7 @@ test_rendered_rules_backup_then_render() {
   home_dir="$(make_home)"
   printf 'existing agents\n' > "$home_dir/.codex/AGENTS.md"
 
-  HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" --on-conflict keep >"$home_dir/out" 2>&1
+  HOME="$home_dir" "$repo_root/scripts/install/install-harness.sh" codex --on-conflict keep >"$home_dir/out" 2>&1
 
   assert_file_contains "$home_dir/.codex/AGENTS.md" "# Generated Harness Rules" "rendered_rules writes generated home file"
   assert_file_contains "$home_dir/out" "snapshot of 1 original config path\\(s\\)" "rendered_rules snapshots the pre-existing user file"
@@ -478,7 +478,7 @@ test_direct_harness_conflict_dry_run_reports() {
   home_dir="$(make_home)"
   printf 'existing agents\n' > "$home_dir/.codex/AGENTS.md"
 
-  HOME="$home_dir" "$repo_root/scripts/install/install-codex.sh" --dry-run >"$home_dir/out" 2>&1
+  HOME="$home_dir" "$repo_root/scripts/install/install-harness.sh" codex --dry-run >"$home_dir/out" 2>&1
 
   assert_file_contains "$home_dir/out" "would snapshot 1 original config path\\(s\\)" "direct Codex dry-run reports rendered rules backup"
   assert_file_contains "$home_dir/out" "would render: $home_dir/.codex/AGENTS.md" "direct Codex dry-run reports rendered rules output"
@@ -871,7 +871,7 @@ test_malformed_claude_config() {
   printf '{bad json\n' > "$home_dir/.claude/settings.json"
   printf 'model = "o3"\n' > "$home_dir/.codex/config.toml"
 
-  HOME="$home_dir" "$repo_root/scripts/install/install-claude.sh" --dry-run >"$home_dir/out"
+  HOME="$home_dir" "$repo_root/scripts/install/install-harness.sh" claude --dry-run >"$home_dir/out"
 
   assert_file_contains "$home_dir/out" "invalid JSON" "malformed Claude config is reported"
   assert_file_contains "$home_dir/out" "collision: $home_dir/.claude/settings.json" "malformed Claude config still prompts"

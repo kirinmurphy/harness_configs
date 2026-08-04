@@ -1,7 +1,7 @@
 # roborepo Skills Interface
 
 `roborepo skill` is the parity-managed skills interface. Use it when a skill or command should be
-shared through roborepo source, installed into both harnesses where supported, or exported into a
+shared through roborepo source, installed into every harness that supports skills, or exported into a
 project.
 
 Use native Claude/Codex commands when the action is harness-specific, such as plugin marketplace

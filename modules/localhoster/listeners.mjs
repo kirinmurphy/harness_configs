@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parseCwdFieldOutput, parseLsofFieldOutput } from "./lsof.mjs";
 
-export const LISTENER_DISCOVERY_TIMEOUT_MS = 1500;
+export const LISTENER_DISCOVERY_TIMEOUT_MS = 3000;
 
 const execFileAsync = promisify(execFile);
 

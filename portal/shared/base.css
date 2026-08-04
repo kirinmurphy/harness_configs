@@ -59,6 +59,11 @@
   --tooltip-bg: #010409;
   --tooltip-shadow: rgba(0, 0, 0, 0.5);
   --row-hover: #1c2230;
+  /* Surface-relative row hover, for clickable rows that sit on --panel or any other raised surface
+   * rather than on the page background. --row-hover is an absolute color tuned against --bg: on a
+   * --panel card it lands 1.5 luminance away from its own background and is effectively invisible.
+   * This tints whatever surface it is used on, so one token works at every depth. */
+  --row-hover-overlay: rgba(255, 255, 255, 0.07);
   --modal-shadow: rgba(0, 0, 0, 0.6);
   --backdrop: rgba(0, 0, 0, 0.6);
   /* ink for text sitting ON a solid level-colored chip. level bg colors are deliberately darker
@@ -79,9 +84,13 @@
 
   /* Fixed type scale — every font-size in the portal maps to one of these instead of a bare px
    * value, so sizing stays consistent across pages and can be re-tuned in one place. */
-  --text-2xs: 13px; /* fine print: timestamps, meta, badges */
-  --text-xs: 14px; /* secondary: labels, chips, table cells */
-  --text-sm: 16px; /* body default: card text, list items */
+  /* The three steps at and below body size were bumped 1-2px: the portal leans heavily on 2xs for
+   * meta rows (git context, member counts, timestamps), and at 13px that content was legible only
+   * on a good display. The steps above body were already comfortable and stay put, which also
+   * tightens the whole scale — the jump from body to card title is now proportionally smaller. */
+  --text-2xs: 14px; /* fine print: timestamps, meta, badges */
+  --text-xs: 15px; /* secondary: labels, chips, table cells */
+  --text-sm: 17px; /* body default: card text, list items */
   --text-md: 18px; /* emphasized body: card titles, nav */
   --text-lg: 22px; /* section headers, drawer title */
   --text-xl: 26px; /* page-level headings */
@@ -143,6 +152,9 @@
   --tooltip-bg: #ffffff;
   --tooltip-shadow: rgba(31, 35, 40, 0.12);
   --row-hover: #eaeef2;
+  /* Darkens rather than lightens: light surfaces are at or near white, so a white tint has nowhere
+   * to go. Same token, inverted direction — see the dark theme's definition for why it exists. */
+  --row-hover-overlay: rgba(31, 35, 40, 0.06);
   --modal-shadow: rgba(31, 35, 40, 0.15);
   --backdrop: rgba(31, 35, 40, 0.4);
   --chip-ink: #ffffff;
@@ -352,6 +364,16 @@ nav a.active {
   border-color: var(--line);
 }
 portal-info-icon,
+/* Icon size scale. These mirror ICON_SIZES in portal/shared/icon.js — <portal-icon size="sm"> and
+ * a CSS-sized icon element like .info-icon must land on the same steps, so the numbers live in
+ * both places by necessity but never diverge in value. Nothing should size an icon off-scale;
+ * `sm` is the floor for legibility. */
+:root {
+  --icon-sm: 14px;
+  --icon-md: 16px;
+  --icon-lg: 20px;
+  --icon-xl: 24px;
+}
 portal-icon {
   display: inline-flex;
   flex: 0 0 auto;
@@ -360,8 +382,8 @@ portal-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
+  width: var(--icon-md);
+  height: var(--icon-md);
   padding: 0;
   border-radius: 50%;
   border: 1px solid var(--dim);
@@ -810,6 +832,10 @@ portal-menu-button {
   line-height: 1.5;
   box-shadow: 0 4px 16px var(--tooltip-shadow);
   pointer-events: none;
+}
+/* Structured/multi-row content (key-value grids, badges) needs more room than a one-line hint. */
+.portal-tooltip.portal-tooltip--rich {
+  max-width: 360px;
 }
 .portal-tooltip[hidden] {
   display: none;

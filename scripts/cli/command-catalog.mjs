@@ -3,14 +3,25 @@ import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 import { loadCommandDefinitions, readRemovedCommands } from "./command-definition-files.mjs";
 import { composeCommandNodes } from "./command-tree-compose.mjs";
+import { listHarnessProviders } from "../harnesses/registry.mjs";
 
 const CATALOG_PATH = path.join(repoRoot, "manifests", "platform", "cli-commands.json");
 const NODE_KINDS = new Set(["namespace", "command", "internal"]);
 
 export function loadCommandCatalog() {
   const catalog = composeCatalog(JSON.parse(fs.readFileSync(CATALOG_PATH, "utf8")));
+  catalog.description = rootDescription();
   validateCommandCatalog(catalog);
   return catalog;
+}
+
+// Root help's one-line summary, built from whichever providers are actually registered rather
+// than the manifest's static two-name text — so a third provider (or a Claude/Codex-only build)
+// shows the real list without a JSON edit.
+function rootDescription() {
+  const names = listHarnessProviders().map((provider) => provider.manifest.displayName);
+  const list = names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+  return `manage ${list} harness configuration`;
 }
 
 export function validateCommandCatalog(catalog) {

@@ -71,7 +71,7 @@ export function createConfigModal() {
   }
 
   // fetch-then-show: the source-inspect entry point (inspect-click, config-files grid click).
-  async function openSource(inspect, { rules, onDefaultClick, chips = [] }) {
+  async function openSource(inspect, { rules, harnesses, onDefaultClick, chips = [] }) {
     setHeader(inspect.label || inspect.id, "loading…");
     contentEl.innerHTML = "";
     setFooter(null);
@@ -86,7 +86,7 @@ export function createConfigModal() {
       setHeader(data.title || inspect.label, data.paths || data.path || "", chips);
       setContent(data);
       if (inspect.kind === "live-rules") {
-        setFooter(tmpl.modalDefaults(rules, onDefaultClick));
+        setFooter(tmpl.modalDefaults(rules, harnesses, onDefaultClick));
       }
     } catch (e) {
       setHeader(inspect.label || inspect.id, "");
@@ -94,7 +94,7 @@ export function createConfigModal() {
     }
   }
 
-  // show-already-known-data: the defaults-menu entry point (globals baseline/claude/codex/packages).
+  // show-already-known-data: the defaults-menu entry point (globals baseline/per-harness/packages).
   function openSnapshot(title, pathText, data) {
     setHeader(title, pathText);
     setContent(data);

@@ -19,7 +19,6 @@ generated/codex/rules/default.rules
 manifests/inventory/agent-permissions.json
 manifests/inventory/package-categories.json
 manifests/platform/cli-commands.json
-manifests/platform/harnesses.tsv
 manifests/platform/presets.json
 manifests/inventory/skill-trigger-tests.json
 manifests/inventory/mcp-presets.json

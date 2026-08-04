@@ -451,9 +451,8 @@ main {
   display: inline-flex;
   align-items: center;
 }
+/* Size comes from <portal-icon size="…"> (portal/shared/icon.js), not from a pixel override here. */
 .item-link-icon svg {
-  width: 15px;
-  height: 15px;
   display: block;
 }
 .item-link-icon:hover {
@@ -502,11 +501,11 @@ main {
   gap: 6px;
 }
 
-#usage-per-harness .harness-provider {
+[data-slot="row-usage"] .harness-provider {
   position: relative;
 }
 
-#usage-per-harness .harness-provider .token-chip {
+[data-slot="row-usage"] .harness-provider .token-chip {
   position: absolute;
   top: 0;
   right: 0;

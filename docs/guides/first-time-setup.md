@@ -2,8 +2,10 @@
 
 Use this guide to install the core repo-managed config and put `roborepo` on your `PATH`.
 
-Works with Claude Code, Codex, or both. Supports macOS and Linux; Windows support is available but
-less tested.
+Works with Claude Code, Codex, and Gemini CLI — any one of them, or any combination. roborepo
+discovers whichever are installed and manages those; see
+[Supported Harnesses](harnesses/supported-harnesses.md) for what each one receives. Supports macOS
+and Linux; Windows support is available but less tested.
 
 ## Install Configs And CLI
 

@@ -1,7 +1,7 @@
 ---
 id: antigravity-cli-provider-integration
 priority: high
-next_action: Decide whether Antigravity registers as a new provider or repoints the existing gemini one, then confirm the four unverified capability paths against a live authenticated agy install
+next_action: Confirm the four unverified capability paths (slash commands, permissions, hooks, global rules scope) against a live authenticated agy install, then implement Phase 2
 blocked_by: []
 depends_on:
   - discoverable-harness-provider-architecture
@@ -23,8 +23,11 @@ never reads them.
 
 This is the first real test of the discoverable-provider architecture against a *harness that
 changed under us*, rather than a new one being added. The abstraction holds: every wrong path is a
-string in one manifest, and no platform code hardcodes `~/.gemini`. But the fix needs a decision
-about identity (one provider repointed, or two coexisting) that should not be made silently.
+string in one manifest, and no platform code hardcodes `~/.gemini`.
+
+The identity question is settled (see Decision below): roborepo supports Antigravity only. The
+`gemini` provider is retired and `antigravity` registered in its place, so the work is a provider
+rename plus a cleanup pass for artifacts stranded at the old paths — not a coexistence problem.
 
 ## Current State
 
@@ -94,39 +97,33 @@ concern (MCP storage mode). No delivery loop, shell script, or doctor check need
   MCP, and subagents into one deployable unit and is a plausible *better* delivery target than
   loose files — but it is a distinct design question, deferred to its own plan.
 
-## Open Decision — provider identity
+## Decision — retire `gemini`, register `antigravity`
 
-This is the blocking question and should be settled before implementation.
+**Settled 2026-08-04.** roborepo will support Antigravity CLI only. The `gemini` provider is
+removed, not repointed, and a new `antigravity` provider is registered in its place:
 
-### Option A — register `antigravity` as a new provider (recommended)
+```text
+globals/harnesses/
+  claude/
+  codex/
+  antigravity/     id: antigravity, commandName: agy
+  gemini/          DELETED
+```
 
-A new `globals/harnesses/antigravity/provider.json` + `scripts/harnesses/antigravity/index.mjs`,
-registered alongside `claude`, `codex`, and `gemini`.
+Rationale: the id is the harness's identity throughout roborepo — state files, manifest rows, CLI
+output, package `harnesses` arrays. Keeping `id: "gemini"` for a binary named `agy` would leave a
+permanent misnomer in all of them to save a one-time rename. The old CLI is not being kept alive,
+so nothing needs the `gemini` id.
 
-- Both CLIs coexist on a machine and each gets correct paths.
-- `gemini` keeps working for anyone on the old CLI.
-- Discovery distinguishes them: `agy` vs `gemini` executables, `antigravity-cli/settings.json` vs
-  `settings.json` config candidates.
-- Cost: a manifest, an adapter, a registry entry, and Windows-installer entries — the standard
-  6-step walkthrough in the provider interface guide. `windows-installer-check.ps1` will fail CI
-  until the PowerShell side is updated, which is the intended forcing function.
-- Risk: two providers both rooted at `~/.gemini` write near each other. Skills at
-  `~/.gemini/skills/` (gemini) and `~/.gemini/config/skills/` (antigravity) do not collide, but
-  `doctor`'s orphan detection should be checked against having both present.
+The cost of retiring rather than repointing is a **cleanup story**: existing machines have roborepo
+artifacts at paths the new provider no longer manages (`~/.gemini/skills/`, `~/.gemini/policies/`,
+`~/.gemini/commands/`, `~/.gemini/GEMINI.md`, and the `mcpServers` key in `~/.gemini/settings.json`).
+Removing a provider from the registry orphans them: no provider claims those paths, so no code
+cleans them up and `doctor` stops checking them. This is covered in Phase 1 below and is the main
+thing that makes this more than a rename.
 
-### Option B — repoint the existing `gemini` provider
-
-Edit `gemini`'s manifest paths to Antigravity's locations.
-
-- Smallest diff: six strings plus the MCP storage mode.
-- Breaks roborepo for anyone still on the old `gemini` CLI, with no migration path.
-- `id: "gemini"` / `displayName: "Gemini CLI"` become misleading for a binary named `agy`.
-- Loses the ability to detect which CLI is actually installed.
-
-**Recommendation: Option A.** The two binaries genuinely coexist, so modeling them as one provider
-throws away information roborepo's discovery model is built to capture. Option B is only preferable
-if the old CLI is confirmed fully dead for all account types, which is not established — the
-deprecation notice named individual Code Assist accounts specifically.
+Note that `~/.gemini` is *not* going away — Antigravity keeps it as its base directory and adds
+subdirectories under it. Only the specific artifact paths change.
 
 ## Proposed Design
 
@@ -173,14 +170,42 @@ Requires an authenticated `agy` session; interactive OAuth blocked this during r
 4. Confirm whether `agy` reads a global `AGENTS.md`/`GEMINI.md` from `~/.gemini/` specifically, or
    only from the workspace root. The rules row above assumes global works; verify it.
 
-### Phase 1 — Decision
+### Phase 1 — Retire `gemini`
 
-Settle Option A vs B. Everything downstream depends on it.
+The rename touches every place the id appears. Inventory as of `483be54`:
+
+| Location | Count | Action |
+| --- | --- | --- |
+| `globals/packages/*/package.config.json` `harnesses` arrays | 8 packages | `"gemini"` -> `"antigravity"` |
+| `generated/packages/*/gemini/` | 7 dirs | regenerate as `antigravity/` |
+| `generated/gemini/` | rules + policies | regenerate as `generated/antigravity/` |
+| `manifests/platform/manifest.tsv` | 4 rows | repoint to new home_root token |
+| `globals/harnesses/gemini/` | manifest + MANAGED_BY marker | delete, replace with `antigravity/` |
+| `scripts/harnesses/gemini/` | adapter + policy-toml | delete or port (see Phase 2) |
+| `scripts/install/install-windows.ps1` | 4 lookups | rename (Phase 4) |
+
+**Live-machine cleanup.** Removing the provider orphans artifacts already on disk. Decide between:
+
+- *Best effort:* ship a one-shot cleanup in `roborepo update` that removes roborepo-owned files at
+  the old paths. Identifiable by the managed markers roborepo wrote, so user files are never at
+  risk.
+- *Leave them:* document the stale paths and let users delete them. Simpler, but `~/.gemini/skills/`
+  keeps 12 dangling symlinks into the skill cache, which `doctor` will no longer notice.
+
+Prefer the one-shot cleanup — dangling symlinks into a cache that later gets pruned is exactly the
+kind of silent rot this repo's doctor exists to catch.
+
+Run `roborepo harness withdraw gemini --dry-run` **before** deleting the provider. Withdraw needs
+the provider registered to know what to strip; once it is gone, that path is unavailable.
 
 ### Phase 2 — Manifest and adapter
 
-Write the manifest with verified paths. Implement the adapter, reusing Gemini's root-config merge
-(same JSON shape) and MCP server shape. Register in `registry.mjs`.
+Write `globals/harnesses/antigravity/provider.json` with verified paths. Implement
+`scripts/harnesses/antigravity/index.mjs`, reusing Gemini's root-config merge (same JSON object
+shape) and MCP server shape. Register in `registry.mjs`.
+
+Gemini's `policy-toml.mjs` is Policy-Engine-specific and likely has no Antigravity equivalent — see
+the permissions note above. Delete it with the provider unless Phase 0 finds a per-tool policy.
 
 ### Phase 3 — MCP sidecar storage mode
 
@@ -195,8 +220,11 @@ Add the provider to `$KnownHarnessIds`, `$adoptRootConfig`, `Resolve-ManifestHom
 
 ### Phase 5 — Docs
 
-Update `docs/guides/harnesses/supported-harnesses.md`'s capability matrix and harness table. If
-Option A, note that `gemini` is deprecated upstream and which one a user should install.
+Update `docs/guides/harnesses/supported-harnesses.md`'s capability matrix and harness table:
+`gemini` row becomes `antigravity`, with the config home and root-config format corrected. Note that
+Gemini CLI is deprecated upstream and that `agy` is the supported binary. Also check
+`harnesses-explained.md`, which currently describes Gemini CLI's `~/.gemini/` layout in its
+"What a harness is" section.
 
 ## Verification
 
@@ -212,8 +240,13 @@ Option A, note that `gemini` is deprecated upstream and which one a user should 
 - **Paths are still moving.** Antigravity shipped recently; the community already documented one
   case where official docs named a skills path that does not work. Prefer empirical verification
   over docs, and record the evidence for each path in the manifest's comments.
-- **Two providers under one home dir.** If Option A, verify `doctor`'s orphan detection and
-  `withdraw` behave correctly with both `gemini` and `antigravity` present.
+- **Orphaned artifacts at retired paths.** Retiring `gemini` means no provider claims
+  `~/.gemini/skills/`, `~/.gemini/policies/`, or `~/.gemini/commands/`, so nothing cleans them and
+  `doctor` stops checking them. The 12 skill symlinks there point into the machine-local cache; if
+  that cache is later pruned they become dangling with no check to catch it. Phase 1's cleanup pass
+  is what closes this — do not skip it as cosmetic.
+- **`withdraw` needs the provider present.** Run `harness withdraw gemini --dry-run` before deleting
+  the provider directory, not after.
 - **Plugin system may supersede loose files.** If Antigravity pushes toward plugin bundles as the
   supported extension path, per-capability file delivery could become the unsupported route. Worth
   a look during Phase 0 before investing in the loose-file approach.

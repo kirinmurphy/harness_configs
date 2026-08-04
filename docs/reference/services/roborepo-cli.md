@@ -42,7 +42,7 @@ See [Package Development](../../../local/skills/roborepo-development/references/
 | `roborepo localhoster [--json] [--open]` | Lists active localhost HTTP apps, prints the portal snapshot as JSON, or opens `/localhoster`. |
 
 The `/plans` page scans configured roots for `docs/plans/**/*.md`. See
-[Plan Docs Walkthrough](../../guides/plan-docs.md) and
+[Plan Docs Walkthrough](../../guides/plan/lifecycle/plan-docs.md) and
 [Plans Portal Technical Reference](plans-portal.md).
 
 The `/localhoster` page discovers local HTTP apps on macOS, keeps machine-local saved links under

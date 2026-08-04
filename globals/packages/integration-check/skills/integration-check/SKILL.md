@@ -24,18 +24,41 @@ Brings an integration branch to a verified, reviewed state, then reports what it
 /integration-check <INTEGRATION_BRANCH> --base <BASE_BRANCH>
 ```
 
-If no branch is supplied, ask for one. Do not guess from the current checkout — running this
-against the wrong branch does real git work in the wrong place.
+If no branch is supplied, offer the current branch and ask — do not start on it silently. Running
+this against the wrong branch does real git work in the wrong place, so the current checkout is a
+suggestion to confirm, never a default to assume:
+
+```text
+Do you want to run **/integration-check** on [CURRENT BRANCH NAME]?
+> 1) Yes
+  2) Type something (the desired branch)
+```
+
+Wait for an answer. A reply naming a different branch replaces the suggestion.
 
 ## Shape of the workflow
 
-Steps 1–6 mutate git state. Steps 7–13 are read-only. That split is deliberate: if anything goes
-wrong it happens in the first half, and the review half is always safe to re-run.
+Steps 1–6 can write: they change what is checked out and, at step 5, can create a merge commit.
+Steps 7–13 only read. That split is deliberate — anything that alters the repository happens in the
+first half, so the review half can be repeated freely.
+
+Most of the first half is idempotent: preflight, locating the branch, checkout, and a fast-forward
+all land in the same state when re-run. **Step 5 is the exception** — merging the base branch
+creates a commit, and re-running after the base has moved merges again. That is why step 5 is
+guarded by "only if behind": when the branch is already current it must be a no-op, not a fresh
+merge. Re-running the whole workflow on an unchanged repository should therefore produce no new
+commits.
 
 Within the read-only half, the cheap deterministic work comes first: scope the diff (7), then run
 the tests (8). Only once the suite is green does the model-driven work begin (9–11). Ordering it
 this way means a red suite or an out-of-scope branch is caught before any expensive analysis is
 spent on code that is about to change.
+
+**Step 8 is a synchronous barrier.** The suite may run in the background, but steps 9, 10, and 11
+must not begin until it has reported. Starting plan validation or code review while tests are still
+running defeats the reason the suite moved ahead of them: if it comes back red, that analysis was
+spent on code that is about to change. Everything before step 8 may overlap freely; nothing after
+it may start early.
 
 Several steps are **gates** — stop and ask rather than deciding for the user. They are marked
 below. A gate is not a formality: proceeding past one on an assumption is how this workflow
@@ -100,6 +123,10 @@ behind), stop and report — do not rebase, force, or merge to resolve it. That 
 
 Only if the integration branch is behind the base. This is a real code change, not a sync.
 
+Check first (`git rev-list --left-right --count <base>...HEAD`) and merge only when the behind
+count is non-zero. This is the one step in the workflow that is not idempotent — an unguarded merge
+would create a commit on every run — so the check is what keeps a repeat run a no-op.
+
 **Gate on conflict:** report the conflicted paths and stop. Do not resolve conflicts.
 
 If already current, say so and move on. Never merge in the other direction — this workflow never
@@ -157,7 +184,11 @@ If the diff is very large, say so before reviewing rather than silently truncati
 ## Step 8 — Regressions
 
 Run the repository's own test command, discovered as described above. If it is slow, start it in
-the background and continue only once it reports. Report `Verified: <command> -> pass|fail`.
+the background — then **wait for it**. Report `Verified: <command> -> pass|fail`.
+
+This step is a synchronous barrier: steps 9–11 do not begin until the suite has reported. Use the
+wait to finish anything that does not depend on the result (re-reading the diff, listing candidate
+plan files), but do not start validating plans or reviewing code.
 
 **This runs before any review work, deliberately.** Steps 9–11 are the expensive, model-driven part
 of this workflow, and a red suite invalidates them twice over: fixing the failure changes the code

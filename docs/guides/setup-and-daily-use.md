@@ -125,7 +125,7 @@ roborepo package enable plan-docs
 Then use `/plan-docs create`, `/plan-docs start`, `/plan-docs sync`, `/plan-docs validate`,
 `/plan-docs review`, or `/plan-docs handoff`.
 
-See [Plan Docs Walkthrough](plan-docs.md) for the full user flow.
+See [Plan Docs Walkthrough](plan/lifecycle/plan-docs.md) for the full user flow.
 
 ### Index and watch a repo
 

@@ -97,7 +97,7 @@ const activeDocPaths = [
   "docs/reference/services/architecture.md",
   "docs/reference/internal/harness-anatomy.md",
   "docs/architecture/documentation-map-and-audit.md",
-  "docs/guides/plan-docs.md",
+  "docs/guides/plan/lifecycle/plan-docs.md",
   "local/skills/roborepo-development/SKILL.md",
   "local/skills/roborepo-development/references/package-development.md",
   "globals/system/skills/roborepo-support/SKILL.md",

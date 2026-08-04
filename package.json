@@ -24,7 +24,8 @@
     "docs/reference/services/localhoster.md",
     "docs/reference/services/telemetry.md",
     "docs/reference/services/architecture.md",
-    "docs/guides/plan-docs.md",
+    "docs/guides/plan/lifecycle/plan-docs.md",
+    "docs/guides/plan/lifecycle/integration-check.md",
     "docs/reference/services/plans-portal.md",
     "docs/reference/internal/config-collision-handling.md"
   ],

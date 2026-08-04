@@ -1,0 +1,13 @@
+{
+  "path": ["maintenance", "repair", "skill-links"],
+  "kind": "command",
+  "title": "Repair skill links",
+  "description": "Remove harness skill links whose cache target no longer exists",
+  "order": 30,
+  "usage": "roborepo maintenance repair skill-links [--apply]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/skill-prune-orphans.mjs",
+    "export": "skillPruneOrphans"
+  }
+}

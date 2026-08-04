@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { packageMode, repoRoot, harnessHome } from "./paths.mjs";
 import { enabledPackagesPath, roborepoSkillsDir } from "./state-paths.mjs";
 import { buildLocalConfigRepairPlans } from "./local-config-repair.mjs";
+import { findOrphanSkillLinks } from "./skill-prune-orphans.mjs";
 
 const HARNESS_HOME = harnessHome;
 
@@ -253,6 +254,7 @@ function printUpdateReport(before, after, { verbose = false, installOutput = "" 
   console.log("Update change report:");
   printReportGroups(groups, { verbose });
   printLocalConfigRepairHint();
+  printOrphanSkillHint();
 }
 
 function compareScalar(before, after, label) {
@@ -378,6 +380,17 @@ function unique(values) {
 function uniqueChanges(entries) {
   const byLabel = new Map(entries.map((entry) => [entry.label, entry]));
   return [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+// Surfaced here as well as in doctor because a skill removed from the repo leaves its per-harness
+// pointer behind on the very run that removes it — update is where the user is standing when the
+// orphan appears, and a stale link is otherwise silent until someone runs doctor.
+function printOrphanSkillHint() {
+  const orphans = findOrphanSkillLinks();
+  if (!orphans.length) return;
+  console.log("");
+  console.log(`Orphaned skill link(s) found (${orphans.map((orphan) => `${orphan.name}/${orphan.harness}`).join(", ")}).`);
+  console.log("Run: roborepo skill prune-orphans");
 }
 
 function printLocalConfigRepairHint() {

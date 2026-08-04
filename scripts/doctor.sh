@@ -494,6 +494,66 @@ if [[ "${check_installed}" -eq 1 ]]; then
     done
   done < <(harness_detected_rows)
   [[ "${drift_count}" -gt 0 ]] || ok "no unmanaged skills found in harness skill dirs"
+
+  # Orphan report: symlinks pointing at a cache entry that no longer exists. These are invisible to
+  # the drift sweep above, whose "${skills_home}"/*/ glob only matches directories that resolve — a
+  # dangling link never does. They are also invisible to check_managed_skill, which is driven by the
+  # list of skills roborepo expects rather than by what is actually on disk, so nothing enumerated
+  # an entry roborepo no longer knows about. A harness reading one of these finds no SKILL.md at
+  # all: it sees a name it cannot load and cannot describe.
+  # Capability/path parity: a provider that declares a capability and supplies a path for it should
+  # have that path on disk once installed. Gemini declared `slash-commands` with a `commands` path
+  # and had no commands directory at all for its entire existence, while doctor passed 108 checks —
+  # nothing compared what a provider promises against what it received. Advisory rather than fail:
+  # a capability can be legitimately unused (no package ships that resource type yet), so this
+  # reports a suspicion, not a defect.
+  parity_count=0
+  if command -v node >/dev/null 2>&1 && [[ -f "${repo_root}/scripts/harnesses/registry.mjs" ]]; then
+    while IFS=$'\t' read -r parity_id parity_capability parity_path; do
+      [[ -z "${parity_id}" ]] && continue
+      echo "parity: ${parity_id} declares '${parity_capability}' and path ${parity_path}, which does not exist"
+      parity_count=$((parity_count + 1))
+    done < <(node -e '
+      import(process.argv[1]).then(async (m) => {
+        const os = await import("node:os");
+        const fs = await import("node:fs");
+        const path = await import("node:path");
+        // Only capabilities whose delivery is a directory of installed artifacts. root-config and
+        // rules are single files written on demand, and hooks/mcp live inside another file.
+        const pathForCapability = { skills: "skills", "slash-commands": "commands" };
+        for (const provider of m.listHarnessProviders()) {
+          for (const [capability, pathKey] of Object.entries(pathForCapability)) {
+            if (!provider.manifest.capabilities.includes(capability)) continue;
+            const declared = provider.manifest.paths?.[pathKey]?.path;
+            if (!declared) continue;
+            const abs = declared.replace(/^~/, os.homedir());
+            if (fs.existsSync(abs)) continue;
+            // Only report for providers actually present on this machine.
+            const home = provider.manifest.paths?.rootConfig?.path?.replace(/^~/, os.homedir());
+            if (!home || !fs.existsSync(path.dirname(home))) continue;
+            console.log([provider.id, capability, declared].join("\t"));
+          }
+        }
+      }).catch(() => {});
+    ' "${repo_root}/scripts/harnesses/registry.mjs" 2>/dev/null)
+  fi
+  [[ "${parity_count}" -gt 0 ]] || ok "declared harness capability paths all exist"
+
+  orphan_count=0
+  while IFS=$'\t' read -r _doctor_harness_id doctor_home_path _doctor_present _display_name _root_config_path; do
+    [[ -z "${doctor_home_path}" ]] && continue
+    skills_home="${doctor_home_path}/skills"
+    [[ -d "${skills_home}" ]] || continue
+    for skill_link in "${skills_home}"/*; do
+      skill_name="$(basename "${skill_link}")"
+      case "${skill_name}" in .*|'*') continue ;; esac
+      [[ -L "${skill_link}" ]] || continue
+      [[ -e "${skill_link}" ]] && continue  # resolves fine
+      echo "orphan: ${skill_link} -> $(readlink "${skill_link}") (target gone) — run: roborepo skill prune-orphans"
+      orphan_count=$((orphan_count + 1))
+    done
+  done < <(harness_detected_rows)
+  [[ "${orphan_count}" -gt 0 ]] || ok "no orphaned skill links found in harness skill dirs"
 fi
 
 if [[ "${failed}" -ne 0 ]]; then

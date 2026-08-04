@@ -52,10 +52,13 @@ version that will not survive. Work before step 8 can overlap freely.
 Steps 1–6 can write — they change what is checked out and, at step 5, can create a merge commit.
 Steps 7–13 only read.
 
-Re-running is safe. Most of the writing half is idempotent: preflight, locating the branch,
-checkout, and a fast-forward all land in the same place when repeated. Step 5 is the one exception,
-since merging creates a commit — so it is guarded by "only if behind" and does nothing when the
-branch is already current. On an unchanged repository, a second run produces no new commits.
+Re-running is safe. Preflight, the audit, and the diff only read; checkout and fast-forward land in
+the same place however many times you repeat them. Step 5 is the only step that writes, and it is
+guarded by "only if behind", so it does nothing when the branch is already current.
+
+Put precisely: a first run may create one merge commit if the branch was behind; every run after
+that, against an unchanged repository, creates none. (If the base branch itself gains commits in
+between, merging again is correct — that is a new input, not a repeat.)
 
 Inside the read-only half, cheap deterministic work runs before expensive model-driven work: scope
 the diff, then run the tests, and only start reviewing once the suite is green. A red suite means

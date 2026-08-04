@@ -42,12 +42,21 @@ Steps 1–6 can write: they change what is checked out and, at step 5, can creat
 Steps 7–13 only read. That split is deliberate — anything that alters the repository happens in the
 first half, so the review half can be repeated freely.
 
-Most of the first half is idempotent: preflight, locating the branch, checkout, and a fast-forward
-all land in the same state when re-run. **Step 5 is the exception** — merging the base branch
-creates a commit, and re-running after the base has moved merges again. That is why step 5 is
-guarded by "only if behind": when the branch is already current it must be a no-op, not a fresh
-merge. Re-running the whole workflow on an unchanged repository should therefore produce no new
-commits.
+The workflow is **convergent** rather than strictly idempotent, and the distinction matters when
+reasoning about a re-run:
+
+- Steps 1, 6, and 7 are idempotent by construction — they only read.
+- Steps 2, 3, and 4 converge: checkout and fast-forward reach the same state from any starting
+  point.
+- Step 5 is the only step that can write. Its guard makes it a no-op when the branch is already
+  current, so it merges at most once per genuine base change.
+
+The guarantee that follows is narrow and worth stating exactly: **a first run may legitimately
+create one merge commit; every subsequent run against an unchanged repository creates none.** Run
+one is supposed to do work, so "no effect on repetition" only holds from run two onward.
+
+A base branch that gains commits between runs is not a repetition — merging again there is correct
+behavior, not a violation.
 
 Within the read-only half, the cheap deterministic work comes first: scope the diff (7), then run
 the tests (8). Only once the suite is green does the model-driven work begin (9–11). Ordering it
@@ -124,8 +133,12 @@ behind), stop and report — do not rebase, force, or merge to resolve it. That 
 Only if the integration branch is behind the base. This is a real code change, not a sync.
 
 Check first (`git rev-list --left-right --count <base>...HEAD`) and merge only when the behind
-count is non-zero. This is the one step in the workflow that is not idempotent — an unguarded merge
-would create a commit on every run — so the check is what keeps a repeat run a no-op.
+count is non-zero. This is the only step in the workflow that writes — an unguarded merge would
+create a commit on every run — so the check is what keeps a repeat run a no-op.
+
+Nothing enforces this but the instruction. Skipping the check and merging unconditionally still
+"works" on a branch that is behind, and only shows up as an empty merge commit on the runs where
+the branch was already current. Run the check.
 
 **Gate on conflict:** report the conflicted paths and stop. Do not resolve conflicts.
 

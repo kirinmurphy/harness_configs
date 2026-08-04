@@ -32,6 +32,11 @@ against the wrong branch does real git work in the wrong place.
 Steps 1–6 mutate git state. Steps 7–13 are read-only. That split is deliberate: if anything goes
 wrong it happens in the first half, and the review half is always safe to re-run.
 
+Within the read-only half, the cheap deterministic work comes first: scope the diff (7), then run
+the tests (8). Only once the suite is green does the model-driven work begin (9–11). Ordering it
+this way means a red suite or an out-of-scope branch is caught before any expensive analysis is
+spent on code that is about to change.
+
 Several steps are **gates** — stop and ask rather than deciding for the user. They are marked
 below. A gate is not a formality: proceeding past one on an assumption is how this workflow
 destroys work.
@@ -43,17 +48,23 @@ Nothing here may hardcode a project's branch names, directory layout, or command
 - Base branch: the `--base` argument, else the remote's default branch
   (`git symbolic-ref refs/remotes/origin/HEAD`), else `main`, else `master`. Say which you used.
 - Test command: read `package.json` scripts, `Makefile`, `justfile`, `taskfile`, `pyproject.toml`,
-  or CI config. Never invent one. If none is discoverable, say so and skip step 11.
+  or CI config. Never invent one. If none is discoverable, say so and skip step 8.
 - Plan docs: discover, do not assume. If the repository declares its plan lifecycle in a manifest
   (this repo's convention is `manifests/platform/plan-lifecycle.json`), read the in-flight states
   from it — the states whose work is underway or being validated, not just one folder name.
   Otherwise fall back to `docs/plans/active/`, then to any equivalent (an ADR directory, a decision
-  log, `docs/rfcs/`). If nothing exists, skip steps 8–9 and say so.
+  log, `docs/rfcs/`). If nothing exists, skip steps 9–10 and say so.
 
 ## Step 1 — Preflight
 
 Verify the working tree is clean (`git status --porcelain`, including untracked). **Gate:** if
 anything is uncommitted, stop and report it. Do not stash, commit, or discard on the user's behalf.
+
+A file the user has already acknowledged — their own in-progress work, named earlier in the
+session — is not a reason to halt a second time. Note it as a known exception and continue. Never
+commit or modify it to clear the gate: an untracked file that appears mid-session belongs to the
+user, and folding it into an unrelated commit is worse than leaving the tree dirty. State plainly
+in the report that the workflow proceeded past a dirty tree, and why.
 
 Record the starting branch and HEAD SHA so the user can get back. Report both.
 
@@ -122,6 +133,17 @@ with the user individually before continuing. Present the evidence, not just a v
 
 Do not delete branches or worktrees in this workflow. Cleanup is a separate, destructive action.
 
+If the user asks for cleanup afterwards, establish these before deleting anything:
+
+- Every file the branch introduced either exists in the integration branch, or was removed there by
+  an identifiable commit. A file missing from HEAD is not proof of loss — refactors delete files on
+  purpose — but it must be explained, not assumed.
+- The branch's SHA matches its `origin/` counterpart, so the remote still holds every commit.
+
+Report that evidence per branch, delete local refs only, and leave remotes alone. Squash-merged
+branches need `git branch -D`; `-d` refuses them because ancestry does not show the merge. That
+forced flag is exactly why the evidence has to be gathered first — the usual safety net is absent.
+
 ## Step 7 — Scope the diff
 
 ```text
@@ -132,7 +154,24 @@ git diff --stat <base>...HEAD
 This commit list and file set define the review scope for every later step. Report the counts.
 If the diff is very large, say so before reviewing rather than silently truncating.
 
-## Step 8 — Select relevant plans
+## Step 8 — Regressions
+
+Run the repository's own test command, discovered as described above. If it is slow, start it in
+the background and continue only once it reports. Report `Verified: <command> -> pass|fail`.
+
+**This runs before any review work, deliberately.** Steps 9–11 are the expensive, model-driven part
+of this workflow, and a red suite invalidates them twice over: fixing the failure changes the code
+that was just reviewed, so the review has to be redone against code that now exists. Running tests
+after the review puts the gate *after* the cost it exists to prevent.
+
+**Gate:** on failure, report the failing output and stop. Do not review, and do not write a findings
+report — a findings document written over a red suite misrepresents the branch's state.
+
+The one exception: if the failure is clearly pre-existing and unrelated to the diff (it also fails
+on the base branch), say so and ask whether to proceed. Do not decide that on your own — a failure
+that looks unrelated often is not.
+
+## Step 9 — Select relevant plans
 
 Read the in-flight plan docs, discovered as described above. Match each against the files touched
 in step 7 and carry forward only the relevant ones — an unrelated plan is not this integration's
@@ -150,7 +189,16 @@ While reading, flag lifecycle inconsistencies without fixing them:
 
 These need the user's intent to resolve. Report; do not invent a `next_action`.
 
-## Step 9 — Validate the plans against the code
+A plan can also be *legitimately* missing a `next_action`: one moved back from completed
+prematurely has no next step, and gets moved to completed again without inventing one. The
+frontmatter alone cannot distinguish that from a genuine omission, so ask rather than assume —
+and once the user rules, record it per the acknowledged-findings note in step 13.
+
+Before flagging an item as open, check whether the plan marks it deliberately deferred. A checklist
+item can be unchecked *and* resolved-by-decision, with the reasoning written next to it; reporting
+that as outstanding work is a false finding.
+
+## Step 10 — Validate the plans against the code
 
 For each selected plan, check its claims against the actual code — not against its checkboxes:
 
@@ -163,10 +211,10 @@ Prose-bulleted plans have no checkbox state to trust; read the code regardless.
 Do the same for any other durable documentation the diff touches (reference docs, architecture
 notes). Report statements the merged code contradicts.
 
-This step's output **scopes step 10** — knowing what the plans require makes the code review
+This step's output **scopes step 11** — knowing what the plans require makes the code review
 sharper. That is why it comes first.
 
-## Step 10 — Review the code in a single pass
+## Step 11 — Review the code in a single pass
 
 Load the project's own convention skills if present (for example `code-style`, a language skill
 matching the stack, and a test-harness skill). Match the codebase's actual idiom, not a generic
@@ -176,7 +224,7 @@ Read each changed file **once**, applying this whole checklist as you go:
 
 | Lens | Look for |
 | --- | --- |
-| Requirements | Gaps against step 9; implementations with no requirement; unhandled edge cases the plans name |
+| Requirements | Gaps against step 10; implementations with no requirement; unhandled edge cases the plans name |
 | Conventions | Naming, file organization, helper placement, exports/imports, type safety at boundaries |
 | Comments | Comments describing superseded behavior — after a merge these are common and actively misleading |
 | Correctness | Logic errors, unhandled failure modes, state that can go stale |
@@ -190,14 +238,6 @@ does too much, queries the DOM three times, and holds a magic number in a single
 Splitting into separate passes re-reads every file (multiplying token cost by the number of passes)
 and produces findings that interact: a proposed file split changes which config extraction makes
 sense, so separately-derived recommendations then have to be reconciled anyway.
-
-## Step 11 — Regressions
-
-Run the repository's own test command, discovered as described above. If it is slow, run it in the
-background rather than blocking. Report `Verified: <command> -> pass|fail`.
-
-**Gate:** on failure, report the failing output and stop before the findings report. A findings
-document written over a red suite misrepresents the branch's state.
 
 ## Step 12 — Findings report
 
@@ -226,11 +266,30 @@ report
 Keep the record updated on each run so this stays answerable without re-deriving it. Treat the
 first run as the baseline.
 
+**Record the user's ruling on each finding, and do not re-litigate it.** When the user accepts a
+finding as a known pending item, decides it needs no action, or defers it, store that verdict in
+the baseline alongside the finding. On a re-run, list those as acknowledged in one line each —
+never re-argued as fresh findings. Re-report an acknowledged item only when its underlying state
+actually changes.
+
+This matters because most findings survive a re-run untouched: plan paperwork, deferred UI
+verification, accepted trade-offs. Without a ledger, every re-run re-derives and re-presents the
+same resolved arguments, and the genuinely new finding is buried in noise.
+
+**Scope the re-review to what changed.** Report the delta since the previous baseline's HEAD, not
+just the full diff against the base. When only a handful of commits are new, reviewing the whole
+branch again re-derives conclusions already reached — say what the delta is and review that,
+noting the rest as unchanged since the baseline.
+
 ## Never
 
 - Never commit, push, or open a PR from this workflow. It reports.
 - Never delete branches, worktrees, or stashes.
 - Never resolve merge conflicts on the user's behalf.
 - Never write to the base branch.
-- Never proceed past a gate on an assumption.
-- Never claim visual or manual verification that did not happen.
+- Never proceed past a gate on an assumption. Proceeding on the user's explicit prior
+  acknowledgement is not an assumption — say so in the report when you do.
+- Never claim visual or manual verification that did not happen. A green suite is not visual
+  verification: UI code can pass every test and still render wrong. Report it as unverified, and
+  keep reporting it on every re-run until someone actually looks.
+- Never fold the user's unrelated uncommitted work into a commit of your own.

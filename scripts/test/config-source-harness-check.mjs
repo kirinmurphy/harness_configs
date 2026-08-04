@@ -35,16 +35,28 @@ function testUnknownHarnessRejectedForScopedKind() {
   assert.match(result.error, /missing or unknown harness: timetravel/);
 }
 
+// A registered harness id must get PAST the harness-id gate. It may still fail further in for an
+// environment reason — live-rules reads ~/.codex/AGENTS.md, which exists on a developer machine
+// with an installed harness but never on a bare CI runner. Asserting ok===true here would couple
+// this id-validation test to harness installation; assert only that the id was accepted.
 function testKnownHarnessReachesLoadConfigSource() {
   const result = loadConfigSource({ kind: "live-rules", id: "agent-rules", harness: "codex" });
-  assert.equal(result.ok, true);
+  if (!result.ok) {
+    assert.doesNotMatch(result.error, /missing or unknown harness/, "registered harness id must pass the id gate");
+  }
 }
 
+// config-file resolves its harness from `id`, so omitting the harness param must never trip the
+// harness-id gate. Like live-rules above, the read itself targets a real home-dir file
+// (~/.claude/settings.json) that a bare CI runner does not have — so assert the request was not
+// rejected FOR A HARNESS REASON rather than asserting the file was readable.
 function testConfigFileKindIgnoresMissingHarness() {
   const res = fakeRes();
   handleConfigApi({}, res, "/api/config/source", "kind=config-file&id=claude-settings", { loadConfigSource });
-  assert.equal(res.status, 200);
-  assert.equal(JSON.parse(res.body).ok, true);
+  const body = JSON.parse(res.body);
+  if (!body.ok) {
+    assert.doesNotMatch(body.error, /missing or unknown harness/, "config-file kind must not require a harness param");
+  }
 }
 
 // Grid/defaults-menu column count must track whatever the registry actually has registered, not a

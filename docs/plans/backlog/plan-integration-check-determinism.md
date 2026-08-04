@@ -79,7 +79,7 @@ lifecycle, and gains manifest-driven discovery when Suite 04 Phase 1 lands.
 
 ## Non-goals
 
-- Automating the code review itself. Steps 10 and 12 of the skill are irreducibly fuzzy.
+- Automating the code review itself. Steps 11 and 12 of the skill are irreducibly fuzzy.
 - Automating gate decisions. Every user confirmation in the skill stays a user confirmation;
   determinism is about computing *facts*, not about removing consent.
 - Committing, pushing, or deleting anything. The skill's "Never" list is unchanged by this plan.
@@ -110,10 +110,10 @@ Every step of the current `SKILL.md`, classified by whether it can be computed.
 | 5 | Merge base into integration | **Deterministic** detect | "Is it behind" is computable; conflict resolution is never automated |
 | 6 | Worktree audit (merged status) | **Deterministic** | The two-tier ancestry-then-content test. Highest-value target: this is where the agent got it wrong |
 | 7 | Scope the diff | **Deterministic** | Commit list + changed file set |
-| 8 | Select relevant plans | **Deterministic** | Match plan docs against changed paths; also the lifecycle-consistency checks |
-| 9 | Validate plans against code | **Fuzzy** | Requires reading code and judging whether a claim holds |
-| 10 | Single-pass code review | **Fuzzy** | The actual reason a model is involved |
-| 11 | Regressions | **Deterministic** | Test-command discovery and execution |
+| 8 | Regressions | **Deterministic** | Test-command discovery and execution. Runs before the fuzzy steps and gates them: a red suite means the reviewed code is about to change |
+| 9 | Select relevant plans | **Deterministic** | Match plan docs against changed paths; also the lifecycle-consistency checks |
+| 10 | Validate plans against code | **Fuzzy** | Requires reading code and judging whether a claim holds |
+| 11 | Single-pass code review | **Fuzzy** | The actual reason a model is involved |
 | 12 | Findings report | **Fuzzy** content, **deterministic** shape | Severity ranking and `file:line` structure can be schema-enforced |
 | 13 | Persist baseline / "review again" diff | **Deterministic** | Storing findings and diffing two runs by stable id is bookkeeping |
 
@@ -128,7 +128,7 @@ flowchart TD
     A["/integration-check branch"] --> B["roborepo integration preflight --json"]
     B --> C{gates: worktree conflict,<br/>diverged, unmerged branches}
     C -->|user confirms| D["roborepo integration scope --json"]
-    D --> E["agent: steps 9-10<br/>plan validation + code review"]
+    D --> E["agent: steps 10-11<br/>plan validation + code review"]
     E --> F["roborepo integration findings --json"]
     F --> G["report + baseline for 'review again'"]
 ```
@@ -162,7 +162,8 @@ Encoding this once, in tested code, is the single highest-value item in this pla
 
 ### `roborepo integration scope <branch> [--base <branch>] [--json]`
 
-Covers steps 7–8. Emits the commit list, the changed-file set, and the subset of active plan docs
+Covers steps 7 and 9 (step 8, the regression suite, sits between them and is not part of this
+command). Emits the commit list, the changed-file set, and the subset of active plan docs
 whose subject matter intersects those files — plus any lifecycle findings on those plans, reusing
 `validateForLifecycle` rather than reimplementing the schema.
 
@@ -186,14 +187,14 @@ Phased so the skill works end-to-end after every phase.
       two-tier merged test as a tested unit. Update `SKILL.md` steps 1–6 to call it and interpret
       the result instead of issuing raw git commands.
 - [ ] **Phase 2 — `integration scope`.** Commit/file scope plus relevant-plan selection and
-      lifecycle findings. Update `SKILL.md` steps 7–8. Read in-flight lifecycle states from
+      lifecycle findings. Update `SKILL.md` steps 7 and 9. Read in-flight lifecycle states from
       `manifests/platform/plan-lifecycle.json` when it exists (Suite 04 Phase 1), falling back to
       the four-folder layout when it does not.
 - [ ] **Phase 3 — `integration findings`.** Persistence and run-to-run diffing. Update `SKILL.md`
       steps 12–13 and define the findings JSON schema the agent must emit.
 - [ ] **Phase 4 — test-command discovery.** Extract the "discover the repo's own test command"
       heuristic (currently prose in `SKILL.md` and duplicated in other skills) into one shared
-      helper, and have step 11 call it.
+      helper, and have step 8 call it.
 - [ ] **Phase 5 — trim the skill.** With phases 1–4 landed, delete the prose that described the
       now-deterministic procedures. The skill should shrink substantially; a step that reads
       "call this command and interpret the JSON" needs no procedure text.

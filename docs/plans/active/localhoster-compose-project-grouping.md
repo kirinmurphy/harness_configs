@@ -213,3 +213,24 @@ Proposed shape:
   parallel one-off check inside Localhoster.
 - Not scoped or prioritized yet — revisit when picking up either `roborepo doctor` work or the
   repository-registry plan.
+
+## Verification
+
+Confirmed against the code at completion, not against checkbox state — this plan uses prose
+bullets and has none.
+
+- **Grouping landed.** Containers sharing a `composeProject` label merge into one project entry
+  in `modules/localhoster/snapshot.mjs`, which groups Compose-labeled instances before the
+  identity pass so a container with low-confidence process identity still lands under its real
+  project instead of "Unrecognized listeners".
+- **The project-card rollup landed.** `composeProjectCard` renders in both required positions:
+  standalone as a top-level card (`portal/localhoster/app.js:139`) and as a sub-group inside a
+  repository card (`portal/localhoster/templates.js:358`). A Compose stack stays one named
+  sub-group rather than flattening its containers into the member list.
+- **One row per container, not per published port** — `groupByContainer` in `snapshot.mjs`, so a
+  proxy publishing several host ports reads as one operational unit.
+- **Covered by tests.** `scripts/test/localhoster-repository-merge-check.mjs` exercises the
+  Compose sub-group path directly. Full suite: 389 passed, 0 failed.
+
+Not verified: none of this has been looked at in a browser. The evidence above is structural —
+code paths and tests, not rendered output. See the branch-level note on unverified UI work.

@@ -1679,9 +1679,26 @@ On first run:
   Already true for every provider before this phase (`generated/claude/`, `generated/codex/`); the
   `render-agent-permissions.mjs` refactor above made the *path derivation* itself provider-generic
   instead of just the directory layout happening to match.
-- [ ] Update `manifests/platform/manifest.tsv`, `rule-targets.tsv`, `verify-content.tsv`, and
-  `source-files.tsv`, or replace overlapping provider columns with provider manifests. **Deferred,
-  deliberately.** Confirmed `manifest.tsv`'s `root_config`/`rendered_rules` rows and
+- [x] Update `manifests/platform/manifest.tsv`, `rule-targets.tsv`, `verify-content.tsv`, and
+  `source-files.tsv`, or replace overlapping provider columns with provider manifests. **Satisfied
+  via the first branch of the "or"; the consolidation alternative was deliberately not taken.**
+  Investigated against the live tree at completion, and the original reasoning below turned out to
+  be **wrong on its central claim**. It asserted the TSV mechanism was "provider-count-agnostic
+  even though the data is declared statically per provider." It was not: `_manifest_home_root` in
+  `scripts/lib/manifests-data.sh` hardcoded a `claude|codex` case statement and errored on any
+  other id, so a `gemini` row could not resolve a home dir at all. Gemini appeared to work only
+  because it had no rows to fail on — it was outside the mechanism, not accommodated by it.
+
+  Two real gaps followed from that, both since fixed: Gemini had no `MANAGED_BY_ROBOREPO.md`
+  (no source file, and no row that could have installed one) and no `commands/` directory at all,
+  despite declaring the `slash-commands` capability — eight packages enumerated
+  `["claude", "codex"]`, so it received zero slash commands.
+
+  `_manifest_home_root` now resolves non-hardcoded providers through `harness detected`, so the
+  mechanism is genuinely provider-agnostic rather than incidentally so. With that fixed, the
+  consolidation alternative remains unnecessary — the remaining duplication is 15 static rows
+  (8 claude, 7 codex) plus 2 in `rule-targets.tsv`, against rewriting seven bash-3.2 consumers —
+  but it is now declined on accurate grounds. See [[manifest-tsv-provider-consolidation]]. Confirmed `manifest.tsv`'s `root_config`/`rendered_rules` rows and
   `rule-targets.tsv`'s target rows do overlap `globals/harnesses/{claude,codex}/provider.json`'s
   `paths.rootConfig`/`paths.rules` — but the TSV rows carry install-only semantics
   (`kind`/`flags`/`src_rel`, comment-documented `managed_copy`/`root_config`/`cleanup`/

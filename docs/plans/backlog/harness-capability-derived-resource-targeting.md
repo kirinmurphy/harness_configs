@@ -1,7 +1,7 @@
 ---
 id: harness-capability-derived-resource-targeting
 priority: high
-next_action: Add excludeHarnesses to the package resource schema and normalizeResource validation
+next_action: Verify Codex's PreToolUse decision schema against a live install, then implement per-command `ask` (Phase 5) — raised ahead of the schema work because it is a live security-relevant defect, not a scaling concern
 blocked_by: []
 depends_on:
   - discoverable-harness-provider-architecture
@@ -143,6 +143,20 @@ config writer uses and returns a per-command decision, falling through to `appro
 no rule matches. Confirm the wire schema against a live Codex install before implementing — the
 comment at `permissions-render.mjs:122-124` asserts the opposite and must be corrected.
 
+## Phase ordering note
+
+**Phase 5 (Codex per-command `ask`) is the priority**, ahead of the schema work in Phases 1–4.
+Defect 2 is a live guardrail failure: a rule bucketed `ask` becomes a session-wide approval policy,
+which is a weaker protection than the manifest asks for. Phases 1–4 address a scaling annoyance —
+real, but nothing is currently unsafe because of it.
+
+**Phase 2 has been partly performed by hand.** `"gemini"` was added directly to the eight packages'
+slash-command entrypoints to close a live parity gap (Gemini declared `slash-commands`, supplied a
+`commands` path, and received zero commands). That is the manual version of what this plan
+automates, so the defect is cleared but the cause is not: a fourth provider still needs eight more
+hand-edits. The remaining Phase 2 work is the resolver and the deprecation of `harnesses`, not the
+enumeration removal, which is now a one-line diff per package.
+
 ## Implementation Plan
 
 ### Phase 1 — Schema and validation
@@ -197,3 +211,35 @@ comment at `permissions-render.mjs:122-124` asserts the opposite and must be cor
   until a package needs the distinction.
 - Whether Gemini needs `globals/system/rules/gemini/` deltas. It currently runs on shared plus
   package rules only. Out of scope here; noted so it is not lost.
+
+## Cleanup once this plan lands
+
+Every site below exists only because targeting must be enumerated by hand today. When the resolver
+is in place, none of them should name a harness at all — a resource with no `excludeHarnesses`
+installs wherever the capability exists, so the explicit opt-in for Gemini becomes dead weight.
+**Removing these is the acceptance test for Phase 2 and Phase 3**: if any still needs to name
+Gemini afterwards, the resolver is not doing its job.
+
+`"gemini"` was added to all eight slash-command entrypoints by hand to close a live parity gap
+(Gemini declared `slash-commands`, supplied a `commands` path, and received zero commands). That
+edit is the workaround this plan removes, not a decision to preserve.
+
+**Explicit `harnesses` enumeration — 8 sites, all `["claude", "codex", "gemini"]`:**
+
+| Package | Location |
+| --- | --- |
+| `case-study-pack` | `package.config.json:23` |
+| `frontend-design` | `package.config.json:23` |
+| `integration-check` | `package.config.json:23` |
+| `plan-docs` | `package.config.json:33` |
+| `technical-writing` | `package.config.json:23` (multi-line array form) |
+| `telemetry` | `package.config.json:37` |
+| `tighten` | `package.config.json:23` |
+| `wrap-up` | `package.config.json:23` |
+
+**`"harness": "both"` sentinel — 5 sites**, retired in Phase 3: `impact-awareness`,
+`convention-capture`, `caveman`, `skill-visibility`, `jcodemunch`.
+
+Note that `"both"` already behaves correctly for a third provider — `rules-render.mjs` compares it
+as a sentinel rather than expanding a two-item list — so these five are a naming cleanup, not a
+defect. The eight above were the real gap.

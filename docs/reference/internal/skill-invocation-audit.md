@@ -4,8 +4,8 @@
 
 ## Summary
 
-- Shared skills: 12
-- Package skill resources: 12
+- Shared skills: 13
+- Package skill resources: 13
 - Static findings: 1
 - Unknown manifest entries: none
 
@@ -33,6 +33,7 @@ Keep shared `SKILL.md` frontmatter portable; use package-backed checks before ad
 | `plan-docs` | manual | medium | true | none | Keep manual-only or command-gated. |
 | `tighten` | auto | medium | true | none | Keep trigger narrow; add near-miss tests. |
 | `wrap-up` | manual | medium | true | none | Keep manual-only or command-gated. |
+| `integration-check` | manual | high | true | none | Keep manual-only or command-gated. |
 | `technical-writing` | manual | low | true | none | Keep manual-only or command-gated. |
 | `telemetry-marker` | manual | low | true | none | Keep manual-only or command-gated. |
 

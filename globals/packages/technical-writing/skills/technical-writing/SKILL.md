@@ -45,3 +45,13 @@ For a named mode, read only the needed references:
 - Preserve uncertainty as explicit open decisions, not buried caveats.
 - Prefer concrete examples over abstract explanation when data relationships matter.
 - Verify claims against source code, tests, configuration, and runtime evidence.
+
+## Naming and Titles
+
+- The filename is an identifier: lowercase, hyphenated, specific enough to disambiguate from its
+  neighbors.
+- The H1 is prose for a human reader — normal capitalization and spacing, naming the outcome. It is
+  not the filename with the hyphens removed.
+- Never encode status, priority, or dates in a filename. Those change; filenames get linked to.
+- Follow the dominant naming convention already visible in the directory you are writing into,
+  rather than introducing a new one. Say which convention you inferred.

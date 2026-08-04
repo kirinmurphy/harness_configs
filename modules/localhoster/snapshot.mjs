@@ -289,7 +289,9 @@ function collapseByPid(members) {
       continue;
     }
     if (!byPid.has(pid)) {
-      byPid.set(pid, { primary: member, siblings: [] });
+      // slot is where this pid's visible member sits in `collapsed`, so a later winner can replace
+      // it by index instead of scanning for it.
+      byPid.set(pid, { primary: member, siblings: [], slot: collapsed.length });
       collapsed.push(member);
       continue;
     }
@@ -299,7 +301,7 @@ function collapseByPid(members) {
     const incomingWins = isEntrypoint(member) && !isEntrypoint(group.primary);
     const loser = incomingWins ? group.primary : member;
     if (incomingWins) {
-      collapsed[collapsed.indexOf(group.primary)] = member;
+      collapsed[group.slot] = member;
       group.primary = member;
     }
     group.siblings.push(loser);

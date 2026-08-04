@@ -1,0 +1,13 @@
+{
+  "path": ["git", "inventory"],
+  "kind": "command",
+  "title": "Git inventory",
+  "description": "Inventory local git repositories before migration or cleanup",
+  "order": 10,
+  "usage": "roborepo git inventory [path] [--fetch] [--json|--markdown] [--include-clean] [--max-depth <n>]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/maintenance/git-inventory.mjs",
+    "export": "gitInventory"
+  }
+}

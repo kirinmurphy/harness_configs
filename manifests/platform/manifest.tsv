@@ -5,12 +5,12 @@
 # install-windows.ps1 (PowerShell); TBD Node.
 #
 # Columns (tab-separated):
-#   harness   claude | codex                 which harness this row belongs to
+#   harness   claude | codex | gemini        which harness this row belongs to
 #   kind      link | root_config | cleanup    behavior (see below)
 #   src_rel   path under repo root, or "-" for cleanup rows (no repo source)
-#   home_sub  path relative to the harness home dir (claude=~/.claude, codex=~/.codex);
-#             the reader joins the home root
-#   home_root home dir token: claude=~/.claude  codex=~/.codex
+#   home_sub  path relative to the harness home dir (claude=~/.claude, codex=~/.codex,
+#             gemini=~/.gemini); the reader joins the home root
+#   home_root home dir token: claude=~/.claude  codex=~/.codex  gemini=~/.gemini
 #   flags     comma list, or "-". Flags:
 #               nodoctor  = not checked by doctor --installed (verify still checks)
 #               nosync    = not pulled from live home config by the installer / update path
@@ -58,3 +58,4 @@ codex	cleanup	-	MANAGED_BY_HARNESS_CONFIGS.md	codex	-
 codex	cleanup	-	skills	codex	-
 # ^^^ migration: removes any old dir-level ~/.codex/skills -> repo symlink (pre-native-alignment era).
 # skills/ is now managed per-skill by the installer's enumerate-step.
+gemini	managed_copy	globals/harnesses/gemini/MANAGED_BY_ROBOREPO.md	MANAGED_BY_ROBOREPO.md	gemini	nodoctor

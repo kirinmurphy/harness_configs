@@ -33,13 +33,45 @@ manifest_path() {
   echo "${repo_root}/manifests/platform/manifest.tsv"
 }
 
-# Resolve a home_root token (claude|codex) to an absolute dir.
+# Resolve a home_root token (a provider id) to an absolute dir.
+#
+# Claude and codex stay hardcoded as a fast path and as the sandbox fallback: this is sourced by
+# install scripts that must work before `scripts/harnesses/` is copied into place, so it cannot
+# depend on the registry being reachable. Any other provider id resolves through the provider
+# manifest's own root-config path, which is what keeps this provider-agnostic — adding a fourth
+# harness needs no edit here.
 _manifest_home_root() {
   case "$1" in
     claude) echo "${HOME}/.claude" ;;
     codex)  echo "${HOME}/.codex" ;;
-    *) echo "manifest: unknown home_root '$1'" >&2; return 1 ;;
+    "") echo "manifest: unknown home_root '$1'" >&2; return 1 ;;
+    *)
+      local resolved
+      resolved="$(_manifest_home_root_from_registry "$1")" || {
+        echo "manifest: unknown home_root '$1'" >&2
+        return 1
+      }
+      echo "${resolved}"
+      ;;
   esac
+}
+
+# Reads the home dir from `harness detected`, whose column 2 is the provider's home path — the same
+# declaration the Node side uses, rather than restating it here.
+#
+# Calls node directly instead of going through harness_detected_rows: that path runs
+# _harness_detected_load, whose sandbox fallback itself calls _manifest_home_root, so routing
+# through it would make this function re-enter its own caller. The fallback only ever loops
+# claude/codex and so cannot reach this branch today, but depending on that would be a trap for
+# whoever extends it next.
+_manifest_home_root_from_registry() {
+  local id="$1" out
+  command -v node >/dev/null 2>&1 || return 1
+  [[ -f "${repo_root}/scripts/cli/main.mjs" ]] || return 1
+  out="$(node "${repo_root}/scripts/cli/main.mjs" harness detected 2>/dev/null \
+    | awk -F'\t' -v id="${id}" '$1 == id { print $2; exit }')" || return 1
+  [[ -n "${out}" ]] || return 1
+  echo "${out}"
 }
 
 manifest_rows() {

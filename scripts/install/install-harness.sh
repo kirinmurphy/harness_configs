@@ -6,6 +6,12 @@ set -euo pipefail
 # scripts were byte-identical except for the harness id literal — this loads that id from argv
 # and resolves everything else (home path, display name, presence check) through the registry-
 # backed harness_detected_rows(), so a new provider needs no new script.
+#
+# INTERNAL: run this through `roborepo update` (or scripts/install/main.sh), not on its own. The
+# skill step prunes cache entries outside the *base* skill set, and only the full install path
+# supplies the enabled packages' skills as allowed. Invoked standalone it therefore prunes every
+# package skill as "not in base skill set" — recoverable (the cache is derived state, and a
+# subsequent `roborepo update` restores it) but alarming, and pointless to trigger deliberately.
 
 harness_id="${1:-}"
 if [[ -z "${harness_id}" ]]; then

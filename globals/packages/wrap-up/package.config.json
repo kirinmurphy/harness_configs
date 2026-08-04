@@ -20,7 +20,7 @@
           "type": "slash-command",
           "name": "wrap-up",
           "description": "End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff prompt.",
-          "harnesses": ["claude", "codex"]
+          "harnesses": ["claude", "codex", "gemini"]
         }
       ]
     }

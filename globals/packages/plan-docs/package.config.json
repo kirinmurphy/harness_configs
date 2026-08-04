@@ -30,7 +30,7 @@
           "type": "slash-command",
           "name": "plan-docs",
           "description": "Create, manage, review, and continue repository plan documents.",
-          "harnesses": ["claude", "codex"]
+          "harnesses": ["claude", "codex", "gemini"]
         }
       ]
     }

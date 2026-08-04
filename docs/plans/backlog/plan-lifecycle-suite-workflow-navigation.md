@@ -1,6 +1,6 @@
 ---
 id: plan-lifecycle-suite-workflow-navigation
-priority: high
+priority: medium
 next_action: Implement the canonical lifecycle manifest and migrate domain lifecycle discovery and validation profiles to consume it.
 blocked_by: []
 depends_on:

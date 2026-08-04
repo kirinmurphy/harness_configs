@@ -1,6 +1,6 @@
 ---
 id: plan-session-launching-milestone-1
-priority: high
+priority: medium
 next_action: Define and test the launch-request schema and machine-local session store
 blocked_by: []
 depends_on: []

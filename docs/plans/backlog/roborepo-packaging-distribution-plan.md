@@ -1,6 +1,6 @@
 ---
 id: roborepo-packaging-distribution-plan
-priority: medium
+priority: high
 next_action: Build the Phase E npm beta publish workflow and CI tarball-install test
 blocked_by: []
 depends_on: []

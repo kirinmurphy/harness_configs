@@ -1,6 +1,6 @@
 ---
 id: permissions-ui-revamp
-priority: high
+priority: medium
 next_action: Decide the intent-vs-mechanism display model — whether the UI shows one intent per behavior with per-harness fidelity indicators, or separate per-harness views
 blocked_by: []
 depends_on: []

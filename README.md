@@ -94,6 +94,8 @@ Use these when you want to intentionally start a named workflow.
 | `/tighten`            | Clean up code against this project's own patterns with specific, anchored callouts. |
 | `/wrap-up`            | End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff prompt for the next chat. |
 | `/technical-writing` | General technical writing guidance for reader-facing docs: doc shapes, section-writing guidance, anti-patterns, and a prose review loop |
+| `/plan-promote` | Use when reviewing and preparing an existing repository implementation plan before development begins. Inspect the current repository, reconcile stale assumptions, improve the existing plan in place, fix obvious issues, identify genuine tradeoffs, ask the user only about material decisions, validate readiness, and stop before implementation. Do not use for creating a new plan from scratch, writing feature code, creating worktrees, changing lifecycle state, or resuming active implementation. |
+| `/plan-start` | Use when beginning implementation from an existing prepared repository plan. Inspect the current plan and repository, create or safely reuse an isolated worktree, implement every in-scope unblocked objective, make clear or reversible decisions autonomously, continue around blockers, verify the work, synchronize the plan, and report the result. Do not use for initial plan preparation, lifecycle orchestration, portal actions, integration-branch closeout, or implementation without an existing plan. |
 
 **Plain-Language Triggers**: Some named workflows can also be started in ordinary chat: "capture this", "write a case study about this", "make this a durable technical plan", or "tighten this."
 

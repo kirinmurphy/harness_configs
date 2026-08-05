@@ -5,6 +5,7 @@ import { validateForLifecycle, lifecyclePolicies } from "../../modules/plan-docs
 import { SECTION_SYNONYMS, SECTION_FINDING_CODES } from "../../modules/plan-docs/section-synonyms.mjs";
 import { buildRepairPrompt } from "../../modules/plan-docs/repair-prompt.mjs";
 import { parsePlanMarkdown } from "../../modules/plan-docs/index.mjs";
+import { classifyPlanId, generatePlanId, isValidPlanId } from "../../modules/plan-docs/plan-id.mjs";
 
 // The validation layer is pure — it reads a parsed document and returns findings, touching no
 // filesystem — so these drive it directly with in-memory markdown, the same way
@@ -42,7 +43,40 @@ testRepairPromptLeaksNoAbsolutePath();
 testRepairPromptOrdersBlockingFirst();
 testRepairPromptListsAcceptedHeadings();
 testRepairPromptHandlesMissingPlanId();
+testPlanIdClassification();
+testGeneratedIdsAreShortFormat();
 console.log("ok: plan docs findings and lifecycle policy checks passed");
+
+// The tiered id check. Short base36 is the current convention; hyphenated slugs are accepted but
+// reported as legacy. Ordering matters — `a3f9c2k1` satisfies the slug pattern too, so a
+// slug-first classifier would report every new id as legacy.
+function testPlanIdClassification() {
+  assert.equal(classifyPlanId("a3f9c2k1"), "short");
+  assert.equal(classifyPlanId("kx1qlm"), "short", "six characters is the short lower bound");
+  assert.equal(classifyPlanId("harness-parity"), "legacy");
+  assert.equal(classifyPlanId("primary-todo"), "legacy");
+  assert.equal(classifyPlanId("abcdefghi"), "legacy", "nine characters is past the short bound, so it falls through to the slug rule");
+
+  assert.equal(classifyPlanId(""), "invalid");
+  assert.equal(classifyPlanId(undefined), "invalid");
+  assert.equal(classifyPlanId("Harness-Parity"), "invalid", "uppercase is rejected by both tiers");
+  assert.equal(classifyPlanId("-leading-hyphen"), "invalid");
+  assert.equal(classifyPlanId("has spaces"), "invalid");
+
+  assert.equal(isValidPlanId("a3f9c2k1"), true);
+  assert.equal(isValidPlanId("harness-parity"), true, "legacy ids stay valid; rewriting one breaks inbound references");
+  assert.equal(isValidPlanId("Nope!"), false);
+}
+
+function testGeneratedIdsAreShortFormat() {
+  const seen = new Set();
+  for (let index = 0; index < 200; index += 1) {
+    const id = generatePlanId();
+    assert.equal(classifyPlanId(id), "short", `generated id must satisfy the current convention: ${id}`);
+    seen.add(id);
+  }
+  assert.ok(seen.size > 190, `generated ids must not collide in a small sample, got ${seen.size} distinct of 200`);
+}
 
 // --- helpers ----------------------------------------------------------------------------------
 

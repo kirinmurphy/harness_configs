@@ -15,7 +15,7 @@ Recommended frontmatter:
 
 ```yaml
 ---
-id: stable-plan-id
+id: a3f9c2k1
 priority: high
 next_action: Implement the next concrete task
 blocked_by: []
@@ -27,13 +27,46 @@ reviewed_commit:
 
 Rules:
 
-- `id`: lowercase slug, unique within the repository, stable across file moves.
+- `id`: a short opaque base36 string, 6-8 lowercase alphanumerics, unique within the repository and
+  never changed once written. See "Plan ids" below.
 - `priority`: `high`, `medium`, `low`, or `none`.
 - `next_action`: required for ready backlog plans and active plans; empty for completed and archived plans.
 - `blocked_by`, `depends_on`, and `related`: arrays.
 - `reviewed_commit`: commit intentionally reviewed against repository state; empty means never reviewed.
 
 Do not add `status`, `validated`, `updated_at`, `created_at`, `owner`, `percent_complete`, `estimated_hours`, or `tags` unless a later plan explicitly adds them.
+
+## Plan ids
+
+A plan id is **opaque on purpose**. It identifies the plan; it does not describe it.
+
+Generate one with `generatePlanId()` from `modules/plan-docs/plan-id.mjs`, or take 6-8 characters
+from `[0-9a-z]` by any means. Write it once, at creation, and never change it.
+
+The reason it is meaningless is that a descriptive id makes a promise it cannot keep. Plans get
+split in two, rescoped, renamed, and moved between lifecycle folders. A filename and an H1 can
+follow the story; an id cannot, because every `related` and `depends_on` pointing at it would break.
+So the id stops describing and starts merely identifying — and then filename and title are free to
+change as often as the work demands.
+
+This means an id will often disagree with its filename, and that is correct, not drift. Nothing
+resolves a plan by filename.
+
+Correctness does not rely on ids being readable. Every `depends_on`, `related`, and `blocked_by`
+entry is resolved against the plan snapshot, so an id pointing at nothing is reported
+(`DEPENDENCY_NOT_FOUND`, `RELATED_NOT_FOUND`, `BLOCKER_NOT_FOUND`) whatever its shape. A format
+check cannot do this: it rejects a malformed id but happily passes a well-formed one with two
+characters transposed.
+
+### Legacy slug ids
+
+Plans created before this convention carry hyphenated slug ids (`harness-parity`,
+`plan-session-launching-milestone-1`). These remain **valid and must not be rewritten** — changing
+one breaks every inbound reference, which is the exact failure the durable id exists to prevent.
+
+Validation reports them as `LEGACY_SLUG_ID`, an informational finding that measures how much of a
+repository predates the convention. Do not "fix" it. New plans use short ids; old plans keep theirs;
+the two coexist indefinitely.
 
 ## Naming
 
@@ -49,9 +82,9 @@ A plan filename is `<namespace>-<slug>.md`, lowercase and hyphenated.
 - A milestone or suite series shares a prefix plus an ordinal: `<namespace>-<series>-<n>`.
 - The H1 is prose for a reader — normal capitalization and spacing, naming the outcome. It is not
   the filename with the hyphens removed, and it should not restate the namespace.
-- **`id` never changes when a filename changes.** It is the durable identifier that survives
-  renames and folder moves; regenerating it to match a new filename breaks every `related` and
-  `depends_on` reference pointing at it.
+- **`id` never changes when a filename changes.** It is opaque and durable by design, so a rename
+  is a pure filename operation — see "Plan ids" above. Never regenerate an id to match a new
+  filename; that breaks every `related` and `depends_on` pointing at it.
 
 ### Universal namespaces
 

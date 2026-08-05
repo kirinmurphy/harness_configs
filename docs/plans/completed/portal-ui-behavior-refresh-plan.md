@@ -1,7 +1,7 @@
 ---
 id: portal-ui-behavior-refresh-plan
 priority: none
-next_action: Fill in the next concrete task.
+next_action:
 blocked_by: []
 depends_on: []
 related: []

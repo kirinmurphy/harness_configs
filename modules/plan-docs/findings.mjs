@@ -167,12 +167,6 @@ const DEFS = {
     message: ({ meta }) => `Duplicate frontmatter key: ${meta.key}.`,
     resolution: "Remove the repeated key so only one definition remains.",
   },
-  UNSUPPORTED_INLINE_ARRAY: {
-    kind: "parse",
-    severity: "advisory",
-    message: ({ meta }) => `Unsupported inline array for ${meta.key}; use block list or [].`,
-    resolution: "Rewrite the value as a block list (`  - item` on following lines) or as `[]`.",
-  },
   NON_ARRAY_FIELD: {
     kind: "parse",
     severity: "advisory",
@@ -192,7 +186,15 @@ const DEFS = {
     kind: "parse",
     severity: "advisory",
     message: ({ meta }) => `Invalid id: ${meta.value}.`,
-    resolution: "Use a lowercase slug starting with a letter or digit, e.g. `my-plan-name`.",
+    resolution: "Use a short lowercase base36 id of 6-8 characters, e.g. `a3f9c2k1`.",
+  },
+  // TEMP(legacy-slug-ids): drop this finding with the legacy branch in classifyPlanId(). It is
+  // informational — a slug id is valid, and rewriting one would break inbound references.
+  LEGACY_SLUG_ID: {
+    kind: "parse",
+    severity: "advisory",
+    message: ({ meta }) => `Legacy slug id: ${meta.value}.`,
+    resolution: "Valid, and safe to leave. New plans use a short base36 id; changing an existing id breaks every `related` and `depends_on` pointing at it.",
   },
   DOCUMENT_TOO_LARGE: {
     kind: "parse",

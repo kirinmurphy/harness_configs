@@ -1,7 +1,7 @@
 ---
 id: web-portal-security
 priority: none
-next_action: Fill in the next concrete task.
+next_action:
 blocked_by: []
 depends_on: []
 related: []

@@ -7,6 +7,7 @@ import { resolveProjectIdentity, canonicalRepositoryId, providerUrlForRepository
 import { finding, messagesOf } from "./findings.mjs";
 import { validateForLifecycle } from "./lifecycle-policy.mjs";
 import { buildRepairPrompt } from "./repair-prompt.mjs";
+import { classifyPlanId, isExternalBlocker } from "./plan-id.mjs";
 
 export const LIFECYCLES = new Set(["backlog", "active", "completed", "archived"]);
 export const PRIORITIES = new Set(["high", "medium", "low", "none"]);
@@ -479,7 +480,10 @@ export function parseFrontmatter(markdown) {
     if (!line.trim()) return;
     const list = /^\s+-\s+(.+?)\s*$/.exec(line);
     if (list && current) {
-      frontmatter[current].push(list[1]);
+      // Unquote the same way scalar values are. An entry gets quoted precisely when it contains a
+      // colon — an external blocker reads as prose — and leaving the quotes attached would make the
+      // value fail every downstream check that inspects its prefix.
+      frontmatter[current].push(list[1].replace(/^["']|["']$/g, ""));
       return;
     }
     const match = /^([a-zA-Z_][a-zA-Z0-9_-]*):(?:\s*(.*))?$/.exec(line);
@@ -498,9 +502,8 @@ export function parseFrontmatter(markdown) {
     } else if (value === "") {
       frontmatter[key] = arrayField(key) ? [] : "";
       current = arrayField(key) ? key : null;
-    } else if (/^\[.+\]$/.test(value)) {
-      findings.push(finding("UNSUPPORTED_INLINE_ARRAY", { meta: { key } }));
-      frontmatter[key] = [];
+    } else if (/^\[.*\]$/.test(value)) {
+      frontmatter[key] = parseInlineArray(value);
       current = null;
     } else {
       frontmatter[key] = value.replace(/^["']|["']$/g, "");
@@ -520,6 +523,36 @@ export function parseFrontmatter(markdown) {
 // frontmatter block) when it's missing entirely — a plan with no `priority:` line at all renders
 // the same "none" fallback in buildPlanRecord() as one with an empty value, so the writer must be
 // able to turn either into a real on-disk line. Does not support list fields (blocked_by etc).
+export // YAML flow sequences (`related: [a, b]`). Both list forms are valid YAML and authors write both,
+// so the parser accepts both rather than reporting one as unsupported. Splitting respects quotes,
+// because a quoted entry may legitimately contain a comma — an external blocker reads as prose, not
+// as an id.
+function parseInlineArray(value) {
+  const inner = value.slice(1, -1);
+  const entries = [];
+  let buffer = "";
+  let quote = null;
+  for (const char of inner) {
+    if (quote) {
+      if (char === quote) quote = null;
+      else buffer += char;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === ",") {
+      entries.push(buffer);
+      buffer = "";
+      continue;
+    }
+    buffer += char;
+  }
+  entries.push(buffer);
+  return entries.map((entry) => entry.trim()).filter(Boolean);
+}
+
 export function writeFrontmatterField(markdown, key, value) {
   if (!markdown.startsWith("---\n")) throw new Error("missing frontmatter");
   const end = markdown.indexOf("\n---", 4);
@@ -709,8 +742,16 @@ function normalizeFrontmatter(frontmatter, findings) {
   if (frontmatter.priority && !PRIORITIES.has(frontmatter.priority)) {
     findings.push(finding("INVALID_PRIORITY_VALUE", { meta: { value: frontmatter.priority } }));
   }
-  if (frontmatter.id && !/^[a-z0-9][a-z0-9-]*$/.test(frontmatter.id)) {
-    findings.push(finding("INVALID_ID", { meta: { value: frontmatter.id } }));
+  if (frontmatter.id) {
+    const idFormat = classifyPlanId(frontmatter.id);
+    if (idFormat === "invalid") {
+      findings.push(finding("INVALID_ID", { meta: { value: frontmatter.id } }));
+    } else if (idFormat === "legacy") {
+      // TEMP(legacy-slug-ids): informational only — existing slug ids are valid and must not be
+      // rewritten, since ids are the durable identity inbound references resolve against. This
+      // finding exists to measure how much of the tree still predates the short-id convention.
+      findings.push(finding("LEGACY_SLUG_ID", { meta: { value: frontmatter.id } }));
+    }
   }
   return frontmatter;
 }
@@ -755,6 +796,9 @@ function relationshipFindings(plans) {
     for (const [field, code, metaKey] of RELATIONS) {
       for (const ref of record.plan[field] || []) {
         if (!ref) continue;
+        // An external blocker names something with no plan document, so there is nothing to resolve
+        // against. Only `blocked_by` may carry one; depends_on/related are plan-to-plan by design.
+        if (field === "blockers" && isExternalBlocker(ref)) continue;
         if (!byRepoAndId.has(`${record.repository.root}:${ref}`)) {
           addFinding(findings, record.key, finding(code, { meta: { [metaKey]: ref } }));
         }

@@ -168,8 +168,26 @@ Run targeted checks.
   assert.match(portablePrompt, /\/plan-docs next/);
   assert.match(portablePrompt, /Use this bounded portable plan context/);
 
-  const parsed = parseFrontmatter("---\nid: bad\nblocked_by: [x]\n---\n# T\n");
-  assert.match(parsed.warnings.join("\n"), /Unsupported inline array/);
+  // Both YAML list forms are accepted. Inline arrays used to be detected, reported, and discarded,
+  // which silently emptied the field — so a valid reference written in valid YAML vanished from the
+  // relationship graph instead of being resolved.
+  const inlineParsed = parseFrontmatter("---\nid: bad\nblocked_by: [x, y]\nrelated: [solo]\n---\n# T\n");
+  assert.deepEqual(inlineParsed.frontmatter.blocked_by, ["x", "y"]);
+  assert.deepEqual(inlineParsed.frontmatter.related, ["solo"]);
+  assert.equal(inlineParsed.findings.filter((item) => item.code === "UNSUPPORTED_INLINE_ARRAY").length, 0,
+    "a well-formed inline array is not a problem to report");
+
+  const blockParsed = parseFrontmatter("---\nid: bad\nblocked_by:\n  - x\n  - y\n---\n# T\n");
+  assert.deepEqual(blockParsed.frontmatter.blocked_by, inlineParsed.frontmatter.blocked_by,
+    "both list syntaxes must produce the same value");
+
+  // A quoted entry may contain a comma — an external blocker reads as prose, so splitting on every
+  // comma would tear one blocker into several.
+  const quotedParsed = parseFrontmatter(
+    "---\nid: bad\nblocked_by: [\"upstream: no hook, and no ETA\", real-plan]\n---\n# T\n");
+  assert.deepEqual(quotedParsed.frontmatter.blocked_by, ["upstream: no hook, and no ETA", "real-plan"]);
+
+  assert.deepEqual(parseFrontmatter("---\nid: bad\nrelated: []\n---\n# T\n").frontmatter.related, []);
 
   // --- writeFrontmatterField: patches one scalar key, preserves everything else -----------------
   const rewritten = writeFrontmatterField(
@@ -869,6 +887,24 @@ Body.
   const targetRecord = refsSnapshot.plans.find((item) => item.plan.id === "real-target");
   assert.equal(targetRecord.plan.validation.findings.filter((item) => item.code.endsWith("_NOT_FOUND")).length, 0,
     "a plan whose references all resolve must report no dangling-reference findings");
+
+  // A blocker with an external prefix names something that has no plan document, so there is
+  // nothing to resolve it against. Only blocked_by may carry one.
+  fs.writeFileSync(path.join(refsRepo, "docs", "plans", "backlog", "external.md"),
+    refsPlan("ext-source", [
+      "blocked_by:",
+      "  - \"upstream: Codex has no footer-command hook\"",
+      "  - external: vendor has not shipped the API",
+      "  - ghost-plan",
+      "depends_on: []",
+      "related: []",
+    ].join("\n")));
+  const extSnapshot = buildPlanSnapshot({ stateRoot: refsStateRoot });
+  const extRecord = extSnapshot.plans.find((item) => item.plan.id === "ext-source");
+  const extBlockerFindings = extRecord.plan.validation.findings.filter((item) => item.code === "BLOCKER_NOT_FOUND");
+  assert.equal(extBlockerFindings.length, 1, "only the plan-id blocker should fail to resolve");
+  assert.match(extBlockerFindings[0].message, /ghost-plan/,
+    "prefixed external blockers must be skipped, not reported as missing plans");
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }

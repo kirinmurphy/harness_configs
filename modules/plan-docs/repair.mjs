@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { discoverRepositories, parseFrontmatter } from "./index.mjs";
+import { generatePlanId } from "./plan-id.mjs";
 
 // Scaffold text is deliberately generic and non-empty for `next_action` (required for ready
 // backlog/active plans per plan-schema.md) so a repaired file is immediately writable from the
@@ -16,8 +17,11 @@ export function slugFromFilename(absolutePath) {
     .replace(/^-+|-+$/g, "");
 }
 
-export function scaffoldFrontmatter(absolutePath) {
-  const id = slugFromFilename(absolutePath);
+// Repair mints a fresh opaque id rather than deriving one from the filename. A derived id would be
+// wrong the first time the file is renamed, and repaired files are exactly the ones with no
+// identity to preserve — there is nothing pointing at them yet.
+export function scaffoldFrontmatter() {
+  const id = generatePlanId();
   return [
     "---",
     `id: ${id}`,
@@ -84,7 +88,7 @@ export function repairPlansMissingFrontmatter(discoveryRoot, { dryRun = false } 
   for (const item of affected) {
     if (!dryRun) {
       const markdown = fs.readFileSync(item.absolutePath, "utf8");
-      fs.writeFileSync(item.absolutePath, scaffoldFrontmatter(item.absolutePath) + markdown);
+      fs.writeFileSync(item.absolutePath, scaffoldFrontmatter() + markdown);
     }
     repaired.push(item);
   }

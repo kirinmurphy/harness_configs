@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseFrontmatter } from "../../modules/plan-docs/index.mjs";
+import { classifyPlanId } from "../../modules/plan-docs/plan-id.mjs";
 import {
   findPlansMissingFrontmatter,
   hasNoFrontmatter,
@@ -45,9 +46,13 @@ reviewed_commit:
   assert.equal(hasNoFrontmatter("---\nid: x\nbody-no-close"), false, "unclosed frontmatter is not \"missing\" frontmatter");
   assert.equal(slugFromFilename("/a/b/My Plan File.md"), "my-plan-file");
 
-  const scaffold = scaffoldFrontmatter("/x/y/no-frontmatter.md");
+  const scaffold = scaffoldFrontmatter();
   assert.match(scaffold, /^---\n/);
-  assert.match(scaffold, /id: no-frontmatter/);
+  // A minted id is opaque and not derived from the filename: a derived id would be stale the first
+  // time the file is renamed, and ids never change once written.
+  assert.match(scaffold, /id: [0-9a-z]{6,8}\n/);
+  assert.equal(classifyPlanId(/id: ([0-9a-z]+)/.exec(scaffold)[1]), "short");
+  assert.notEqual(scaffoldFrontmatter(), scaffold, "each repair mints a distinct id");
   assert.match(scaffold, /priority: none/);
   assert.match(scaffold, /next_action: .+/);
   assert.match(scaffold, /blocked_by: \[\]/);
@@ -73,13 +78,12 @@ reviewed_commit:
   assert.equal(repairResult.repaired.length, 1);
   const repairedContent = fs.readFileSync(path.join(repo, "docs", "plans", "backlog", "no-frontmatter.md"), "utf8");
   assert.match(repairedContent, /^---\n/);
-  assert.match(repairedContent, /id: no-frontmatter/);
+  assert.match(repairedContent, /id: [0-9a-z]{6,8}\n/);
   assert.match(repairedContent, /# No Frontmatter Plan\n\nJust a body, no leading frontmatter block at all\.\n$/);
   assert.equal(hasNoFrontmatter(repairedContent), false);
 
   const hasFrontmatterUnchanged = fs.readFileSync(path.join(repo, "docs", "plans", "backlog", "has-frontmatter.md"), "utf8");
-  assert.match(hasFrontmatterUnchanged, /id: has-frontmatter/);
-  assert.doesNotMatch(hasFrontmatterUnchanged, /id: no-frontmatter/);
+  assert.match(hasFrontmatterUnchanged, /id: has-frontmatter/, "a file that already has frontmatter keeps its id untouched");
 
   const unclosedUnchanged = fs.readFileSync(path.join(repo, "docs", "plans", "backlog", "unclosed.md"), "utf8");
   assert.equal(unclosedUnchanged, "---\nid: unclosed\n# Unclosed Plan\n", "unclosed-frontmatter file must be left untouched");
@@ -106,7 +110,7 @@ reviewed_commit:
   assert.match(cliApply.stdout, /scaffolded frontmatter for/);
   const cliRepaired = fs.readFileSync(path.join(cliRoot, "docs", "plans", "backlog", "bare.md"), "utf8");
   assert.match(cliRepaired, /^---\n/);
-  assert.match(cliRepaired, /id: bare/);
+  assert.match(cliRepaired, /id: [0-9a-z]{6,8}\n/);
 
   const cliUnknownSub = spawnSync(process.execPath, [cliPath, "plans", "bogus"], { encoding: "utf8" });
   assert.notEqual(cliUnknownSub.status, 0);

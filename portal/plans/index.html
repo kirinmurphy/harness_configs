@@ -545,13 +545,16 @@
           <span class="meta-line" data-slot="meta"></span>
         </div>
         <div class="status-implementation" data-slot="implementation">
-          <div class="status-progress-row">
+          <div class="status-progress-row" data-slot="progress-row">
             <div class="progress-bar">
               <div class="progress-fill" data-slot="progress-fill"></div>
             </div>
             <span class="progress-label" data-slot="progress-label"></span>
           </div>
-          <div class="next-line" data-slot="next"></div>
+          <div class="status-complete-row" data-slot="complete-row" hidden>
+            <span class="tasks-complete-badge">All tasks complete</span>
+          </div>
+          <div class="next-line" data-slot="next-row"><span class="next-label">Next up:</span> <span data-slot="next"></span></div>
         </div>
       </div>
     </template>

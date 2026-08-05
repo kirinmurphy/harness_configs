@@ -10,6 +10,7 @@ import {
   resolveBlocking,
   lifecycleFindingGroups,
   canRepairLifecycleError,
+  taskProgressDisplay,
   FILTER_DEFAULTS,
 } from "../../portal/plans/state.js";
 
@@ -41,9 +42,11 @@ testFindingGroupsHandleAnErrorWithNeither();
 testEveryDisplayedFindingAppearsInTheRepairPrompt();
 testCanRepairRequiresANonEmptyPrompt();
 testLifecycleOptionsAreNeverDisabled();
+testTaskProgressDisplayByLifecycleAndProgress();
+testCompleteStateSuppressesTheNextAction();
 console.log("ok: plans portal state (mutation orchestration helpers) checks passed");
 
-function record({ key = "k1", lifecycle = "backlog", priority = "high", id = "plan-1", repositoryId = "r1", blockers = [] } = {}) {
+function record({ key = "k1", lifecycle = "backlog", priority = "high", id = "plan-1", repositoryId = "r1", blockers = [], taskCounts = { total: 0, complete: 0, remaining: 0 } } = {}) {
   return {
     key,
     mtimeMs: 1,
@@ -62,7 +65,7 @@ function record({ key = "k1", lifecycle = "backlog", priority = "high", id = "pl
       reviewState: "never-reviewed",
       modifiedAt: new Date().toISOString(),
       gitStatus: null,
-      taskCounts: { total: 0, complete: 0, remaining: 0 },
+      taskCounts,
       headings: [],
       excerpt: "",
       validation: { valid: true, warnings: [] },
@@ -283,6 +286,45 @@ function testCanRepairRequiresANonEmptyPrompt() {
 // move, so a stale browser snapshot can never pre-empt the authoritative finding set. Nothing
 // disables them today; this asserts it stays that way, since the regression would be invisible
 // in every other test here.
+// Progress is shown when it says something the lifecycle does not already imply. "Nothing started"
+// is the default for backlog and for a completed plan with no task list, so it stays quiet there;
+// started work and a finished list are never the default and always show.
+function testTaskProgressDisplayByLifecycleAndProgress() {
+  const none = { total: 0, complete: 0, remaining: 0 };
+  const unstarted = { total: 12, complete: 0, remaining: 12 };
+  const partial = { total: 12, complete: 5, remaining: 7 };
+  const done = { total: 12, complete: 12, remaining: 0 };
+
+  const display = (lifecycle, taskCounts) => taskProgressDisplay(record({ lifecycle, taskCounts }).plan);
+
+  assert.equal(display("backlog", none), "none", "an empty backlog plan shows nothing");
+  assert.equal(display("backlog", unstarted), "none", "unstarted backlog work is the default state");
+  assert.equal(display("backlog", partial), "bar", "started work is not the default anywhere");
+  assert.equal(display("backlog", done), "complete");
+
+  assert.equal(display("active", none), "bar", "active always shows progress, even with no tasks");
+  assert.equal(display("active", unstarted), "bar");
+  assert.equal(display("active", partial), "bar");
+  assert.equal(display("active", done), "complete");
+
+  assert.equal(display("completed", none), "none");
+  assert.equal(display("completed", partial), "bar", "a completed plan with open tasks must not look finished");
+  assert.equal(display("completed", done), "complete");
+
+  assert.equal(display("archived", partial), "bar");
+  assert.equal(display("archived", none), "none");
+}
+
+// A "next up" line beside an "all tasks complete" badge is a contradiction, so the element hides
+// the next-action row in exactly the state that renders the badge.
+function testCompleteStateSuppressesTheNextAction() {
+  const source = fs.readFileSync(new URL("../../portal/plans/elements/plan-status.js", import.meta.url), "utf8");
+  assert.match(source, /\[data-slot=next-row\]"\)\.hidden = progress !== "bar"/,
+    "the next-action row must be hidden whenever progress is not the in-progress bar");
+  assert.match(source, /\[data-slot=complete-row\]"\)\.hidden = progress !== "complete"/);
+  assert.match(source, /\[data-slot=progress-row\]"\)\.hidden = progress !== "bar"/);
+}
+
 function testLifecycleOptionsAreNeverDisabled() {
   const source = fs.readFileSync(new URL("../../portal/plans/elements/plan-status.js", import.meta.url), "utf8");
   const dropdown = source.slice(source.indexOf("renderLifecycleDropdown"));

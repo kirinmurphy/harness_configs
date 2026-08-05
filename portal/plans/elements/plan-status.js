@@ -2,6 +2,9 @@
 // by <plan-card> and the detail drawer so both surfaces show identical lifecycle/priority
 // controls, readiness/blocked/review chips, progress, and next-action.
 //
+// Progress display is driven by taskProgressDisplay() rather than by lifecycle alone — see that
+// function in state.js for why started work is worth showing in backlog and completed too.
+//
 // It does not call APIs, inspect filters, render global toasts, or decide whether it remains
 // visible — those are page (app.js) responsibilities. On a dropdown select it dispatches a
 // bubbling `plan-change` event with the mutation intent; it never awaits the mutation itself.
@@ -11,7 +14,7 @@
 // orchestrator re-sets it either way once the mutation settles) clears it. This keeps the element
 // a pure function of its `record` prop rather than needing app.js to call back into it.
 import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
-import { LIFECYCLE_LABELS } from "/portal/plans/state.js";
+import { LIFECYCLE_LABELS, taskProgressDisplay } from "/portal/plans/state.js";
 
 const PRIORITY_OPTIONS = [
   ["high", "high"],
@@ -124,12 +127,12 @@ class PlanStatusElement extends HTMLElement {
     const complete = total - remaining;
     const percentComplete = total > 0 ? Math.round((complete / total) * 100) : 0;
     const isBlocked = plan.blockers.length > 0;
-    const isActive = plan.lifecycle === "active";
+    const progress = taskProgressDisplay(plan);
 
     const node = fill(tpl("tpl-plan-status"), {
       meta: `modified ${formatRelativeTime(plan.modifiedAt)}`,
       "progress-label": total > 0 ? `${percentComplete}%` : "no tasks",
-      next: plan.nextAction || "No next action",
+      next: plan.nextAction || "none set",
     });
     node.querySelector("[data-slot=meta]").title = new Date(plan.modifiedAt).toLocaleString();
     const stateBadgeSlot = node.querySelector("[data-slot=state-badge]");
@@ -148,7 +151,12 @@ class PlanStatusElement extends HTMLElement {
       });
       stateBadgeSlot.replaceWith(badgeBtn);
     }
-    node.querySelector("[data-slot=implementation]").hidden = !isActive;
+    node.querySelector("[data-slot=implementation]").hidden = progress === "none" && !plan.nextAction;
+    node.querySelector("[data-slot=progress-row]").hidden = progress !== "bar";
+    node.querySelector("[data-slot=complete-row]").hidden = progress !== "complete";
+    // A next action alongside an "all tasks complete" badge reads as a contradiction, so the badge
+    // state suppresses it.
+    node.querySelector("[data-slot=next-row]").hidden = progress !== "bar";
     node.querySelector("[data-slot=progress-fill]").style.width = `${percentComplete}%`;
     node.querySelector("[data-slot=status-chips]").append(
       // readiness (draft/ready) only distinguishes actionable-vs-not within backlog; once a plan

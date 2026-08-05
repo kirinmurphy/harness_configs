@@ -189,6 +189,23 @@ export function formatDate(value) {
   return Number.isNaN(date.getTime()) ? "unknown" : date.toLocaleString();
 }
 
+// How a plan's task progress should be displayed: "bar", "complete", or "none".
+//
+// Progress is worth showing whenever it says something the lifecycle does not already imply.
+// Nothing started in backlog is the default state of everything in backlog, so a 0% bar there is
+// noise; started work is not the default anywhere, and neither is a finished task list. Active
+// always shows a bar because progress is the point of the lifecycle, even at 0%.
+//
+// A finished list gets a badge rather than a full bar: a 100% bar reads as "in progress, at the
+// end", which is a different claim than "done".
+export function taskProgressDisplay(plan) {
+  const { total, remaining } = plan.taskCounts;
+  if (total > 0 && remaining === 0) return "complete";
+  const started = total > 0 && remaining < total;
+  if (started) return "bar";
+  return plan.lifecycle === "active" ? "bar" : "none";
+}
+
 // --- lifecycle tab <-> URL state -----------------------------------------------------------
 // The selected lifecycle tab is serialized into `?lifecycle=` so the tab survives a refresh and
 // participates in back/forward navigation (unlike telemetry's filters, which intentionally use

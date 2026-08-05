@@ -780,6 +780,26 @@ plan-card {
   flex-wrap: wrap;
   gap: 4px 8px;
 }
+.status-progress-row[hidden],
+.status-complete-row[hidden] {
+  display: none;
+}
+/* Replaces the progress bar once every task is checked: a full bar reads as "in progress at 100%",
+   which is a different claim than "finished". Right-aligned so it lands where the percentage label
+   would have been. */
+.status-complete-row {
+  display: flex;
+  justify-content: flex-end;
+}
+.tasks-complete-badge {
+  border: 1px solid var(--ok);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--ok);
+  white-space: nowrap;
+}
 .progress-bar {
   flex: 1 1 60px;
   min-width: 0;
@@ -802,6 +822,13 @@ plan-card {
   font-size: var(--text-sm);
   color: var(--ink);
   min-width: 0;
+}
+.status-section .next-line[hidden] {
+  display: none;
+}
+.next-label {
+  color: var(--dim);
+  font-weight: 600;
 }
 .card-actions {
   display: flex;

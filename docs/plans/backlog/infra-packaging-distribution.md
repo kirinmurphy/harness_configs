@@ -8,7 +8,7 @@ related: []
 reviewed_commit: b8684ef
 ---
 
-# RoboRepo Packaging and Distribution Plan
+# Packaging and Distribution
 
 ## Implementation status (updated 2026-07-27)
 

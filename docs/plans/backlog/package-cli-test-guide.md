@@ -29,7 +29,7 @@ built yet and is deliberately absent.
 
 ## Concept model
 
-Three roots hold the moving parts (see `roborepo-packaging-distribution-plan.md`):
+Three roots hold the moving parts (see `infra-packaging-distribution.md`):
 
 | Root | Default (package mode) | Holds |
 | --- | --- | --- |

@@ -237,7 +237,7 @@ Show global warnings in a separately labeled global section. A global finding mu
 
 ### Coordination with the existing homepage plan
 
-`portal-homepage-implementation-plan` remains the owner of generic homepage widgets, shared policy, and initial homepage route/server work. This plan owns:
+`portal-homepage-implementation` remains the owner of generic homepage widgets, shared policy, and initial homepage route/server work. This plan owns:
 
 - Repository directory mode.
 - Selected-repository dashboard mode.
@@ -400,7 +400,7 @@ These currently model primarily global configuration. Add repository-local data 
 
 ### Homepage
 
-The reviewed checkout does not contain a homepage entry file. Coordinate with `portal-homepage-implementation-plan` for:
+The reviewed checkout does not contain a homepage entry file. Coordinate with `portal-homepage-implementation` for:
 
 - New homepage assets under `portal/home/`.
 - `/` page registration in `scripts/cli/portal-server.mjs`.
@@ -574,5 +574,5 @@ These are implementation checks, not blockers:
 
 1. Does the completed registry already expose a stable browser-safe key under another name?
 2. Which completed registry alias states distinguish rename, merge, hidden, and deleted repositories?
-3. Which homepage aggregation work will land first under `portal-homepage-implementation-plan`?
+3. Which homepage aggregation work will land first under `portal-homepage-implementation`?
 4. How much historical telemetry can already resolve to canonical repository IDs without fallback?

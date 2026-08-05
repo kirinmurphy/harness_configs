@@ -8,7 +8,7 @@ related: []
 reviewed_commit:
 ---
 
-# Wrap-Up Codex Invocation and CodeRabbit Integration Plan
+# Wrap-Up Codex Invocation and CodeRabbit Integration
 
 > Status: proposed
 >

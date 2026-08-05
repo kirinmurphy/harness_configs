@@ -75,8 +75,8 @@ function testEnableDisableRoundTrip() {
 // (Phase 4). Presence must reflect home-dir existence only, independent of state.json and
 // independent of whether an executable happens to be on PATH — same semantics as the
 // harness_present() shell function it replaces. See
-// docs/plans/active/discoverable-harness-provider-architecture-plan.md Phase 4 and
-// docs/plans/backlog/harness-presence-signal-expansion-plan.md for the broader signal left for later.
+// docs/plans/completed/discoverable-harness-provider-architecture-plan.md Phase 4 and
+// docs/plans/backlog/harness-presence-signal-expansion.md for the broader signal left for later.
 function testDetectedReflectsHomeDirOnly() {
   let result = run(["harness", "detected"]);
   assert.equal(result.status, 0, `detected failed:\n${result.stdout}\n${result.stderr}`);

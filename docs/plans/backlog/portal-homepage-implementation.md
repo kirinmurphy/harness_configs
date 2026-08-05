@@ -8,7 +8,7 @@ related: []
 reviewed_commit:
 ---
 
-# RoboRepo Portal Homepage — Implementation Plan
+# Portal Homepage Implementation
 
 ## Purpose
 

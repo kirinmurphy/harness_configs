@@ -8,7 +8,7 @@ related: []
 reviewed_commit:
 ---
 
-# Native Web Components And Lit Portal Scaling Plan
+# Scaling the Portal with Native Web Components and Lit
 
 ## Status
 

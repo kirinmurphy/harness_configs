@@ -1007,7 +1007,7 @@ On first run:
   second hardcoded harness enum the grounding notes flagged as a drift risk. Presence is
   deliberately strict (home-dir existence only, not discovery's broader executable-on-PATH
   signal) so this is a behavior-preserving swap — see
-  `docs/plans/backlog/harness-presence-signal-expansion-plan.md` for broadening it later.
+  `docs/plans/backlog/harness-presence-signal-expansion.md` for broadening it later.
 - [x] Replace `has_claude`/`has_codex` with provider iteration.
   `scripts/install/main.sh` now builds `present_harness_ids`/`present_harness_rows`/
   `all_harness_rows` from `harness_detected_rows` and loops over them for skill linking,
@@ -1089,7 +1089,7 @@ On first run:
   covered by existing suites (`harness-cli-check.mjs`'s enable/disable round-trip;
   `test-roborepo.sh`'s relocation-resilient uninstall/repair blocks). "Executable-only" (a harness
   binary on PATH with no home directory) is intentionally out of scope for install/uninstall/repair
-  per the strict-presence decision — see `harness-presence-signal-expansion-plan.md`.
+  per the strict-presence decision — see `harness-presence-signal-expansion.md`.
 
 ### Phase 5: Package resources
 
@@ -2045,7 +2045,7 @@ the 15 already-known hardcoded-pair sites above:
 
 (`scripts/install/install-windows.ps1`'s `$KnownHarnessIds = @("claude", "codex")` is also new and
 fixed-pair, but it's deliberately deferred with a comment pointing at
-`docs/plans/backlog/windows-provider-path-schema-plan.md` — same spirit as the known-15, already
+`docs/plans/backlog/os-windows-provider-path-schema.md` — same spirit as the known-15, already
 tracked, not a fresh gap.)
 
 Reviewed against the "reject don't default to claude/codex" principle otherwise holding up well:

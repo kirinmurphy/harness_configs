@@ -1,6 +1,6 @@
 ---
 id: telemetry-analyze-single-pass-perf
-priority: medium
+priority: low
 next_action: Profile analyzeTelemetry's per-aggregation cost, then fold the independent single-pass tallies into one loop guarded by output equality
 blocked_by: []
 depends_on: []

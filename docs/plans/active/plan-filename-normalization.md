@@ -1,6 +1,6 @@
 ---
 id: docs-plan-filename-normalization
-priority: low
+priority: high
 next_action: Rename the six redundant `-plan` suffix files first (lowest risk — the namespace does not change), then grep docs/ for the old basenames and fix prose references before moving to the namespace-changing batches.
 blocked_by: []
 depends_on: []

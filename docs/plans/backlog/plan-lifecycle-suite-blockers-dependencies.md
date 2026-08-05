@@ -1,6 +1,6 @@
 ---
 id: plan-lifecycle-suite-blockers-dependencies
-priority: medium
+priority: low
 next_action: Implement the blocker schema and domain mutation contract after the lifecycle manifest/action model is available.
 blocked_by: []
 blocked_reasons: []

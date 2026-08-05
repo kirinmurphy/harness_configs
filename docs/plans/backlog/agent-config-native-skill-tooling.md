@@ -8,7 +8,7 @@ related: [native-skill-tools-boundary]
 reviewed_commit: b8684ef
 ---
 
-# Native Skill Tooling — Follow-ups
+# Native Skill Tooling Coverage
 
 ## Summary
 

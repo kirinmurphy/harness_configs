@@ -8,7 +8,7 @@ related: [skills-vs-commands-invocation-policy, package-registry-live-state-reco
 reviewed_commit: b8684ef
 ---
 
-# Harness Parity Todo
+# Harness Parity Across Providers
 
 Backlog of cross-harness parity work. Revised 2026-07-16 after native-alignment,
 portable-install/repair, telemetry lifecycle, unified package configuration, and the

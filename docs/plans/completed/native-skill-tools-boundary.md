@@ -16,7 +16,7 @@ reviewed_commit: b8684ef
 > `skill-inventory.mjs`). The remaining additive tooling — doctor native-metadata
 > reporting, `skill adopt` native-feature report, and optional managed-skill
 > pinning (checklist items 5–7) — split out to
-> [`backlog/native-skill-tooling-followups.md`](../backlog/native-skill-tooling-followups.md).
+> [`backlog/agent-config-native-skill-tooling.md`](../backlog/agent-config-native-skill-tooling.md).
 >
 > This records the product boundary for roborepo's skill tooling:
 > preserve native Claude/Codex capability, and only abstract the parts where roborepo adds

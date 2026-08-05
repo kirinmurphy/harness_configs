@@ -9,7 +9,7 @@ related:
 reviewed_commit:
 ---
 
-# Web Portal Browser Tab Reuse
+# Reusing an Existing Browser Tab When Opening the Portal
 
 ## Summary
 

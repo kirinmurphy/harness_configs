@@ -49,7 +49,7 @@ backlog reads honestly.
   no procedural comments, constants over loose status strings, no emoji in UI) are
   covered by package-owned `code-style` and language skills. The
   auto-vs-manual policy for these is governed by
-  [`skills-vs-commands-invocation-policy.md`](skills-vs-commands-invocation-policy.md)
+  [`agent-config-skills-vs-commands-policy.md`](agent-config-skills-vs-commands-policy.md)
   and recorded on package `skill` resources.
 
 ## Open Parity Work
@@ -62,7 +62,7 @@ it resolves the portal's ambiguous enabled/installed/partial states across rules
 plugins, services, skills, MCP, and permissions.
 
 Start with
-[`skills-vs-commands-invocation-policy.md`](skills-vs-commands-invocation-policy.md)
+[`agent-config-skills-vs-commands-policy.md`](agent-config-skills-vs-commands-policy.md)
 if the next work should improve agent behavior predictability with smaller,
 testable pieces.
 
@@ -102,7 +102,7 @@ Original open question: should stack-specific context be skills, rules, or rules
 trigger skills? The de-facto answer is now **auto-invokable helper skills, gated by
 description** (react, javascript-typescript, supabase-integration-testing, …), with
 always-on rules reserved for short cross-cutting guidance. This is the operating
-model of [`skills-vs-commands-invocation-policy.md`](skills-vs-commands-invocation-policy.md).
+model of [`agent-config-skills-vs-commands-policy.md`](agent-config-skills-vs-commands-policy.md).
 Remaining work is to *finish* that policy's control plane (trigger tests, the
 skill-audit generator, and any manual-only rendering) rather than re-decide the
 shape — track it there, not here.
@@ -114,7 +114,7 @@ shape — track it there, not here.
 - [`completed/package-gated-install.md`](../completed/package-gated-install.md) —
   copy/render materialization, package-gated optional behavior, rendered home rules, and update
   reporting; complete.
-- [`skills-vs-commands-invocation-policy.md`](skills-vs-commands-invocation-policy.md)
+- [`agent-config-skills-vs-commands-policy.md`](agent-config-skills-vs-commands-policy.md)
   — how context (rules / skills / commands) enters each harness; owns item 3.
 - [`completed/portable-install-relocation.md`](../completed/portable-install-relocation.md)
   — relocation/repair, shipped.

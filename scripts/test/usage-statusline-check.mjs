@@ -68,7 +68,7 @@ function runFormatter(input, env = {}) {
     assert.equal(settings.statusLine.command, `node "${entrypoint}"`, "Claude command references managed entrypoint");
 
     // Codex footer stays fully native until an upstream footer-command hook exists (see
-    // docs/plans/backlog/usage-statusline-codex-hook-parity). No used-direction / pacing / scalar
+    // docs/plans/backlog/usage-statusline-codex-parity). No used-direction / pacing / scalar
     // changes are applied to Codex, so the enhancement never ships a mixed used/remaining footer.
     const codexConfig = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
     for (const item of ["model-with-reasoning", "context-remaining", "five-hour-limit", "weekly-limit", "git-branch"]) {

@@ -24,7 +24,7 @@ record either one.
 
 This is a manual test runbook, not a spec for unbuilt features. Every command here exists
 in the current CLI (`manifests/platform/cli-commands.json`). The aspirational unified
-`roborepo add <kind>` wizard (see `user-managed-packages-and-add-workflows.md`) is **not**
+`roborepo add <kind>` wizard (see `package-user-managed-and-add-workflows.md`) is **not**
 built yet and is deliberately absent.
 
 ## Concept model
@@ -298,7 +298,7 @@ URL `serve` emitted (capture it into `PORTAL_URL`).
   capture the portal URL from `serve`) so the browser half of step 9 can be automated and
   video-recorded, not just done by hand.
 - Once the unified `roborepo add <kind>` wizard from
-  `user-managed-packages-and-add-workflows.md` lands, extend the Happy Path with `add rule`,
+  `package-user-managed-and-add-workflows.md` lands, extend the Happy Path with `add rule`,
   `add hook`, `add permission`, and the grouped `add package` flow.
 
 ## Success criteria

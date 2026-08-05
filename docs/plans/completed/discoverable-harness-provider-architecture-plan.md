@@ -7,7 +7,7 @@ depends_on: []
 related:
   - roborepo-cli-surface
   - native-skill-tools-boundary
-  - plan-terminal-session-launching-milestone-1
+  - plan-session-launching-milestone-1
   - portal-telemetry-web-components
   - localhoster-docker-process-providers
   - gemini-cli-provider-integration

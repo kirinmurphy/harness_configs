@@ -10,7 +10,7 @@ related:
   - plan-session-launching-milestone-3
 reviewed_commit: 72c83be
 ---
-# Plan Session Launching — Milestone 2: Reliability and Multi-Terminal Workflows
+# Session Launching — Milestone 2: Reliability and Multi-Terminal Workflows
 
 ## Summary
 

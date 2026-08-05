@@ -20,7 +20,7 @@ The plan's original Claude/Codex-parity scope was **re-cut** during implementati
 split into their own plans so this one could complete cleanly instead of being gated indefinitely on
 an external dependency:
 
-- **Codex footer parity** → `docs/plans/backlog/usage-statusline-codex-hook-parity.md`. Codex has no
+- **Codex footer parity** → `docs/plans/backlog/usage-statusline-codex-parity.md`. Codex has no
   command-backed footer hook, so parity cannot be reached without either an upstream Codex change or a
   private Codex fork. We chose **not** to fork or patch Codex source. Instead the Codex footer is
   left **fully native** (no partial/mixed used-vs-remaining footer is shipped), and parity is pursued
@@ -67,7 +67,7 @@ pass`. Live smoke of `GET /api/usage` → 200, `Cache-Control: no-store`, correc
 - **Release policy:** do not release the enhancement with an intentionally incomplete Codex experience
 
 > **Superseded by the completion summary above.** The "release policy" below was written when Codex
-> parity was in this plan's scope. That scope moved to `usage-statusline-codex-hook-parity`; this
+> parity was in this plan's scope. That scope moved to `usage-statusline-codex-parity`; this
 > plan ships with the Codex footer left fully native (not partially changed), which honors the
 > spirit of the policy — no mixed/incomplete Codex footer is shipped.
 
@@ -1090,7 +1090,7 @@ Perform a manual macOS smoke test in both harnesses:
 
 > **Re-scoped — see the completion summary at the top.** The Codex-parity gates below (both harnesses
 > show used direction / pacing / independent styling in the footer, Codex capability released, older
-> Codex versions blocked) now belong to `usage-statusline-codex-hook-parity`. For *this* plan, the
+> Codex versions blocked) now belong to `usage-statusline-codex-parity`. For *this* plan, the
 > RoboRepo gates below are met and the Codex-footer gates are deliberately deferred by shipping a
 > fully-native Codex footer rather than a partial one.
 

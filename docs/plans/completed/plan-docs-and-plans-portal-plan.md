@@ -41,7 +41,7 @@ lifecycle-move work.
 built — live refresh / SSE (Phase 6, `GET /api/plans/events`) and the static
 no-argument slash-command preflight (Phase 4b) — plus the deferred-enhancements
 list at the bottom, now live in
-[`backlog/plans-portal-live-refresh-and-static-preflight.md`](../backlog/plans-portal-live-refresh-and-static-preflight.md).
+[`backlog/portal-plans-live-refresh.md`](../backlog/portal-plans-live-refresh.md).
 The phase breakdown below describes the original plan as executed; consult the
 follow-up for remaining optional scope.
 

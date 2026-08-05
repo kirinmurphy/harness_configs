@@ -7,7 +7,7 @@ depends_on:
   - canonical-repository-identity-plan-v2
 related:
   - portal-homepage-implementation-plan
-  - plan-terminal-session-launching-milestone-1
+  - plan-session-launching-milestone-1
 reviewed_commit: 3ba2ce81760a3309b549a40c51c20a359a201505
 ---
 

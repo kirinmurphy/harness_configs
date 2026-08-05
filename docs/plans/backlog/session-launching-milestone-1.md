@@ -9,7 +9,7 @@ related:
   - plan-session-launching-milestone-3
 reviewed_commit: 72c83be
 ---
-# Plan Session Launching — Milestone 1: macOS Core Workflow
+# Session Launching — Milestone 1: macOS Core Workflow
 
 ## Summary
 

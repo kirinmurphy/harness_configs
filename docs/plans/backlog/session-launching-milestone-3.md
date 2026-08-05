@@ -10,7 +10,7 @@ related:
   - plan-session-launching-milestone-2
 reviewed_commit: 72c83be
 ---
-# Plan Session Launching — Milestone 3: Cross-Platform Adapters
+# Session Launching — Milestone 3: Cross-Platform Adapters
 
 ## Summary
 

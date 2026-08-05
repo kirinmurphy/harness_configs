@@ -1,12 +1,12 @@
 ---
 id: docs-plan-filename-normalization
 priority: high
-next_action: Rename the six redundant `-plan` suffix files first (lowest risk — the namespace does not change), then grep docs/ for the old basenames and fix prose references before moving to the namespace-changing batches.
+next_action: Decide whether to extend the convention to `docs/plans/completed/`, where 19 files still carry a `-plan` suffix or a `roborepo-` prefix. Backlog is done; renaming completed plans is currently a non-goal.
 blocked_by: []
 depends_on: []
 related:
   - skills-vs-commands-invocation-policy
-reviewed_commit:
+reviewed_commit: 6c94691
 ---
 
 # Normalize Plan Filenames Against the Namespace Convention
@@ -22,7 +22,8 @@ in prose as well as in `related` and `depends_on` frontmatter.
 
 ## Context
 
-An audit of `docs/plans/backlog/` found 30 plans, of which 19 deviate from the convention. Three
+An audit of `docs/plans/backlog/` found 30 plans, of which 19 deviated from the convention. Four
+more plans landed after that audit, bringing the backlog to 34 and the rename set to 21. Three
 recurring patterns:
 
 - **Redundant `-plan` suffix** (6 files). Everything under `docs/plans` is a plan.
@@ -108,6 +109,18 @@ remain across `docs/plans/`.
 | `plan-terminal-session-launching-milestone-2` | `session-launching-milestone-2` | see milestone-1 |
 | `plan-terminal-session-launching-milestone-3` | `session-launching-milestone-3` | see milestone-1 |
 
+### Added after the audit
+
+Four plans landed after the audit table was written. `harness-capability-derived-resource-targeting`
+already conformed. The other three were folded into the declared vocabulary rather than growing
+`plans-config.json` with `antigravity`, `manifest`, and `permissions` prefixes:
+
+| Current | Proposed | Reason |
+| --- | --- | --- |
+| `antigravity-cli-provider-integration` | `harness-antigravity-cli-integration` | provider integration is harness work |
+| `manifest-tsv-provider-consolidation` | `harness-manifest-tsv-consolidation` | provider manifests are harness work |
+| `permissions-ui-revamp` | `agent-config-permissions-ui-revamp` | permissions are harness config |
+
 ### Already conforming
 
 `git-exec-consolidation`, `package-cli-test-guide`, `package-registry-live-state-reconciliation`,
@@ -118,24 +131,49 @@ remain across `docs/plans/`.
 ## Implementation plan
 
 - [x] Resolve the duplicate-id conflict.
-- [ ] Add the missing-config bootstrap flow to the `plan-docs` skill, so the propose-and-refine
-      sequence above runs on any repository without a `plans-config.json` — not just this one.
-- [ ] Rename the six redundant-suffix files. Lowest risk: the namespace does not change.
-- [ ] Rename the status-encoding files (`-todo`, `-followups`).
-- [ ] Rename the files whose namespace changes, which is where inbound references are most likely
+- [x] Add the missing-config bootstrap flow to the `plan-docs` skill. Already satisfied: the
+      "When no project config exists" section of
+      `globals/packages/plan-docs/skills/plan-docs/references/plan-schema.md` implements the
+      propose-and-refine sequence, including evidence sourcing and the ask-before-writing step.
+      No skill edit was needed.
+- [x] Rename the six redundant-suffix files. Lowest risk: the namespace does not change.
+- [x] Rename the status-encoding files (`-todo`, `-followups`).
+- [x] Rename the files whose namespace changes, which is where inbound references are most likely
       to break.
-- [ ] After each batch, grep for the old basename across `docs/` and fix prose references.
-      Frontmatter `related`/`depends_on` use `id`, not filename, so those should need no edits —
-      verify rather than assume.
-- [ ] Update any H1 that merely restates its filename.
+- [x] Rename the three post-audit plans into the declared vocabulary.
+- [x] After each batch, grep for the old basename across `docs/` and fix prose references.
+      Confirmed: frontmatter `related`/`depends_on` use `id`, so none needed editing. Code comments
+      did — `scripts/cli/harness.mjs`, `scripts/test/harness-cli-check.mjs`,
+      `scripts/test/usage-statusline-check.mjs`, and
+      `globals/packages/usage-statusline/README.md` all carried plan paths.
+- [x] Update any H1 that merely restates its filename.
+
+## Decisions made during execution
+
+- **Historical references left intact.** `docs/plans/completed/primary-todo.md` names
+  `harness-parity-todo.md` and `skills-vs-commands-invocation-policy.md` at lines 351, 381, and 382.
+  That is a completed plan describing repository state as it was, not a live link, so rewriting it
+  would falsify the record. Left deliberately; not a missed reference.
+- **Two dangling id references fixed.** `completed/discoverable-harness-provider-architecture-plan.md`
+  and `backlog/portal-homepage-repository-section.md` both listed
+  `plan-terminal-session-launching-milestone-1` under `related`, but no plan has ever carried that
+  id — the real one is `plan-session-launching-milestone-1`. Pre-existing breakage, unrelated to
+  renaming, corrected here and called out in its commit.
+- **Ids intentionally diverge from filenames.** Several files now carry an `id` that no longer
+  matches their name (`portal-lit-native-scaled.md` has `id: portal-lit-native-scaled-plan`). This
+  is the rule working as designed: ids are durable identifiers, and regenerating them would break
+  every inbound `related` and `depends_on`.
 
 ## Validation
 
-- [ ] `git mv` for every rename, so history follows the file.
-- [ ] No `id` value changes: diff frontmatter before and after each batch.
-- [ ] No duplicate ids remain across `docs/plans/`.
-- [ ] `npm run test:plans` and `npm run test:plans-findings` pass.
-- [ ] Grep the repository for each old basename; zero hits outside git history.
+- [x] `git mv` for every rename, so history follows the file. All 21 showed as `R` in `git status`.
+- [x] No `id` value changes: `git diff` over each batch showed no changed `id:` line. The only
+      frontmatter edits were the two dangling-reference fixes above.
+- [x] No duplicate ids remain across `docs/plans/`.
+- [x] `npm run test:plans`, `npm run test:plans-findings`, and `npm run test:plans-portal-state` pass.
+- [x] Grep the repository for each old basename; remaining hits are only `id:` values, frontmatter
+      ids, this plan's own rename tables, and the intentional `primary-todo.md` history.
+- [x] Every backlog filename starts with a namespace from `plans-config.json` or the universal set.
 
 ## Risks
 

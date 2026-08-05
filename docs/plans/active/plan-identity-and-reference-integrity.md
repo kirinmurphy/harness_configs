@@ -192,16 +192,16 @@ already conformed. The other three were folded into the declared vocabulary rath
 
 - [x] Adopt opaque short ids for new plans: 6-8 lowercase base36 characters, generated rather than
       derived from the filename. `modules/plan-docs/plan-id.mjs`.
-- [x] Make the legacy path removable. `classifyPlanId()` checks the current format first and
-      returns `short`; a hyphenated slug falls through to a branch marked `TEMP(legacy-slug-ids)`
-      and returns `legacy`, reported as the informational `LEGACY_SLUG_ID`. Ordering matters — a
-      short id also satisfies the slug pattern, so a slug-first check would misreport every new id.
+- [x] Keep the legacy path to one branch. `classifyPlanId()` checks the current format first and
+      returns `short`; a hyphenated slug falls through to a branch marked `LEGACY(slug-ids)` and
+      returns `legacy`, reported as the informational `LEGACY_SLUG_ID`. Ordering matters — a short
+      id also satisfies the slug pattern, so a slug-first check would misreport every new id.
 - [x] Stop `repair.mjs` minting slug ids from filenames, which was a second source of the old
       format.
 - [x] Document the convention and its reasoning in the `plan-docs` skill.
-- [ ] Convert remaining slug ids opportunistically — only for plans with no inbound references, and
-      never as a bulk migration. Baseline at adoption: 81 of 81 plans on slug ids. Delete the two
-      `TEMP(legacy-slug-ids)` markers when the count reaches zero.
+- [x] Decide the fate of the remaining slug ids. Resolved: they stay. See "Legacy ids are permanent,
+      not transitional" below — converting them was dropped as a non-goal rather than left as
+      standing work.
 
 ## Decisions made during execution
 
@@ -227,6 +227,20 @@ already conformed. The other three were folded into the declared vocabulary rath
   was renamed. That is an exception to the never-rewrite-an-id rule, taken only because a grep
   confirmed nothing referenced it. It is not precedent: any plan with even one inbound reference
   keeps its slug id.
+- **Legacy ids are permanent, not transitional.** The original task was to convert slug ids
+  opportunistically — only plans with no inbound references — and delete the legacy branch once none
+  remained. That is unfinishable as stated: of 80 legacy plans, 41 are referenced
+  in frontmatter across 116 reference edges, so under a never-touch-a-referenced-id rule the count
+  cannot reach zero. Converting only the 22 unreferenced plans would move the counter to 58 without
+  bringing the markers any closer to deletion, while churning the frontmatter of dormant plans.
+
+  Decision: slug ids remain valid indefinitely. New plans use short ids; the two `TEMP` markers
+  stay. The tiering still earns its keep — it keeps the legacy path to one branch and one
+  informational finding, and documents the convention boundary for any future reader — it just is
+  not a migration in progress. The alternative, a bulk rewrite of all 116 edges in lockstep, is
+  exactly the expensive migration that choosing coexistence was meant to avoid.
+
+  `LEGACY_SLUG_ID` therefore measures composition, not remaining work.
 - **Inline arrays fixed rather than banned.** `plan-docs-and-plans-portal-plan` deferred them
   "unless a full YAML parser is adopted". Implemented as the narrow case instead — both list forms
   are valid YAML that authors keep writing, and rewriting the 13 affected files would have reset the

@@ -747,9 +747,9 @@ function normalizeFrontmatter(frontmatter, findings) {
     if (idFormat === "invalid") {
       findings.push(finding("INVALID_ID", { meta: { value: frontmatter.id } }));
     } else if (idFormat === "legacy") {
-      // TEMP(legacy-slug-ids): informational only — existing slug ids are valid and must not be
-      // rewritten, since ids are the durable identity inbound references resolve against. This
-      // finding exists to measure how much of the tree still predates the short-id convention.
+      // LEGACY(slug-ids): informational only — existing slug ids are valid and must not be
+      // rewritten, since ids are the durable identity inbound references resolve against. Reports
+      // which convention a plan uses; it is not a backlog item.
       findings.push(finding("LEGACY_SLUG_ID", { meta: { value: frontmatter.id } }));
     }
   }

@@ -64,9 +64,14 @@ Plans created before this convention carry hyphenated slug ids (`harness-parity`
 `plan-session-launching-milestone-1`). These remain **valid and must not be rewritten** — changing
 one breaks every inbound reference, which is the exact failure the durable id exists to prevent.
 
-Validation reports them as `LEGACY_SLUG_ID`, an informational finding that measures how much of a
-repository predates the convention. Do not "fix" it. New plans use short ids; old plans keep theirs;
-the two coexist indefinitely.
+Validation reports them as `LEGACY_SLUG_ID`, an informational finding recording which convention a
+plan uses. Do not "fix" it. New plans use short ids; old plans keep theirs; the two coexist
+indefinitely.
+
+This is a permanent split, not a migration in progress. Most plans with a slug id are referenced by
+other plans, so converting them would mean rewriting every reference edge in lockstep — the exact
+migration that accepting mixed ids exists to avoid. Treat the finding as describing composition,
+never as a backlog of work to clear.
 
 ## Naming
 

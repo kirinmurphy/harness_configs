@@ -15,10 +15,14 @@ const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz";
 
 export const SHORT_ID_PATTERN = /^[0-9a-z]{6,8}$/;
 
-// TEMP(legacy-slug-ids): hyphenated slugs are the pre-conversion format. Plans written before the
-// short-id convention keep theirs — ids are stable across renames, so rewriting them would break
-// every inbound reference for no gain. Delete this constant and the LEGACY branch in
-// classifyPlanId() once no plan under docs/plans carries a slug id; nothing else references it.
+// LEGACY(slug-ids): hyphenated slugs predate the short-id convention. Plans that have one keep it
+// permanently — an id is what inbound references resolve against, so rewriting one breaks every
+// `related` and `depends_on` pointing at it, and most legacy plans are referenced.
+//
+// This is deliberately not a migration in progress. Both formats are valid indefinitely; the split
+// exists to keep the older one to a single branch and to mark where the convention changed, not to
+// stage its removal. Delete this only if every plan is independently reassigned a short id, which
+// means rewriting every reference edge in lockstep.
 export const LEGACY_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 // Generates a new opaque id. Collisions are caught by DUPLICATE_PLAN_ID rather than prevented here:
@@ -42,7 +46,7 @@ export function generatePlanId(length = ID_LENGTH) {
 export function classifyPlanId(id) {
   if (!id) return "invalid";
   if (SHORT_ID_PATTERN.test(id)) return "short";
-  // TEMP(legacy-slug-ids): delete this branch when the conversion is complete.
+  // LEGACY(slug-ids): permanent, not staged for removal — see LEGACY_SLUG_PATTERN above.
   if (LEGACY_SLUG_PATTERN.test(id)) return "legacy";
   return "invalid";
 }

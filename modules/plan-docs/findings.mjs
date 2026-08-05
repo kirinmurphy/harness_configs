@@ -188,8 +188,9 @@ const DEFS = {
     message: ({ meta }) => `Invalid id: ${meta.value}.`,
     resolution: "Use a short lowercase base36 id of 6-8 characters, e.g. `a3f9c2k1`.",
   },
-  // TEMP(legacy-slug-ids): drop this finding with the legacy branch in classifyPlanId(). It is
-  // informational — a slug id is valid, and rewriting one would break inbound references.
+  // LEGACY(slug-ids): informational only. Reports which id convention a plan uses, so this measures
+  // composition rather than outstanding work — a slug id is valid permanently and must not be
+  // rewritten, because inbound references resolve against it.
   LEGACY_SLUG_ID: {
     kind: "parse",
     severity: "advisory",

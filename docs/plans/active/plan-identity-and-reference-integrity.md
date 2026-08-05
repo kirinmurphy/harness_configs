@@ -1,7 +1,7 @@
 ---
-id: docs-plan-filename-normalization
+id: 5qrzhfgu
 priority: high
-next_action: Decide whether to extend the convention to `docs/plans/completed/`, where 19 files still carry a `-plan` suffix or a `roborepo-` prefix. Backlog is done; renaming completed plans is currently a non-goal.
+next_action: Decide whether to extend filename normalization to `docs/plans/completed/`, where 19 files still carry a `-plan` suffix or a `roborepo-` prefix. Backlog filenames are done, reference integrity is enforced, and the id convention is adopted for new plans.
 blocked_by: []
 depends_on: []
 related:
@@ -9,16 +9,24 @@ related:
 reviewed_commit: 6c94691
 ---
 
-# Normalize Plan Filenames Against the Namespace Convention
+# Durable Plan Identity and Reference Integrity
 
 ## Summary
 
-`docs/plans/plans-config.json` declares this repository's plan namespaces, and the `plan-docs`
-skill owns the filename rules. Most existing plans predate both. This plan records the gap and
-renames them in reviewable batches.
+A plan has three names — its filename, its H1, and its `id` — and they serve different jobs. The
+first two describe the work and are expected to change as it evolves. The third identifies the plan
+and must never change, because every `related`, `depends_on`, and `blocked_by` entry resolves
+against it.
+
+This plan separates those roles and makes the separation enforceable:
+
+- filenames follow the namespace convention declared in `docs/plans/plans-config.json`;
+- ids become short opaque strings, so they cannot drift as the work is split or rescoped;
+- every id-bearing field is resolved against the plan graph, so a reference pointing at nothing is
+  reported rather than discovered by accident.
 
 Renaming is deliberately not automated: a filename is a link target, and plans reference each other
-in prose as well as in `related` and `depends_on` frontmatter.
+in prose as well as in frontmatter.
 
 ## Context
 
@@ -35,10 +43,27 @@ recurring patterns:
 
 ## Goals
 
+**Filenames**
+
 - Every plan filename starts with a namespace from the universal set or `plans-config.json`.
 - No filename carries a `-plan` suffix or encodes status.
+
+**Identity**
+
 - Frontmatter `id` values are unchanged by any rename, so inbound references keep resolving.
 - No duplicate `id` values remain.
+- New plans get an opaque short id that cannot drift as the work is renamed, split, or rescoped.
+  Existing slug ids stay as they are — rewriting one breaks every reference pointing at it.
+
+**Reference integrity**
+
+- Every `depends_on`, `related`, and `blocked_by` entry resolves to a plan that exists, or is
+  explicitly marked as an external blocker.
+- Both YAML list syntaxes parse, so a reference is never silently dropped for being written in the
+  form the parser happened not to implement.
+
+**Bootstrapping**
+
 - A repository with no `plans-config.json` gets one, derived from its own code and existing plans
   rather than copied from elsewhere.
 
@@ -130,6 +155,8 @@ already conformed. The other three were folded into the declared vocabulary rath
 
 ## Implementation plan
 
+### Filenames
+
 - [x] Resolve the duplicate-id conflict.
 - [x] Add the missing-config bootstrap flow to the `plan-docs` skill. Already satisfied: the
       "When no project config exists" section of
@@ -148,6 +175,34 @@ already conformed. The other three were folded into the declared vocabulary rath
       `globals/packages/usage-statusline/README.md` all carried plan paths.
 - [x] Update any H1 that merely restates its filename.
 
+### Reference integrity
+
+- [x] Resolve `related` and `blocked_by`, not just `depends_on`. `relationshipFindings` only
+      checked dependencies, so a wrong id in the other two fields pointed at nothing and no one
+      noticed. Added `RELATED_NOT_FOUND` and `BLOCKER_NOT_FOUND`.
+- [x] Fix the ten dangling references this surfaced across 81 plans. Seven pointed at ids that were
+      close but wrong; one pointed at a plan deleted in `ea341ec`.
+- [x] Parse inline arrays (`related: [a, b]`). The parser reported `UNSUPPORTED_INLINE_ARRAY` and
+      then emptied the field, so 13 valid references across 12 plans never reached the graph. Both
+      YAML list forms now parse, splitting on commas outside quotes.
+- [x] Allow external blockers. `blocked_by` may carry a non-plan entry marked `upstream:`,
+      `external:`, `vendor:`, or `decision:`; unprefixed entries still resolve as plan ids.
+
+### Identity
+
+- [x] Adopt opaque short ids for new plans: 6-8 lowercase base36 characters, generated rather than
+      derived from the filename. `modules/plan-docs/plan-id.mjs`.
+- [x] Make the legacy path removable. `classifyPlanId()` checks the current format first and
+      returns `short`; a hyphenated slug falls through to a branch marked `TEMP(legacy-slug-ids)`
+      and returns `legacy`, reported as the informational `LEGACY_SLUG_ID`. Ordering matters — a
+      short id also satisfies the slug pattern, so a slug-first check would misreport every new id.
+- [x] Stop `repair.mjs` minting slug ids from filenames, which was a second source of the old
+      format.
+- [x] Document the convention and its reasoning in the `plan-docs` skill.
+- [ ] Convert remaining slug ids opportunistically — only for plans with no inbound references, and
+      never as a bulk migration. Baseline at adoption: 81 of 81 plans on slug ids. Delete the two
+      `TEMP(legacy-slug-ids)` markers when the count reaches zero.
+
 ## Decisions made during execution
 
 - **Historical references left intact.** `docs/plans/completed/primary-todo.md` names
@@ -163,6 +218,19 @@ already conformed. The other three were folded into the declared vocabulary rath
   matches their name (`portal-lit-native-scaled.md` has `id: portal-lit-native-scaled-plan`). This
   is the rule working as designed: ids are durable identifiers, and regenerating them would break
   every inbound `related` and `depends_on`.
+- **Opaque ids chosen over readable slugs.** A descriptive id makes a promise it cannot keep — plans
+  get split, rescoped, and renamed, and an id that follows would break its references. The counter
+  argument was that readable ids make references auditable by eye; that turned out to be a
+  convenience, not a safety property, once every field is resolved against the plan graph. A format
+  check rejects a malformed id but passes a well-formed one pointing at nothing.
+- **This plan's own id was changed**, from `docs-plan-filename-normalization` to `5qrzhfgu`, when it
+  was renamed. That is an exception to the never-rewrite-an-id rule, taken only because a grep
+  confirmed nothing referenced it. It is not precedent: any plan with even one inbound reference
+  keeps its slug id.
+- **Inline arrays fixed rather than banned.** `plan-docs-and-plans-portal-plan` deferred them
+  "unless a full YAML parser is adopted". Implemented as the narrow case instead — both list forms
+  are valid YAML that authors keep writing, and rewriting the 13 affected files would have reset the
+  counter without stopping the next occurrence.
 
 ## Validation
 
@@ -174,6 +242,12 @@ already conformed. The other three were folded into the declared vocabulary rath
 - [x] Grep the repository for each old basename; remaining hits are only `id:` values, frontmatter
       ids, this plan's own rename tables, and the intentional `primary-todo.md` history.
 - [x] Every backlog filename starts with a namespace from `plans-config.json` or the universal set.
+- [x] Zero unresolvable references across all 81 plans, checked by resolving every `depends_on`,
+      `related`, and `blocked_by` entry against the snapshot.
+- [x] `UNSUPPORTED_INLINE_ARRAY` is gone (13 → 0) and the 13 references it was hiding all resolve.
+- [x] `npm run test:plans-repair` passes; regression tests cover the tiered id classifier, generated
+      id format and uniqueness, all three reference fields reporting independently, and external
+      blockers being skipped rather than reported missing.
 
 ## Risks
 

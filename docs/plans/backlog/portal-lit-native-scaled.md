@@ -35,7 +35,7 @@ This plan proposes:
 - optionally using Tailwind CLI as contributor/release tooling while shipping ready-to-serve CSS
 - preserving the existing server APIs, loopback security, package distribution, and CLI workflow
 
-This plan supersedes `docs/plans/portal-react-vite-scaled-plan.md` as the recommended next portal
+This plan supersedes `docs/plans/archived/portal-react-vite-scaled-plan.md` as the recommended next portal
 scaling step. React and Vite remain a possible future destination if the portal later develops
 requirements that Lit and the native platform do not address well.
 

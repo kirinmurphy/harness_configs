@@ -1,6 +1,6 @@
 ---
 id: e6f1pknt
-priority: medium
+priority: high
 next_action: Design the per-package fixture location/schema and confirm it with the user before migrating existing entries
 blocked_by: []
 depends_on: []

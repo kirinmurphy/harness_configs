@@ -117,7 +117,7 @@ remain across `docs/plans/`.
 | `harness-presence-signal-expansion-plan` | `harness-presence-signal-expansion` | redundant suffix |
 | `portal-homepage-implementation-plan` | `portal-homepage-implementation` | redundant suffix |
 | `portal-lit-native-scaled-plan` | `portal-lit-native-scaled` | redundant suffix |
-| `roborepo-packaging-distribution-plan` | `infra-packaging-distribution` | redundant suffix; `roborepo-` restates the repository |
+| `roborepo-packaging-distribution-plan` | `infra-packaging-distribution` | redundant suffix; `roborepo-` restates the repository (since split into `infra-packaging-01`…`04`; the renamed file no longer exists) |
 | `windows-provider-path-schema-plan` | `os-windows-provider-path-schema` | redundant suffix; OS-specific work |
 | `wrap-up-coderabbit-integration-plan` | `agent-config-wrap-up-coderabbit` | redundant suffix; wrap-up is harness config |
 | `harness-parity-todo` | `harness-parity` | `-todo` encodes status |

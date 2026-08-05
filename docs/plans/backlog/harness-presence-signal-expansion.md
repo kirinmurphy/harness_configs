@@ -3,10 +3,10 @@ id: harness-presence-signal-expansion
 priority: low
 next_action: Decide which install-time decisions (skill linking, root-config export, summary display) should use discovery's richer presence signal vs. the strict home-dir check, then thread a second field through harness detected.
 blocked_by:
-  - discoverable-harness-provider-architecture-plan
+  - discoverable-harness-provider-architecture
 depends_on: []
 related:
-  - discoverable-harness-provider-architecture-plan
+  - discoverable-harness-provider-architecture
 reviewed_commit:
 ---
 

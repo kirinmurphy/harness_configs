@@ -226,6 +226,18 @@ const DEFS = {
     message: ({ meta }) => `Dependency not found: ${meta.dependency}.`,
     resolution: "Correct the id in `depends_on`, or remove it if that plan no longer exists.",
   },
+  RELATED_NOT_FOUND: {
+    kind: "relationship",
+    severity: "advisory",
+    message: ({ meta }) => `Related plan not found: ${meta.related}.`,
+    resolution: "Correct the id in `related`, or remove it if that plan no longer exists.",
+  },
+  BLOCKER_NOT_FOUND: {
+    kind: "relationship",
+    severity: "advisory",
+    message: ({ meta }) => `Blocker not found: ${meta.blocker}.`,
+    resolution: "Correct the id in `blocked_by`, or remove it if that plan no longer exists.",
+  },
 };
 
 export const FINDING_CODES = Object.freeze(Object.keys(DEFS));

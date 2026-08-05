@@ -7,7 +7,7 @@ depends_on:
   - plan-lifecycle-controls-and-filter-aware-toast
   - plan-lifecycle-readiness-validation-and-repair-prompts
 related:
-  - plan-docs-and-plans-portal
+  - plan-docs-and-plans-portal-plan
   - plan-unclassified-plan-recovery
   - plan-lifecycle-suite-blockers-dependencies
   - integration-check-determinism

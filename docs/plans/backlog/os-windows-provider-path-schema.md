@@ -3,10 +3,10 @@ id: windows-provider-path-schema
 priority: low
 next_action: Add a `platforms.win32` path-override shape to the provider manifest schema (scripts/harnesses/provider-manifest.schema.json) that supports absolute environment-variable-rooted paths, not just `~`-relative ones, then update scripts/harnesses/paths.mjs's expandHome() to resolve it.
 blocked_by:
-  - discoverable-harness-provider-architecture-plan
+  - discoverable-harness-provider-architecture
 depends_on: []
 related:
-  - discoverable-harness-provider-architecture-plan
+  - discoverable-harness-provider-architecture
 reviewed_commit:
 ---
 

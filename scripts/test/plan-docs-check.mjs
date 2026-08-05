@@ -802,6 +802,73 @@ reviewed_commit:
   assert.equal(budgetCheck.status, 0, budgetCheck.stderr);
   const budgetResult = JSON.parse(budgetCheck.stdout);
   assert.equal(budgetResult.truncated, true, "expected truncation with a ~0ms time budget");
+
+  // Referential integrity across every id-bearing field. This is the check that actually catches a
+  // wrong id: the INVALID_ID format rule only rejects a malformed one, so a transposed character in
+  // an otherwise well-formed id passes it and resolves to nothing. `related` and `blocked_by` went
+  // unvalidated for a long time, which is how ten dangling references accumulated in this repo.
+  const refsRepo = path.join(projects, "refs");
+  fs.mkdirSync(path.join(refsRepo, "docs", "plans", "backlog"), { recursive: true });
+  fs.writeFileSync(path.join(refsRepo, ".git"), "gitdir: nowhere\n");
+  const refsPlan = (id, extra) => `---
+id: ${id}
+priority: high
+next_action: Do the thing
+${extra}
+reviewed_commit:
+---
+# ${id}
+
+## Summary
+
+Body.
+
+## Context
+
+Body.
+
+## Implementation plan
+
+- [ ] Task
+
+## Validation
+
+- [ ] Check
+`;
+  fs.writeFileSync(path.join(refsRepo, "docs", "plans", "backlog", "target.md"),
+    refsPlan("real-target", "blocked_by: []\ndepends_on: []\nrelated: []"));
+  fs.writeFileSync(path.join(refsRepo, "docs", "plans", "backlog", "source.md"),
+    refsPlan("ref-source", [
+      "blocked_by:",
+      "  - real-target",
+      "  - ghost-blocker",
+      "depends_on:",
+      "  - real-target",
+      "  - ghost-dep",
+      "related:",
+      "  - real-target",
+      "  - ghost-related",
+    ].join("\n")));
+
+  const refsStateRoot = path.join(tempRoot, "refs-state");
+  writePlanSettings({ stateRoot: refsStateRoot, discoveryRoots: [refsRepo] });
+  const refsSnapshot = buildPlanSnapshot({ stateRoot: refsStateRoot });
+  const sourceRecord = refsSnapshot.plans.find((item) => item.plan.id === "ref-source");
+  assert.ok(sourceRecord, "expected the referencing plan in the snapshot");
+  const refCodes = sourceRecord.plan.validation.findings
+    .filter((item) => item.code.endsWith("_NOT_FOUND"))
+    .map((item) => item.code)
+    .sort();
+  assert.deepEqual(refCodes, ["BLOCKER_NOT_FOUND", "DEPENDENCY_NOT_FOUND", "RELATED_NOT_FOUND"],
+    "every id-bearing field must report an unresolvable reference");
+  const ghostNames = sourceRecord.plan.validation.findings
+    .filter((item) => item.code.endsWith("_NOT_FOUND"))
+    .map((item) => item.message);
+  assert.ok(ghostNames.every((message) => message.includes("ghost-")),
+    "findings must name the unresolvable id, not the valid sibling in the same field");
+  const targetRecord = refsSnapshot.plans.find((item) => item.plan.id === "real-target");
+  assert.equal(targetRecord.plan.validation.findings.filter((item) => item.code.endsWith("_NOT_FOUND")).length, 0,
+    "a plan whose references all resolve must report no dangling-reference findings");
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }

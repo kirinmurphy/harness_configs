@@ -5,7 +5,7 @@ next_action: Implement the shared plan-status component, lifecycle mutation doma
 blocked_by: []
 depends_on: []
 related:
-  - plan-docs-and-plans-portal
+  - plan-docs-and-plans-portal-plan
 reviewed_commit: 3ba2ce81760a3309b549a40c51c20a359a201505
 ---
 

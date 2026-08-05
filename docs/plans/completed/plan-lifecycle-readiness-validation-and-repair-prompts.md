@@ -6,7 +6,7 @@ blocked_by: []
 depends_on:
   - plan-lifecycle-controls-and-filter-aware-toast
 related:
-  - plan-docs-and-plans-portal
+  - plan-docs-and-plans-portal-plan
   - plan-unclassified-plan-recovery
 reviewed_commit: 3ba2ce81760a3309b549a40c51c20a359a201505
 ---

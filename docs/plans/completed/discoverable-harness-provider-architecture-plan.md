@@ -5,10 +5,9 @@ next_action:
 blocked_by: []
 depends_on: []
 related:
-  - roborepo-cli-surface
+  - roborepo-cli-surface-implementation-plan
   - native-skill-tools-boundary
   - plan-session-launching-milestone-1
-  - portal-telemetry-web-components
   - localhoster-docker-process-providers
   - gemini-cli-provider-integration
 reviewed_commit: 179a31d0beaf9c8abb4ce6b4fe5756e130dc84ad

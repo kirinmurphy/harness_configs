@@ -740,11 +740,24 @@ function relationshipFindings(plans) {
       addFinding(findings, record.key, finding("DUPLICATE_PLAN_ID", { meta: { id: record.plan.id } }));
     }
   }
+  // Every id-bearing field is resolved the same way. Referential integrity is what actually catches
+  // a wrong id — a format check only catches a malformed one, so a transposed character in an
+  // otherwise well-formed id falls straight through it.
+  const RELATIONS = [
+    ["dependencies", "DEPENDENCY_NOT_FOUND", "dependency"],
+    ["related", "RELATED_NOT_FOUND", "related"],
+    ["blockers", "BLOCKER_NOT_FOUND", "blocker"],
+  ];
   for (const record of plans) {
     for (const dep of record.plan.dependencies || []) {
       if (dep === record.plan.id) addFinding(findings, record.key, finding("SELF_DEPENDENCY"));
-      if (!byRepoAndId.has(`${record.repository.root}:${dep}`)) {
-        addFinding(findings, record.key, finding("DEPENDENCY_NOT_FOUND", { meta: { dependency: dep } }));
+    }
+    for (const [field, code, metaKey] of RELATIONS) {
+      for (const ref of record.plan[field] || []) {
+        if (!ref) continue;
+        if (!byRepoAndId.has(`${record.repository.root}:${ref}`)) {
+          addFinding(findings, record.key, finding(code, { meta: { [metaKey]: ref } }));
+        }
       }
     }
   }

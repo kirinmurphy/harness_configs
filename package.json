@@ -48,6 +48,7 @@
     "test:repositories-service": "node scripts/test/repositories-service-check.mjs",
     "test:repositories-api": "node scripts/test/repositories-api-check.mjs",
     "test:packages": "node scripts/test/package-catalog-check.mjs",
+    "test:plan-promote-start": "node scripts/test/plan-promote-plan-start-check.mjs",
     "test:package-catalog-harness": "node scripts/test/package-catalog-harness-check.mjs",
     "test:rules-render-characterization": "node scripts/test/rules-render-characterization-check.mjs",
     "test:slash-commands-characterization": "node scripts/test/slash-commands-characterization-check.mjs",

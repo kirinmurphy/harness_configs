@@ -16,7 +16,7 @@ const catalog = loadPackageCatalog({ includeUnavailable: true });
 validatePackageCatalog(catalog);
 
 const packageIds = new Set(catalog.map((pkg) => pkg.id));
-for (const id of ["jcodemunch", "jdocmunch", "telemetry", "caveman"]) {
+for (const id of ["jcodemunch", "jdocmunch", "telemetry", "caveman", "plan-promote", "plan-start"]) {
   assert(packageIds.has(id), `missing package: ${id}`);
 }
 assert(!packageIds.has("code-intel"), "Code Intelligence composite package should not be present");
@@ -27,7 +27,7 @@ for (const name of ["index code", "index docs", "watch code"]) {
 }
 
 const slashNames = loadSlashCommandPlan().commands.map((command) => command.name).sort();
-for (const name of ["case-study", "frontend-design", "plan-docs", "tighten", "wrap-up"]) {
+for (const name of ["case-study", "frontend-design", "plan-docs", "tighten", "wrap-up", "plan-promote", "plan-start"]) {
   assert(slashNames.includes(name), `missing slash command: ${name}`);
 }
 

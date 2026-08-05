@@ -42,6 +42,34 @@
       "skipPhrases": ["brief answers", "PR descriptions", "ordinary implementation"]
     },
     {
+      "skill": "plan-promote",
+      "match": [
+        "I need help reviewing and preparing an existing repository implementation plan before we start coding",
+        "please reconcile stale assumptions and validate readiness on docs/plans/backlog/example.md"
+      ],
+      "nearMiss": [
+        "create an implementation plan for package reconciliation",
+        "start implementing this plan",
+        "run the integration check on integration/foo"
+      ],
+      "triggerPhrases": ["reviewing and preparing an existing repository implementation plan", "reconcile stale assumptions", "validate readiness"],
+      "skipPhrases": ["creating a new plan from scratch", "writing feature code", "creating worktrees", "resuming active implementation"]
+    },
+    {
+      "skill": "plan-start",
+      "match": [
+        "help me with beginning implementation from an existing prepared repository plan, docs/plans/active/example.md",
+        "please create or safely reuse an isolated worktree and implement this plan"
+      ],
+      "nearMiss": [
+        "prepare this plan before we start building",
+        "sync this plan with what we just changed",
+        "run the integration check on integration/foo"
+      ],
+      "triggerPhrases": ["beginning implementation from an existing prepared repository plan", "create or safely reuse an isolated worktree"],
+      "skipPhrases": ["initial plan preparation", "lifecycle orchestration", "portal actions", "integration-branch closeout"]
+    },
+    {
       "skill": "tighten",
       "match": [
         "/tighten this module",

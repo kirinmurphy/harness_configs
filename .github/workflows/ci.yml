@@ -42,6 +42,7 @@ jobs:
           npm run --silent test:packages
           npm run --silent test:package-lifecycle
           npm run --silent test:package-default-enabled
+          npm run --silent test:plan-promote-start
 
   # The Windows installer is PowerShell and is never exercised by the bash suite above. This job
   # does not install anything -- it parses install-windows.ps1 through PowerShell's own parser and

@@ -450,22 +450,29 @@ fi
 # and the non-zero exit. link-skills.sh --check is the source of truth for per-skill link
 # integrity; calling it here keeps doctor from drifting against the linker.
 #
-# skill audit --check belongs in this list for the same reason: docs/reference/internal/
-# skill-invocation-audit.md is generated from the package manifests, so adding or removing a skill
-# resource makes it stale. Without this line the drift only surfaces in the full test suite, which
-# is slower and easy to skip while authoring a package.
 if [[ "${quiet}" -eq 1 ]]; then
   node "${repo_root}/scripts/build/render-agent-permissions.mjs" --check >/dev/null || failed=1
   node "${repo_root}/scripts/build/render-slash-commands.mjs" --check --quiet >/dev/null || failed=1
   "${repo_root}/scripts/build/render-rules.sh" --check >/dev/null || failed=1
   "${repo_root}/scripts/build/link-skills.sh" --check >/dev/null || failed=1
-  node "${repo_root}/scripts/cli/main.mjs" skill audit --check >/dev/null || failed=1
 else
   node "${repo_root}/scripts/build/render-agent-permissions.mjs" --check || failed=1
   node "${repo_root}/scripts/build/render-slash-commands.mjs" --check || failed=1
   "${repo_root}/scripts/build/render-rules.sh" --check || failed=1
   "${repo_root}/scripts/build/link-skills.sh" --check || failed=1
-  node "${repo_root}/scripts/cli/main.mjs" skill audit --check || failed=1
+fi
+
+# skill audit --check catches a stale docs/reference/internal/skill-invocation-audit.md, which is
+# generated from the package manifests and goes out of date whenever a skill resource is added or
+# removed. Development-only: the audit is regenerated from repository source, and a packaged install
+# ships a subset of globals/packages/, so running it against an installed tree reports a staleness
+# the user cannot act on and has no reason to care about.
+if [[ "${package_mode}" -ne 1 ]]; then
+  if [[ "${quiet}" -eq 1 ]]; then
+    node "${repo_root}/scripts/cli/main.mjs" skill audit --check >/dev/null || failed=1
+  else
+    node "${repo_root}/scripts/cli/main.mjs" skill audit --check || failed=1
+  fi
 fi
 
 if [[ "${check_installed}" -eq 1 ]]; then

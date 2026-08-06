@@ -10,6 +10,7 @@ related:
   - plan-session-launching-milestone-1
   - localhoster-docker-process-providers
   - gemini-cli-provider-integration
+  - harness-capability-derived-resource-targeting
 reviewed_commit: 179a31d0beaf9c8abb4ce6b4fe5756e130dc84ad
 ---
 

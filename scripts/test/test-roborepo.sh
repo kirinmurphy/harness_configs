@@ -1194,13 +1194,24 @@ assert "lifecycle: roborepo doctor --verbose reports per-check detail" \
 pkg_doctor_root="${work}/pkg-doctor-root"
 mkdir -p "${pkg_doctor_root}"
 # Copy tracked and new untracked working-tree files except the dev-only paths and the project-scope
-# skill symlinks that point into local/skills (excluding those avoids dangling links).
-( cd "${repo_root}" && git ls-files --cached --others --exclude-standard | while IFS= read -r file; do [[ -e "${file}" ]] && printf '%s\n' "${file}"; done | grep -vE '^(local/skills/|scripts/test/|\.claude/skills/|\.codex/skills/)' \
+# skill symlinks that point into local/skills (excluding those avoids dangling links). The harness
+# skill dirs are matched by pattern rather than named individually: the original claude/codex pair
+# silently stopped covering .gemini/skills when Gemini was added, leaving a dangling link that made
+# package-mode doctor fail for a reason unrelated to the check under test. `\.[a-z]+/skills/` keeps
+# covering the next provider without an edit here.
+( cd "${repo_root}" && git ls-files --cached --others --exclude-standard | while IFS= read -r file; do [[ -e "${file}" ]] && printf '%s\n' "${file}"; done | grep -vE '^(local/skills/|scripts/test/|\.[a-z]+/skills/)' \
     | tar -cf - -T - | tar -xf - -C "${pkg_doctor_root}" )
 pkg_doctor_out="${work}/pkg-doctor.out"
 ROBOREPO_MODE=package bash "${pkg_doctor_root}/scripts/doctor.sh" >"${pkg_doctor_out}" 2>&1 || true
 assert "package mode: doctor does not fail on dev-only source files" \
   bash -c "! grep -qE 'fail: (local/skills|scripts/test/test-roborepo\.sh) missing' '${pkg_doctor_out}'"
+# Assert the whole run passed, not just that two known messages are absent. Naming individual
+# failure strings only catches regressions someone already thought of: a development-only check
+# added to doctor without a package-mode guard fails here with a message this file has never heard
+# of, and a negative grep waves it through. This caught nothing when `skill audit --check` landed
+# unguarded and made every packaged install fail doctor.
+assert "package mode: doctor passes against a packaged layout" \
+  bash -c "grep -q '^doctor passed (' '${pkg_doctor_out}'"
 update_out="${work}/update-report.out"
 assert "lifecycle: roborepo update --dry-run dispatches and reports changes" \
   bash -c "HOME='${update_home}' node '${cli}' update --dry-run >'${update_out}' 2>&1 && grep -q '━━━ roborepo update' '${update_out}' && grep -q 'ok: shell + PATH' '${update_out}' && grep -q 'Update change report:' '${update_out}' && grep -q 'changed:' '${update_out}' && grep -q 'unchanged: .* hidden' '${update_out}' && ! grep -q '━━━ Shell & PATH' '${update_out}' && ! grep -q 'unchanged: package registry' '${update_out}'"

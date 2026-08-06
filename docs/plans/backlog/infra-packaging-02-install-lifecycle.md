@@ -219,6 +219,13 @@ Consequences worth capturing during characterization:
       shell profiles, backups, install-state files, and symlinks.
 - [ ] Add isolated-home characterization tests for install, repeated install, update, repair,
       verify, doctor, and uninstall.
+- [ ] Pin both reproduced removal defects as failing characterization tests before any fix: an
+      enabled package whose declaration disappears must leave its skill orphaned after `apply`, and
+      `maintenance uninstall` must leave `~/.claude/commands/<package>.md` behind while reporting no
+      remnants. Both are documented above with reproductions.
+- [ ] Enumerate every resource type each harness receives (skills, commands, MCP entries, hooks,
+      root config) and record which removal path currently handles it, so the coverage gap is a
+      table rather than two known examples.
 - [ ] Record current behavior for zero, one, and multiple detected harnesses.
 - [ ] Characterize bootstrap and command failures when Node or required shell dependencies are missing or unsupported.
 - [ ] Identify every absolute checkout path persisted outside the checkout.
@@ -226,7 +233,11 @@ Consequences worth capturing during characterization:
 
 ### Phase 2 — Shared lifecycle contract
 
-- [ ] Centralize ownership checks used by setup, repair, verify, and uninstall.
+- [ ] Centralize ownership checks used by setup, apply, repair, verify, and uninstall, so update and
+      uninstall resolve "RoboRepo owns this file" through one definition instead of answering it
+      separately in each path.
+- [ ] Give `apply` a reconcile step that removes owned projections the current application and
+      workspace no longer declare, while staying idempotent on a no-change run.
 - [ ] Make collision results explicit: managed, unmanaged-safe, conflict, replace-with-confirmation,
       or unsupported.
 - [ ] Add shared dry-run and noninteractive result shapes.
@@ -252,7 +263,10 @@ Consequences worth capturing during characterization:
 
 ### Phase 5 — Uninstall and data preservation
 
-- [ ] Remove only proven RoboRepo-owned harness projections and shell entries.
+- [ ] Remove only proven RoboRepo-owned harness projections and shell entries, covering every
+      resource type from the Phase 1 table rather than skills alone.
+- [ ] Make the remnant check fail when owned files survive, so "no active roborepo remnants" cannot
+      be printed while package-owned slash commands remain.
 - [ ] Preserve `workspaceRoot` by default.
 - [ ] Separate optional machine-state cleanup from application uninstall.
 - [ ] Verify repeated uninstall is safe and reports already-absent resources clearly.
@@ -265,7 +279,12 @@ Consequences worth capturing during characterization:
 - Moving a development checkout and running repair removes or rewrites every managed stale path.
 - Upgrade preserves workspace content and migrates state only through declared migrations.
 - Unsupported downgrade fails before destructive writes.
-- Uninstall removes application-owned projections while leaving workspace content intact.
+- Uninstall removes application-owned projections while leaving workspace content intact, verified
+  by asserting the harness homes contain no file carrying an `Owned by package:` marker afterward.
+- A package whose declaration disappears from the application, without being disabled first, leaves
+  no orphaned skill or command after `apply`.
+- Both reproduced removal defects have a regression test that fails against today's implementation
+  and passes after the fix.
 - Tests cover interactive confirmation, `--yes`, `--dry-run`, and noninteractive refusal paths.
 - Missing or unsupported Node/shell dependencies fail before partial configuration writes and produce actionable diagnostics.
 - Onboarding can be skipped, repeated, and resumed without duplicate or contradictory state.

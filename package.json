@@ -89,7 +89,9 @@
     "test:harness-mcp-remove-characterization": "node scripts/test/harness-mcp-remove-characterization-check.mjs",
     "test:harness-hooks-write-remove-characterization": "node scripts/test/harness-hooks-write-remove-characterization-check.mjs",
     "pack:dry-run": "npm pack --dry-run",
-    "pack:smoke": "npm pack"
+    "pack:smoke": "npm pack",
+    "test:package-install": "node scripts/test/package-install-smoke.mjs",
+    "prepare:new-mac-install": "node scripts/test/package-install-smoke.mjs"
   },
   "engines": {
     "node": ">=20"

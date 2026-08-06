@@ -1,14 +1,14 @@
 ---
 id: c7b7swuh
 priority: high
-next_action: Add `scripts/harnesses/` and `modules/` to the package.json `files` allowlist so the packed tarball runs at all, then implement the isolated smoke runner as `npm run test:package-install`
+next_action: Implement `scripts/test/package-install-smoke.mjs`, the isolated real-artifact smoke runner, and register it as `npm run test:package-install`
 blocked_by: []
 depends_on: []
 related:
   - 46up8y7a
   - 1rajbd5o
   - qjsbhel5
-reviewed_commit: 178a5d6
+reviewed_commit: ca40686
 ---
 
 # RoboRepo Packaging 01: Prepare a Clean New-Mac Installation
@@ -62,22 +62,15 @@ The package foundation already exists:
 - Package mode separates `appRoot`, `workspaceRoot`, and `stateRoot` and prevents runtime writes to
   the installed application root. This was verified against a real installed tarball: `setup` and
   `config apply` leave a hash of the installed `appRoot` byte-identical.
-- An earlier manual packed-tarball installation succeeded and exposed package-mode bugs that were
-  fixed, but the packed artifact is **broken again at the current commit**. The `files` allowlist
-  omits two runtime directories, so every command fails immediately on the installed package:
-  ```text
-  Error [ERR_MODULE_NOT_FOUND]: Cannot find module
-  '.../@kirin/roborepo/scripts/harnesses/registry.mjs'
-  imported from .../scripts/cli/command-catalog.mjs
-  ```
-  - `scripts/harnesses/` — imported by `scripts/cli/command-catalog.mjs`, so the command catalog
-    cannot load and no subcommand runs, including `version`.
-  - `modules/` (`plan-docs`, `localhoster`, `repositories`) — imported by `scripts/cli/plans.mjs`,
-    `localhoster.mjs`, `repositories.mjs`, and `telemetry-capture.mjs`.
-
-  Adding both entries to the allowlist makes the installed package run correctly: `version` reports
-  package mode with an npm-owned `appRoot`, and `doctor` passes 98 checks with no harness installed.
-  Restoring a working tarball is therefore a prerequisite of this plan, not a contingency.
+- An earlier manual packed-tarball installation exposed a broken artifact: the `files` allowlist
+  omitted two runtime directories, so every command failed immediately on the installed package
+  (`ERR_MODULE_NOT_FOUND` for `scripts/harnesses/registry.mjs`, imported by
+  `scripts/cli/command-catalog.mjs`; and `modules/`, imported by `scripts/cli/plans.mjs`,
+  `localhoster.mjs`, `repositories.mjs`, and `telemetry-capture.mjs`). Both entries were added to
+  `package.json`'s `files` array in `e72a943` (`fix(package): ship missing runtime dirs and unify
+  workspace resolution`), and the installed package now runs correctly: `version` reports package
+  mode with an npm-owned `appRoot`, and `doctor` passes with no harness installed. Restoring a
+  working tarball is therefore already done, not an open prerequisite of this plan.
 - `scripts/test/test-roborepo.sh` exercises package-mode behavior against a constructed fake
   application root, but it does not install the actual npm tarball.
 - `.github/workflows/ci.yml` runs doctor, the repository test suite, and the package catalog and
@@ -95,8 +88,8 @@ installed command.
 
 | Path | Current responsibility | Expected change |
 | --- | --- | --- |
-| `package.json` | Package identity, `bin`, runtime file allowlist, Node requirement, and npm scripts | Register the smoke and retained-artifact commands; add the known-missing `scripts/harnesses/` and `modules/` allowlist entries, and change the allowlist further only when the real install exposes another missing runtime file |
-| `scripts/harnesses/` and `modules/` | Harness registry and the `plan-docs`/`localhoster`/`repositories` modules, both imported by the CLI at runtime | Currently unpackaged; ship them so the installed command catalog can load |
+| `package.json` | Package identity, `bin`, runtime file allowlist (`scripts/harnesses/` and `modules/` already present), Node requirement, and npm scripts | Register the smoke and retained-artifact commands; change the allowlist further only when the real install exposes another missing runtime file |
+| `scripts/harnesses/` and `modules/` | Harness registry and the `plan-docs`/`localhoster`/`repositories` modules, both imported by the CLI at runtime | Already packaged (`e72a943`); no further change expected |
 | `bin/roborepo` | Packaged executable entry point | No planned behavior change; the smoke runner invokes the installed copy directly |
 | `scripts/cli/roots.mjs` and `scripts/cli/paths.mjs` | Resolve package/development mode and application, workspace, state, and harness paths | Consume through command output; fix only if the real artifact reports an incorrect root |
 | `scripts/cli/workspace.mjs` | `setup`, workspace initialization/status/import, and package-mode workspace behavior | Exercised by the smoke workflow; no speculative rewrite |
@@ -440,12 +433,15 @@ uninstall must not be treated as permission to delete personal workspace content
 
 ### Phase 1 — Isolated real-artifact smoke runner
 
-- [ ] Restore a working tarball: add `scripts/harnesses/` and `modules/` to the `files` allowlist in
-      `package.json`. Without this the installed package cannot load its command catalog and no
-      later step in this plan can run. Confirm the two entries are the complete fix by installing
-      the tarball and running `version` and `doctor`; add nothing else speculatively.
-- [ ] Check `manifests/platform/source-files.tsv` scopes `scripts/harnesses/` and `modules/` as
-      package-applicable, so the manifest and the allowlist agree on what ships.
+- [x] Restore a working tarball: `scripts/harnesses/` and `modules/` are already in the `files`
+      allowlist in `package.json` (landed in `e72a943`). Installing the tarball and running
+      `version`/`doctor` already confirms these two entries are the complete fix; nothing further
+      needed here.
+- [ ] `manifests/platform/source-files.tsv` lists individual files, not directories, and currently
+      has no entries under `scripts/harnesses/` or `modules/` at any granularity — so `doctor`'s
+      required-source-file check does not cover either directory. Decide whether that check should
+      gain entries for the files these directories contain, or whether directory-level coverage is
+      out of scope for this manifest; either way this is not a blocker for the allowlist fix above.
 - [ ] Add `scripts/test/package-install-smoke.mjs` using explicit ESM imports and named functions.
 - [ ] Pack with `npm pack --json --pack-destination <temp-dir>` and read the tarball name from the
       parsed JSON (`[0].filename`) rather than guessing it. `--pack-destination` is required:

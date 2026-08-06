@@ -402,9 +402,22 @@ package executable. Do not relink the checkout globally while evaluating package
 
 That table holds only while the checkout's own installer has not run. `scripts/install/main.sh`
 relinks `~/.local/bin/roborepo` to the checkout with `ln -sfn`, so running it after cloning makes
-`roborepo` mean the checkout, not the packaged snapshot. Either skip the checkout installer on the
-new Mac and drive development through `./bin/roborepo`, or run it and accept that a single global
-`roborepo` command now points at the checkout. Confirm which state the machine is in with:
+`roborepo` mean the checkout, not the packaged snapshot.
+
+**Decision: do not run the checkout installer on the new Mac.** The global `roborepo` stays the
+packaged snapshot and development runs through `./bin/roborepo`, which keeps a known-good reference
+available to compare against while a branch is mid-change. The cost is remembering `./bin/roborepo`
+when testing branch code; `roborepo version` names which copy ran whenever that is in doubt.
+
+Note the limit of that separation: it isolates *code*, not *configuration*. Both entry points write
+the same `~/.roborepo`, `~/.claude`, and `~/.codex`, so a branch's `config apply` still reconfigures
+the live machine. Isolating configuration as well requires an explicit sandbox:
+
+```sh
+HOME=/tmp/probe ROBOREPO_STATE_ROOT=/tmp/probe/.roborepo ./bin/roborepo config apply
+```
+
+Confirm which state the machine is in with:
 
 ```sh
 command -v roborepo
@@ -535,6 +548,13 @@ Manual transition acceptance requires:
   exact artifact that was installed and hashed.
 - **Over-copying state:** copying all of `~/.roborepo` can import stale install metadata, caches, or
   absolute paths. Move authored workspace content deliberately and rebuild machine state by default.
+- **A development machine is not a fresh install:** `config apply` adds and updates but does not
+  remove resources the application has stopped declaring, so a machine that has switched between
+  builds accumulates orphaned skills and commands. Never treat the old Mac's applied state as
+  evidence that a clean install produces the same result — that is what the isolated npm prefix and
+  temporary home in this plan's smoke runner exist to establish. The defect itself is recorded in
+  `infra-packaging-02-install-lifecycle` under "Known defect: `apply` does not remove orphaned
+  resources".
 - **Node-manager differences:** npm global prefixes vary between Homebrew, nvm, and other managers.
   Resolve paths from npm and command output; never hardcode `/opt/homebrew` or `/usr/local`.
 - **Packing from the wrong directory:** `npm pack` resolves the package from the current working

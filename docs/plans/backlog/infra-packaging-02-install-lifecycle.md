@@ -51,6 +51,9 @@ without losing personal content.
 - Make install/setup/update/apply/repair/verify/doctor/uninstall operations idempotent where their
   semantics allow it.
 - Preserve `workspaceRoot` and explicitly retained `stateRoot` data across application replacement.
+- Make `apply` converge installed projections on the current declared configuration, removing
+  RoboRepo-owned resources the application no longer declares instead of only adding and updating
+  them. This is update-path convergence, distinct from uninstall.
 - Prevent uninstall from deleting user-authored workspace content by default.
 - Detect and handle collisions with unmanaged files without silently overwriting them.
 - Deduplicate PATH or shell-profile changes and remove only RoboRepo-owned entries.
@@ -117,6 +120,44 @@ verify     run deterministic installed-state assertions
 doctor     diagnose repository or installed-state problems
 uninstall  remove RoboRepo-owned projections while preserving user content
 ```
+
+### Known defect: `apply` does not remove orphaned resources
+
+`apply` is specified above as materializing desired configuration, but today it only *adds* and
+*updates*. A resource is removed from the harness homes when the user explicitly disables its
+package; it is not removed when the package stops declaring it. Installed state therefore drifts
+away from what the application actually provides, and the drift is invisible because the command
+reports success.
+
+Reproduction, in an isolated `HOME`:
+
+```sh
+roborepo package enable technical-writing
+roborepo config apply          # ~/.roborepo/skills: roborepo-support technical-writing
+# the package is then deleted from globals/packages/ (a branch switch, an upgrade that drops it)
+roborepo config apply          # reports "updated package registry", exit 0
+# ~/.roborepo/skills: roborepo-support technical-writing   <- still present
+```
+
+The explicit-disable path is clean; `package disable` followed by `apply` removes the skill from
+both `<stateRoot>/skills` and the harness homes. Only the "declaration disappeared" path leaks.
+
+This is an update-path defect, not an uninstall defect, and the distinction matters for where the
+fix belongs: `uninstall` is not involved, and making uninstall more thorough would not address it.
+The fix is a reconcile pass inside `apply` that diffs installed projections against what the current
+application plus workspace declare, and removes RoboRepo-owned orphans — which is the
+desired-vs-observed reconciliation this plan already owns.
+
+Consequences worth capturing during characterization:
+
+- A development machine that switches between builds accumulates orphaned skills and commands, so it
+  is not a faithful stand-in for a fresh install. This is one reason
+  `infra-packaging-01-new-mac-install` validates in an isolated npm prefix and temporary home.
+- Removal must stay scoped to RoboRepo-owned projections. A reconcile pass that deletes anything it
+  does not recognize would delete user-authored content, which
+  [Non-goals](#non-goals) and the uninstall preservation rule forbid.
+- `apply` must remain idempotent: running it twice with no change must not remove and recreate files,
+  or drift reporting becomes meaningless.
 
 ### Upgrade and downgrade model
 

@@ -6,9 +6,9 @@
 // existing consumers see no difference.
 //
 // appRoot is the immutable application root: release files, built-ins, manifests, scripts, and CLI.
-// workspaceRoot is the editable portable user workspace. In a development checkout it defaults to
-// appRoot for backward compatibility; in package mode it defaults under ~/.roborepo/workspace.
-// stateRoot is machine-local state.
+// workspaceRoot is the editable portable user workspace, defaulting under ~/.roborepo/workspace in
+// both development and package mode so one machine has one workspace regardless of which entry
+// point runs. stateRoot is machine-local state.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -55,7 +55,7 @@ function selectedWorkspaceRoot() {
 export const workspaceRoot =
   envPath("ROBOREPO_WORKSPACE_ROOT") ||
   selectedWorkspaceRoot() ||
-  (developmentMode ? appRoot : path.join(stateRoot, "workspace"));
+  path.join(stateRoot, "workspace");
 
 // Backward-compatible names for modules that still operate on release/built-in files.
 export const repoRoot = appRoot;
@@ -80,12 +80,6 @@ export function workspaceManifestPath(root = workspaceRoot) {
 }
 
 export function initializeWorkspace({ root = workspaceRoot, dryRun = false } = {}) {
-  // In a development checkout workspaceRoot IS the checkout, so scaffolding these dirs would
-  // litter the repo with untracked skills/ commands/ mcp/ packages/ overrides/ that also shadow
-  // built-in resolution. Custom workspace content is a package-mode concept only.
-  if (path.resolve(root) === path.resolve(appRoot) && developmentMode) {
-    return { root, manifestPath: workspaceManifestPath(root), created: false };
-  }
   const dirs = [
     root,
     path.join(root, "skills"),

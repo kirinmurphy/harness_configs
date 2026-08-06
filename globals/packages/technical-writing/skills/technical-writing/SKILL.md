@@ -25,11 +25,11 @@ If invoked as `/technical-writing` with no mode, return this compact help and st
 For a named mode, read only the needed references:
 
 - Always read this file's Core Writing Philosophy below.
-- `write`: also read `references/doc-shapes.md`, `references/section-guidance.md`, and
-  `references/anti-patterns.md`.
+- `write`: also read `references/doc-shapes.md`, `references/section-guidance.md`,
+  `references/representation.md`, and `references/anti-patterns.md`.
 - `review`: also read `references/review-loop.md`, plus whichever of `doc-shapes.md` /
-  `section-guidance.md` / `anti-patterns.md` / `doc-organization.md` the review needs to check
-  against.
+  `section-guidance.md` / `representation.md` / `anti-patterns.md` / `doc-organization.md` the
+  review needs to check against.
 - Revising a documentation set (not a single doc): also read `references/doc-organization.md`.
 
 ## Core Writing Philosophy
@@ -45,6 +45,8 @@ For a named mode, read only the needed references:
 - Preserve uncertainty as explicit open decisions, not buried caveats.
 - Prefer concrete examples over abstract explanation when data relationships matter.
 - Verify claims against source code, tests, configuration, and runtime evidence.
+- Match the form to the content — diagrams, tables, and code blocks over prose. See
+  `references/representation.md`.
 
 ## Naming and Titles
 

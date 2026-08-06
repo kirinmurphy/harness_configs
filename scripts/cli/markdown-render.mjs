@@ -40,6 +40,16 @@ function isCommentMarker(line) {
   return /^<!--\s*(BEGIN|END)\s+[^>]+-->$/.test(line.trim());
 }
 
+// Any other single-line HTML comment is authoring metadata, not reader content: generated-file
+// banners ("do not edit directly") and package-ownership markers sit at the top of every rendered
+// slash-command wrapper. They are invisible in a normal markdown viewer, so showing them here is a
+// rendering artifact. Dropping them also keeps author-supplied HTML out of the output entirely --
+// a workspace skill is user-authored content, and this renderer escapes rather than executes it.
+function isDroppableComment(line) {
+  const trimmed = line.trim();
+  return trimmed.startsWith("<!--") && trimmed.endsWith("-->") && !isCommentMarker(trimmed);
+}
+
 // GitHub-style heading slug: lowercase, strip anything that isn't a word char/space/hyphen, spaces
 // to hyphens, then dedupe repeats with a trailing -1/-2/... so deep links stay unambiguous within
 // one rendered document.
@@ -155,6 +165,11 @@ function renderBlocks(lines) {
     if (isCommentMarker(trimmed)) {
       flushPara(); flushList(); flushQuote();
       blocks.push(renderCommentLine(trimmed));
+      continue;
+    }
+
+    if (isDroppableComment(trimmed)) {
+      flushPara(); flushList(); flushQuote();
       continue;
     }
 

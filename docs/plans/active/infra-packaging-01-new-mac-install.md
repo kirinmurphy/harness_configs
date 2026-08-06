@@ -1,14 +1,14 @@
 ---
 id: c7b7swuh
 priority: high
-next_action: Implement the isolated packed-tarball smoke runner and register it as `npm run test:package-install`
+next_action: Add `scripts/harnesses/` and `modules/` to the package.json `files` allowlist so the packed tarball runs at all, then implement the isolated smoke runner as `npm run test:package-install`
 blocked_by: []
 depends_on: []
 related:
   - 46up8y7a
   - 1rajbd5o
   - qjsbhel5
-reviewed_commit: 6905bcd24d32bb9ad130ea79ed9b8f7bc7d696d9
+reviewed_commit: 178a5d6
 ---
 
 # RoboRepo Packaging 01: Prepare a Clean New-Mac Installation
@@ -60,9 +60,24 @@ The package foundation already exists:
 - `package.json` declares `@kirin/roborepo` `0.1.0-beta.0`, the `roborepo` binary, an explicit
   `files` allowlist, ESM mode, and Node `>=20`.
 - Package mode separates `appRoot`, `workspaceRoot`, and `stateRoot` and prevents runtime writes to
-  the installed application root.
-- A manual packed-tarball installation has already succeeded and exposed package-mode bugs that
-  were fixed.
+  the installed application root. This was verified against a real installed tarball: `setup` and
+  `config apply` leave a hash of the installed `appRoot` byte-identical.
+- An earlier manual packed-tarball installation succeeded and exposed package-mode bugs that were
+  fixed, but the packed artifact is **broken again at the current commit**. The `files` allowlist
+  omits two runtime directories, so every command fails immediately on the installed package:
+  ```text
+  Error [ERR_MODULE_NOT_FOUND]: Cannot find module
+  '.../@kirin/roborepo/scripts/harnesses/registry.mjs'
+  imported from .../scripts/cli/command-catalog.mjs
+  ```
+  - `scripts/harnesses/` — imported by `scripts/cli/command-catalog.mjs`, so the command catalog
+    cannot load and no subcommand runs, including `version`.
+  - `modules/` (`plan-docs`, `localhoster`, `repositories`) — imported by `scripts/cli/plans.mjs`,
+    `localhoster.mjs`, `repositories.mjs`, and `telemetry-capture.mjs`.
+
+  Adding both entries to the allowlist makes the installed package run correctly: `version` reports
+  package mode with an npm-owned `appRoot`, and `doctor` passes 98 checks with no harness installed.
+  Restoring a working tarball is therefore a prerequisite of this plan, not a contingency.
 - `scripts/test/test-roborepo.sh` exercises package-mode behavior against a constructed fake
   application root, but it does not install the actual npm tarball.
 - `.github/workflows/ci.yml` runs doctor, the repository test suite, and the package catalog and
@@ -80,7 +95,8 @@ installed command.
 
 | Path | Current responsibility | Expected change |
 | --- | --- | --- |
-| `package.json` | Package identity, `bin`, runtime file allowlist, Node requirement, and npm scripts | Register the smoke and retained-artifact commands; change the allowlist only when the real install exposes a missing runtime file |
+| `package.json` | Package identity, `bin`, runtime file allowlist, Node requirement, and npm scripts | Register the smoke and retained-artifact commands; add the known-missing `scripts/harnesses/` and `modules/` allowlist entries, and change the allowlist further only when the real install exposes another missing runtime file |
+| `scripts/harnesses/` and `modules/` | Harness registry and the `plan-docs`/`localhoster`/`repositories` modules, both imported by the CLI at runtime | Currently unpackaged; ship them so the installed command catalog can load |
 | `bin/roborepo` | Packaged executable entry point | No planned behavior change; the smoke runner invokes the installed copy directly |
 | `scripts/cli/roots.mjs` and `scripts/cli/paths.mjs` | Resolve package/development mode and application, workspace, state, and harness paths | Consume through command output; fix only if the real artifact reports an incorrect root |
 | `scripts/cli/workspace.mjs` | `setup`, workspace initialization/status/import, and package-mode workspace behavior | Exercised by the smoke workflow; no speculative rewrite |
@@ -97,7 +113,7 @@ installed command.
 - Install without writing to the machine's real npm prefix, home directory, harness homes, or
   RoboRepo state.
 - Prove the package works before any RoboRepo source checkout exists in the test environment.
-- Run `version`, `setup`, `workspace status`, `apply`, and `doctor` from the installed binary.
+- Run `version`, `setup`, `workspace status`, `config apply`, and `doctor` from the installed binary.
 - Prove `appRoot` is inside the isolated npm prefix and remains byte-identical after runtime
   commands.
 - Prove workspace and state are created outside `appRoot` under the temporary home.
@@ -121,6 +137,15 @@ installed command.
 - Supporting Windows in this machine-transition story.
 
 ## Proposed design
+
+### Command surface
+
+There is no top-level `roborepo apply`. The root commands are `doctor`, `update`, `version`, `web`,
+and `web-stop`. Re-applying configuration is `roborepo config apply`
+(`manifests/platform/cli/command-definitions/config/apply.command.json`). `roborepo update` aliases
+to `config apply` in package mode and prints a notice that it does not download packages, so the
+smoke runner uses `config apply` directly to test the applying behavior without the alias
+indirection.
 
 ### One runner, two modes
 
@@ -158,7 +183,7 @@ flowchart TD
   Pack --> Install[npm install -g --prefix temp-prefix tarball]
   Install --> Resolve[Resolve exact temp-prefix/bin/roborepo]
   Resolve --> Snapshot[Hash installed appRoot]
-  Snapshot --> Commands[version → setup → workspace status → apply → doctor]
+  Snapshot --> Commands[version → setup → workspace status → config apply → doctor]
   Commands --> Assertions[Assert roots, files, path isolation, and no appRoot mutation]
   Assertions --> Retain{--output-dir supplied?}
   Retain -->|No| Cleanup[Delete sandbox]
@@ -167,6 +192,19 @@ flowchart TD
 
 The runner must invoke the exact executable under the isolated prefix. It must not rely on whichever
 `roborepo` happens to appear first on the developer's `PATH`.
+
+This shape is already known to work; the runner is an automation of it:
+
+```sh
+sandbox="$(mktemp -d)"
+tgz="$(npm pack --pack-destination "${sandbox}" --json | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8"))[0].filename')"
+npm install -g --prefix "${sandbox}/prefix" --cache "${sandbox}/cache" "${sandbox}/${tgz}"
+HOME="${sandbox}/home" ROBOREPO_MODE=package ROBOREPO_PRESETS_ONBOARD=skip \
+  "${sandbox}/prefix/bin/roborepo" version
+```
+
+The installed application root is `<prefix>/lib/node_modules/@kirin/roborepo`, which is the path to
+hash for the immutable-root assertion.
 
 ### Assertions
 
@@ -180,17 +218,61 @@ The runner should fail with a focused message when any invariant is false:
 | Installed application root | reported `appRoot` resolves inside the isolated npm prefix and not inside the checkout |
 | User-owned roots | reported `workspaceRoot` and `stateRoot` resolve under the temporary home and outside `appRoot` |
 | Workspace initialization | `workspace.json` and required workspace directories exist after `setup` |
-| Normal application | `apply` and `doctor` complete without requiring a source checkout or an installed harness |
+| Normal application | `config apply` and `doctor` complete without requiring a source checkout or an installed harness |
 | Immutable application | a deterministic hash of `appRoot` before and after runtime commands is identical |
 | No source coupling | files created under the temporary home do not contain the absolute source-checkout path |
-| No version-specific install coupling | generated harness files, workspace records, and durable state do not retain the concrete versioned npm package directory when stable command or application-root resolution is sufficient |
+| No version-specific install coupling | generated harness files and workspace records do not retain the concrete versioned npm package directory; `~/.roborepo/install-state.json` is excluded (see below) |
 | Artifact provenance | retained checksum and manifest describe the exact tarball that passed |
+
+#### `install-state.json` is an intentional exception
+
+The version-specific-path scan must exempt `install-state.json`. Its `repo` field is not a cache of
+the current application root — it records **which installation last wrote files into the home
+directory**, and its value is expected to go stale.
+
+roborepo installs by placing symlinks in harness homes (`~/.claude`, `~/.codex`) that point back at
+the installing root. `uninstall` and `repair` later have to decide whether a given link in a user's
+home directory is roborepo's to remove. `is_managed_link` in `scripts/install/uninstall-lib.sh`
+answers that by matching the link target against the current `repo_root`, the recorded prior root,
+the skill cache, or a dangling target. The recorded prior root is what lets a *new* install reclaim
+links left behind by an *older* one, which is exactly the npm-upgrade case: after
+`0.1.0-beta.0` → `0.1.0-beta.1`, harness homes still hold links into the previous versioned
+directory, and `recorded_repo` is how `repair_cleanup_target` in `scripts/install/repair.sh`
+recognizes and re-points them instead of returning early and leaving them stale.
+
+So "stable command or application-root resolution" is not sufficient here: remembering a root that
+is deliberately no longer current is the field's purpose. Asserting against it would fail the smoke
+run on correct behavior. The strict assertion still applies to generated harness configuration and
+workspace records, which a real run confirms are free of the versioned path today, so the check
+keeps its value as a regression guard.
 
 Use Node filesystem traversal and `crypto` hashing rather than platform-specific `find`, `sed`, or
 checksum flags. Keep the top-level orchestration near the top of the module and place focused helper
 functions below it. If the file grows beyond the repository's normal size boundary, split hashing,
 process execution, and output-manifest responsibilities by ownership rather than creating generic
 utility buckets.
+
+### Verified baseline
+
+The workflow below was executed by hand against a real tarball (packed with the two allowlist
+entries added, installed into an isolated `--prefix` with a temporary `HOME`). Implementation should
+reproduce these results, not rediscover them:
+
+| Check | Observed result |
+| --- | --- |
+| `version` on the unpatched tarball | fails with `ERR_MODULE_NOT_FOUND` for `scripts/harnesses/registry.mjs` |
+| `version` with `scripts/harnesses/` + `modules/` packaged | succeeds; `mode: package`, `appRoot` inside the isolated prefix |
+| `setup` | exit 0; creates workspace and state under the temporary `HOME` |
+| `config apply` | exit 0; reports `updated root config claude` / `updated root config codex` |
+| `doctor` with no harness installed | exit 0, `doctor passed (98 checks)` |
+| `appRoot` hash across `setup` + `config apply` | byte-identical before and after |
+| Temporary-home scan for the checkout path | zero matches |
+| Temporary-home scan for the versioned npm path | one match: `.roborepo/install-state.json` (`repo` field, expected) |
+| Harness configs written into `HOME` | `.claude` and `.codex` present and free of the versioned path |
+
+The `doctor` result matters most for the transition: it is the zero-harness case on a machine where
+no Claude, Codex, or Gemini executable exists yet, which is the state of a new Mac before any agent
+tooling is installed.
 
 ### Deterministic environment
 
@@ -203,8 +285,12 @@ The smoke runner creates separate temporary locations for:
 - npm cache;
 - neutral working directory outside the checkout.
 
-Set `ROBOREPO_PRESETS_ONBOARD=skip` and any existing noninteractive controls required by `setup` and
-`apply`. Construct a minimal process environment that still exposes the current Node/npm toolchain
+Set `ROBOREPO_PRESETS_ONBOARD=skip` (honored by `scripts/install/main.sh`) and any existing
+noninteractive controls required by `setup` and `config apply`. Set `ROBOREPO_MODE=package`
+explicitly: `scripts/cli/roots.mjs` otherwise infers mode by probing for `.git` and `local/skills`,
+and the assertion should not depend on that heuristic.
+
+Construct a minimal process environment that still exposes the current Node/npm toolchain
 but does not intentionally expose developer-installed Claude, Codex, Gemini, or Antigravity
 executables. The zero-harness case is the transition baseline: an absent or unsupported harness must
 not prevent RoboRepo itself from installing and initializing.
@@ -216,12 +302,15 @@ Register:
 ```json
 {
   "test:package-install": "node scripts/test/package-install-smoke.mjs",
-  "prepare:new-mac-install": "node scripts/test/package-install-smoke.mjs --retain-artifact"
+  "prepare:new-mac-install": "node scripts/test/package-install-smoke.mjs"
 }
 ```
 
-Retained-artifact mode requires `--output-dir <artifact-dir>` and a clean Git worktree. Both npm
-scripts must call the same implementation; only the retention policy differs.
+`--output-dir <artifact-dir>` is the single switch that selects retained-artifact mode: supplying it
+retains, omitting it cleans up. There is no separate `--retain-artifact` flag, so the two modes
+cannot disagree about whether retention was requested. Retained mode additionally requires a clean
+Git worktree. Both npm scripts call the same implementation; only the caller-supplied output
+directory differs.
 Add `npm run --silent test:package-install` to the existing macOS/Linux CI matrix as its own step.
 Do not bury this slower process-install test inside every invocation of
 `scripts/test/test-roborepo.sh`; keep the fast repository suite and real artifact smoke test visible
@@ -269,7 +358,7 @@ Install Node `>=20` and npm first. Before cloning RoboRepo or importing the old 
    roborepo version
    roborepo setup
    roborepo workspace status
-   roborepo apply
+   roborepo config apply
    roborepo doctor
    ```
 4. Confirm `appRoot` points into the npm global installation and no source checkout is needed.
@@ -287,7 +376,7 @@ After the clean baseline passes:
   existing workspace command;
 - when portable content is mixed into an older checkout or legacy layout, exercise
   `roborepo workspace import <old-checkout-or-workspace>` and review the imported-content report;
-- rerun `roborepo workspace status`, `roborepo apply`, and `roborepo doctor`;
+- rerun `roborepo workspace status`, `roborepo config apply`, and `roborepo doctor`;
 - compare enabled packages and custom resources with the old-Mac inventory;
 - investigate differences instead of copying the complete old `stateRoot` over the new state.
 
@@ -311,6 +400,17 @@ The expected entry points are intentionally distinct:
 Use `command -v roborepo` and `type -a roborepo` to detect an old development symlink shadowing the
 package executable. Do not relink the checkout globally while evaluating package mode.
 
+That table holds only while the checkout's own installer has not run. `scripts/install/main.sh`
+relinks `~/.local/bin/roborepo` to the checkout with `ln -sfn`, so running it after cloning makes
+`roborepo` mean the checkout, not the packaged snapshot. Either skip the checkout installer on the
+new Mac and drive development through `./bin/roborepo`, or run it and accept that a single global
+`roborepo` command now points at the checkout. Confirm which state the machine is in with:
+
+```sh
+command -v roborepo
+roborepo version   # the appRoot and mode lines name the copy that actually ran
+```
+
 ### 5. Roll back safely
 
 If the package installation itself is unusable:
@@ -327,14 +427,25 @@ uninstall must not be treated as permission to delete personal workspace content
 
 ### Phase 1 — Isolated real-artifact smoke runner
 
+- [ ] Restore a working tarball: add `scripts/harnesses/` and `modules/` to the `files` allowlist in
+      `package.json`. Without this the installed package cannot load its command catalog and no
+      later step in this plan can run. Confirm the two entries are the complete fix by installing
+      the tarball and running `version` and `doctor`; add nothing else speculatively.
+- [ ] Check `manifests/platform/source-files.tsv` scopes `scripts/harnesses/` and `modules/` as
+      package-applicable, so the manifest and the allowlist agree on what ships.
 - [ ] Add `scripts/test/package-install-smoke.mjs` using explicit ESM imports and named functions.
-- [ ] Pack with npm's JSON output and parse the emitted tarball path rather than guessing the
-      filename.
+- [ ] Pack with `npm pack --json --pack-destination <temp-dir>` and read the tarball name from the
+      parsed JSON (`[0].filename`) rather than guessing it. `--pack-destination` is required:
+      `npm pack` otherwise writes into the current working directory, i.e. the checkout.
 - [ ] Install the tarball under a temporary `--prefix` and invoke its exact binary path.
-- [ ] Run `version`, `setup`, `workspace status`, `apply`, and `doctor` from a neutral directory.
+- [ ] Run `version`, `setup`, `workspace status`, `config apply`, and `doctor` from a neutral
+      directory.
 - [ ] Assert package, application, workspace, and state roots.
 - [ ] Hash `appRoot` before and after runtime commands.
-- [ ] Scan generated temporary-home files for references to the checkout path and fragile version-specific npm application paths.
+- [ ] Scan generated temporary-home files for references to the checkout path and fragile
+      version-specific npm application paths, exempting `install-state.json` and asserting the
+      exemption is narrow: the scan must name the files it skipped so a new leak cannot hide behind
+      the exception.
 - [ ] Guarantee cleanup through `try`/`finally`, preserving useful failure output.
 
 ### Phase 2 — Retained transition artifact
@@ -351,8 +462,9 @@ uninstall must not be treated as permission to delete personal workspace content
 - [ ] Add `test:package-install` and `prepare:new-mac-install` scripts to `package.json`.
 - [ ] Add the real-artifact smoke step to both existing CI operating-system legs.
 - [ ] Keep `pack:dry-run` as the quick package-content inspection command.
-- [ ] Update the package source allowlist only when the smoke test proves a runtime file is missing;
-      do not broaden it speculatively.
+- [ ] Beyond the known `scripts/harnesses/` and `modules/` gaps fixed in Phase 1, update the package
+      source allowlist only when the smoke test proves a runtime file is missing; do not broaden it
+      speculatively.
 
 ### Phase 4 — Transition documentation and real-machine verification
 
@@ -362,7 +474,9 @@ uninstall must not be treated as permission to delete personal workspace content
 - [ ] Install and validate it on the new Mac before cloning the repository.
 - [ ] Restore a dedicated workspace or exercise `roborepo workspace import <old-checkout-or-workspace>` only after the clean baseline passes.
 - [ ] Clone the repository and verify packaged and development entry points coexist.
-- [ ] Verify package mode and checkout mode can intentionally share `workspaceRoot` and `stateRoot` while reporting different `appRoot` values.
+- [ ] Verify package mode and checkout mode share `workspaceRoot` and `stateRoot` while reporting
+      different `appRoot` values, and that running `config apply` from either entry point leaves
+      content authored through the other in place. See `docs/guides/infra/root-domains.md`.
 - [ ] Record actual results, known provider-specific findings, and anything not verified in this
       plan's final `Verification` section before completion.
 
@@ -378,26 +492,39 @@ Automated acceptance requires:
 - Retained mode produces one tested tarball, one matching checksum, and one provenance manifest.
 - Deliberately removing a required runtime file from the npm `files` allowlist makes the smoke test
   fail before the change can be considered complete.
-- Deliberately writing a file into `appRoot` during `setup` or `apply` makes the immutable-root
-  assertion fail.
-- Deliberately persisting the checkout path or concrete versioned npm package directory into generated harness configuration or durable state makes the path-isolation assertion fail.
+- Deliberately writing a file into `appRoot` during `setup` or `config apply` makes the
+  immutable-root assertion fail.
+- Deliberately persisting the checkout path or concrete versioned npm package directory into
+  generated harness configuration or workspace records makes the path-isolation assertion fail,
+  while the documented `install-state.json` exception continues to pass.
 
 Manual transition acceptance requires:
 
 - The tarball installs on the new Mac before the repository is cloned.
 - `roborepo version` reports package mode and an npm-owned `appRoot`.
-- `setup`, `workspace status`, `apply`, and `doctor` run from the global command.
+- `setup`, `workspace status`, `config apply`, and `doctor` run from the global command.
 - The new installation starts with a newly initialized workspace and state.
 - Portable workspace content can be restored or imported afterward without replacing all machine-local state.
-- Package and checkout modes can share workspace/state intentionally while `roborepo version` clearly reports distinct application roots.
-- A later clone runs through `./bin/roborepo` while `roborepo` continues to resolve to the packaged
-  snapshot.
+- Package and checkout modes share `workspaceRoot` and `stateRoot` while `roborepo version` clearly
+  reports distinct application roots and modes, and running `config apply` from either entry point
+  leaves content authored through the other in place.
+- A later clone runs through `./bin/roborepo`, and the resolution of the bare `roborepo` command is
+  known and deliberate rather than assumed — see the checkout-shadowing risk below.
 - The transition verifies package-manager removal does not delete personal workspace content; implementation of general RoboRepo uninstall behavior remains owned by `infra-packaging-02-install-lifecycle`.
 
 ## Risks
 
 - **PATH shadowing:** an old repo symlink can make a test appear to pass against checkout code.
   Always invoke the isolated prefix binary in automation and inspect all shell resolutions manually.
+- **The checkout installer overwrites the packaged command:** `scripts/install/main.sh` runs
+  `install-global-commands.sh`, which does `ln -sfn <checkout>/bin/roborepo ~/.local/bin/roborepo`.
+  The `-f` replaces whatever is already there, and `~/.local/bin` typically precedes the npm prefix
+  on `PATH`. So cloning the repository on the new Mac and running the installer silently converts
+  the global `roborepo` from the packaged snapshot into the checkout — after which "verify the
+  packaged install still works" is testing checkout code. Decide explicitly whether step 4 runs the
+  checkout installer at all; if it does, re-check `command -v roborepo` and `roborepo version`
+  afterward and expect development mode. This is the concrete mechanism behind the PATH-shadowing
+  risk above, not a hypothetical.
 - **False clean-room test:** restoring the old workspace before initial validation can mask missing
   defaults or package files. Establish the empty-workspace baseline first.
 - **Source-path leakage:** generated hooks, links, or state may silently reference the old checkout.
@@ -410,6 +537,16 @@ Manual transition acceptance requires:
   absolute paths. Move authored workspace content deliberately and rebuild machine state by default.
 - **Node-manager differences:** npm global prefixes vary between Homebrew, nvm, and other managers.
   Resolve paths from npm and command output; never hardcode `/opt/homebrew` or `/usr/local`.
+- **Packing from the wrong directory:** `npm pack` resolves the package from the current working
+  directory and writes the tarball there. A runner that changes into its sandbox before packing will
+  either pack the wrong thing or drop the artifact outside the sandbox. Pass the repository root
+  explicitly and always set `--pack-destination`. This was hit while validating this plan.
+- **Silent allowlist regressions:** a missing `files` entry does not fail `npm pack`, `npm test`, or
+  any current CI job — it only surfaces when the installed package runs. The smoke test is the sole
+  guard, which is why it belongs in CI rather than in a developer's manual routine.
+- **Mutating tracked files during packing:** if the runner ever edits `package.json` to pack a
+  variant, it must restore the original even on failure, or a dirty worktree will silently block
+  retained-artifact mode and can leak an unintended change into a commit.
 
 ## Decisions
 

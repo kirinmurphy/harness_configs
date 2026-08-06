@@ -110,6 +110,22 @@ export function portalFillSlots(node, fills) {
   return node;
 }
 
+// The dialog width scale, mirroring the `dialog[data-dialog-size]` rules in shared/base.css. Markup
+// sets the size directly (`data-dialog-size="lg"`); this export is for the cases where a controller
+// has to choose one at runtime, so the names stay in one place instead of being retyped as string
+// literals. Changing a width means editing the matching --dialog-* custom property in base.css.
+export const DIALOG_SIZES = Object.freeze({
+  sm: "sm",
+  md: "md",
+  lg: "lg",
+  xl: "xl",
+});
+
+export function portalSetDialogSize(dialogEl, size) {
+  if (!DIALOG_SIZES[size]) throw new Error(`unknown dialog size: ${size}`);
+  dialogEl.dataset.dialogSize = size;
+}
+
 // Wires "click on the dialog's own backdrop area closes it" — every page-singleton <dialog>
 // controller (createInfoModal, createConfigModal, createDetailModal, createSkillDetailModal)
 // needs this exact listener; centralized here so it's written once.

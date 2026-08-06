@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   appRoot,
-  developmentMode,
   initializeWorkspace,
   packageMode,
   stateRoot,
@@ -53,9 +52,6 @@ function workspaceStatus() {
   console.log(`workspaceRoot: ${workspaceRoot}`);
   console.log(`stateRoot: ${stateRoot}`);
   console.log(`workspace.json: ${fs.existsSync(manifest) ? manifest : "missing"}`);
-  if (developmentMode && appRoot === workspaceRoot) {
-    console.log("note: development mode uses the checkout as workspaceRoot for compatibility.");
-  }
 }
 
 function workspaceUse(args) {

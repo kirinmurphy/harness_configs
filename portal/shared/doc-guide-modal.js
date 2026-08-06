@@ -11,59 +11,9 @@
 // gives every heading a stable GitHub-style slug id) — info icons throughout the host page pass
 // their section's anchor so "view docs" from any panel lands on the relevant section, not the top.
 import { portalWireBackdropClose } from "./api.js";
-
-// Lazy-loaded once per page (not per popup open) — mermaid.min.js is ~3.5MB, so it's only fetched
-// the first time a guide with an actual ```mermaid block is opened, not on every portal page load.
-// Vendored locally (portal/shared/vendor/mermaid.min.js) rather than a CDN <script> tag: this is a
-// loopback-only, offline-first tool, so a live diagram shouldn't depend on outbound network access.
-let mermaidLoadPromise = null;
-function loadMermaid() {
-  if (window.mermaid) return Promise.resolve(window.mermaid);
-  if (!mermaidLoadPromise) {
-    mermaidLoadPromise = new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = "/portal/shared/vendor/mermaid.min.js";
-      script.onload = () => resolve(window.mermaid);
-      script.onerror = () => reject(new Error("failed to load mermaid.min.js"));
-      document.head.appendChild(script);
-    });
-  }
-  return mermaidLoadPromise;
-}
-
-// Renders every ```mermaid block markdown-render.mjs emitted as <pre class="mermaid"
-// data-mermaid-source="...">. Runs on every open() — cachedHtml holds the original unrendered
-// markup and gets reassigned to contentEl.innerHTML on each open (including reopens), so this
-// must re-run each time rather than assuming a first-open render persists in the live DOM.
-// Falls back to the escaped source text already sitting in the element (untouched) if mermaid
-// fails to load or a specific diagram fails to parse — never a blank box.
-async function renderMermaidBlocks(root) {
-  const blocks = root.querySelectorAll("pre.mermaid");
-  if (!blocks.length) return;
-  let mermaid;
-  try {
-    mermaid = await loadMermaid();
-  } catch {
-    return; // offline/blocked: leave the escaped source visible, as before this change.
-  }
-  // Matches whichever theme is active on open — read once here rather than kept in sync with the
-  // toggle, since a popup only rarely stays open across a theme switch.
-  const isLight = document.documentElement.dataset.theme === "light";
-  mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: isLight ? "default" : "dark" });
-  for (const block of blocks) {
-    const source = block.dataset.mermaidSource;
-    const id = "mmd-" + Math.random().toString(36).slice(2);
-    try {
-      const { svg } = await mermaid.render(id, source);
-      const wrap = document.createElement("div");
-      wrap.className = "mermaid-rendered";
-      wrap.innerHTML = svg;
-      block.replaceWith(wrap);
-    } catch {
-      // leave block's original escaped-source content in place as the fallback.
-    }
-  }
-}
+// Diagram rendering now lives in portal/shared/markdown-mermaid.js so /config and /plans get it too
+// — it was private to this modal, which is why only the Telemetry guide rendered diagrams.
+import { renderMermaidBlocks } from "./markdown-mermaid.js";
 
 export function createDocGuideModal(dialogEl, fetchGuide) {
   const titleEl = dialogEl.querySelector('[data-slot="title"]');

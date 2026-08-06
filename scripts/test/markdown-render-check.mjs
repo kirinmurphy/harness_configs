@@ -15,6 +15,7 @@ testMermaidFallback();
 testPlainCodeBlockUnaffected();
 testExistingFeaturesStillWork();
 testHtmlCommentsDropped();
+testTaskListItems();
 console.log("markdown-render checks passed");
 
 function testHeadingIdsAndDedup() {
@@ -87,6 +88,20 @@ function testHtmlCommentsDropped() {
   assert.match(marked, /BEGIN roborepo/);
   assert.match(marked, /END roborepo/);
   assert.match(marked, /inside/);
+}
+
+// Plan bodies are mostly `- [ ]` checklists, and the Plans drawer now renders through this shared
+// renderer instead of its own private one — which did support checkboxes. Keeping them here is what
+// makes that consolidation lossless.
+function testTaskListItems() {
+  const html = renderMarkdown("- [ ] open item\n- [x] done item\n- plain item\n");
+  assert.match(html, /<li class="md-task"><input type="checkbox" disabled> open item<\/li>/);
+  assert.match(html, /<li class="md-task"><input type="checkbox" disabled checked> done item<\/li>/);
+  assert.match(html, /<li>plain item<\/li>/);
+  // Inline markup inside a task item still renders.
+  const inlineHtml = renderMarkdown("- [x] ship `render` and **tables**\n");
+  assert.match(inlineHtml, /<code>render<\/code>/);
+  assert.match(inlineHtml, /<strong>tables<\/strong>/);
 }
 
 function testExistingFeaturesStillWork() {

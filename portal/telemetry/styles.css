@@ -240,37 +240,7 @@
      portal/shared/base.css) sit next to panel headers and open the same popup pre-scrolled to that
      section's heading id — see app.js's delegated click listener. */
   portal-info-icon { margin-left:6px; vertical-align:middle; }
-  .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { margin:.9em 0 .35em; line-height:1.25; color:var(--ink); scroll-margin-top:12px; }
-  .markdown h1:first-child, .markdown h2:first-child { margin-top:0; }
-  /* em, not var(--text-*): scales relative to the markdown container's inherited size rather than
-     the fixed portal type scale, so nested/rendered content keeps a readable heading hierarchy. */
-  .markdown h1 { font-size:1.15em; }
-  .markdown h2 { font-size:1.02em; }
-  .markdown h3 { font-size:.95em; }
-  .markdown p { margin:.45em 0; line-height:1.5; }
-  .markdown ul, .markdown ol { margin:.45em 0; padding-left:1.4em; }
-  .markdown li { margin:.2em 0; }
-  .markdown code { font-size:inherit; color:var(--code-ink); background:var(--code-inline-bg); padding:.08em .3em; border-radius:4px; }
-  .markdown pre { margin:.65em 0; padding:.8em; overflow:auto; background:var(--code-bg); border:1px solid var(--line); border-radius:6px; }
-  .markdown pre code { display:block; padding:0; background:none; color:var(--ink); }
-  .markdown hr { border:none; border-top:1px solid var(--line); margin:.8em 0; }
-  .markdown a { color:var(--accent); text-decoration:none; }
-  .markdown a:hover { text-decoration:underline; }
-  .markdown .md-meta { margin:.25em 0; color:var(--dim); font-size:var(--text-2xs); }
-  /* Tables (markdown-render.mjs's renderTable): the actual reference/comparison content the
-     "as many tables as possible" instruction calls for lives here, so give it real chrome instead
-     of unstyled browser-default borders. */
-  .markdown .md-table-wrap { overflow-x:auto; margin:.65em 0; }
-  .markdown table { border-collapse:collapse; width:100%; font-size:var(--text-2xs); }
-  .markdown th, .markdown td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
-  .markdown thead th { color:var(--dim); text-transform:uppercase; letter-spacing:.04em; font-size:var(--text-2xs); border-bottom:1px solid var(--accent); }
-  .markdown tbody tr:hover { background:var(--row-hover, rgba(128,128,128,.06)); }
-  /* Mermaid diagrams (markdown-render.mjs's renderMermaidFallback emits <pre class="mermaid">;
-     doc-guide-modal.js's renderMermaidBlocks replaces it with the rendered SVG on load). The
-     dashed-border `pre` styling only ever shows if that render fails (offline, blocked script,
-     bad diagram source) — the escaped source is what's left sitting in the DOM at that point, so
-     it should still read as a deliberate, legible fallback rather than a broken box. */
-  .markdown .md-mermaid { margin:.65em 0; }
-  .markdown .md-mermaid pre { border-style:dashed; }
-  .markdown .mermaid-rendered { display:flex; justify-content:center; overflow-x:auto; }
-  .markdown .mermaid-rendered svg { max-width:100%; height:auto; }
+  /* All .markdown element chrome (headings, lists, tables, mermaid, code) now lives in the shared
+     portal/shared/markdown.css, linked from head-partial.html on every page — this page kept the
+     only complete copy while /config and /plans had partial ones, so tables and diagrams rendered
+     correctly here and nowhere else. */

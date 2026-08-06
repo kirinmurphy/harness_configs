@@ -99,9 +99,19 @@ function renderCommentLine(line) {
   return `<p class="md-meta"><code>${escapeHtml(line.trim())}</code></p>`;
 }
 
+// GitHub task-list item: `- [ ] text` / `- [x] text`. Rendered as a disabled checkbox so a plan's
+// checklist reads as state, not as literal "[x]" text -- the Plans drawer renders plan bodies that
+// are mostly task checklists, and its previous private renderer showed them this way.
+function renderListItem(item) {
+  const task = /^\[([ xX])\]\s+(.*)$/.exec(item);
+  if (!task) return `<li>${renderInline(item)}</li>`;
+  const checked = task[1].toLowerCase() === "x";
+  return `<li class="md-task"><input type="checkbox" disabled${checked ? " checked" : ""}> ${renderInline(task[2])}</li>`;
+}
+
 function renderList(items, ordered) {
   const tag = ordered ? "ol" : "ul";
-  return `<${tag}>${items.map((item) => `<li>${renderInline(item)}</li>`).join("")}</${tag}>`;
+  return `<${tag}>${items.map(renderListItem).join("")}</${tag}>`;
 }
 
 function renderBlocks(lines) {

@@ -536,87 +536,9 @@ main {
   font-size: var(--text-2xs);
   color: var(--dim);
 }
-.markdown h1,
-.markdown h2,
-.markdown h3,
-.markdown h4,
-.markdown h5,
-.markdown h6 {
-  margin: 0.8em 0 0.35em;
-  line-height: 1.2;
-  color: var(--ink);
-}
-/* em, not var(--text-*): scales relative to the markdown container's inherited size rather than
- * the fixed portal type scale, so nested/rendered content keeps a readable heading hierarchy. */
-.markdown h1 {
-  font-size: 1.2em;
-}
-.markdown h2 {
-  font-size: 1.05em;
-}
-.markdown h3 {
-  font-size: 0.98em;
-}
-.markdown p {
-  margin: 0.45em 0;
-}
-.markdown ul,
-.markdown ol {
-  margin: 0.45em 0;
-  padding-left: 1.4em;
-}
-.markdown li {
-  margin: 0.2em 0;
-}
-.markdown blockquote {
-  margin: 0.6em 0;
-  padding: 0.2em 0 0.2em 0.9em;
-  border-left: 3px solid var(--line);
-  color: var(--dim);
-}
-.markdown pre {
-  margin: 0.65em 0;
-  padding: 0.8em;
-  overflow: auto;
-  background: var(--code-bg);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-}
-.markdown code {
-  font-size: inherit;
-  color: var(--code-ink);
-  background: var(--code-inline-bg);
-  padding: 0.08em 0.3em;
-  border-radius: 4px;
-}
-.markdown pre code {
-  display: block;
-  padding: 0;
-  background: none;
-  color: var(--ink);
-}
-.markdown hr {
-  border: none;
-  border-top: 1px solid var(--line);
-  margin: 0.8em 0;
-}
-.markdown a {
-  color: var(--accent);
-  text-decoration: none;
-}
-.markdown a:hover {
-  text-decoration: underline;
-}
-.markdown .md-meta {
-  margin: 0.25em 0;
-  color: var(--dim);
-  font-size: var(--text-2xs);
-}
-.markdown .md-meta code {
-  color: var(--warn);
-  background: none;
-  padding: 0;
-}
+/* .markdown element chrome lives in portal/shared/markdown.css (linked from head-partial.html).
+ * The copy that used to sit here had no table or mermaid rules, so a skill containing either
+ * rendered unstyled in this page's source popup. */
 .globals-defaults {
   display: flex;
   align-items: center;

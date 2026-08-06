@@ -1,0 +1,158 @@
+/* Canonical styling for every block of server-rendered markdown in the portal — the HTML that
+ * scripts/cli/markdown-render.mjs emits, wherever it lands: the Telemetry "view docs" popup
+ * (#docmodal), the Config page's skill/source popup (#config-modal), the shared
+ * <skill-detail-modal>, and the Plans drawer's plan body. Linked from head-partial.html so every
+ * page gets the same ruleset.
+ *
+ * Before this file, three pages each kept a partial private copy of these rules, and they had
+ * drifted: only Telemetry styled tables and mermaid diagrams, so a table in a skill or plan
+ * rendered with unstyled browser-default borders and a diagram rendered as raw source. Page-local
+ * stylesheets should now only carry layout that is genuinely page-specific (e.g. the Plans
+ * drawer's .markdown width), never the element chrome below.
+ *
+ * em, not var(--text-*), for headings: scales relative to the markdown container's inherited size
+ * rather than the fixed portal type scale, so nested/rendered content keeps a readable hierarchy. */
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  margin: 0.9em 0 0.35em;
+  line-height: 1.25;
+  color: var(--ink);
+  scroll-margin-top: 12px;
+}
+.markdown h1:first-child,
+.markdown h2:first-child {
+  margin-top: 0;
+}
+.markdown h1 {
+  font-size: 1.15em;
+}
+.markdown h2 {
+  font-size: 1.02em;
+}
+.markdown h3 {
+  font-size: 0.95em;
+}
+.markdown p {
+  margin: 0.45em 0;
+  line-height: 1.5;
+}
+.markdown ul,
+.markdown ol {
+  margin: 0.45em 0;
+  padding-left: 1.4em;
+}
+.markdown li {
+  margin: 0.2em 0;
+}
+/* Task-list items (`- [x] ...`) render as a disabled checkbox plus text; drop the bullet so the
+ * checkbox is the only marker, the way a checklist reads on GitHub. */
+.markdown li.md-task {
+  list-style: none;
+  margin-left: -1.15em;
+}
+.markdown li.md-task input {
+  margin-right: 0.35em;
+  vertical-align: middle;
+}
+.markdown blockquote {
+  margin: 0.6em 0;
+  padding: 0.2em 0 0.2em 0.9em;
+  border-left: 3px solid var(--line);
+  color: var(--dim);
+}
+.markdown code {
+  font-size: inherit;
+  color: var(--code-ink);
+  background: var(--code-inline-bg);
+  padding: 0.08em 0.3em;
+  border-radius: 4px;
+}
+.markdown pre {
+  margin: 0.65em 0;
+  padding: 0.8em;
+  overflow: auto;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.markdown pre code {
+  display: block;
+  padding: 0;
+  background: none;
+  color: var(--ink);
+}
+.markdown hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 0.8em 0;
+}
+.markdown a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.markdown a:hover {
+  text-decoration: underline;
+}
+/* BEGIN/END section markers, kept visible by renderCommentLine() as authoring landmarks. */
+.markdown .md-meta {
+  margin: 0.25em 0;
+  color: var(--dim);
+  font-size: var(--text-2xs);
+}
+.markdown .md-meta code {
+  color: var(--warn);
+  background: none;
+  padding: 0;
+}
+/* Tables (markdown-render.mjs's renderTable): reference/comparison content deserves real chrome
+ * instead of unstyled browser-default borders. */
+.markdown .md-table-wrap {
+  overflow-x: auto;
+  margin: 0.65em 0;
+}
+.markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--text-2xs);
+}
+.markdown th,
+.markdown td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.markdown thead th {
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--text-2xs);
+  border-bottom: 1px solid var(--accent);
+}
+.markdown tbody tr:hover {
+  background: var(--row-hover, rgba(128, 128, 128, 0.06));
+}
+/* Mermaid diagrams (markdown-render.mjs's renderMermaidFallback emits <pre class="mermaid">;
+ * portal/shared/markdown-mermaid.js replaces it with the rendered SVG). The dashed-border `pre`
+ * styling only ever shows if that render fails (offline, blocked script, bad diagram source) — the
+ * escaped source is what's left sitting in the DOM at that point, so it should still read as a
+ * deliberate, legible fallback rather than a broken box. */
+.markdown .md-mermaid {
+  margin: 0.65em 0;
+}
+.markdown .md-mermaid pre {
+  border-style: dashed;
+}
+.markdown .mermaid-rendered {
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+}
+.markdown .mermaid-rendered svg {
+  max-width: 100%;
+  height: auto;
+}

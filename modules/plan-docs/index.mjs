@@ -8,6 +8,7 @@ import { finding, messagesOf } from "./findings.mjs";
 import { validateForLifecycle } from "./lifecycle-policy.mjs";
 import { buildRepairPrompt } from "./repair-prompt.mjs";
 import { classifyPlanId, isExternalBlocker } from "./plan-id.mjs";
+import { renderMarkdown } from "../../scripts/cli/markdown-render.mjs";
 
 export const LIFECYCLES = new Set(["backlog", "active", "completed", "archived"]);
 export const PRIORITIES = new Set(["high", "medium", "low", "none"]);
@@ -281,7 +282,13 @@ export function readPlanDocument(snapshot, key) {
   return {
     plan: stripPrivatePath(publicRecord),
     markdown,
-    html: tooLarge ? "<p>Document is over 1 MiB and was not rendered.</p>" : renderMarkdown(markdown),
+    // The shared renderer (scripts/cli/markdown-render.mjs -- also backing Config's skill popup and
+    // the Telemetry guide) replaced a private mini-renderer here that had no tables, mermaid,
+    // ordered lists, blockquotes, links, or horizontal rules. Frontmatter is stripped first: it is
+    // plan metadata already rendered as structured drawer fields, not body prose.
+    html: tooLarge
+      ? "<p>Document is over 1 MiB and was not rendered.</p>"
+      : renderMarkdown(parseFrontmatter(markdown).body),
     parsed,
   };
 }
@@ -836,47 +843,6 @@ function git(cwd, args) {
   return { ok: result.status === 0, stdout: (result.stdout || "").trim() };
 }
 
-function renderMarkdown(markdown) {
-  const { body } = parseFrontmatter(markdown);
-  const html = [];
-  let inList = false;
-  let inCode = false;
-  for (const raw of body.split("\n")) {
-    if (/^```/.test(raw)) {
-      html.push(inCode ? "</code></pre>" : "<pre><code>");
-      inCode = !inCode;
-      continue;
-    }
-    if (inCode) {
-      html.push(escapeHtml(raw) + "\n");
-      continue;
-    }
-    const line = raw.trimEnd();
-    const h = /^(#{1,6})\s+(.+)$/.exec(line);
-    if (h) {
-      if (inList) { html.push("</ul>"); inList = false; }
-      html.push(`<h${h[1].length}>${inline(escapeHtml(h[2]))}</h${h[1].length}>`);
-      continue;
-    }
-    const li = /^\s*[-*]\s+(?:\[([ xX])\]\s+)?(.+)$/.exec(line);
-    if (li) {
-      if (!inList) { html.push("<ul>"); inList = true; }
-      const box = li[1] ? `<input type="checkbox" disabled${li[1].toLowerCase() === "x" ? " checked" : ""}> ` : "";
-      html.push(`<li>${box}${inline(escapeHtml(li[2]))}</li>`);
-      continue;
-    }
-    if (inList) { html.push("</ul>"); inList = false; }
-    if (line.trim()) html.push(`<p>${inline(escapeHtml(line))}</p>`);
-  }
-  if (inList) html.push("</ul>");
-  if (inCode) html.push("</code></pre>");
-  return html.join("\n");
-}
-
-function inline(text) {
-  return text.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-}
-
 function publicPlan(record) {
   return {
     key: record.key,
@@ -978,14 +944,4 @@ function inside(root, target) {
 
 function stableKey(input) {
   return crypto.createHash("sha256").update(input).digest("hex").slice(0, 16);
-}
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (ch) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[ch]);
 }

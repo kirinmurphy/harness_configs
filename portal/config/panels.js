@@ -5,6 +5,7 @@
 // page singleton referenced by id, never declaratively instantiated or cloned.
 
 import { portalWireBackdropClose } from "/portal/shared/api.js";
+import { renderMermaidBlocks } from "/portal/shared/markdown-mermaid.js";
 import * as api from "./api.js";
 import * as tmpl from "./templates.js";
 
@@ -47,6 +48,9 @@ export function createConfigModal() {
   function setContent(data) {
     if (data?.html) {
       contentEl.innerHTML = data.html;
+      // Inspected sources are rendered markdown (skills, rules, guides), so any ```mermaid block
+      // in them becomes a real diagram instead of raw source text.
+      renderMermaidBlocks(contentEl);
     } else {
       contentEl.textContent = data?.content || "(empty)";
     }

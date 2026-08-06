@@ -54,6 +54,15 @@ Make plans visible.
 
 Use Markdown as source of truth.
 
+| Surface | Renderer |
+| --- | --- |
+| Drawer | shared |
+
+\`\`\`mermaid
+flowchart LR
+  A --> B
+\`\`\`
+
 ## Implementation plan
 
 - [ ] Add page
@@ -158,6 +167,17 @@ Run targeted checks.
 
   const doc = readPlanDocument(snapshot, ready.key);
   assert.match(doc.html, /Ready Plan/);
+  // The drawer renders through the shared markdown renderer (scripts/cli/markdown-render.mjs), not
+  // the private mini-renderer it used to carry — so tables, mermaid diagrams, and task checkboxes
+  // all render here the same way they do in the Config and Telemetry popups.
+  assert.match(doc.html, /<div class="md-table-wrap"><table>/);
+  assert.match(doc.html, /<th>Surface<\/th><th>Renderer<\/th>/);
+  assert.match(doc.html, /<pre class="mermaid" data-mermaid-source="/);
+  assert.match(doc.html, /<li class="md-task"><input type="checkbox" disabled> Add page<\/li>/);
+  assert.match(doc.html, /<li class="md-task"><input type="checkbox" disabled checked> Add schema<\/li>/);
+  // Frontmatter is plan metadata rendered as structured drawer fields; it must not leak into the
+  // rendered body as prose.
+  assert.doesNotMatch(doc.html, /reviewed_commit/);
   assert.doesNotMatch(JSON.stringify(doc.plan), new RegExp(tempRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(JSON.stringify(doc.parsed), new RegExp(tempRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 

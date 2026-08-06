@@ -9,6 +9,7 @@ import {
   portalWireBackdropClose,
 } from "/portal/shared/api.js";
 import { createSkillDetailModal } from "/portal/shared/skill-detail-modal.js";
+import { renderMermaidBlocks } from "/portal/shared/markdown-mermaid.js";
 import * as api from "./api.js";
 import * as tmpl from "./templates.js";
 import { createRootsPanel, createInfoModal, createPromptModal } from "./panels.js";
@@ -525,7 +526,10 @@ function renderDrawer(doc) {
   document.getElementById("drawer-path").textContent = content.path;
   const pathCopyEl = document.getElementById("drawer-path-copy");
   pathCopyEl.copySource = () => doc.plan.plan.relativePath;
-  document.getElementById("drawer-doc").innerHTML = content.html;
+  const drawerDocEl = document.getElementById("drawer-doc");
+  drawerDocEl.innerHTML = content.html;
+  // Plan bodies routinely carry architecture diagrams; render them rather than showing the source.
+  renderMermaidBlocks(drawerDocEl);
   document.getElementById("drawer-meta").replaceChildren(...content.meta);
   document
     .getElementById("drawer-warnings")

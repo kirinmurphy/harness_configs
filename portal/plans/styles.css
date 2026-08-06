@@ -1076,27 +1076,11 @@ dialog#drawer::backdrop {
 .task-open {
   color: var(--ink);
 }
+/* Layout only — the drawer's measure and offset. All element chrome (headings, code, tables,
+ * mermaid, task checkboxes) comes from the shared portal/shared/markdown.css. */
 .markdown {
   margin-top: 14px;
   max-width: 860px;
-}
-.markdown h1,
-.markdown h2,
-.markdown h3 {
-  margin-top: 1.2em;
-}
-.markdown code {
-  color: var(--code-ink);
-  background: var(--code-inline-bg);
-  padding: 1px 3px;
-  border-radius: 3px;
-}
-.markdown pre {
-  background: var(--code-bg);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px;
-  overflow: auto;
 }
 @media (max-width: 960px) {
   #root-form {

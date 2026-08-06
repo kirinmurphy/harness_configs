@@ -7,6 +7,7 @@
 // .modal-body chrome (each page's own styles.css) and .skill-source-view
 // (portal/shared/skill-source-view.css) for the fetched content's own markup.
 import { portalGetJson, portalWireBackdropClose } from "./api.js";
+import { renderMermaidBlocks } from "./markdown-mermaid.js";
 
 export function createSkillDetailModal(dialogEl) {
   const titleEl = dialogEl.querySelector('[data-slot="title"]');
@@ -33,6 +34,8 @@ export function createSkillDetailModal(dialogEl) {
       titleEl.textContent = data.title || label || skillId;
       pathEl.textContent = data.path || "";
       contentEl.innerHTML = data.html || "";
+      // A skill body is ordinary markdown, so it can contain a ```mermaid diagram like any guide.
+      renderMermaidBlocks(contentEl);
     } catch (err) {
       pathEl.textContent = "";
       contentEl.textContent = "error: " + err.message;

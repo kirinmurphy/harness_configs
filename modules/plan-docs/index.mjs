@@ -319,6 +319,7 @@ function candidateRepository(dir) {
   const hasPlans = fs.existsSync(path.join(dir, "docs", "plans"));
   if (!hasGit && !hasPlans) return null;
   const root = fs.realpathSync(dir);
+  if (hasGit && isLinkedWorktree(root)) return null;
   const git = gitInfo(root);
   // Canonical repository identity shared with Localhoster/Telemetry. git repos resolve to their
   // portable git: id; non-git plan roots get an opaque local: id. The existing content-hash `id`
@@ -819,6 +820,15 @@ function gitInfo(root) {
   const head = git(root, ["rev-parse", "--verify", "HEAD"]);
   const branch = git(root, ["branch", "--show-current"]);
   return { available: head.ok, head: head.ok ? head.stdout : null, branch: branch.ok ? branch.stdout : null };
+}
+
+function isLinkedWorktree(root) {
+  const result = git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir", "--git-dir"]);
+  if (!result.ok) return false;
+  const [commonDir, gitDir] = result.stdout.split(/\r?\n/).filter(Boolean).map((item) => path.resolve(item));
+  if (!commonDir || !gitDir) return false;
+  const relativeGitDir = path.relative(commonDir, gitDir).split(path.sep);
+  return relativeGitDir[0] === "worktrees";
 }
 
 function gitFileInfo(root, relativePath, reviewedCommit) {

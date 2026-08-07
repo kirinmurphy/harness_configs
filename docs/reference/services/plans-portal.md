@@ -82,6 +82,10 @@ Hidden files, editor swap files, backup suffixes, and symlink escapes outside th
 are skipped. The walk also guards against symlink cycles by tracking each directory's realpath and
 never descending into one already visited.
 
+Linked Git worktrees are skipped as repository candidates. `/plans` treats the primary checkout's
+`docs/plans` files as the canonical source, while implementation workflows that run inside linked
+worktrees mirror plan-status edits back to that primary checkout.
+
 Per-file scan results (parsed content, task counts, and git-derived fields like `reviewState`) are
 cached in-process keyed by the file's mtime, so a file is only re-parsed and re-queried against git
 when it actually changes on disk. Directory listing itself always runs fresh, so added/removed

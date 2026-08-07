@@ -818,6 +818,26 @@ reviewed_commit:
   assert.equal(discovery.repositories[0].name, "nested-repo");
   assert.equal(discovery.truncated, false);
 
+  // Linked worktree discovery: a worktree nested under a configured parent must not show as a
+  // duplicate repo/plan source. The primary worktree remains visible.
+  const worktreeParent = path.join(tempRoot, "worktree-parent");
+  const primaryWorktree = path.join(worktreeParent, "primary");
+  const linkedWorktree = path.join(worktreeParent, "feature");
+  fs.mkdirSync(path.join(primaryWorktree, "docs", "plans", "backlog"), { recursive: true });
+  fs.writeFileSync(path.join(primaryWorktree, "docs", "plans", "backlog", "root.md"), "# Root plan\n");
+  const gitInit = spawnSync("git", ["init", "-b", "main"], { cwd: primaryWorktree, encoding: "utf8" });
+  if (gitInit.status === 0) {
+    spawnSync("git", ["config", "user.email", "test@example.com"], { cwd: primaryWorktree, stdio: "ignore" });
+    spawnSync("git", ["config", "user.name", "RoboRepo Test"], { cwd: primaryWorktree, stdio: "ignore" });
+    const commit = spawnSync("git", ["add", "."], { cwd: primaryWorktree, encoding: "utf8" });
+    const committed = commit.status === 0 && spawnSync("git", ["commit", "-m", "seed"], { cwd: primaryWorktree, encoding: "utf8" }).status === 0;
+    const added = committed && spawnSync("git", ["worktree", "add", "-b", "feature", linkedWorktree], { cwd: primaryWorktree, encoding: "utf8" }).status === 0;
+    if (added) {
+      const worktreeDiscovery = discoverRepositories({ discoveryRoots: [worktreeParent], ignoredDirectories: [] });
+      assert.deepEqual(worktreeDiscovery.repositories.map((item) => item.root), [fs.realpathSync(primaryWorktree)]);
+    }
+  }
+
   // Depth cap: a repo deeper than DISCOVERY_MAX_DEPTH (6) below the root must not be found.
   const deepRoot = path.join(tempRoot, "deep");
   const tooDeepSegments = Array.from({ length: 8 }, (_, i) => `d${i}`);

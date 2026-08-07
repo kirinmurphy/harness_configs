@@ -51,6 +51,13 @@ The existing plan is the implementation contract. Verify it against the current 
     - branch;
     - base branch;
     - starting commit.
+13. Resolve the primary checkout with `git worktree list --porcelain`. The first `worktree` entry
+    is the main checkout for the shared `.git` directory. When implementation runs from a linked
+    worktree, keep plan-status updates synchronized in the matching plan document under the primary
+    checkout, not only in the linked worktree copy. Use the same repository-relative
+    `docs/plans/...` path. If the primary checkout path cannot be resolved or the matching document
+    is absent there, record that limitation in the plan and final report instead of inventing a
+    second source of truth.
 
 When deterministic RoboRepo commands exist for an operation, use them instead of reconstructing the mutation manually.
 
@@ -68,15 +75,18 @@ When deterministic RoboRepo commands exist for an operation, use them instead of
    - blockers;
    - completed work;
    - verification results.
-8. Do not silently omit objectives.
-9. Do not expand into unrelated cleanup.
-10. Perform a final comparison between:
+8. When the implementation worktree is linked, mirror those plan-document updates to the primary
+   checkout's copy so `/plans` reflects the active status after linked worktrees are ignored by
+   discovery.
+9. Do not silently omit objectives.
+10. Do not expand into unrelated cleanup.
+11. Perform a final comparison between:
     - the plan;
     - the implementation diff;
     - runtime behavior;
     - acceptance criteria.
-11. Run completion-level verification.
-12. Report the final state.
+12. Run completion-level verification.
+13. Report the final state.
 
 ## Decision Policy
 

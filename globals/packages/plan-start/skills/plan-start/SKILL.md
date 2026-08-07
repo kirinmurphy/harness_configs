@@ -28,7 +28,12 @@ The existing plan is the implementation contract. Verify it against the current 
 1. Read the entire selected plan.
 2. Inspect the current repository state and material plan claims.
 3. Detect whether the plan has become stale or materially incomplete.
-4. Read `docs/plans/plans-config.json` when present.
+4. Read `docs/plans/plans-config.json` when present. If it declares a `worktreeRoot` (a path,
+   relative to the repository root unless absolute), that is the configured worktree policy; resolve
+   new worktrees under it. If the key is absent, propose a default (a sibling directory next to the
+   repository root is a reasonable one) and state the exact resolved path to the user before running
+   `git worktree add` — do not silently pick a location the first time a repository has no configured
+   root.
 5. Resolve the worktree policy.
 6. Inspect existing worktrees before creating another one.
 7. Reuse a worktree only when it clearly matches the repository and intended branch and is safe to continue.

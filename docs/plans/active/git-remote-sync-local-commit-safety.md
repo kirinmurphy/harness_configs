@@ -194,7 +194,7 @@ AND ahead > 0
 
 A repository with no matching branches is omitted from the normal result.
 
-A repository whose remote refresh failed is not treated as clean. Direct mode should report it separately as unverified; direct mode should set a non-zero exit status when any repository could not be refreshed. Interactive mode should display refresh failures but continue to offer actions for repositories whose state was verified.
+A repository whose remote refresh failed is not treated as clean. Direct mode should report it separately as unverified; direct mode should set a non-zero exit status when any repository could not be refreshed. Verified ahead branches are an informational safety result, not a command failure: direct mode should exit zero when all refreshes succeeded, even if one or more branches are ahead. Interactive mode should display refresh failures but continue to offer actions for repositories whose state was verified.
 
 ### Direct CLI output
 
@@ -234,6 +234,14 @@ Could not verify remote state
 Do not show clean counts, `need sync` counts, dirty state, merge/delete recommendations, behind-only branches, or long checkout commands in compact output.
 
 Structured output should expose the same verified safety projection plus refresh failures. Human renderers and the interactive menu must consume that projection rather than each implementing their own filtering rules.
+
+Direct-mode exit status should follow verification health only:
+
+| Condition | Exit status |
+| --- | --- |
+| All requested repositories were refreshed, with or without ahead branches | `0` |
+| One or more repositories could not refresh remote state | non-zero |
+| Invalid arguments or unexpected command/runtime failures | non-zero |
 
 ### Interactive workflow
 
@@ -318,6 +326,8 @@ Update `manifests/platform/cli/command-definitions/git/remote-sync-check.command
 
 Keep the generic menu implementation Git-agnostic. `scripts/cli/interactive-menu.mjs`, `scripts/cli/interactive-menu-items.mjs`, and `scripts/cli/prompts.mjs` should only change if implementation proves a missing generic primitive.
 
+Because inherited-stdio commands are responsible for their own terminal interaction, `git-remote-sync-menu.mjs` should also write a small JSON result to `ROBOREPO_INTERACTIVE_RESULT_FILE` when that environment variable is present. Use it to suppress misleading generic success notices or to return a precise notice such as "Remote sync check complete". The generic menu should not need Git-specific changes for this.
+
 ## Implementation Plan
 
 ### Phase 1 — Characterize shared branch-sync facts
@@ -365,6 +375,7 @@ Keep the generic menu implementation Git-agnostic. `scripts/cli/interactive-menu
 
 - [ ] Add `--menu` handling and require a TTY for menu mode.
 - [ ] Add `scripts/cli/git-remote-sync-menu.mjs` using the existing `selectMenu`, confirmation, and Enter-pause primitives.
+- [ ] In menu mode, write the inherited-stdio result-file payload when `ROBOREPO_INTERACTIVE_RESULT_FILE` is present so the parent Git menu gets a precise completion notice and no captured-output pause.
 - [ ] Show affected repositories first, then repository detail with the four agreed actions.
 - [ ] Make Show commits, Copy checkout command, and Push ask for a branch after the action is selected.
 - [ ] Keep Open shell repository-level and never switch branches automatically.
@@ -379,10 +390,11 @@ Keep the generic menu implementation Git-agnostic. `scripts/cli/interactive-menu
 - [ ] Replace the old invalid-remote remote-sync assertions in `scripts/test/git-inventory-check.mjs` with local bare-remote fixtures that exercise actual fetch freshness and ahead detection.
 - [ ] Prove the command catches a remote commit that would have been missed by a stale remote-tracking ref before the automatic fetch.
 - [ ] Prove a local ahead commit is shown after refresh and disappears after a confirmed push.
+- [ ] Prove direct mode exits zero when refresh succeeds and verified ahead branches are present.
 - [ ] Prove behind-only branches are omitted and diverged branches are reported but cannot be pushed through this workflow.
-- [ ] Prove a fetch/authentication failure is surfaced as unverified rather than clean.
+- [ ] Prove a fetch/authentication failure is surfaced as unverified rather than clean and exits non-zero.
 - [ ] Extend `scripts/test/cli-command-catalog-check.mjs` for the new manifest module, `--menu`, and inherited-stdio metadata.
-- [ ] Extend `scripts/test/cli-surface-integration-check.mjs` using its existing PTY/`expect` pattern for repository-first navigation, action selection, push cancellation, confirmed push, and return-to-menu behavior.
+- [ ] Extend `scripts/test/cli-surface-integration-check.mjs` using its existing PTY/`expect` pattern for repository-first navigation, action selection, push cancellation, confirmed push, inherited-stdio result notice, and return-to-menu behavior.
 - [ ] Run the Localhoster Git characterization suite to prove no portal-facing Git behavior changed.
 
 ## Validation
@@ -408,10 +420,12 @@ Acceptance criteria:
 
 - Direct `remote-sync-check` refreshes relevant configured remotes before evaluating ahead state.
 - A fetch failure can never produce a reassuring clean result for the affected repository.
+- Direct mode exits zero for verified ahead branches and non-zero for refresh failures, invalid arguments, or unexpected command/runtime failures.
 - Compact output contains only verified branches with `ahead > 0` plus a separate refresh-failure section when necessary.
 - Behind-only branches do not appear; diverged branches appear because they contain local commits.
 - A diverged branch cannot be pushed through this workflow and the workflow never force-pushes.
 - Interactive mode starts with repositories and exposes exactly the four agreed repository actions plus navigation.
+- Interactive inherited-stdio mode returns a precise parent-menu notice through `ROBOREPO_INTERACTIVE_RESULT_FILE` without reintroducing captured-output pauses.
 - Push requires an explicit default-No confirmation and does not require checkout.
 - A successful push is followed by refresh/re-scan and removes the branch when it reaches zero ahead.
 - Localhoster continues to perform no network Git operations during its normal refresh cycle.

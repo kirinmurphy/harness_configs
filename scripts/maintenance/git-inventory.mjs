@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import readline from "node:readline/promises";
@@ -26,13 +27,58 @@ const JUNK_PATTERNS = [
 ];
 
 export async function gitInventory(argv = process.argv.slice(2)) {
-  const options = parseArgs(argv);
+  const options = parseArgs(argv, { defaultFormat: "markdown" });
+  const inventory = await collectInventory(options, {
+    filterRepo: (repo) => options.includeClean || !isClean(repo),
+    summarize: summarize,
+  });
+
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`);
+    return;
+  }
+  if (options.table) {
+    process.stdout.write(renderTable(inventory));
+    return;
+  }
+  if (options.compact) {
+    process.stdout.write(renderCompact(inventory));
+    return;
+  }
+
+  process.stdout.write(renderMarkdown(inventory));
+}
+
+export async function remoteSyncCheck(argv = process.argv.slice(2)) {
+  const options = parseArgs(argv, { defaultFormat: "compact" });
+  const inventory = await collectInventory(options, {
+    filterRepo: (repo) => options.includeClean || !isRemoteSyncClean(repo),
+    summarize: summarizeRemoteSync,
+  });
+
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`);
+    return;
+  }
+  if (options.table) {
+    process.stdout.write(renderRemoteSyncTable(inventory));
+    return;
+  }
+  if (options.markdown) {
+    process.stdout.write(renderRemoteSyncMarkdown(inventory));
+    return;
+  }
+
+  process.stdout.write(renderRemoteSyncCompact(inventory));
+}
+
+async function collectInventory(options, { filterRepo, summarize }) {
   const root = await resolveRoot(options.root);
   const repos = discoverRepos(root, { maxDepth: options.maxDepth });
   const records = repos
     .map((repoPath) => inspectRepo(repoPath, root, options))
     .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
-  const filtered = options.includeClean ? records : records.filter((repo) => !isClean(repo));
+  const filtered = records.filter(filterRepo);
   const inventory = {
     root,
     generatedAt: new Date().toISOString(),
@@ -44,21 +90,17 @@ export async function gitInventory(argv = process.argv.slice(2)) {
     summary: summarize(records),
     repos: filtered,
   };
-
-  if (options.json) {
-    process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`);
-    return;
-  }
-
-  process.stdout.write(renderMarkdown(inventory));
+  return inventory;
 }
 
-function parseArgs(argv) {
+function parseArgs(argv, { defaultFormat }) {
   const options = {
     root: null,
     fetch: false,
     json: false,
     markdown: false,
+    table: false,
+    compact: false,
     includeClean: false,
     maxDepth: DEFAULT_MAX_DEPTH,
   };
@@ -68,6 +110,8 @@ function parseArgs(argv) {
     if (arg === "--fetch") options.fetch = true;
     else if (arg === "--json") options.json = true;
     else if (arg === "--markdown") options.markdown = true;
+    else if (arg === "--table") options.table = true;
+    else if (arg === "--compact") options.compact = true;
     else if (arg === "--include-clean") options.includeClean = true;
     else if (arg === "--max-depth") {
       const raw = argv[i + 1];
@@ -94,8 +138,9 @@ function parseArgs(argv) {
     }
   }
 
-  if (!options.json && !options.markdown) options.markdown = true;
-  if (options.json && options.markdown) throw new Error("choose either --json or --markdown");
+  const formats = [options.json, options.markdown, options.table, options.compact].filter(Boolean).length;
+  if (formats === 0) options[defaultFormat] = true;
+  if (formats > 1) throw new Error("choose one of --json, --markdown, --table, or --compact");
   return options;
 }
 
@@ -125,7 +170,7 @@ async function resolveRoot(initialRoot) {
 }
 
 function validateRoot(root) {
-  const absolute = path.resolve(root);
+  const absolute = path.resolve(expandHomePath(root));
   let stat;
   try {
     stat = fs.statSync(absolute);
@@ -134,6 +179,12 @@ function validateRoot(root) {
   }
   if (!stat.isDirectory()) throw new Error(`not a folder: ${absolute}`);
   return absolute;
+}
+
+function expandHomePath(input) {
+  if (input === "~") return os.homedir();
+  if (input.startsWith("~/")) return path.join(os.homedir(), input.slice(2));
+  return input;
 }
 
 function discoverRepos(root, { maxDepth }) {
@@ -187,15 +238,21 @@ function inspectRepo(repoPath, root, options) {
     ? aheadBehind(repoPath, "HEAD", upstream, errors)
     : { ahead: null, behind: null, status: "no_upstream" };
   const localBranches = localBranchNames(repoPath, errors);
+  const defaultBranch = defaultBranchName(localBranches, currentBranch);
   const mergedBranches = currentBranch
     ? new Set(gitLines(repoPath, ["branch", "--merged", currentBranch]).map(cleanBranchLine))
+    : new Set();
+  const mergedDefaultBranches = defaultBranch
+    ? new Set(gitLines(repoPath, ["branch", "--merged", defaultBranch]).map(cleanBranchLine))
     : new Set();
   const branches = localBranches.map((branch) =>
     inspectBranch(repoPath, branch, {
       currentBranch,
+      defaultBranch,
       currentDirty: status.dirty,
       hasRemote: Boolean(remote),
       mergedBranches,
+      mergedDefaultBranches,
     }, errors),
   );
   const trackedJunk = trackedJunkCandidates(repoPath, errors);
@@ -204,6 +261,7 @@ function inspectRepo(repoPath, root, options) {
     path: repoPath,
     relativePath: path.relative(root, repoPath) || ".",
     currentBranch,
+    defaultBranch,
     remoteOriginUrl: remote || null,
     upstream: upstream || null,
     status,
@@ -222,6 +280,8 @@ function inspectBranch(repoPath, branch, context, errors) {
   const unpushedCommits = gitNumber(repoPath, ["rev-list", "--count", branch, "--not", "--remotes"], errors);
   const isCurrent = branch === context.currentBranch;
   const mergedIntoCurrent = isCurrent || context.mergedBranches.has(branch);
+  const isDefault = branch === context.defaultBranch;
+  const mergedIntoDefault = isDefault || context.mergedDefaultBranches.has(branch);
   const actions = [];
 
   if (
@@ -251,11 +311,19 @@ function inspectBranch(repoPath, branch, context, errors) {
     upstream: upstream || null,
     ahead: branchAheadBehind.ahead,
     behind: branchAheadBehind.behind,
+    syncStatus: branchAheadBehind.status,
     unpushedCommits,
     mergedIntoCurrent,
+    mergedIntoDefault,
     branchAction: actions[0] || null,
     branchActions: actions,
   };
+}
+
+function defaultBranchName(localBranches, currentBranch) {
+  if (localBranches.includes("main")) return "main";
+  if (localBranches.includes("master")) return "master";
+  return currentBranch || localBranches[0] || null;
 }
 
 function currentBranchName(repoPath, errors) {
@@ -396,6 +464,387 @@ function isClean(repo) {
 
 function hasCurrentSyncIssue(repo) {
   return repo.branches.some((branch) => branch.branchActions.includes("current_sync_issue"));
+}
+
+function summarizeRemoteSync(records) {
+  return {
+    totalRepos: records.length,
+    reposWithIssues: records.filter((repo) => !isRemoteSyncClean(repo)).length,
+    cleanRepos: records.filter(isRemoteSyncClean).length,
+    reposWithNoRemote: records.filter((repo) => !repo.remoteOriginUrl).length,
+    branchesWithNoUpstream: records.reduce((sum, repo) =>
+      sum + repo.branches.filter((branch) => !branch.upstream).length, 0),
+    branchesAhead: records.reduce((sum, repo) =>
+      sum + repo.branches.filter((branch) => (branch.ahead || 0) > 0).length, 0),
+    branchesBehind: records.reduce((sum, repo) =>
+      sum + repo.branches.filter((branch) => (branch.behind || 0) > 0).length, 0),
+    branchesWithUnpushedCommits: records.reduce((sum, repo) =>
+      sum + repo.branches.filter((branch) => branch.unpushedCommits > 0).length, 0),
+    reposWithErrors: records.filter((repo) => repo.errors.length > 0).length,
+  };
+}
+
+function isRemoteSyncClean(repo) {
+  return repoRemoteSyncTodos(repo).length === 1 && repoRemoteSyncTodos(repo)[0] === "No action.";
+}
+
+function branchRemoteIssues(repo, branch) {
+  const issues = [];
+  if (!repo.remoteOriginUrl) issues.push("no remote");
+  if (!branch.upstream) issues.push("no upstream");
+  if (branch.upstream && branch.syncStatus === "error") issues.push("upstream ref unavailable");
+  if ((branch.ahead || 0) > 0) issues.push(`ahead ${branch.ahead}`);
+  if ((branch.behind || 0) > 0) issues.push(`behind ${branch.behind}`);
+  if (!branch.upstream && branch.unpushedCommits > 0) issues.push(`unpushed ${branch.unpushedCommits}`);
+  return issues;
+}
+
+function renderRemoteSyncCompact(inventory) {
+  const lines = [
+    "Git Remote Sync Check",
+    `Root: ${inventory.root}`,
+    `Repos: ${inventory.summary.totalRepos} | need sync: ${inventory.summary.reposWithIssues} | clean: ${inventory.summary.cleanRepos}`,
+  ];
+
+  if (inventory.repos.length === 0) {
+    lines.push("", "No remote sync issues.");
+    return `${lines.join("\n")}\n`;
+  }
+
+  inventory.repos.forEach((repo, index) => {
+    lines.push("", `${index + 1}. ${repoLabel(repo)}`);
+    repoRemoteSyncTodos(repo).forEach((todo) => lines.push(`   - ${todo}`));
+  });
+
+  return `${lines.join("\n")}\n`;
+}
+
+function remoteBranchSummary(branch, repo) {
+  if (!branch) return ["unknown", "upstream none", "ahead unknown", "behind unknown"];
+  return [
+    branch.name,
+    ...remoteBranchStatus(branch, repo),
+  ];
+}
+
+function remoteBranchStatus(branch, repo) {
+  return [
+    `upstream ${branch.upstream || "none"}`,
+    `ahead ${formatCount(branch.ahead)}`,
+    `behind ${formatCount(branch.behind)}`,
+    ...(repo.remoteOriginUrl ? [] : ["remote none"]),
+  ];
+}
+
+function repoRemoteSyncActions(repo) {
+  return repoRemoteSyncTodos(repo).map((todo) => todo.replace(/\.$/, ""));
+}
+
+function repoRemoteSyncTodos(repo) {
+  const todos = [];
+  if (!repo.remoteOriginUrl) todos.push("Add a remote for this repo.");
+  const defaultBranch = repo.branches.find((branch) => branch.name === repo.defaultBranch);
+  if (defaultBranch) {
+    if (!defaultBranch.upstream) todos.push(`Set upstream for ${defaultBranch.name}.`);
+    if (defaultBranch.upstream && defaultBranch.syncStatus === "error") {
+      todos.push(`Repair missing upstream ref for ${defaultBranch.name}: ${defaultBranch.upstream}.`);
+    }
+    if ((defaultBranch.behind || 0) > 0) {
+      todos.push(`Update ${defaultBranch.name} from ${defaultBranch.upstream} (${defaultBranch.behind} behind).`);
+    }
+    if ((defaultBranch.ahead || 0) > 0) {
+      todos.push(`Push ${defaultBranch.name} to ${defaultBranch.upstream} (${defaultBranch.ahead} ahead).`);
+    }
+  }
+  const unmerged = repo.branches.filter((branch) =>
+    branch.name !== repo.defaultBranch && !branch.mergedIntoDefault);
+  const localOnly = repo.branches.filter((branch) => !branch.upstream && branch.unpushedCommits > 0);
+  const unavailableUpstream = repo.branches.filter((branch) =>
+    branch.name !== repo.defaultBranch && branch.upstream && branch.syncStatus === "error");
+  if (unmerged.length) todos.push(`Merge or delete branch(es) not merged into ${repo.defaultBranch}: ${branchNameList(unmerged)}.`);
+  if (localOnly.length) todos.push(`Push or delete local-only branch(es): ${branchNameList(localOnly)}.`);
+  if (unavailableUpstream.length) todos.push(`Repair missing upstream ref(s): ${branchUpstreamList(unavailableUpstream)}.`);
+  if (hasNonSyncErrors(repo)) todos.push("Review git error(s) for this repo.");
+  return dedupe(todos.length ? todos : ["No action."]);
+}
+
+function hasNonSyncErrors(repo) {
+  return repo.errors.some((error) => !error.startsWith("ahead/behind failed for "));
+}
+
+function branchNameList(branches) {
+  return compactList(branches.map((branch) => branch.name));
+}
+
+function branchUpstreamList(branches) {
+  return compactList(branches.map((branch) => `${branch.name} -> ${branch.upstream}`));
+}
+
+function branchCountList(branches, field) {
+  return compactList(branches.map((branch) => `${branch.name} (${branch[field]})`));
+}
+
+function sumBranches(branches, field) {
+  return branches.reduce((sum, branch) => sum + (branch[field] || 0), 0);
+}
+
+function compactList(values, limit = 5) {
+  if (values.length <= limit) return values.join(", ");
+  return `${values.slice(0, limit).join(", ")} (+${values.length - limit} more)`;
+}
+
+function renderRemoteSyncMarkdown(inventory) {
+  const lines = [
+    "# Git Remote Sync Check",
+    "",
+    `Root: \`${inventory.root}\``,
+    "",
+    `- Repos scanned: ${inventory.summary.totalRepos}`,
+    `- Repos needing sync: ${inventory.summary.reposWithIssues}`,
+    `- Clean repos: ${inventory.summary.cleanRepos}`,
+    `- Repos with no remote: ${inventory.summary.reposWithNoRemote}`,
+    `- Branches with no upstream: ${inventory.summary.branchesWithNoUpstream}`,
+    `- Branches ahead: ${inventory.summary.branchesAhead}`,
+    `- Branches behind: ${inventory.summary.branchesBehind}`,
+    "",
+  ];
+
+  if (inventory.repos.length === 0) {
+    lines.push("No remote sync issues.");
+    return `${lines.join("\n")}\n`;
+  }
+
+  inventory.repos.forEach((repo, index) => {
+    lines.push(`${index + 1}. ${repo.path}`);
+    lines.push(`   - action: ${repoRemoteSyncActions(repo).join(" | ")}`);
+    repo.branches
+      .filter((branch) => branchRemoteIssues(repo, branch).length > 0)
+      .forEach((branch) => lines.push(`   - ${branch.name}: ${remoteBranchSummary(branch, repo).join(" | ")}`));
+    if (repo.errors.length) lines.push(`   - errors: ${repo.errors.join(" | ")}`);
+    lines.push("");
+  });
+  return `${lines.join("\n")}`;
+}
+
+function renderRemoteSyncTable(inventory) {
+  const rows = [["Path", "Branch", "Upstream", "Ahead", "Behind", "Issues"]];
+  inventory.repos.forEach((repo) => {
+    repo.branches
+      .filter((branch) => branchRemoteIssues(repo, branch).length > 0)
+      .forEach((branch) => rows.push([
+        repo.path,
+        branch.name,
+        branch.upstream || "none",
+        formatCount(branch.ahead),
+        formatCount(branch.behind),
+        branchRemoteIssues(repo, branch).join(", "),
+      ]));
+  });
+  const lines = [
+    "Git Remote Sync Check",
+    `Root: ${inventory.root}`,
+    `Repos: ${inventory.summary.totalRepos} | need sync: ${inventory.summary.reposWithIssues} | clean: ${inventory.summary.cleanRepos}`,
+    "",
+    rows.length > 1 ? renderRows(rows) : "No remote sync issues.",
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+function dedupe(values) {
+  return [...new Set(values)];
+}
+
+function renderCompact(inventory) {
+  const lines = [
+    "Git Inventory",
+    `Root: ${inventory.root}`,
+    `Repos: ${inventory.summary.totalRepos} | need attention: ${inventory.summary.reposWithIssues} | clean: ${inventory.summary.cleanRepos}`,
+  ];
+
+  if (inventory.repos.length === 0) {
+    lines.push("", "No repos to show.");
+    return `${lines.join("\n")}\n`;
+  }
+
+  inventory.repos.forEach((repo, index) => {
+    lines.push("", `${index + 1}. ${repoLabel(repo)}`);
+    lines.push(`   current: ${currentSummary(repo).join(" | ")}`);
+    lines.push(`   action: ${repoActions(repo).join(" | ")}`);
+    const branchSummary = branchIssueSummary(repo);
+    if (branchSummary.length) lines.push(`   branches: ${branchSummary.join(" | ")}`);
+    if (repo.trackedJunk.length) lines.push(`   junk: ${repo.trackedJunk.join(" | ")}`);
+    if (repo.errors.length) lines.push(`   errors: ${repo.errors.join(" | ")}`);
+  });
+
+  return `${lines.join("\n")}\n`;
+}
+
+function repoLabel(repo) {
+  if (!repo.relativePath || repo.relativePath === ".") return ".";
+  return `./${repo.relativePath}`;
+}
+
+function currentSummary(repo) {
+  const current = repo.branches.find((branch) => branch.name === repo.currentBranch);
+  return [
+    repo.currentBranch || "unknown",
+    `dirty ${repo.status.dirty}`,
+    `ahead ${formatCount(current?.ahead)}`,
+    `behind ${formatCount(current?.behind)}`,
+    `upstream ${repo.upstream || "none"}`,
+  ];
+}
+
+function repoActions(repo) {
+  const actions = [];
+  const current = repo.branches.find((branch) => branch.name === repo.currentBranch);
+  if (!repo.remoteOriginUrl) actions.push("add remote");
+  if (!repo.upstream) actions.push("set upstream");
+  if (repo.status.dirty > 0) actions.push("commit/stash local changes");
+  if ((current?.ahead || 0) > 0) actions.push(`push ${current.ahead} commit(s)`);
+  if ((current?.behind || 0) > 0) actions.push(`pull/rebase ${current.behind} commit(s)`);
+
+  const unpushed = repo.branches.filter((branch) =>
+    !branch.branchActions.includes("current_sync_issue") &&
+    branch.branchActions.includes("unpushed_branch"));
+  if (unpushed.length) actions.push(`review ${unpushed.length} unpushed branch(es)`);
+
+  const unmerged = repo.branches.filter((branch) => branch.branchActions.includes("unmerged_branch"));
+  if (unmerged.length) actions.push(`review ${unmerged.length} unmerged branch(es)`);
+  if (repo.trackedJunk.length) actions.push(`remove ${repo.trackedJunk.length} tracked junk file(s)`);
+  if (repo.errors.length) actions.push("review git errors");
+  if (actions.length === 0) actions.push("none");
+  return actions;
+}
+
+function branchIssueSummary(repo) {
+  return repo.branches
+    .filter((branch) => !branch.branchActions.includes("current_sync_issue") && branch.branchActions.length > 0)
+    .map((branch) => `${branch.name} ${branch.branchActions.join("+")}`);
+}
+
+function renderTable(inventory) {
+  const lines = [
+    "Git Inventory",
+    `Root: ${inventory.root}`,
+    `Generated: ${inventory.generatedAt}`,
+    "",
+    "Summary",
+    renderRows([
+      ["Repos", "Issues", "Sync", "Unpushed", "Unmerged", "No remote", "Junk", "Errors", "Clean"],
+      [
+        inventory.summary.totalRepos,
+        inventory.summary.reposWithIssues,
+        inventory.summary.currentBranchSyncIssues,
+        inventory.summary.localOnlyOrUnpushedBranches,
+        inventory.summary.unmergedBranches,
+        inventory.summary.reposWithNoRemote,
+        inventory.summary.reposWithTrackedJunk,
+        inventory.summary.reposWithErrors,
+        inventory.summary.cleanRepos,
+      ],
+    ]),
+  ];
+
+  appendTableSection(lines, "Current Branch Sync Issues", currentSyncRows(inventory.repos));
+  appendTableSection(lines, "Local-Only / Unpushed Branches", branchActionRows(inventory.repos, "unpushed_branch"));
+  appendTableSection(lines, "Unmerged Branches", branchActionRows(inventory.repos, "unmerged_branch"));
+  appendTableSection(lines, "Repos With No Remote", noRemoteRows(inventory.repos));
+  appendTableSection(lines, "Tracked Junk Candidates", trackedJunkRows(inventory.repos));
+  appendTableSection(lines, "Git Error Notes", errorRows(inventory.repos));
+  if (inventory.options.includeClean) appendTableSection(lines, "Clean Repos", cleanRows(inventory.repos));
+
+  return `${lines.join("\n")}\n`;
+}
+
+function appendTableSection(lines, title, rows) {
+  lines.push("", title);
+  if (rows.length === 0) {
+    lines.push("None");
+    return;
+  }
+  lines.push(renderRows(rows));
+}
+
+function currentSyncRows(repos) {
+  const rows = [["Path", "Branch", "Dirty", "Staged", "Unstaged", "Untracked", "Ahead", "Behind", "Upstream"]];
+  repos.filter(hasCurrentSyncIssue).forEach((repo) => {
+    const current = repo.branches.find((branch) => branch.name === repo.currentBranch);
+    rows.push([
+      repo.path,
+      repo.currentBranch || "unknown",
+      repo.status.dirty,
+      repo.status.staged,
+      repo.status.unstaged,
+      repo.status.untracked,
+      formatCount(current?.ahead),
+      formatCount(current?.behind),
+      repo.upstream || "none",
+    ]);
+  });
+  return rows.length > 1 ? rows : [];
+}
+
+function branchActionRows(repos, action) {
+  const rows = [["Path", "Branch", "Commits", "Ahead", "Behind", "Upstream", "Merged"]];
+  branchRows(repos, action).forEach(({ repo, branch }) => {
+    rows.push([
+      repo.path,
+      branch.name,
+      branch.unpushedCommits,
+      formatCount(branch.ahead),
+      formatCount(branch.behind),
+      branch.upstream || "none",
+      branch.mergedIntoCurrent ? "yes" : "no",
+    ]);
+  });
+  return rows.length > 1 ? rows : [];
+}
+
+function noRemoteRows(repos) {
+  const rows = [["Path", "Branch", "Dirty"]];
+  repos.filter((repo) => !repo.remoteOriginUrl).forEach((repo) => {
+    rows.push([repo.path, repo.currentBranch || "unknown", repo.status.dirty]);
+  });
+  return rows.length > 1 ? rows : [];
+}
+
+function trackedJunkRows(repos) {
+  const rows = [["Path", "Tracked file"]];
+  repos.forEach((repo) => {
+    repo.trackedJunk.forEach((file) => rows.push([repo.path, file]));
+  });
+  return rows.length > 1 ? rows : [];
+}
+
+function errorRows(repos) {
+  const rows = [["Path", "Error"]];
+  repos.forEach((repo) => {
+    repo.errors.forEach((error) => rows.push([repo.path, error]));
+  });
+  return rows.length > 1 ? rows : [];
+}
+
+function cleanRows(repos) {
+  const rows = [["Path", "Branch", "Remote"]];
+  repos.filter(isClean).forEach((repo) => {
+    rows.push([repo.path, repo.currentBranch || "unknown", repo.remoteOriginUrl || "none"]);
+  });
+  return rows.length > 1 ? rows : [];
+}
+
+function renderRows(rows) {
+  const textRows = rows.map((row) => row.map((cell) => String(cell)));
+  const widths = textRows[0].map((_, column) =>
+    Math.max(...textRows.map((row) => row[column].length)),
+  );
+  return textRows
+    .map((row, index) => {
+      const line = row.map((cell, column) => cell.padEnd(widths[column])).join("  ").trimEnd();
+      if (index !== 0) return line;
+      return `${line}\n${widths.map((width) => "-".repeat(width)).join("  ")}`;
+    })
+    .join("\n");
 }
 
 function renderMarkdown(inventory) {

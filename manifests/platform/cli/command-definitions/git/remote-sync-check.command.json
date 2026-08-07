@@ -1,10 +1,10 @@
 {
-  "path": ["git", "inventory"],
+  "path": ["git", "remote-sync-check"],
   "kind": "command",
-  "title": "Git inventory",
-  "description": "Inventory local git repositories before migration or cleanup",
-  "order": 10,
-  "usage": "roborepo git inventory [path] [--fetch] [--json|--markdown|--table|--compact] [--include-clean] [--max-depth <n>]",
+  "title": "Remote sync check",
+  "description": "Check local branches against their configured remotes",
+  "order": 20,
+  "usage": "roborepo git remote-sync-check [path] [--fetch] [--json|--markdown|--table|--compact] [--include-clean] [--max-depth <n>]",
   "arguments": [{ "name": "path", "required": true, "interactive": { "prompt": "Folder to scan" } }],
   "interactiveArgs": ["--compact"],
   "onComplete": "returnToSubmenu",
@@ -13,6 +13,6 @@
   "execution": {
     "adapter": "module",
     "module": "scripts/maintenance/git-inventory.mjs",
-    "export": "gitInventory"
+    "export": "remoteSyncCheck"
   }
 }

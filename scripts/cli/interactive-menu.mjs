@@ -1,5 +1,5 @@
 import { renderHelp } from "./help-renderer.mjs";
-import { selectMenu, waitForAnyKey } from "./skill-lib.mjs";
+import { selectMenu, waitForAnyKey, waitForEnter } from "./skill-lib.mjs";
 import { resolveInteractiveArgs } from "./interactive-args.mjs";
 import { menuItems, menuTitle } from "./interactive-menu-items.mjs";
 import { repoRoot } from "./paths.mjs";
@@ -58,7 +58,7 @@ async function runInteractiveCommand(node, tokens, args) {
     const childResult = readInteractiveResult(resultFile);
     if (result.status !== 0) {
       console.log(`command exited with ${result.status}`);
-      await waitForAnyKey(node.continuePrompt || "Press any key to return to menu");
+      await waitForContinue(node);
     }
     return {
       action: completion === "returnToMenu" ? "returnToRoot" : completion === "returnToSubmenu" ? "returnToSubmenu" : "exit",
@@ -96,7 +96,13 @@ async function showCommandResult({ node, tokens, result }) {
   const stderr = cleanInteractiveStderr(result.stderr);
   if (stderr) process.stderr.write(stderr.endsWith("\n") ? stderr : `${stderr}\n`);
   if (result.status !== 0) process.stdout.write(`\ncommand exited with ${result.status}\n`);
-  await waitForAnyKey(node.continuePrompt || "Press any key to return to menu");
+  await waitForContinue(node);
+}
+
+async function waitForContinue(node) {
+  const prompt = node.continuePrompt || "Press any key to return to menu";
+  if (node.continueKey === "enter") return waitForEnter(prompt);
+  return waitForAnyKey(prompt);
 }
 
 function cleanInteractiveStderr(stderr) {

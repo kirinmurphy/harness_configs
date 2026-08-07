@@ -58,6 +58,26 @@ export async function waitForAnyKey(message = "Press any key to continue") {
   });
 }
 
+export async function waitForEnter(message = "Press Enter to continue") {
+  const tty = process.stdin.isTTY && process.stdout.isTTY;
+  if (!tty) return;
+  process.stdout.write(`\n\x1b[1m${message}\x1b[0m`);
+  return new Promise((resolve) => {
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    const onKey = (_str, key) => {
+      if (key?.name !== "return" && key?.name !== "enter") return;
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      process.stdin.removeListener("keypress", onKey);
+      process.stdout.write("\n");
+      resolve();
+    };
+    process.stdin.on("keypress", onKey);
+  });
+}
+
 export async function selectMenu(title, items) {
   const isHeader = (it) => Object.prototype.hasOwnProperty.call(it, "header");
   const selectable = items

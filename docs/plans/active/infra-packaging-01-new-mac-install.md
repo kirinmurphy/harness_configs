@@ -511,6 +511,33 @@ Automated acceptance requires:
   generated harness configuration or workspace records makes the path-isolation assertion fail,
   while the documented `install-state.json` exception continues to pass.
 
+### Verification (Phases 1-3, this implementation pass)
+
+Run from worktree `infra-packaging-01-new-mac-install`, commits `da322ff` → `c23842b`:
+
+- `npm test` → 392 passed, 0 failed.
+- `npm run pack:dry-run` → passes, 525 files, 1.7 MB package / 6.1 MB unpacked.
+- `npm run test:package-install` → `ok: package install smoke (ephemeral)`; confirmed no sandbox
+  directory survives under `$TMPDIR` after a passing run.
+- `npm run prepare:new-mac-install -- --output-dir <dir>` → `ok: package install smoke (retained)`;
+  produced exactly one `.tgz`, one `.sha256`, and `install-manifest.json` with measured (not
+  hardcoded) name/version/commit/checksum; correctly refused with a clear assertion message when
+  the worktree was dirty.
+- Regression guard: manually removed `scripts/harnesses/` from the `files` allowlist and reran
+  `npm run test:package-install` — failed with the expected `ERR_MODULE_NOT_FOUND` chain,
+  confirming the smoke test is a real guard, not a no-op. Reverted after confirming.
+- Immutable-`appRoot` guard was verified by code inspection, not a live sabotage run: the check is
+  a plain `assert.equal` on a recursive content hash of `appRoot`, so any write during `setup` or
+  `config apply` mechanically fails it.
+- Doctor: `bash scripts/doctor.sh --quiet` → 104 checks passed in the worktree.
+- CI step (`.github/workflows/ci.yml`) was added to the existing `os: [ubuntu-latest, macos-latest]`
+  matrix and reviewed for correctness, but **has not actually run in GitHub Actions** — nothing from
+  this branch has been pushed. That acceptance line is unverified pending a real CI run.
+- `manifests/platform/source-files.tsv` directory-coverage question (Phase 1) left open, recorded as
+  deferred in the Phase 1 checklist above — not a blocker for the smoke runner.
+- Phase 4 (real old-Mac/new-Mac hardware transition, `docs/guides/install-workflows.md` update) not
+  attempted this pass; remains open.
+
 Manual transition acceptance requires:
 
 - The tarball installs on the new Mac before the repository is cloned.

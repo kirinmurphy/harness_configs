@@ -63,7 +63,7 @@ than creating a second package-validation path.
 
 ## Current state
 
-- `package.json` uses `@kirin/roborepo` at `0.1.0-beta.0` and is not private.
+- `package.json` uses `@codethings/roborepo` at `0.1.0-beta.0` and is not private.
 - `bin/roborepo` is the package executable.
 - The package uses an explicit `files` allowlist.
 - `npm run pack:dry-run` and `npm run pack:smoke` exist; both stop at producing a tarball.

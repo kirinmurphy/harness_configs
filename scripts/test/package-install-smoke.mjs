@@ -51,7 +51,7 @@ function main() {
     const binPath = path.join(dirs.prefix, "bin", "roborepo");
     assert.ok(fs.existsSync(binPath), `expected installed binary at ${binPath}`);
 
-    const appRoot = path.join(dirs.prefix, "lib", "node_modules", "@kirin", "roborepo");
+    const appRoot = path.join(dirs.prefix, "lib", "node_modules", "@codethings", "roborepo");
     assert.ok(fs.existsSync(appRoot), `expected installed application root at ${appRoot}`);
 
     const env = smokeEnv(dirs);

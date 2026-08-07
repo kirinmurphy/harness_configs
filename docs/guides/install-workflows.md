@@ -112,3 +112,71 @@ roborepo doctor --installed
 ```
 
 `doctor --installed` checks the active machine state, including rendered home rules and base skill copies.
+
+## New-Mac Package Install
+
+This is a separate workflow from the checkout-based install above. Use it when you want to get
+`roborepo` running on a new Mac from a real npm package artifact, before that Mac has a clone of
+this repository. It installs the CLI itself, not your global harness config — run the checkout
+install (above) afterward if you also want config materialized on the new machine.
+
+### 1. On the old Mac: build and verify a transfer artifact
+
+From a clean checkout (no uncommitted changes — the tool refuses otherwise, since the artifact's
+recorded source commit must match the bytes it ships):
+
+```sh
+npm run prepare:new-mac-install -- --output-dir ~/roborepo-transfer
+```
+
+This packs the real npm tarball, installs it into an isolated prefix and temporary home (nothing
+touches your real `~/.roborepo` or global npm), and runs `version`, `setup`, `workspace status`,
+`config apply`, and `doctor` against it. Only after all of that passes does it write three files
+into `~/roborepo-transfer` (real npm-generated names, e.g. `kirin-roborepo-0.1.0-beta.0.tgz`):
+
+- `<tarball-name>.tgz` — the tarball that passed every check
+- `<tarball-name>.tgz.sha256` — its checksum
+- `install-manifest.json` — package name/version, the exact git commit it was built from, and
+  which commands it was verified against
+
+It also prints the exact commands you'll need next, with the real filenames filled in. Keep that
+output, or just re-read the filenames from `install-manifest.json` and follow the steps below.
+
+### 2. Transfer `~/roborepo-transfer` to the new Mac
+
+AirDrop, USB drive, `scp`, whatever moves files between the two machines. Copy the whole directory
+so the tarball and its checksum stay together.
+
+### 3. On the new Mac: verify and install
+
+```sh
+cd ~/roborepo-transfer   # wherever you copied it to
+shasum -a 256 -c <tarball-name>.tgz.sha256
+npm install -g ./<tarball-name>.tgz
+```
+
+The checksum check confirms the transfer didn't corrupt the file. `npm install -g` installs it
+globally, the same way a published package would install — `roborepo` is now on your `PATH`
+without a repo checkout anywhere on this machine.
+
+Confirm it worked:
+
+```sh
+roborepo version
+roborepo doctor
+```
+
+### 4. Roll back if needed
+
+```sh
+npm uninstall -g @codethings/roborepo
+```
+
+### 5. Add your config and a repo checkout (optional)
+
+The steps above only install the CLI binary. If you also want your global harness config on this
+machine, run the checkout install workflow from the top of this guide against a cloned copy of the
+repository. Package mode (no checkout) and checkout mode are designed to share the same
+`workspaceRoot` and `stateRoot`, so cloning a checkout later is meant to build on what the packaged
+CLI already set up rather than replace it — this coexistence is still being verified, so confirm
+with `roborepo workspace status` after cloning rather than assuming it.

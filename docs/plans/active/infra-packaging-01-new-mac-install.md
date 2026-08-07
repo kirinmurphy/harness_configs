@@ -57,7 +57,7 @@ known packaged snapshot.
 
 The package foundation already exists:
 
-- `package.json` declares `@kirin/roborepo` `0.1.0-beta.0`, the `roborepo` binary, an explicit
+- `package.json` declares `@codethings/roborepo` `0.1.0-beta.0`, the `roborepo` binary, an explicit
   `files` allowlist, ESM mode, and Node `>=20`.
 - Package mode separates `appRoot`, `workspaceRoot`, and `stateRoot` and prevents runtime writes to
   the installed application root. This was verified against a real installed tarball: `setup` and
@@ -196,7 +196,7 @@ HOME="${sandbox}/home" ROBOREPO_MODE=package ROBOREPO_PRESETS_ONBOARD=skip \
   "${sandbox}/prefix/bin/roborepo" version
 ```
 
-The installed application root is `<prefix>/lib/node_modules/@kirin/roborepo`, which is the path to
+The installed application root is `<prefix>/lib/node_modules/@codethings/roborepo`, which is the path to
 hash for the immutable-root assertion.
 
 ### Assertions
@@ -422,7 +422,7 @@ roborepo version   # the appRoot and mode lines name the copy that actually ran
 If the package installation itself is unusable:
 
 ```sh
-npm uninstall -g @kirin/roborepo
+npm uninstall -g @codethings/roborepo
 ```
 
 Keep transferred workspace content and the source checkout. Remove a newly initialized
@@ -483,7 +483,7 @@ uninstall must not be treated as permission to delete personal workspace content
 
 ### Phase 4 — Transition documentation and real-machine verification
 
-- [ ] Add the final old-Mac/new-Mac workflow to `docs/guides/install-workflows.md` after commands and
+- [x] Add the final old-Mac/new-Mac workflow to `docs/guides/install-workflows.md` after commands and
       output names are implemented.
 - [ ] Generate a retained artifact on the old Mac from the recorded source commit.
 - [ ] Install and validate it on the new Mac before cloning the repository.

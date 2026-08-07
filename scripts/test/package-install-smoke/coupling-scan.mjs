@@ -14,7 +14,7 @@ export function assertNoSourceCoupling(homeDir, checkoutPath) {
 }
 
 export function assertNoVersionedPathCoupling(scanRoot, prefixDir, { allowInstallStateExemption = true } = {}) {
-  const versionedRoot = fs.realpathSync(path.join(prefixDir, "lib", "node_modules", "@kirin", "roborepo"));
+  const versionedRoot = fs.realpathSync(path.join(prefixDir, "lib", "node_modules", "@codethings", "roborepo"));
   const exemptSuffix = path.join(".roborepo", "install-state.json");
   const rawMatches = scanForString(scanRoot, versionedRoot);
   const matches = allowInstallStateExemption

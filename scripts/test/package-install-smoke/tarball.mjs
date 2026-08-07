@@ -24,11 +24,11 @@ export function packTarball(repoRoot, packDest) {
   return { tarballPath: path.join(packDest, entry.filename), tarballName: entry.filename };
 }
 
-export function installTarball(dirs, tarballPath) {
+export function installTarball(dirs, tarballPath, env) {
   const result = spawnSync(
     "npm",
     ["install", "-g", "--prefix", dirs.prefix, "--cache", dirs.cache, tarballPath],
-    { cwd: dirs.cwd, encoding: "utf8" },
+    { cwd: dirs.cwd, env, encoding: "utf8" },
   );
   assert.equal(result.status, 0, `npm install of packed tarball failed\n${result.stderr}`);
 }

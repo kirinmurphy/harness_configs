@@ -13,8 +13,8 @@ export function assertNoSourceCoupling(homeDir, checkoutPath) {
   );
 }
 
-export function assertNoVersionedPathCoupling(scanRoot, prefixDir, { allowInstallStateExemption = true } = {}) {
-  const versionedRoot = fs.realpathSync(path.join(prefixDir, "lib", "node_modules", "codethings-roborepo-alpha"));
+export function assertNoVersionedPathCoupling(scanRoot, prefixDir, packageName, { allowInstallStateExemption = true } = {}) {
+  const versionedRoot = fs.realpathSync(path.join(prefixDir, "lib", "node_modules", packageName));
   const exemptSuffix = path.join(".roborepo", "install-state.json");
   const rawMatches = scanForString(scanRoot, versionedRoot);
   const matches = allowInstallStateExemption

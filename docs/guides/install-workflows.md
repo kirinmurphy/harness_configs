@@ -132,7 +132,7 @@ npm run prepare:new-mac-install -- --output-dir ~/roborepo-transfer
 This packs the real npm tarball, installs it into an isolated prefix and temporary home (nothing
 touches your real `~/.roborepo` or global npm), and runs `version`, `setup`, `workspace status`,
 `config apply`, and `doctor` against it. Only after all of that passes does it write three files
-into `~/roborepo-transfer` (real npm-generated names, e.g. `kirin-roborepo-0.1.0-beta.0.tgz`):
+into `~/roborepo-transfer` (real npm-generated names, e.g. `codethings-roborepo-alpha-0.1.0-beta.0.tgz`):
 
 - `<tarball-name>.tgz` — the tarball that passed every check
 - `<tarball-name>.tgz.sha256` — its checksum
@@ -169,7 +169,7 @@ roborepo doctor
 ### 4. Roll back if needed
 
 ```sh
-npm uninstall -g @codethings/roborepo
+npm uninstall -g codethings-roborepo-alpha
 ```
 
 ### 5. Add your config and a repo checkout (optional)

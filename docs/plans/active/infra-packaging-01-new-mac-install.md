@@ -57,7 +57,7 @@ known packaged snapshot.
 
 The package foundation already exists:
 
-- `package.json` declares `@codethings/roborepo` `0.1.0-beta.0`, the `roborepo` binary, an explicit
+- `package.json` declares `codethings-roborepo-alpha` `0.1.0-beta.0`, the `roborepo` binary, an explicit
   `files` allowlist, ESM mode, and Node `>=20`.
 - Package mode separates `appRoot`, `workspaceRoot`, and `stateRoot` and prevents runtime writes to
   the installed application root. This was verified against a real installed tarball: `setup` and
@@ -159,8 +159,8 @@ runs the same smoke path but retains the already-tested tarball and writes:
 
 ```text
 <artifact-dir>/
-  kirin-roborepo-<version>.tgz
-  kirin-roborepo-<version>.tgz.sha256
+  codethings-roborepo-alpha-<version>.tgz
+  codethings-roborepo-alpha-<version>.tgz.sha256
   install-manifest.json
 ```
 
@@ -343,7 +343,7 @@ Install Node `>=20` and npm first. Before cloning RoboRepo or importing the old 
 1. Transfer the artifact directory and verify its SHA-256 checksum.
 2. Install the tarball:
    ```sh
-   npm install -g <artifact-dir>/kirin-roborepo-<version>.tgz
+   npm install -g <artifact-dir>/codethings-roborepo-alpha-<version>.tgz
    ```
 3. Confirm command resolution and roots:
    ```sh
@@ -422,7 +422,7 @@ roborepo version   # the appRoot and mode lines name the copy that actually ran
 If the package installation itself is unusable:
 
 ```sh
-npm uninstall -g @codethings/roborepo
+npm uninstall -g codethings-roborepo-alpha
 ```
 
 Keep transferred workspace content and the source checkout. Remove a newly initialized

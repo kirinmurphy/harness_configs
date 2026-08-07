@@ -18,6 +18,7 @@ import {
 import { retainArtifact } from "./package-install-smoke/retain-artifact.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const packageName = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")).name;
 
 const outputDirFlagIndex = process.argv.indexOf("--output-dir");
 const outputDir = outputDirFlagIndex >= 0 ? process.argv[outputDirFlagIndex + 1] : null;
@@ -45,16 +46,16 @@ function main() {
   for (const dir of Object.values(dirs)) fs.mkdirSync(dir, { recursive: true });
 
   try {
+    const env = smokeEnv(dirs);
     const { tarballPath, tarballName } = packTarball(repoRoot, dirs.packDest);
-    installTarball(dirs, tarballPath);
+    installTarball(dirs, tarballPath, env);
 
     const binPath = path.join(dirs.prefix, "bin", "roborepo");
     assert.ok(fs.existsSync(binPath), `expected installed binary at ${binPath}`);
 
-    const appRoot = path.join(dirs.prefix, "lib", "node_modules", "codethings-roborepo-alpha");
+    const appRoot = path.join(dirs.prefix, "lib", "node_modules", packageName);
     assert.ok(fs.existsSync(appRoot), `expected installed application root at ${appRoot}`);
 
-    const env = smokeEnv(dirs);
     const hashBefore = hashDirectory(appRoot);
 
     const versionOut = runCommand(binPath, ["version"], dirs.cwd, env);
@@ -81,7 +82,7 @@ function main() {
     ];
     for (const { root, allowInstallStateExemption } of scanTargets) {
       assertNoSourceCoupling(root, repoRoot);
-      assertNoVersionedPathCoupling(root, dirs.prefix, { allowInstallStateExemption });
+      assertNoVersionedPathCoupling(root, dirs.prefix, packageName, { allowInstallStateExemption });
     }
 
     if (outputDir) {

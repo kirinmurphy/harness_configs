@@ -488,13 +488,14 @@ Use semantic HTML and CSS with SVG connectors where needed. On narrow screens, r
 
 - [ ] Add portable execution identifiers.
 - [ ] Add cross-platform worktree-root configuration. Partially landed ahead of this plan: a
-      `worktreeRoot` key on `docs/plans/plans-config.json` (relative to repo root unless absolute)
-      plus a `plan-start` skill preflight step that reads it, or proposes and states a default path
-      for confirmation when absent, before running `git worktree add`. Still missing from this
-      bullet's full scope: the `~/.worktrees`-style default this plan specifies (current default is
-      a sibling directory, not `os.homedir()/.worktrees`), portable frontmatter (`worktree_id`,
-      `feature_branch`), and Windows path handling — this only covers macOS/Linux path
-      concatenation via a plain config string, not `path.join` platform APIs.
+      `worktreeRoot` key on `docs/plans/plans-config.json` (absolute, `~`-relative, or relative to
+      repo root; defaults to `~/.worktrees` when absent, matching this plan's spec) plus a
+      `plan-start` skill preflight step that resolves worktrees to
+      `<worktreeRoot>/<repo-name>/<branch>` and states the resolved default to the user the first
+      time a repository has none configured. Still missing from this bullet's full scope: portable
+      frontmatter (`worktree_id`, `feature_branch`) and verified Windows behavior — the skill
+      instructs `~` expansion and path joining via platform APIs (not literal string
+      concatenation), but that instruction has not been exercised on Windows.
 - [ ] Add machine-local runtime registry and reconciliation. Not started: no `worktreeId`/
       `repositoryId`/`absolutePath` registry file, no reconciliation against
       `git worktree list --porcelain`. The worktree-root config above has no registry behind it.

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "worktreeRoot": "../",
+  "worktreeRoot": "~/.worktrees",
   "namespaces": {
     "plan": "The plan-docs system itself: schema, validation, repair, authoring workflow.",
     "plan-lifecycle": "Plan lifecycle states, transitions, and the workflow between them.",

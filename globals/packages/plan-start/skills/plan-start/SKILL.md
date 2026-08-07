@@ -28,18 +28,20 @@ The existing plan is the implementation contract. Verify it against the current 
 1. Read the entire selected plan.
 2. Inspect the current repository state and material plan claims.
 3. Detect whether the plan has become stale or materially incomplete.
-4. Read `docs/plans/plans-config.json` when present. If it declares a `worktreeRoot` (a path,
-   relative to the repository root unless absolute), that is the configured worktree policy; resolve
-   new worktrees under it. If the key is absent, propose a default (a sibling directory next to the
-   repository root is a reasonable one) and state the exact resolved path to the user before running
-   `git worktree add` — do not silently pick a location the first time a repository has no configured
-   root.
+4. Read `docs/plans/plans-config.json` when present. If it declares a `worktreeRoot` (an absolute
+   path, a `~`-relative path, or a path relative to the repository root), that is the configured
+   worktree policy; resolve new worktrees under `<worktreeRoot>/<repo-name>/<branch>`. If the key is
+   absent, the default is `~/.worktrees` (expand `~` via the platform home directory, e.g.
+   `os.homedir()` in Node, not a literal string) — state the exact resolved path to the user before
+   running `git worktree add` the first time a repository has no configured root, rather than picking
+   silently.
 5. Resolve the worktree policy.
 6. Inspect existing worktrees before creating another one.
 7. Reuse a worktree only when it clearly matches the repository and intended branch and is safe to continue.
 8. Refuse to reuse a dirty, ambiguous, unrelated, or conflicting worktree.
 9. Create an isolated feature worktree when a safe matching workspace does not exist.
-10. Use platform path APIs and repository configuration rather than hardcoding `~/.worktrees`.
+10. Use platform path APIs for `~` expansion and path joining so the same default resolves correctly
+    on macOS, Linux, and Windows.
 11. Keep absolute worktree paths out of repository plan documents.
 12. Record:
     - worktree path;

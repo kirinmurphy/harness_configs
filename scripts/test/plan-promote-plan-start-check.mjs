@@ -5,6 +5,10 @@
 // (package-catalog-check.mjs); these two get their own file because their SKILL.md bodies encode
 // explicit "do not use for" boundaries against each other and against plan-docs/integration-check,
 // which is worth asserting directly rather than only through the generic allowlist checks.
+//
+// Also covers plan-start's worktree-root resolution: the config shape in plans-config.json and the
+// SKILL.md phrases that commit to a specific first-run gate. That gate has no executable code path
+// (plan-start is agent-followed prose), so this is prose-presence coverage, not behavioral proof.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -30,6 +34,17 @@ const SKILLS = {
       "change lifecycle state",
       "perform closeout or merge orchestration",
     ],
+    // Worktree-root resolution has no executable code path -- plan-start is agent-followed prose,
+    // not a script -- so these phrases are the only enforcement that the gate behavior survives
+    // future edits to the skill: propose-and-wait on first use, then persist so later runs on the
+    // same repository do not re-prompt.
+    worktreeRootPhrases: [
+      "worktreeRoot",
+      "~/.worktrees",
+      "wait for the user to confirm or override",
+      "write the resulting path",
+      "one-time gate per",
+    ],
   },
 };
 
@@ -51,6 +66,27 @@ for (const [id, { boundaryPhrases }] of Object.entries(SKILLS)) {
 
   for (const phrase of boundaryPhrases) {
     assert.ok(text.includes(phrase), `${id}: SKILL.md missing expected boundary phrase "${phrase}"`);
+  }
+
+  // Match against whitespace-normalized text: SKILL.md hard-wraps prose, so a phrase spanning a
+  // line break would otherwise fail on the literal newline.
+  const normalizedText = text.replace(/\s+/g, " ");
+  for (const phrase of SKILLS[id].worktreeRootPhrases || []) {
+    assert.ok(normalizedText.includes(phrase), `${id}: SKILL.md missing expected worktree-root phrase "${phrase}"`);
+  }
+}
+
+// --- plans-config.json stays valid JSON and, when present, worktreeRoot is a well-formed string ---
+// worktreeRoot is optional and currently absent by default in this repo's own plans-config.json
+// (a user can remove it to re-trigger plan-start's first-time confirmation gate), so this only
+// asserts the shape when the key exists rather than requiring it.
+{
+  const configPath = path.join(repoRoot, "docs/plans/plans-config.json");
+  assert.ok(fs.existsSync(configPath), `plans-config.json missing at ${configPath}`);
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  if ("worktreeRoot" in config) {
+    assert.equal(typeof config.worktreeRoot, "string", "worktreeRoot must be a string when present");
+    assert.ok(config.worktreeRoot.trim().length > 0, "worktreeRoot must not be an empty string when present");
   }
 }
 

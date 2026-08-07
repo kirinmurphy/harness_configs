@@ -67,7 +67,7 @@ async function main() {
     assertNoVersionedPathCoupling(dirs.home, dirs.prefix);
 
     if (outputDir) {
-      retainArtifact({ outputDir, tarballPath, tarballName, appRoot, versionOut });
+      retainArtifact({ outputDir, tarballPath, tarballName });
     }
 
     console.log(`ok: package install smoke (${outputDir ? "retained" : "ephemeral"})`);
@@ -212,7 +212,7 @@ function scanForString(root, needle) {
   return matches;
 }
 
-function retainArtifact({ outputDir, tarballPath, tarballName, appRoot, versionOut }) {
+function retainArtifact({ outputDir, tarballPath, tarballName }) {
   fs.mkdirSync(outputDir, { recursive: true });
   const destTarball = path.join(outputDir, tarballName);
   fs.copyFileSync(tarballPath, destTarball);
@@ -237,4 +237,10 @@ function retainArtifact({ outputDir, tarballPath, tarballName, appRoot, versionO
   console.log(`retained tarball: ${destTarball}`);
   console.log(`checksum: ${checksum}`);
   console.log(`source commit: ${commit}`);
+  console.log("");
+  console.log("Transfer to the new Mac, then:");
+  console.log(`  shasum -a 256 -c ${tarballName}.sha256`);
+  console.log(`  npm install -g ${destTarball}`);
+  console.log("Roll back with:");
+  console.log(`  npm uninstall -g ${pkg.name}`);
 }

@@ -442,38 +442,42 @@ uninstall must not be treated as permission to delete personal workspace content
       required-source-file check does not cover either directory. Decide whether that check should
       gain entries for the files these directories contain, or whether directory-level coverage is
       out of scope for this manifest; either way this is not a blocker for the allowlist fix above.
-- [ ] Add `scripts/test/package-install-smoke.mjs` using explicit ESM imports and named functions.
-- [ ] Pack with `npm pack --json --pack-destination <temp-dir>` and read the tarball name from the
+      Deferred: not required for the smoke runner to work, and doctor's package-mode file checks
+      already caught the original omission independently once the runner existed.
+- [x] Add `scripts/test/package-install-smoke.mjs` using explicit ESM imports and named functions.
+- [x] Pack with `npm pack --json --pack-destination <temp-dir>` and read the tarball name from the
       parsed JSON (`[0].filename`) rather than guessing it. `--pack-destination` is required:
       `npm pack` otherwise writes into the current working directory, i.e. the checkout.
-- [ ] Install the tarball under a temporary `--prefix` and invoke its exact binary path.
-- [ ] Run `version`, `setup`, `workspace status`, `config apply`, and `doctor` from a neutral
+- [x] Install the tarball under a temporary `--prefix` and invoke its exact binary path.
+- [x] Run `version`, `setup`, `workspace status`, `config apply`, and `doctor` from a neutral
       directory.
-- [ ] Assert package, application, workspace, and state roots.
-- [ ] Hash `appRoot` before and after runtime commands.
-- [ ] Scan generated temporary-home files for references to the checkout path and fragile
+- [x] Assert package, application, workspace, and state roots.
+- [x] Hash `appRoot` before and after runtime commands.
+- [x] Scan generated temporary-home files for references to the checkout path and fragile
       version-specific npm application paths, exempting `install-state.json` and asserting the
       exemption is narrow: the scan must name the files it skipped so a new leak cannot hide behind
       the exception.
-- [ ] Guarantee cleanup through `try`/`finally`, preserving useful failure output.
+- [x] Guarantee cleanup through `try`/`finally`, preserving useful failure output.
 
 ### Phase 2 — Retained transition artifact
 
-- [ ] Add the explicit retained-output mode without duplicating the smoke workflow.
-- [ ] Refuse retained-artifact creation when the Git worktree is dirty, and record the exact source
+- [x] Add the explicit retained-output mode without duplicating the smoke workflow.
+- [x] Refuse retained-artifact creation when the Git worktree is dirty, and record the exact source
       commit in the manifest.
-- [ ] Write the SHA-256 checksum with Node's `crypto` APIs.
-- [ ] Write `install-manifest.json` from measured values, not hardcoded package metadata.
-- [ ] Print exact transfer, checksum-verification, install, and uninstall commands after success.
+- [x] Write the SHA-256 checksum with Node's `crypto` APIs.
+- [x] Write `install-manifest.json` from measured values, not hardcoded package metadata.
+- [x] Print exact transfer, checksum-verification, install, and uninstall commands after success.
 
 ### Phase 3 — Repository and CI integration
 
-- [ ] Add `test:package-install` and `prepare:new-mac-install` scripts to `package.json`.
-- [ ] Add the real-artifact smoke step to both existing CI operating-system legs.
-- [ ] Keep `pack:dry-run` as the quick package-content inspection command.
-- [ ] Beyond the known `scripts/harnesses/` and `modules/` gaps fixed in Phase 1, update the package
-      source allowlist only when the smoke test proves a runtime file is missing; do not broaden it
-      speculatively.
+- [x] Add `test:package-install` and `prepare:new-mac-install` scripts to `package.json`.
+- [x] Add the real-artifact smoke step to both existing CI operating-system legs (single step on
+      the shared `os` matrix in `.github/workflows/ci.yml`, covers macOS and Linux).
+- [x] Keep `pack:dry-run` as the quick package-content inspection command.
+- [x] Beyond the known `scripts/harnesses/` and `modules/` gaps fixed before this plan started,
+      update the package source allowlist only when the smoke test proves a runtime file is
+      missing; do not broaden it speculatively. No further gaps found: the smoke runner passes
+      against the current allowlist.
 
 ### Phase 4 — Transition documentation and real-machine verification
 

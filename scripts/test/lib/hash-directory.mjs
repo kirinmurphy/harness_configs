@@ -4,7 +4,8 @@ import path from "node:path";
 
 export function hashDirectory(root) {
   const hash = crypto.createHash("sha256");
-  const entries = [];
+  const rootStat = fs.lstatSync(root);
+  const entries = [{ type: "dir", relPath: ".", mode: rootStat.mode }];
   walk(root, root, entries);
   entries.sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0));
   for (const entry of entries) {

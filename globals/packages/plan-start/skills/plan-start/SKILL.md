@@ -30,11 +30,14 @@ The existing plan is the implementation contract. Verify it against the current 
 3. Detect whether the plan has become stale or materially incomplete.
 4. Read `docs/plans/plans-config.json` when present. If it declares a `worktreeRoot` (an absolute
    path, a `~`-relative path, or a path relative to the repository root), that is the configured
-   worktree policy; resolve new worktrees under `<worktreeRoot>/<repo-name>/<branch>`. If the key is
-   absent, the default is `~/.worktrees` (expand `~` via the platform home directory, e.g.
-   `os.homedir()` in Node, not a literal string) — state the exact resolved path to the user before
-   running `git worktree add` the first time a repository has no configured root, rather than picking
-   silently.
+   worktree policy; resolve new worktrees under `<worktreeRoot>/<repo-name>/<branch>` without asking.
+   If the key is absent, this is a first-time-per-repository decision, not routine implementation
+   detail: propose the default `~/.worktrees` (expand `~` via the platform home directory, e.g.
+   `os.homedir()` in Node, not a literal string), state the exact resolved path, and wait for the
+   user to confirm or override before running `git worktree add`. On confirmation, write the
+   resulting path (confirmed default or override) into `plans-config.json` as `worktreeRoot` so every
+   later run on this repository resolves silently from then on — this is a one-time gate per
+   repository, not a prompt on every `plan-start` invocation.
 5. Resolve the worktree policy.
 6. Inspect existing worktrees before creating another one.
 7. Reuse a worktree only when it clearly matches the repository and intended branch and is safe to continue.

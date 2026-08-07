@@ -437,13 +437,15 @@ uninstall must not be treated as permission to delete personal workspace content
       allowlist in `package.json` (landed in `e72a943`). Installing the tarball and running
       `version`/`doctor` already confirms these two entries are the complete fix; nothing further
       needed here.
-- [ ] `manifests/platform/source-files.tsv` lists individual files, not directories, and currently
-      has no entries under `scripts/harnesses/` or `modules/` at any granularity — so `doctor`'s
-      required-source-file check does not cover either directory. Decide whether that check should
-      gain entries for the files these directories contain, or whether directory-level coverage is
-      out of scope for this manifest; either way this is not a blocker for the allowlist fix above.
-      Deferred: not required for the smoke runner to work, and doctor's package-mode file checks
-      already caught the original omission independently once the runner existed.
+- [x] Resolved: `manifests/platform/source-files.tsv` / `doctor`'s `check_file` (`scripts/doctor.sh`)
+      asserts against the **repo checkout**, not the npm tarball's contents — `[[ -e ... ]]` on a
+      repo-relative path. `scripts/harnesses/` and `modules/` always existed in the checkout; the
+      original bug was that `package.json`'s `files` allowlist omitted them from what `npm pack`
+      *ships*, a fact this checklist has no way to observe regardless of whether it gains rows for
+      these directories. Adding entries here would not have caught the original bug and would not
+      catch a recurrence — that protection is what `scripts/test/package-install-smoke.mjs` now
+      provides, by installing the real tarball and running commands against it. No manifest change
+      needed; this was a wrong-tool mismatch, not an open scope decision.
 - [x] Add `scripts/test/package-install-smoke.mjs` using explicit ESM imports and named functions.
 - [x] Pack with `npm pack --json --pack-destination <temp-dir>` and read the tarball name from the
       parsed JSON (`[0].filename`) rather than guessing it. `--pack-destination` is required:

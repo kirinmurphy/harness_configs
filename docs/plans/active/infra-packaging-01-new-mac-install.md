@@ -455,10 +455,10 @@ uninstall must not be treated as permission to delete personal workspace content
       directory.
 - [x] Assert package, application, workspace, and state roots.
 - [x] Hash `appRoot` before and after runtime commands.
-- [x] Scan generated temporary-home files for references to the checkout path and fragile
-      version-specific npm application paths, exempting `install-state.json` and asserting the
-      exemption is narrow: the scan must name the files it skipped so a new leak cannot hide behind
-      the exception.
+- [x] Scan generated files under `dirs.home`, `dirs.workspaceRoot`, and `dirs.stateRoot` for
+      references to the checkout path and fragile version-specific npm application paths, exempting
+      `install-state.json` only within the `home` scan and asserting the exemption is narrow: the
+      scan must name the files it skipped so a new leak cannot hide behind the exception.
 - [x] Guarantee cleanup through `try`/`finally`, preserving useful failure output.
 
 ### Phase 2 — Retained transition artifact

@@ -296,12 +296,13 @@ Sources inspected, each same-origin and loopback-only:
   non-conventional path is not currently discovered.
 - **`/robots.txt`** — `Sitemap:` declarations, each fetched and parsed for `<loc>` entries.
 - **`/sitemap.xml`** — checked directly as a fallback even when `robots.txt` declares none.
-- **An OpenAPI/Swagger document** — every key under the document's `paths` object. No single
-  conventional path exists the way there is for `manifest.json`/`sitemap.xml`, so a short list of
-  common framework paths is tried in order — `/openapi.json`, `/openapi.yaml`, `/swagger.json`,
+- **An OpenAPI/Swagger document, in JSON** — every key under the document's `paths` object. No
+  single conventional path exists the way there is for `manifest.json`/`sitemap.xml`, so a short
+  list of common framework paths is tried in order — `/openapi.json`, `/swagger.json`,
   `/v3/api-docs`, `/v2/api-docs`, `/api-docs` — and the first response that actually parses as a
-  valid document (has a `paths` object) wins. A 200 response that isn't a real document — e.g. a dev
-  server's catch-all route serving its HTML shell for any path — is skipped, not treated as a hit.
+  valid document (has a `paths` object) wins. Only JSON bodies are parsed; a YAML-only document is
+  not discovered. A 200 response that isn't a real document — e.g. a dev server's catch-all route
+  serving its HTML shell for any path — is skipped, not treated as a hit.
   `discoverMetadataSuggestions` also accepts an explicit `openApiUrl` override for a nonstandard
   path, but nothing in settings/CLI/UI currently supplies one — only the conventional-path guessing
   runs in production today.

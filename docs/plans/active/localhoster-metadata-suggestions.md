@@ -81,11 +81,14 @@ can ship before or after it. Listed as `related` only for sibling-plan awareness
   - [x] Parse `robots.txt` for `Sitemap:` declarations; fetch and parse discovered sitemap URLs and
         the conventional `/sitemap.xml` fallback for `<loc>` paths.
   - [x] Discover an OpenAPI/Swagger document by trying a short list of conventional paths in order
-        (`/openapi.json`, `/openapi.yaml`, `/swagger.json`, `/v3/api-docs`, `/v2/api-docs`,
-        `/api-docs`), keeping the first response that actually parses as a valid document (has a
-        `paths` object) rather than the first 200 — a dev server's catch-all route can return 200
-        with an HTML shell for any guessed path. An `openApiUrl` option remains available to override
-        the guess list for a nonstandard path, but nothing in settings/CLI/UI currently supplies one.
+        (`/openapi.json`, `/swagger.json`, `/v3/api-docs`, `/v2/api-docs`, `/api-docs`), keeping the
+        first response that actually parses as a valid document (has a `paths` object) rather than
+        the first 200 — a dev server's catch-all route can return 200 with an HTML shell for any
+        guessed path. Only JSON bodies are parsed; **a second review pass caught `/openapi.yaml`
+        originally included in this list even though nothing here parses YAML, meaning that
+        candidate could never validate — removed rather than adding a YAML parser, which is out of
+        scope for this pass.** An `openApiUrl` option remains available to override the guess list
+        for a nonstandard path, but nothing in settings/CLI/UI currently supplies one.
   - [x] Validate every discovered path with `normalizeRoutePath` (from `settings-schema.mjs`, not
         `discovery.mjs` as originally assumed here) before inclusion; drop anything that fails.
   - [x] Exclude paths matching an authenticated/admin heuristic unless the same path was explicitly
@@ -133,6 +136,12 @@ both fixed in a follow-up commit:
   override for nonstandard paths. Verified against a real local server (no stub) that only serves
   `/swagger.json`, confirmed guessing correctly skips the earlier misses and finds it; also verified
   a 200-but-not-a-real-document response at an earlier guess is skipped rather than treated as a hit.
+- **`/openapi.yaml` candidate could never validate (fixed, caught in a second review pass on the
+  guessing commit itself).** The guess list included `/openapi.yaml`, but `discoverOpenApiPaths` only
+  ever parses response bodies as JSON — a real YAML-format document at that path would always fail to
+  parse and get silently skipped, so that candidate was structurally dead despite being listed.
+  Removed rather than adding YAML parsing. No behavior regression: JSON-serving apps are unaffected,
+  and the removed candidate never could have matched anything.
 
 ## Validation
 

@@ -4,6 +4,19 @@ import { normalizeRoutePath } from "./settings-schema.mjs";
 const SOURCE_PRIORITY = ["openapi", "sitemap", "manifest", "robots"];
 const AUTH_LOOKING_SEGMENTS = /\/(admin|login|logout|signin|sign-in|signup|sign-up|dashboard|account|settings|internal)(\/|$|\?)/i;
 
+// No single conventional path exists for an OpenAPI/Swagger document the way there is for
+// manifest.json or sitemap.xml, but a handful of paths cover most real frameworks. Tried in this
+// order, first one that parses as a valid OpenAPI/Swagger document (has a `paths` object) wins —
+// an explicit `openApiUrl` override always takes priority over guessing when a caller supplies one.
+const CONVENTIONAL_OPENAPI_PATHS = [
+  "/openapi.json",
+  "/openapi.yaml",
+  "/swagger.json",
+  "/v3/api-docs",
+  "/v2/api-docs",
+  "/api-docs",
+];
+
 // Everything this module fetches is same-origin, loopback-only, cookie-free, and body/time capped —
 // enforced once by fetchLoopbackText (modules/localhoster/probe.mjs), never re-implemented here.
 // Discovery never throws: a source that is absent, malformed, or fails to parse simply contributes
@@ -13,7 +26,7 @@ export async function discoverMetadataSuggestions(origin, { fetchText = fetchLoo
     discoverManifestPaths(origin, fetchText),
     discoverRobotsSitemapPaths(origin, fetchText),
     discoverSitemapPaths(`${origin}/sitemap.xml`, fetchText),
-    openApiUrl ? discoverOpenApiPaths(openApiUrl, fetchText) : Promise.resolve([]),
+    discoverOpenApiPaths(openApiUrl ? [openApiUrl] : CONVENTIONAL_OPENAPI_PATHS.map((path) => `${origin}${path}`), fetchText),
   ]);
 
   const bySource = {
@@ -51,12 +64,18 @@ async function discoverSitemapPaths(sitemapUrl, fetchText) {
   return [...result.body.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((match) => ({ path: decodeXmlEntities(match[1].trim()), label: null }));
 }
 
-async function discoverOpenApiPaths(openApiUrl, fetchText) {
-  const result = await fetchText(openApiUrl, { accept: "application/json,application/yaml" });
-  if (!result.ok || !result.body) return [];
-  const doc = safeJsonParse(result.body);
-  if (!doc || typeof doc.paths !== "object" || doc.paths === null) return [];
-  return Object.keys(doc.paths).map((path) => ({ path, label: null }));
+// Tries each candidate URL in order and stops at the first one that parses as a valid document —
+// not the first one that merely responds 200, since a dev server's catch-all route can return 200
+// with an HTML shell for any path, including a guessed OpenAPI path that doesn't really exist.
+async function discoverOpenApiPaths(candidateUrls, fetchText) {
+  for (const url of candidateUrls) {
+    const result = await fetchText(url, { accept: "application/json,application/yaml" });
+    if (!result.ok || !result.body) continue;
+    const doc = safeJsonParse(result.body);
+    if (!doc || typeof doc.paths !== "object" || doc.paths === null) continue;
+    return Object.keys(doc.paths).map((path) => ({ path, label: null }));
+  }
+  return [];
 }
 
 function dedupeSuggestions(bySource, origin) {

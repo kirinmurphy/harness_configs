@@ -68,6 +68,33 @@ try {
   }
   console.log("ok  OpenAPI path extraction");
 
+  // ---- Conventional OpenAPI path guessing: no openApiUrl override supplied ----
+  {
+    const suggestions = await discoverMetadataSuggestions("http://localhost:5173", {
+      fetchText: stubFetch({
+        // openapi.json and openapi.yaml (tried first) are absent; swagger.json is the first hit.
+        "http://localhost:5173/swagger.json": { ok: true, status: 200, body: JSON.stringify({ paths: { "/api/orders": {} } }) },
+      }),
+    });
+    assert.deepEqual(suggestions, [{ path: "/api/orders", label: null, source: "openapi" }]);
+  }
+  console.log("ok  conventional OpenAPI path guessing, no override needed");
+
+  // ---- A 200 response that isn't a real OpenAPI document (dev-server catch-all) is skipped, not
+  // treated as a hit — guessing must not stop at the first 200, only the first valid document. ----
+  {
+    const suggestions = await discoverMetadataSuggestions("http://localhost:5173", {
+      fetchText: stubFetch({
+        "http://localhost:5173/openapi.json": { ok: true, status: 200, body: "<!doctype html><title>App</title>" },
+        "http://localhost:5173/openapi.yaml": { ok: true, status: 200, body: "<!doctype html><title>App</title>" },
+        "http://localhost:5173/swagger.json": { ok: true, status: 200, body: "<!doctype html><title>App</title>" },
+        "http://localhost:5173/v3/api-docs": { ok: true, status: 200, body: JSON.stringify({ paths: { "/real": {} } }) },
+      }),
+    });
+    assert.deepEqual(suggestions, [{ path: "/real", label: null, source: "openapi" }]);
+  }
+  console.log("ok  catch-all 200 responses are skipped, not treated as a valid OpenAPI hit");
+
   // ---- Cross-source duplicate-path dedup, highest-confidence source wins ----
   {
     const suggestions = await discoverMetadataSuggestions("http://localhost:5173", {

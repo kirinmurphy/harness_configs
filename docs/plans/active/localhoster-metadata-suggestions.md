@@ -80,11 +80,12 @@ can ship before or after it. Listed as `related` only for sibling-plan awareness
         in `docs/reference/services/localhoster.md`.
   - [x] Parse `robots.txt` for `Sitemap:` declarations; fetch and parse discovered sitemap URLs and
         the conventional `/sitemap.xml` fallback for `<loc>` paths.
-  - [x] Support an explicitly configured OpenAPI document via an `openApiUrl` option and extract
-        route paths from its `paths` keys. **Deviation:** no settings field or `<link>`-based
-        auto-discovery for the OpenAPI URL was added — the option exists and is tested, but nothing
-        currently supplies a value in production. Wiring a settings field is left for a follow-up if
-        the suggestion panel proves useful without it.
+  - [x] Discover an OpenAPI/Swagger document by trying a short list of conventional paths in order
+        (`/openapi.json`, `/openapi.yaml`, `/swagger.json`, `/v3/api-docs`, `/v2/api-docs`,
+        `/api-docs`), keeping the first response that actually parses as a valid document (has a
+        `paths` object) rather than the first 200 — a dev server's catch-all route can return 200
+        with an HTML shell for any guessed path. An `openApiUrl` option remains available to override
+        the guess list for a nonstandard path, but nothing in settings/CLI/UI currently supplies one.
   - [x] Validate every discovered path with `normalizeRoutePath` (from `settings-schema.mjs`, not
         `discovery.mjs` as originally assumed here) before inclusion; drop anything that fails.
   - [x] Exclude paths matching an authenticated/admin heuristic unless the same path was explicitly
@@ -125,11 +126,13 @@ both fixed in a follow-up commit:
   see the mismatch before confirming "Add as quick link." Fixed by adding an origin-scoped
   `isSameOrigin` check in `metadata.mjs`'s `dedupeSuggestions`, run before path normalization; added
   a regression test (`same-loopback-different-port URL rejection`).
-- **OpenAPI discovery is unreachable in production (doc-only fix).** `discoverMetadataSuggestions`
-  supports an `openApiUrl` option and it's exercised in tests, but no settings field, CLI flag, or UI
-  supplies one, so this source never runs today. Not a bug — tightened the reference doc's wording
-  (both the "Metadata suggestions" section and "Current Limits") so this reads as an explicit gap
-  rather than an implied-complete feature.
+- **OpenAPI discovery was unreachable in production (fixed).** `discoverMetadataSuggestions`
+  originally required an explicit `openApiUrl`, which nothing supplied in production. Replaced with
+  conventional-path guessing (see Implementation Plan above) — OpenAPI suggestions now work for any
+  app serving its document at one of the common framework paths, with `openApiUrl` kept as an
+  override for nonstandard paths. Verified against a real local server (no stub) that only serves
+  `/swagger.json`, confirmed guessing correctly skips the earlier misses and finds it; also verified
+  a 200-but-not-a-real-document response at an earlier guess is skipped rather than treated as a hit.
 
 ## Validation
 

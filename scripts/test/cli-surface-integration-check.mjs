@@ -47,6 +47,7 @@ try {
   assertMenuHeaderTemplate();
   assertInteractiveHelpPause({ env });
   assertSilentCommandReturnsToMenu({ env });
+  assertRemoteSyncMenuFlow({ env });
   assertCli(["web", "stop"], { env, stdout: /roborepo portal: no server was running/ });
   assertSkillMenuSections();
   assertTelemetryMenuSections();
@@ -191,8 +192,95 @@ function assertSilentCommandReturnsToMenu({ env }) {
   assert.equal(result.status, 0, `silent command PTY exit\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
 }
 
+function assertRemoteSyncMenuFlow({ env }) {
+  const scanRoot = path.join(workDir, "remote-sync-scan");
+  const resultFile = path.join(workDir, "remote-sync-result.json");
+  const repo = makeRemoteSyncFixture(scanRoot);
+  const script = `
+    set timeout 20
+    spawn -noecho ${process.execPath} ${cliPath} git remote-sync-check ${scanRoot} --menu
+    expect "Remote Sync Check"
+    expect "./sync-work"
+    expect "1 branch ahead"
+    send "\\r"
+    expect "Show unpushed commits"
+    expect "Push branch to upstream"
+    send "\\r"
+    expect "ahead"
+    send "\\r"
+    expect "remote sync local commit"
+    expect "Press Enter to continue"
+    send "\\r"
+    expect "Show unpushed commits"
+    send "\\033\\[B\\033\\[B\\033\\[B\\r"
+    expect "ahead"
+    send "\\r"
+    expect "Push ahead to origin/main?"
+    send "\\r"
+    expect "Show unpushed commits"
+    send "\\033\\[B\\033\\[B\\033\\[B\\r"
+    expect "ahead"
+    send "\\r"
+    expect "Push ahead to origin/main?"
+    send "y\\r"
+    expect "Push complete."
+    expect "Press Enter to continue"
+    send "\\r"
+    expect "Remote Sync Check"
+    send "q"
+    expect eof
+  `;
+  const result = spawnSync("expect", ["-c", script], {
+    cwd: repoRoot,
+    env: { ...env, ROBOREPO_INTERACTIVE_RESULT_FILE: resultFile },
+    encoding: "utf8",
+  });
+
+  if (result.error?.code === "ENOENT") {
+    console.log("skipped remote-sync PTY check (expect not found)");
+    return;
+  }
+
+  assert.equal(result.status, 0, `remote-sync PTY exit\nrepo: ${repo}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  const payload = JSON.parse(fs.readFileSync(resultFile, "utf8"));
+  assert.equal(payload.notice.text, "Remote sync check complete");
+}
+
 function stripAnsi(value) {
   return value.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+function makeRemoteSyncFixture(scanRoot) {
+  const origin = path.join(workDir, "remote-sync-origin.git");
+  const seed = path.join(workDir, "remote-sync-seed");
+  const repo = path.join(scanRoot, "sync-work");
+  fs.mkdirSync(scanRoot, { recursive: true });
+
+  runGit(["init", "--bare", "--initial-branch=main", origin]);
+  runGit(["init", "--initial-branch=main"], { cwd: seed, mkdir: true });
+  fs.writeFileSync(path.join(seed, "base.txt"), "base\n");
+  runGit(["add", "."], { cwd: seed });
+  commit(seed, "base");
+  runGit(["remote", "add", "origin", origin], { cwd: seed });
+  runGit(["push", "-u", "origin", "main"], { cwd: seed });
+
+  runGit(["clone", origin, repo]);
+  runGit(["switch", "-c", "ahead", "origin/main"], { cwd: repo });
+  fs.writeFileSync(path.join(repo, "local.txt"), "local\n");
+  runGit(["add", "."], { cwd: repo });
+  commit(repo, "remote sync local commit");
+  return repo;
+}
+
+function commit(cwd, message) {
+  runGit(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", message], { cwd });
+}
+
+function runGit(args, options = {}) {
+  if (options.mkdir) fs.mkdirSync(options.cwd, { recursive: true });
+  const result = spawnSync("git", args, { cwd: options.cwd || repoRoot, encoding: "utf8" });
+  assert.equal(result.status, 0, `git ${args.join(" ")}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  return result;
 }
 
 function assertInteractiveMenuRedraw({ env }) {

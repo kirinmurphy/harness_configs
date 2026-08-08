@@ -11,6 +11,7 @@ const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-git-inventory-"
 try {
   const home = path.join(tempRoot, "home");
   const projects = path.join(home, "projects");
+  const syncProjects = path.join(home, "sync-projects");
   const repo = path.join(projects, "needs-work");
   const missingUpstream = path.join(projects, "missing-upstream");
   fs.mkdirSync(repo, { recursive: true });
@@ -52,7 +53,62 @@ try {
   assert.match(result.stdout, /action: add remote \| set upstream \| commit\/stash local changes/);
   assert.doesNotMatch(result.stdout, /`/);
 
+  const origin = path.join(tempRoot, "origin.git");
+  const seed = path.join(tempRoot, "sync-seed");
+  const syncRepo = path.join(syncProjects, "sync-work");
+  fs.mkdirSync(syncProjects, { recursive: true });
+  run("git", ["init", "--bare", "--initial-branch=main", origin]);
+  run("git", ["init", "--initial-branch=main"], { cwd: seed, mkdir: true });
+  fs.writeFileSync(path.join(seed, "base.txt"), "base\n");
+  run("git", ["add", "."], { cwd: seed });
+  run("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "base"], { cwd: seed });
+  run("git", ["remote", "add", "origin", origin], { cwd: seed });
+  run("git", ["push", "-u", "origin", "main"], { cwd: seed });
+  run("git", ["checkout", "-b", "behind-only"], { cwd: seed });
+  fs.writeFileSync(path.join(seed, "remote.txt"), "remote\n");
+  run("git", ["add", "."], { cwd: seed });
+  run("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "remote"], { cwd: seed });
+  run("git", ["push", "-u", "origin", "behind-only"], { cwd: seed });
+  run("git", ["clone", origin, syncRepo]);
+  run("git", ["switch", "-c", "ahead", "origin/main"], { cwd: syncRepo });
+  fs.writeFileSync(path.join(syncRepo, "local.txt"), "local\n");
+  run("git", ["add", "."], { cwd: syncRepo });
+  run("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "local"], { cwd: syncRepo });
+  run("git", ["switch", "-c", "behind-only", "origin/main"], { cwd: syncRepo });
+  run("git", ["config", "branch.behind-only.remote", "origin"], { cwd: syncRepo });
+  run("git", ["config", "branch.behind-only.merge", "refs/heads/behind-only"], { cwd: syncRepo });
+  run("git", ["checkout", "behind-only"], { cwd: seed });
+  fs.writeFileSync(path.join(seed, "remote-fresh.txt"), "fresh\n");
+  run("git", ["add", "."], { cwd: seed });
+  run("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "fresh remote"], { cwd: seed });
+  run("git", ["push"], { cwd: seed });
+
   const syncResult = spawnSync(process.execPath, [
+    path.join(appRoot, "scripts", "cli", "main.mjs"),
+    "git",
+    "remote-sync-check",
+    "~/sync-projects",
+    "--compact",
+    "--max-depth",
+    "1",
+  ], {
+    cwd: appRoot,
+    env: { ...process.env, HOME: home },
+    encoding: "utf8",
+  });
+
+  assert.equal(syncResult.status, 0, syncResult.stderr);
+  assert.match(syncResult.stdout, /Remote Sync Check/);
+  assert.match(syncResult.stdout, /Local branches with commits ahead of remote/);
+  assert.match(syncResult.stdout, /\.\/sync-work/);
+  assert.match(syncResult.stdout, /ahead — 1 ahead/);
+  assert.doesNotMatch(syncResult.stdout, /behind-only/);
+  assert.doesNotMatch(syncResult.stdout, /Add a remote/);
+  assert.doesNotMatch(syncResult.stdout, /ahead unknown/);
+  assert.doesNotMatch(syncResult.stdout, /fatal: ambiguous argument/);
+  assert.doesNotMatch(syncResult.stdout, /dirty/);
+
+  const failedSync = spawnSync(process.execPath, [
     path.join(appRoot, "scripts", "cli", "main.mjs"),
     "git",
     "remote-sync-check",
@@ -65,24 +121,19 @@ try {
     env: { ...process.env, HOME: home },
     encoding: "utf8",
   });
-
-  assert.equal(syncResult.status, 0, syncResult.stderr);
-  assert.match(syncResult.stdout, /Git Remote Sync Check/);
-  assert.match(syncResult.stdout, /\.\/needs-work/);
-  assert.match(syncResult.stdout, /- Add a remote for this repo\./);
-  assert.match(syncResult.stdout, /- Set upstream for main\./);
-  assert.match(syncResult.stdout, /- Push or delete local-only branch\(es\): main\./);
-  assert.match(syncResult.stdout, /\.\/missing-upstream/);
-  assert.match(syncResult.stdout, /- Repair missing upstream ref\(s\): production_env_prep -> origin\/production_env_prep\./);
-  assert.doesNotMatch(syncResult.stdout, /ahead unknown/);
-  assert.doesNotMatch(syncResult.stdout, /fatal: ambiguous argument/);
-  assert.doesNotMatch(syncResult.stdout, /dirty/);
+  assert.notEqual(failedSync.status, 0, "refresh failures make direct mode non-zero");
+  assert.match(failedSync.stdout, /Could not verify remote state/);
+  assert.match(failedSync.stdout, /\.\/missing-upstream/);
   console.log("git-inventory-check passed");
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }
 
 function run(command, args, options) {
+  if (options?.mkdir) {
+    fs.mkdirSync(options.cwd, { recursive: true });
+    options = { cwd: options.cwd };
+  }
   const result = spawnSync(command, args, { ...options, encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result;

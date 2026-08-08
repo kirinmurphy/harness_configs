@@ -1170,6 +1170,10 @@ dialog::backdrop {
   color: var(--desc-dim);
   overflow-wrap: anywhere;
 }
+.suggestions-body .history-row {
+  grid-template-columns: 6rem 1fr auto;
+  align-items: center;
+}
 
 @media (max-width: 720px) {
   .card-head {

@@ -69,10 +69,14 @@ export {
   originCandidatesForListener,
 } from "./origin.mjs";
 export {
+  fetchLoopbackText,
   isTlsTrustErrorCode,
   probeHttpCandidate,
   probeHttpCandidates,
 } from "./http-probe.mjs";
+export {
+  discoverMetadataSuggestions,
+} from "./metadata.mjs";
 export {
   SETTINGS_VERSION,
   defaultSettings,

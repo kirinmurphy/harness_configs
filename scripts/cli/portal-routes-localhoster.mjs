@@ -28,8 +28,9 @@ export function handleLocalhosterApi(req, res, urlPath, qs, handlers) {
       send(res, 501, "application/json", JSON.stringify({ ok: false, error: "localhoster endpoint unavailable" }));
       return true;
     }
-    const result = loader(params.get("key") || "");
-    send(res, result.status || (result.ok ? 200 : 400), "application/json", JSON.stringify(result));
+    Promise.resolve(loader(params.get("key") || ""))
+      .then((result) => send(res, result.status || (result.ok ? 200 : 400), "application/json", JSON.stringify(result)))
+      .catch((err) => send(res, 500, "application/json", JSON.stringify({ ok: false, error: String(err?.message || err) })));
     return true;
   }
 

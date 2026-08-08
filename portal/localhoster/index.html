@@ -185,6 +185,19 @@
       </div>
     </dialog>
 
+    <dialog id="suggestions-dialog" aria-labelledby="suggestions-dialog-title">
+      <div class="modal-head">
+        <h2 id="suggestions-dialog-title">Suggested routes</h2>
+        <portal-close-button data-close aria-label="Close"></portal-close-button>
+      </div>
+      <div class="modal-body">
+        <p class="history-subject" id="suggestions-subject"></p>
+        <p class="no-links">Discovered from this app's manifest, robots.txt, sitemap, and any
+          configured OpenAPI document. Nothing is added as a quick link automatically.</p>
+        <div class="history-list suggestions-body" id="suggestions-body"></div>
+      </div>
+    </dialog>
+
     <!-- Instance grouping & toolbar -->
     <template id="tpl-group">
       <section class="instance-group">
@@ -340,6 +353,7 @@
               <button type="button" data-action="link">Add link</button>
               <button type="button" data-action="edit">Edit links</button>
               <button type="button" data-action="history">View history</button>
+              <button type="button" data-action="suggestions">Suggested routes</button>
               <button type="button" data-action="associate">
                 Change association
               </button>
@@ -628,6 +642,13 @@
         <span class="history-when" data-slot="when"></span>
         <span class="history-type" data-slot="type"></span>
         <span class="history-detail" data-slot="detail"></span>
+      </div>
+    </template>
+    <template id="tpl-suggestion-row">
+      <div class="history-row">
+        <span class="history-type" data-slot="source"></span>
+        <span class="history-detail" data-slot="path"></span>
+        <button type="button" data-action="add">Add as quick link</button>
       </div>
     </template>
     <!-- Settings dialog: link editor rows + settings sections -->

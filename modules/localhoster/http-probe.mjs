@@ -1,4 +1,5 @@
 export {
+  fetchLoopbackText,
   isTlsTrustErrorCode,
   probeHttpCandidate,
   probeHttpCandidates,

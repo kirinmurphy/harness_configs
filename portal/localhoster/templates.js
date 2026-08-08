@@ -1137,6 +1137,15 @@ function wireCardActions(node, project, instance, actions) {
       actions.onHistory(project, instance);
     });
   }
+  const suggestions = node.querySelector("[data-action=suggestions]");
+  // Same key requirement as history: suggestions are fetched live against the app's current origin.
+  if (!instance.opaqueKey || !actions.onSuggestions) suggestions.hidden = true;
+  else {
+    suggestions.addEventListener("click", () => {
+      actions.onCloseMenus();
+      actions.onSuggestions(project, instance);
+    });
+  }
   node.querySelector("[data-action=associate]").addEventListener("click", () => {
     actions.onCloseMenus();
     actions.onAssociate(project, instance);

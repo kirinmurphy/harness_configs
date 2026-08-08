@@ -256,7 +256,8 @@ Read-only:
 - `GET /api/localhoster/history?key=<opaque-key>` accepts only a key emitted by the current
   snapshot and returns that app's recorded events, newest first, capped at 200.
 - `GET /api/localhoster/metadata?key=<opaque-key>` accepts only a key emitted by the current
-  snapshot. It currently returns no suggestions until metadata discovery ships.
+  snapshot and returns discovered same-origin route suggestions for that app. See
+  [Metadata suggestions](#metadata-suggestions).
 
 Mutating routes are POST-only and inherit the portal's loopback origin check and mutation-token
 check:
@@ -281,11 +282,42 @@ The portal uses these same mutation routes for curation:
 - Alias creation requires an explicit confirmation checkbox and uses the cycle-safe server-side
   alias mutation.
 
+## Metadata suggestions
+
+`GET /api/localhoster/metadata?key=<opaque-key>` inspects an app's own same-origin conventions and
+returns candidate routes as suggestions — never as automatic quick links. A suggestion only becomes
+a saved link when the user opens it from the "Suggested routes" action and confirms it through the
+normal add-link form.
+
+Sources inspected, each same-origin and loopback-only:
+
+- **`/manifest.json`** — `start_url`, labeled with `name`/`short_name` when present. Only the
+  conventional path is checked; a page that links its manifest via `<link rel=manifest>` at a
+  non-conventional path is not currently discovered.
+- **`/robots.txt`** — `Sitemap:` declarations, each fetched and parsed for `<loc>` entries.
+- **`/sitemap.xml`** — checked directly as a fallback even when `robots.txt` declares none.
+- **An explicitly configured OpenAPI document**, when the app provides one — every key under the
+  document's `paths` object.
+
+Every discovered path is validated the same way a hand-typed quick link is (loopback host, no
+credentials, no protocol-relative URLs), and cross-source duplicates keep only the
+highest-confidence source label, in this order: OpenAPI, sitemap, manifest, robots. Paths that look
+authenticated or administrative (`/admin`, `/login`, `/dashboard`, `/account`, and similar segments)
+are dropped unless the same path was explicitly present in OpenAPI or sitemap evidence — an OpenAPI
+document or sitemap entry is a deliberate publisher declaration, not a guess, so it overrides the
+heuristic.
+
+Discovery never throws: a source that is absent, unreachable, or malformed simply contributes no
+suggestions, so one broken source never blocks suggestions from the others.
+
 ## Security
 
 Localhoster never accepts a browser-supplied target URL for server-side probing. Targets come only
 from local listener records. Probes do not send cookies or credentials, do not follow redirects away
 from loopback, bound body size and timeouts, and treat titles/favicons as untrusted display data.
+Metadata discovery (manifest/robots/sitemap/OpenAPI reads) shares this same fetch guard rather than
+implementing its own, so it inherits every constraint above — see [Metadata
+suggestions](#metadata-suggestions).
 
 Listeners bound to wildcard or non-loopback interfaces stay visible with a warning. Unsupported
 platforms keep saved settings available while clearly saying automatic discovery is unavailable.
@@ -310,10 +342,18 @@ confirmation workflow in the portal. It does not yet auto-suggest path-to-Git al
 Future final-phase work will surface those prompts when discovery evidence says a `path:<realpath>`
 project and a Git remote identity are likely the same project.
 
-Localhoster does not yet collect metadata route suggestions. That piece is tracked in a smaller
-backlog plan so shipped behavior stays honest and testable. See
-[Docker and process metrics](#docker-and-process-metrics) for what Docker/Compose and process
+See [Docker and process metrics](#docker-and-process-metrics) for what Docker/Compose and process
 collection cover today, including the host-port merge limitation on Docker Desktop for macOS.
+
+- **Metadata suggestions only check the conventional `/manifest.json` path**, not an HTML page's
+  `<link rel=manifest>` tag at a non-conventional location. See [Metadata
+  suggestions](#metadata-suggestions).
+- **HTTPS self-signed and authenticated-page metadata discovery is fixture-tested only.** It has not
+  been exercised against a real app serving those conditions.
+- **The Suggested routes dialog and add-as-quick-link prefill flow have not been visually verified in
+  a browser.** Discovery itself was verified against a real local app over a real socket; the portal
+  UI built on top of it (`portal/localhoster/suggestions-view.js`, the card action menu entry) has
+  only been reviewed by reading the code and checking `node --check`.
 
 Known limits in the Git, health, and history behavior described above:
 

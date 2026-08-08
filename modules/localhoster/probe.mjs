@@ -2,7 +2,7 @@ import http from "node:http";
 import https from "node:https";
 
 const DEFAULT_TIMEOUT_MS = 800;
-const MAX_BODY_BYTES = 64 * 1024;
+export const MAX_BODY_BYTES = 64 * 1024;
 
 export async function probeHttpCandidate(candidate, options = {}) {
   const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
@@ -10,6 +10,63 @@ export async function probeHttpCandidate(candidate, options = {}) {
   if (first.http || !looksLikeTlsError(first.errorCode, first.errorMessage)) return first;
   const httpsOrigin = candidate.origin.replace(/^http:/, "https:");
   return probeOrigin(httpsOrigin, { timeoutMs, protocol: "https" });
+}
+
+// Shared low-level fetch for anything that needs a capped, timed-out, cookie-free GET against a
+// loopback URL — probeOrigin below and modules/localhoster/metadata.mjs's manifest/robots/sitemap/
+// OpenAPI reads both build on this rather than re-implementing the timeout/body-cap/redirect-safety
+// trio. Never attaches cookies or auth headers; Node's http/https client only sends what is set
+// explicitly on `headers`, so omitting them here is the whole guarantee.
+export function fetchLoopbackText(url, { timeoutMs = DEFAULT_TIMEOUT_MS, maxBodyBytes = MAX_BODY_BYTES, accept = "*/*" } = {}) {
+  return new Promise((resolve) => {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch {
+      resolve({ ok: false, status: null, body: null, contentType: null, error: "invalid URL" });
+      return;
+    }
+    if (!isLoopbackUrl(parsed.href)) {
+      resolve({ ok: false, status: null, body: null, contentType: null, error: "non-loopback host" });
+      return;
+    }
+    const client = parsed.protocol === "https:" ? https : http;
+    const req = client.request({
+      protocol: parsed.protocol,
+      hostname: parsed.hostname,
+      port: parsed.port,
+      path: `${parsed.pathname}${parsed.search}`,
+      method: "GET",
+      timeout: timeoutMs,
+      headers: { "User-Agent": "roborepo-localhoster", Accept: accept },
+    }, (res) => {
+      const status = res.statusCode || null;
+      const location = res.headers.location ? safeRedirect(parsed.href, res.headers.location) : null;
+      // Redirects are reported, never followed — a follow could leave the loopback origin this
+      // fetch was scoped to, and the caller (metadata.mjs) has no use for a redirected document's
+      // body anyway; it only needs to know a source declared itself present.
+      if (location) {
+        res.resume();
+        resolve({ ok: false, status, body: null, contentType: null, redirect: location, redirectExternal: !isLoopbackUrl(location) });
+        return;
+      }
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => {
+        if (body.length < maxBodyBytes) body += chunk.slice(0, maxBodyBytes - body.length);
+      });
+      res.on("end", () => {
+        resolve({ ok: status != null && status >= 200 && status < 300, status, body, contentType: res.headers["content-type"] || null });
+      });
+    });
+    req.on("timeout", () => {
+      req.destroy(Object.assign(new Error("fetch timeout"), { code: "TIMEOUT" }));
+    });
+    req.on("error", (err) => {
+      resolve({ ok: false, status: null, body: null, contentType: null, error: err.message || String(err) });
+    });
+    req.end();
+  });
 }
 
 export async function probeHttpCandidates(candidates, options = {}) {

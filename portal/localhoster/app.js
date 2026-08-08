@@ -4,10 +4,15 @@ import * as state from "./state.js";
 import * as tmpl from "./templates.js";
 import * as fields from "./form-fields.js";
 import { createHistoryView } from "./history-view.js";
+import { createSuggestionsView } from "./suggestions-view.js";
 
 // A stale opaque key (the app moved ports since this render) resolves by reloading the snapshot
 // rather than surfacing an error.
 const historyView = createHistoryView({ onStale: () => load({ force: true }) });
+const suggestionsView = createSuggestionsView({
+  onStale: () => load({ force: true }),
+  onAdd: (project, instance, suggestion) => openLinkDialogWithSuggestion(project, instance, suggestion),
+});
 
 // Built once and reused across every render/reconcile — the Active apps header holds this same
 // node for the page's lifetime so refresh/settings listeners and live spinner state never get
@@ -384,6 +389,7 @@ function cardActions() {
     onToggleMenu: toggleActionMenu,
     onCloseMenus: closeActionMenus,
     onHistory: (project, instance) => historyView.open(project, instance),
+    onSuggestions: (project, instance) => suggestionsView.open(project, instance),
   };
 }
 
@@ -470,6 +476,7 @@ function composeProjectActions() {
     onToggleMenu: toggleActionMenu,
     onCloseMenus: closeActionMenus,
     onHistory: (project, instance) => historyView.open(project, instance),
+    onSuggestions: (project, instance) => suggestionsView.open(project, instance),
   };
 }
 
@@ -511,14 +518,22 @@ function openAddLinkDialog(project, instance) {
   openLinkDialog(project, instance, { addBlank: true });
 }
 
-function openLinkDialog(project, instance, { addBlank = false } = {}) {
+// Suggestions view uses this to prefill the same add-link form a manual "Add link" click opens,
+// rather than saving a suggestion silently — the form's existing validation and revision-conflict
+// handling then apply to a suggestion exactly as they do to a hand-typed link.
+function openLinkDialogWithSuggestion(project, instance, suggestion) {
+  openLinkDialog(project, instance, { extraRow: { label: suggestion.label || suggestion.path, path: suggestion.path } });
+}
+
+function openLinkDialog(project, instance, { addBlank = false, extraRow = null } = {}) {
   const appId = instance.app?.id || "web";
   const projectIdentity = project.identity || instance.project?.identity;
   fields.setValue("link-project", projectIdentity);
   fields.setValue("link-app", appId);
   fields.setText("link-error", "");
   const links = state.currentLinks(lastSnapshot, projectIdentity, appId);
-  renderLinkRows(addBlank ? [...links, { label: "", path: "" }] : links);
+  const extra = extraRow || (addBlank ? { label: "", path: "" } : null);
+  renderLinkRows(extra ? [...links, extra] : links);
   refs.linkDialog.showModal();
 }
 

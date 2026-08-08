@@ -7,6 +7,7 @@ import {
   defaultSettings,
   diffSnapshots,
   discoverInstances,
+  discoverMetadataSuggestions,
   findCurrentInstanceByOpaqueKey,
   healthIndexFromSnapshot,
   loadSettings,
@@ -119,16 +120,11 @@ export function loadLocalhosterHistory(key, { snapshot = null } = {}) {
   };
 }
 
-export function loadLocalhosterMetadata(key) {
+export async function loadLocalhosterMetadata(key) {
   const instance = findCurrentInstanceByOpaqueKey(loadLocalhosterSnapshot(), key);
   if (!instance) return { ok: false, status: 404, error: "unknown localhoster key" };
-  return {
-    ok: true,
-    key,
-    origin: instance.origin,
-    suggestions: [],
-    deferred: "Metadata suggestions are split into the localhoster-metadata-suggestions backlog plan.",
-  };
+  const suggestions = await discoverMetadataSuggestions(instance.origin);
+  return { ok: true, key, origin: instance.origin, suggestions };
 }
 
 export function updateLocalhosterSettings(input) {

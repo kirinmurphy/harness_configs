@@ -14,6 +14,11 @@ export function fetchHistory(key) {
   return portalGetJson(`/api/localhoster/history?key=${encodeURIComponent(key)}`);
 }
 
+// Same stale-key contract as fetchHistory: a 404 means the app's port changed since this snapshot.
+export function fetchMetadata(key) {
+  return portalGetJson(`/api/localhoster/metadata?key=${encodeURIComponent(key)}`);
+}
+
 export function updateLinks(payload) {
   return portalPostJson("/api/localhoster/links", payload);
 }

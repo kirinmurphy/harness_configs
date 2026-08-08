@@ -23,7 +23,7 @@ export async function discoverMetadataSuggestions(origin, { fetchText = fetchLoo
     openapi: openApiPaths,
   };
 
-  return dedupeSuggestions(bySource);
+  return dedupeSuggestions(bySource, origin);
 }
 
 async function discoverManifestPaths(origin, fetchText) {
@@ -59,10 +59,11 @@ async function discoverOpenApiPaths(openApiUrl, fetchText) {
   return Object.keys(doc.paths).map((path) => ({ path, label: null }));
 }
 
-function dedupeSuggestions(bySource) {
+function dedupeSuggestions(bySource, origin) {
   const byPath = new Map();
   for (const source of SOURCE_PRIORITY) {
     for (const entry of bySource[source] || []) {
+      if (!isSameOrigin(entry.path, origin)) continue;
       const normalized = safeNormalizePath(entry.path);
       if (!normalized) continue;
       if (isAuthLooking(normalized) && source !== "openapi" && source !== "sitemap") continue;
@@ -76,6 +77,20 @@ function dedupeSuggestions(bySource) {
 
 function isAuthLooking(path) {
   return AUTH_LOOKING_SEGMENTS.test(path);
+}
+
+// normalizeRoutePath alone only proves a URL is *some* loopback host — a sitemap or manifest served
+// by the probed app could name a different loopback port entirely (another local app, malicious or
+// just misconfigured), and normalizeRoutePath would strip that URL down to a bare path with no trace
+// the host ever differed. A suggestion is only trustworthy if it names this app's own origin or is a
+// bare path/relative reference that can only ever resolve there.
+function isSameOrigin(value, origin) {
+  if (typeof value !== "string" || value.startsWith("/")) return true;
+  try {
+    return new URL(value, origin).origin === new URL(origin).origin;
+  } catch {
+    return false;
+  }
 }
 
 function safeNormalizePath(value) {

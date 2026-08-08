@@ -96,6 +96,22 @@ try {
   }
   console.log("ok  unsafe/cross-origin URL rejection");
 
+  // ---- Same-loopback-different-port rejection: a sitemap naming another local app's port must not
+  // silently collapse into a bare path this app's origin then gets credited with. ----
+  {
+    const suggestions = await discoverMetadataSuggestions("http://localhost:5173", {
+      fetchText: stubFetch({
+        "http://localhost:5173/sitemap.xml": {
+          ok: true,
+          status: 200,
+          body: "<urlset><url><loc>http://localhost:9999/other-apps-route</loc></url><url><loc>http://localhost:5173/mine</loc></url></urlset>",
+        },
+      }),
+    });
+    assert.deepEqual(suggestions, [{ path: "/mine", label: null, source: "sitemap" }]);
+  }
+  console.log("ok  same-loopback-different-port URL rejection");
+
   // ---- Credential-bearing URL rejection ----
   {
     const suggestions = await discoverMetadataSuggestions("http://localhost:5173", {

@@ -296,8 +296,10 @@ Sources inspected, each same-origin and loopback-only:
   non-conventional path is not currently discovered.
 - **`/robots.txt`** — `Sitemap:` declarations, each fetched and parsed for `<loc>` entries.
 - **`/sitemap.xml`** — checked directly as a fallback even when `robots.txt` declares none.
-- **An explicitly configured OpenAPI document**, when the app provides one — every key under the
-  document's `paths` object.
+- **An explicitly configured OpenAPI document** — every key under the document's `paths` object.
+  `discoverMetadataSuggestions` accepts this as an `openApiUrl` option and is tested against it, but
+  no settings field, CLI flag, or portal UI currently supplies one: this source is unreachable in
+  production today. Wiring a way to configure it is left for a follow-up.
 
 Every discovered path is validated the same way a hand-typed quick link is (loopback host, no
 credentials, no protocol-relative URLs), and cross-source duplicates keep only the
@@ -348,6 +350,9 @@ collection cover today, including the host-port merge limitation on Docker Deskt
 - **Metadata suggestions only check the conventional `/manifest.json` path**, not an HTML page's
   `<link rel=manifest>` tag at a non-conventional location. See [Metadata
   suggestions](#metadata-suggestions).
+- **OpenAPI-document discovery has no configuration surface.** The discovery function supports it,
+  but no settings field, CLI flag, or portal UI currently supplies a document URL, so this source
+  never runs in production.
 - **HTTPS self-signed and authenticated-page metadata discovery is fixture-tested only.** It has not
   been exercised against a real app serving those conditions.
 - **The Suggested routes dialog and add-as-quick-link prefill flow have not been visually verified in

@@ -111,7 +111,25 @@ can ship before or after it. Listed as `related` only for sibling-plan awareness
   already covers every app that also appears as a compose member.
 - [x] Documented privacy/behavior in `docs/reference/services/localhoster.md` under a new "Metadata
   suggestions" section (what is fetched, source-priority dedup, auth-path filtering and its
-  evidence-based override) plus two new entries under "Current Limits" for the two deviations above.
+  evidence-based override) plus entries under "Current Limits" for known gaps.
+
+## Post-implementation review
+
+A `/code-review` pass against the full implementation diff (commit `14803b1`) found two issues,
+both fixed in a follow-up commit:
+
+- **Same-loopback-different-port collapse (fixed).** `normalizeRoutePath` validates that a
+  discovered URL's host is *some* loopback host, but not that it matches the *specific* app being
+  probed — a sitemap or manifest could name a different local app's port, and the suggestion would
+  silently collapse to a bare path attributed to the probed app's origin, with no way for the user to
+  see the mismatch before confirming "Add as quick link." Fixed by adding an origin-scoped
+  `isSameOrigin` check in `metadata.mjs`'s `dedupeSuggestions`, run before path normalization; added
+  a regression test (`same-loopback-different-port URL rejection`).
+- **OpenAPI discovery is unreachable in production (doc-only fix).** `discoverMetadataSuggestions`
+  supports an `openApiUrl` option and it's exercised in tests, but no settings field, CLI flag, or UI
+  supplies one, so this source never runs today. Not a bug — tightened the reference doc's wording
+  (both the "Metadata suggestions" section and "Current Limits") so this reads as an explicit gap
+  rather than an implied-complete feature.
 
 ## Validation
 

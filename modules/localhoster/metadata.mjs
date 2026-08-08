@@ -8,9 +8,10 @@ const AUTH_LOOKING_SEGMENTS = /\/(admin|login|logout|signin|sign-in|signup|sign-
 // manifest.json or sitemap.xml, but a handful of paths cover most real frameworks. Tried in this
 // order, first one that parses as a valid OpenAPI/Swagger document (has a `paths` object) wins —
 // an explicit `openApiUrl` override always takes priority over guessing when a caller supplies one.
+// JSON only: discoverOpenApiPaths has no YAML parser, so a *.yaml path would never validate even if
+// served — omitted rather than listed as a candidate that can structurally never succeed.
 const CONVENTIONAL_OPENAPI_PATHS = [
   "/openapi.json",
-  "/openapi.yaml",
   "/swagger.json",
   "/v3/api-docs",
   "/v2/api-docs",

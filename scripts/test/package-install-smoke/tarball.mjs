@@ -1,0 +1,45 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+
+export function assertCleanWorktree(repoRoot) {
+  const status = spawnSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" });
+  assert.equal(status.status, 0, "git status failed");
+  assert.equal(
+    status.stdout.trim(),
+    "",
+    "retained-artifact mode requires a clean Git worktree so the recorded source commit describes the bytes being transferred",
+  );
+}
+
+export function packTarball(repoRoot, packDest) {
+  const result = spawnSync(
+    "npm",
+    ["pack", "--json", "--pack-destination", packDest],
+    { cwd: repoRoot, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, `npm pack failed\n${result.stderr}`);
+  const [entry] = JSON.parse(result.stdout);
+  assert.ok(entry?.filename, "npm pack did not report a filename");
+  return { tarballPath: path.join(packDest, entry.filename), tarballName: entry.filename };
+}
+
+export function installTarball(dirs, tarballPath, env) {
+  const result = spawnSync(
+    "npm",
+    ["install", "-g", "--prefix", dirs.prefix, "--cache", dirs.cache, tarballPath],
+    { cwd: dirs.cwd, env, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, `npm install of packed tarball failed\n${result.stderr}`);
+}
+
+export function smokeEnv(dirs) {
+  return {
+    PATH: process.env.PATH,
+    HOME: dirs.home,
+    ROBOREPO_MODE: "package",
+    ROBOREPO_STATE_ROOT: dirs.stateRoot,
+    ROBOREPO_WORKSPACE_ROOT: dirs.workspaceRoot,
+    ROBOREPO_PRESETS_ONBOARD: "skip",
+  };
+}

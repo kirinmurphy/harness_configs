@@ -44,6 +44,9 @@ jobs:
           npm run --silent test:package-default-enabled
           npm run --silent test:plan-promote-start
 
+      - name: package install smoke (real tarball, isolated prefix)
+        run: npm run --silent test:package-install
+
   # The Windows installer is PowerShell and is never exercised by the bash suite above. This job
   # does not install anything -- it parses install-windows.ps1 through PowerShell's own parser and
   # asserts the script's harness list is derived from the provider manifests rather than hardcoded,

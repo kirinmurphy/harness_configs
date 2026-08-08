@@ -57,7 +57,7 @@ known packaged snapshot.
 
 The package foundation already exists:
 
-- `package.json` declares `@kirin/roborepo` `0.1.0-beta.0`, the `roborepo` binary, an explicit
+- `package.json` declares `codethings-roborepo-alpha` `0.1.0-beta.0`, the `roborepo` binary, an explicit
   `files` allowlist, ESM mode, and Node `>=20`.
 - Package mode separates `appRoot`, `workspaceRoot`, and `stateRoot` and prevents runtime writes to
   the installed application root. This was verified against a real installed tarball: `setup` and
@@ -159,8 +159,8 @@ runs the same smoke path but retains the already-tested tarball and writes:
 
 ```text
 <artifact-dir>/
-  kirin-roborepo-<version>.tgz
-  kirin-roborepo-<version>.tgz.sha256
+  codethings-roborepo-alpha-<version>.tgz
+  codethings-roborepo-alpha-<version>.tgz.sha256
   install-manifest.json
 ```
 
@@ -196,7 +196,7 @@ HOME="${sandbox}/home" ROBOREPO_MODE=package ROBOREPO_PRESETS_ONBOARD=skip \
   "${sandbox}/prefix/bin/roborepo" version
 ```
 
-The installed application root is `<prefix>/lib/node_modules/@kirin/roborepo`, which is the path to
+The installed application root is `<prefix>/lib/node_modules/@codethings/roborepo`, which is the path to
 hash for the immutable-root assertion.
 
 ### Assertions
@@ -343,7 +343,7 @@ Install Node `>=20` and npm first. Before cloning RoboRepo or importing the old 
 1. Transfer the artifact directory and verify its SHA-256 checksum.
 2. Install the tarball:
    ```sh
-   npm install -g <artifact-dir>/kirin-roborepo-<version>.tgz
+   npm install -g <artifact-dir>/codethings-roborepo-alpha-<version>.tgz
    ```
 3. Confirm command resolution and roots:
    ```sh
@@ -422,7 +422,7 @@ roborepo version   # the appRoot and mode lines name the copy that actually ran
 If the package installation itself is unusable:
 
 ```sh
-npm uninstall -g @kirin/roborepo
+npm uninstall -g codethings-roborepo-alpha
 ```
 
 Keep transferred workspace content and the source checkout. Remove a newly initialized
@@ -437,47 +437,53 @@ uninstall must not be treated as permission to delete personal workspace content
       allowlist in `package.json` (landed in `e72a943`). Installing the tarball and running
       `version`/`doctor` already confirms these two entries are the complete fix; nothing further
       needed here.
-- [ ] `manifests/platform/source-files.tsv` lists individual files, not directories, and currently
-      has no entries under `scripts/harnesses/` or `modules/` at any granularity — so `doctor`'s
-      required-source-file check does not cover either directory. Decide whether that check should
-      gain entries for the files these directories contain, or whether directory-level coverage is
-      out of scope for this manifest; either way this is not a blocker for the allowlist fix above.
-- [ ] Add `scripts/test/package-install-smoke.mjs` using explicit ESM imports and named functions.
-- [ ] Pack with `npm pack --json --pack-destination <temp-dir>` and read the tarball name from the
+- [x] Resolved: `manifests/platform/source-files.tsv` / `doctor`'s `check_file` (`scripts/doctor.sh`)
+      asserts against the **repo checkout**, not the npm tarball's contents — `[[ -e ... ]]` on a
+      repo-relative path. `scripts/harnesses/` and `modules/` always existed in the checkout; the
+      original bug was that `package.json`'s `files` allowlist omitted them from what `npm pack`
+      *ships*, a fact this checklist has no way to observe regardless of whether it gains rows for
+      these directories. Adding entries here would not have caught the original bug and would not
+      catch a recurrence — that protection is what `scripts/test/package-install-smoke.mjs` now
+      provides, by installing the real tarball and running commands against it. No manifest change
+      needed; this was a wrong-tool mismatch, not an open scope decision.
+- [x] Add `scripts/test/package-install-smoke.mjs` using explicit ESM imports and named functions.
+- [x] Pack with `npm pack --json --pack-destination <temp-dir>` and read the tarball name from the
       parsed JSON (`[0].filename`) rather than guessing it. `--pack-destination` is required:
       `npm pack` otherwise writes into the current working directory, i.e. the checkout.
-- [ ] Install the tarball under a temporary `--prefix` and invoke its exact binary path.
-- [ ] Run `version`, `setup`, `workspace status`, `config apply`, and `doctor` from a neutral
+- [x] Install the tarball under a temporary `--prefix` and invoke its exact binary path.
+- [x] Run `version`, `setup`, `workspace status`, `config apply`, and `doctor` from a neutral
       directory.
-- [ ] Assert package, application, workspace, and state roots.
-- [ ] Hash `appRoot` before and after runtime commands.
-- [ ] Scan generated temporary-home files for references to the checkout path and fragile
-      version-specific npm application paths, exempting `install-state.json` and asserting the
-      exemption is narrow: the scan must name the files it skipped so a new leak cannot hide behind
-      the exception.
-- [ ] Guarantee cleanup through `try`/`finally`, preserving useful failure output.
+- [x] Assert package, application, workspace, and state roots.
+- [x] Hash `appRoot` before and after runtime commands.
+- [x] Scan generated files under `dirs.home`, `dirs.workspaceRoot`, and `dirs.stateRoot` for
+      references to the checkout path and fragile version-specific npm application paths, exempting
+      `install-state.json` only within the `home` scan and asserting the exemption is narrow: the
+      scan must name the files it skipped so a new leak cannot hide behind the exception.
+- [x] Guarantee cleanup through `try`/`finally`, preserving useful failure output.
 
 ### Phase 2 — Retained transition artifact
 
-- [ ] Add the explicit retained-output mode without duplicating the smoke workflow.
-- [ ] Refuse retained-artifact creation when the Git worktree is dirty, and record the exact source
+- [x] Add the explicit retained-output mode without duplicating the smoke workflow.
+- [x] Refuse retained-artifact creation when the Git worktree is dirty, and record the exact source
       commit in the manifest.
-- [ ] Write the SHA-256 checksum with Node's `crypto` APIs.
-- [ ] Write `install-manifest.json` from measured values, not hardcoded package metadata.
-- [ ] Print exact transfer, checksum-verification, install, and uninstall commands after success.
+- [x] Write the SHA-256 checksum with Node's `crypto` APIs.
+- [x] Write `install-manifest.json` from measured values, not hardcoded package metadata.
+- [x] Print exact transfer, checksum-verification, install, and uninstall commands after success.
 
 ### Phase 3 — Repository and CI integration
 
-- [ ] Add `test:package-install` and `prepare:new-mac-install` scripts to `package.json`.
-- [ ] Add the real-artifact smoke step to both existing CI operating-system legs.
-- [ ] Keep `pack:dry-run` as the quick package-content inspection command.
-- [ ] Beyond the known `scripts/harnesses/` and `modules/` gaps fixed in Phase 1, update the package
-      source allowlist only when the smoke test proves a runtime file is missing; do not broaden it
-      speculatively.
+- [x] Add `test:package-install` and `prepare:new-mac-install` scripts to `package.json`.
+- [x] Add the real-artifact smoke step to both existing CI operating-system legs (single step on
+      the shared `os` matrix in `.github/workflows/ci.yml`, covers macOS and Linux).
+- [x] Keep `pack:dry-run` as the quick package-content inspection command.
+- [x] Beyond the known `scripts/harnesses/` and `modules/` gaps fixed before this plan started,
+      update the package source allowlist only when the smoke test proves a runtime file is
+      missing; do not broaden it speculatively. No further gaps found: the smoke runner passes
+      against the current allowlist.
 
 ### Phase 4 — Transition documentation and real-machine verification
 
-- [ ] Add the final old-Mac/new-Mac workflow to `docs/guides/install-workflows.md` after commands and
+- [x] Add the final old-Mac/new-Mac workflow to `docs/guides/install-workflows.md` after commands and
       output names are implemented.
 - [ ] Generate a retained artifact on the old Mac from the recorded source commit.
 - [ ] Install and validate it on the new Mac before cloning the repository.
@@ -506,6 +512,33 @@ Automated acceptance requires:
 - Deliberately persisting the checkout path or concrete versioned npm package directory into
   generated harness configuration or workspace records makes the path-isolation assertion fail,
   while the documented `install-state.json` exception continues to pass.
+
+### Verification (Phases 1-3, this implementation pass)
+
+Run from worktree `infra-packaging-01-new-mac-install`, commits `da322ff` → `c23842b`:
+
+- `npm test` → 392 passed, 0 failed.
+- `npm run pack:dry-run` → passes, 525 files, 1.7 MB package / 6.1 MB unpacked.
+- `npm run test:package-install` → `ok: package install smoke (ephemeral)`; confirmed no sandbox
+  directory survives under `$TMPDIR` after a passing run.
+- `npm run prepare:new-mac-install -- --output-dir <dir>` → `ok: package install smoke (retained)`;
+  produced exactly one `.tgz`, one `.sha256`, and `install-manifest.json` with measured (not
+  hardcoded) name/version/commit/checksum; correctly refused with a clear assertion message when
+  the worktree was dirty.
+- Regression guard: manually removed `scripts/harnesses/` from the `files` allowlist and reran
+  `npm run test:package-install` — failed with the expected `ERR_MODULE_NOT_FOUND` chain,
+  confirming the smoke test is a real guard, not a no-op. Reverted after confirming.
+- Immutable-`appRoot` guard was verified by code inspection, not a live sabotage run: the check is
+  a plain `assert.equal` on a recursive content hash of `appRoot`, so any write during `setup` or
+  `config apply` mechanically fails it.
+- Doctor: `bash scripts/doctor.sh --quiet` → 104 checks passed in the worktree.
+- CI step (`.github/workflows/ci.yml`) was added to the existing `os: [ubuntu-latest, macos-latest]`
+  matrix and reviewed for correctness, but **has not actually run in GitHub Actions** — nothing from
+  this branch has been pushed. That acceptance line is unverified pending a real CI run.
+- `manifests/platform/source-files.tsv` directory-coverage question (Phase 1) left open, recorded as
+  deferred in the Phase 1 checklist above — not a blocker for the smoke runner.
+- Phase 4 (real old-Mac/new-Mac hardware transition, `docs/guides/install-workflows.md` update) not
+  attempted this pass; remains open.
 
 Manual transition acceptance requires:
 

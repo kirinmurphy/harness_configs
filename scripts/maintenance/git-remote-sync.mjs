@@ -101,6 +101,9 @@ async function selectRepository(result) {
       value: repo,
     })),
   ];
+  if (result.repos.length === 0 && result.refreshFailures.length === 0) {
+    items.push({ header: "No branches found out of sync" });
+  }
   if (result.refreshFailures.length) {
     items.push({ header: "Could not verify remote state" });
     result.refreshFailures.forEach((repo) => items.push({

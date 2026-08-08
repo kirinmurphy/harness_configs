@@ -227,6 +227,7 @@ function assertRemoteSyncMenuFlow({ env }) {
     expect "Press Enter to continue"
     send "\\r"
     expect "Remote Sync Check"
+    expect "No branches found out of sync"
     send "q"
     expect eof
   `;

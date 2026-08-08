@@ -4,15 +4,14 @@
   "title": "Remote sync check",
   "description": "Check local branches against their configured remotes",
   "order": 20,
-  "usage": "roborepo git remote-sync-check [path] [--fetch] [--json|--markdown|--table|--compact] [--include-clean] [--max-depth <n>]",
+  "usage": "roborepo git remote-sync-check [path] [--menu] [--json|--markdown|--table|--compact] [--include-clean] [--max-depth <n>]",
   "arguments": [{ "name": "path", "required": true, "interactive": { "prompt": "Folder to scan" } }],
-  "interactiveArgs": ["--compact"],
+  "interactiveArgs": ["--menu"],
+  "interactiveStdio": true,
   "onComplete": "returnToSubmenu",
-  "continuePrompt": "Press Enter to return to git",
-  "continueKey": "enter",
   "execution": {
     "adapter": "module",
-    "module": "scripts/maintenance/git-inventory.mjs",
+    "module": "scripts/maintenance/git-remote-sync.mjs",
     "export": "remoteSyncCheck"
   }
 }

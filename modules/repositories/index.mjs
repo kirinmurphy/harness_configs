@@ -22,7 +22,20 @@ export {
   GIT_READONLY_COMMANDS,
   defaultRunGit,
   defaultRunGitSync,
+  runGitProcess,
+  runGitProcessSync,
 } from "./git-exec.mjs";
+
+export {
+  collectBranchSyncFacts,
+  parseBranchSyncOutput,
+} from "./branch-sync.mjs";
+
+export {
+  GIT_NETWORK_TIMEOUT_MS,
+  refreshRemote,
+  pushBranchToUpstream,
+} from "./git-remote-operations.mjs";
 
 export {
   REGISTRY_VERSION,

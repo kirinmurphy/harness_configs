@@ -18,11 +18,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { realpathOf, resolveGitDir } from "../repositories/identity.mjs";
 import { defaultRunGit, GIT_TIMEOUT_MS } from "../repositories/git-exec.mjs";
+import { collectBranchSyncFacts } from "../repositories/branch-sync.mjs";
 import {
-  parseAheadBehind,
   parseHeadRef,
   parsePackedRefs,
-  parseUpstreamFromConfig,
   shortSha,
 } from "./git-refs.mjs";
 
@@ -67,14 +66,18 @@ async function readGitContext(projectRoot, options) {
   const sha = head.detached
     ? head.head
     : resolveRefSha(head.ref, resolved, { fsApi, pathApi });
-  const upstream = head.branch
-    ? parseUpstreamFromConfig(readText(fsApi, pathApi.join(resolved.commonDir, "config")), head.branch)
+  const branchSync = head.branch
+    ? await collectBranchSyncFacts(projectRoot, { fsApi, pathApi, runGit, timeoutMs })
+    : null;
+  const branchFact = branchSync?.branches.find((branch) => branch.name === head.branch) || null;
+  const upstream = branchFact?.upstream || null;
+  const aheadBehind = branchFact?.trackingState === "ok"
+    ? { ahead: branchFact.ahead, behind: branchFact.behind }
     : null;
 
   // Every subprocess call here is independent, so pay for one round of latency rather than four.
-  const [dirty, aheadBehind, upstreamTipAt, drift] = await Promise.all([
+  const [dirty, upstreamTipAt, drift] = await Promise.all([
     readDirty(projectRoot, runGit, timeoutMs),
-    upstream ? readAheadBehind(projectRoot, upstream, runGit, timeoutMs) : Promise.resolve(null),
     upstream ? readCommitTime(projectRoot, upstream, runGit, timeoutMs) : Promise.resolve(null),
     // Gated on upstream for the same reason ahead/behind is: a branch with no upstream is either in
     // a repo with no remote or one never pushed, and in both cases there is no shared baseline to
@@ -216,14 +219,6 @@ async function readDirty(cwd, runGit, timeoutMs) {
   });
   if (!result?.ok) return null;
   return result.stdout.trim().length > 0;
-}
-
-async function readAheadBehind(cwd, upstream, runGit, timeoutMs) {
-  const result = await runGit(cwd, ["rev-list", "--left-right", "--count", `${upstream}...HEAD`], {
-    timeoutMs,
-  });
-  if (!result?.ok) return null;
-  return parseAheadBehind(result.stdout);
 }
 
 function readText(fsApi, filePath) {

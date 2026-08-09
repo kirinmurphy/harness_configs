@@ -71,12 +71,7 @@ export async function collectRemoteSync(options) {
     root,
     generatedAt: new Date().toISOString(),
     options: { includeClean: options.includeClean, maxDepth: options.maxDepth },
-    summary: {
-      totalRepos: repos.length,
-      reposWithAheadBranches: records.filter((repo) => repo.branches.length > 0).length,
-      aheadBranches: records.reduce((sum, repo) => sum + repo.branches.length, 0),
-      refreshFailures: refreshFailures.length,
-    },
+    summary: summarizeRemoteSync(repos.length, records, refreshFailures),
     repos: records,
     refreshFailures,
   };
@@ -84,11 +79,15 @@ export async function collectRemoteSync(options) {
 
 async function runRemoteSyncMenu(options) {
   if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error("--menu requires an interactive TTY");
-  let result = await collectRemoteSync({ ...options, includeClean: false });
+  let result = await withScanIndicator(() => collectRemoteSync({ ...options, includeClean: false }));
   for (;;) {
-    const repo = await selectRepository(result);
-    if (!repo) break;
-    result = await repositoryMenu(result, repo, options);
+    const selected = await selectRepository(result);
+    if (!selected) break;
+    if (selected.kind === "failure") {
+      await navigate(() => showRefreshFailure(selected.repo));
+      continue;
+    }
+    result = await navigate(() => repositoryMenu(result, selected.repo));
   }
   writeInteractiveResult({ status: "ok", notice: { text: "Remote sync check complete", level: "success" } });
 }
@@ -98,7 +97,7 @@ async function selectRepository(result) {
     ...result.repos.map((repo) => ({
       label: repoLabel(repo),
       desc: `${repo.branches.length} branch${repo.branches.length === 1 ? "" : "es"} ahead`,
-      value: repo,
+      value: { kind: "repo", repo },
     })),
   ];
   if (result.repos.length === 0 && result.refreshFailures.length === 0) {
@@ -108,15 +107,47 @@ async function selectRepository(result) {
     items.push({ header: "Could not verify remote state" });
     result.refreshFailures.forEach((repo) => items.push({
       label: repoLabel(repo),
-      desc: repo.failures.map((failure) => `${failure.remote}: ${failure.error}`).join("; "),
-      value: null,
+      desc: `${repo.failures.length} verification failure${repo.failures.length === 1 ? "" : "s"}`,
+      value: { kind: "failure", repo },
     }));
   }
   items.push({ header: "Navigation" }, { label: "Back", value: null });
   return selectMenu("Remote Sync Check\n", items);
 }
 
-async function repositoryMenu(result, repo, options) {
+async function showRefreshFailure(repo) {
+  const lines = [
+    repoLabel(repo),
+    repo.path,
+    "",
+    "Could not verify remote state",
+    "",
+    ...repo.failures.flatMap((failure) => [
+      `${failure.remote}:`,
+      failure.error,
+      "",
+      failureHint(failure.error),
+      "",
+      `Inspect: cd ${shellQuote(repo.path)} && git remote -v`,
+      `Retry: cd ${shellQuote(repo.path)} && git fetch ${shellQuote(failure.remote)}`,
+      "",
+    ]),
+  ];
+  process.stdout.write(`\n${lines.join("\n").trimEnd()}\n`);
+  await waitForEnter();
+}
+
+function failureHint(error) {
+  const text = String(error || "").toLowerCase();
+  if (text.includes("repository not found")) return "Likely cause: remote URL points to a missing, renamed, private, or unauthorized repository.";
+  if (text.includes("could not read from remote repository")) return "Likely cause: SSH/auth access or remote URL is not valid from this machine.";
+  if (text.includes("could not resolve host") || text.includes("failed to connect")) return "Likely cause: network, DNS, VPN, or remote host connectivity.";
+  if (text.includes("not a git repository")) return "Likely cause: local path is not a valid Git repository or its .git metadata is broken.";
+  if (text.includes("command failed")) return "Likely cause: git fetch exited non-zero; retry the shown command for the full Git diagnostic.";
+  return "Likely cause: git fetch could not verify this remote; retry the shown command for the full Git diagnostic.";
+}
+
+async function repositoryMenu(result, repo) {
   for (;;) {
     const branchLines = repo.branches
       .map((branch) => `  ${branch.name} — ${branch.ahead} ahead${branch.behind ? ` / ${branch.behind} behind` : ""}`)
@@ -131,20 +162,103 @@ async function repositoryMenu(result, repo, options) {
       { header: "Navigation" },
       { label: "Back", value: null },
     ]);
-    if (!action) return result;
-    if (action === "shell") await openShell(repo.path);
-    if (action === "commits") await showCommits(repo);
-    if (action === "copy") await copyCheckout(repo);
-    if (action === "push") await pushBranch(repo);
-    result = await collectRemoteSync({ ...options, includeClean: false });
-    const refreshed = result.repos.find((candidate) => candidate.path === repo.path);
-    if (!refreshed) return result;
-    repo = refreshed;
+    if (!action) return navigate(() => result);
+    if (action === "shell") await navigate(() => openShell(repo.path));
+    if (action === "commits") await navigate(() => showCommits(repo));
+    if (action === "copy") await navigate(() => copyCheckout(repo));
+    if (action === "push") {
+      const pushed = await navigate(() => pushBranch(repo));
+      if (!pushed) continue;
+      result = await withScanIndicator(() => refreshRepoRecord(result, repo));
+      const refreshed = result.repos.find((candidate) => candidate.path === repo.path);
+      if (!refreshed) return result;
+      repo = refreshed;
+    }
   }
 }
 
+async function refreshRepoRecord(result, repo) {
+  const before = await collectBranchSyncFacts(repo.path);
+  if (!before.provider.ok) {
+    return finalizeRemoteSyncResult({
+      ...result,
+      generatedAt: new Date().toISOString(),
+      repos: result.repos.filter((candidate) => candidate.path !== repo.path),
+      refreshFailures: upsertRefreshFailure(result.refreshFailures, {
+        path: repo.path,
+        relativePath: repo.relativePath,
+        failures: [{ remote: "local git inspection", error: before.provider.reason }],
+      }),
+    });
+  }
+  const failures = [];
+  for (const remote of distinctTrackedRemotes(before.branches)) {
+    const refreshed = await refreshRemote(repo.path, remote);
+    if (!refreshed.ok) failures.push(refreshed);
+  }
+  if (failures.length > 0) {
+    return finalizeRemoteSyncResult({
+      ...result,
+      generatedAt: new Date().toISOString(),
+      repos: result.repos.filter((candidate) => candidate.path !== repo.path),
+      refreshFailures: upsertRefreshFailure(result.refreshFailures, {
+        path: repo.path,
+        relativePath: repo.relativePath,
+        failures,
+      }),
+    });
+  }
+  const after = await collectBranchSyncFacts(repo.path);
+  if (!after.provider.ok) {
+    return finalizeRemoteSyncResult({
+      ...result,
+      generatedAt: new Date().toISOString(),
+      repos: result.repos.filter((candidate) => candidate.path !== repo.path),
+      refreshFailures: upsertRefreshFailure(result.refreshFailures, {
+        path: repo.path,
+        relativePath: repo.relativePath,
+        failures: [{ remote: "local git inspection", error: after.provider.reason }],
+      }),
+    });
+  }
+  const nextRepo = { ...repo, fetchedAt: after.fetchedAt, branches: safetyBranches(after.branches) };
+  const nextRepos = nextRepo.branches.length > 0
+    ? result.repos.map((candidate) => candidate.path === repo.path ? nextRepo : candidate)
+    : result.repos.filter((candidate) => candidate.path !== repo.path);
+  const nextRefreshFailures = result.refreshFailures.filter((candidate) => candidate.path !== repo.path);
+  return finalizeRemoteSyncResult({
+    ...result,
+    generatedAt: new Date().toISOString(),
+    repos: nextRepos,
+    refreshFailures: nextRefreshFailures,
+  });
+}
+
+function finalizeRemoteSyncResult(result) {
+  return {
+    ...result,
+    summary: summarizeRemoteSync(result.summary.totalRepos, result.repos, result.refreshFailures),
+  };
+}
+
+function summarizeRemoteSync(totalRepos, repos, refreshFailures) {
+  return {
+    totalRepos,
+    reposWithAheadBranches: repos.filter((candidate) => candidate.branches.length > 0).length,
+    aheadBranches: repos.reduce((sum, candidate) => sum + candidate.branches.length, 0),
+    refreshFailures: refreshFailures.length,
+  };
+}
+
+function upsertRefreshFailure(refreshFailures, failure) {
+  return [
+    ...refreshFailures.filter((candidate) => candidate.path !== failure.path),
+    failure,
+  ];
+}
+
 async function chooseBranch(repo, title) {
-  return selectMenu(title, [
+  return selectMenu(`${repoLabel(repo)}\n${repo.path}\n\n${title}\n`, [
     ...repo.branches.map((branch) => ({
       label: branch.name,
       desc: `${branch.ahead} ahead${branch.behind ? ` / ${branch.behind} behind` : ""}`,
@@ -156,16 +270,38 @@ async function chooseBranch(repo, title) {
 }
 
 async function showCommits(repo) {
-  const branch = await chooseBranch(repo, "Show unpushed commits\n");
+  const branch = await chooseBranch(repo, "Show unpushed commits");
   if (!branch) return;
   const { runGitProcess } = await import("../../modules/repositories/git-exec.mjs");
-  const result = await runGitProcess(repo.path, ["log", "--oneline", `${branch.upstream}..${branch.name}`]);
-  process.stdout.write(`\n${result.ok ? result.stdout : result.error}\n`);
+  const range = `${branch.upstream}..${branch.name}`;
+  const result = await runGitProcess(repo.path, [
+    "log",
+    "--stat",
+    "--decorate",
+    "--date=short",
+    "--pretty=format:%h %ad %an%n%s%n",
+    range,
+  ]);
+  const checkoutCommand = `cd ${shellQuote(repo.path)} && git switch ${shellQuote(branch.name)}`;
+  const pushCommand = `git push ${shellQuote(branch.upstreamRemote)} ${shellQuote(branch.name)}:${shellQuote(branch.upstreamRemoteRef)}`;
+  const details = [
+    repoLabel(repo),
+    repo.path,
+    "",
+    `${branch.name} -> ${branch.upstream}`,
+    `${branch.ahead} ahead${branch.behind ? ` / ${branch.behind} behind` : ""}`,
+    "",
+    `Checkout: ${checkoutCommand}`,
+    `Push: ${pushCommand}`,
+    "",
+    result.ok ? result.stdout : result.error,
+  ].join("\n");
+  process.stdout.write(`\n${details.trimEnd()}\n`);
   await waitForEnter();
 }
 
 async function copyCheckout(repo) {
-  const branch = await chooseBranch(repo, "Copy checkout command\n");
+  const branch = await chooseBranch(repo, "Copy checkout command");
   if (!branch) return;
   const command = `cd ${shellQuote(repo.path)} && git switch ${shellQuote(branch.name)}`;
   const pbcopy = spawn("pbcopy", { stdio: ["pipe", "ignore", "ignore"] });
@@ -176,41 +312,73 @@ async function copyCheckout(repo) {
 }
 
 async function pushBranch(repo) {
-  const branch = await chooseBranch(repo, "Push branch to upstream\n");
-  if (!branch) return;
+  const branch = await chooseBranch(repo, "Push branch to upstream");
+  if (!branch) return false;
   const refreshed = await refreshRemote(repo.path, branch.upstreamRemote);
   if (!refreshed.ok) {
     process.stdout.write(`\nCould not refresh ${branch.upstreamRemote}: ${refreshed.error}\n`);
     await waitForEnter();
-    return;
+    return false;
   }
   const facts = await collectBranchSyncFacts(repo.path);
   const current = facts.branches.find((candidate) => candidate.name === branch.name);
   if (!current || current.trackingState !== "ok" || current.ahead <= 0) {
     process.stdout.write("\nBranch is no longer ahead.\n");
     await waitForEnter();
-    return;
+    return false;
   }
   if (current.behind > 0) {
     process.stdout.write(`\n${current.name} is ${current.behind} behind ${current.upstream}; reconcile manually before pushing.\n`);
     await waitForEnter();
-    return;
+    return false;
   }
   const prompter = makePrompter();
   try {
     const ok = await confirmYesNo(prompter, `Push ${current.name} to ${current.upstream}?`, false);
-    if (!ok) return;
+    if (!ok) return false;
   } finally {
     prompter.close?.();
   }
   const pushed = await pushBranchToUpstream(repo.path, current.name, current);
   process.stdout.write(pushed.ok ? "\nPush complete.\n" : `\nPush failed: ${pushed.error}\n`);
   await waitForEnter();
+  return pushed.ok;
 }
 
 async function openShell(cwd) {
   const shell = process.env.SHELL || "/bin/sh";
   await new Promise((resolve) => spawn(shell, { cwd, stdio: "inherit" }).on("exit", resolve));
+}
+
+async function navigate(next) {
+  clearInteractiveScreen();
+  try {
+    return await next();
+  } finally {
+    clearInteractiveScreen();
+  }
+}
+
+function clearInteractiveScreen() {
+  if (process.stdout.isTTY) process.stdout.write("\x1b[H\x1b[2J");
+}
+
+async function withScanIndicator(scan) {
+  if (!process.stdout.isTTY) return scan();
+  const frames = ["-", "\\", "|", "/"];
+  let frame = 0;
+  const render = () => {
+    process.stdout.write(`\r${frames[frame % frames.length]} Scanning remote state...`);
+    frame += 1;
+  };
+  render();
+  const timer = setInterval(render, 120);
+  try {
+    return await scan();
+  } finally {
+    clearInterval(timer);
+    process.stdout.write("\r\x1b[2K");
+  }
 }
 
 function safetyBranches(branches) {

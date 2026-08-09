@@ -199,25 +199,52 @@ function assertRemoteSyncMenuFlow({ env }) {
   const script = `
     set timeout 20
     spawn -noecho ${process.execPath} ${cliPath} git remote-sync-check ${scanRoot} --menu
+    expect "Scanning remote state..."
     expect "Remote Sync Check"
     expect "./sync-work"
+    expect "./sync-work-extra"
+    expect "Could not verify remote state"
+    expect "./sync-work-broken"
+    send "\\033\\[B\\033\\[B\\r"
+    expect "./sync-work-broken"
+    send "\\r"
+    expect "Could not verify remote state"
+    expect "Inspect:"
+    expect "Retry:"
+    expect "git fetch origin"
+    expect "Press Enter to continue"
+    send "\\r"
+    expect "Remote Sync Check"
     expect "1 branch ahead"
     send "\\r"
     expect "Show unpushed commits"
     expect "Push branch to upstream"
     send "\\r"
+    expect "./sync-work"
     expect "ahead"
     send "\\r"
+    expect "./sync-work"
+    expect "Checkout:"
+    expect "Push:"
     expect "remote sync local commit"
     expect "Press Enter to continue"
     send "\\r"
-    expect "Show unpushed commits"
+    expect {
+      "Scanning remote state..." { exit 41 }
+      "Show unpushed commits" {}
+      timeout { exit 42 }
+    }
     send "\\033\\[B\\033\\[B\\033\\[B\\r"
+    expect "./sync-work"
     expect "ahead"
     send "\\r"
     expect "Push ahead to origin/main?"
     send "\\r"
-    expect "Show unpushed commits"
+    expect {
+      "Scanning remote state..." { exit 43 }
+      "Show unpushed commits" {}
+      timeout { exit 44 }
+    }
     send "\\033\\[B\\033\\[B\\033\\[B\\r"
     expect "ahead"
     send "\\r"
@@ -227,7 +254,7 @@ function assertRemoteSyncMenuFlow({ env }) {
     expect "Press Enter to continue"
     send "\\r"
     expect "Remote Sync Check"
-    expect "No branches found out of sync"
+    expect "./sync-work-extra"
     send "q"
     expect eof
   `;
@@ -243,6 +270,20 @@ function assertRemoteSyncMenuFlow({ env }) {
   }
 
   assert.equal(result.status, 0, `remote-sync PTY exit\nrepo: ${repo}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /\x1b\[H\x1b\[2J[\s\S]*Show unpushed commits/,
+    "remote-sync menu should clear the repository list before drawing repository actions",
+  );
+  assert.match(
+    result.stdout,
+    /Back\s+\x1b\[H\x1b\[2J[\s\S]*Remote Sync Check/,
+    "remote-sync menu should clear repository actions before returning to the repository list",
+  );
+  const finalScreen = finalScreenFromAnsi(result.stdout);
+  assert.match(finalScreen, /^> \.\/sync-work-extra\b/m, `single-repo refresh should leave other cached ahead repos in the main list\n${finalScreen}`);
+  assert.match(finalScreen, /^    \.\/sync-work-broken\b.*verification failure/m, `failed repo should remain a selectable diagnostic row\n${finalScreen}`);
+  assert.doesNotMatch(finalScreen, /^    \.\/sync-work-extra\b.*verification failure/m, `single-repo refresh should not re-verify unrelated repos\n${finalScreen}`);
   const payload = JSON.parse(fs.readFileSync(resultFile, "utf8"));
   assert.equal(payload.notice.text, "Remote sync check complete");
 }
@@ -253,10 +294,43 @@ function stripAnsi(value) {
 
 function makeRemoteSyncFixture(scanRoot) {
   const origin = path.join(workDir, "remote-sync-origin.git");
+  const originExtra = path.join(workDir, "remote-sync-origin-extra.git");
+  const originBroken = path.join(workDir, "remote-sync-origin-broken.git");
   const seed = path.join(workDir, "remote-sync-seed");
+  const seedExtra = path.join(workDir, "remote-sync-seed-extra");
+  const seedBroken = path.join(workDir, "remote-sync-seed-broken");
   const repo = path.join(scanRoot, "sync-work");
+  const repoExtra = path.join(scanRoot, "sync-work-extra");
+  const repoBroken = path.join(scanRoot, "sync-work-broken");
   fs.mkdirSync(scanRoot, { recursive: true });
 
+  seedRemote(origin, seed);
+  seedRemote(originExtra, seedExtra);
+  seedRemote(originBroken, seedBroken);
+
+  runGit(["clone", origin, repo]);
+  runGit(["switch", "-c", "ahead", "origin/main"], { cwd: repo });
+  fs.writeFileSync(path.join(repo, "local.txt"), "local\n");
+  runGit(["add", "."], { cwd: repo });
+  commit(repo, "remote sync local commit");
+
+  runGit(["clone", originExtra, repoExtra]);
+  runGit(["switch", "-c", "extra-ahead", "origin/main"], { cwd: repoExtra });
+  fs.writeFileSync(path.join(repoExtra, "extra.txt"), "extra\n");
+  runGit(["add", "."], { cwd: repoExtra });
+  commit(repoExtra, "extra remote sync local commit");
+
+  runGit(["clone", originBroken, repoBroken]);
+  runGit(["remote", "set-url", "origin", `${originBroken}-missing`], { cwd: repoBroken });
+
+  const hook = path.join(origin, "hooks", "post-receive");
+  fs.writeFileSync(hook, `#!/bin/sh\nmv ${originExtra} ${originExtra}.offline 2>/dev/null || true\n`);
+  fs.chmodSync(hook, 0o755);
+
+  return repo;
+}
+
+function seedRemote(origin, seed) {
   runGit(["init", "--bare", "--initial-branch=main", origin]);
   runGit(["init", "--initial-branch=main"], { cwd: seed, mkdir: true });
   fs.writeFileSync(path.join(seed, "base.txt"), "base\n");
@@ -264,13 +338,6 @@ function makeRemoteSyncFixture(scanRoot) {
   commit(seed, "base");
   runGit(["remote", "add", "origin", origin], { cwd: seed });
   runGit(["push", "-u", "origin", "main"], { cwd: seed });
-
-  runGit(["clone", origin, repo]);
-  runGit(["switch", "-c", "ahead", "origin/main"], { cwd: repo });
-  fs.writeFileSync(path.join(repo, "local.txt"), "local\n");
-  runGit(["add", "."], { cwd: repo });
-  commit(repo, "remote sync local commit");
-  return repo;
 }
 
 function commit(cwd, message) {

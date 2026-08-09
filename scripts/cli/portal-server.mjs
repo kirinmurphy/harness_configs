@@ -11,11 +11,13 @@ import { handleLocalhosterApi } from "./portal-routes-localhoster.mjs";
 import { handleTelemetryApi } from "./portal-routes-telemetry.mjs";
 import { handleRepositoriesApi } from "./portal-routes-repositories.mjs";
 import { handleUsageApi } from "./portal-routes-usage.mjs";
+import { handleMetadataAsset } from "./portal-routes-metadata.mjs";
 
 // Tiny local-only portal server. Binds to loopback only so telemetry/config data never leaves the
 // machine. Stdlib `http` keeps the install dependency-free, matching the rest of the CLI.
 const LOOPBACK = "127.0.0.1";
 const PORTAL_DIR = path.join(repoRoot, "portal");
+const APP_NAME = "roborepo";
 
 // Computed once at startup so a new `serve`/`web` invocation can detect "a portal is already
 // running at this path, but its code is now stale" and restart it instead of reusing it (see
@@ -214,6 +216,7 @@ function route(req, res, handlers, mutationToken) {
   if (handleLocalhosterApi(req, res, urlPath, qs, handlers)) return;
   if (handleRepositoriesApi(req, res, urlPath, qs, handlers)) return;
   if (handleUsageApi(req, res, urlPath)) return;
+  if (handleMetadataAsset(req, res, urlPath, { pages: PAGES, appName: APP_NAME })) return;
   if (handlePortalPage(req, res, urlPath, mutationToken)) return;
   if (handlePortalAsset(req, res, urlPath)) return;
   if (handleDocsAsset(req, res, urlPath)) return;

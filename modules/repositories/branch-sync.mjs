@@ -71,6 +71,7 @@ function parseTrackingCounts(track, hasUpstream) {
   if (track === "[gone]") return null;
   const ahead = /\bahead (\d+)/.exec(track);
   const behind = /\bbehind (\d+)/.exec(track);
+  if (!ahead && !behind) return null;
   return {
     ahead: ahead ? Number.parseInt(ahead[1], 10) : 0,
     behind: behind ? Number.parseInt(behind[1], 10) : 0,

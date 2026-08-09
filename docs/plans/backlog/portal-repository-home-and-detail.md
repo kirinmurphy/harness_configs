@@ -205,6 +205,8 @@ Exact endpoint naming may follow existing route conventions, but the responsibil
 - keep expensive analysis behind existing caches/policies;
 - avoid exposing domain-internal raw records when a summary is sufficient.
 
+Each domain loader must run behind its own timeout and cancellation boundary. Apply this uniformly to Localhost, Plans, Telemetry, Doctor, and any later domain loader; do not let one slow loader consume the aggregate request budget. A timeout becomes a partial failure result such as `{ "domain": "telemetry", "status": "timeout" }`. The aggregate response still completes, includes the affected domain name, preserves any stale successful data already available for that domain, and marks that data stale rather than empty.
+
 Suggested Home shape:
 
 ```json
@@ -312,7 +314,7 @@ export const portalPolicy = {
 
 Confirm these values against the current telemetry implementation before moving them. The point is one shared owner, not preserving stale constants blindly.
 
-Telemetry's chart and Home's Token usage Attention must consume the same computed threshold. If the current numeric `cumulative_concern` response needs temporary compatibility during refactor, remove duplicate representations once all current consumers use the shared shape.
+The shared cumulative concern contract takes the repository scope (`all` or a canonical `repositoryId`), time window, and active cohort/filter as inputs. `analyzeTelemetry` computes the threshold once for that input tuple and returns `cumulativeConcern.tokens` as the canonical value. Telemetry's chart and Home's Token usage Attention consume that same computed value; when the input scope is global, Home must not recompute a repository-specific threshold for the same global finding. If the current numeric `cumulative_concern` response needs temporary compatibility during refactor, derive it from `cumulativeConcern.tokens`, assert both values are equal in tests, and remove duplicate representations once all current consumers use the shared shape. Add tests for global and selected-repository views.
 
 ### 9. Token-heavy chats and telemetry findings
 

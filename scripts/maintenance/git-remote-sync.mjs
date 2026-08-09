@@ -128,13 +128,25 @@ async function showRefreshFailure(repo) {
       "",
       failureHint(failure.error),
       "",
-      `Inspect: cd ${shellQuote(repo.path)} && git remote -v`,
-      `Retry: cd ${shellQuote(repo.path)} && git fetch ${shellQuote(failure.remote)}`,
+      ...failureCommands(repo.path, failure),
       "",
     ]),
   ];
   process.stdout.write(`\n${lines.join("\n").trimEnd()}\n`);
   await waitForEnter();
+}
+
+function failureCommands(repoPath, failure) {
+  if (failure.remote === "local git inspection") {
+    return [
+      `Inspect: cd ${shellQuote(repoPath)} && git status --short --branch`,
+      `Retry: cd ${shellQuote(repoPath)} && git for-each-ref --format='%(refname:short) %(upstream:track)' refs/heads`,
+    ];
+  }
+  return [
+    `Inspect: cd ${shellQuote(repoPath)} && git remote -v`,
+    `Retry: cd ${shellQuote(repoPath)} && git fetch ${shellQuote(failure.remote)}`,
+  ];
 }
 
 function failureHint(error) {
@@ -305,9 +317,14 @@ async function copyCheckout(repo) {
   if (!branch) return;
   const command = `cd ${shellQuote(repo.path)} && git switch ${shellQuote(branch.name)}`;
   const pbcopy = spawn("pbcopy", { stdio: ["pipe", "ignore", "ignore"] });
-  pbcopy.stdin.end(command);
-  const ok = await new Promise((resolve) => pbcopy.on("exit", (status) => resolve(status === 0)));
-  process.stdout.write(ok ? "\nCheckout command copied.\n" : `\n${command}\n`);
+  const copied = waitForChildResult(pbcopy);
+  try {
+    pbcopy.stdin.end(command);
+  } catch {
+    // Launch errors are reported by waitForChildResult and fall back to printing the command.
+  }
+  const result = await copied;
+  process.stdout.write(result.ok ? "\nCheckout command copied.\n" : `\n${command}\n`);
   await waitForEnter();
 }
 
@@ -321,6 +338,11 @@ async function pushBranch(repo) {
     return false;
   }
   const facts = await collectBranchSyncFacts(repo.path);
+  if (!facts.provider.ok) {
+    process.stdout.write(`\nCould not inspect local Git state: ${facts.provider.reason}\n`);
+    await waitForEnter();
+    return false;
+  }
   const current = facts.branches.find((candidate) => candidate.name === branch.name);
   if (!current || current.trackingState !== "ok" || current.ahead <= 0) {
     process.stdout.write("\nBranch is no longer ahead.\n");
@@ -347,7 +369,11 @@ async function pushBranch(repo) {
 
 async function openShell(cwd) {
   const shell = process.env.SHELL || "/bin/sh";
-  await new Promise((resolve) => spawn(shell, { cwd, stdio: "inherit" }).on("exit", resolve));
+  const result = await waitForChildResult(spawn(shell, { cwd, stdio: "inherit" }));
+  if (!result.ok) {
+    process.stdout.write(`\nCould not open shell: ${result.error}\n`);
+    await waitForEnter();
+  }
 }
 
 async function navigate(next) {
@@ -357,6 +383,22 @@ async function navigate(next) {
   } finally {
     clearInteractiveScreen();
   }
+}
+
+function waitForChildResult(child) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    child.once("error", (error) => done({ ok: false, error: error?.message || String(error) }));
+    child.once("exit", (status, signal) => done({
+      ok: status === 0,
+      error: signal ? `exited on ${signal}` : `exited ${status}`,
+    }));
+  });
 }
 
 function clearInteractiveScreen() {

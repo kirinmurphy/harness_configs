@@ -72,6 +72,8 @@ const HARDENING_ENV = {
   GIT_ASKPASS: "",
   SSH_ASKPASS: "",
   GIT_CONFIG_NOSYSTEM: "1",
+  LC_ALL: "C",
+  LANG: "C",
 };
 
 export async function defaultRunGit(cwd, args, { timeoutMs = GIT_TIMEOUT_MS } = {}) {

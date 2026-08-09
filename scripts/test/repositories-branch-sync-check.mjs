@@ -23,6 +23,12 @@ try {
   assert.equal(byName.get("local-child").trackingState, "local_upstream");
   assert.equal(byName.get("gone").trackingState, "gone");
 
+  const unknownFacts = await collectBranchSyncFacts(work, { runGit: async () => ({
+    ok: true,
+    stdout: "unknown\0origin/main\0origin\0refs/heads/main\0[devant 1]\n",
+  }) });
+  assert.deepEqual(pick(unknownFacts.branches[0]), { ahead: null, behind: null, trackingState: "unknown" });
+
   const linkedFacts = await collectBranchSyncFacts(linked);
   assert.equal(linkedFacts.branches.find((branch) => branch.name === "ahead").ahead, 1);
 

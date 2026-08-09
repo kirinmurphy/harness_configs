@@ -406,7 +406,7 @@ node --check modules/repositories/branch-sync.mjs
 node --check modules/repositories/git-remote-operations.mjs
 node --check modules/localhoster/git.mjs
 node --check scripts/maintenance/git-remote-sync.mjs
-node --check scripts/cli/git-remote-sync-menu.mjs
+node scripts/cli/main.mjs git remote-sync-check --help
 npm run test:repositories
 npm run test:localhoster-git
 node scripts/test/git-inventory-check.mjs
@@ -455,6 +455,7 @@ Verification:
 - `node --check modules/repositories/git-remote-operations.mjs` passed.
 - `node --check modules/localhoster/git.mjs` passed.
 - `node --check scripts/maintenance/git-remote-sync.mjs` passed.
+- `node scripts/cli/main.mjs git remote-sync-check --help` passed.
 - `npm run test:repositories` passed.
 - `npm run test:repositories-branch-sync` passed.
 - `npm run test:localhoster-git` passed.

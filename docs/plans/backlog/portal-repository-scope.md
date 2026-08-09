@@ -112,7 +112,7 @@ Each configured source represents one of two intents:
 | `repository` | `<projects>/client-a/app` | Register only that repository |
 | `directory` | `<projects>/personal` | Discover eligible repositories beneath that directory using bounded traversal |
 
-The UI may infer the source kind when a path is added, but the persisted record should make the intent explicit so a future refresh does not reinterpret it.
+The UI may infer the source kind when a path is added only for paths it can read and classify confidently. Missing or unreadable paths are `unresolved` at entry time; do not automatically classify them as `repository` or `directory`. Require the user to choose the intended source kind for unresolved paths, persist that selected intent, and reuse it unchanged during future refreshes. If a previously unresolved path later becomes readable, refresh behavior must still honor the persisted intent and must not broaden discovery beyond what the user configured.
 
 Source records need stable opaque IDs so enrollment/provenance and removal do not depend on the path string. The path is machine-local private state and must never cross the browser boundary except as user-entered/readable settings data in the protected management surface.
 
@@ -152,6 +152,8 @@ The exact file/module shape is an implementation detail, but the following invar
 - stale/missing paths are detected during refresh and reported without deleting canonical repository history;
 - browser-safe repository summaries continue to expose root counts/kinds only.
 
+Registry and local-root updates must be serialized or committed atomically across Localhost discovery and configured-source refresh. Concurrent writers must merge by `repositoryId` and `rootId`, preserve all known roots and provenance entries, and apply visibility changes through an explicit conflict rule rather than last-writer-wins replacement. The persistence flow must write registry identity and private root mapping as one logical update, or recover to the previous complete state after a failed write. Add a concurrent-refresh regression test that exercises Localhost discovery and configured-source refresh updating the same repository before this state feeds Plans, Tokens, or Home.
+
 ### 3. Localhost as zero-configuration discovery
 
 When Localhost resolves a running app to a repository and checkout root:
@@ -172,10 +174,12 @@ Retire Plans-specific repository enrollment as the gate for reading plan documen
 
 For every visible, resolved repository with at least one valid local root:
 
-- choose the primary root when valid, otherwise a deterministic available clone;
-- check `docs/plans`;
+- inspect every valid local root with stable deduplication by plan identity and file content hash;
+- report divergent plan sets across roots as repository warnings;
 - discover plan files using the existing Plan Docs parser/lifecycle rules;
 - associate resulting records by canonical `repositoryId`.
+
+Do not silently select a single clone/worktree unless a later implementation defines and persists an authoritative-root rule. If such a rule is added, expose discrepancies from non-authoritative roots and ensure Plans and Home summaries do not silently omit valid plans that only exist outside the selected root.
 
 Repositories without `docs/plans` are still valid repositories and simply contribute zero plans.
 

@@ -43,6 +43,7 @@ export const GIT_READONLY_COMMANDS = new Set([
   "rev-parse",
   "merge-base",
   "log",
+  "for-each-ref",
 ]);
 
 // Config overrides applied to every invocation.
@@ -71,17 +72,14 @@ const HARDENING_ENV = {
   GIT_ASKPASS: "",
   SSH_ASKPASS: "",
   GIT_CONFIG_NOSYSTEM: "1",
+  LC_ALL: "C",
+  LANG: "C",
 };
 
 export async function defaultRunGit(cwd, args, { timeoutMs = GIT_TIMEOUT_MS } = {}) {
   const rejection = rejectDisallowed(args);
   if (rejection) return rejection;
-  try {
-    const result = await execFileAsync("git", [...HARDENING_ARGS, ...args], execOptions(cwd, timeoutMs));
-    return { ok: true, stdout: result.stdout ?? "", code: 0, error: null };
-  } catch (err) {
-    return { ok: false, stdout: "", code: err?.code ?? null, error: err?.message ?? String(err) };
-  }
+  return runGitProcess(cwd, args, { timeoutMs });
 }
 
 // Synchronous sibling with identical hardening, for callers that cannot await. Exists so the three
@@ -89,16 +87,36 @@ export async function defaultRunGit(cwd, args, { timeoutMs = GIT_TIMEOUT_MS } = 
 export function defaultRunGitSync(cwd, args, { timeoutMs = GIT_TIMEOUT_MS } = {}) {
   const rejection = rejectDisallowed(args);
   if (rejection) return rejection;
+  return runGitProcessSync(cwd, args, { timeoutMs });
+}
+
+export async function runGitProcess(cwd, args, { timeoutMs = GIT_TIMEOUT_MS } = {}) {
+  try {
+    const result = await execFileAsync("git", [...HARDENING_ARGS, ...args], execOptions(cwd, timeoutMs));
+    return { ok: true, stdout: result.stdout ?? "", stderr: result.stderr ?? "", code: 0, error: null };
+  } catch (err) {
+    return {
+      ok: false,
+      stdout: err?.stdout ?? "",
+      stderr: err?.stderr ?? "",
+      code: err?.code ?? null,
+      error: err?.message ?? String(err),
+    };
+  }
+}
+
+export function runGitProcessSync(cwd, args, { timeoutMs = GIT_TIMEOUT_MS } = {}) {
   const result = spawnSync("git", [...HARDENING_ARGS, ...args], execOptions(cwd, timeoutMs));
   if (result.error || result.status !== 0) {
     return {
       ok: false,
-      stdout: "",
+      stdout: result.stdout ?? "",
+      stderr: result.stderr ?? "",
       code: result.status ?? null,
       error: result.error?.message ?? `git exited ${result.status}`,
     };
   }
-  return { ok: true, stdout: result.stdout ?? "", code: 0, error: null };
+  return { ok: true, stdout: result.stdout ?? "", stderr: result.stderr ?? "", code: 0, error: null };
 }
 
 function execOptions(cwd, timeoutMs) {

@@ -88,7 +88,12 @@ try {
 
   // ---- Linked worktree: .git is a file, refs shared via commondir ----
   const worktree = mkWorktree("wt", { branch: "wt-branch", sha: SHA });
-  const worktreeResult = await collectGitContext(worktree, { runGit: stubGit({ status: "", revList: "1\t2" }) });
+  const worktreeResult = await collectGitContext(worktree, {
+    runGit: stubGit({
+      status: "",
+      branchSync: "wt-branch\0origin/wt-branch\0origin\0refs/heads/wt-branch\0[ahead 2, behind 1]\n",
+    }),
+  });
   assert.equal(worktreeResult.isWorktree, true);
   assert.equal(worktreeResult.branch, "wt-branch");
   assert.equal(worktreeResult.head, SHA);
@@ -132,7 +137,7 @@ try {
   // Every subcommand this module may run. All are local reads: drift collection adds symbolic-ref
   // and rev-parse (resolving the base branch), merge-base (where the branch left it), and log
   // (commit timestamps). None of them contacts a remote.
-  const READ_ONLY = ["status", "rev-list", "symbolic-ref", "rev-parse", "merge-base", "log"];
+  const READ_ONLY = ["status", "rev-list", "symbolic-ref", "rev-parse", "merge-base", "log", "for-each-ref"];
   for (const call of spy.calls) {
     assert.ok(READ_ONLY.includes(call[0]), `unexpected git subcommand: ${call[0]}`);
     assert.ok(!call.includes("fetch") && !call.includes("pull"), "no network subcommand may appear");
@@ -210,10 +215,10 @@ function mkWorktree(name, { branch, sha }) {
   return fs.realpathSync(worktree);
 }
 
-function stubGit({ status = "", revList = "0\t0" }) {
+function stubGit({ status = "", revList = "0\t0", branchSync = "" }) {
   return async (_cwd, args) => ({
     ok: true,
-    stdout: args[0] === "status" ? status : revList,
+    stdout: args[0] === "status" ? status : args[0] === "for-each-ref" ? branchSync : revList,
     code: 0,
     error: null,
   });

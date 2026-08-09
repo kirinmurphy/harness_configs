@@ -141,7 +141,7 @@ Refactor telemetry's `computeCumulativeConcern` to consume this policy. Expose b
 }
 ```
 
-For compatibility inside the implementation branch, the analysis response may temporarily retain the numeric `cumulative_concern` field while adding the structured value. Remove the temporary duplicate before considering the refactor complete unless another current consumer still requires it.
+Make `cumulativeConcern.tokens` the canonical threshold used by `computeCumulativeConcern`, analysis responses, the telemetry chart, and Home Token usage Attention. If the legacy numeric `cumulative_concern` field remains during migration, derive it directly from `cumulativeConcern.tokens` in the response adapter rather than computing it separately. Add coverage that asserts `cumulative_concern === cumulativeConcern.tokens` for the compatibility period. Remove the numeric alias once no current consumer reads it.
 
 ## Homepage API Boundary
 
@@ -294,4 +294,3 @@ Run existing targeted suites for Telemetry, Localhoster, Plans, Config/context c
 - User-editable portal policy thresholds.
 - Full verify execution or background repair from the homepage.
 - Notifications outside the portal.
-

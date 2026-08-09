@@ -288,18 +288,28 @@ Expose one browser-safe repository summary endpoint from the completed registry 
 ```json
 {
   "repositories": [
-    {
-      "urlKey": "roborepo",
-      "displayName": "RoboRepo",
-      "providerUrl": "https://github.com/kirinmurphy/roborepo",
-      "visibility": "visible",
-      "resolution": "resolved"
-    }
-  ]
-}
-```
+	    {
+	      "urlKey": "roborepo",
+	      "displayName": "RoboRepo",
+	      "providerUrl": "https://github.com/kirinmurphy/roborepo",
+	      "visibility": "visible",
+	      "resolution": "resolved"
+	    },
+	    {
+	      "urlKey": "missing-repo",
+	      "displayName": "Missing Repo",
+	      "providerUrl": null,
+	      "visibility": "visible",
+	      "resolution": "unresolved",
+	      "unavailableReason": "path-missing"
+	    }
+	  ]
+	}
+	```
 
-The browser may receive `repositoryId` where needed for diagnostics, but must submit `urlKey` as the shared selector.
+The browser may receive `repositoryId` where needed for diagnostics, but must submit `urlKey` as the shared selector. Repositories outside the resolved list still appear with the same `urlKey`, `displayName`, `visibility`, and `resolution` fields so Home can render an unavailable/unresolved row instead of dropping the configured repository or treating it as "All repositories".
+
+`providerUrl` is optional browser-facing metadata, not an authority. Sanitize it before delivery: omit or return `null` for provider URLs with userinfo/credentials, local/private hostnames or IP ranges, SSH-style remotes, `file:` URLs, or any other private repository location. Keep an allowed public HTTPS provider URL when it identifies a public host such as GitHub without credentials. Retain `urlKey` as the shared selector regardless of whether `providerUrl` is present.
 
 Recommended resolution behavior:
 
@@ -310,6 +320,8 @@ Recommended resolution behavior:
 | Unknown key | `404`-style repository-unavailable payload |
 | Hidden repository | Unavailable unless an explicit management surface permits it |
 | Unresolved repository | Show unresolved state; do not pretend it is **All repositories** |
+
+Add contract tests covering an unresolved repository row, credential-bearing `providerUrl` omission, private-location `providerUrl` omission, and an allowed public `providerUrl`.
 
 Domain endpoints may accept the resolved `repositoryId` through internal function arguments. Avoid repeatedly resolving the same `urlKey` in multiple domain loaders during one request.
 

@@ -47,6 +47,7 @@
     "test:localhoster-repository-merge": "node scripts/test/localhoster-repository-merge-check.mjs",
     "test:localhoster-process": "node scripts/test/localhoster-process-check.mjs",
     "test:repositories": "node scripts/test/repositories-check.mjs",
+    "test:repositories-branch-sync": "node scripts/test/repositories-branch-sync-check.mjs",
     "test:repositories-service": "node scripts/test/repositories-service-check.mjs",
     "test:repositories-api": "node scripts/test/repositories-api-check.mjs",
     "test:packages": "node scripts/test/package-catalog-check.mjs",

@@ -332,70 +332,70 @@ Because inherited-stdio commands are responsible for their own terminal interact
 
 ### Phase 1 — Characterize shared branch-sync facts
 
-- [ ] Add a focused shared-repository test for all-branch sync collection using real temporary Git repositories and local bare remotes.
-- [ ] Cover a tracked branch that is equal, ahead, behind, and diverged.
-- [ ] Cover multiple tracked local branches in one repository and verify one branch enumeration call can provide their tracking metadata.
-- [ ] Cover a branch with no upstream, a branch tracking another local branch, and a gone upstream ref; preserve those states instead of converting them to zero counts.
-- [ ] Cover linked-worktree Git-dir resolution so the shared collector works from an ordinary checkout or worktree root.
-- [ ] Add `for-each-ref` to the hardened read-only Git allow-list with a regression assertion that `fetch` and `push` remain rejected there.
+- [x] Add a focused shared-repository test for all-branch sync collection using real temporary Git repositories and local bare remotes.
+- [x] Cover a tracked branch that is equal, ahead, behind, and diverged.
+- [x] Cover multiple tracked local branches in one repository and verify one branch enumeration call can provide their tracking metadata.
+- [x] Cover a branch with no upstream, a branch tracking another local branch, and a gone upstream ref; preserve those states instead of converting them to zero counts.
+- [x] Cover linked-worktree Git-dir resolution so the shared collector works from an ordinary checkout or worktree root.
+- [x] Add `for-each-ref` to the hardened read-only Git allow-list with a regression assertion that `fetch` and `push` remain rejected there.
 
 ### Phase 2 — Extract the shared repository-domain collector
 
-- [ ] Add `modules/repositories/branch-sync.mjs` with named exports and pure parsing separated from orchestration if the module would otherwise exceed the repository's file-size guidance.
-- [ ] Export the shared branch-sync API through `modules/repositories/index.mjs`.
-- [ ] Return branch facts and explicit unknown/gone/no-remote states; do not return user-facing strings.
-- [ ] Reuse existing `resolveGitDir`/worktree handling and the per-scan cache conventions rather than introducing a second repository-identity model.
-- [ ] Migrate Localhoster's current-branch upstream/ahead/behind lookup to the shared collector.
-- [ ] Remove the now-redundant current-branch ahead/behind subprocess path from `modules/localhoster/git.mjs` while preserving its other Git context fields.
-- [ ] Preserve Localhoster portal output with regression tests; no template or styling change is expected.
+- [x] Add `modules/repositories/branch-sync.mjs` with named exports and pure parsing separated from orchestration if the module would otherwise exceed the repository's file-size guidance.
+- [x] Export the shared branch-sync API through `modules/repositories/index.mjs`.
+- [x] Return branch facts and explicit unknown/gone/no-remote states; do not return user-facing strings.
+- [x] Reuse existing `resolveGitDir`/worktree handling and the per-scan cache conventions rather than introducing a second repository-identity model.
+- [x] Migrate Localhoster's current-branch upstream/ahead/behind lookup to the shared collector.
+- [x] Remove the now-redundant current-branch ahead/behind subprocess path from `modules/localhoster/git.mjs` while preserving its other Git context fields.
+- [x] Preserve Localhoster portal output with regression tests; no template or styling change is expected.
 
 ### Phase 3 — Add narrow remote operations
 
-- [ ] Add a hardened internal Git-process layer or equivalent reusable primitive so read-only and network operations share timeout/buffer/environment handling without weakening `defaultRunGit`'s policy boundary.
-- [ ] Add `modules/repositories/git-remote-operations.mjs` with explicit refresh and push functions rather than a generic arbitrary network-Git executor.
-- [ ] Refresh only distinct remotes actually used by tracked branches.
-- [ ] Fetch with pruning, no recursive submodule fetch, and no automatic maintenance while preserving normal `FETCH_HEAD` updates.
-- [ ] Use deterministic noninteractive authentication failure handling and a network-appropriate timeout.
-- [ ] Push an explicit local branch ref to its configured upstream remote ref without checking out the branch.
-- [ ] Reject/return a structured result for force-required or diverged cases instead of escalating to force push.
+- [x] Add a hardened internal Git-process layer or equivalent reusable primitive so read-only and network operations share timeout/buffer/environment handling without weakening `defaultRunGit`'s policy boundary.
+- [x] Add `modules/repositories/git-remote-operations.mjs` with explicit refresh and push functions rather than a generic arbitrary network-Git executor.
+- [x] Refresh only distinct remotes actually used by tracked branches.
+- [x] Fetch with pruning, no recursive submodule fetch, and no automatic maintenance while preserving normal `FETCH_HEAD` updates.
+- [x] Use deterministic noninteractive authentication failure handling and a network-appropriate timeout.
+- [x] Push an explicit local branch ref to its configured upstream remote ref without checking out the branch.
+- [x] Reject/return a structured result for force-required or diverged cases instead of escalating to force push.
 
 ### Phase 4 — Rebuild the direct remote-sync command around fresh state
 
-- [ ] Move `remoteSyncCheck()` and remote-sync renderers into `scripts/maintenance/git-remote-sync.mjs`.
-- [ ] Extract only the root/repository scanning utility needed by both Git maintenance commands instead of moving inventory-specific diagnostics into the shared repository domain.
-- [ ] Perform local upstream discovery, remote refresh, then a second branch-sync collection before filtering.
-- [ ] Replace `repoRemoteSyncTodos()` as the remote-sync inclusion rule with the explicit `ahead > 0` safety projection.
-- [ ] Remove `--fetch` from this command because refresh is mandatory.
-- [ ] Stop compact output from reporting missing remotes/upstreams, behind-only branches, merge/delete cleanup, dirty state, clean counts, and `need sync` counts.
-- [ ] Preserve refresh failures as unverified results and use a non-zero direct-mode exit status when any repository could not be refreshed.
-- [ ] Keep JSON/Markdown/table output aligned with the same projection rather than retaining the old todo semantics in alternate formats.
-- [ ] Keep `git inventory` behavior unchanged except for safe reuse of shared branch facts.
+- [x] Move `remoteSyncCheck()` and remote-sync renderers into `scripts/maintenance/git-remote-sync.mjs`.
+- [x] Extract only the root/repository scanning utility needed by both Git maintenance commands instead of moving inventory-specific diagnostics into the shared repository domain.
+- [x] Perform local upstream discovery, remote refresh, then a second branch-sync collection before filtering.
+- [x] Replace `repoRemoteSyncTodos()` as the remote-sync inclusion rule with the explicit `ahead > 0` safety projection.
+- [x] Remove `--fetch` from this command because refresh is mandatory.
+- [x] Stop compact output from reporting missing remotes/upstreams, behind-only branches, merge/delete cleanup, dirty state, clean counts, and `need sync` counts.
+- [x] Preserve refresh failures as unverified results and use a non-zero direct-mode exit status when any repository could not be refreshed.
+- [x] Keep JSON/Markdown/table output aligned with the same projection rather than retaining the old todo semantics in alternate formats.
+- [x] Keep `git inventory` behavior unchanged except for safe reuse of shared branch facts.
 
 ### Phase 5 — Add the command-owned interactive workflow
 
-- [ ] Add `--menu` handling and require a TTY for menu mode.
-- [ ] Add `scripts/cli/git-remote-sync-menu.mjs` using the existing `selectMenu`, confirmation, and Enter-pause primitives.
-- [ ] In menu mode, write the inherited-stdio result-file payload when `ROBOREPO_INTERACTIVE_RESULT_FILE` is present so the parent Git menu gets a precise completion notice and no captured-output pause.
-- [ ] Show affected repositories first, then repository detail with the four agreed actions.
-- [ ] Make Show commits, Copy checkout command, and Push ask for a branch after the action is selected.
-- [ ] Keep Open shell repository-level and never switch branches automatically.
-- [ ] Re-fetch and re-inspect after shell exit and after successful push.
-- [ ] Re-fetch immediately before push confirmation; block the push action when the branch is now behind.
-- [ ] Confirm the exact local branch and configured remote destination with a default-No prompt.
-- [ ] Use `pbcopy` for the macOS clipboard with a visible command fallback.
-- [ ] Keep action failures inside the workflow rather than terminating the parent Git menu with a stack trace.
+- [x] Add `--menu` handling and require a TTY for menu mode.
+- [x] Implement the command-owned menu in `scripts/maintenance/git-remote-sync.mjs` using the existing `selectMenu`, confirmation, and Enter-pause primitives.
+- [x] In menu mode, write the inherited-stdio result-file payload when `ROBOREPO_INTERACTIVE_RESULT_FILE` is present so the parent Git menu gets a precise completion notice and no captured-output pause.
+- [x] Show affected repositories first, then repository detail with the four agreed actions.
+- [x] Make Show commits, Copy checkout command, and Push ask for a branch after the action is selected.
+- [x] Keep Open shell repository-level and never switch branches automatically.
+- [x] Re-fetch and re-inspect after shell exit and after successful push.
+- [x] Re-fetch immediately before push confirmation; block the push action when the branch is now behind.
+- [x] Confirm the exact local branch and configured remote destination with a default-No prompt.
+- [x] Use `pbcopy` for the macOS clipboard with a visible command fallback.
+- [x] Keep action failures inside the workflow rather than terminating the parent Git menu with a stack trace.
 
 ### Phase 6 — CLI and integration regression coverage
 
-- [ ] Replace the old invalid-remote remote-sync assertions in `scripts/test/git-inventory-check.mjs` with local bare-remote fixtures that exercise actual fetch freshness and ahead detection.
-- [ ] Prove the command catches a remote commit that would have been missed by a stale remote-tracking ref before the automatic fetch.
-- [ ] Prove a local ahead commit is shown after refresh and disappears after a confirmed push.
-- [ ] Prove direct mode exits zero when refresh succeeds and verified ahead branches are present.
-- [ ] Prove behind-only branches are omitted and diverged branches are reported but cannot be pushed through this workflow.
-- [ ] Prove a fetch/authentication failure is surfaced as unverified rather than clean and exits non-zero.
-- [ ] Extend `scripts/test/cli-command-catalog-check.mjs` for the new manifest module, `--menu`, and inherited-stdio metadata.
-- [ ] Extend `scripts/test/cli-surface-integration-check.mjs` using its existing PTY/`expect` pattern for repository-first navigation, action selection, push cancellation, confirmed push, inherited-stdio result notice, and return-to-menu behavior.
-- [ ] Run the Localhoster Git characterization suite to prove no portal-facing Git behavior changed.
+- [x] Replace the old invalid-remote remote-sync assertions in `scripts/test/git-inventory-check.mjs` with local bare-remote fixtures that exercise actual fetch freshness and ahead detection.
+- [x] Prove the command catches a remote commit that would have been missed by a stale remote-tracking ref before the automatic fetch.
+- [x] Prove a local ahead commit is shown after refresh and disappears after a confirmed push.
+- [x] Prove direct mode exits zero when refresh succeeds and verified ahead branches are present.
+- [x] Prove behind-only branches are omitted and diverged branches are reported but cannot be pushed through this workflow.
+- [x] Prove a fetch/authentication failure is surfaced as unverified rather than clean and exits non-zero.
+- [x] Extend `scripts/test/cli-command-catalog-check.mjs` for the new manifest module, `--menu`, and inherited-stdio metadata.
+- [x] Extend `scripts/test/cli-surface-integration-check.mjs` using its existing PTY/`expect` pattern for repository-first navigation, action selection, push cancellation, confirmed push, inherited-stdio result notice, and return-to-menu behavior.
+- [x] Run the Localhoster Git characterization suite to prove no portal-facing Git behavior changed.
 
 ## Validation
 
@@ -406,7 +406,7 @@ node --check modules/repositories/branch-sync.mjs
 node --check modules/repositories/git-remote-operations.mjs
 node --check modules/localhoster/git.mjs
 node --check scripts/maintenance/git-remote-sync.mjs
-node --check scripts/cli/git-remote-sync-menu.mjs
+node scripts/cli/main.mjs git remote-sync-check --help
 npm run test:repositories
 npm run test:localhoster-git
 node scripts/test/git-inventory-check.mjs
@@ -431,6 +431,39 @@ Acceptance criteria:
 - Localhoster continues to perform no network Git operations during its normal refresh cycle.
 - Localhoster's current branch, ahead/behind, freshness, dirty-state, and drift presentation remain unchanged.
 - `git inventory` retains its broader diagnostics.
+
+## Implementation Notes
+
+Session 2026-08-08:
+
+- Worktree: `plan-k9m4x2q-git-remote-sync-local-commit-safety`
+- Base branch: `main`
+- Starting commit: `643f198bdc1091863bd27dbed8ffe748cf4e3b3f`
+- Added shared branch-sync facts in `modules/repositories/branch-sync.mjs`, exported through the repository barrel.
+- Added `for-each-ref` to the read-only Git allow-list; `fetch` and `push` remain rejected by `defaultRunGit`.
+- Added explicit remote refresh and push helpers in `modules/repositories/git-remote-operations.mjs`.
+- Moved active `remote-sync-check` execution to `scripts/maintenance/git-remote-sync.mjs`; the old inventory command remains broader and unchanged.
+- Updated Localhoster Git context to consume shared current-branch sync facts while preserving its offline scan behavior.
+- Updated CLI manifest for command-owned interactive stdio with `--menu`; menu handling currently lives in the dedicated maintenance command module instead of a separate `scripts/cli/git-remote-sync-menu.mjs` wrapper, because all menu actions need direct access to the command's refresh/projection helpers and no generic CLI primitive was missing.
+- Added real local bare-remote characterization for shared branch facts and remote operations.
+- Updated `git-inventory-check` so direct remote-sync coverage uses local remotes, verifies mandatory fetch freshness, omits behind-only branches, reports ahead branches, and treats refresh failure as unverified/non-zero.
+- Added remote-sync-specific PTY coverage for the repository list, repository detail actions, branch selection, unpushed commit display, and menu return flow.
+
+Verification:
+
+- `node --check modules/repositories/branch-sync.mjs` passed.
+- `node --check modules/repositories/git-remote-operations.mjs` passed.
+- `node --check modules/localhoster/git.mjs` passed.
+- `node --check scripts/maintenance/git-remote-sync.mjs` passed.
+- `node scripts/cli/main.mjs git remote-sync-check --help` passed.
+- `npm run test:repositories` passed.
+- `npm run test:repositories-branch-sync` passed.
+- `npm run test:localhoster-git` passed.
+- `node scripts/test/git-inventory-check.mjs` passed.
+- `node scripts/test/cli-command-catalog-check.mjs` passed.
+- `node scripts/test/cli-surface-integration-check.mjs` passed.
+- `scripts/doctor.sh --quiet` passed.
+- `npm test` passed with Node 22 prepended to the normal PATH (`392 passed, 0 failed`).
 
 ## Risks
 

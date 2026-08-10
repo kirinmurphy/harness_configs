@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { handleRepositoriesApi } from "../cli/portal-routes-repositories.mjs";
+import { repositoriesRoutes } from "../cli/portal-routes-repositories.mjs";
+import { dispatchRoutes } from "../cli/portal-router.mjs";
 import {
   loadRepositoriesPayload, loadRepositoryPayload, loadRepositoryAssociations, patchRepository,
 } from "../cli/repositories.mjs";
@@ -21,7 +22,7 @@ function mockRes() {
 }
 function get(urlPath, handlers) {
   const res = mockRes();
-  const matched = handleRepositoriesApi({ method: "GET" }, res, urlPath, "", handlers);
+  const matched = dispatchRoutes([repositoriesRoutes], { method: "GET" }, res, urlPath, "", handlers);
   return { matched, res };
 }
 
@@ -90,12 +91,12 @@ try {
   assert.equal(missing.res.statusCode, 404, "unknown repository -> 404");
 
   // Non-repositories path is not matched (lets route() fall through).
-  assert.equal(handleRepositoriesApi({ method: "GET" }, mockRes(), "/api/plans", "", handlers), false);
+  assert.equal(dispatchRoutes([repositoriesRoutes], { method: "GET" }, mockRes(), "/api/plans", "", handlers), false);
 
   // ---- PATCH visibility via handler (POST/PATCH body path) ----
   const res = mockRes();
   const req = patchReq({ visibility: "hidden" });
-  handleRepositoriesApi(req, res, `/api/repositories/${encoded}`, "", handlers);
+  dispatchRoutes([repositoriesRoutes], req, res, `/api/repositories/${encoded}`, "", handlers);
   // readJsonBody consumes the request async; flush the mock's data/end below.
   req._emit();
   assert.equal(res.statusCode, 200);

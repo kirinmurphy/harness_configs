@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { handleConfigApi } from "../cli/portal-routes-config.mjs";
+import { configRoutes } from "../cli/portal-routes-config.mjs";
+import { dispatchRoutes } from "../cli/portal-router.mjs";
 import { loadConfigSource, readConfigSnapshot } from "../cli/config.mjs";
 
 // Phase 7 of discoverable-harness-provider-architecture-plan.md: /api/config/source must reject a
@@ -52,7 +53,7 @@ function testKnownHarnessReachesLoadConfigSource() {
 // rejected FOR A HARNESS REASON rather than asserting the file was readable.
 function testConfigFileKindIgnoresMissingHarness() {
   const res = fakeRes();
-  handleConfigApi({}, res, "/api/config/source", "kind=config-file&id=claude-settings", { loadConfigSource });
+  dispatchRoutes([configRoutes], { method: "GET" }, res, "/api/config/source", "kind=config-file&id=claude-settings", { loadConfigSource });
   const body = JSON.parse(res.body);
   if (!body.ok) {
     assert.doesNotMatch(body.error, /missing or unknown harness/, "config-file kind must not require a harness param");

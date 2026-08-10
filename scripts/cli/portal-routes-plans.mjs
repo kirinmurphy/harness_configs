@@ -1,8 +1,8 @@
-// /api/plans* route handlers — the Plans page's API surface. Returns true once it has written a
-// response, false if the URL/method didn't match (portal-server.mjs's route() tries the next
-// domain). handlers is the object startPortalServer() was given (loadPlans, loadPlanDocument,
-// buildPlansPrompt, updatePlanSettings, refreshPlans come from telemetry.mjs's wiring).
+// /api/plans* routes — the Plans page's API surface. handlers is the object startPortalServer()
+// was given (loadPlans, loadPlanDocument, buildPlansPrompt, updatePlanSettings, refreshPlans come
+// from telemetry.mjs's wiring).
 import { send, readJsonBody } from "./portal-routes-http.mjs";
+import { defineRoutes } from "./portal-router.mjs";
 
 // Serializes a domain error (see modules/plan-docs/index.mjs's domainError helper) into the
 // structured { error: { code, message, resolution, details } } shape the client's portalPostJson
@@ -26,69 +26,55 @@ function sendDomainError(res, error) {
   send(res, status, "application/json", JSON.stringify(body));
 }
 
-export function handlePlansApi(req, res, urlPath, qs, handlers) {
-  const { loadPlans, loadPlanDocument, buildPlansPrompt, updatePlanSettings, updatePlanPriority, updatePlanLifecycle, refreshPlans } = handlers;
-
-  if (urlPath === "/api/plans") {
-    send(res, 200, "application/json", JSON.stringify(loadPlans()));
-    return true;
-  }
-  if (urlPath === "/api/plans/document") {
-    const params = new URLSearchParams(qs);
-    try {
-      send(res, 200, "application/json", JSON.stringify(loadPlanDocument({ key: params.get("key") })));
-    } catch (err) {
-      send(res, 400, "application/json", JSON.stringify({ error: String(err?.message || err) }));
-    }
-    return true;
-  }
-  if (req.method === "POST" && urlPath === "/api/plans/prompt") {
-    readJsonBody(req, (body, err) => {
-      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
-      try {
-        send(res, 200, "application/json", JSON.stringify(buildPlansPrompt(body || {})));
-      } catch (error) {
-        send(res, 400, "application/json", JSON.stringify({ error: String(error?.message || error) }));
-      }
-    });
-    return true;
-  }
-  if (req.method === "POST" && urlPath === "/api/plans/settings") {
-    readJsonBody(req, (body, err) => {
-      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
-      try {
-        send(res, 200, "application/json", JSON.stringify(updatePlanSettings(body || {})));
-      } catch (error) {
-        send(res, 400, "application/json", JSON.stringify({ error: String(error?.message || error) }));
-      }
-    });
-    return true;
-  }
-  if (req.method === "POST" && urlPath === "/api/plans/priority") {
-    readJsonBody(req, (body, err) => {
-      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
-      try {
-        send(res, 200, "application/json", JSON.stringify(updatePlanPriority(body || {})));
-      } catch (error) {
-        sendDomainError(res, error);
-      }
-    });
-    return true;
-  }
-  if (req.method === "POST" && urlPath === "/api/plans/lifecycle") {
-    readJsonBody(req, (body, err) => {
-      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
-      try {
-        send(res, 200, "application/json", JSON.stringify(updatePlanLifecycle(body || {})));
-      } catch (error) {
-        sendDomainError(res, error);
-      }
-    });
-    return true;
-  }
-  if (req.method === "POST" && urlPath === "/api/plans/refresh") {
-    send(res, 200, "application/json", JSON.stringify(refreshPlans()));
-    return true;
-  }
-  return false;
+function postJsonRoute(path, run, { domainError = false } = {}) {
+  return {
+    method: "POST",
+    path,
+    handler: (req, res, { handlers }) => {
+      readJsonBody(req, (body, err) => {
+        if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
+        try {
+          send(res, 200, "application/json", JSON.stringify(run(handlers, body || {})));
+        } catch (error) {
+          if (domainError) return sendDomainError(res, error);
+          send(res, 400, "application/json", JSON.stringify({ error: String(error?.message || error) }));
+        }
+      });
+      return true;
+    },
+  };
 }
+
+export const plansRoutes = defineRoutes([
+  {
+    path: "/api/plans",
+    handler: (req, res, { handlers }) => {
+      send(res, 200, "application/json", JSON.stringify(handlers.loadPlans()));
+      return true;
+    },
+  },
+  {
+    path: "/api/plans/document",
+    handler: (req, res, { qs, handlers }) => {
+      const params = new URLSearchParams(qs);
+      try {
+        send(res, 200, "application/json", JSON.stringify(handlers.loadPlanDocument({ key: params.get("key") })));
+      } catch (err) {
+        send(res, 400, "application/json", JSON.stringify({ error: String(err?.message || err) }));
+      }
+      return true;
+    },
+  },
+  postJsonRoute("/api/plans/prompt", (handlers, body) => handlers.buildPlansPrompt(body)),
+  postJsonRoute("/api/plans/settings", (handlers, body) => handlers.updatePlanSettings(body)),
+  postJsonRoute("/api/plans/priority", (handlers, body) => handlers.updatePlanPriority(body), { domainError: true }),
+  postJsonRoute("/api/plans/lifecycle", (handlers, body) => handlers.updatePlanLifecycle(body), { domainError: true }),
+  {
+    method: "POST",
+    path: "/api/plans/refresh",
+    handler: (req, res, { handlers }) => {
+      send(res, 200, "application/json", JSON.stringify(handlers.refreshPlans()));
+      return true;
+    },
+  },
+]);

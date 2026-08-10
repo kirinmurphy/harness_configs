@@ -1,60 +1,71 @@
 import { send, readJsonBody } from "./portal-routes-http.mjs";
+import { defineRoutes } from "./portal-router.mjs";
 
-export function handleLocalhosterApi(req, res, urlPath, qs, handlers) {
-  const {
-    loadLocalhoster,
-    refreshLocalhoster,
-    updateLocalhosterSettings,
-    loadLocalhosterHistory,
-    loadLocalhosterMetadata,
-  } = handlers;
+// Mutation type is the URL's last path segment, except compose-project — its settings.mjs
+// mutation type is camelCase ("composeProject") to match the rest of the mutation type names,
+// while the URL stays hyphenated to match this route table's existing kebab-free-but-lowercase
+// style; segment-as-type would otherwise send the literal hyphenated string as an unknown type.
+const MUTATION_TYPE_BY_PATH = { "compose-project": "composeProject" };
 
-  if (req.method === "GET" && urlPath === "/api/localhoster") {
-    send(res, 200, "application/json", JSON.stringify(loadLocalhoster()));
-    return true;
-  }
-
-  if (req.method === "POST" && urlPath === "/api/localhoster/refresh") {
-    refreshLocalhoster()
-      .then((snapshot) => send(res, 200, "application/json", JSON.stringify(snapshot)))
-      .catch((err) => send(res, 500, "application/json", JSON.stringify({ error: String(err?.message || err) })));
-    return true;
-  }
-
-  if (req.method === "GET" && ["/api/localhoster/history", "/api/localhoster/metadata"].includes(urlPath)) {
-    const params = new URLSearchParams(qs);
-    const loader = urlPath.endsWith("/history") ? loadLocalhosterHistory : loadLocalhosterMetadata;
-    if (!loader) {
-      send(res, 501, "application/json", JSON.stringify({ ok: false, error: "localhoster endpoint unavailable" }));
+function mutationRoute(segment) {
+  return {
+    method: "POST",
+    path: `/api/localhoster/${segment}`,
+    handler: (req, res, { handlers }) => {
+      readJsonBody(req, (body, err) => {
+        if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
+        const type = MUTATION_TYPE_BY_PATH[segment] || segment;
+        const result = handlers.updateLocalhosterSettings({ ...(body || {}), type });
+        send(res, result.status || (result.ok ? 200 : 400), "application/json", JSON.stringify(result));
+      });
       return true;
-    }
-    Promise.resolve(loader(params.get("key") || ""))
-      .then((result) => send(res, result.status || (result.ok ? 200 : 400), "application/json", JSON.stringify(result)))
-      .catch((err) => send(res, 500, "application/json", JSON.stringify({ ok: false, error: String(err?.message || err) })));
-    return true;
-  }
-
-  // Mutation type is the URL's last path segment, except compose-project — its settings.mjs
-  // mutation type is camelCase ("composeProject") to match the rest of the mutation type names,
-  // while the URL stays hyphenated to match this route table's existing kebab-free-but-lowercase
-  // style; segment-as-type would otherwise send the literal hyphenated string as an unknown type.
-  const MUTATION_TYPE_BY_PATH = { "compose-project": "composeProject" };
-  if (req.method === "POST" && [
-    "/api/localhoster/links",
-    "/api/localhoster/association",
-    "/api/localhoster/project",
-    "/api/localhoster/alias",
-    "/api/localhoster/compose-project",
-  ].includes(urlPath)) {
-    readJsonBody(req, (body, err) => {
-      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
-      const segment = urlPath.split("/").at(-1);
-      const type = MUTATION_TYPE_BY_PATH[segment] || segment;
-      const result = updateLocalhosterSettings({ ...(body || {}), type });
-      send(res, result.status || (result.ok ? 200 : 400), "application/json", JSON.stringify(result));
-    });
-    return true;
-  }
-
-  return false;
+    },
+  };
 }
+
+function readRoute(segment, loaderKey) {
+  return {
+    method: "GET",
+    path: `/api/localhoster/${segment}`,
+    handler: (req, res, { qs, handlers }) => {
+      const params = new URLSearchParams(qs);
+      const loader = handlers[loaderKey];
+      if (!loader) {
+        send(res, 501, "application/json", JSON.stringify({ ok: false, error: "localhoster endpoint unavailable" }));
+        return true;
+      }
+      Promise.resolve(loader(params.get("key") || ""))
+        .then((result) => send(res, result.status || (result.ok ? 200 : 400), "application/json", JSON.stringify(result)))
+        .catch((err) => send(res, 500, "application/json", JSON.stringify({ ok: false, error: String(err?.message || err) })));
+      return true;
+    },
+  };
+}
+
+export const localhosterRoutes = defineRoutes([
+  {
+    method: "GET",
+    path: "/api/localhoster",
+    handler: (req, res, { handlers }) => {
+      send(res, 200, "application/json", JSON.stringify(handlers.loadLocalhoster()));
+      return true;
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/localhoster/refresh",
+    handler: (req, res, { handlers }) => {
+      handlers.refreshLocalhoster()
+        .then((snapshot) => send(res, 200, "application/json", JSON.stringify(snapshot)))
+        .catch((err) => send(res, 500, "application/json", JSON.stringify({ error: String(err?.message || err) })));
+      return true;
+    },
+  },
+  readRoute("history", "loadLocalhosterHistory"),
+  readRoute("metadata", "loadLocalhosterMetadata"),
+  mutationRoute("links"),
+  mutationRoute("association"),
+  mutationRoute("project"),
+  mutationRoute("alias"),
+  mutationRoute("compose-project"),
+]);

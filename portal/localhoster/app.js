@@ -11,7 +11,7 @@ import { createSuggestionsView } from "./suggestions-view.js";
 const historyView = createHistoryView({ onStale: () => load({ force: true }) });
 const suggestionsView = createSuggestionsView({
   onStale: () => load({ force: true }),
-  onAdd: (project, instance, suggestion) => openLinkDialogWithSuggestion(project, instance, suggestion),
+  addSuggestion: (project, instance, suggestion) => addSuggestedLink(project, instance, suggestion),
 });
 
 // Built once and reused across every render/reconcile — the Active apps header holds this same
@@ -515,25 +515,35 @@ async function hideComposeProject(composeProject) {
 }
 
 function openAddLinkDialog(project, instance) {
-  openLinkDialog(project, instance, { addBlank: true });
+  openLinkDialog(project, instance);
 }
 
-// Suggestions view uses this to prefill the same add-link form a manual "Add link" click opens,
-// rather than saving a suggestion silently — the form's existing validation and revision-conflict
-// handling then apply to a suggestion exactly as they do to a hand-typed link.
-function openLinkDialogWithSuggestion(project, instance, suggestion) {
-  openLinkDialog(project, instance, { extraRow: { label: suggestion.label || suggestion.path, path: suggestion.path } });
+// Adds one suggestion directly to the app's saved links, no free-text dialog detour — a suggestion
+// is already a known-good, server-validated path, so it does not need the hand-typed-link form's
+// free-text entry. updateLinks still runs its own path validation (normalizeRoutePath) and revision-
+// conflict check server-side; a 409 or validation error propagates back to the calling row via the
+// thrown error, same contract mutateDialog relies on for the hand-typed-link form.
+async function addSuggestedLink(project, instance, suggestion) {
+  const appId = instance.app?.id || "web";
+  const projectIdentity = project.identity || instance.project?.identity;
+  const links = state.currentLinks(lastSnapshot, projectIdentity, appId);
+  const result = await api.updateLinks({
+    revision: lastSnapshot.settingsRevision,
+    projectIdentity,
+    appId,
+    links: [...links, { label: suggestion.label || suggestion.path, path: suggestion.path }],
+  });
+  applySnapshot(result.localhoster || result);
 }
 
-function openLinkDialog(project, instance, { addBlank = false, extraRow = null } = {}) {
+function openLinkDialog(project, instance) {
   const appId = instance.app?.id || "web";
   const projectIdentity = project.identity || instance.project?.identity;
   fields.setValue("link-project", projectIdentity);
   fields.setValue("link-app", appId);
   fields.setText("link-error", "");
   const links = state.currentLinks(lastSnapshot, projectIdentity, appId);
-  const extra = extraRow || (addBlank ? { label: "", path: "" } : null);
-  renderLinkRows(extra ? [...links, extra] : links);
+  renderLinkRows([...links, { label: "", path: "" }]);
   refs.linkDialog.showModal();
 }
 

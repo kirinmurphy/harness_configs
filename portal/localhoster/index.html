@@ -645,10 +645,13 @@
       </div>
     </template>
     <template id="tpl-suggestion-row">
-      <div class="history-row">
-        <span class="history-type" data-slot="source"></span>
-        <span class="history-detail" data-slot="path"></span>
-        <button type="button" data-action="add">Add as quick link</button>
+      <div class="suggestion-row">
+        <div class="history-row">
+          <span class="history-type" data-slot="source"></span>
+          <span class="history-detail" data-slot="path"></span>
+          <button type="button" data-action="add">Add as quick link</button>
+        </div>
+        <div class="item-err" data-slot="add-error"></div>
       </div>
     </template>
     <!-- Settings dialog: link editor rows + settings sections -->

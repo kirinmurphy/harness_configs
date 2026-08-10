@@ -1,7 +1,7 @@
 ---
 id: localhoster-metadata-suggestions
 priority: high
-next_action: Manually verify against a real local app (HTTPS self-signed, authenticated-page) before closing; otherwise ready for review/merge
+next_action: Manually verify in a real browser (suggestions direct-add UX, worktree git-badge fix) and against a real local app (HTTPS self-signed, authenticated-page) before closing — no Chrome automation was available this session
 blocked_by: []
 depends_on:
   - localhoster-final
@@ -116,6 +116,36 @@ can ship before or after it. Listed as `related` only for sibling-plan awareness
 - [x] Documented privacy/behavior in `docs/reference/services/localhoster.md` under a new "Metadata
   suggestions" section (what is fetched, source-priority dedup, auth-path filtering and its
   evidence-based override) plus entries under "Current Limits" for known gaps.
+- [x] Simplify the "Add as quick link" flow. Was: click a suggestion → dialog closes →
+  `openLinkDialogWithSuggestion` reopens the free-text add-link dialog prefilled with the suggestion
+  as an extra row → user must still submit that form. Now: each suggestion row has its own "Add as
+  quick link" button that calls `api.updateLinks` directly (new `addSuggestedLink` in `app.js`,
+  wired through `createSuggestionsView`'s renamed `addSuggestion` callback in
+  `suggestions-view.js`), no dialog handoff. The row stays in the suggestions dialog, shows
+  "Added" on success (button disabled) or an inline error + re-enabled button on failure (409
+  revision conflict or validation), so multiple suggestions can be added without reopening the
+  dialog. The free-text dialog (`openLinkDialog`, now `{ addBlank }`-free since suggestions no
+  longer prefill it) keeps its job for hand-typed links only. Validation
+  (`normalizeRoutePath`) and revision-conflict handling (409) are unchanged — they run
+  server-side in `mutateLinks` regardless of caller.
+  - Added `[data-slot=add-error]` to `tpl-suggestion-row` (`index.html`) and a `.suggestion-row`
+    wrapper so the error line doesn't overflow the suggestions list's 3-column grid; matching CSS in
+    `styles.css`.
+  - Also fixed a related worktree-visibility gap found in the same investigation:
+    `memberProject()` (`templates.js`) unconditionally suppressed a member's git badge, assuming it
+    always matched the repository-level badge — false when a repository has two worktrees on
+    different branches, each running its own listener, since `buildRepositories`
+    (`modules/localhoster/snapshot.mjs`) picks one arbitrary member's git for the repository-level
+    badge. Now only suppressed when the member's branch and `isWorktree` match what the repository
+    card already shows; a differing one gets its own badge. Also added a `(worktree)` suffix to the
+    branch label when `git.isWorktree` is true, so two worktrees sharing a branch name are still
+    distinguishable (no dedicated worktree icon/slot existed in `tpl-git-row` to extend instead).
+  - **Not verified:** no Chrome browser automation was available this session, so none of this was
+    visually confirmed in a real browser — only the underlying API mutation (`updateLinks` direct
+    call, append behavior, 409 handling) was exercised via `curl` against a live running portal, and
+    `node --check` confirmed no syntax errors. The rendering change to `templates.js` (git badge
+    suppression logic, worktree suffix) has no automated test coverage at all. Flagging both as
+    genuinely unverified rather than claiming a visual check that didn't happen.
 
 ## Post-implementation review
 

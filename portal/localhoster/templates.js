@@ -437,15 +437,21 @@ function applySecondaryPorts(card, secondaryPorts) {
 // Members arrive flattened for rendering, but instanceCard expects the project-shaped object the
 // legacy collections handed it. Rebuild just the fields it reads.
 //
-// Git context is deliberately omitted: it is a property of the repository, identical for every
-// member, and the repository card already shows it once. Passing it down drew the same branch,
-// dirty dot, and ahead/behind marks on every member row — three identical git rows on a
-// three-member card.
+// Git context is normally omitted here: it is usually identical for every member, and the
+// repository card already shows it once above. But a repository can span multiple worktrees, each
+// on its own branch and each running its own listener — buildRepositories (snapshot.mjs) picks one
+// arbitrary member's git for the repository-level badge, so a second worktree on a different branch
+// would otherwise be invisible: same repository name, same suppressed git, no way to tell which
+// listener is which checkout. Only suppress when this member's branch actually matches what the
+// repository card already shows; a differing branch (or isWorktree) earns its own badge.
 function memberProject(repository, member) {
+  const memberGit = member.instance?.project?.git || null;
+  const sameBranch = memberGit?.branch === repository.git?.branch
+    && Boolean(memberGit?.isWorktree) === Boolean(repository.git?.isWorktree);
   return {
     name: repository.name,
     identity: member.projectIdentity,
-    suppressGit: true,
+    suppressGit: sameBranch,
     // Marks this card as nested, so it names itself rather than repeating the repository heading
     // and renders at member weight rather than card-heading weight.
     isMember: true,
@@ -587,12 +593,18 @@ function applyGitBadge(node, tooltip, git, providerUrl) {
   const branchLabel = !git.detached && DEFAULT_BRANCHES.has(branchName)
     ? `${branchName} branch`
     : branchName;
+  // No separate worktree icon/slot exists in tpl-git-row today, and a repository with two branches
+  // running side-by-side is rare enough that adding new markup for it isn't worth the churn — the
+  // branch name itself already disambiguates in the common case (main vs. a feature branch). This
+  // covers the one gap that leaves: two worktrees that happen to share a branch name would otherwise
+  // both read as plain "<branch>" with nothing marking either as the non-primary checkout.
+  const worktreeSuffix = git.isWorktree ? " (worktree)" : "";
   // Long branch names (ticket-prefixed, or a full feature description) would otherwise push the
   // rest of the row off. Middle-truncated because the tail of a branch name is usually the part
   // that identifies it — the shared helper's default cap is tuned for repo paths, so this passes
   // its own cap.
-  branchSlot.textContent = portalMiddleEllipsis(branchLabel, BRANCH_NAME_MAX_LENGTH);
-  if (branchSlot.textContent !== branchName) branchSlot.title = branchName;
+  branchSlot.textContent = portalMiddleEllipsis(branchLabel, BRANCH_NAME_MAX_LENGTH) + worktreeSuffix;
+  if (branchSlot.textContent !== branchName + worktreeSuffix) branchSlot.title = branchName + worktreeSuffix;
 
   const repoLink = badge.querySelector("[data-slot=git-repo-link]");
   const repoName = badge.querySelector("[data-slot=git-repo-name]");

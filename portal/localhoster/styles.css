@@ -1174,6 +1174,18 @@ dialog::backdrop {
   grid-template-columns: 6rem 1fr auto;
   align-items: center;
 }
+/* Suggestion rows wrap history-row + an error line, so the divider/last-child border lives on the
+   wrapper instead of history-row itself — otherwise the row's own border and a phantom border on
+   an always-empty error line would double up. */
+.suggestion-row {
+  border-bottom: 1px solid var(--line);
+}
+.suggestion-row:last-child {
+  border-bottom: none;
+}
+.suggestion-row .history-row {
+  border-bottom: none;
+}
 
 @media (max-width: 720px) {
   .card-head {

@@ -13,7 +13,10 @@ const SOURCE_LABELS = {
   robots: "Robots",
 };
 
-export function createSuggestionsView({ onStale, onAdd } = {}) {
+// addSuggestion(project, instance, suggestion) must return the mutation's result (or throw), same
+// contract as api.updateLinks — this view stays link-storage-agnostic and lets app.js own the
+// snapshot/revision bookkeeping, matching how onStale already defers to the caller for reload.
+export function createSuggestionsView({ onStale, addSuggestion } = {}) {
   const dialog = document.getElementById("suggestions-dialog");
   const body = document.getElementById("suggestions-body");
   const subject = document.getElementById("suggestions-subject");
@@ -47,20 +50,35 @@ export function createSuggestionsView({ onStale, onAdd } = {}) {
         body.replaceChildren(message("No suggested routes found."));
         return;
       }
-      body.replaceChildren(...suggestions.map((suggestion) => suggestionRow(suggestion, () => {
-        dialog.close();
-        onAdd?.(project, instance, suggestion);
-      })));
+      body.replaceChildren(...suggestions.map((suggestion) =>
+        suggestionRow(suggestion, () => addSuggestion?.(project, instance, suggestion))));
     },
   };
 }
 
-function suggestionRow(suggestion, onAddClick) {
+// Adds directly from the row — no detour through the free-text link-edit form. That form still
+// exists for hand-typed links; a suggestion is already a known-good path, so confirming it here is
+// a single click instead of a second dialog. Row-scoped loading/error/added states keep the dialog
+// open so the user can add more than one suggestion without reopening it.
+function suggestionRow(suggestion, onAdd) {
   const row = fill(tpl("tpl-suggestion-row"), {
     path: suggestion.path,
     source: SOURCE_LABELS[suggestion.source] || suggestion.source,
   });
-  row.querySelector("[data-action=add]").addEventListener("click", onAddClick);
+  const button = row.querySelector("[data-action=add]");
+  const errorSlot = row.querySelector("[data-slot=add-error]");
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    if (errorSlot) errorSlot.textContent = "";
+    try {
+      await onAdd();
+      button.textContent = "Added";
+    } catch (err) {
+      button.disabled = false;
+      button.textContent = "Add as quick link";
+      if (errorSlot) errorSlot.textContent = err.message;
+    }
+  });
   return row;
 }
 

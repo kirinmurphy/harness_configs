@@ -1,7 +1,7 @@
 ---
 id: 46up8y7a
 priority: low
-next_action: Characterize install, update, repair, verify, uninstall, PATH, and moved-checkout behavior in isolated homes before changing implementation, starting from the two reproduced removal defects (orphaned resources on apply, package-owned slash commands surviving uninstall)
+next_action: Continue broader lifecycle characterization only after the new-Mac test; the two clean-install blockers called out below now have narrow regression coverage
 blocked_by: []
 depends_on: []
 related:
@@ -126,11 +126,11 @@ doctor     diagnose repository or installed-state problems
 uninstall  remove RoboRepo-owned projections while preserving user content
 ```
 
-### Known defect: `uninstall` leaves package-owned slash commands behind
+### Fixed clean-install blocker: `uninstall` left package-owned slash commands behind
 
-`roborepo maintenance uninstall` removes skills, `stateRoot`, and the harness root configs, then
-reports `ok: no active roborepo remnants`. It does not remove package-generated slash-command files
-from harness command directories, so the success message is wrong.
+`roborepo maintenance uninstall` previously removed skills, `stateRoot`, and the harness root
+configs, then reported `ok: no active roborepo remnants` while package-generated slash-command
+files still existed in harness command directories.
 
 Reproduction, in an isolated `HOME`:
 
@@ -152,16 +152,17 @@ The leftover file is unambiguously RoboRepo's: it carries both generated-file ba
 `Owned by package:` marker is the mechanism a fix should key on — it already identifies the file's
 owner, and `scripts/install/uninstall-lib.sh` uses similar ownership tests elsewhere.
 
-The remnant check is the second half of the defect: it must fail when files like this remain, or a
-future regression re-lands silently behind a passing message.
+This narrow blocker is fixed: uninstall now runs the shared package projection cleanup helper, and
+the remnant check fails on any command file that carries both the generated slash-command banner and
+`Owned by package:` marker. User-authored commands are still preserved.
 
-### Known defect: `apply` does not remove orphaned resources
+### Fixed clean-install blocker: `apply` did not remove orphaned resources
 
-`apply` is specified above as materializing desired configuration, but today it only *adds* and
-*updates*. A resource is removed from the harness homes when the user explicitly disables its
-package; it is not removed when the package stops declaring it. Installed state therefore drifts
-away from what the application actually provides, and the drift is invisible because the command
-reports success.
+`apply` is specified above as materializing desired configuration, but it previously only *added*
+and *updated*. A resource was removed from the harness homes when the user explicitly disabled its
+package; it was not removed when the package stopped declaring it. Installed state therefore drifted
+away from what the application actually provided, and the drift was invisible because the command
+reported success.
 
 Reproduction, in an isolated `HOME`:
 
@@ -178,9 +179,11 @@ both `<stateRoot>/skills` and the harness homes. Only the "declaration disappear
 
 This is an update-path defect, not an uninstall defect, and the distinction matters for where the
 fix belongs: `uninstall` is not involved, and making uninstall more thorough would not address it.
-The fix is a reconcile pass inside `apply` that diffs installed projections against what the current
-application plus workspace declare, and removes RoboRepo-owned orphans — which is the
-desired-vs-observed reconciliation this plan already owns.
+This narrow blocker is fixed for projections with existing ownership proof: `config apply` now runs
+a reconcile cleanup that removes orphaned package-owned slash commands, managed package skill
+cache/view entries, and runtime assets while preserving unmanaged/user-authored content. Hooks, MCP
+entries, root config, and package-config scalars still use their existing explicit component removal
+paths; broader lifecycle inventory remains part of this backlog plan.
 
 Consequences worth capturing during characterization:
 
@@ -219,10 +222,10 @@ Consequences worth capturing during characterization:
       shell profiles, backups, install-state files, and symlinks.
 - [ ] Add isolated-home characterization tests for install, repeated install, update, repair,
       verify, doctor, and uninstall.
-- [ ] Pin both reproduced removal defects as failing characterization tests before any fix: an
+- [x] Pin both reproduced removal defects as regression tests: an
       enabled package whose declaration disappears must leave its skill orphaned after `apply`, and
       `maintenance uninstall` must leave `~/.claude/commands/<package>.md` behind while reporting no
-      remnants. Both are documented above with reproductions.
+      remnants. The fixed tests now assert the opposite behavior.
 - [ ] Enumerate every resource type each harness receives (skills, commands, MCP entries, hooks,
       root config) and record which removal path currently handles it, so the coverage gap is a
       table rather than two known examples.
@@ -236,7 +239,7 @@ Consequences worth capturing during characterization:
 - [ ] Centralize ownership checks used by setup, apply, repair, verify, and uninstall, so update and
       uninstall resolve "RoboRepo owns this file" through one definition instead of answering it
       separately in each path.
-- [ ] Give `apply` a reconcile step that removes owned projections the current application and
+- [x] Give `apply` a reconcile step that removes owned projections the current application and
       workspace no longer declare, while staying idempotent on a no-change run.
 - [ ] Make collision results explicit: managed, unmanaged-safe, conflict, replace-with-confirmation,
       or unsupported.
@@ -265,7 +268,7 @@ Consequences worth capturing during characterization:
 
 - [ ] Remove only proven RoboRepo-owned harness projections and shell entries, covering every
       resource type from the Phase 1 table rather than skills alone.
-- [ ] Make the remnant check fail when owned files survive, so "no active roborepo remnants" cannot
+- [x] Make the remnant check fail when owned files survive, so "no active roborepo remnants" cannot
       be printed while package-owned slash commands remain.
 - [ ] Preserve `workspaceRoot` by default.
 - [ ] Separate optional machine-state cleanup from application uninstall.

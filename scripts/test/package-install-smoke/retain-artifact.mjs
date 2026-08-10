@@ -20,7 +20,15 @@ export function retainArtifact({ repoRoot, outputDir, tarballPath, tarballName }
     sourceCommit: commit,
     tarball: tarballName,
     sha256: checksum,
-    smokeCommands: ["version", "setup", "workspace status", "config apply", "doctor"],
+    smokeCommands: [
+      "version",
+      "setup",
+      "workspace status",
+      "harness refresh",
+      "harness list",
+      "config apply",
+      "doctor",
+    ],
     createdAt: new Date().toISOString(),
   };
   fs.writeFileSync(path.join(outputDir, "install-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);

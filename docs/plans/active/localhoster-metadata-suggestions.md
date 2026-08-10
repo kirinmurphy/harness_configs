@@ -1,7 +1,7 @@
 ---
 id: localhoster-metadata-suggestions
 priority: high
-next_action: Manually verify the suggestions dropdown redesign in a real browser (mount/toggle interaction, checkmark indicator, capture-on-click) — no Chrome automation was available this session. Separately, implement the worktree/root hierarchy (see "Worktree/Root Hierarchy" section) — still unstarted.
+next_action: Manually verify the repository card in a real browser — worktree rows, the copy control's four states, the Pages/API Routes dropdown, and the API contract modal. No Chrome automation has been available, so every UI change this plan has shipped remains screenshot-verified only.
 blocked_by: []
 depends_on:
   - localhoster-final
@@ -51,7 +51,21 @@ No dependency. This plan does same-origin HTTP metadata discovery and touches no
 identity or Git-root resolution, so it is unaffected by `canonical-repository-identity-plan-v2` and
 can ship before or after it. Listed as `related` only for sibling-plan awareness.
 
-## Worktree/Root Hierarchy (new scope, added after user UI feedback)
+## Worktree/Root Hierarchy (built)
+
+**Built.** `entry.roots[]` grouping ships in `modules/localhoster/snapshot.mjs`, with the portal
+rendering one collapsible section per checkout (`tpl-repository-root`) under a `Worktrees` heading.
+Two root causes were found and fixed along the way: `instanceShapeKey()` grouped listeners by
+`title + relativeCwd` with no `rootId`, so two worktrees' main listeners collapsed into one
+"duplicate ports" warning; and `ensureRoot()` declared a `projectRoot` parameter that none of its
+three call sites passed, leaving every root's path `null`.
+
+Follow-on scope now tracked separately: container-to-checkout ownership, in
+`docs/plans/backlog/localhoster-container-checkout-ownership.md`. That plan supersedes the
+"whether compose groups need their own root association" question left open below — the answer is
+that `working_dir` resolves the repository but must not decide the checkout.
+
+The original problem statement follows, kept for context.
 
 Surfaced from real usage: running `roborepo web` from a worktree makes the worktree's branch name
 the repository card's title, because `buildRepositories()` (`modules/localhoster/snapshot.mjs:196`)

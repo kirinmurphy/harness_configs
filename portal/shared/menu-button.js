@@ -90,18 +90,19 @@ class PortalMenuButton extends HTMLElement {
   render() {
     const trigger = tpl("tpl-menu-button-trigger");
     trigger.setAttribute("aria-expanded", String(this._open));
+    // `size`, not width/height: portal-icon only observes `name` and `size`, so the width/height
+    // attributes this used to set were silently ignored and every trigger icon rendered at the
+    // default step anyway.
     if (this._icon) {
       const icon = document.createElement("portal-icon");
       icon.setAttribute("name", this._icon);
-      icon.setAttribute("width", "14");
-      icon.setAttribute("height", "14");
+      icon.setAttribute("size", "sm");
       trigger.append(icon);
     }
     if (this._label) trigger.append(document.createTextNode(this._label));
     const chevron = document.createElement("portal-icon");
     chevron.setAttribute("name", "chevron");
-    chevron.setAttribute("width", "12");
-    chevron.setAttribute("height", "12");
+    chevron.setAttribute("size", "sm");
     chevron.className = "menu-button-chevron";
     trigger.append(chevron);
 

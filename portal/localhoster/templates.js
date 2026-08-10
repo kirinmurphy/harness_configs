@@ -299,20 +299,38 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
     ...repository.composeGroups.map((group) => `compose ${group.name}`),
     ...repository.members.map((member) => member.name),
   ];
+  // Both figures are totals across EVERY checkout (repository.members is the flat cross-root array;
+  // cpuPercentOfHost sums all of them), which is what makes them repository-level rather than a
+  // duplicate of what each worktree row already reports for itself. Now that every root shows its
+  // own member list, the labels say "across N checkouts" outright — unqualified "Members" and
+  // "Resources" read as facts about one checkout when a card has several.
+  const rootCount = repository.roots?.length || 0;
+  const acrossSuffix = rootCount > 1 ? ` (across ${rootCount} checkouts)` : "";
   fill(tooltip, {
-    "members-detail": memberNames.join(", ") || "none",
+    "members-detail": (memberNames.join(", ") || "none") + acrossSuffix,
     // Same discipline as composeProjectCard: the raw figure lives here, and only crosses onto the
     // card as a badge once applyResourceConcernBadge decides it warrants action.
     resources: repository.cpuPercentOfHost != null
-      ? `${repository.cpuPercentOfHost.toFixed(1)}% of machine CPU`
+      ? `${repository.cpuPercentOfHost.toFixed(1)}% of machine CPU${acrossSuffix}`
       : "unavailable",
     // A git: id is portable across machines and promotable to other pages; a local: id is stable
     // but derived from this machine's path, so the distinction is worth stating outright.
     identity: repository.identityKind === "git" ? "git repository" : "local repository (no remote)",
   });
-  applyGitBadge(node, tooltip, repository.git, repository.providerUrl);
+  // No repository-level git badge: git is per-checkout now (see the roots loop below), and the
+  // repository header itself — name, provider link — never depends on which root is running.
   applyResourceConcernBadge(node, repository.cpuPercentOfHost);
-  wireCopyBranchButton(node, repository.git);
+
+  // One provider link per repository (not per root): a repository has exactly one canonical
+  // remote, however many checkouts run it, so it belongs at the header rather than repeated in
+  // every root section's git row.
+  const providerLinkSlot = node.querySelector("[data-slot=provider-link]");
+  if (providerLinkSlot && repository.providerUrl) {
+    providerLinkSlot.hidden = false;
+    providerLinkSlot.href = repository.providerUrl;
+    providerLinkSlot.querySelector("[data-slot=provider-link-label]").textContent = providerHostLabel(repository.providerUrl);
+    providerLinkSlot.title = repoNameFromProviderUrl(repository.providerUrl);
+  }
 
   // Every user-facing origin promoted to the header, so reaching the app never requires expanding
   // the card. Entrypoints sort first, so this is the leading run of the member list; a project with
@@ -353,14 +371,118 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
       .join(" ");
   }
 
-  const members = node.querySelector("[data-slot=members]");
-  for (const group of repository.composeGroups) {
+  const rootsSlot = node.querySelector("[data-slot=roots]");
+  const mainRoot = repository.roots.find((root) => !root.isWorktree);
+  const worktreeRoots = repository.roots.filter((root) => root.isWorktree);
+  // The main section always renders, even with no rootId resolved at all (no member has ever
+  // reported one) — canonical repository identity must never appear to depend on which root
+  // happens to be running. departedMembers with no matching root fall back here too.
+  const departedByRoot = new Map();
+  for (const member of departedMembers) {
+    const key = member.rootId || null;
+    if (!departedByRoot.has(key)) departedByRoot.set(key, []);
+    departedByRoot.get(key).push(member);
+  }
+  const mainDeparted = [
+    ...(departedByRoot.get(mainRoot?.rootId ?? null) || []),
+    ...(mainRoot ? [] : departedByRoot.get(null) || []),
+  ];
+  // No label on the main row — it is always first, so its position alone identifies it; a "Main
+  // worktree" caption named a fact nobody needed spelled out.
+  rootsSlot.append(buildRootSection({
+    root: mainRoot,
+    departed: mainDeparted,
+    repository,
+    composeActions,
+    instanceActions,
+  }));
+  if (worktreeRoots.length) {
+    const heading = document.createElement("div");
+    heading.className = "repository-worktrees-heading";
+    heading.textContent = "Worktrees";
+    rootsSlot.append(heading);
+  }
+  for (const root of worktreeRoots) {
+    rootsSlot.append(buildRootSection({
+      root,
+      departed: departedByRoot.get(root.rootId) || [],
+      repository,
+      composeActions,
+      instanceActions,
+    }));
+  }
+  return node;
+}
+
+// One section per checkout. `root` is undefined for the main slot when nothing has resolved a
+// rootId yet (no active listener on the main checkout) — the section still renders, git-free, so
+// the card never looks like it is missing a piece. A worktree section carries its branch in its
+// own git-row instead of a separate caption — the row already says "feature/x (worktree)"; a
+// heading above it repeating "Worktree" would be the same fact twice.
+function buildRootSection({ root, departed, repository, composeActions, instanceActions }) {
+  const section = tpl("tpl-repository-root");
+  // Lets a rebuild find "this same worktree's" <details> across renders (see reconcileSection in
+  // app.js) to carry its open/closed state forward — rootId is stable across polls, DOM position
+  // is not guaranteed to be.
+  section.dataset.rootId = root?.rootId || "main";
+  // This checkout's own info tooltip. Git detail belongs here rather than on the repository header
+  // — branch, commit, drift and fetch age all differ per worktree — so the repository-level tooltip
+  // carries only what every checkout shares (see tpl-repository-card).
+  const rootInfo = section.querySelector("[data-slot=root-info]");
+  const rootTooltip = rootInfo?.querySelector("template")?.content || null;
+  if (root?.git) {
+    // No providerUrl here: the repo link now lives once at the repository header (see above),
+    // not repeated inside every root section's git row.
+    applyGitBadge(section, rootTooltip || { querySelector: () => null }, root.git, null, {
+      hideProviderLink: true,
+      hideWorktreeSuffix: true,
+    });
+    mountCopyDropdown(section, root);
+  }
+  if (rootInfo && rootTooltip) {
+    // The filesystem path is the one fact that distinguishes two checkouts of the same branch, and
+    // it is deliberately not on the row itself (too long, and usually redundant with the branch).
+    if (root?.projectRoot) {
+      rootTooltip.querySelector("[data-slot=root-path-detail]").hidden = false;
+      rootTooltip.querySelector("[data-slot=root-path-text]").textContent = root.projectRoot;
+    }
+    // Revealed whenever there is anything to show — a root with no git at all still reports its
+    // path and member list, which is more than the bare row says.
+    if (root?.git || root?.projectRoot) rootInfo.hidden = false;
+  }
+  // This root's own entrypoint, same "lift the URL out of its member" pattern the repository
+  // header uses one level up — opening this checkout's app never requires expanding its members.
+  // Port-only display (":4322"): every listener here is loopback by construction, so the host is
+  // implied and repeating it on every row would be noise the branch/port pair didn't need.
+  const rootEntrypoints = (root?.members || []).filter((member) => member.entrypoint && member.instance?.origin);
+  const entrypointSlot = section.querySelector("[data-slot=root-entrypoint]");
+  if (rootEntrypoints.length) {
+    entrypointSlot.hidden = false;
+    entrypointSlot.textContent = displayOrigin(rootEntrypoints[0].instance.origin);
+    entrypointSlot.href = rootEntrypoints[0].instance.origin;
+    entrypointSlot.title = rootEntrypoints[0].instance.origin;
+  }
+  const composeGroups = root?.composeGroups || [];
+  const memberCount = (root?.members || []).length + composeGroups.length;
+  section.querySelector("[data-slot=root-meta]").textContent =
+    memberCount ? `${memberCount} member${memberCount === 1 ? "" : "s"}` : "no active members";
+  // Names them, where the row only counts them — same relationship the repository tooltip's
+  // members-detail has to the card's own member count.
+  if (rootTooltip) {
+    const names = [
+      ...composeGroups.map((group) => `compose ${group.name}`),
+      ...(root?.members || []).map((member) => member.name),
+    ];
+    rootTooltip.querySelector("[data-slot=root-members-detail]").textContent = names.join(", ") || "none";
+  }
+  const members = section.querySelector("[data-slot=members]");
+  for (const group of composeGroups) {
     members.append(composeProjectCard(group, composeActions, {
       isMember: true,
       repositoryName: repository.name,
     }));
   }
-  for (const member of repository.members) {
+  for (const member of root?.members || []) {
     const card = instanceCard(memberProject(repository, member), member.instance, instanceActions);
     applySecondaryPorts(card, member.secondaryPorts);
     // A non-entrypoint answered no page title: a runtime, a socket, an internal API. It is real and
@@ -371,12 +493,12 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
   // Members whose process is gone. Shown rather than silently removed, matching how a top-level
   // card behaves when its instance exits — a member disappearing without a trace is the one case
   // where the page stops answering "what was running here a moment ago".
-  for (const member of departedMembers) {
+  for (const member of departed) {
     const card = instanceCard(memberProject(repository, member), member.instance, instanceActions);
     card.classList.add("is-offline");
     members.append(card);
   }
-  return node;
+  return section;
 }
 
 // The trigger sits inside <summary>, the only child a closed <details> keeps rendered, so its click
@@ -437,21 +559,14 @@ function applySecondaryPorts(card, secondaryPorts) {
 // Members arrive flattened for rendering, but instanceCard expects the project-shaped object the
 // legacy collections handed it. Rebuild just the fields it reads.
 //
-// Git context is normally omitted here: it is usually identical for every member, and the
-// repository card already shows it once above. But a repository can span multiple worktrees, each
-// on its own branch and each running its own listener — buildRepositories (snapshot.mjs) picks one
-// arbitrary member's git for the repository-level badge, so a second worktree on a different branch
-// would otherwise be invisible: same repository name, same suppressed git, no way to tell which
-// listener is which checkout. Only suppress when this member's branch actually matches what the
-// repository card already shows; a differing branch (or isWorktree) earns its own badge.
+// Git is always suppressed here: each member now renders inside its own root section, which already
+// shows that root's git once in its own git-row — see buildRootSection. A worktree on a different
+// branch gets its own section (and its own badge) rather than needing a per-member comparison.
 function memberProject(repository, member) {
-  const memberGit = member.instance?.project?.git || null;
-  const sameBranch = memberGit?.branch === repository.git?.branch
-    && Boolean(memberGit?.isWorktree) === Boolean(repository.git?.isWorktree);
   return {
     name: repository.name,
     identity: member.projectIdentity,
-    suppressGit: sameBranch,
+    suppressGit: true,
     // Marks this card as nested, so it names itself rather than repeating the repository heading
     // and renders at member weight rather than card-heading weight.
     isMember: true,
@@ -509,6 +624,7 @@ export function instanceCard(project, instance, actions) {
     origin.textContent = "origin unavailable";
     origin.removeAttribute("href");
   }
+  mountInstanceCopyMenu(node, instance);
   const warning = tooltip.querySelector("[data-slot=warning]");
   if (instance.bind.warning) {
     warning.hidden = false;
@@ -579,7 +695,10 @@ export function settingsRow(title, meta, label, onClick) {
 // The row itself is cloned from the shared tpl-git-row rather than pre-authored inside each card
 // template: both card kinds expose only an empty [data-slot=git-row] container, so there is exactly
 // one authored copy of this markup and the two cards cannot drift apart again.
-function applyGitBadge(node, tooltip, git, providerUrl) {
+// hideProviderLink skips both the link AND the "local repo" fallback text — used for root sections,
+// where the repository-level header already shows the one provider link once and a per-section
+// "local repo" label would be a false negative on an actual git-backed repository.
+function applyGitBadge(node, tooltip, git, providerUrl, { hideProviderLink = false, hideWorktreeSuffix = false } = {}) {
   const row = node.querySelector("[data-slot=git-row]");
   if (!row || !git?.provider?.ok || (!git.branch && !git.shortHead)) return;
 
@@ -598,7 +717,11 @@ function applyGitBadge(node, tooltip, git, providerUrl) {
   // branch name itself already disambiguates in the common case (main vs. a feature branch). This
   // covers the one gap that leaves: two worktrees that happen to share a branch name would otherwise
   // both read as plain "<branch>" with nothing marking either as the non-primary checkout.
-  const worktreeSuffix = git.isWorktree ? " (worktree)" : "";
+  //
+  // Suppressed inside a repository card's root sections (hideWorktreeSuffix): those rows sit under a
+  // "Worktrees" heading that already establishes what they are, so the suffix repeated the grouping
+  // on every row. A standalone card has no such heading and still needs it.
+  const worktreeSuffix = git.isWorktree && !hideWorktreeSuffix ? " (worktree)" : "";
   // Long branch names (ticket-prefixed, or a full feature description) would otherwise push the
   // rest of the row off. Middle-truncated because the tail of a branch name is usually the part
   // that identifies it — the shared helper's default cap is tuned for repo paths, so this passes
@@ -616,7 +739,7 @@ function applyGitBadge(node, tooltip, git, providerUrl) {
     // not a branch view, so naming a branch would promise something the link does not do.
     repoLink.querySelector("[data-slot=git-repo-label]").textContent = providerHostLabel(providerUrl);
     repoLink.title = repoNameFromProviderUrl(providerUrl);
-  } else {
+  } else if (!hideProviderLink) {
     repoName.hidden = false;
     repoName.textContent = "local repo";
   }
@@ -908,6 +1031,80 @@ function wireCopyBranchButton(node, git) {
     getText: () => (git?.detached ? git.shortHead || "" : git?.branch || ""),
     hoverLabel: "copy branch",
   });
+}
+
+// The copy control on a root row, sized to what is actually worth copying there.
+//
+// Two identifiers are candidates — the branch name and the checkout's filesystem path — but neither
+// is universal:
+//   - Branch: skipped on a default branch. Nobody pastes "main" into a checkout (same rule
+//     wireCopyBranchButton already applies to standalone cards).
+//   - Path: skipped on the main checkout. Its path is the repository's own directory, which is not
+//     the thing you are reaching for — the worktree paths are.
+//
+// What survives decides the control's SHAPE, rather than the shape being fixed and its items
+// varying: two items get a dropdown, one gets a plain copy button (a caret guarding a single choice
+// is a click that asks a question with one answer), and zero gets no control at all.
+function mountCopyDropdown(section, root) {
+  const branchButton = section.querySelector("[data-action=copy-branch]");
+  if (!branchButton) return;
+  // The branch label is inside this button; its copy behavior moves to the control built below, so
+  // what remains is text. Leaving a live <button> that no longer does anything is a control that
+  // lies.
+  for (const icon of branchButton.querySelectorAll("portal-icon")) icon.remove();
+  branchButton.classList.add("is-static");
+  branchButton.disabled = true;
+  branchButton.removeAttribute("aria-label");
+
+  const git = root.git;
+  const items = [];
+  // Detached HEAD has no branch name to skip — the short SHA is exactly what you would copy.
+  if (git?.detached) {
+    items.push({ label: "Copy commit SHA", value: () => git.shortHead || "" });
+  } else if (git?.branch && !DEFAULT_BRANCHES.has(git.branch)) {
+    items.push({ label: "Copy branch name", value: () => git.branch || "" });
+  }
+  // Worktree checkouts only, and only when the path actually resolved — an item that copies nothing
+  // is worse than an absent one, since it reports success while writing an empty clipboard.
+  if (root.isWorktree && root.projectRoot) {
+    items.push({ label: "Copy worktree path", value: root.projectRoot });
+  }
+
+  if (!items.length) return;
+  if (items.length === 1) {
+    const button = document.createElement("portal-copy-button");
+    button.setAttribute("icon", "copy");
+    button.setAttribute("aria-label", items[0].label);
+    button.copySource = items[0].value;
+    branchButton.after(button);
+    return;
+  }
+  const menu = document.createElement("portal-copy-menu");
+  menu.items = items;
+  branchButton.after(menu);
+}
+
+// Per-instance copy actions. The row already opens its URL on click, so what this adds is the
+// values you cannot get by clicking: the address as text, the bare port, and the PID (the one thing
+// here you reach for when a process needs killing rather than visiting).
+//
+// Assembled from what this instance actually has — an inactive card with no origin still offers its
+// PID — and the whole control stays hidden if that leaves nothing, matching the correct-or-absent
+// discipline the badges follow.
+function mountInstanceCopyMenu(node, instance) {
+  const slot = node.querySelector("[data-slot=copy-menu]");
+  if (!slot) return;
+  const items = [];
+  if (instance.origin) {
+    items.push({ label: "Copy URL", value: instance.origin });
+    if (instance.bind?.port) items.push({ label: "Copy port", value: String(instance.bind.port) });
+  }
+  if (instance.process?.pid) items.push({ label: "Copy PID", value: String(instance.process.pid) });
+  if (!items.length) return;
+  const menu = document.createElement("portal-copy-menu");
+  menu.items = items;
+  slot.append(menu);
+  slot.hidden = false;
 }
 
 // Maps a container image to one of the tech glyphs in portal/shared/icon.js. Matched against the

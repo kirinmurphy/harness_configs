@@ -4,8 +4,11 @@ import * as state from "./state.js";
 import * as tmpl from "./templates.js";
 import * as fields from "./form-fields.js";
 import { createHistoryView } from "./history-view.js";
-import { buildRoutesDropdown } from "./suggestions-view.js";
+import { buildRoutesDropdown, fillApiRouteDialog } from "./suggestions-view.js";
 import "/portal/shared/menu-button.js";
+import "/portal/shared/copy-menu.js";
+// The API-route rows in the Pages/Routes panel use <portal-copy-button> for their curl commands.
+import "/portal/shared/copy-button.js";
 
 // A stale opaque key (the app moved ports since this render) resolves by reloading the snapshot
 // rather than surfacing an error.
@@ -36,6 +39,7 @@ const refs = {
   composeRepoForm: document.getElementById("compose-repo-form"),
   settingsDialog: document.getElementById("settings-dialog"),
   settingsBody: document.getElementById("settings-body"),
+  apiRouteDialog: document.getElementById("api-route-dialog"),
 };
 
 let lastSnapshot = null;
@@ -273,15 +277,24 @@ function reconcileSection(section) {
       // <details> the operator opened — e.g. an expanded compose-project card — since the
       // rebuilt node is a fresh element with no memory of the old one's open state.
       //
-      // The card root is the <details> on most kinds, but a repository card is a plain wrapper
-      // holding one (its git row has to sit outside the disclosure to survive collapse), so the
-      // state lives one level down. Resolve to whichever this card is before copying.
-      const disclosureOf = (el) =>
-        el instanceof HTMLDetailsElement ? el : el.querySelector(":scope > details");
+      // The card root is the <details> on most kinds. A repository card is a plain wrapper with
+      // no <details> of its own — each worktree row inside it is independently collapsible, so
+      // every one of those needs its state carried forward, matched by rootId since DOM order
+      // across a rebuild is not guaranteed to match.
+      const disclosureOf = (el) => (el instanceof HTMLDetailsElement ? el : el.querySelector(":scope > details"));
       const prevDisclosure = disclosureOf(existing.node);
       const nextDisclosure = disclosureOf(node);
       if (prevDisclosure && nextDisclosure) {
         nextDisclosure.open = prevDisclosure.open;
+      }
+      const prevRoots = existing.node.querySelectorAll(".repository-root[data-root-id]");
+      if (prevRoots.length) {
+        const openByRootId = new Map([...prevRoots].map((el) => [el.dataset.rootId, el.open]));
+        for (const nextRoot of node.querySelectorAll(".repository-root[data-root-id]")) {
+          if (openByRootId.has(nextRoot.dataset.rootId)) {
+            nextRoot.open = openByRootId.get(nextRoot.dataset.rootId);
+          }
+        }
       }
       const wasOffline = existing.offline;
       existing.node.replaceWith(node);
@@ -521,7 +534,9 @@ function openAddLinkDialog(project, instance) {
 // historyView uses, just per-card now instead of one shared dialog.
 function mountRoutesTrigger(slotNode, project, instance) {
   const button = document.createElement("portal-menu-button");
-  button.label = "Routes";
+  // "Pages/Routes", not "Routes": the panel lists both navigable HTML pages and API endpoints, and
+  // "Routes" alone read as framework-internal plumbing rather than as pages you can open.
+  button.label = "Pages/Routes";
   let loaded = false;
   const originalToggle = button.toggle.bind(button);
   button.toggle = async () => {
@@ -531,11 +546,22 @@ function mountRoutesTrigger(slotNode, project, instance) {
         onStale: () => load({ force: true }),
         captureLink: captureRouteLink,
         isSaved: isRouteSaved,
+        onOpenApiRoute: openApiRouteDialog,
       });
     }
     originalToggle();
   };
   slotNode.replaceWith(button);
+}
+
+// Opens the shared API contract modal for one endpoint. The routes popover is closed first: it is
+// a fixed-position panel anchored to its card, so leaving it open would float it above the modal's
+// backdrop. closeActionMenus() does not cover it — that one handles the [data-menu] three-dot
+// menus, and this is a portal-menu-button widget with its own close().
+function openApiRouteDialog(instance, suggestion) {
+  for (const menu of refs.content.querySelectorAll("portal-menu-button")) menu.close?.();
+  fillApiRouteDialog(refs.apiRouteDialog, instance, suggestion);
+  refs.apiRouteDialog.showModal();
 }
 
 function isRouteSaved(instance, path) {

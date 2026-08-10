@@ -369,10 +369,10 @@ portal-info-icon,
  * both places by necessity but never diverge in value. Nothing should size an icon off-scale;
  * `sm` is the floor for legibility. */
 :root {
-  --icon-sm: 14px;
-  --icon-md: 16px;
-  --icon-lg: 20px;
-  --icon-xl: 24px;
+  --icon-sm: 16px;
+  --icon-md: 20px;
+  --icon-lg: 24px;
+  --icon-xl: 30px;
 }
 portal-icon {
   display: inline-flex;
@@ -696,42 +696,118 @@ portal-close-button {
   background: var(--raised);
 }
 /* <portal-copy-button> — the shared copy-to-clipboard control (portal/shared/copy-button.js).
- * Idle and "Copied!" contents are stacked in the same grid cell (grid-area) so both are always
- * laid out and the button's intrinsic width already fits the wider of the two — swapping which
- * one is visible never resizes the button. */
+ * Confirmation is an absolutely-positioned overlay (.copy-flash) rather than a second grid-stacked
+ * label: an icon-only copy button is far narrower than the word "Copied", and stacking the two in
+ * one cell sized every such button to a state it shows only briefly. */
 .copy-button {
-  display: inline-grid;
+  display: inline-flex;
+  position: relative;
   cursor: pointer;
 }
 .copy-button-state {
-  grid-area: 1 / 1;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
 }
-.copy-button-idle {
-  visibility: visible;
-}
-.copy-button-copied {
-  visibility: hidden;
-  color: var(--ok);
-}
-.copy-button-showing-copied .copy-button-idle {
-  visibility: hidden;
-}
-.copy-button-showing-copied .copy-button-copied {
-  visibility: visible;
-}
+/* Stays fully opaque while disabled: the button is only ever disabled during its own confirmation,
+   and dimming it there would read as "unavailable" rather than "just did the thing". */
 .copy-button:disabled {
   opacity: 1;
 }
-.copy-button-showing-copied {
-  border-color: var(--ok);
+/* The shared "Copied ✓" confirmation, used by both <portal-copy-button> and the
+ * <portal-copy-menu> trigger so every copy affordance acknowledges identically.
+ *
+ * Absolutely positioned and out of flow: it floats over its control, so the dense rows these sit in
+ * (a branch name and its copy control on one line) never reflow at the moment of copying. Anchored
+ * to the control's right edge and vertically centered, growing leftward — the natural direction
+ * when the control itself sits at the end of a row. */
+.copy-flash {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  /* Opaque background, not a bare label: it overlaps the glyph underneath, which would otherwise
+     show through the text. */
+  background: var(--panel);
+  border: 1px solid var(--ok);
+  color: var(--ok);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
 }
 /* <portal-menu-button> — shared anchored-popover trigger (portal/shared/menu-button.js). Panel
  * content is caller-supplied (unlike option-dropdown's fixed option list), used for the plan
  * drawer's Copy menu and Actions popup. */
+/* copy-menu.js — icon-only trigger + caret. Shares the menu-button panel's visual language (same
+   surface, radius, shadow, hover) because they are the same interaction; only the trigger face
+   differs, since this one is a glyph rather than a labeled button. */
+portal-copy-menu {
+  display: inline-flex;
+  position: relative;
+}
+.copy-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: none;
+  background: none;
+  padding: 2px;
+  border-radius: 5px;
+  color: var(--dim);
+  cursor: pointer;
+}
+.copy-menu-trigger:hover,
+.copy-menu-trigger[aria-expanded="true"] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.copy-menu-chevron {
+  /* Reads as a caret attached to the glyph, not as a second icon of equal weight. */
+  opacity: 0.7;
+}
+.copy-menu-panel {
+  position: fixed;
+  z-index: 30;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px var(--modal-shadow);
+  padding: 6px;
+  min-width: 180px;
+  max-width: min(360px, 90vw);
+  /* max-height is set inline by positionPopoverPanel — see .menu-button-panel. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.copy-menu-item {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  padding: 7px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.copy-menu-item:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+}
+/* Disabled only while showing "Copied!", so it reads as confirmation rather than as unavailable. */
+.copy-menu-item:disabled {
+  color: var(--accent);
+  cursor: default;
+}
 portal-menu-button {
   display: inline-block;
   position: relative;

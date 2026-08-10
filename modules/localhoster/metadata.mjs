@@ -68,31 +68,168 @@ async function discoverSitemapPaths(sitemapUrl, fetchText) {
 // Tries each candidate URL in order and stops at the first one that parses as a valid document —
 // not the first one that merely responds 200, since a dev server's catch-all route can return 200
 // with an HTML shell for any path, including a guessed OpenAPI path that doesn't really exist.
+//
+// Each path yields one suggestion per HTTP method, not one per path: GET /items and DELETE /items
+// are different operations with different contracts, and collapsing them to a bare path was what
+// made these routes unusable as links — the panel could not say what to send or what would happen.
 async function discoverOpenApiPaths(candidateUrls, fetchText) {
   for (const url of candidateUrls) {
     const result = await fetchText(url, { accept: "application/json,application/yaml" });
     if (!result.ok || !result.body) continue;
     const doc = safeJsonParse(result.body);
     if (!doc || typeof doc.paths !== "object" || doc.paths === null) continue;
-    return Object.keys(doc.paths).map((path) => ({ path, label: null }));
+    return openApiOperations(doc);
   }
   return [];
 }
 
+// Only the members of a path item that are operations. `parameters`, `summary`, `servers`, and
+// `$ref` are siblings of the verbs in OpenAPI's path-item object, so iterating raw keys would mint
+// phantom "SUMMARY /items" entries.
+const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "head", "options", "trace"];
+
+// Flattens the document into one entry per (path, method), carrying just enough of the contract to
+// render a readable panel and build a runnable curl: the method, a summary, the parameters, and the
+// request body's top-level field names. Deliberately NOT the full resolved schema — nested $ref
+// graphs are large, and every field below is one the panel or the curl actually reads.
+function openApiOperations(doc) {
+  const operations = [];
+  for (const [path, pathItem] of Object.entries(doc.paths)) {
+    if (!pathItem || typeof pathItem !== "object") continue;
+    // Path-level parameters apply to every operation under it, so they merge into each one.
+    const shared = normalizeParameters(pathItem.parameters, doc);
+    for (const method of HTTP_METHODS) {
+      const operation = pathItem[method];
+      if (!operation || typeof operation !== "object") continue;
+      operations.push({
+        path,
+        label: null,
+        method: method.toUpperCase(),
+        summary: typeof operation.summary === "string" ? operation.summary
+          : typeof operation.description === "string" ? operation.description
+          : null,
+        parameters: [...shared, ...normalizeParameters(operation.parameters, doc)],
+        requestBody: normalizeRequestBody(operation.requestBody, doc),
+      });
+    }
+  }
+  return operations;
+}
+
+// Local $ref resolution only ("#/components/..."). An external or remote ref is left unresolved
+// rather than fetched: this module's whole fetch surface is same-origin and capped, and chasing a
+// ref off-document would quietly break that guarantee. Depth-capped because a $ref cycle
+// (a schema referencing itself) is legal in OpenAPI and would otherwise spin forever.
+function resolveRef(node, doc, depth = 0) {
+  if (!node || typeof node !== "object" || typeof node.$ref !== "string" || depth > 8) return node;
+  if (!node.$ref.startsWith("#/")) return node;
+  let current = doc;
+  for (const segment of node.$ref.slice(2).split("/")) {
+    // JSON Pointer escapes, per RFC 6901 — "~1" is a literal "/" in a key, "~0" a literal "~".
+    const key = segment.replace(/~1/g, "/").replace(/~0/g, "~");
+    if (!current || typeof current !== "object") return node;
+    current = current[key];
+  }
+  return resolveRef(current, doc, depth + 1);
+}
+
+// One flat record per parameter. `example` is what lets the curl builder emit a command that runs
+// without editing (see the "real value, else placeholder" strategy in buildCurl) — it is read from
+// the spec's own example/default/enum, never invented.
+function normalizeParameters(parameters, doc) {
+  if (!Array.isArray(parameters)) return [];
+  const out = [];
+  for (const raw of parameters) {
+    const parameter = resolveRef(raw, doc);
+    if (!parameter || typeof parameter.name !== "string") continue;
+    // Only the two locations a caller can actually put a value in a curl URL. Header and cookie
+    // params are real but belong to auth/session concerns this panel does not try to model.
+    if (parameter.in !== "path" && parameter.in !== "query") continue;
+    const schema = resolveRef(parameter.schema, doc) || {};
+    out.push({
+      name: parameter.name,
+      in: parameter.in,
+      // Path parameters are always required per the spec, whether or not they say so.
+      required: parameter.required === true || parameter.in === "path",
+      type: typeof schema.type === "string" ? schema.type : null,
+      enum: Array.isArray(schema.enum) ? schema.enum.map(String) : null,
+      example: firstExample(parameter, schema),
+    });
+  }
+  return out;
+}
+
+// The spec's own suggested value, in descending order of intent: an explicit example beats a
+// default, which beats "the first thing the enum allows". Null when the spec offers nothing, which
+// is the signal for the curl builder to emit a NAMED_PLACEHOLDER instead.
+function firstExample(parameter, schema) {
+  for (const candidate of [parameter.example, schema.example, schema.default]) {
+    if (candidate != null && typeof candidate !== "object") return String(candidate);
+  }
+  if (Array.isArray(schema.enum) && schema.enum.length && schema.enum[0] != null) {
+    return String(schema.enum[0]);
+  }
+  return null;
+}
+
+// Top-level field names and their required flags — enough to show what the body must contain and to
+// stub a JSON skeleton for the curl. Nested object shapes are intentionally not walked.
+function normalizeRequestBody(requestBody, doc) {
+  const body = resolveRef(requestBody, doc);
+  if (!body || typeof body.content !== "object" || body.content === null) return null;
+  // JSON first; otherwise whatever single media type the operation declares, so a form-encoded
+  // endpoint still reports its content type rather than being dropped as "no body".
+  const mediaType = Object.keys(body.content).find((type) => /json/i.test(type))
+    || Object.keys(body.content)[0]
+    || null;
+  if (!mediaType) return null;
+  const schema = resolveRef(body.content[mediaType]?.schema, doc) || {};
+  const properties = schema.properties && typeof schema.properties === "object" ? schema.properties : {};
+  const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+  const fields = Object.entries(properties).map(([name, rawProperty]) => {
+    const property = resolveRef(rawProperty, doc) || {};
+    return {
+      name,
+      type: typeof property.type === "string" ? property.type : null,
+      required: required.has(name),
+      example: firstExample({}, property),
+    };
+  });
+  return { mediaType, required: body.required === true, fields };
+}
+
+// Keyed by path AND method, not path alone. An OpenAPI document routinely defines several
+// operations on one path (GET /items to list, POST /items to create); collapsing those to a single
+// entry would silently drop every verb but the first. Non-API sources have no method, so their key
+// is just the path and they dedupe exactly as before.
+//
+// `kind` splits what the panel can navigate to from what it can only describe: a sitemap URL is a
+// page you open, an OpenAPI operation is a contract you call. The portal renders them as two
+// separate sections off this field.
 function dedupeSuggestions(bySource, origin) {
-  const byPath = new Map();
+  const byKey = new Map();
   for (const source of SOURCE_PRIORITY) {
     for (const entry of bySource[source] || []) {
       if (!isSameOrigin(entry.path, origin)) continue;
       const normalized = safeNormalizePath(entry.path);
       if (!normalized) continue;
       if (isAuthLooking(normalized) && source !== "openapi" && source !== "sitemap") continue;
-      const existing = byPath.get(normalized);
-      if (existing) continue;
-      byPath.set(normalized, { path: normalized, label: entry.label, source });
+      const kind = source === "openapi" ? "api" : "page";
+      const key = entry.method ? `${entry.method} ${normalized}` : normalized;
+      if (byKey.has(key)) continue;
+      const suggestion = { path: normalized, label: entry.label, source, kind };
+      // API-only contract fields. Omitted entirely for page suggestions rather than set to null,
+      // so a sitemap entry's shape stays exactly what it has always been.
+      if (kind === "api") {
+        suggestion.method = entry.method || "GET";
+        suggestion.summary = entry.summary || null;
+        suggestion.parameters = entry.parameters || [];
+        suggestion.requestBody = entry.requestBody || null;
+      }
+      byKey.set(key, suggestion);
     }
   }
-  return [...byPath.values()];
+  return [...byKey.values()];
 }
 
 function isAuthLooking(path) {

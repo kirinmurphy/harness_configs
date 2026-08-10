@@ -218,6 +218,11 @@ async function collectGitForComposeProjects(containers, settings, {
         byProjectName.set(name, {
           git: await collectGit(repoPath, { scanCache, runGit }),
           repositoryId: canonicalRepositoryId(identity),
+          // A compose stack is tied to whichever checkout `docker compose up` was actually run
+          // from — worktrees are not guaranteed to share one stack (different branches can run
+          // different docker-compose.yml files, or a sandboxed worktree its own isolated stack) —
+          // so this needs the same per-checkout rootId a regular project gets, not a repo-wide one.
+          rootId: identity.projectRoot ? computeRootId(identity.projectRoot) : null,
           resolvedFrom: "manual",
         });
         return;
@@ -235,6 +240,7 @@ async function collectGitForComposeProjects(containers, settings, {
       byProjectName.set(name, {
         git: await collectGit(workingDir, { scanCache, runGit }),
         repositoryId: canonicalRepositoryId(identity),
+        rootId: identity.projectRoot ? computeRootId(identity.projectRoot) : null,
         resolvedFrom: "auto",
       });
     }),
@@ -269,6 +275,7 @@ async function collectGitForComposeProjects(containers, settings, {
       byProjectName.set(name, {
         git: await collectGit(projectRoot, { scanCache, runGit }),
         repositoryId,
+        rootId: computeRootId(projectRoot),
         resolvedFrom: "auto-bind",
       });
     }),

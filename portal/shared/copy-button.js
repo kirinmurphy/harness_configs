@@ -61,11 +61,14 @@ class PortalCopyButton extends HTMLElement {
   #showCopied() {
     this._copied = true;
     this.button.classList.add("copy-button-showing-copied");
+    const flash = this.button.querySelector("[data-slot=flash]");
+    if (flash) flash.hidden = false;
     this.button.disabled = true;
     clearTimeout(this._resetTimer);
     this._resetTimer = setTimeout(() => {
       this._copied = false;
       this.button.classList.remove("copy-button-showing-copied");
+      if (flash) flash.hidden = true;
       this.syncAttributes();
     }, COPIED_DURATION_MS);
   }

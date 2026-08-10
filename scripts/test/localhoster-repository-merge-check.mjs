@@ -10,7 +10,7 @@ const LOCAL = "local:616846d49a69fc81";
 const LOCAL_PATH = "path:/tmp/thing";
 
 // Discovery-shaped instance, as buildLocalhosterSnapshot expects it (pre-snapshot, so no opaqueKey).
-function instance({ pid, port, command, identity, repositoryId, docker = null, status = null, title = null, cpu = null }) {
+function instance({ pid, port, command, identity, repositoryId, docker = null, status = null, title = null, cpu = null, rootId = null, git = null }) {
   return {
     key: `${pid}:127.0.0.1:${port}`,
     associationKey: `a${pid}${port}`,
@@ -34,7 +34,8 @@ function instance({ pid, port, command, identity, repositoryId, docker = null, s
       projectRoot: "/tmp/menugoats",
       evidence: "Git remote",
       repositoryId,
-      git: null,
+      rootId,
+      git,
     },
   };
 }
@@ -171,6 +172,65 @@ assert.equal(survivor.entrypoint, true);
 // opening the app stays one click from page load.
 assert.equal(collapsed.members[0].port, 4321);
 assert.equal(collapsed.members.find((member) => member.port === 63409).entrypoint, false);
+
+// Worktree/root hierarchy: a repository with a listener on its main checkout and another on a
+// linked worktree groups into two `roots[]` sections, each with its own git context and member
+// list, instead of one arbitrary branch badge for the whole card
+// (docs/plans/active/localhoster-metadata-suggestions.md, "Worktree/Root Hierarchy").
+const mainGit = { provider: { ok: true }, branch: "main", isWorktree: false, ahead: 0, behind: 0 };
+const featureGit = { provider: { ok: true }, branch: "feature/x", isWorktree: true, ahead: 2, behind: 0 };
+// Different `identity` per root (as it is live: a worktree commonly resolves its own alias, e.g.
+// "roborepo:portal", distinct from the main checkout's "git:..." identity) so each becomes its own
+// `project` record with its own `name` — this is what let a worktree's branch/dir name leak onto
+// the repository-level title before the main-checkout-preference fix below.
+const worktreeSnapshot = buildLocalhosterSnapshot({
+  discovery: {
+    capabilities: { discovery: "supported" },
+    warnings: [],
+    composeProjectGit: new Map(),
+    instances: [
+      instance({ pid: 800, port: 3000, command: "node", identity: MENUGOATS, repositoryId: MENUGOATS, status: 200, title: "Menugoats", rootId: "root-main", git: mainGit }),
+      instance({ pid: 801, port: 3001, command: "node", identity: "roborepo:portal", repositoryId: MENUGOATS, status: 200, title: "feature-branch-name", rootId: "root-feature", git: featureGit }),
+    ],
+  },
+  settings: defaultSettings(),
+  now: new Date("2026-08-02T00:00:00.000Z"),
+});
+const worktreeRepo = worktreeSnapshot.repositories.find((entry) => entry.repositoryId === MENUGOATS);
+assert.ok(worktreeRepo);
+// Flat union is still populated for consumers that only need "every member" (favorite/hide
+// fan-out, departed-member tracking) and do not care which checkout it runs from.
+assert.equal(worktreeRepo.members.length, 2);
+assert.equal(worktreeRepo.roots.length, 2);
+const mainRoot = worktreeRepo.roots.find((root) => root.rootId === "root-main");
+const featureRoot = worktreeRepo.roots.find((root) => root.rootId === "root-feature");
+assert.ok(mainRoot);
+assert.ok(featureRoot);
+
+// The repository name is the main checkout's name, never a worktree's — a worktree's project
+// record commonly names itself after its branch/directory alias, which must never leak onto the
+// repository-level title regardless of discovery order.
+assert.equal(worktreeRepo.name, "menugoats");
+
+// Same-shape instances on two different worktrees are two intentional checkouts running the same
+// app, not stale leftover processes from one checkout — duplicate-listener detection must not fire
+// across roots. (It still fires WITHIN one root; see the multi-port collapse case below for that.)
+assert.deepEqual(worktreeRepo.duplicateGroups, []);
+assert.equal(mainRoot.isWorktree, false);
+assert.equal(mainRoot.git.branch, "main");
+assert.equal(mainRoot.members.length, 1);
+assert.equal(mainRoot.members[0].port, 3000);
+assert.equal(featureRoot.isWorktree, true);
+assert.equal(featureRoot.git.branch, "feature/x");
+assert.equal(featureRoot.members.length, 1);
+assert.equal(featureRoot.members[0].port, 3001);
+// Main checkout sorts first regardless of branch name, so the card's primary section is always
+// the non-worktree root when one exists.
+assert.equal(worktreeRepo.roots[0].rootId, "root-main");
+
+// The repository-level `git` field no longer exists — git moved to per-root, since a single
+// repository-level value could not represent two different branches at once.
+assert.equal(worktreeRepo.git, undefined);
 
 // Same-PID multi-port listeners are normal, not stale: no duplicate warning for them.
 assert.equal(collapsed.duplicateGroups.length, 0);

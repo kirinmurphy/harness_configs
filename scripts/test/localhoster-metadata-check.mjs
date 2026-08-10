@@ -18,7 +18,7 @@ try {
         "http://localhost:5173/manifest.json": { ok: true, status: 200, body: JSON.stringify({ name: "My App", start_url: "/app" }) },
       }),
     });
-    assert.deepEqual(suggestions, [{ path: "/app", label: "My App", source: "manifest" }]);
+    assert.deepEqual(suggestions, [{ path: "/app", label: "My App", source: "manifest", kind: "page" }]);
   }
   console.log("ok  manifest parsing");
 
@@ -47,7 +47,7 @@ try {
         "http://localhost:5173/sitemap.xml": { ok: true, status: 200, body: "<urlset><url><loc>http://localhost:5173/blog</loc></url></urlset>" },
       }),
     });
-    assert.deepEqual(suggestions, [{ path: "/blog", label: null, source: "sitemap" }]);
+    assert.deepEqual(suggestions, [{ path: "/blog", label: null, source: "sitemap", kind: "page" }]);
   }
   console.log("ok  conventional /sitemap.xml fallback");
 
@@ -59,24 +59,138 @@ try {
         "http://localhost:5173/openapi.json": {
           ok: true,
           status: 200,
-          body: JSON.stringify({ paths: { "/api/users": {}, "/api/admin/reset": {} } }),
+          body: JSON.stringify({ paths: { "/api/users": { get: {} }, "/api/admin/reset": { post: {} } } }),
         },
       }),
     });
     assert.deepEqual(suggestions.map((s) => s.path).sort(), ["/api/admin/reset", "/api/users"]);
     assert.ok(suggestions.every((s) => s.source === "openapi"), "OpenAPI evidence overrides the auth-looking filter");
+    assert.ok(suggestions.every((s) => s.kind === "api"), "OpenAPI operations are api-kind, not navigable pages");
   }
   console.log("ok  OpenAPI path extraction");
+
+  // ---- One suggestion per (path, method): several verbs on one path are distinct operations with
+  // distinct contracts, and keying dedup on path alone would keep only the first. ----
+  {
+    const suggestions = await discoverMetadataSuggestions("http://localhost:5173", {
+      openApiUrl: "http://localhost:5173/openapi.json",
+      fetchText: stubFetch({
+        "http://localhost:5173/openapi.json": {
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            paths: {
+              "/api/items": {
+                get: { summary: "List items" },
+                post: { summary: "Create an item" },
+                // Not an operation — a sibling of the verbs. Must not become "SUMMARY /api/items".
+                summary: "Items collection",
+              },
+            },
+          }),
+        },
+      }),
+    });
+    assert.deepEqual(
+      suggestions.map((s) => `${s.method} ${s.path}`).sort(),
+      ["GET /api/items", "POST /api/items"],
+    );
+    assert.equal(suggestions.find((s) => s.method === "POST").summary, "Create an item");
+  }
+  console.log("ok  one suggestion per (path, method), non-verb path-item keys ignored");
+
+  // ---- Operation contract capture: params (path-level merged into each operation), $ref
+  // resolution, and request-body field names. ----
+  {
+    const suggestions = await discoverMetadataSuggestions("http://localhost:5173", {
+      openApiUrl: "http://localhost:5173/openapi.json",
+      fetchText: stubFetch({
+        "http://localhost:5173/openapi.json": {
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            paths: {
+              "/api/plans/{key}": {
+                parameters: [{ name: "key", in: "path", schema: { type: "string" } }],
+                get: {
+                  summary: "Fetch a plan",
+                  parameters: [{ $ref: "#/components/parameters/Mode" }],
+                },
+                post: {
+                  requestBody: {
+                    required: true,
+                    content: {
+                      "application/json": {
+                        schema: {
+                          type: "object",
+                          required: ["label"],
+                          properties: { label: { type: "string" }, port: { type: "integer", default: 3000 } },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            components: {
+              parameters: {
+                Mode: { name: "mode", in: "query", schema: { type: "string", enum: ["portable", "repository-aware"] } },
+              },
+            },
+          }),
+        },
+      }),
+    });
+    const get = suggestions.find((s) => s.method === "GET");
+    // Path-level parameter merged in, and marked required even though the spec never said so.
+    const key = get.parameters.find((p) => p.name === "key");
+    assert.equal(key.in, "path");
+    assert.equal(key.required, true, "path parameters are required by definition");
+    assert.equal(key.example, null, "no example in the spec means no invented value");
+    // $ref resolved out of components, with the enum's first member as the suggested value.
+    const mode = get.parameters.find((p) => p.name === "mode");
+    assert.equal(mode.in, "query");
+    assert.equal(mode.example, "portable", "enum first member is the suggested value");
+
+    const post = suggestions.find((s) => s.method === "POST");
+    assert.equal(post.requestBody.mediaType, "application/json");
+    assert.equal(post.requestBody.required, true);
+    assert.deepEqual(post.requestBody.fields.map((f) => f.name).sort(), ["label", "port"]);
+    assert.equal(post.requestBody.fields.find((f) => f.name === "label").required, true);
+    assert.equal(post.requestBody.fields.find((f) => f.name === "port").example, "3000", "schema default is a usable value");
+  }
+  console.log("ok  OpenAPI operation contract capture: params, $ref resolution, request body");
+
+  // ---- A self-referencing $ref is legal OpenAPI and must not spin forever. ----
+  {
+    const suggestions = await discoverMetadataSuggestions("http://localhost:5173", {
+      openApiUrl: "http://localhost:5173/openapi.json",
+      fetchText: stubFetch({
+        "http://localhost:5173/openapi.json": {
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            paths: { "/api/loop": { get: { parameters: [{ $ref: "#/components/parameters/Cycle" }] } } },
+            components: { parameters: { Cycle: { $ref: "#/components/parameters/Cycle" } } },
+          }),
+        },
+      }),
+    });
+    assert.equal(suggestions.length, 1, "a $ref cycle terminates instead of hanging");
+    assert.deepEqual(suggestions[0].parameters, [], "an unresolvable cyclic parameter is dropped");
+  }
+  console.log("ok  cyclic $ref terminates");
 
   // ---- Conventional OpenAPI path guessing: no openApiUrl override supplied ----
   {
     const suggestions = await discoverMetadataSuggestions("http://localhost:5173", {
       fetchText: stubFetch({
         // openapi.json and openapi.yaml (tried first) are absent; swagger.json is the first hit.
-        "http://localhost:5173/swagger.json": { ok: true, status: 200, body: JSON.stringify({ paths: { "/api/orders": {} } }) },
+        "http://localhost:5173/swagger.json": { ok: true, status: 200, body: JSON.stringify({ paths: { "/api/orders": { get: {} } } }) },
       }),
     });
-    assert.deepEqual(suggestions, [{ path: "/api/orders", label: null, source: "openapi" }]);
+    assert.deepEqual(suggestions.map((s) => s.path), ["/api/orders"]);
+    assert.equal(suggestions[0].source, "openapi");
   }
   console.log("ok  conventional OpenAPI path guessing, no override needed");
 
@@ -88,10 +202,11 @@ try {
         "http://localhost:5173/openapi.json": { ok: true, status: 200, body: "<!doctype html><title>App</title>" },
         "http://localhost:5173/openapi.yaml": { ok: true, status: 200, body: "<!doctype html><title>App</title>" },
         "http://localhost:5173/swagger.json": { ok: true, status: 200, body: "<!doctype html><title>App</title>" },
-        "http://localhost:5173/v3/api-docs": { ok: true, status: 200, body: JSON.stringify({ paths: { "/real": {} } }) },
+        "http://localhost:5173/v3/api-docs": { ok: true, status: 200, body: JSON.stringify({ paths: { "/real": { get: {} } } }) },
       }),
     });
-    assert.deepEqual(suggestions, [{ path: "/real", label: null, source: "openapi" }]);
+    assert.deepEqual(suggestions.map((s) => s.path), ["/real"]);
+    assert.equal(suggestions[0].source, "openapi");
   }
   console.log("ok  catch-all 200 responses are skipped, not treated as a valid OpenAPI hit");
 
@@ -101,10 +216,11 @@ try {
       openApiUrl: "http://localhost:5173/openapi.json",
       fetchText: stubFetch({
         "http://localhost:5173/manifest.json": { ok: true, status: 200, body: JSON.stringify({ start_url: "/dashboard" }) },
-        "http://localhost:5173/openapi.json": { ok: true, status: 200, body: JSON.stringify({ paths: { "/dashboard": {} } }) },
+        "http://localhost:5173/openapi.json": { ok: true, status: 200, body: JSON.stringify({ paths: { "/dashboard": { get: {} } } }) },
       }),
     });
-    assert.deepEqual(suggestions, [{ path: "/dashboard", label: null, source: "openapi" }]);
+    assert.deepEqual(suggestions.map((s) => s.path), ["/dashboard"]);
+    assert.equal(suggestions[0].source, "openapi", "highest-confidence source wins the path");
   }
   console.log("ok  cross-source duplicate-path dedup");
 
@@ -119,7 +235,7 @@ try {
         },
       }),
     });
-    assert.deepEqual(suggestions, [{ path: "/safe", label: null, source: "sitemap" }]);
+    assert.deepEqual(suggestions, [{ path: "/safe", label: null, source: "sitemap", kind: "page" }]);
   }
   console.log("ok  unsafe/cross-origin URL rejection");
 
@@ -135,7 +251,7 @@ try {
         },
       }),
     });
-    assert.deepEqual(suggestions, [{ path: "/mine", label: null, source: "sitemap" }]);
+    assert.deepEqual(suggestions, [{ path: "/mine", label: null, source: "sitemap", kind: "page" }]);
   }
   console.log("ok  same-loopback-different-port URL rejection");
 
@@ -168,7 +284,7 @@ try {
         "http://localhost:5173/sitemap.xml": { ok: true, status: 200, body: "<urlset><url><loc>http://localhost:5173/admin/panel</loc></url></urlset>" },
       }),
     });
-    assert.deepEqual(sitemapEvidence, [{ path: "/admin/panel", label: null, source: "sitemap" }]);
+    assert.deepEqual(sitemapEvidence, [{ path: "/admin/panel", label: null, source: "sitemap", kind: "page" }]);
   }
   console.log("ok  authenticated-looking route filtering with evidence override");
 

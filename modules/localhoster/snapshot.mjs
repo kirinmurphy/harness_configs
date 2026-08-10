@@ -35,6 +35,11 @@ export function buildLocalhosterSnapshot({
           repoPath: projectSettings.repoPath || null,
           git: gitInfo?.git || null,
           repositoryId: gitInfo?.repositoryId || null,
+          // Which checkout `docker compose up` was actually run from — a compose stack is not
+          // guaranteed to be shared across a repository's worktrees (see the rootId comment in
+          // discovery.mjs's collectGitForComposeProjects), so it routes into the same root-grouping
+          // every other member uses instead of always defaulting to the main checkout.
+          rootId: gitInfo?.rootId || null,
           // "manual" when settings.composeProjects[name].repoPath was set and used, "auto" when
           // resolveIdentity instead ran against the working_dir label from `docker ps`, null when
           // neither resolved (e.g. a compose project with no git repo at all).
@@ -196,6 +201,18 @@ function groupByContainer(instances) {
 function buildRepositories({ projects, composeProjects, unmatchedInstances }) {
   const byRepository = new Map();
 
+  // A worktree's project-level `name` is commonly its branch or directory name (e.g.
+  // "localhoster-metadata-suggestions"), not the repository's real name — only the main (non-
+  // worktree) checkout's name is canonical. Tracks name candidates per repository, tagged by
+  // whether they came from a worktree, so the repository-level name can prefer a main-checkout
+  // name and only fall back to a worktree's when no main checkout is present at all.
+  const nameCandidates = new Map();
+  const noteName = (repositoryId, name, isWorktree) => {
+    if (!name) return;
+    if (!nameCandidates.has(repositoryId)) nameCandidates.set(repositoryId, []);
+    nameCandidates.get(repositoryId).push({ name, isWorktree });
+  };
+
   const ensure = (repositoryId, source) => {
     if (!byRepository.has(repositoryId)) {
       byRepository.set(repositoryId, {
@@ -206,21 +223,47 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances }) {
         providerUrl: providerUrlForRepositoryId(repositoryId),
         name: source.name,
         favorite: false,
-        git: null,
         composeGroups: [],
+        // Flat union of every root's members, kept for consumers that only ever needed "every
+        // member of this repository" and don't care which checkout it runs from (favorite/hide
+        // fan-out, departed-member tracking). `roots` below is the grouped view the card renders.
         members: [],
+        // One entry per checkout (main + every worktree) this repository has an active member or
+        // git identity for. The main checkout (isWorktree: false) is not guaranteed to exist here
+        // if only a worktree is currently running — the portal renders its section as empty rather
+        // than this array being padded with a placeholder.
+        roots: [],
       });
     }
     return byRepository.get(repositoryId);
+  };
+
+  // rootId is per-checkout even though repositoryId is shared across a repo's worktrees — this is
+  // what lets a worktree's branch stay scoped to its own section instead of leaking onto the
+  // repository-level badge (see the plan doc's "Worktree/Root Hierarchy" section).
+  const ensureRoot = (entry, rootId, git, projectRoot) => {
+    let root = entry.roots.find((candidate) => candidate.rootId === rootId);
+    if (!root) {
+      root = { rootId, isWorktree: Boolean(git?.isWorktree), git: git || null, projectRoot: projectRoot || null, members: [], composeGroups: [] };
+      entry.roots.push(root);
+    } else {
+      if (!root.git && git) root.git = git;
+      if (!root.projectRoot && projectRoot) root.projectRoot = projectRoot;
+    }
+    return root;
   };
 
   for (const project of projects) {
     if (!project.repositoryId) continue;
     const entry = ensure(project.repositoryId, project);
     entry.favorite = entry.favorite || project.favorite === true;
-    entry.git = entry.git || project.git || null;
+    const rootId = project.rootId || `unresolved:${project.repositoryId}`;
+    const root = ensureRoot(entry, rootId, project.git, project.projectRoot);
+    noteName(project.repositoryId, project.name, root.isWorktree);
     for (const instance of project.instances) {
-      entry.members.push(toMember(instance, project.identity));
+      const member = toMember(instance, project.identity);
+      entry.members.push(member);
+      root.members.push(member);
     }
   }
 
@@ -228,32 +271,61 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances }) {
     if (!composeProject.repositoryId) continue;
     const entry = ensure(composeProject.repositoryId, composeProject);
     entry.favorite = entry.favorite || composeProject.favorite === true;
-    entry.git = entry.git || composeProject.git || null;
     // A Compose stack is one deploy unit — `docker compose down` stops every container at once —
     // so it stays a named sub-group rather than flattening 11 Supabase containers into the member
     // list ahead of the single dev server the user actually cares about.
     // Carries the whole compose-project record (plus its own aggregate) so the portal renders the
     // sub-group with the same card it used when this was a top-level entry.
-    entry.composeGroups.push({
-      ...composeProject,
-      cpuPercentOfHost: sumCpuPercentOfHost(composeProject.instances),
-    });
+    const group = { ...composeProject, cpuPercentOfHost: sumCpuPercentOfHost(composeProject.instances) };
+    entry.composeGroups.push(group);
+    // Routes into the same checkout its containers actually run from (see the rootId comment
+    // above) when resolvable; falls back to the main-checkout slot for the common case where a
+    // compose stack's root could not be determined at all (no git-backed working_dir found).
+    const rootId = composeProject.rootId || `unresolved:${composeProject.repositoryId}`;
+    const root = ensureRoot(entry, rootId, composeProject.git, composeProject.projectRoot);
+    root.composeGroups.push(group);
   }
 
   for (const instance of unmatchedInstances) {
     const repositoryId = instance.project?.repositoryId;
     if (!repositoryId) continue;
-    const entry = ensure(repositoryId, {
-      name: inferredName(instance.project.identity, instance.project.projectRoot),
-    });
-    entry.git = entry.git || instance.project.git || null;
-    entry.members.push(toMember(instance, instance.project.identity));
+    const name = inferredName(instance.project.identity, instance.project.projectRoot);
+    const entry = ensure(repositoryId, { name });
+    const rootId = instance.project.rootId || `unresolved:${repositoryId}`;
+    const root = ensureRoot(entry, rootId, instance.project.git, instance.project.projectRoot);
+    noteName(repositoryId, name, root.isWorktree);
+    const member = toMember(instance, instance.project.identity);
+    entry.members.push(member);
+    root.members.push(member);
   }
 
   for (const entry of byRepository.values()) {
     entry.members = collapseByPid(entry.members);
-    entry.duplicateGroups = findStaleDuplicates(entry.members);
     entry.members.sort(compareMembers);
+    // Duplicate-listener detection runs per checkout, not repository-wide: a repository legitimately
+    // runs the same app shape on two different ports when it is open in two worktrees at once (each
+    // an independent, intentional checkout) — that is not the stale-leftover-process case this warns
+    // about, which is two processes serving the same shape from the SAME checkout.
+    entry.duplicateGroups = [];
+    for (const root of entry.roots) {
+      root.members = collapseByPid(root.members);
+      entry.duplicateGroups.push(...findStaleDuplicates(root.members));
+      root.members.sort(compareMembers);
+      root.composeGroups.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    // Main checkout first (even if empty — the portal always renders its section), then worktrees
+    // alphabetically by branch so the order is stable across polls.
+    entry.roots.sort((a, b) => {
+      if (a.isWorktree !== b.isWorktree) return a.isWorktree ? 1 : -1;
+      return (a.git?.branch || "").localeCompare(b.git?.branch || "");
+    });
+    // A main-checkout name is canonical (a worktree's name is commonly its branch/dir name, not the
+    // repository's real name); only fall back to a worktree's name when no main-checkout name was
+    // ever seen — e.g. only a worktree is currently running.
+    const candidates = nameCandidates.get(entry.repositoryId) || [];
+    const mainName = candidates.find((c) => !c.isWorktree)?.name;
+    if (mainName) entry.name = mainName;
+    else if (candidates.length) entry.name = candidates[0].name;
     entry.composeGroups.sort((a, b) => a.name.localeCompare(b.name));
     // Every member counts toward the aggregate today. Tool processes that resolve to a repository
     // only by inherited working directory (a tunnel, a stray `npx`) arguably should not — their CPU
@@ -346,6 +418,9 @@ function toMember(instance, projectIdentity) {
   return {
     kind: instance.docker ? "container" : "listener",
     projectIdentity,
+    // Which checkout this member belongs to, so the portal can route a departed (process-gone)
+    // member back into the same root section it came from instead of only the main one.
+    rootId: instance.project?.rootId ?? null,
     // Whether this port is something a user opens (it answered with a page title) or infrastructure
     // behind one. Drives which members get a permanent, always-visible slot on the card.
     entrypoint: Boolean(instance.title),
@@ -446,9 +521,15 @@ function groupByIdentityShape(instances) {
 // No title means there's nothing reliable to compare, so an untitled instance never counts as a
 // duplicate of anything else — each gets its own unique key instead of silently grouping under a
 // shared blank title.
+//
+// rootId is part of the key because relativeCwd is root-relative, not root-identifying: a repo's
+// top-level app reports relativeCwd "." from its main checkout AND from every worktree alike, so
+// without rootId two genuinely different checkouts (each an intentional, separate running instance)
+// collapsed into one "duplicate listener" shape group — the second one silently vanished as
+// duplicatePorts metadata instead of becoming its own project/root.
 function instanceShapeKey(instance) {
   if (!instance.title) return `untitled:${instance.key}`;
-  return `${instance.title}::${instance.matchSignature?.relativeCwd ?? ""}`;
+  return `${instance.title}::${instance.matchSignature?.relativeCwd ?? ""}::${instance.project?.rootId ?? ""}`;
 }
 
 function ensureProject(map, identity, settings, instance) {

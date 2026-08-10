@@ -1,7 +1,7 @@
 ---
 id: localhoster-metadata-suggestions
 priority: high
-next_action: Manually verify in a real browser (suggestions direct-add UX, worktree git-badge fix) and against a real local app (HTTPS self-signed, authenticated-page) before closing — no Chrome automation was available this session
+next_action: Manually verify the suggestions dropdown redesign in a real browser (mount/toggle interaction, checkmark indicator, capture-on-click) — no Chrome automation was available this session. Separately, implement the worktree/root hierarchy (see "Worktree/Root Hierarchy" section) — still unstarted.
 blocked_by: []
 depends_on:
   - localhoster-final
@@ -50,6 +50,147 @@ routes as suggestions, never as automatic quick links.
 No dependency. This plan does same-origin HTTP metadata discovery and touches no repository
 identity or Git-root resolution, so it is unaffected by `canonical-repository-identity-plan-v2` and
 can ship before or after it. Listed as `related` only for sibling-plan awareness.
+
+## Worktree/Root Hierarchy (new scope, added after user UI feedback)
+
+Surfaced from real usage: running `roborepo web` from a worktree makes the worktree's branch name
+the repository card's title, because `buildRepositories()` (`modules/localhoster/snapshot.mjs:196`)
+picks one arbitrary member's `git` for the whole repository-level badge and flattens every member
+from every root (main checkout and every worktree) into one `entry.members` list with no grouping
+by root. There is no visual signal today for which member belongs to which checkout, and the
+canonical (main, non-worktree) checkout has no special standing — whichever root's listener started
+first, or was discovered first, wins the title.
+
+### Current data model (confirmed, not proposed)
+
+Every `member.instance.project` already carries what a root-grouped hierarchy needs — this is a
+grouping and rendering gap, not a missing-data problem:
+
+| Field | Source | Meaning |
+| --- | --- | --- |
+| `repositoryId` | `modules/repositories/identity.mjs` | Canonical, shared across every worktree of one repo |
+| `rootId` | `modules/repositories/identity.mjs` (`rootId()`) | One per checkout path; distinct per worktree even though `repositoryId` is shared |
+| `project.git.isWorktree` | `modules/repositories/identity.mjs` (`commonDir !== gitDir`) | `false` for the main/primary checkout, `true` for every linked worktree |
+| `project.git.branch` | `modules/localhoster/git.mjs` | Per-root, already correct today |
+| `project.git.ahead` / `.behind` | `modules/localhoster/git.mjs:74` (`collectGit` → `branchFact`) | Per-root, gated on the branch having a tracked upstream; `null` when untracked, never a stale repo-level aggregate |
+
+### Target hierarchy (agreed with user)
+
+```
+Repository (repositoryId)                — canonical name + GitHub link, never depends on which root is running
+├─ Main worktree (isWorktree: false)      — always shown as its own section, even with no active listener
+│   ├─ branch name, ahead/behind
+│   └─ members (this root's listeners only)
+└─ Additional worktrees[] (isWorktree: true, one section per rootId)
+    ├─ worktree name (title), branch name, ahead/behind
+    └─ members (this root's listeners only)
+```
+
+Resolved open question: if the main checkout has no running listener (only a feature worktree is
+active), the repository header still shows only the canonical name + GitHub link — no URL promoted
+into the header from a running worktree. The main-worktree section renders with no members/URL; the
+active worktree gets its own full section below with its own URL. Canonical identity never depends
+on what happens to be running.
+
+### Scope
+
+This needs two layers, in order:
+
+1. **Server**: `buildRepositories()` groups `entry.members` by `rootId` into a new intermediate
+   level (e.g. `entry.roots[]`, each `{ rootId, isWorktree, git, members[] }`), instead of one flat
+   `entry.members` array. `entry.git` (today: one arbitrary root's git, used for the whole
+   repository) is replaced by per-root git on each `roots[]` entry; the repository-level `name`/
+   `providerUrl` stay as they are today (already root-independent). Existing consumers of
+   `entry.members`/`entry.git` (`portal/localhoster/templates.js`, and this session's `memberProject`
+   git-badge-suppression fix in `modules/localhoster/snapshot.mjs`) need updating for the new shape —
+   the git-badge-suppression comparison this session added becomes unnecessary once each root
+   renders its own section with its own git context; that per-member suppression logic can likely be
+   deleted rather than kept alongside the new grouping.
+2. **Portal**: `repositoryCard()` (`templates.js:285`) renders a main-worktree section followed by an
+   additional-worktrees list, each using the existing member/instance card for its own members,
+   rather than one flat `[data-slot=members]` list.
+
+Not yet scoped: exact visual treatment (font sizing, collapsible sections per your sketch), whether
+compose groups need their own root association, and whether this touches
+`docs/plans/backlog/portal-repository-home-and-detail.md`'s repository-first IA. That plan's
+`repositoryDetailPayload()` already exposes a `localRoots[]` concept
+(`modules/repositories/summary.mjs:45`), but only `{ kind, firstSeenAt, lastSeenAt }` — no `rootId`,
+branch, git, or members. Same underlying concept (multiple roots per repository), not directly
+reusable data; check before building a second parallel grouping, but expect to extend that shape
+rather than import it as-is.
+
+## Suggestions UX Redesign (built, not yet browser-verified)
+
+User feedback on the shipped direct-add flow: the "add" step's premise is unclear when discovery is
+already live/re-run on every dialog open — nothing is persisted server-side from a suggestions call,
+so why ask the user to explicitly promote a route into `app.links` at all, rather than just showing
+discovered routes as directly-clickable links and capturing one into `app.links` automatically the
+first time it's actually used?
+
+**Built.** Replaced the "Suggested routes" three-dot-menu entry + modal dialog with a standalone
+`<portal-menu-button>` (`portal/shared/menu-button.js` — existing shared trigger+popover component,
+not a new one) mounted into a reserved `[data-slot=routes-trigger]` slot next to the three-dot menu
+(`index.html`'s `tpl-card`; not present on `tpl-compose-project-card` — "Suggested routes" was
+already instance-cards-only before this session, unchanged). Opening it shows discovered routes as
+plain clickable `<a>` rows (`tpl-route-link-row`), no dedicated "Add" button, no dialog. Clicking an
+unsaved link both opens it (default anchor behavior) and captures it into `app.links` via the
+existing `updateLinks` mutation (`captureRouteLink` in `app.js`, evolved from the direct-add flow's
+`addSuggestedLink`) — a route becomes a permanent quick link only once actually used, never from
+merely opening the dropdown. `suggestions-view.js` changed from a dialog controller
+(`createSuggestionsView`) to a dropdown-content builder (`buildRoutesDropdown`).
+
+Resolved with user:
+- **Capture trigger**: only fire the `updateLinks` mutation if the path is not already in
+  `app.links` — check first, skip the write entirely for an already-saved link, so re-clicking a
+  saved link is a pure navigation with no mutation traffic.
+- **Dropdown contents**: show the full discovered set every time (not shrinking as routes get
+  saved), with a visual indicator (checkmark/dim) on entries already present in `app.links` — a
+  stable, predictable view rather than one whose contents change as a side effect of use.
+- **Auth-path safeguard**: the existing `AUTH_LOOKING_SEGMENTS` filter (excludes admin/login-looking
+  paths unless sitemap/OpenAPI evidence overrides it) is the only gate. No extra confirm step for
+  admin-looking routes that already passed that filter — consistent one-click behavior for every
+  route the dropdown shows.
+
+Verified: the underlying `updateLinks` mutation (`captureRouteLink`'s exact call shape — revision,
+projectIdentity, appId, full links array) was exercised via `curl` against a live running portal,
+confirmed it persists correctly and that `isRouteSaved`'s "already in `app.links`" check would
+correctly recognize a just-saved path. `node --check` on every touched file, and each served `.js`
+file parsed with `node --input-type=module --check` against its actual served bytes. **Not
+verified**: the dropdown's visual rendering, the menu-button mount/toggle interaction, and the
+checkmark indicator have never been seen in a browser — no Chrome automation was available this
+session, same caveat as the rest of this plan's UI work.
+
+## OpenAPI Discovery: Generate From The Route Registry Instead Of Hand-Writing (done for this portal)
+
+User question: is OpenAPI/Swagger still the right way to discover an app's API routes, and could the
+route-table registry (`scripts/cli/portal-router.mjs`, built earlier this session) answer this
+directly instead? Answer: only for *this portal itself* — `API_ROUTE_TABLES` is in-process JS data,
+invisible to `discoverMetadataSuggestions`'s same-origin HTTP-only discovery of *other* apps (which
+may be a different process, language, or machine on loopback). For arbitrary other apps, OpenAPI/
+Swagger convention-path discovery remains the only non-invasive HTTP-only option — kept as-is.
+
+For this portal specifically, `buildOpenApiDocument()` (`portal-router.mjs`) now generates a real
+minimal-but-valid OpenAPI document (`paths` + `methods` only, no schemas — nothing in the registry
+has types to generate schemas from) straight from `API_ROUTE_TABLES`, served at `/openapi.json`
+(first entry in `metadata.mjs`'s `CONVENTIONAL_OPENAPI_PATHS` guess list, so existing discovery finds
+it with no changes). Same drift-free guarantee as `/manifest.json`/`/sitemap.xml`: a route added to
+any table appears here on the next request. Verified live: 35 real paths generated and correctly
+picked up as `source: "openapi"` suggestions.
+
+## All-Sources Test Visibility (done, with one caveat)
+
+User asked to see all 4 metadata sources (manifest, sitemap, robots, openapi) rendering at once for
+UI testing. Per-source unit test coverage already existed and is independent
+(`scripts/test/localhoster-metadata-check.mjs`'s manifest/robots/sitemap/openapi blocks can be
+commented out individually without affecting the others). Live/end-to-end visibility: openapi and
+sitemap now both surface distinctly (verified: 35 openapi + 4 sitemap suggestions in one call).
+Manifest could not be made to surface as a 5th distinct source without either pointing `start_url` at
+a fake, non-real path (rejected — would look broken if clicked) or a real page not already in the
+sitemap (none exist, since `PAGES` — this portal's real page list — is also its sitemap source).
+Manifest colliding with sitemap here is dedup working correctly, not a bug: to see it in isolation,
+temporarily comment out the `/sitemap.xml` branch in `portal-routes-metadata.mjs`. Robots never
+surfaces as a *visually distinct* source by design — it only re-declares sitemap URLs, so its
+contribution is definitionally the same paths sitemap already found.
 
 ## Goals
 

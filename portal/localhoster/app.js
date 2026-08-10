@@ -4,15 +4,12 @@ import * as state from "./state.js";
 import * as tmpl from "./templates.js";
 import * as fields from "./form-fields.js";
 import { createHistoryView } from "./history-view.js";
-import { createSuggestionsView } from "./suggestions-view.js";
+import { buildRoutesDropdown } from "./suggestions-view.js";
+import "/portal/shared/menu-button.js";
 
 // A stale opaque key (the app moved ports since this render) resolves by reloading the snapshot
 // rather than surfacing an error.
 const historyView = createHistoryView({ onStale: () => load({ force: true }) });
-const suggestionsView = createSuggestionsView({
-  onStale: () => load({ force: true }),
-  addSuggestion: (project, instance, suggestion) => addSuggestedLink(project, instance, suggestion),
-});
 
 // Built once and reused across every render/reconcile — the Active apps header holds this same
 // node for the page's lifetime so refresh/settings listeners and live spinner state never get
@@ -389,7 +386,7 @@ function cardActions() {
     onToggleMenu: toggleActionMenu,
     onCloseMenus: closeActionMenus,
     onHistory: (project, instance) => historyView.open(project, instance),
-    onSuggestions: (project, instance) => suggestionsView.open(project, instance),
+    onMountRoutesTrigger: mountRoutesTrigger,
   };
 }
 
@@ -476,7 +473,7 @@ function composeProjectActions() {
     onToggleMenu: toggleActionMenu,
     onCloseMenus: closeActionMenus,
     onHistory: (project, instance) => historyView.open(project, instance),
-    onSuggestions: (project, instance) => suggestionsView.open(project, instance),
+    onMountRoutesTrigger: mountRoutesTrigger,
   };
 }
 
@@ -518,15 +515,47 @@ function openAddLinkDialog(project, instance) {
   openLinkDialog(project, instance);
 }
 
-// Adds one suggestion directly to the app's saved links, no free-text dialog detour — a suggestion
-// is already a known-good, server-validated path, so it does not need the hand-typed-link form's
-// free-text entry. updateLinks still runs its own path validation (normalizeRoutePath) and revision-
-// conflict check server-side; a 409 or validation error propagates back to the calling row via the
-// thrown error, same contract mutateDialog relies on for the hand-typed-link form.
-async function addSuggestedLink(project, instance, suggestion) {
+// Mounts a portal-menu-button (portal/shared/menu-button.js) into the card's reserved
+// routes-trigger slot (see index.html). Panel content is fetched live, so it is built once on
+// first open rather than for every card on every render — same lazy-fetch discipline
+// historyView uses, just per-card now instead of one shared dialog.
+function mountRoutesTrigger(slotNode, project, instance) {
+  const button = document.createElement("portal-menu-button");
+  button.label = "Routes";
+  let loaded = false;
+  const originalToggle = button.toggle.bind(button);
+  button.toggle = async () => {
+    if (!loaded) {
+      loaded = true;
+      button.panelContent = await buildRoutesDropdown(project, instance, {
+        onStale: () => load({ force: true }),
+        captureLink: captureRouteLink,
+        isSaved: isRouteSaved,
+      });
+    }
+    originalToggle();
+  };
+  slotNode.replaceWith(button);
+}
+
+function isRouteSaved(instance, path) {
+  const appId = instance.app?.id || "web";
+  const projectIdentity = instance.project?.identity;
+  const links = state.currentLinks(lastSnapshot, projectIdentity, appId);
+  return links.some((link) => link.path === path);
+}
+
+// Captures one discovered route into the app's saved links — no free-text dialog detour, since a
+// discovered route is already a known-good, server-validated path. Skips the mutation entirely if
+// the path is already saved (checked by the caller via isRouteSaved before this ever runs, and
+// re-checked here since the dropdown's list is built once per open and could go stale if the user
+// edits links in another tab mid-session). updateLinks still runs its own path validation
+// (normalizeRoutePath) and revision-conflict check server-side.
+async function captureRouteLink(project, instance, suggestion) {
   const appId = instance.app?.id || "web";
   const projectIdentity = project.identity || instance.project?.identity;
   const links = state.currentLinks(lastSnapshot, projectIdentity, appId);
+  if (links.some((link) => link.path === suggestion.path)) return;
   const result = await api.updateLinks({
     revision: lastSnapshot.settingsRevision,
     projectIdentity,

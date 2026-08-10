@@ -1149,14 +1149,14 @@ function wireCardActions(node, project, instance, actions) {
       actions.onHistory(project, instance);
     });
   }
-  const suggestions = node.querySelector("[data-action=suggestions]");
-  // Same key requirement as history: suggestions are fetched live against the app's current origin.
-  if (!instance.opaqueKey || !actions.onSuggestions) suggestions.hidden = true;
-  else {
-    suggestions.addEventListener("click", () => {
-      actions.onCloseMenus();
-      actions.onSuggestions(project, instance);
-    });
+  // Discovered-routes trigger lives outside the three-dot menu (see index.html's routes-trigger
+  // slot comment) — mounting a live widget is app.js's job (it owns the fetch/mutation calls this
+  // needs), templates.js only reveals the reserved slot and hands off. Same key requirement as
+  // history: suggestions are fetched live against the app's current origin.
+  const routesTrigger = node.querySelector("[data-slot=routes-trigger]");
+  if (routesTrigger && instance.opaqueKey && actions.onMountRoutesTrigger) {
+    routesTrigger.hidden = false;
+    actions.onMountRoutesTrigger(routesTrigger, project, instance);
   }
   node.querySelector("[data-action=associate]").addEventListener("click", () => {
     actions.onCloseMenus();

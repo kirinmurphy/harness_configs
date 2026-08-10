@@ -185,19 +185,6 @@
       </div>
     </dialog>
 
-    <dialog id="suggestions-dialog" aria-labelledby="suggestions-dialog-title">
-      <div class="modal-head">
-        <h2 id="suggestions-dialog-title">Suggested routes</h2>
-        <portal-close-button data-close aria-label="Close"></portal-close-button>
-      </div>
-      <div class="modal-body">
-        <p class="history-subject" id="suggestions-subject"></p>
-        <p class="no-links">Discovered from this app's manifest, robots.txt, sitemap, and any
-          configured OpenAPI document. Nothing is added as a quick link automatically.</p>
-        <div class="history-list suggestions-body" id="suggestions-body"></div>
-      </div>
-    </dialog>
-
     <!-- Instance grouping & toolbar -->
     <template id="tpl-group">
       <section class="instance-group">
@@ -333,6 +320,12 @@
             </div>
             <div class="card-git-row" data-slot="git-row"></div>
           </div>
+          <!-- Discovered-routes dropdown lives outside the three-dot menu so browsing suggestions
+               is its own single click, not a menu-open-then-select detour. Mounted with a
+               portal-menu-button (portal/shared/menu-button.js) by app.js, since its content is
+               fetched live and can't be pre-authored as static markup — this slot just reserves
+               the position. Hidden until wiring confirms the card has an opaque key. -->
+          <span data-slot="routes-trigger" hidden></span>
           <!-- Ships hidden; wiring reveals it only once the card is known to have a usable action
                (see revealActionMenuIfUsable). A menu that renders by default and is retracted later
                shows a lying trigger the moment a call site is missed. -->
@@ -353,7 +346,6 @@
               <button type="button" data-action="link">Add link</button>
               <button type="button" data-action="edit">Edit links</button>
               <button type="button" data-action="history">View history</button>
-              <button type="button" data-action="suggestions">Suggested routes</button>
               <button type="button" data-action="associate">
                 Change association
               </button>
@@ -644,15 +636,18 @@
         <span class="history-detail" data-slot="detail"></span>
       </div>
     </template>
-    <template id="tpl-suggestion-row">
-      <div class="suggestion-row">
-        <div class="history-row">
-          <span class="history-type" data-slot="source"></span>
-          <span class="history-detail" data-slot="path"></span>
-          <button type="button" data-action="add">Add as quick link</button>
-        </div>
-        <div class="item-err" data-slot="add-error"></div>
-      </div>
+    <!-- One discovered route in the routes-trigger dropdown (portal-menu-button's panel, wired in
+         app.js). A plain link, not a form control: clicking it opens the route AND — the first time
+         only, see wireRouteLink in app.js — captures it into the app's saved quick links. The
+         checkmark is a static indicator, not a toggle; there is no "remove" affordance here, that
+         still lives in "Edit links" for the same reason a browser bookmarks bar isn't managed from
+         its own autocomplete dropdown. -->
+    <template id="tpl-route-link-row">
+      <a class="route-link-row" data-slot="href" target="_blank" rel="noreferrer">
+        <span class="history-type" data-slot="source"></span>
+        <span class="history-detail" data-slot="path"></span>
+        <portal-icon name="check" width="12" height="12" data-slot="saved-check" hidden></portal-icon>
+      </a>
     </template>
     <!-- Settings dialog: link editor rows + settings sections -->
     <template id="tpl-link-empty">

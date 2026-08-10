@@ -226,7 +226,7 @@ function route(req, res, handlers, mutationToken) {
   }
 
   if (dispatchRoutes(API_ROUTE_TABLES, req, res, urlPath, qs, handlers)) return;
-  if (handleMetadataAsset(req, res, urlPath, { pages: PAGES, appName: APP_NAME })) return;
+  if (handleMetadataAsset(req, res, urlPath, { pages: PAGES, appName: APP_NAME, apiRouteTables: API_ROUTE_TABLES })) return;
   if (handlePortalPage(req, res, urlPath, mutationToken)) return;
   if (handlePortalAsset(req, res, urlPath)) return;
   if (handleDocsAsset(req, res, urlPath)) return;

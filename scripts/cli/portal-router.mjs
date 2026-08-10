@@ -38,6 +38,26 @@ export function validateRouteTables(tables) {
   }
 }
 
+// Generates a minimal-but-valid OpenAPI document straight from the route tables — the "future
+// OpenAPI doc" flagged as a follow-up when the registry was built. No hand-maintained doc to drift:
+// a route added to any table shows up here on the next request, same guarantee /manifest.json and
+// /sitemap.xml already have from PAGES. Deliberately minimal (paths + methods only, no
+// request/response schemas — nothing here has types to generate them from) since the only consumer
+// today is metadata.mjs's discoverOpenApiPaths, which only reads Object.keys(doc.paths).
+export function buildOpenApiDocument(tables, { title, version = "0.0.0" } = {}) {
+  const paths = {};
+  for (const table of tables) {
+    for (const route of table) {
+      // OpenAPI path templates use {param}, not portal-router's :param.
+      const openApiPath = "/" + route.segments.map((seg) => (seg.startsWith(":") ? `{${seg.slice(1)}}` : seg)).join("/");
+      const methods = paths[openApiPath] || (paths[openApiPath] = {});
+      const method = (route.method || "get").toLowerCase();
+      methods[method] = { responses: { 200: { description: "OK" } } };
+    }
+  }
+  return { openapi: "3.0.0", info: { title, version }, paths };
+}
+
 export function dispatchRoutes(tables, req, res, urlPath, qs, handlers) {
   const methodMatches = [];
   for (const table of tables) {

@@ -101,6 +101,17 @@ assert.equal(menugoats.providerUrl, "https://github.com/ryanem/menugoats");
 assert.equal(menugoats.composeGroups.length, 1);
 assert.equal(menugoats.composeGroups[0].containers.length, 11);
 assert.equal(menugoats.composeGroups[0].resolvedFrom, "auto-bind");
+
+// This stack carries no rootId — Phase 4 sets one only when bind mounts place it in exactly one
+// checkout — so it belongs to the repository, not to any checkout of it. It must NOT land in the
+// main root: that was the old fallback, and it told the user the main checkout owned infrastructure
+// the evidence never placed there.
+assert.equal(menugoats.sharedComposeGroups.length, 1);
+assert.equal(menugoats.sharedComposeGroups[0].name, "menugoats");
+assert.ok(menugoats.roots.every((root) => root.composeGroups.length === 0));
+// It stays in the repository-level list either way, so the card's member count and CPU aggregate
+// still see it. The two arrays are different views, not a partition.
+assert.ok(menugoats.composeGroups.includes(menugoats.sharedComposeGroups[0]));
 assert.equal(menugoats.members.length, 2);
 assert.ok(menugoats.members.some((member) => member.port === 3000));
 assert.ok(menugoats.members.some((member) => member.port === 4040));
@@ -311,5 +322,51 @@ const unmeasured = buildLocalhosterSnapshot({
   now: new Date("2026-08-02T00:00:00.000Z"),
 });
 assert.equal(unmeasured.repositories[0].cpuPercentOfHost, null);
+
+// The other half of the routing rule: a stack the mounts DID place in one checkout still renders
+// inside that checkout's section, not in the shared region. Without this the change could pass by
+// sending every stack to the repository level, which would be just as wrong in the other direction.
+const ownedRootId = "root-abc";
+const owned = buildLocalhosterSnapshot({
+  discovery: {
+    capabilities: { discovery: "supported" },
+    warnings: [],
+    composeProjectGit: new Map([
+      ["menugoats", {
+        git: null,
+        repositoryId: MENUGOATS,
+        resolvedFrom: "auto",
+        rootId: ownedRootId,
+        ownership: "owned",
+        ownershipEvidence: { kind: "bind-mount", checkoutPaths: ["/tmp/menugoats"] },
+      }],
+    ]),
+    instances: [
+      instance({
+        pid: 700,
+        port: 8100,
+        command: "com.docker.backend",
+        identity: "process:/tmp/y:0",
+        repositoryId: null,
+        docker: {
+          containerId: "owned0",
+          name: "menugoats_db",
+          composeService: "db",
+          composeProject: "menugoats",
+          image: "postgres",
+          state: "running",
+        },
+      }),
+    ],
+  },
+  settings: defaultSettings(),
+  now: new Date("2026-08-02T00:00:00.000Z"),
+});
+const ownedRepo = owned.repositories.find((entry) => entry.repositoryId === MENUGOATS);
+assert.equal(ownedRepo.sharedComposeGroups.length, 0);
+const ownedRoot = ownedRepo.roots.find((root) => root.rootId === ownedRootId);
+assert.ok(ownedRoot, "an owned stack creates the checkout section it was placed in");
+assert.equal(ownedRoot.composeGroups.length, 1);
+assert.equal(ownedRoot.composeGroups[0].ownership, "owned");
 
 console.log("localhoster repository merge check passed");

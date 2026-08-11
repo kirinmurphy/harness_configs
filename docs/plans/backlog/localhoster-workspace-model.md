@@ -434,16 +434,34 @@ new settings surface, and it keeps `validateComposeProjects`
       Also required persisting compose-resolved checkouts: `recordDiscoveredRepositories` only walked
       listener instances, so a repository whose only presence is a container stack was registered
       with no path, leaving its own stack unplaceable.
-- [ ] Extend `settings.composeProjects[].ownership` and its validation in
+- [x] Extend `settings.composeProjects[].ownership` and its validation in
       `modules/localhoster/settings-schema.mjs`.
-- [ ] In `buildRepositories` (`modules/localhoster/snapshot.mjs`), collect non-`owned` groups into a
+      `safeComposeOwnership` accepts `"shared"` or an absolute checkout path. Deliberately no manual
+      `"unverified"`: that value means "no evidence was found", which is an observation about the
+      scan rather than a claim the user is in a position to assert.
+- [x] In `buildRepositories` (`modules/localhoster/snapshot.mjs`), collect non-`owned` groups into a
       new `entry.sharedComposeGroups[]` instead of falling back to the main root.
-- [ ] Render the Shared Services region in `repositoryCard`
+      Keyed off a null `rootId`, which Phase 4 already sets only for `owned` — so the absence of a
+      root *is* the verdict, and the two cannot drift apart. `entry.composeGroups` still holds every
+      stack, so the card's member count and CPU aggregate are unchanged; the arrays are two views,
+      not a partition.
+- [x] Render the Shared Services region in `repositoryCard`
       (`portal/localhoster/templates.js`) plus its heading in `portal/localhoster/index.html` and
       `portal/localhoster/styles.css`.
-- [ ] Extend `REPO_PROVENANCE` with the ownership evidence vocabulary so the tooltip states how
+      No `index.html` change was needed: the Worktrees heading it mirrors is created in JS, not
+      declared in the template, so the new heading follows the same existing pattern and reuses
+      `.repository-worktrees-heading`. Shared stacks render as full (non-member) compose cards —
+      without an owning checkout there is no root section to inherit git context from.
+- [x] Extend `REPO_PROVENANCE` with the ownership evidence vocabulary so the tooltip states how
       placement was decided.
-- [ ] Update the member count so a shared stack is not counted as a member of any checkout.
+      Added as a sibling map (`OWNERSHIP_EVIDENCE`) rather than extending `REPO_PROVENANCE` itself:
+      the two answer different questions — which *repository* a stack resolved to, and which
+      *checkout* of it the stack was placed in — and share no keys. The identity line now shows both,
+      omitting placement when no classification ran.
+- [x] Update the member count so a shared stack is not counted as a member of any checkout.
+      Falls out of the routing change: a shared stack never enters a root's `composeGroups`, so the
+      per-checkout count in `buildRootSection` drops it automatically. It still counts at repository
+      level, where it is genuinely a member.
 
 ## Validation
 
@@ -476,13 +494,24 @@ new settings surface, and it keeps `validateComposeProjects`
       inside that checkout, unchanged. This is the overwhelmingly common case and must not move.
       Asserted in the classification tests, and confirmed on live containers: `menugoats` and
       `traefik_vps` each classify `owned`/`bind-mount` and stay inside their checkout.
-- [ ] `scripts/test/localhoster-repository-merge-check.mjs`: a shared group lands in
+- [x] `scripts/test/localhoster-repository-merge-check.mjs`: a shared group lands in
       `sharedComposeGroups` and in no root's `composeGroups`; member counts exclude it.
+      Covers both directions — a rootId-less stack must reach `sharedComposeGroups`, and a stack the
+      mounts *did* place must still reach its checkout's section. Mutation-tested: restoring the old
+      main-root fallback fails the first, routing every stack to shared fails the second.
 - [ ] Manual: a repository with a shared backing stack (configuration 1) renders that stack once at
       repository level, not under any worktree.
+      **Blocked on the fixture, not on the code.** `shared-compose-stack.sh up` wedged its container
+      in Docker Desktop 29.4.1: it stuck in `Created`, and `docker start`/`docker inspect`/`docker rm
+      -f` all hang on that container specifically while the daemon stays responsive to every other
+      container. Scratch repo, worktree and state file were cleaned up manually; the dead container
+      needs a Docker Desktop restart to clear, which was not done because the same daemon runs
+      `traefik_vps` (production, ports 80/443) and the Supabase stack. The routing logic this item
+      checks is covered by the unit assertions above; what stays unverified is the rendered output.
 - [ ] Manual: a repository with a per-checkout stack (configuration 2) still renders it under its
       own checkout.
-- [ ] All 11 `test:localhoster*` suites pass.
+- [x] All 11 `test:localhoster*` suites pass. All 16 (11 localhoster + 5 repositories) verified
+      green after this phase.
 
 ## Risks
 

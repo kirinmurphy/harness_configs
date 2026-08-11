@@ -55,6 +55,21 @@ const REPO_PROVENANCE = {
   "auto-bind": "repo inferred from mount path",
 };
 
+// How the stack's PLACEMENT was decided — which checkout it belongs to, a separate question from
+// REPO_PROVENANCE's "which repository". Keyed by ownershipEvidence.kind (classifyComposeOwnership).
+//
+// `shared` and `unverified` render in the same region but make different claims, and the wording
+// keeps them apart: "conflict"/"repo-root" are positive findings that the stack is not checkout-
+// specific, while "none" is an absence of evidence. Saying "shared" for a named-volumes-only stack
+// would assert something never observed.
+const OWNERSHIP_EVIDENCE = {
+  "bind-mount": "placed by bind mount into this checkout",
+  conflict: "mounts span several checkouts",
+  "repo-root": "mounts resolve to no checkout",
+  none: "no bind mounts to judge by",
+  manual: "placement set manually",
+};
+
 // One card per Docker Compose project, its containers listed as compact rows rather than each
 // getting its own top-level card — a Compose stack (app, db, proxy, mailhog...) is one logical
 // operation, not N unrelated ones. Each container is its own row (not each published port) since a
@@ -110,7 +125,15 @@ export function composeProjectCard(composeProject, actions, { isMember = false, 
     resources: aggregateCpu > 0 || aggregateMemoryKb > 0
       ? `${aggregateCpu.toFixed(1)}% of machine CPU · ${formatMemory(aggregateMemoryKb)} RSS`
       : "unavailable",
-    identity: `compose · ${REPO_PROVENANCE[composeProject.resolvedFrom] || "repo unresolved"}`,
+    // Two independent facts: which repository this stack resolved to, and which checkout of it the
+    // stack was placed in. The second only shows when the classifier actually ran — an older
+    // snapshot, or a stack it never reached, carries no evidence and says nothing rather than
+    // implying a verdict.
+    identity: [
+      "compose",
+      REPO_PROVENANCE[composeProject.resolvedFrom] || "repo unresolved",
+      OWNERSHIP_EVIDENCE[composeProject.ownershipEvidence?.kind],
+    ].filter(Boolean).join(" · "),
   });
   // Git context belongs to the repository, which already shows it once above; a member repeating it
   // is the same branch and dirty state a few lines apart.
@@ -282,6 +305,9 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
   // A Compose stack is ONE member that happens to contain containers, not N members. Counting its
   // containers made menugoats read "4 members" while expanding to a single entry — the count has to
   // match what the expanded card actually lists.
+  // Shared stacks count here, at repository level: they are genuinely members of this repository,
+  // just not of any one checkout of it. The count still matches what the expanded card lists,
+  // because the Shared Services region below lists them.
   const memberCount = repository.members.length + repository.composeGroups.length;
   // Member count only. The container count was a second number competing with it in the collapsed
   // view, and it answers a question you only have once the card is open — where the containers are
@@ -406,6 +432,27 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
       composeActions,
       instanceActions,
     }));
+  }
+
+  // Stacks that back the repository as a whole rather than any one checkout of it. Last, below every
+  // checkout, because that is the containment they describe: a Postgres shared by three worktrees is
+  // not a member of the first one, and putting it there was the bug this region fixes.
+  //
+  // Rendered as full (non-member) compose cards: without an owning checkout there is no root section
+  // to inherit git context from, so each stack keeps its own name, association control, and tooltip.
+  const sharedGroups = repository.sharedComposeGroups || [];
+  if (sharedGroups.length) {
+    const heading = document.createElement("div");
+    // Same class as the worktrees heading — both are peer dividers inside the roots list, and a
+    // second style would imply a difference in rank that does not exist.
+    heading.className = "repository-worktrees-heading";
+    heading.textContent = "Shared services";
+    rootsSlot.append(heading);
+    for (const group of sharedGroups) {
+      const card = composeProjectCard(group, composeActions, { repositoryName: repository.name });
+      card.classList.add("repository-shared-service");
+      rootsSlot.append(card);
+    }
   }
   return node;
 }

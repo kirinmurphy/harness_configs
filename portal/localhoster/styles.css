@@ -260,6 +260,18 @@ main {
   border-top: 1px solid var(--line);
   background: var(--raised);
 }
+/* A stack backing the repository as a whole, not any one checkout. Sits in the roots list under its
+ * own heading, so it needs the same horizontal rhythm as a .repository-root row rather than the
+ * inset a compose card carries when it is a member inside one. Separated by the same rule the root
+ * sections use, so the run of shared stacks reads as peer rows in the same list. */
+.repository-shared-service {
+  display: block;
+  font-size: var(--text-sm);
+  padding: 8px 16px;
+}
+.repository-shared-service:not(:last-child) {
+  border-bottom: 1px solid var(--line);
+}
 /* A worktree is its own <details>: name/branch/entrypoint stay visible once the repository card is
  * open, and only its member list hides behind its own chevron — expanding one worktree's members
  * never affects any sibling worktree. Same dimensions as the main row — no indent, no left rule,

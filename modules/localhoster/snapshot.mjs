@@ -234,6 +234,11 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances, repo
         name: source.name,
         favorite: false,
         composeGroups: [],
+        // Compose stacks that belong to the repository but to no single checkout of it — mounts
+        // spanning several checkouts, mounts resolving to none, or no bind mounts to judge by.
+        // Rendered once at repository level (see the Shared Services region in repositoryCard)
+        // rather than inside a checkout that does not own them.
+        sharedComposeGroups: [],
         // Flat union of every root's members, kept for consumers that only ever needed "every
         // member of this repository" and don't care which checkout it runs from (favorite/hide
         // fan-out, departed-member tracking). `roots` below is the grouped view the card renders.
@@ -288,11 +293,21 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances, repo
     // sub-group with the same card it used when this was a top-level entry.
     const group = { ...composeProject, cpuPercentOfHost: sumCpuPercentOfHost(composeProject.instances) };
     entry.composeGroups.push(group);
-    // Routes into the same checkout its containers actually run from (see the rootId comment
-    // above) when resolvable; falls back to the main-checkout slot for the common case where a
-    // compose stack's root could not be determined at all (no git-backed working_dir found).
-    const rootId = composeProject.rootId || `unresolved:${composeProject.repositoryId}`;
-    const root = ensureRoot(entry, rootId, composeProject.git, composeProject.projectRoot);
+    // Routes into the same checkout its containers actually run from (see the rootId comment above)
+    // when the mount evidence says exactly one checkout owns it.
+    //
+    // Anything else goes to the repository level instead of falling back to the main checkout. That
+    // fallback asserted something the evidence contradicts: a stack whose mounts land in two
+    // checkouts (`shared`), or in none of them (`repo-root`), or that has no bind mounts to read at
+    // all (`unverified`), is not the main checkout's — placing it there tells the user a worktree
+    // owns infrastructure that in fact backs several, and hides the sharing that is the whole point
+    // of classifying. Phase 4 sets rootId only for `owned`, so a null rootId here is the verdict,
+    // not missing data.
+    if (!composeProject.rootId) {
+      entry.sharedComposeGroups.push(group);
+      continue;
+    }
+    const root = ensureRoot(entry, composeProject.rootId, composeProject.git, composeProject.projectRoot);
     root.composeGroups.push(group);
   }
 
@@ -345,6 +360,7 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances, repo
     else if (mainName) entry.name = mainName;
     else if (candidates.length) entry.name = candidates[0].name;
     entry.composeGroups.sort((a, b) => a.name.localeCompare(b.name));
+    entry.sharedComposeGroups.sort((a, b) => a.name.localeCompare(b.name));
     // Every member counts toward the aggregate today. Tool processes that resolve to a repository
     // only by inherited working directory (a tunnel, a stray `npx`) arguably should not — their CPU
     // tracks their own traffic, not application load — but no field currently separates them from a

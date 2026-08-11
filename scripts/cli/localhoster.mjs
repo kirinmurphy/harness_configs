@@ -17,6 +17,7 @@ import {
 import { recordRepositoryDiscovery } from "./repositories.mjs";
 import { resolveProjectIdentity } from "../../modules/localhoster/identity.mjs";
 import { canonicalRepositoryId, rootId as computeRootId } from "../../modules/repositories/identity.mjs";
+import { loadRegistry } from "../../modules/repositories/index.mjs";
 
 const FRESHNESS_MS = 8000;
 const HISTORY_API_LIMIT = 200;
@@ -283,7 +284,26 @@ function scheduleRefresh() {
 }
 
 function buildSnapshot({ discovery, settings = loadSettings({ stateRoot }), refresh = { state: "idle", startedAt: null, error: null }, now = new Date() }) {
-  return buildLocalhosterSnapshot({ discovery, settings, refresh, now });
+  return buildLocalhosterSnapshot({ discovery, settings, refresh, now, repositoryNames: registryDisplayNames() });
+}
+
+// Canonical repository names from the registry, so a card is titled by its repository rather than by
+// whichever checkout happens to be running. Without this a repository whose only running checkout is
+// a worktree is titled with the worktree's branch/directory name.
+//
+// Best-effort in the same spirit as recordDiscoveredRepositories: an unreadable or corrupt registry
+// costs the canonical name and nothing else, so naming falls back to the running checkouts.
+function registryDisplayNames() {
+  try {
+    const registry = loadRegistry({ stateRoot });
+    const names = new Map();
+    for (const [id, record] of Object.entries(registry.repositories || {})) {
+      if (record.displayName) names.set(id, record.displayName);
+    }
+    return names;
+  } catch {
+    return new Map();
+  }
 }
 
 function withRefreshState(snapshot) {

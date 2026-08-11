@@ -8,6 +8,10 @@ export function buildLocalhosterSnapshot({
   settings = defaultSettings(),
   now = new Date(),
   refresh = { state: "idle", startedAt: null, error: null },
+  // repositoryId -> canonical display name, from the repository registry. Injected rather than read
+  // here so this stays a pure builder (the caller owns state access, as it already does for
+  // settings). Empty is fine: naming falls back to whatever the running checkouts report.
+  repositoryNames = new Map(),
 } = {}) {
   const activeByProject = new Map();
   const unmatchedInstances = [];
@@ -149,7 +153,7 @@ export function buildLocalhosterSnapshot({
     // Repository-keyed view over the same instances the three collections above hold. Built
     // alongside them during the migration (localhoster-repository-card-merge) so existing consumers
     // keep working while the portal moves over; the legacy three are removed once nothing reads them.
-    repositories: buildRepositories({ projects, composeProjects, unmatchedInstances }),
+    repositories: buildRepositories({ projects, composeProjects, unmatchedInstances, repositoryNames }),
     inactiveProjects: inactiveProjects.sort(compareProjects),
     hiddenCount,
     settings: settingsSummary(settings),
@@ -198,7 +202,7 @@ function groupByContainer(instances) {
 // Only a real repositoryId groups. `process:` identities resolve to null (canonicalRepositoryId
 // returns null for them — no repository exists to be a member of) and stay unmatched, as do
 // Compose projects whose repo never resolved.
-function buildRepositories({ projects, composeProjects, unmatchedInstances }) {
+function buildRepositories({ projects, composeProjects, unmatchedInstances, repositoryNames = new Map() }) {
   const byRepository = new Map();
 
   // A worktree's project-level `name` is commonly its branch or directory name (e.g.
@@ -322,9 +326,17 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances }) {
     // A main-checkout name is canonical (a worktree's name is commonly its branch/dir name, not the
     // repository's real name); only fall back to a worktree's name when no main-checkout name was
     // ever seen — e.g. only a worktree is currently running.
+    //
+    // The registry's name outranks both. It is the repository-level fact, recorded when the
+    // repository was first resolved and independent of which checkouts happen to be running now —
+    // which is exactly the case the candidate list cannot cover: when only a worktree is up there is
+    // no main-checkout candidate to prefer, and the card would otherwise be titled with the
+    // worktree's branch/directory name (e.g. "localhoster-metadata-suggestions" for roborepo).
     const candidates = nameCandidates.get(entry.repositoryId) || [];
+    const registryName = repositoryNames.get(entry.repositoryId);
     const mainName = candidates.find((c) => !c.isWorktree)?.name;
-    if (mainName) entry.name = mainName;
+    if (registryName) entry.name = registryName;
+    else if (mainName) entry.name = mainName;
     else if (candidates.length) entry.name = candidates[0].name;
     entry.composeGroups.sort((a, b) => a.name.localeCompare(b.name));
     // Every member counts toward the aggregate today. Tool processes that resolve to a repository

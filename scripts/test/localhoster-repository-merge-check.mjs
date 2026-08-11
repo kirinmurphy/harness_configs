@@ -212,6 +212,44 @@ assert.ok(featureRoot);
 // repository-level title regardless of discovery order.
 assert.equal(worktreeRepo.name, "menugoats");
 
+// When the ONLY running checkout is a worktree there is no main-checkout name to prefer, so the
+// candidate list cannot save the title on its own — it would fall back to the worktree's own name
+// ("feature-branch-name" here). The registry's canonical displayName is the repository-level fact
+// that covers this, and it outranks every candidate.
+const worktreeOnlySnapshot = buildLocalhosterSnapshot({
+  discovery: {
+    capabilities: { discovery: "supported" },
+    warnings: [],
+    composeProjectGit: new Map(),
+    instances: [
+      instance({ pid: 802, port: 3002, command: "node", identity: "path:feature-branch-name", repositoryId: MENUGOATS, status: 200, title: "feature-branch-name", rootId: "root-feature", git: featureGit }),
+    ],
+  },
+  settings: defaultSettings(),
+  now: new Date("2026-08-02T00:00:00.000Z"),
+  repositoryNames: new Map([[MENUGOATS, "menugoats"]]),
+});
+const worktreeOnlyRepo = worktreeOnlySnapshot.repositories.find((entry) => entry.repositoryId === MENUGOATS);
+assert.equal(worktreeOnlyRepo.name, "menugoats", "registry name titles the card when only a worktree runs");
+assert.equal(worktreeOnlyRepo.roots.length, 1);
+assert.equal(worktreeOnlyRepo.roots[0].isWorktree, true);
+
+// Without a registry name the builder still degrades to the old behavior rather than emptying the
+// title — the worktree's own name is wrong, but it is better than nothing.
+const unnamedSnapshot = buildLocalhosterSnapshot({
+  discovery: {
+    capabilities: { discovery: "supported" },
+    warnings: [],
+    composeProjectGit: new Map(),
+    instances: [
+      instance({ pid: 803, port: 3003, command: "node", identity: "roborepo:portal", repositoryId: MENUGOATS, status: 200, title: "feature-branch-name", rootId: "root-feature", git: featureGit }),
+    ],
+  },
+  settings: defaultSettings(),
+  now: new Date("2026-08-02T00:00:00.000Z"),
+});
+assert.ok(unnamedSnapshot.repositories.find((entry) => entry.repositoryId === MENUGOATS).name, "name is never empty");
+
 // Same-shape instances on two different worktrees are two intentional checkouts running the same
 // app, not stale leftover processes from one checkout — duplicate-listener detection must not fire
 // across roots. (It still fires WITHIN one root; see the multi-port collapse case below for that.)

@@ -647,16 +647,10 @@
       <div class="compose-container-port">
         <span class="port-health-badge" data-slot="health-badge"></span>
         <span class="compose-container-port-address">
+          <!-- No copy button beside it: a link is already copyable (right-click, or drag), and a
+               dedicated control for the same string doubled the row's width for no capability the
+               reader did not already have. -->
           <a class="compose-container-port-origin" data-slot="origin" target="_blank" rel="noreferrer"></a>
-          <!-- Labeled rather than icon-only: a bare copy glyph beside a link reads as ambiguous
-               (copy what — the link, the port, the row?). Default text color, not link color, so it
-               does not compete with the origin link it sits beside. The check icon is shown only in
-               the copied state; see .copy-affordance in styles.css. -->
-          <button type="button" class="compose-container-port-action copy-affordance" data-action="copy" aria-label="Copy URL">
-            <span class="copy-affordance-label">copy url</span>
-            <portal-icon name="copy" size="md" class="copy-icon-idle"></portal-icon>
-            <portal-icon name="check" size="md" class="copy-icon-done"></portal-icon>
-          </button>
           <span class="info-wrap" data-tip-html="template">
             <portal-info-icon aria-label="Show port details"></portal-info-icon>
             <template>

@@ -262,10 +262,6 @@ function composeContainerRow(container, actions) {
       warning.hidden = false;
       warning.textContent = instance.bind.warning;
     }
-    wireCopyAffordance(port.querySelector("[data-action=copy]"), {
-      getText: () => instance.origin || "",
-      hoverLabel: "copy url",
-    });
     const history = port.querySelector("[data-action=history]");
     if (!instance.opaqueKey || !actions?.onHistory) history.hidden = true;
     else history.addEventListener("click", () => actions.onHistory(null, instance));

@@ -705,13 +705,6 @@ dialog::backdrop {
 :root[data-theme="light"] .copy-affordance .copy-overlay {
   background: color-mix(in srgb, var(--bg) 55%, var(--panel));
 }
-/* Container port rows sit on the drawer surface, not the git band. */
-.compose-container-port-action .copy-overlay {
-  background: color-mix(in srgb, var(--ink) 5%, var(--panel));
-}
-:root[data-theme="light"] .compose-container-port-action .copy-overlay {
-  background: var(--bg);
-}
 .copy-affordance[data-copy-state="hover"] .copy-overlay,
 .copy-affordance[data-copy-state="copied"] .copy-overlay {
   display: flex;
@@ -768,22 +761,6 @@ dialog::backdrop {
 .copy-affordance[data-copy-state="copied"] .copy-icon-done {
   display: inline-flex;
   color: var(--ok);
-}
-/* Port rows: default text color, not link color — this label sits beside the origin link and must
- * not compete with it for "the thing to click". */
-.compose-container-port-action.copy-affordance {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  color: var(--dim);
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  cursor: pointer;
-}
-.compose-container-port-action.copy-affordance:hover {
-  color: var(--ink);
 }
 /* Docker/Compose badge, styled like the Git badge for a consistent title-row language. */
 .docker-badge {
@@ -1074,21 +1051,6 @@ dialog::backdrop {
 .compose-container-port .info-wrap portal-info-icon .info-icon {
   width: var(--icon-md);
   height: var(--icon-md);
-}
-/* An inline action, not a chrome-bearing button: no border, background, or fixed hit-box — the
- * icon is the control. Deliberately not .icon-button, whose 34px box dwarfs a compact port row. */
-.compose-container-port-action {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--dim);
-  cursor: pointer;
-  display: inline-grid;
-  place-items: center;
-}
-.compose-container-port-action:hover {
-  color: var(--accent);
-  background: none;
 }
 .compose-container-port-history {
   font-size: var(--text-2xs);

@@ -61,7 +61,7 @@ Two root causes were found and fixed along the way: `instanceShapeKey()` grouped
 three call sites passed, leaving every root's path `null`.
 
 Follow-on scope now tracked separately: container-to-checkout ownership, in
-`docs/plans/backlog/localhoster-container-checkout-ownership.md`. That plan supersedes the
+`docs/plans/backlog/localhoster-workspace-model.md`. That plan supersedes the
 "whether compose groups need their own root association" question left open below — the answer is
 that `working_dir` resolves the repository but must not decide the checkout.
 

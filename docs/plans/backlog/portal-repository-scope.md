@@ -1,12 +1,13 @@
 ---
 id: pljvmyh
 priority: high
-next_action: Add the global repository-source and local-root persistence model, then implement stable urlKey lookup and shared repository scope before migrating Plans and Tokens
+next_action: Add global repository-source settings and bounded source traversal (local-root persistence now lands in h4tqm2wz), then implement stable urlKey lookup and shared repository scope before migrating Plans and Tokens
 blocked_by: []
 depends_on:
   - canonical-repository-identity-plan-v2
 related:
   - jqi1dof
+  - h4tqm2wz
 reviewed_commit: 643f198bdc1091863bd27dbed8ffe748cf4e3b3f
 ---
 
@@ -21,6 +22,17 @@ RoboRepo should work with no repository setup when Localhost discovers a running
 This story also adds one shared browser repository scope for pages where selecting a repository creates a meaningful alternate view. Plans and Tokens replace their page-local repository filters with that scope. Agents accepts the scope but shows a repository-level configuration placeholder until its dedicated story lands. Localhost remains an operational repository list and does not filter down to one selected repository.
 
 The current `/` Agents route remains in place during this story. Scoped Agents links should use the stable `/config` alias so the follow-up homepage story can claim `/` without changing repository-scoped URLs.
+
+## Scope Handoff
+
+`h4tqm2wz` (Localhost Workspace Model) implements the Localhost half of this story's Phase 1 —
+persisting repositories and their checkout roots from runtime discovery, plus the private
+`rootId -> path` index in §2 — so the workspace model can be settled on the page where it is
+visible. It also adds a repository lifecycle (`active`/`idle`/`stale`/`deleted`) and soft delete,
+which this story specified only as "report stale without deleting canonical history".
+
+Treat those as delivered prerequisites rather than work to redo. What remains here is unchanged:
+user-configured repository sources, `urlKey`, shared scope, and the Plans/Tokens migration.
 
 ## Goals
 
@@ -128,6 +140,10 @@ Do not make Plans own these limits after migration. Move reusable repository wal
 
 ### 2. Private local-root path index
 
+**Delivered by `h4tqm2wz`.** The index below, its invariants, and the Localhost writer are built
+there. This section remains the specification both plans work from; configured-source refresh
+(§1) writes to the same index.
+
 Keep the registry's browser-safe identity model: registry records continue to reference opaque `rootId` values rather than absolute paths.
 
 Add a private local-root index owned by the repository subsystem:
@@ -155,6 +171,9 @@ The exact file/module shape is an implementation detail, but the following invar
 Registry and local-root updates must be serialized or committed atomically across Localhost discovery and configured-source refresh. Concurrent writers must merge by `repositoryId` and `rootId`, preserve all known roots and provenance entries, and apply visibility changes through an explicit conflict rule rather than last-writer-wins replacement. The persistence flow must write registry identity and private root mapping as one logical update, or recover to the previous complete state after a failed write. Add a concurrent-refresh regression test that exercises Localhost discovery and configured-source refresh updating the same repository before this state feeds Plans, Tokens, or Home.
 
 ### 3. Localhost as zero-configuration discovery
+
+**Delivered by `h4tqm2wz`.** The five-step flow below is implemented there, along with the
+lifecycle that decides when a remembered repository is stale rather than merely inactive.
 
 When Localhost resolves a running app to a repository and checkout root:
 
@@ -474,13 +493,24 @@ Separate shared canonical scope from legacy telemetry `repo` semantics and prese
 
 ### Phase 1 — Global repository source and local-root storage
 
+This story owns the configured-source half only. The local-root persistence half moved to
+`h4tqm2wz` (see Scope Handoff) and is listed separately below as a prerequisite to verify, not as
+work to schedule here.
+
 - [ ] Add versioned global repository-source settings with stable source IDs and explicit `repository` / `directory` kinds.
 - [ ] Extract/reuse bounded repository walking from Plan Docs under the repository domain.
-- [ ] Add the private `rootId -> absolute path` local-root index.
-- [ ] Add stale/missing-root detection without deleting canonical history.
-- [ ] Update Localhost discovery to persist resolved checkout roots.
-- [ ] Add repository-source refresh that records canonical repositories and local roots.
-- [ ] Keep normal browser repository payloads path-free.
+- [ ] Add repository-source refresh that records canonical repositories and local roots, writing to
+      the same local-root index `h4tqm2wz` establishes.
+
+Delivered by `h4tqm2wz` — confirm each is in place before starting the items above, rather than
+reimplementing:
+
+| Prerequisite | Where |
+| --- | --- |
+| Private `rootId -> absolute path` local-root index | `h4tqm2wz` Phase 1 |
+| Localhost discovery persists resolved checkout roots | `h4tqm2wz` Phase 1 |
+| Normal browser repository payloads stay path-free | `h4tqm2wz` Phase 1 |
+| Stale/missing-root detection without deleting canonical history | `h4tqm2wz` Phase 2, extended there into an explicit lifecycle with user-driven soft delete |
 
 ### Phase 2 — Migrate Plans repository discovery
 

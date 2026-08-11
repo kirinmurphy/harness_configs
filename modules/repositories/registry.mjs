@@ -151,6 +151,64 @@ export function registerLocalRoot(registry, id, { rootId, kind = "clone", now = 
   return false;
 }
 
+// Record where a rootId actually lives on disk (pljvmyh §2's private index). Separate from
+// registerLocalRoot because the two answer different questions — that one records THAT a checkout
+// exists under a repository, this one records WHERE — but callers that know the path should call
+// both, and recordRepositoryDiscovery does.
+//
+// Keyed by rootId alone: a rootId resolves to at most one current path. When a path moves, the
+// mapping is overwritten rather than appended, so the index can never offer two candidate
+// directories for one id.
+//
+// A rootId can legitimately change repositories — a directory that was one repo and became another
+// (one such rootId already exists in the live registry). That is a repointing, not a conflict:
+// repositoryId is overwritten alongside the path, and firstSeenAt is reset because it now dates a
+// different repository's occupancy of that directory.
+export function registerLocalRootPath(registry, id, { rootId, path, now = new Date().toISOString() }) {
+  if (!rootId || !path) return false;
+  requireRecord(registry, id, "register local root path");
+  if (!registry.localRootPaths) registry.localRootPaths = {};
+  const existing = registry.localRootPaths[rootId];
+  if (!existing) {
+    registry.localRootPaths[rootId] = { path, repositoryId: id, firstSeenAt: now, lastSeenAt: now };
+    return true;
+  }
+  if (existing.path !== path || existing.repositoryId !== id) {
+    // Repointed: the directory now resolves somewhere else, or to a different repository.
+    registry.localRootPaths[rootId] = { path, repositoryId: id, firstSeenAt: now, lastSeenAt: now };
+    return true;
+  }
+  // Unchanged — debounced exactly like registerLocalRoot so a steady-state poll writes nothing.
+  if (Date.parse(now) - Date.parse(existing.lastSeenAt) >= LAST_SEEN_DEBOUNCE_MS) {
+    existing.lastSeenAt = now;
+    return true;
+  }
+  return false;
+}
+
+// Resolve a rootId to its absolute path. Server-side only — never call this while building a
+// browser payload.
+export function localRootPath(registry, rootId) {
+  return registry.localRootPaths?.[rootId]?.path || null;
+}
+
+// Every known checkout path for a repository, as [{ rootId, path, kind }]. This is the set the
+// Compose classifier tests bind mounts against, and the set the card reads git from when nothing is
+// running. Roots with no recorded path are omitted: an entry with a null path cannot be tested or
+// read, so including it would only invite a null check at every call site.
+export function checkoutRootsFor(registry, id) {
+  const record = registry.repositories?.[id];
+  if (!record) return [];
+  const out = [];
+  for (const root of record.localRoots || []) {
+    const entry = registry.localRootPaths?.[root.rootId];
+    // Guard against a rootId that has since been repointed to a different repository.
+    if (!entry || entry.repositoryId !== id) continue;
+    out.push({ rootId: root.rootId, path: entry.path, kind: root.kind });
+  }
+  return out;
+}
+
 // Set enrollment for a domain. Idempotent — returns false when nothing changed.
 export function setEnrollment(registry, id, domain, { enabled, sourceId = null, now = new Date().toISOString() }) {
   const record = requireRecord(registry, id, "set enrollment");

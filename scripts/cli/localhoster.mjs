@@ -235,6 +235,11 @@ function recordDiscoveredRepositories(instances) {
         evidence: project.identityKind === "git" ? "git-remote" : "cwd-in-git-root",
         confidence: project.confidence || "medium",
         localRoot: project.rootId || null,
+        // The checkout this listener actually ran from. rootId is derived from exactly this path
+        // (withRepositoryFields in modules/localhoster/discovery.mjs), so the two always agree —
+        // recording the path alongside the id is what lets a repository be located when nothing is
+        // running. Server-side only; it never enters a browser payload.
+        localRootPath: project.projectRoot || null,
         stateRoot,
       });
     } catch {

@@ -10,6 +10,7 @@ import {
   upsertRepository,
   recordDiscovery,
   registerLocalRoot,
+  registerLocalRootPath,
   setEnrollment,
   hideRepository,
   planPlansEnrollment,
@@ -35,6 +36,7 @@ export function recordRepositoryDiscovery({
   confidence,
   localRoot = null,
   localRootKind = "clone",
+  localRootPath: rootPath = null,
   stateRoot = defaultStateRoot,
   fsApi = fs,
   now = new Date().toISOString(),
@@ -54,6 +56,10 @@ export function recordRepositoryDiscovery({
       let changed = false;
       if (recordDiscovery(registry, repositoryId, { source, evidence, confidence, now })) changed = true;
       if (localRoot && registerLocalRoot(registry, repositoryId, { rootId: localRoot, kind: localRootKind, now })) changed = true;
+      // Identity and path commit in this same mutate() — one updateRegistry call, one revision bump,
+      // one write. pljvmyh §2 requires them to land as a single logical update so a crash or a
+      // concurrent writer can never leave a rootId registered with no path or vice versa.
+      if (localRoot && rootPath && registerLocalRootPath(registry, repositoryId, { rootId: localRoot, path: rootPath, now })) changed = true;
       // upsert of a brand-new repository is itself a change even if discovery/root debounced.
       return changed || registry.repositories[repositoryId].createdAt === now;
     },

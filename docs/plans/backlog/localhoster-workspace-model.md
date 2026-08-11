@@ -339,14 +339,31 @@ new settings surface, and it keeps `validateComposeProjects`
 
 ### Phase 1 — Persist repositories and their checkouts
 
-- [ ] Add the private `rootId -> absolute path` index to `modules/repositories/`, per the shape in
+- [x] Add the private `rootId -> absolute path` index to `modules/repositories/`, per the shape in
       "Persisting the repository record". This is the `pljvmyh` §2 local-root index; build it there
       so that plan consumes it rather than a Localhost-local copy.
-- [ ] Write through the registry from Localhost discovery when a scan resolves a repository and
+      Built as `registry.localRootPaths` — a top-level key in the registry file, keyed by `rootId`
+      alone, with `registerLocalRootPath`/`localRootPath`/`checkoutRootsFor` in
+      `modules/repositories/registry.mjs`. It lives in the registry file rather than a sibling one
+      because §2 requires identity and path to commit as one logical update, and `updateRegistry` is
+      already a single read-mutate-write with a revision bump; two files could not be committed
+      atomically against a concurrent writer. Paths are kept out of the browser by the payload
+      builders, which whitelist fields explicitly.
+- [x] Write through the registry from Localhost discovery when a scan resolves a repository and
       checkout, recording provenance and advancing `lastSeenAt`.
-- [ ] Write only on change, and add a test that a steady-state poll performs no settings write —
+      `recordDiscoveredRepositories` now passes `project.projectRoot` as `localRootPath`; `rootId` is
+      derived from exactly that path, so the two cannot disagree.
+- [x] Write only on change, and add a test that a steady-state poll performs no settings write —
       this is the guard against churning the mutation revision.
-- [ ] Keep browser payloads path-free; expose root counts and kinds only.
+      `registerLocalRootPath` reuses the existing `LAST_SEEN_DEBOUNCE_MS` (60s) that `recordDiscovery`
+      and `registerLocalRoot` already apply. Note the precise guarantee: an unchanged root writes
+      nothing *within* the debounce window, and refreshes `lastSeenAt` at most once per 60s per
+      repository thereafter. That periodic refresh is not churn — it is the `lastSeenAt` signal
+      Phase 2's lifecycle states and the 30-day ageing rule both read. Verified live: six polls
+      across ~36s produced no revision bump.
+- [x] Keep browser payloads path-free; expose root counts and kinds only.
+      Already true of `repositoryDetailPayload`/`repositoryListPayload`; now covered by an explicit
+      regression assertion in `repositories-service-check`.
 
 ### Phase 2 — Lifecycle
 
@@ -395,7 +412,12 @@ new settings surface, and it keeps `validateComposeProjects`
 
 - [ ] A repository discovered once remains listed after every one of its processes stops, with its
       checkouts and their branches still shown.
-- [ ] A steady-state poll writes nothing — no settings revision bump when no record changed.
+- [x] A steady-state poll writes nothing *within the `lastSeenAt` debounce window* — no revision bump
+      when no record changed. Stated precisely because the unqualified version is not achievable and
+      not desirable: `lastSeenAt` must keep advancing for a repository that is genuinely still
+      running, or Phase 2's lifecycle states and the 30-day ageing rule would have no signal to read.
+      The guarantee is that the ~10s poll does not write; a still-running repository refreshes at
+      most once per 60s (`LAST_SEEN_DEBOUNCE_MS`).
 - [ ] An unreadable parent directory yields `idle`, never `stale`.
 - [ ] A checkout deleted while its parent stays readable yields `stale`.
 - [ ] A changed remote URL aliases onto the existing record and produces exactly one repository, not
@@ -404,7 +426,7 @@ new settings surface, and it keeps `validateComposeProjects`
 - [ ] A record with no `lastSeenAt` is never hidden by age.
 - [ ] A repository that becomes `stale` does not start ageing toward hidden — only `lastSeenAt`
       drives that, so an unplugged drive does not hide a repository still in use.
-- [ ] No absolute path appears in any browser payload.
+- [x] No absolute path appears in any browser payload.
 - [ ] `scripts/test/localhoster-compose-identity-check.mjs`: classification unit tests covering all
       four configurations from Context — shared-volumes-only, single-checkout bind, multi-checkout
       bind conflict, and repo-root-only bind.

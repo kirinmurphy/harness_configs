@@ -1692,6 +1692,12 @@ assert "repositories: discovery recording + Plans enrollment" \
 assert "repositories: browser-safe API contracts" \
   node "${repo_root}/scripts/test/repositories-api-check.mjs"
 
+# Repository lifecycle: active/idle/stale derivation, the unreadable-vs-absent distinction (an
+# unplugged drive must never read as a deleted checkout), 30-day ageing measured from lastSeenAt,
+# and a reused directory repointing without silently merging two repositories.
+assert "repositories: lifecycle states, ageing, reused directories" \
+  node "${repo_root}/scripts/test/repositories-lifecycle-check.mjs"
+
 # Localhoster module suite. Note: localhoster-check.mjs existed as an npm script but was never wired
 # into this file, so it had not been running in CI at all — added here alongside the new checks.
 assert "localhoster: discovery, settings schema, snapshot shaping" \

@@ -367,14 +367,38 @@ new settings surface, and it keeps `validateComposeProjects`
 
 ### Phase 2 — Lifecycle
 
-- [ ] Derive `active` / `idle` / `stale` per repository on each scan, using the observation table in
+- [x] Derive `active` / `idle` / `stale` per repository on each scan, using the observation table in
       "Repository lifecycle".
-- [ ] Distinguish an unreadable parent directory from a genuinely absent checkout, and never treat
+      `deriveLifecycle` in `modules/repositories/lifecycle.mjs`. Derived per scan, never stored: two
+      of the three states depend on whether a directory is readable *right now*, so a persisted
+      value would assert something true at write time and false at read time. The existing stored
+      `activity` enum (`active|inactive|unknown`) is left alone — it is a different, coarser field
+      and every live record sits at `unknown`.
+- [x] Distinguish an unreadable parent directory from a genuinely absent checkout, and never treat
       the former as evidence of absence.
-- [ ] Alias a changed remote URL onto the existing record instead of minting a duplicate.
-- [ ] Hide records whose `lastSeenAt` is over 30 days old, and skip records that have no
+      `inspectCheckout` returns `present|absent|unreadable` rather than a boolean. A repository is
+      `stale` only when every checkout was successfully looked at and none survived; a single
+      unreadable checkout holds it at `idle`.
+- [x] ~~Alias a changed remote URL onto the existing record instead of minting a duplicate.~~
+      **Changed during implementation — automatic aliasing is not safe and is not done.**
+      The plan assumed "same rootId, different git id" identifies a renamed remote. It does not: a
+      deleted-and-recloned directory produces exactly the same observation, and rootId is derived
+      from the path, so the stored data is identical in both cases. The live registry's own example
+      (rootId `9c87d71c6406676d` under both `harness_configs` and `roborepo`) reads as a rename but
+      is indistinguishable from a repurpose.
+      Aliasing on a guess merges two unrelated repositories onto one card and gives the user no
+      signal it happened; the duplicate it avoids is visible and fixable with one `setAlias`. So the
+      checkout repoints to the newly-resolved repository, both records survive, and
+      `priorRepositoryForRoot` *reports* the prior owner for a future UI affordance ("this checkout
+      moved from A to B — merge them?") rather than acting on it.
+      A root-commit comparison would be real evidence, but collecting it costs a `git rev-list` per
+      checkout on the common path, which this plan's non-goals exclude.
+- [x] Hide records whose `lastSeenAt` is over 30 days old, and skip records that have no
       `lastSeenAt` at all. Reuse the registry's existing `visibility` rather than adding a parallel
       state.
+      `ageOutCandidates` returns candidates rather than hiding them, so the caller owns the write and
+      a repository the user explicitly un-hid is not re-hidden behind their back. Ageing measures
+      `lastSeenAt`, never time-spent-stale.
 - [ ] Add a "Show hidden" affordance so a hidden repository is one click from returning.
 
 ### Phase 3 — Merge the inactive list into the repository list
@@ -418,13 +442,18 @@ new settings surface, and it keeps `validateComposeProjects`
       running, or Phase 2's lifecycle states and the 30-day ageing rule would have no signal to read.
       The guarantee is that the ~10s poll does not write; a still-running repository refreshes at
       most once per 60s (`LAST_SEEN_DEBOUNCE_MS`).
-- [ ] An unreadable parent directory yields `idle`, never `stale`.
-- [ ] A checkout deleted while its parent stays readable yields `stale`.
-- [ ] A changed remote URL aliases onto the existing record and produces exactly one repository, not
-      two.
+- [x] An unreadable parent directory yields `idle`, never `stale`.
+- [x] A checkout deleted while its parent stays readable yields `stale`.
+- [x] ~~A changed remote URL aliases onto the existing record and produces exactly one repository, not~~
+      **Superseded — see the Phase 2 note.** A changed remote produces two records and the checkout
+      repoints to the new one; the prior owner is reported, not merged. Automatic aliasing was
+      dropped because a rename and a repurposed directory are indistinguishable from stored data,
+      and a wrong merge is worse than a visible duplicate. Covered by "new id gets its own record
+      (no silent merge)" / "no alias invented automatically" in the lifecycle tests.
 - [ ] A record older than 30 days is hidden, returns via "Show hidden", and is never removed.
-- [ ] A record with no `lastSeenAt` is never hidden by age.
-- [ ] A repository that becomes `stale` does not start ageing toward hidden — only `lastSeenAt`
+      (`ageOutCandidates` is covered by tests; the "Show hidden" affordance is still outstanding.)
+- [x] A record with no `lastSeenAt` is never hidden by age.
+- [x] A repository that becomes `stale` does not start ageing toward hidden — only `lastSeenAt`
       drives that, so an unplugged drive does not hide a repository still in use.
 - [x] No absolute path appears in any browser payload.
 - [ ] `scripts/test/localhoster-compose-identity-check.mjs`: classification unit tests covering all

@@ -45,23 +45,24 @@ export function recordRepositoryDiscovery({
     stateRoot,
     fsApi,
     mutate: (registry) => {
+      const targetId = repositoryId;
       upsertRepository(registry, {
-        id: repositoryId,
+        id: targetId,
         kind,
         displayName,
-        providerUrl: providerUrlForRepositoryId(repositoryId),
-        normalizedRemote: normalizedRemote || (kind === "git" ? repositoryId : null),
+        providerUrl: providerUrlForRepositoryId(targetId),
+        normalizedRemote: normalizedRemote || (kind === "git" ? targetId : null),
         now,
       });
       let changed = false;
-      if (recordDiscovery(registry, repositoryId, { source, evidence, confidence, now })) changed = true;
-      if (localRoot && registerLocalRoot(registry, repositoryId, { rootId: localRoot, kind: localRootKind, now })) changed = true;
+      if (recordDiscovery(registry, targetId, { source, evidence, confidence, now })) changed = true;
+      if (localRoot && registerLocalRoot(registry, targetId, { rootId: localRoot, kind: localRootKind, now })) changed = true;
       // Identity and path commit in this same mutate() — one updateRegistry call, one revision bump,
       // one write. pljvmyh §2 requires them to land as a single logical update so a crash or a
       // concurrent writer can never leave a rootId registered with no path or vice versa.
-      if (localRoot && rootPath && registerLocalRootPath(registry, repositoryId, { rootId: localRoot, path: rootPath, now })) changed = true;
+      if (localRoot && rootPath && registerLocalRootPath(registry, targetId, { rootId: localRoot, path: rootPath, now })) changed = true;
       // upsert of a brand-new repository is itself a change even if discovery/root debounced.
-      return changed || registry.repositories[repositoryId].createdAt === now;
+      return changed || registry.repositories[targetId].createdAt === now;
     },
   });
 }

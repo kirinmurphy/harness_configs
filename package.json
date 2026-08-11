@@ -50,6 +50,7 @@
     "test:repositories": "node scripts/test/repositories-check.mjs",
     "test:repositories-branch-sync": "node scripts/test/repositories-branch-sync-check.mjs",
     "test:repositories-service": "node scripts/test/repositories-service-check.mjs",
+    "test:repositories-lifecycle": "node scripts/test/repositories-lifecycle-check.mjs",
     "test:repositories-api": "node scripts/test/repositories-api-check.mjs",
     "test:packages": "node scripts/test/package-catalog-check.mjs",
     "test:plan-promote-start": "node scripts/test/plan-promote-plan-start-check.mjs",

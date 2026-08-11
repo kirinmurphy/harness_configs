@@ -229,6 +229,38 @@ export function hideRepository(registry, id, { hidden, now = new Date().toISOStr
   return true;
 }
 
+// Find the repository a checkout already belongs to, when a scan resolves that same checkout to a
+// DIFFERENT canonical id than last time.
+//
+// `git remote set-url` changes a repository's canonical identity without changing the repository:
+// same directory, same history, same work. Registering the new id blind would mint a second record
+// and split one repository across two cards, each holding half its checkouts.
+//
+// But the same observation — "rootId X now resolves to id B, not A" — has a second possible cause:
+// the directory was deleted and a DIFFERENT repository cloned in its place. Aliasing that case
+// merges two unrelated repositories onto one card, which is worse than the duplicate aliasing
+// avoids: a duplicate is visible and correctable, a bad merge silently misattributes work.
+//
+// rootId cannot tell these apart — it is derived from the path, which is identical either way. The
+// live registry contains a real instance (one rootId under both harness_configs and roborepo, hours
+// apart) that reads as a rename but is indistinguishable from a repurpose in the stored data.
+//
+// So this never guesses, and it never aliases on its own. It REPORTS the ambiguity: the prior
+// repository that held this checkout, for a caller that wants to surface "this checkout moved from
+// A to B" or offer an explicit merge. `setAlias` stays the way two records become one, and stays a
+// deliberate act.
+//
+// Choosing to split rather than merge is the safe direction. A split repository is visible on the
+// page and fixable with one alias; a wrong merge hides one repository's work inside another's card
+// and gives the user no signal that it happened.
+export function priorRepositoryForRoot(registry, { rootId, nextRepositoryId }) {
+  if (!rootId || !nextRepositoryId) return null;
+  const entry = registry.localRootPaths?.[rootId];
+  if (!entry || entry.repositoryId === nextRepositoryId) return null;
+  if (!registry.repositories?.[entry.repositoryId]) return null;
+  return entry.repositoryId;
+}
+
 // Confirm that an opaque source identity aliases to a canonical repository. Cycle-checked before
 // commit (mirrors localhoster mutateAlias). Idempotent.
 export function setAlias(registry, fromIdentity, toRepositoryId, { now = new Date().toISOString() } = {}) {

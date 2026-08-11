@@ -65,10 +65,20 @@ export {
   registerLocalRootPath,
   localRootPath,
   checkoutRootsFor,
+  priorRepositoryForRoot,
   setEnrollment,
   hideRepository,
   setAlias,
 } from "./registry.mjs";
+
+export {
+  LIFECYCLE_STATES,
+  AGE_OUT_MS,
+  inspectCheckout,
+  deriveLifecycle,
+  lastSeenAtFor,
+  ageOutCandidates,
+} from "./lifecycle.mjs";
 
 export {
   EVIDENCE_POLICY,

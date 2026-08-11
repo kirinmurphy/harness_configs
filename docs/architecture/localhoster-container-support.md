@@ -87,9 +87,13 @@ wins, and the tier used is recorded on the card as provenance.
 | 2 | `com.docker.compose.project.working_dir` label | `auto` | Absent when the stack was not started by `docker compose` — the Supabase CLI is the motivating case |
 | 3 | Container bind-mount host paths, via `docker inspect` | `auto-bind` | Named-volume-only stacks have no host path to resolve |
 
-Tier 3 runs only for projects the first two could not resolve, so the common case makes no
-`docker inspect` call at all. When it does run, every candidate container is inspected in one
-batched call.
+Tier 3 runs only for projects the first two could not resolve — repository resolution keeps its
+precedence, and a `working_dir` that resolves still wins outright for *this* question.
+
+Mounts are nonetheless collected for every Compose project, because the separate placement pass
+below needs them for all stacks (see "Placement on the card"). One batched `docker inspect` covers
+every Compose container on a scan. An earlier design inspected mounts only when repository
+resolution had failed; that guard was about cost, and placement correctness outranks it.
 
 ### The agreement guard
 
@@ -105,15 +109,47 @@ evidence gets no repository rather than a guessed one, and the manual override s
 Repository resolution answers *which repository*. A second question — *which checkout* — decides
 where inside the card a stack renders.
 
-Today `rootId` is derived from the same path that resolved the repository, which for tier 2 means
-the directory `docker compose up` ran from. A stack therefore always renders inside exactly one
-checkout's section.
+**Bind mounts decide placement, and only bind mounts.** A bind mount is a hard dependency on one
+checkout's files: the stack cannot run without them. A named volume is persisted state that says
+nothing about which checkout is in play, so it is ignored here (`bindSources` drops it).
 
-**This is correct only for stacks that genuinely belong to one checkout.** A shared backing service
-— one database serving every checkout — renders under whichever checkout started it first, which is
-an accident of ordering rather than a fact about the containers. Reworking this is scoped in
-`docs/plans/backlog/localhoster-workspace-model.md`; the plan's summary of the four
-real-world configurations is the reference for which cases exist.
+`working_dir` is deliberately not consulted for this question. It still resolves *which repository*
+(tier 2 above), but it records where `docker compose up` was typed rather than what the containers
+depend on, so it must never decide *which checkout*. Deciding by launch directory is what made a
+shared database render under whichever checkout happened to start it first — and a `docker compose
+down` from that row stops the database every other checkout is using.
+
+`classifyComposeOwnership` (`modules/localhoster/discovery.mjs`) resolves a stack's bind mounts
+against every known checkout of its repository and returns one of three verdicts:
+
+| Bind mounts resolve to | Ownership | Evidence `kind` | Placement |
+| --- | --- | --- | --- |
+| Exactly one checkout | `owned` | `bind-mount` | That checkout's section |
+| Two or more checkouts | `shared` | `conflict` | Repository level, peer of the checkouts |
+| Bind mounts exist, none in any known checkout | `shared` | `repo-root` | Repository level |
+| No bind mounts at all | `unverified` | `none` | Repository level, marked inferred |
+
+A manual `settings.composeProjects[name].repoPath` outranks all of it (`kind: "manual"`).
+
+Two properties worth preserving:
+
+- **`rootId` is set only for `owned`.** A consumer that ignores the ownership fields degrades to
+  "shared stacks have no checkout" rather than to a wrong checkout.
+- **`shared` and `unverified` are not the same claim.** `shared` is a positive finding that the
+  stack is not checkout-specific; `unverified` is an absence of evidence. They render in the same
+  place, and the card distinguishes them.
+
+Mounts that land in *no* checkout do not weaken an otherwise-single match. Real stacks routinely bind
+`/var/run/docker.sock`, `/etc/localtime`, or a log directory; requiring every mount to sit inside the
+checkout classified ordinary single-checkout stacks as `shared`. The test is that exactly one
+checkout's files are depended on and no second checkout competes.
+
+Because placement needs mounts for *every* stack — including ones whose repository came from
+`working_dir` — `collectMounts` now runs for all Compose projects rather than only those repository
+resolution could not handle. That is one batched `docker inspect` per scan with Compose projects.
+
+Remaining work (the Shared Services region on the card, member counts that exclude shared stacks) is
+tracked in `docs/plans/backlog/localhoster-workspace-model.md`.
 
 ## Trust and safety properties
 
@@ -125,6 +161,22 @@ These hold for every container path and are worth preserving in any change.
 | One call per scan, not per container | `discoverDockerRecords`, `collectDockerStats`, and `collectDockerMounts` each batch into a single call |
 | A slow or absent Docker degrades to no containers, never a failed scan | Timeouts return empty; callers treat absence as absence |
 | macOS only | Every Docker module returns empty when `platform !== "darwin"` |
+| Bind sources are real host paths, never Docker Desktop's VM view | `bindSources` strips the `/host_mnt` prefix in `docker-mounts.mjs` |
+
+### The `/host_mnt` prefix
+
+Docker Desktop on macOS runs containers inside a Linux VM and reports bind sources through its
+gateway: a container mounting `/Users/me/app` is reported by `docker inspect` as
+`/host_mnt/Users/me/app`.
+
+Every consumer of these paths compares them against real host paths — checkout roots, project
+identity — so the prefix is stripped once, in `docker-mounts.mjs`, rather than at each call site.
+
+This matters more than it looks. Forgetting it fails **silently** rather than loudly: a mount that
+cannot match any checkout is indistinguishable from a stack that legitimately has no checkout-specific
+dependency, so every stack on macOS classifies as `shared` and the page looks plausible while being
+uniformly wrong. Any new code reading a mount source should take it from `collectDockerMounts`
+rather than parsing `docker inspect` output directly.
 
 Docker CLI calls cross into Docker Desktop's VM proxy and are measurably slower than `lsof`/`ps`,
 which is why `DOCKER_DISCOVERY_TIMEOUT_MS` is 15s against a measured 2.1–4.0s cold call. A generous

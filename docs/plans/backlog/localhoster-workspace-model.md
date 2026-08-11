@@ -410,17 +410,30 @@ new settings surface, and it keeps `validateComposeProjects`
 
 ### Phase 4 — Container ownership
 
-- [ ] Extract checkout roots per repository into a lookup keyed by `repositoryId`, so mount paths
+- [x] Extract checkout roots per repository into a lookup keyed by `repositoryId`, so mount paths
       can be tested against every known checkout rather than only the one `working_dir` named. With
       Phase 1 landed this reads persisted roots, so it covers checkouts that are not running.
-- [ ] Add `classifyComposeOwnership(mountPaths, checkoutRoots)` to `modules/localhoster/discovery.mjs`
+- [x] Add `classifyComposeOwnership(mountPaths, checkoutRoots)` to `modules/localhoster/discovery.mjs`
       returning `{ ownership, ownershipEvidence }` per the decision flow above. Pure function over
       already-collected data — unit-testable with no Docker.
-- [ ] Call `collectMounts` for **every** Compose project, not only those that failed repository
+      One refinement the live containers forced: unmatched mounts alongside a single matched checkout
+      do NOT downgrade the verdict. `traefik_vps` binds three paths inside its checkout plus
+      `/var/run/docker.sock`, `/etc/localtime` and a log dir; requiring unanimity classified it
+      `shared`. Infrastructure mounts belong to no checkout and say nothing about placement, so the
+      test is "exactly one checkout's files are depended on and no second checkout competes". Mounts
+      that resolve to no checkout at all still yield `shared`.
+- [x] Call `collectMounts` for **every** Compose project, not only those that failed repository
       resolution. This is the one cost increase: one batched `docker inspect` on any scan with
       Compose projects. Measure it; if it registers, cache by container id across polls, since
       mounts cannot change without the container being recreated.
-- [ ] Set `rootId` only for `owned`; leave it `null` for `shared`/`unverified`.
+      Runs as a second pass (`classifyComposeProjects`) after repository resolution, reusing any
+      mounts the resolution pass already fetched. Supersedes the old "no `docker inspect` once
+      `working_dir` resolved" test, which guarded cost; placement correctness outranks it.
+      Cross-poll caching not yet added — measure before optimising.
+- [x] Set `rootId` only for `owned`; leave it `null` for `shared`/`unverified`.
+      Also required persisting compose-resolved checkouts: `recordDiscoveredRepositories` only walked
+      listener instances, so a repository whose only presence is a container stack was registered
+      with no path, leaving its own stack unplaceable.
 - [ ] Extend `settings.composeProjects[].ownership` and its validation in
       `modules/localhoster/settings-schema.mjs`.
 - [ ] In `buildRepositories` (`modules/localhoster/snapshot.mjs`), collect non-`owned` groups into a
@@ -456,11 +469,13 @@ new settings surface, and it keeps `validateComposeProjects`
 - [x] A repository that becomes `stale` does not start ageing toward hidden — only `lastSeenAt`
       drives that, so an unplugged drive does not hide a repository still in use.
 - [x] No absolute path appears in any browser payload.
-- [ ] `scripts/test/localhoster-compose-identity-check.mjs`: classification unit tests covering all
+- [x] `scripts/test/localhoster-compose-identity-check.mjs`: classification unit tests covering all
       four configurations from Context — shared-volumes-only, single-checkout bind, multi-checkout
       bind conflict, and repo-root-only bind.
-- [ ] Regression: a repository with exactly one checkout and one stack still renders the stack
+- [x] Regression: a repository with exactly one checkout and one stack still renders the stack
       inside that checkout, unchanged. This is the overwhelmingly common case and must not move.
+      Asserted in the classification tests, and confirmed on live containers: `menugoats` and
+      `traefik_vps` each classify `owned`/`bind-mount` and stay inside their checkout.
 - [ ] `scripts/test/localhoster-repository-merge-check.mjs`: a shared group lands in
       `sharedComposeGroups` and in no root's `composeGroups`; member counts exclude it.
 - [ ] Manual: a repository with a shared backing stack (configuration 1) renders that stack once at

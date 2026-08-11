@@ -6,8 +6,8 @@ The portal is the local `roborepo web` UI: Config (`/`, alias `/config`), Plans 
 Localhoster (`/localhoster`), and Telemetry (`/telemetry`). It is static HTML/CSS/browser JavaScript served by a loopback-only
 Node HTTP server — no build step, no framework, no bundler. This doc covers the shared
 architecture (page manifest, browser API helpers, server route dispatch) that every page relies
-on. Page-specific behavior lives in `docs/reference/services/config-control-panel.md` and
-`docs/reference/services/plans-portal.md`.
+on. Page-specific behavior lives in `docs/user/reference/config-control-panel.md` and
+`docs/user/reference/plans-portal.md`.
 
 ## Directory Layout
 
@@ -118,7 +118,7 @@ imports:
 - `portal-routes-telemetry.mjs` → `handleTelemetryApi` — `/api/data`, `/api/session`,
   `/api/insights-llm`, `/api/telemetry/markers` (GET/POST), `/api/telemetry/experiments`
   (GET/POST), `/api/telemetry/experiments/:id/end` (POST), `/api/telemetry/analysis` (POST) — see
-  `docs/reference/services/telemetry.md` for the marker/experiment/analysis domain
+  `docs/user/reference/telemetry.md` for the marker/experiment/analysis domain
 
 Adding a new API domain means adding one more `portal-routes-<domain>.mjs` file and one more import
 + dispatch line in `route()` — each domain's API surface stays in its own file instead of growing

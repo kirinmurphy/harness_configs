@@ -159,4 +159,4 @@ sequenceDiagram
 ## Related
 
 - `docs/architecture/manifest-and-symlinks.md`
-- `docs/reference/internal/config-collision-handling.md`
+- `docs/user/reference/config-collision-handling.md`

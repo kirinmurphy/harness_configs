@@ -185,7 +185,7 @@ Relocating the checkout later:
       `roborepo repair`" hint.
 - [ ] Tests in `scripts/test/test-roborepo.sh`: relocate-and-repair, uninstall of a
       stale install, dangling-bin-link heal, dry-run parity.
-- [ ] Docs: update `README.md` and `docs/reference/services/architecture.md` with
+- [ ] Docs: update `README.md` and `docs/user/reference/architecture.md` with
       the repair command and recovery flow.
 
 ## Open Decisions

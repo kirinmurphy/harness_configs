@@ -390,7 +390,7 @@ Likely files:
 - `scripts/cli/config.mjs` - snapshot includes desired/observed/resource status.
 - `scripts/cli/config-dashboard.mjs` - render partial/external/blocked states.
 - `scripts/doctor.sh` - installed drift checks for package desired vs observed.
-- `docs/reference/services/config-control-panel.md` - update once behavior ships.
+- `docs/user/reference/config-control-panel.md` - update once behavior ships.
 
 ## Test Plan
 

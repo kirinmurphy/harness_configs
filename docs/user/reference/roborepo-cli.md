@@ -1,7 +1,7 @@
 # Using the `roborepo` CLI
 
 `roborepo` is the single front door.
-After [installing roborepo](../../guides/first-time-setup.md), install puts it on your `PATH`, so it works from any shell.
+After [installing roborepo](../guides/first-time-setup.md), install puts it on your `PATH`, so it works from any shell.
 
 > If `roborepo` is not found, run `roborepo doctor` (or `./bin/roborepo doctor` before the first
 > install) — it reports whether the command is installed and on `PATH`, with the exact fix.
@@ -31,7 +31,8 @@ After [installing roborepo](../../guides/first-time-setup.md), install puts it o
 | `roborepo package reconcile`               | Re-applies every currently-enabled package and drops any enabled-but-unknown stale entries — the full-reconciliation entry point. |
 | `roborepo package adopt-live [--dry-run]`  | Detects externally-installed package behavior and marks it enabled in the registry without reinstalling it.          |
 
-See [Package Development](../../../local/skills/roborepo-development/references/package-development.md) for manifest schema, resource-type validation depth, and the package completion checklist.
+Package development is a maintainer workflow; package users usually only need `package list`,
+`package inspect`, `package enable`, and `package disable`.
 
 ## Local Portal
 
@@ -42,7 +43,7 @@ See [Package Development](../../../local/skills/roborepo-development/references/
 | `roborepo localhoster [--json] [--open]` | Lists active localhost HTTP apps, prints the portal snapshot as JSON, or opens `/localhoster`. |
 
 The `/plans` page scans configured roots for `docs/plans/**/*.md`. See
-[Plan Docs Walkthrough](../../guides/plan/lifecycle/plan-docs.md) and
+[Plan Docs Walkthrough](../guides/plan/lifecycle/plan-docs.md) and
 [Plans Portal Technical Reference](plans-portal.md).
 
 The `/localhoster` page discovers local HTTP apps on macOS, keeps machine-local saved links under

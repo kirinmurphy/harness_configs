@@ -220,7 +220,7 @@ Add the provider to `$KnownHarnessIds`, `$adoptRootConfig`, `Resolve-ManifestHom
 
 ### Phase 5 — Docs
 
-Update `docs/guides/harnesses/supported-harnesses.md`'s capability matrix and harness table:
+Update `docs/user/guides/harnesses/supported-harnesses.md`'s capability matrix and harness table:
 `gemini` row becomes `antigravity`, with the config home and root-config format corrected. Note that
 Gemini CLI is deprecated upstream and that `agy` is the supported binary. Also check
 `harnesses-explained.md`, which currently describes Gemini CLI's `~/.gemini/` layout in its

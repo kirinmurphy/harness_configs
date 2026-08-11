@@ -20,7 +20,7 @@ completed plan). Work scoped down to real gaps rather than rebuilding what was a
   limitations, source/generated boundaries, default-selection semantics, and the completion
   checklist. The previously-undocumented `roborepo package *` CLI family (`create`, `list`,
   `inspect`, `validate`, `enable`, `disable`, `reconcile`, `adopt-live`) is now documented in both
-  this reference and `docs/reference/services/roborepo-cli.md`.
+  this reference and `docs/user/reference/roborepo-cli.md`.
 - **Deliverable 2** — the scaffold (`roborepo package create`) already existed; extended to print
   the next validate command, accept `--default-enabled=true`, and fixed a real pre-existing bug
   found while verifying it: in a development checkout it wrote into `<repo-root>/packages/`

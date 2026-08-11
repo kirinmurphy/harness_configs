@@ -30,7 +30,7 @@ built yet and is deliberately absent.
 ## Concept model
 
 Three roots hold the moving parts (see
-`docs/reference/services/architecture.md#install-workflow-filesystem-shapes`):
+`docs/user/reference/architecture.md#install-workflow-filesystem-shapes`):
 
 | Root | Default (package mode) | Holds |
 | --- | --- | --- |

@@ -23,11 +23,11 @@ the repo-local `roborepo-development` skill instead.
 
 **Read these first when relevant** (they are the source of truth):
 - `README.md` — overview of what's shared and per-harness.
-- `docs/reference/services/architecture.md` — relationship, materialization map, sync flow.
-- `docs/reference/services/roborepo-cli.md`, `docs/reference/services/roborepo-skills.md` —
+- `docs/user/reference/architecture.md` — relationship, materialization map, sync flow.
+- `docs/user/reference/roborepo-cli.md`, `docs/user/reference/roborepo-skills.md` —
   current CLI and skill interface.
-- `docs/reference/internal/config-collision-handling.md` — conflict rules.
-- `docs/reference/services/claude-hooks.md`, `docs/reference/services/codex-hooks.md` — hook behavior.
+- `docs/user/reference/config-collision-handling.md` — conflict rules.
+- `docs/user/reference/claude-hooks.md`, `docs/user/reference/codex-hooks.md` — hook behavior.
 
 ## The skill model (the #1 thing to get right)
 
@@ -107,7 +107,7 @@ defaults should be merged back into the repo baseline. It is a reminder, not a b
   Mutable root config (`globals/claude/settings.json`, `globals/codex/config.toml`) is exported into HOME as
   active local files, not symlinked.
 - On collisions between HOME and repo, follow
-  `docs/reference/internal/config-collision-handling.md` — flag conflicts, don't guess.
+  `docs/user/reference/config-collision-handling.md` — flag conflicts, don't guess.
 
 ## Local Machine Commands
 

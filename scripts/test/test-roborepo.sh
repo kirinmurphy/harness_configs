@@ -775,9 +775,9 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
   assert "localhoster: GET /localhoster served with token" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/localhoster' | grep -q 'roborepo-portal-token'"
   assert "localhoster: notice template includes docs link target" \
-    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/localhoster' | grep -q '/docs/reference/services/localhoster.md'"
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/localhoster' | grep -q '/docs/user/reference/localhoster.md'"
   assert "localhoster: docs markdown route is served" \
-    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/docs/reference/services/localhoster.md' | grep -q '^# Localhoster'"
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/docs/user/reference/localhoster.md' | grep -q '^# Localhoster'"
   assert "localhoster: GET snapshot works without token" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/localhoster' >'${cfg_home}/localhoster-get.json' && node -e \"const j=require('${cfg_home}/localhoster-get.json');process.exit(j.capabilities&&Array.isArray(j.projects)&&Array.isArray(j.unmatchedInstances)?0:1)\""
   assert "localhoster: refresh rejects missing token" \

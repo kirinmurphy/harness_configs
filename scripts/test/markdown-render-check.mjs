@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { renderMarkdown } from "../cli/markdown-render.mjs";
 
 // Regression coverage for the heading-slug, table, and mermaid-fallback extensions added for the
-// Telemetry page's "view docs" popup (docs/guides/telemetry.md deep-linking needs stable heading
+// Telemetry page's "view docs" popup (docs/user/guides/telemetry.md deep-linking needs stable heading
 // ids; the guide itself leans on tables/mermaid instead of dense prose). These extensions are
 // shared by every renderMarkdown() consumer (Config's skill-source popup, the new Telemetry guide
 // route), so a regression here would silently break more than one page.

@@ -22,7 +22,7 @@ reviewed_commit: b8684ef
   `globals/packages/plan-docs/` with `package.config.json` and
   `skills/plan-docs/references/*.md` (workflow-create/next/start/sync/validate/
   review/handoff, plan-schema, lifecycle, writing-guidelines, prompt-contracts).
-- Reference docs — `docs/guides/plan-docs.md`, `docs/reference/services/plans-portal.md`.
+- Reference docs — `docs/user/guides/plan-docs.md`, `docs/user/reference/plans-portal.md`.
 
 The plan-domain model is isolated from portal/harness details, lifecycle is
 folder-derived, the previous planning-doc skill and legacy slash command were

@@ -374,7 +374,7 @@ silently choosing a different execution environment.
 
 ### Phase 5 — Documentation and support matrix
 
-- [ ] Update `docs/reference/services/sessions.md`.
+- [ ] Update `docs/user/reference/sessions.md`.
 - [ ] Add an exact platform/environment/terminal support matrix.
 - [ ] Document limitations and copy-command fallbacks.
 - [ ] Update installation and packaging documentation.

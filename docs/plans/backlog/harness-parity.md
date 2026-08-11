@@ -82,7 +82,7 @@ silently; a drifted file (edited since roborepo's last write) is never silently 
 or deleted — it is surfaced and staged using the same collision convention install
 already uses. See [`completed/root-config-layered-inheritance.md`](../completed/root-config-layered-inheritance.md)
 (full design + implementation status) and
-[`../reference/internal/config-collision-handling.md`](../../reference/internal/config-collision-handling.md).
+[`../user/reference/config-collision-handling.md`](../../user/reference/config-collision-handling.md).
 
 Delivered across all three install paths (`presets.mjs`, `install-lib.sh`,
 `install-windows.ps1`), plus `roborepo config root inspect`, uninstall drift-awareness,

@@ -7,7 +7,7 @@ calls, time — and lets you mark a change you made and see whether sessions aft
 sessions before it. Everything stays on your machine; nothing is uploaded.
 
 For the full technical reference (schemas, API routes, privacy details), see
-[Telemetry Service Reference](../reference/services/telemetry.md). This guide is the "what do I
+[Telemetry Service Reference](../reference/telemetry.md). This guide is the "what do I
 click" version, meant to be read inline from the `/telemetry` page itself.
 
 ## Open The Page
@@ -149,7 +149,7 @@ stateDiagram-v2
 
 ## Related
 
-- [Telemetry Service Reference](../reference/services/telemetry.md) — schemas, CLI commands, API
+- [Telemetry Service Reference](../reference/telemetry.md) — schemas, CLI commands, API
   routes, privacy/retention details.
-- [Portal Technical Reference](../reference/services/portal.md) — the shared portal server
+- [Portal Technical Reference](../reference/portal.md) — the shared portal server
   architecture.

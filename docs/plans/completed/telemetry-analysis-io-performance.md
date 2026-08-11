@@ -206,7 +206,7 @@ rounding behavior for less certain gain.
       `packageCost`, `regression`, `detectLoops`) separate to avoid a broader
       behavioral rewrite with weaker payoff.
 - [x] Documented the store + debounced-refresh model (this plan's Results +
-      `docs/reference/services/portal.md`).
+      `docs/user/reference/portal.md`).
 - [x] Extracted the incremental byte-tail read (offset advance, partial-line hold,
       shrink/rotate detection) into `scripts/cli/jsonl-tail.mjs`
       (`readAppendedLines`), shared by the spool store (`syncSpoolFile`) and the

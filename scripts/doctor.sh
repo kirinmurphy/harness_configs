@@ -476,7 +476,7 @@ else
   "${repo_root}/scripts/build/link-skills.sh" --check || failed=1
 fi
 
-# skill audit --check catches a stale docs/reference/internal/skill-invocation-audit.md, which is
+# skill audit --check catches a stale docs/internal/skill-invocation-audit.md, which is
 # generated from the package manifests and goes out of date whenever a skill resource is added or
 # removed. Development-only: the audit is regenerated from repository source, and a packaged install
 # ships a subset of globals/packages/, so running it against an installed tree reports a staleness

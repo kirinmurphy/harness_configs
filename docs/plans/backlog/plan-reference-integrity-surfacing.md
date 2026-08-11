@@ -91,7 +91,7 @@ summarized.
 | Cited path | Source | Verdict |
 | --- | --- | --- |
 | `docs/plans/portal-react-vite-scaled-plan.md` | `backlog/portal-lit-native-scaled.md` | **Genuine.** The file had moved to `archived/`. Fixed by correcting the path. |
-| `docs/reference/services/sessions.md` | `backlog/session-launching-milestone-{1,2,3}.md` | False positive. Every occurrence is an unchecked `- [ ]` task reading "Add"/"Update" that file. It does not exist because the work is not done. |
+| `docs/user/reference/sessions.md` | `backlog/session-launching-milestone-{1,2,3}.md` | False positive. Every occurrence is an unchecked `- [ ]` task reading "Add"/"Update" that file. It does not exist because the work is not done. |
 | `docs/plans/backlog/example.md` | `backlog/session-launching-milestone-1.md` | False positive. A `planRelativePath` value inside a fenced JSON payload sample. |
 
 Eleven more sit in `completed/`, which is frozen history and out of scope.

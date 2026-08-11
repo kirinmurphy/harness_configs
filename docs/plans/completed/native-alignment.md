@@ -83,8 +83,8 @@ observed the other.
 - `globals/claude/settings.json`, `globals/codex/config.toml`
 - `~/.roborepo/skills/<name>` — machine-local cache for roborepo-managed shared skills
 - `globals/agents/skills/.system/` (vendored copies of native system skills — deleted, item 1.1)
-- `docs/reference/internal/skills-and-commands.md`
-- `docs/reference/internal/harness-anatomy.md`
+- `docs/internal/skills-and-commands.md`
+- `docs/internal/harness-anatomy.md`
 
 ## Design Principle
 

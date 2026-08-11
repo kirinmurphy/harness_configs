@@ -32,14 +32,15 @@ schema, resource-type validation depth, apply/reconcile behavior, and the comple
 
 | Question | Doc |
 |----------|-----|
-| Symlink map, sync flow, two skill layers, client utilities | `docs/reference/services/architecture.md` |
-| The current `roborepo` CLI surface | `docs/reference/services/roborepo-cli.md`, `manifests/platform/cli/command-definitions/**`, `manifests/platform/cli/removed.json` |
-| Detailed CLI internals and install/PATH notes | `docs/reference/services/roborepo.md` |
-| Conflict / collision behavior on install | `docs/reference/internal/config-collision-handling.md` |
-| Rules generation + layering | `docs/reference/internal/rules-parity-and-layering.md` |
-| Skill/command mechanisms and trigger fixtures | `docs/reference/internal/skills-and-commands.md`, `docs/reference/services/roborepo-skills.md` |
-| Hook behavior (Claude / Codex) | `docs/reference/services/{claude,codex}-hooks.md` |
-| Install UX + daily commands | `docs/guides/setup-and-daily-use.md`, `docs/guides/install-workflows.md` |
+| Symlink map, sync flow, two skill layers, client utilities | `docs/user/reference/architecture.md` |
+| The current `roborepo` CLI surface | `docs/user/reference/roborepo-cli.md`, `manifests/platform/cli/command-definitions/**`, `manifests/platform/cli/removed.json` |
+| Detailed CLI internals and install/PATH notes | `docs/user/reference/roborepo.md` |
+| Conflict / collision behavior on install | `docs/user/reference/config-collision-handling.md` |
+| Rules generation + layering | `docs/internal/rules-parity-and-layering.md` |
+| Skill/command mechanisms and trigger fixtures | `docs/internal/skills-and-commands.md`, `docs/user/reference/roborepo-skills.md` |
+| Hook behavior (Claude / Codex) | `docs/user/reference/{claude,codex}-hooks.md` |
+| NPM release workflow and maintainer doc placement | `docs/internal/npm-release.md` |
+| Install UX + daily commands | `docs/user/guides/setup-and-daily-use.md`, `docs/user/guides/install-workflows.md` |
 | Skills, two layers, client utilities (user-facing) | `README.md` |
 
 ## Repo dir convention (the one thing to internalize first)
@@ -63,7 +64,7 @@ schema, resource-type validation depth, apply/reconcile behavior, and the comple
   shared baseline.
 
 Everything else (the two symlink levels, the layer table) lives in
-`docs/reference/services/architecture.md`. Read it there.
+`docs/user/reference/architecture.md`. Read it there.
 
 ## Operational judgment (not in the docs)
 
@@ -92,6 +93,10 @@ Everything else (the two symlink levels, the layer table) lives in
   link check), `verify-install.sh` (link check) — or it's half-installed.
 - **Script conventions:** idempotent; `--dry-run`; verifiers take `--check`. Collisions warn,
   preserve the local copy, print an agent merge prompt — never clobber.
+- **Pre-launch compatibility:** until roborepo has launched and real users depend on public
+  behavior, do not add backwards-compatibility shims, deprecated aliases, or old command paths
+  when changing features. Prefer one clear current interface. Start supporting deprecated
+  commands/features only after launch, when compatibility is an explicit product requirement.
 - **`--quiet`/`-q` on the checkers.** `doctor.sh`, `verify-install.sh`, `test-roborepo.sh`, and
   `link-skills.sh` all accept `--quiet`: suppress the per-check `ok:`/`+ linked` lines, still
   print every failure plus a one-line `… (N checks)` / `N passed, M failed` summary, exit code

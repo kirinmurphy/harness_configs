@@ -681,7 +681,7 @@ function telemetryExport(args) {
   }, null, 2));
 }
 
-// Backs the Telemetry page's "view docs" popup: renders docs/guides/telemetry.md server-side
+// Backs the Telemetry page's "view docs" popup: renders docs/user/guides/telemetry.md server-side
 // (same renderMarkdown() used by the Config page's skill-source popup) so the page and the guide
 // never drift into two separately-maintained copies of the same explanation. readSourceFile()
 // confines the path inside repoRoot, so this can only ever serve this one repo-relative file.

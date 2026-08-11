@@ -19,7 +19,7 @@ Design goals:
 Supports macOS and Linux;  
 Windows support is there, but not really tested.
 
-[Install CLI](docs/guides/first-time-setup.md)
+[Install CLI](docs/user/guides/first-time-setup.md)
 
 ## Using the roborepo CLI
 
@@ -43,8 +43,8 @@ Use the CLI to update items and configuration in your global setup so they work 
 | `roborepo telemetry enable` / `disable` | Turn token-usage capture on or off. `telemetry status` shows capture state; `telemetry purge --all --backup` resets capture, backing up first. |
 | `roborepo doctor`                | Health-check the install and report what is linked, missing, or drifted.                             |
 
-[View all roborepo commands](docs/reference/services/roborepo-cli.md)
-[View the skills interface](docs/reference/services/roborepo-skills.md)
+[View all roborepo commands](docs/user/reference/roborepo-cli.md)
+[View the skills interface](docs/user/reference/roborepo-skills.md)
 
 ## Global Behavior
 
@@ -65,8 +65,8 @@ Installing the `roborepo` core applies a minimal baseline, then launches an onbo
 
 |                                                         |                                                                                                   |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [jcodemunch-mcp](docs/reference/services/jcodemunch.md) | Code indexer that lets agents find relevant source through symbol search and targeted context.    |
-| [jdocmunch-mcp](docs/reference/services/jdocmunch.md)   | Documentation indexer that lets agents query headings and sections instead of reading whole docs. |
+| [jcodemunch-mcp](docs/user/reference/jcodemunch.md) | Code indexer that lets agents find relevant source through symbol search and targeted context.    |
+| [jdocmunch-mcp](docs/user/reference/jdocmunch.md)   | Documentation indexer that lets agents query headings and sections instead of reading whole docs. |
 | Caveman plugin                                          | Makes default agent output terse to reduce token usage.                                           |
 | Minimal verification                                    | Agents run the narrowest useful check and report a `pass/fail` receipt.                           |
 | Local Telemetry                                         | Enable, monitor and analyze your token usage across harnesses.                                    |
@@ -105,7 +105,7 @@ Lighter-weight behaviors that only generate messages in the conversation — no 
 
 |                                                                     |                                                                                                                    |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| [Convention capture](docs/reference/services/convention-capture.md) | Agents surface newly confirmed conventions as inline recommendations during the chat.                              |
+| [Convention capture](docs/user/reference/convention-capture.md) | Agents surface newly confirmed conventions as inline recommendations during the chat.                              |
 | Impact awareness                                                    | When you propose a change, agents flag (`> 🧭 Impact:`) how it collides with or duplicates existing functionality. |
 | Skill visibility                                                    | Agents report which skills shaped a response (`> 🧩 Skills loaded:`) so behavior changes are traceable.            |
 
@@ -125,20 +125,20 @@ remember to do anything. The defaults fall into two jobs:
 
 Most of this is Claude-side, where the hook system is richer; Codex runs a single
 session-start nudge and leans on its rules file for the rest. Full breakdown:
-[Claude Hooks](docs/reference/services/claude-hooks.md), [Codex Hooks](docs/reference/services/codex-hooks.md).
+[Claude Hooks](docs/user/reference/claude-hooks.md), [Codex Hooks](docs/user/reference/codex-hooks.md).
 
 ### Harness Specifics
 
 #### Codex
 
 - **Plugins:** GitHub
-- **[Hooks](docs/reference/services/codex-hooks.md) (unique):** caveman activation runs as a session hook here; jcodemunch enforcement lives in the rules file, not in tool hooks
+- **[Hooks](docs/user/reference/codex-hooks.md) (unique):** caveman activation runs as a session hook here; jcodemunch enforcement lives in the rules file, not in tool hooks
 - **Rules:** generated command policy and always-on rules for tests, builds, local checks, and harness behavior
 - **Model/features:** `gpt-5.5`, medium reasoning, hooks, JavaScript REPL, idle-sleep prevention
 
 #### Claude
 
-- **[Hooks](docs/reference/services/claude-hooks.md) (unique):** caveman comes from the `caveman` plugin instead of a hook; tool-level guards (block `Grep`/`Glob`, trim Bash output, guard writes into managed dirs) exist only here
+- **[Hooks](docs/user/reference/claude-hooks.md) (unique):** caveman comes from the `caveman` plugin instead of a hook; tool-level guards (block `Grep`/`Glob`, trim Bash output, guard writes into managed dirs) exist only here
 - **Behavior flags:** thinking/away-summary stay quiet; dangerous-mode prompt skipped
 
 ## Maintaining the Harnesses
@@ -163,32 +163,33 @@ data that drives the build/install scripts under `manifests/`:
 - `manifests/platform/presets.json` — preset bundle source of truth for onboarding/apply/remove
 
 Every element is authored once and fanned out to both harnesses by the build/link step. New here?
-Start with [How the Harnesses Work, and How We Build Parity](docs/reference/internal/harnesses-explained.md)
+Start with [How the Harnesses Work, and How We Build Parity](docs/internal/harnesses-explained.md)
 for the build/parity model; see **Under The Hood** below for the full doc set.
 
 ## Reference
 
 ### User Docs
 
-- [First-Time Setup](docs/guides/first-time-setup.md)
-- [Setup and Daily Use](docs/guides/setup-and-daily-use.md)
-- [Install Workflow Choices](docs/guides/install-workflows.md)
-- [Supported Harnesses](docs/guides/harnesses/supported-harnesses.md)
-- [Harness Provider Interface](docs/guides/harnesses/harness-provider-interface.md)
-- [Plan Docs Walkthrough](docs/guides/plan/lifecycle/plan-docs.md)
-- [Integration Check Walkthrough](docs/guides/plan/lifecycle/integration-check.md)
-- [roborepo CLI Commands](docs/reference/services/roborepo-cli.md)
-- [roborepo CLI Reference](docs/reference/services/roborepo.md)
-- [Documentation Index](docs/README.md)
+- [First-Time Setup](docs/user/guides/first-time-setup.md)
+- [Setup and Daily Use](docs/user/guides/setup-and-daily-use.md)
+- [Install Workflow Choices](docs/user/guides/install-workflows.md)
+- [Supported Harnesses](docs/user/guides/harnesses/supported-harnesses.md)
+- [Harness Provider Interface](docs/user/guides/harnesses/harness-provider-interface.md)
+- [Plan Docs Walkthrough](docs/user/guides/plan/lifecycle/plan-docs.md)
+- [Integration Check Walkthrough](docs/user/guides/plan/lifecycle/integration-check.md)
+- [roborepo CLI Commands](docs/user/reference/roborepo-cli.md)
+- [roborepo CLI Reference](docs/user/reference/roborepo.md)
+- [Package Docs Index](docs/user/README.md)
 
 ### Under The Hood
 
-- [How the Harnesses Work, and How We Build Parity](docs/reference/internal/harnesses-explained.md)
-- [Harness Anatomy and Parity](docs/reference/internal/harness-anatomy.md)
-- [How It Works](docs/reference/services/architecture.md)
-- [Config Collision Handling](docs/reference/internal/config-collision-handling.md)
-- [Rules Parity and Layering](docs/reference/internal/rules-parity-and-layering.md)
-- [Skills And Slash Commands](docs/reference/internal/skills-and-commands.md)
-- [Plans Portal Technical Reference](docs/reference/services/plans-portal.md)
-- [Claude Hooks](docs/reference/services/claude-hooks.md)
-- [Codex Hooks](docs/reference/services/codex-hooks.md)
+- [How the Harnesses Work, and How We Build Parity](docs/internal/harnesses-explained.md)
+- [Maintainer Docs Map](docs/internal/docs-map.md)
+- [Harness Anatomy and Parity](docs/internal/harness-anatomy.md)
+- [How It Works](docs/user/reference/architecture.md)
+- [Config Collision Handling](docs/user/reference/config-collision-handling.md)
+- [Rules Parity and Layering](docs/internal/rules-parity-and-layering.md)
+- [Skills And Slash Commands](docs/internal/skills-and-commands.md)
+- [Plans Portal Technical Reference](docs/user/reference/plans-portal.md)
+- [Claude Hooks](docs/user/reference/claude-hooks.md)
+- [Codex Hooks](docs/user/reference/codex-hooks.md)

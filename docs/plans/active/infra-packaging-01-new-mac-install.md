@@ -100,7 +100,7 @@ installed command.
 | `scripts/test/package-install-smoke.mjs` | Real-artifact orchestrator | Maintains pack, isolated install, command execution, hashing, assertions, cleanup, zero-harness PATH isolation, and optional artifact retention |
 | `manifests/platform/source-files.tsv` | Declares source/runtime files and package-mode applicability | Update only when the smoke test proves a required packaged file is missing or mis-scoped |
 | `.github/workflows/ci.yml` | macOS/Linux repository validation matrix | Add one explicit package-install smoke step to both legs |
-| `docs/guides/install-workflows.md` | User-facing installation choices | Add the implemented local-tarball/new-Mac workflow after behavior is verified |
+| `docs/user/guides/install-workflows.md` | User-facing installation choices | Add the implemented local-tarball/new-Mac workflow after behavior is verified |
 
 ## Goals
 
@@ -489,7 +489,7 @@ uninstall must not be treated as permission to delete personal workspace content
 
 ### Phase 4 — Transition documentation and real-machine verification
 
-- [x] Add the final old-Mac/new-Mac workflow to `docs/guides/install-workflows.md` after commands and
+- [x] Add the final old-Mac/new-Mac workflow to `docs/user/guides/install-workflows.md` after commands and
       output names are implemented.
 - [ ] Generate a retained artifact on the old Mac from the recorded source commit after
       `npm test`, `npm run pack:dry-run`, `npm run test:package-install`, and
@@ -499,7 +499,7 @@ uninstall must not be treated as permission to delete personal workspace content
 - [ ] Clone the repository and verify packaged and development entry points coexist.
 - [ ] Verify package mode and checkout mode share `workspaceRoot` and `stateRoot` while reporting
       different `appRoot` values, and that running `config apply` from either entry point leaves
-      content authored through the other in place. See `docs/guides/infra/root-domains.md`.
+      content authored through the other in place. See `docs/user/guides/infra/root-domains.md`.
 - [ ] Record actual results, known provider-specific findings, and anything not verified in this
       plan's final `Verification` section before completion.
 
@@ -546,7 +546,7 @@ Run from worktree `infra-packaging-01-new-mac-install`, commits `da322ff` → `c
   this branch has been pushed. That acceptance line is unverified pending a real CI run.
 - `manifests/platform/source-files.tsv` directory-coverage question (Phase 1) left open, recorded as
   deferred in the Phase 1 checklist above — not a blocker for the smoke runner.
-- Phase 4 (real old-Mac/new-Mac hardware transition, `docs/guides/install-workflows.md` update) not
+- Phase 4 (real old-Mac/new-Mac hardware transition, `docs/user/guides/install-workflows.md` update) not
   attempted this pass; remains open.
 
 Manual transition acceptance requires:

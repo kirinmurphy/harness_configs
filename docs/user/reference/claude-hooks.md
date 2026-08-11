@@ -14,7 +14,7 @@ protocols Codex does not have.
 > Hooks are authored per-harness, not generated from a shared source. The format
 > and output protocols differ enough (Claude emits JSON-control output; Codex emits
 > plain text) that the handful of shared behaviors are duplicated by hand rather than
-> rendered. See [harnesses-explained.md](../internal/harnesses-explained.md#2-hooks--reacting-to-events).
+> rendered.
 
 ---
 

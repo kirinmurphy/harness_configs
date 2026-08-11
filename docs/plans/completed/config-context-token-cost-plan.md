@@ -28,7 +28,7 @@ caught by this evidence — flag for a follow-up visual pass if UI bugs are repo
 - [x] Snapshot wiring — `snapshot.contextCost`, `section.contextCost` rollups, `item.contextCost` in `packagePresentationItem`; permissions section labeled `not-prompt-context`
 - [x] Portal — `tpl-context-summary` first panel, Generated Files cost chips (Rules counts, Config `Not prompt context`, Hooks `Conditional`), section header rollups, muted per-item cost badges in `<config-item>`
 - [x] Tests — `scripts/test/context-cost-check.mjs` (11 checks incl. 7999/8000/20000/20001 boundaries, reconciliation, cache invalidation) + `npm run test:context-cost`; `/api/config` contextCost asserts in `test-roborepo.sh`
-- [x] Docs — "Harness Context estimates" section in `docs/reference/services/config-control-panel.md`
+- [x] Docs — "Harness Context estimates" section in `docs/user/reference/config-control-panel.md`
 - [x] Manual portal verification — skipped by user decision; no screenshot/browser-QA tool
   available in the reviewing session. Verified instead at the API/data level: portal server
   running, `GET /api/config` returns populated `contextCost` (method, thresholds, per-harness

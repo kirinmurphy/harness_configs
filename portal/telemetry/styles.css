@@ -235,7 +235,7 @@
   #explorer-metric { min-width:280px; }
   .open-analysis { display:block; margin-top:6px; }
 
-  /* "view docs" popup (#docmodal): renders docs/guides/telemetry.md server-side into .markdown.
+  /* "view docs" popup (#docmodal): renders docs/user/guides/telemetry.md server-side into .markdown.
      Shared <portal-info-icon> elements (portal/shared/info-icon.js, styled in
      portal/shared/base.css) sit next to panel headers and open the same popup pre-scrolled to that
      section's heading id — see app.js's delegated click listener. */

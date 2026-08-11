@@ -3,7 +3,7 @@
 // once, opened/closed via showModal()/close()). The content comes from a caller-supplied fetch
 // function so this stays reusable across pages instead of hardcoding one API route; the Telemetry
 // page passes fetchTelemetryGuide (GET /api/telemetry/guide -> server-rendered
-// docs/guides/telemetry.md), so the popup and the on-disk guide are always the same content, never
+// docs/user/guides/telemetry.md), so the popup and the on-disk guide are always the same content, never
 // a second copy that can drift.
 //
 // Deep-linking: open(anchorId) scrolls the freshly-rendered content to the heading whose slug id

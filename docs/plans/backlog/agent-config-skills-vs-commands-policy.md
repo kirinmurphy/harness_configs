@@ -428,7 +428,7 @@ read-only skills lightweight.
   standalone entries, harness targets).
 - **`scripts/build/render-slash-commands.mjs`** — shipped as the renderer/checker for generated
   Claude and Codex slash-command files.
-- **`docs/reference/internal/skill-invocation-audit.md`** — shipped as a hand-authored baseline
+- **`docs/internal/skill-invocation-audit.md`** — shipped as a hand-authored baseline
   audit for current shared skills.
 - **`roborepo skill audit [--check]`** — shipped as the automated renderer/checker for the shared
   skill invocation audit.
@@ -499,14 +499,14 @@ itself.
 
 ## Related
 
-- `docs/reference/internal/skill-invocation-audit.md` records the current shared
+- `docs/internal/skill-invocation-audit.md` records the current shared
   skill inventory, risk tiers, and recommended next actions.
 - `roborepo skill link-project` (`scripts/cli/skills.mjs`) installs client-repo
   `.codex/skills/` into Claude project skill views, which need the same audit policy.
 - `scripts/build/skill-lib.sh` and `scripts/cli/skill-lib.mjs` already define
   reusable skill discovery and linking rules that a command-wrapper renderer
   should share.
-- `docs/reference/internal/rules-parity-and-layering.md` explains how always-on
+- `docs/internal/rules-parity-and-layering.md` explains how always-on
   rules render.
-- `docs/reference/services/claude-hooks.md` and
-  `docs/reference/services/codex-hooks.md` document current hook behavior.
+- `docs/user/reference/claude-hooks.md` and
+  `docs/user/reference/codex-hooks.md` document current hook behavior.

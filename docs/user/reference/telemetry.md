@@ -146,7 +146,7 @@ registry back both this report and the portal, so CLI and portal numbers agree f
 ## Portal
 
 `/telemetry` is a frameworkless, dependency-free page (`portal/telemetry/`) polling `/api/data` every
-5 seconds. See `docs/reference/services/portal.md` for the shared portal architecture (loopback bind,
+5 seconds. See `docs/user/reference/portal.md` for the shared portal architecture (loopback bind,
 mutation-token contract, route dispatch). Telemetry-specific pieces:
 
 - **Global cohort filter bar** — time range, harness, model, repository, and a marker-relative
@@ -192,7 +192,7 @@ mutation-token contract, route dispatch). Telemetry-specific pieces:
   `{ metric, cohort_a, cohort_b }` for a direct two-cohort comparison (no before/after language — no
   shared timestamp to split sessions around). Validates the metric id against the registry and
   returns `400` for an unknown one along with the full known-metric list.
-- `GET /api/telemetry/guide` — server-rendered `docs/guides/telemetry.md`, backing the page's
+- `GET /api/telemetry/guide` — server-rendered `docs/user/guides/telemetry.md`, backing the page's
   "view docs" popup (`portal/shared/doc-guide-modal.js`) so the popup and the on-disk guide are
   the same content, never a second copy. `renderMarkdown()` (`scripts/cli/markdown-render.mjs`)
   gives every heading a stable slug `id` so a panel's info icon can deep-link straight to its
@@ -201,7 +201,7 @@ mutation-token contract, route dispatch). Telemetry-specific pieces:
   loopback-only architecture).
 
 All mutating routes are POST-only and use the portal's standard loopback-origin + mutation-token
-guard (see `docs/reference/services/portal.md`).
+guard (see `docs/user/reference/portal.md`).
 
 ## Privacy and retention
 
@@ -224,7 +224,4 @@ loopback only.
 
 ## Related
 
-- `docs/plans/active/roborepo-telemetry-events-experiments-plan.md` — the implementation plan this
-  system was built from, with per-phase grounding notes (concrete file:line references, deferred
-  work, decisions made along the way).
-- `docs/reference/services/portal.md` — the shared portal server/route/mutation-token architecture.
+- `docs/user/reference/portal.md` — the shared portal server/route/mutation-token architecture.

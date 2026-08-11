@@ -663,7 +663,7 @@ export_user_config() {
   # Honor --on-conflict abort for root configs too. A genuine collision is a real local file the
   # user already had (not absent, not one of roborepo's own repo symlinks). The layered-merge path
   # is otherwise non-destructive, but the documented abort contract is "stop before writing
-  # anything" (docs/reference/internal/config-collision-handling.md, root-config-layered-inheritance),
+  # anything" (docs/user/reference/config-collision-handling.md, root-config-layered-inheritance),
   # so we bail before mutating instead of silently merging.
   if [[ "${ROBOREPO_ON_CONFLICT:-}" == "abort" && -e "${home_path}" && ! -L "${home_path}" ]]; then
     echo "abort: install canceled by user" >&2

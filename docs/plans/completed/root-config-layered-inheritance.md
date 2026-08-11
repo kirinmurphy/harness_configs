@@ -15,7 +15,7 @@ reviewed_commit:
 > design is dropped — see "Why The Overlay Design Was Dropped" below. Current design: detect drift
 > honestly, never silently merge, and stage conflicting versions the same way `roborepo install`
 > already does (see
-> [`config-collision-handling.md`](../../reference/internal/config-collision-handling.md)) rather than
+> [`config-collision-handling.md`](../../user/reference/config-collision-handling.md)) rather than
 > inventing a second staging convention. Implementation steps 1–4 are done across all three install
 > paths this repo has: the JS bundle-apply path (`presets.mjs`), the bash direct-installer path
 > (`install-lib.sh`), and the PowerShell Windows installer (`install-windows.ps1`, added during
@@ -99,7 +99,7 @@ never lies about what happened, and it never loses an edit without telling you.
 Rather than inventing a new archive location, drift handling reuses the timestamped-sibling
 convention `roborepo install` already uses for collisions (`*_original_TIMESTAMP` when the
 baseline wins, `*_update_TIMESTAMP` when the current file is kept) — see
-[`config-collision-handling.md`](../../reference/internal/config-collision-handling.md). One staging
+[`config-collision-handling.md`](../../user/reference/config-collision-handling.md). One staging
 mechanism covers both first install and every later drifted update, instead of two separate ones.
 
 ## Update
@@ -208,7 +208,7 @@ convention rather than a separate one:
    `test-roborepo.sh`) exercises all five states against a throwaway HOME.
 7. [x] Document the Codex native profile option as the recommended path for a permanent personal
    config slice — added a "Codex Native Profiles (permanent personal config)" section to
-   `docs/reference/internal/config-collision-handling.md` (put personal config in
+   `docs/user/reference/config-collision-handling.md` (put personal config in
    `~/.codex/<name>.config.toml`, select via `--profile <name>` / `CODEX_PROFILE`, layered natively
    by Codex; roborepo never writes profile files so updates leave them untouched; Claude has no
    equivalent). The terminal `roborepo config root inspect` report now also prints a Codex-only

@@ -92,7 +92,7 @@ the tool is what it is" prose below:
 | Hooks | Wiring in `settings.json`, `.mjs` bodies; JSON control output the harness _obeys_ | Wiring in `hooks.json`, `.mjs` bodies; output read as plain text to _show_ | Wiring nested under `settings.json`'s `hooks` key, same location as Claude's — bulk read/write still stubbed |
 
 For how each of these survives an install/update — backups, drift detection, per-element persistence —
-see [Config Collision Handling](config-collision-handling.md#per-element-persistence). For the source
+see [Config Collision Handling](../user/reference/config-collision-handling.md#per-element-persistence). For the source
 location and exact command per element, see
 [Harness Anatomy](harness-anatomy.md#elements-at-a-glance).
 

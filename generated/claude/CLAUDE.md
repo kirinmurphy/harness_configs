@@ -16,8 +16,10 @@ Load a matching skill before the work it governs, not after — and only the ski
 - Only run checks implemented in the current repository.
 - Prefer formatting, lint, type, and test checks scoped to touched files when supported.
 - Prefer targeted smoke tests for edited scripts over full repo checks.
+- For package/release workflow edits, prefer syntax checks plus targeted package smoke/lifecycle checks; full `npm test` is for broad CLI/runtime changes or explicit release preflight.
 - Run full repo checks only for shared app code, build/tooling config, dependency changes, generated types, auth/payments/data migrations, CI scripts, broad refactors, cross-cutting types/config, CI risk, or explicit user request.
 - If a full check seems useful but likely slow, state why before running it.
+- For long quiet checks, use a timeout/progress wrapper or repo runner when available so silence is not mistaken for a hang.
 - Avoid watch, verbose, and debug modes unless explicitly requested.
 - Keep command output small; use `roborepo run <command> ...` when a command may print a large log.
 - Final response should include `Verified: <command> -> <pass|fail|blocked>` when verification was run or attempted.
@@ -28,7 +30,9 @@ Load a matching skill before the work it governs, not after — and only the ski
 - Before broad searches, estimate result size and search the narrowest likely source first.
 - Do not recursively search home, global caches, session logs, telemetry spools, or generated history unless the user explicitly asks for that scope.
 - For config provenance questions, inspect active process args and known config files before searching logs.
+- For process debugging, start with exact filters such as pidfile, port, script name, or `pgrep -fl <pattern>`; use full `ps -axww` only after narrow filters fail, and cap output.
 - When a broad search is necessary, exclude high-volume dirs and cap output with targeted patterns.
+- Prefer command summaries and bounded tails over full diffs, full test logs, or repeated process dumps.
 
 
 ## Temporary Files and Cleanup

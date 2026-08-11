@@ -5,7 +5,7 @@
 The three harnesses below are the ones registered today, not a fixed set. roborepo renders one
 generated tree and one home directory per *discovered* provider, so this diagram grows a branch
 whenever a provider is added — see
-[Harness Provider Interface](../../guides/harnesses/harness-provider-interface.md).
+[Harness Provider Interface](../guides/harnesses/harness-provider-interface.md).
 
 ```mermaid
 flowchart LR
@@ -200,7 +200,7 @@ file was already clean/missing or matched the repo baseline. If a mutation merge
 already-drifted user file, the merged file stays drifted so a later update does not mistake
 preserved user content for roborepo-owned baseline.
 
-See [Config Collision Handling](../internal/config-collision-handling.md) for the exact collision,
+See [Config Collision Handling](config-collision-handling.md) for the exact collision,
 backup, and uninstall behavior.
 
 ### Shared skills: canonical source + machine-local cache

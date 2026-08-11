@@ -350,7 +350,7 @@ questions (3-5) are now resolved enough to design Phase 2's permissions adapter 
       per Phase 2's adapter comment (`scripts/harnesses/gemini/index.mjs:6-7`), predating and outside
       Gemini-specific scope.
   - Full suite after the three fixes: 385 passed, 0 failed. Doctor: 100/100.
-- [x] Updated `docs/reference/internal/harness-anatomy.md` and `harnesses-explained.md` to include
+- [x] Updated `docs/internal/harness-anatomy.md` and `harnesses-explained.md` to include
   Gemini as a third worked example, not just Claude/Codex (commit `93083b1`). Confirms the "two
   harnesses" framing generalizes to "N harnesses" in prose, not just in code — with real per-element
   material drawn from the adapter code, not padding:

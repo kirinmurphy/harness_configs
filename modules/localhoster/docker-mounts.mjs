@@ -71,9 +71,23 @@ function bindSources(mounts) {
   for (const mount of mounts) {
     if (!mount || mount.Type !== "bind") continue;
     if (typeof mount.Source !== "string" || !mount.Source.startsWith("/")) continue;
-    if (!sources.includes(mount.Source)) sources.push(mount.Source);
+    const source = hostPathFromMountSource(mount.Source);
+    if (!sources.includes(source)) sources.push(source);
   }
   return sources;
+}
+
+// Docker Desktop on macOS runs containers in a Linux VM and reports bind sources through its
+// gateway prefix — /Users/me/app is reported as /host_mnt/Users/me/app. Every consumer of these
+// paths compares them against real host paths (checkout roots, project identity), so the prefix has
+// to come off here rather than at each call site, where forgetting it fails silently: a stack whose
+// mounts "resolve to no checkout" looks exactly like a legitimately shared one.
+//
+// Only stripped when a real host path remains underneath. A literal /host_mnt directory is not
+// assumed to exist, but neither is the prefix removed to produce an empty path.
+function hostPathFromMountSource(source) {
+  const stripped = source.replace(/^\/host_mnt(?=\/)/, "");
+  return stripped || source;
 }
 
 export async function defaultRunCommand(command, args, { timeoutMs } = {}) {

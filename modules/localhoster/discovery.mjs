@@ -194,6 +194,63 @@ function withRepositoryFields(identity) {
 // Two guards keep it honest: the same identityKind !== "process" promotion rule the working_dir tier
 // uses, and an agreement requirement (below) when a project's containers disagree about which repo
 // they belong to.
+// Which checkout, if any, a Compose stack belongs to — decided by what its containers actually
+// depend on rather than by where `docker compose up` happened to be typed.
+//
+// BIND MOUNTS DECIDE. A bind mount is a hard dependency on one checkout's files: the stack cannot
+// run without them. A named volume is persisted state that says nothing about which checkout is in
+// play, so it is ignored for placement (bindSources already drops it).
+//
+// working_dir is deliberately NOT consulted here. It still resolves WHICH REPOSITORY a stack
+// belongs to (tier 2 above, unchanged), but it must never decide WHICH CHECKOUT — that is the bug
+// this exists to fix. A shared database started from whichever worktree you happened to be in would
+// otherwise render under that worktree, and `docker compose down` from that row would stop the
+// database every other checkout is using.
+//
+// Classified per Compose PROJECT, never per container: a stack is one `docker compose down` unit.
+//
+// The four outcomes and why they differ:
+//   owned       - mounts land in exactly one checkout; that checkout's files are the dependency
+//   shared      - mounts land in two or more checkouts, or in the repository root itself; a positive
+//                 finding that this is not checkout-specific
+//   unverified  - no bind mounts at all (named volumes only); an ABSENCE of evidence, not a finding
+//
+// shared and unverified render in the same place but are not the same claim, so the evidence kind
+// travels with the result and the card can distinguish them.
+export function classifyComposeOwnership(mountPaths, checkoutRoots) {
+  const paths = (mountPaths || []).filter(Boolean);
+  const roots = (checkoutRoots || []).filter((r) => r && r.path);
+  if (!paths.length) {
+    return { ownership: "unverified", evidence: { kind: "none", checkoutPaths: [] } };
+  }
+  // A mount "lands in" a checkout when it is that directory or anything beneath it. Longest match
+  // wins so a worktree nested under its parent clone is attributed to the worktree, not the clone.
+  const matched = new Map();
+  const repoRootHits = [];
+  for (const mountPath of paths) {
+    let best = null;
+    for (const root of roots) {
+      if (mountPath !== root.path && !mountPath.startsWith(`${root.path}/`)) continue;
+      if (!best || root.path.length > best.path.length) best = root;
+    }
+    if (best) matched.set(best.rootId, best);
+    else repoRootHits.push(mountPath);
+  }
+  if (matched.size === 1 && !repoRootHits.length) {
+    const [root] = matched.values();
+    return { ownership: "owned", rootId: root.rootId, evidence: { kind: "bind-mount", checkoutPaths: [root.path] } };
+  }
+  if (matched.size > 1) {
+    return {
+      ownership: "shared",
+      evidence: { kind: "conflict", checkoutPaths: [...matched.values()].map((r) => r.path).sort() },
+    };
+  }
+  // Mounts exist but resolve to no known checkout — the repository root itself, or a sibling path.
+  // Positive evidence that the stack is not checkout-specific.
+  return { ownership: "shared", evidence: { kind: "repo-root", checkoutPaths: [] } };
+}
+
 async function collectGitForComposeProjects(containers, settings, {
   collectGit,
   scanCache,

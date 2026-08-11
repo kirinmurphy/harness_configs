@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import {
   discoverInstances,
+  classifyComposeOwnership,
 } from "../../modules/localhoster/index.mjs";
 
 // A Compose-labeled container with a published port, so `discoverInstances`'s Docker-corroboration
@@ -228,6 +229,65 @@ async function runCommand(command, args) {
     settings: { composeProjects: {} },
   });
   assert.equal(result.composeProjectGit.get("myapp")?.resolvedFrom, "auto");
+}
+
+// ---- Compose ownership classification (localhoster-workspace-model Phase 4) ----
+// Placement is decided by bind mounts only. working_dir still resolves WHICH REPOSITORY a stack
+// belongs to, but must never decide WHICH CHECKOUT — a shared database started from whichever
+// worktree you happened to be in would otherwise render under that worktree, and `docker compose
+// down` from that row would stop the database every other checkout is using.
+{
+  const roots = [
+    { rootId: "main", path: "/repo" },
+    { rootId: "wt-a", path: "/repo/.worktrees/a" },
+    { rootId: "wt-b", path: "/elsewhere/b" },
+  ];
+
+  // Configuration 1: named volumes only. An ABSENCE of evidence, not a finding — nothing here
+  // supports any placement, so the stack is not asserted to belong to a checkout.
+  const volumesOnly = classifyComposeOwnership([], roots);
+  assert.equal(volumesOnly.ownership, "unverified");
+  assert.equal(volumesOnly.evidence.kind, "none");
+  assert.equal(volumesOnly.rootId, undefined, "unverified never claims a checkout");
+
+  // Configuration 2: bind mounts landing in exactly one checkout. That checkout's files are a hard
+  // dependency of the stack.
+  const single = classifyComposeOwnership(["/elsewhere/b/db"], roots);
+  assert.equal(single.ownership, "owned");
+  assert.equal(single.evidence.kind, "bind-mount");
+  assert.equal(single.rootId, "wt-b");
+
+  // Configuration 3: mounts spanning two checkouts. A positive finding that the stack is not
+  // checkout-specific, so it belongs at repository level rather than under either one.
+  const conflict = classifyComposeOwnership(["/repo/.worktrees/a/x", "/elsewhere/b/y"], roots);
+  assert.equal(conflict.ownership, "shared");
+  assert.equal(conflict.evidence.kind, "conflict");
+  assert.equal(conflict.rootId, undefined, "a shared stack never claims one checkout");
+  assert.deepEqual(conflict.evidence.checkoutPaths, ["/elsewhere/b", "/repo/.worktrees/a"]);
+
+  // Configuration 4: mounts resolving to the repository root itself, not to any checkout.
+  const repoRoot = classifyComposeOwnership(["/repo/shared"], [{ rootId: "wt-a", path: "/repo/.worktrees/a" }]);
+  assert.equal(repoRoot.ownership, "shared");
+  assert.equal(repoRoot.evidence.kind, "repo-root");
+
+  // A worktree nested under its parent clone is attributed to the worktree: longest match wins, or
+  // every worktree under /repo would be swallowed by the main checkout.
+  assert.equal(classifyComposeOwnership(["/repo/.worktrees/a/src"], roots).rootId, "wt-a");
+
+  // Sibling-prefix trap: /repo-other must not count as being under /repo.
+  const sibling = classifyComposeOwnership(["/repo-other/x"], [{ rootId: "main", path: "/repo" }]);
+  assert.equal(sibling.ownership, "shared");
+  assert.equal(sibling.evidence.kind, "repo-root");
+
+  // THE regression that matters: one checkout, one stack — the overwhelmingly common case. This
+  // must still render the stack inside that checkout, exactly as it does today.
+  const common = classifyComposeOwnership(["/repo/db"], [{ rootId: "main", path: "/repo" }]);
+  assert.equal(common.ownership, "owned");
+  assert.equal(common.rootId, "main");
+
+  // A checkout with no recorded path cannot be matched against and must not throw.
+  assert.equal(classifyComposeOwnership(["/repo/db"], [{ rootId: "x", path: null }]).ownership, "shared");
+  assert.equal(classifyComposeOwnership(null, null).ownership, "unverified");
 }
 
 console.log("ok: localhoster compose project identity resolution");

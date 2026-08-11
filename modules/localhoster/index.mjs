@@ -3,6 +3,7 @@ export {
 } from "./capabilities.mjs";
 export {
   discoverInstances,
+  classifyComposeOwnership,
 } from "./discovery.mjs";
 export {
   collectGitContext,

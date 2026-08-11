@@ -396,7 +396,7 @@ new settings surface, and it keeps `validateComposeProjects`
 - [ ] A repository discovered once remains listed after every one of its processes stops, with its
       checkouts and their branches still shown.
 - [ ] A steady-state poll writes nothing — no settings revision bump when no record changed.
-- [ ] An unreadable parent directory yields `idle`, never `stale`, and never soft-deletes.
+- [ ] An unreadable parent directory yields `idle`, never `stale`.
 - [ ] A checkout deleted while its parent stays readable yields `stale`.
 - [ ] A changed remote URL aliases onto the existing record and produces exactly one repository, not
       two.

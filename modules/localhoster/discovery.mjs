@@ -41,6 +41,11 @@ export async function discoverInstances(options = {}) {
     previousHealth = new Map(),
     now = new Date(),
     settings = null,
+    // repositoryId -> [{ rootId, path }] for every checkout the registry knows, used to place a
+    // Compose stack against the checkouts it actually mounts. Injected by the caller (which owns
+    // registry access) rather than read here, keeping discovery free of state I/O. Absent means
+    // stacks classify as shared/unverified rather than being attributed to a wrong checkout.
+    checkoutRootsByRepository = new Map(),
   } = options;
   // One cache per scan, created here and dropped when this call returns. Because
   // refreshLocalhosterSnapshot invokes discoverInstances exactly once per refresh, "per-scan" and
@@ -103,17 +108,28 @@ export async function discoverInstances(options = {}) {
   // buildLocalhosterSnapshot, because git collection is async and which compose projects exist is
   // only known once dockerResult above has resolved. One extra collectGit call per associated
   // project, not per container/port.
+  const collectMounts = collectDockerMountRecords
+    ? (ids) => collectDockerMountRecords(ids, { platform, runCommand: runDockerMountsCommand })
+    : null;
   const composeProjectGit = collectGit
     ? await collectGitForComposeProjects(dockerResult.containers, settings, {
       collectGit,
       scanCache,
       runGit,
       resolveIdentity,
-      collectMounts: collectDockerMountRecords
-        ? (ids) => collectDockerMountRecords(ids, { platform, runCommand: runDockerMountsCommand })
-        : null,
+      collectMounts,
+      checkoutRootsByRepository,
     })
     : new Map();
+  // Placement runs as its own pass: it needs "which repository" answered before it can ask "which
+  // of that repository's checkouts", and it inspects every stack rather than only the ones
+  // repository resolution could not handle.
+  if (collectGit) {
+    await classifyComposeProjects(dockerResult.containers, composeProjectGit, {
+      collectMounts,
+      checkoutRootsByRepository,
+    });
+  }
 
   // instance -> the probe and app settings that produced it. Health is classified in a later pass
   // (association keys must be final first), and this carries the inputs across rather than having
@@ -209,10 +225,14 @@ function withRepositoryFields(identity) {
 //
 // Classified per Compose PROJECT, never per container: a stack is one `docker compose down` unit.
 //
-// The four outcomes and why they differ:
-//   owned       - mounts land in exactly one checkout; that checkout's files are the dependency
-//   shared      - mounts land in two or more checkouts, or in the repository root itself; a positive
-//                 finding that this is not checkout-specific
+// The three outcomes and why they differ:
+//   owned       - mounts land in exactly one checkout; that checkout's files are the dependency.
+//                 Mounts that land in NO checkout do not weaken this: real stacks routinely bind
+//                 /var/run/docker.sock, /etc/localtime, or a log directory, and requiring every
+//                 mount to be inside the checkout would misclassify most ordinary stacks as shared.
+//   shared      - mounts land in two or more checkouts (they compete), or bind mounts exist but none
+//                 resolves to any known checkout — the repository root itself, or a sibling path.
+//                 A positive finding that this is not checkout-specific.
 //   unverified  - no bind mounts at all (named volumes only); an ABSENCE of evidence, not a finding
 //
 // shared and unverified render in the same place but are not the same claim, so the evidence kind
@@ -226,7 +246,6 @@ export function classifyComposeOwnership(mountPaths, checkoutRoots) {
   // A mount "lands in" a checkout when it is that directory or anything beneath it. Longest match
   // wins so a worktree nested under its parent clone is attributed to the worktree, not the clone.
   const matched = new Map();
-  const repoRootHits = [];
   for (const mountPath of paths) {
     let best = null;
     for (const root of roots) {
@@ -234,17 +253,21 @@ export function classifyComposeOwnership(mountPaths, checkoutRoots) {
       if (!best || root.path.length > best.path.length) best = root;
     }
     if (best) matched.set(best.rootId, best);
-    else repoRootHits.push(mountPath);
-  }
-  if (matched.size === 1 && !repoRootHits.length) {
-    const [root] = matched.values();
-    return { ownership: "owned", rootId: root.rootId, evidence: { kind: "bind-mount", checkoutPaths: [root.path] } };
   }
   if (matched.size > 1) {
     return {
       ownership: "shared",
       evidence: { kind: "conflict", checkoutPaths: [...matched.values()].map((r) => r.path).sort() },
     };
+  }
+  if (matched.size === 1) {
+    // Unmatched mounts alongside a single matched checkout do not weaken the finding. Real stacks
+    // routinely bind infrastructure that belongs to no checkout — /var/run/docker.sock,
+    // /etc/localtime, a log directory — and requiring EVERY mount to land inside the checkout would
+    // classify most ordinary single-checkout stacks as shared. What matters is that exactly one
+    // checkout's files are depended on and no second checkout competes for the stack.
+    const [root] = matched.values();
+    return { ownership: "owned", rootId: root.rootId, evidence: { kind: "bind-mount", checkoutPaths: [root.path] } };
   }
   // Mounts exist but resolve to no known checkout — the repository root itself, or a sibling path.
   // Positive evidence that the stack is not checkout-specific.
@@ -257,6 +280,10 @@ async function collectGitForComposeProjects(containers, settings, {
   runGit,
   resolveIdentity = resolveProjectIdentity,
   collectMounts = null,
+  // repositoryId -> [{ rootId, path }]: every checkout the registry knows for a repository, which is
+  // what a stack's bind mounts are tested against. Empty means placement degrades to "no checkout
+  // claimed" rather than to a wrong one.
+  checkoutRootsByRepository = new Map(),
 }) {
   const workingDirByProjectName = new Map();
   for (const container of containers) {
@@ -280,6 +307,11 @@ async function collectGitForComposeProjects(containers, settings, {
           // different docker-compose.yml files, or a sandboxed worktree its own isolated stack) —
           // so this needs the same per-checkout rootId a regular project gets, not a repo-wide one.
           rootId: identity.projectRoot ? computeRootId(identity.projectRoot) : null,
+          // The checkout directory this stack resolved to. Carried so the caller can persist the
+          // rootId -> path mapping for a repository whose only presence is containers — without it
+          // such a repository is registered with no path, and its own stack then has no checkout to
+          // be tested against.
+          projectRoot: identity.projectRoot || null,
           resolvedFrom: "manual",
         });
         return;
@@ -298,6 +330,7 @@ async function collectGitForComposeProjects(containers, settings, {
         git: await collectGit(workingDir, { scanCache, runGit }),
         repositoryId: canonicalRepositoryId(identity),
         rootId: identity.projectRoot ? computeRootId(identity.projectRoot) : null,
+        projectRoot: identity.projectRoot || null,
         resolvedFrom: "auto",
       });
     }),
@@ -333,10 +366,74 @@ async function collectGitForComposeProjects(containers, settings, {
         git: await collectGit(projectRoot, { scanCache, runGit }),
         repositoryId,
         rootId: computeRootId(projectRoot),
+        projectRoot,
         resolvedFrom: "auto-bind",
       });
     }),
   );
+  return byProjectName;
+}
+
+// Second pass: decide WHICH CHECKOUT each resolved stack belongs to.
+//
+// Runs after repository resolution because it needs the answer to "which repository" before it can
+// ask "which of that repository's checkouts". Mounts are collected for EVERY compose project here,
+// not only the ones repository resolution could not handle — a stack resolved from working_dir still
+// needs its mounts inspected, because working_dir is exactly the signal that must not decide
+// placement.
+//
+// The extra cost is one batched `docker inspect` covering every compose container, and only when
+// Docker is present at all. Projects whose mounts were already fetched during resolution reuse them.
+async function classifyComposeProjects(containers, byProjectName, {
+  collectMounts,
+  checkoutRootsByRepository,
+  mountsByContainerId = null,
+}) {
+  if (!collectMounts || !byProjectName.size) return byProjectName;
+  const containersByProject = new Map();
+  for (const container of containers) {
+    if (!container.composeProject || !container.containerId) continue;
+    if (!byProjectName.has(container.composeProject)) continue;
+    if (!containersByProject.has(container.composeProject)) containersByProject.set(container.composeProject, []);
+    containersByProject.get(container.composeProject).push(container);
+  }
+  if (!containersByProject.size) return byProjectName;
+
+  // Reuse anything the resolution pass already inspected; fetch only what is missing.
+  let mounts = mountsByContainerId || new Map();
+  const missing = [];
+  for (const list of containersByProject.values()) {
+    for (const container of list) if (!mounts.has(container.containerId)) missing.push(container.containerId);
+  }
+  if (missing.length) {
+    const fetched = await collectMounts(missing);
+    if (mounts === mountsByContainerId) mounts = new Map(mounts);
+    for (const [id, paths] of fetched) mounts.set(id, paths);
+  }
+
+  for (const [name, resolved] of byProjectName) {
+    // A manual repoPath is an explicit statement of where the stack belongs and outranks every
+    // inferred signal, including bind mounts.
+    if (resolved.resolvedFrom === "manual") {
+      resolved.ownership = "owned";
+      resolved.ownershipEvidence = { kind: "manual", checkoutPaths: [] };
+      continue;
+    }
+    const mountPaths = [];
+    for (const container of containersByProject.get(name) || []) {
+      for (const source of mounts.get(container.containerId) || []) {
+        if (!mountPaths.includes(source)) mountPaths.push(source);
+      }
+    }
+    const roots = checkoutRootsByRepository.get(resolved.repositoryId) || [];
+    const verdict = classifyComposeOwnership(mountPaths, roots);
+    resolved.ownership = verdict.ownership;
+    resolved.ownershipEvidence = verdict.evidence;
+    // rootId is set ONLY for `owned`, so a consumer that ignores the new fields degrades to "shared
+    // stacks have no checkout" rather than to a wrong one. This is the line that fixes the original
+    // bug: a working_dir-derived rootId no longer survives into a stack that mounts say is shared.
+    resolved.rootId = verdict.ownership === "owned" ? verdict.rootId : null;
+  }
   return byProjectName;
 }
 

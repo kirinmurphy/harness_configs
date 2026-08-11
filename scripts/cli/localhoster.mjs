@@ -17,7 +17,7 @@ import {
 import { recordRepositoryDiscovery } from "./repositories.mjs";
 import { resolveProjectIdentity } from "../../modules/localhoster/identity.mjs";
 import { canonicalRepositoryId, rootId as computeRootId } from "../../modules/repositories/identity.mjs";
-import { loadRegistry } from "../../modules/repositories/index.mjs";
+import { loadRegistry, checkoutRootsFor } from "../../modules/repositories/index.mjs";
 
 const FRESHNESS_MS = 8000;
 const HISTORY_API_LIMIT = 200;
@@ -59,6 +59,9 @@ export async function refreshLocalhosterSnapshot() {
           // Carrying the prior health records forward is what makes failure debouncing work: the
           // classifier is pure, so the consecutive-failure count has to travel with the snapshot.
           previousHealth: healthIndexFromSnapshot(previous),
+          // Every checkout the registry knows, so a Compose stack is placed by the checkout its bind
+          // mounts actually depend on rather than by the directory it was started from.
+          checkoutRootsByRepository: registryCheckoutRoots(),
         }),
         refreshPortalGit(),
       ]);
@@ -68,7 +71,7 @@ export async function refreshLocalhosterSnapshot() {
         discovery.instances = discovery.instances.filter((instance) => !isPortalDuplicate(instance, portal));
         discovery.instances.unshift(portal);
       }
-      recordDiscoveredRepositories(discovery.instances);
+      recordDiscoveredRepositories(discovery.instances, discovery.composeProjectGit);
       lastSnapshot = buildSnapshot({ discovery, settings, refresh: { state: "idle", startedAt: null, error: null, generation } });
       // Only refreshes produce events. updateLocalhosterSettings also rebuilds a snapshot, but from
       // cached discovery with no fresh probe, so any diff there would be a settings artifact rather
@@ -220,10 +223,28 @@ export function printLocalhosterTable(snapshot) {
 // Register repositories owning running processes into the shared registry (localhost tracking only
 // — NEVER enables Plans, per the discovery/enrollment separation). Best-effort: a registry failure
 // must never break Localhoster discovery, so each write is guarded and errors are swallowed.
-function recordDiscoveredRepositories(instances) {
+function recordDiscoveredRepositories(instances, composeProjectGit = null) {
   const seen = new Set();
-  for (const instance of instances || []) {
-    const project = instance.project;
+  // A Compose stack resolves a repository and a checkout just as a listener does — from a manual
+  // repoPath, from working_dir, or from bind mounts — but its containers are not host processes, so
+  // they never appear in `instances`. Without this, a repository whose only presence is a container
+  // stack is registered with no path, which then makes its own stack unplaceable: the classifier has
+  // no checkout to test mounts against and everything falls back to `shared`.
+  const sources = [...(instances || []).map((instance) => instance.project)];
+  for (const resolved of (composeProjectGit || new Map()).values()) {
+    if (!resolved?.repositoryId || !resolved.projectRoot) continue;
+    sources.push({
+      repositoryId: resolved.repositoryId,
+      projectRoot: resolved.projectRoot,
+      // rootId is null for a shared/unverified stack by design, so derive it from the path here —
+      // the checkout is worth remembering even when the stack is not attributed to it.
+      rootId: resolved.rootId || computeRootId(resolved.projectRoot),
+      identityKind: resolved.repositoryId.startsWith("git:") ? "git" : "local",
+      confidence: "high",
+      name: null,
+    });
+  }
+  for (const project of sources) {
     const repositoryId = project?.repositoryId;
     if (!repositoryId || seen.has(repositoryId)) continue;
     seen.add(repositoryId);
@@ -293,6 +314,23 @@ function buildSnapshot({ discovery, settings = loadSettings({ stateRoot }), refr
 //
 // Best-effort in the same spirit as recordDiscoveredRepositories: an unreadable or corrupt registry
 // costs the canonical name and nothing else, so naming falls back to the running checkouts.
+// repositoryId -> [{ rootId, path }] for every checkout with a recorded path. Best-effort for the
+// same reason as registryDisplayNames: without it, stacks classify as shared/unverified rather than
+// being placed under a wrong checkout.
+function registryCheckoutRoots() {
+  try {
+    const registry = loadRegistry({ stateRoot });
+    const byRepository = new Map();
+    for (const id of Object.keys(registry.repositories || {})) {
+      const roots = checkoutRootsFor(registry, id);
+      if (roots.length) byRepository.set(id, roots);
+    }
+    return byRepository;
+  } catch {
+    return new Map();
+  }
+}
+
 function registryDisplayNames() {
   try {
     const registry = loadRegistry({ stateRoot });

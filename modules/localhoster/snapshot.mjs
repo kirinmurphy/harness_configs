@@ -39,11 +39,17 @@ export function buildLocalhosterSnapshot({
           repoPath: projectSettings.repoPath || null,
           git: gitInfo?.git || null,
           repositoryId: gitInfo?.repositoryId || null,
-          // Which checkout `docker compose up` was actually run from — a compose stack is not
-          // guaranteed to be shared across a repository's worktrees (see the rootId comment in
-          // discovery.mjs's collectGitForComposeProjects), so it routes into the same root-grouping
-          // every other member uses instead of always defaulting to the main checkout.
+          // Which checkout this stack's files actually live in, decided by its bind mounts rather
+          // than by where `docker compose up` was typed (classifyComposeOwnership in discovery.mjs).
+          // Null for a shared or unverified stack, which routes it to repository level instead of
+          // into one checkout's section.
           rootId: gitInfo?.rootId || null,
+          // "owned" (mounts land in exactly one checkout), "shared" (they span several, or resolve
+          // to the repository root), or "unverified" (no bind mounts at all). shared and unverified
+          // render in the same place but are not the same claim — one is a positive finding, the
+          // other an absence of evidence — so the evidence kind travels alongside.
+          ownership: gitInfo?.ownership || null,
+          ownershipEvidence: gitInfo?.ownershipEvidence || null,
           // "manual" when settings.composeProjects[name].repoPath was set and used, "auto" when
           // resolveIdentity instead ran against the working_dir label from `docker ps`, null when
           // neither resolved (e.g. a compose project with no git repo at all).

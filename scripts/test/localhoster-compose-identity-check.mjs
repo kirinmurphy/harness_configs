@@ -211,14 +211,24 @@ async function runCommand(command, args) {
   assert.equal(result.composeProjectGit.has("myapp"), false);
 }
 
-// Precedence: a working_dir that resolves wins outright, and no `docker inspect` is issued at all.
+// Precedence: a working_dir that resolves still wins for REPOSITORY resolution — resolvedFrom stays
+// "auto" and no second repository lookup happens.
+//
+// It no longer suppresses `docker inspect`, though. Placement (which CHECKOUT) is decided by bind
+// mounts for every stack, including ones whose repository came from working_dir — that is the whole
+// point of localhoster-workspace-model Phase 4, since working_dir answers "where was the command
+// typed" rather than "what do these containers depend on". An earlier revision of this test asserted
+// mounts were never inspected in this case; that guard was about cost, and it is superseded by the
+// placement requirement.
 {
+  let mountsInspected = false;
   const result = await discoverInstances({
     ...baseOptions,
     runCommand,
     discoverDocker: async () => ({ warnings: [], containers: [composeContainer({ workingDir: "/repo/myapp" })] }),
     collectDockerMountRecords: async () => {
-      throw new Error("mounts must not be inspected when working_dir already resolved");
+      mountsInspected = true;
+      return new Map([["abc123", ["/repo/myapp/data"]]]);
     },
     resolveIdentity: (cwd) => {
       if (cwd === "/repo/myapp") {
@@ -226,9 +236,41 @@ async function runCommand(command, args) {
       }
       return { identity: `process:${cwd}:unknown`, identityKind: "process", confidence: "low", projectRoot: null, evidence: "process working directory" };
     },
+    checkoutRootsByRepository: new Map([["git:github.com/x/myapp", [{ rootId: "root-main", path: "/repo/myapp" }]]]),
     settings: { composeProjects: {} },
   });
-  assert.equal(result.composeProjectGit.get("myapp")?.resolvedFrom, "auto");
+  const resolved = result.composeProjectGit.get("myapp");
+  assert.equal(resolved?.resolvedFrom, "auto", "repository still resolved from working_dir");
+  assert.equal(mountsInspected, true, "placement inspects mounts even when working_dir resolved");
+  // One checkout, one stack: the common case must still place the stack inside that checkout.
+  assert.equal(resolved.ownership, "owned");
+  assert.equal(resolved.rootId, "root-main");
+}
+
+// A stack whose mounts span two checkouts of the same repository is shared, and carries no rootId —
+// so `docker compose down` is never offered from a row that implies it belongs to one branch.
+{
+  const result = await discoverInstances({
+    ...baseOptions,
+    runCommand,
+    discoverDocker: async () => ({ warnings: [], containers: [composeContainer({ workingDir: "/repo/myapp" })] }),
+    collectDockerMountRecords: async () => new Map([["abc123", ["/repo/myapp/data", "/repo/wt/feature/data"]]]),
+    resolveIdentity: (cwd) => {
+      if (cwd === "/repo/myapp") {
+        return { identity: "git:github.com/x/myapp", identityKind: "git", confidence: "high", projectRoot: "/repo/myapp", evidence: "Git remote" };
+      }
+      return { identity: `process:${cwd}:unknown`, identityKind: "process", confidence: "low", projectRoot: null, evidence: "process working directory" };
+    },
+    checkoutRootsByRepository: new Map([["git:github.com/x/myapp", [
+      { rootId: "root-main", path: "/repo/myapp" },
+      { rootId: "root-feature", path: "/repo/wt/feature" },
+    ]]]),
+    settings: { composeProjects: {} },
+  });
+  const resolved = result.composeProjectGit.get("myapp");
+  assert.equal(resolved.ownership, "shared");
+  assert.equal(resolved.ownershipEvidence.kind, "conflict");
+  assert.equal(resolved.rootId, null, "a shared stack never claims a checkout");
 }
 
 // ---- Compose ownership classification (localhoster-workspace-model Phase 4) ----
@@ -284,6 +326,24 @@ async function runCommand(command, args) {
   const common = classifyComposeOwnership(["/repo/db"], [{ rootId: "main", path: "/repo" }]);
   assert.equal(common.ownership, "owned");
   assert.equal(common.rootId, "main");
+
+  // Infrastructure mounts alongside a checkout mount do not weaken the finding. This is the shape of
+  // a real stack (traefik_vps on the dev machine): three binds inside the checkout plus
+  // /var/run/docker.sock, /etc/localtime and a log dir. Requiring EVERY mount to land inside the
+  // checkout classified it as shared, which is wrong — one checkout's files are the dependency and
+  // no second checkout competes.
+  const withInfra = classifyComposeOwnership(
+    ["/elsewhere/b/traefik/traefik.yml", "/elsewhere/b/acme.json", "/var/run/docker.sock", "/etc/localtime"],
+    roots,
+  );
+  assert.equal(withInfra.ownership, "owned");
+  assert.equal(withInfra.rootId, "wt-b");
+
+  // But infrastructure mounts alone — with nothing landing in any checkout — stay shared: there is
+  // no checkout dependency to point at.
+  const infraOnly = classifyComposeOwnership(["/var/run/docker.sock", "/etc/localtime"], roots);
+  assert.equal(infraOnly.ownership, "shared");
+  assert.equal(infraOnly.evidence.kind, "repo-root");
 
   // A checkout with no recorded path cannot be matched against and must not throw.
   assert.equal(classifyComposeOwnership(["/repo/db"], [{ rootId: "x", path: null }]).ownership, "shared");

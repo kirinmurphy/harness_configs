@@ -499,17 +499,25 @@ new settings surface, and it keeps `validateComposeProjects`
       Covers both directions — a rootId-less stack must reach `sharedComposeGroups`, and a stack the
       mounts *did* place must still reach its checkout's section. Mutation-tested: restoring the old
       main-root fallback fails the first, routing every stack to shared fails the second.
-- [ ] Manual: a repository with a shared backing stack (configuration 1) renders that stack once at
+- [x] Manual: a repository with a shared backing stack (configuration 1) renders that stack once at
       repository level, not under any worktree.
-      **Blocked on the fixture, not on the code.** `shared-compose-stack.sh up` wedged its container
-      in Docker Desktop 29.4.1: it stuck in `Created`, and `docker start`/`docker inspect`/`docker rm
-      -f` all hang on that container specifically while the daemon stays responsive to every other
-      container. Scratch repo, worktree and state file were cleaned up manually; the dead container
-      needs a Docker Desktop restart to clear, which was not done because the same daemon runs
-      `traefik_vps` (production, ports 80/443) and the Supabase stack. The routing logic this item
-      checks is covered by the unit assertions above; what stays unverified is the rendered output.
-- [ ] Manual: a repository with a per-checkout stack (configuration 2) still renders it under its
+      Verified against the live fixture. `docker inspect` reported the two checkout mounts plus
+      `/etc/localtime`; `classifyComposeOwnership` returned `shared`/`conflict` with no `rootId`, and
+      feeding that verdict through `buildLocalhosterSnapshot` put the stack in
+      `sharedComposeGroups` with both roots — main and worktree — holding zero compose groups.
+      One limitation worth recording: the fixture's stack publishes no ports, and discovery
+      correlates containers to instances only by published host port (`discovery.mjs:447`), so the
+      fixture never appears in a live portal scan on its own. The verdict and the routing were
+      therefore checked against real `docker inspect` output driven through the real snapshot
+      builder, rather than by reading the rendered page. Giving the fixture a published port would
+      close that last gap.
+      (The first attempt wedged its container in Docker Desktop 29.4.1 — stuck in `Created` with
+      `start`/`inspect`/`rm -f` all hanging on that one container while the daemon served every
+      other. It cleared on its own; a clean re-run came up in ~3s. Transient, not a fixture defect.)
+- [x] Manual: a repository with a per-checkout stack (configuration 2) still renders it under its
       own checkout.
+      Verified live: `menugoats` and `traefik_vps` each classify `owned`/`bind-mount`, carry a
+      `rootId`, and render inside their own checkout's section with `sharedComposeGroups` empty.
 - [x] All 11 `test:localhoster*` suites pass. All 16 (11 localhoster + 5 repositories) verified
       green after this phase.
 

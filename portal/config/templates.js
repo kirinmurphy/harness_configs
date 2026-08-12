@@ -3,6 +3,7 @@
 // writes app state directly, and nothing here imports the modal — app.js wires callbacks in.
 
 import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
+import { presentedHarnesses, supportedHarnessNames } from "/portal/shared/harness-cohort.js";
 import {
   SECTION_TEMPLATE_ID,
   resolveDriftChip,
@@ -292,9 +293,19 @@ function configHooksCell(harness, onInspectClick) {
   return cell;
 }
 
+// Names the supported providers from the registered catalog rather than a hardcoded list, so a
+// newly registered provider appears here without a markup edit.
+function configFilesEmpty(snap) {
+  const panel = tpl("tpl-config-files-empty");
+  const slot = panel.querySelector("[data-slot=supported]");
+  if (slot) slot.textContent = supportedHarnessNames(snap);
+  return panel;
+}
+
 export function configFiles(snap, { onInspectClick }) {
+  const harnesses = presentedHarnesses(snap);
+  if (harnesses.length === 0) return configFilesEmpty(snap);
   const panel = tpl("tpl-config-files");
-  const harnesses = snap.harnesses || [];
   panel.querySelector(".config-grid").style.setProperty("--provider-count", harnesses.length);
   const head = panel.querySelector("[data-slot=head]");
   const rows = {

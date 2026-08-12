@@ -102,6 +102,19 @@
         </div>
       </section>
     </template>
+    <!-- Zero-harness state for the Agents grid. A machine with no detected harness gets this
+         instead of a grid of columns for every provider roborepo happens to support. -->
+    <template id="tpl-config-files-empty">
+      <section class="panel wide">
+        <div class="config-empty">
+          <strong>No agent harnesses detected on this machine.</strong>
+          <span>
+            RoboRepo supports <span data-slot="supported"></span>. Install or launch one, then run
+            <code>roborepo harness refresh</code> to pick it up.
+          </span>
+        </div>
+      </section>
+    </template>
     <template id="tpl-config-header-cell">
       <div role="columnheader" data-slot="label"></div>
     </template>

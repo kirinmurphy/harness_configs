@@ -102,11 +102,29 @@ fs.writeFileSync(
   ].join("\n"),
 );
 
+// Persisted discovery state for the machine-cohort assertions below: acme detected+enabled, codex
+// present but explicitly disabled by the user, claude discovered as absent. Written directly rather
+// than by running discovery so the fixture states exactly the three cases under test.
+const stateDir = path.join(tmp, "state");
+fs.mkdirSync(path.join(stateDir, "harnesses"), { recursive: true });
+fs.writeFileSync(
+  path.join(stateDir, "harnesses", "state.json"),
+  JSON.stringify({
+    schemaVersion: 1,
+    lastDiscoveredAt: "2026-01-01T00:00:00.000Z",
+    providers: {
+      claude: { enabled: false, selectionSource: "discovery", confidence: "absent", evidence: [] },
+      codex: { enabled: false, selectionSource: "user", confidence: "confirmed", evidence: [] },
+      acme: { enabled: true, selectionSource: "discovery", confidence: "possible", evidence: [] },
+    },
+  }, null, 2),
+);
+
 const probeScript = path.join(tmp, "probe.mjs");
 fs.writeFileSync(
   probeScript,
   [
-    `import { configSnapshotHarnesses } from ${JSON.stringify(path.join(appRoot, "scripts", "cli", "config.mjs"))};`,
+    `import { configSnapshotHarnesses, configSnapshotMachineHarnesses } from ${JSON.stringify(path.join(appRoot, "scripts", "cli", "config.mjs"))};`,
     `import { rootConfigBaseline, rootConfigActive } from ${JSON.stringify(path.join(appRoot, "scripts", "cli", "paths.mjs"))};`,
     "",
     "const harnesses = configSnapshotHarnesses();",
@@ -144,11 +162,40 @@ fs.writeFileSync(
     "  process.exit(1);",
     "}",
     "",
+    "// (5) The machine cohort is derived from persisted discovery state, so it must pick up a",
+    "// synthetic provider with no source edit, must exclude providers discovery calls absent, and",
+    "// must keep an explicitly-disabled-but-present provider visible (it IS on the machine, it is",
+    "// just not managed). This is the distinction that makes the Agents view truthful.",
+    "const machine = configSnapshotMachineHarnesses();",
+    "const ids = machine.map((h) => h.id).sort().join(',');",
+    "if (ids !== 'acme,codex') {",
+    "  console.error('FAIL machine cohort ids: ' + ids + ' (expected acme,codex)');",
+    "  process.exit(1);",
+    "}",
+    "const acmeMachine = machine.find((h) => h.id === 'acme');",
+    "if (!acmeMachine || acmeMachine.displayName !== 'Acme Coder' || acmeMachine.enabled !== true) {",
+    "  console.error('FAIL acme machine entry: ' + JSON.stringify(acmeMachine));",
+    "  process.exit(1);",
+    "}",
+    "const codexMachine = machine.find((h) => h.id === 'codex');",
+    "if (!codexMachine || codexMachine.enabled !== false) {",
+    "  console.error('FAIL user-disabled provider must stay visible: ' + JSON.stringify(codexMachine));",
+    "  process.exit(1);",
+    "}",
+    "// The registered catalog is unchanged by any of this -- config metadata still knows all three.",
+    "if (configSnapshotHarnesses().length !== 3) {",
+    "  console.error('FAIL registered catalog must retain every provider');",
+    "  process.exit(1);",
+    "}",
+    "",
     "console.log('ok');",
   ].join("\n"),
 );
 
-const result = spawnSync(process.execPath, [probeScript], { encoding: "utf8" });
+const result = spawnSync(process.execPath, [probeScript], {
+  encoding: "utf8",
+  env: { ...process.env, ROBOREPO_STATE_DIR: stateDir },
+});
 assert.equal(result.status, 0, `synthetic third-provider probe failed:\n${result.stdout}\n${result.stderr}`);
 assert.match(result.stdout, /ok/);
 

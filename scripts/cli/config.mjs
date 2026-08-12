@@ -30,6 +30,7 @@ import {
 import { renderCommandSourceHtml } from "./config-source-render.mjs";
 import { buildContextCost } from "./context-cost.mjs";
 import { hasHarnessProvider, listHarnessProviders, getHarnessProvider } from "../harnesses/registry.mjs";
+import { readHarnessState } from "../harnesses/state.mjs";
 import { resolveHarnessPath } from "../harnesses/paths.mjs";
 
 const PRESETS_PATH = path.join(repoRoot, "manifests", "platform", "presets.json");
@@ -62,6 +63,29 @@ export function configSnapshotHarnesses() {
       hooksFile: path.basename(sidecar ? manifest.paths.hooks.path : manifest.paths.rootConfig.path),
     };
   });
+}
+
+// The *machine* cohort: which providers this machine actually has, per persisted discovery state.
+// Deliberately different from configSnapshotHarnesses() above, which is the *registered* catalog —
+// every provider roborepo supports, installed or not. The two are easy to conflate and mean very
+// different things to a user: rendering the registered catalog as the primary Agents view tells
+// someone with no harnesses installed that they have three, which is the defect this fixes.
+//
+// A provider appears here when discovery has any evidence for it (confidence !== "absent"), and
+// carries its enabled flag so the UI can distinguish "installed but turned off" from "not here".
+// Providers the user explicitly disabled still appear — they exist on the machine; they are just
+// not managed. An empty array is a legitimate, common state (fresh install, no harnesses yet).
+export function configSnapshotMachineHarnesses() {
+  const state = readHarnessState();
+  return listHarnessProviders()
+    .map((provider) => ({ provider, entry: state.providers[provider.id] }))
+    .filter(({ entry }) => entry && entry.confidence !== "absent")
+    .map(({ provider, entry }) => ({
+      id: provider.id,
+      displayName: provider.manifest.displayName,
+      enabled: entry.enabled === true,
+      confidence: entry.confidence,
+    }));
 }
 
 export function readConfigSnapshot() {
@@ -139,7 +163,11 @@ export function readConfigSnapshot() {
   const snapshot = {
     // Ordered list of registered providers, for the Config grid's per-harness columns and any
     // other client rendering that needs one row/column per harness rather than a lookup-by-id.
+    // Two cohorts, deliberately both present: `harnesses` is every registered provider (the
+    // catalog the config UI needs for per-provider file metadata), `machineHarnesses` is what this
+    // machine actually has. Primary user-facing presentation must use the latter.
     harnesses: configSnapshotHarnesses(),
+    machineHarnesses: configSnapshotMachineHarnesses(),
     packages,
     bundles,
     tools,

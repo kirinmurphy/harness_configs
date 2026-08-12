@@ -43,6 +43,7 @@ jobs:
           npm run --silent test:package-lifecycle
           npm run --silent test:package-default-enabled
           npm run --silent test:initialization-lifecycle
+          npm run --silent test:harness-cohort
           npm run --silent test:plan-promote-start
 
       - name: package install smoke (real tarball, isolated prefix)

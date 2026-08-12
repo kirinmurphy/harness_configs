@@ -238,4 +238,73 @@ check("the record that took the root is not superseded", supersededBy(reg, RENAM
   validateRegistry(aliased);
 }
 
+// --- detecting a rename from the roots themselves ---
+// supersededBy reads localRootPaths, the ownership index, which is empty for any root registered
+// before that index existed — so a real rename among old records is invisible to it. renamedInto
+// reads the localRoots arrays instead, which every record has always had.
+//
+// A rootId is a hash of an absolute path, so the same one on two records is direct evidence the same
+// DIRECTORY was seen under both remotes. That is the fact Phase 2 said it lacked when it declined to
+// act on a rename.
+{
+  const { renamedInto } = await import(M);
+  const stamp = new Date(nowMs).toISOString();
+  const rec = (id, roots) => ({
+    id, kind: "git", displayName: id, providerUrl: null, normalizedRemote: null,
+    localRoots: roots, discoveries: [], enrollments: {}, aliases: [], visibility: "visible",
+    resolution: "resolved", activity: "unknown", createdAt: stamp, updatedAt: stamp,
+  });
+  const root = (rootId, lastSeenAt) => ({ rootId, kind: "primary", firstSeenAt: lastSeenAt, lastSeenAt });
+  const reg = (repositories, aliases = {}) => ({ aliases, localRootPaths: {}, repositories });
+
+  // The shape on the live registry: the directory in use when the remote changed appears on both
+  // records, the successor has gone on to see more, and an older abandoned root does NOT have to
+  // carry over — requiring that missed this exact case.
+  const renamed = reg({
+    old: rec("old", [root("abandoned", "2026-07-01T00:00:00.000Z"), root("main", "2026-07-30T00:00:00.000Z")]),
+    new: rec("new", [root("main", "2026-08-05T00:00:00.000Z"), root("wt1", "2026-08-06T00:00:00.000Z"), root("wt2", "2026-08-07T00:00:00.000Z")]),
+  });
+  check("a rename is detected from the newest shared root", renamedInto(renamed, "old"), "new");
+  check("the successor is not itself renamed away", renamedInto(renamed, "new"), null);
+
+  // The case Phase 2 was worried about, and the reason the newest root is the discriminator: a
+  // reclone leaves the old record's current directory behind, so it is NOT on the successor.
+  const recloned = reg({
+    old: rec("old", [root("shared", "2026-07-01T00:00:00.000Z"), root("mine-only", "2026-07-30T00:00:00.000Z")]),
+    new: rec("new", [root("shared", "2026-08-01T00:00:00.000Z"), root("elsewhere", "2026-08-02T00:00:00.000Z"), root("more", "2026-08-03T00:00:00.000Z")]),
+  });
+  check("a reclone is refused", renamedInto(recloned, "old"), null);
+
+  check("no shared roots at all is refused", renamedInto(reg({
+    old: rec("old", [root("x", "2026-07-01T00:00:00.000Z")]),
+    new: rec("new", [root("y", "2026-08-01T00:00:00.000Z"), root("z", "2026-08-02T00:00:00.000Z")]),
+  }), "old"), null);
+
+  // Two possible successors name no single answer, so the evidence does not support acting.
+  check("an ambiguous successor is refused", renamedInto(reg({
+    old: rec("old", [root("m", "2026-07-01T00:00:00.000Z")]),
+    b: rec("b", [root("m", "2026-08-01T00:00:00.000Z"), root("b2", "2026-08-02T00:00:00.000Z")]),
+    c: rec("c", [root("m", "2026-08-01T00:00:00.000Z"), root("c2", "2026-08-02T00:00:00.000Z")]),
+  }), "old"), null);
+
+  // Equal root counts give no direction — neither record is evidently the later identity.
+  check("equal root counts are refused", renamedInto(reg({
+    old: rec("old", [root("m", "2026-07-01T00:00:00.000Z")]),
+    new: rec("new", [root("m", "2026-08-01T00:00:00.000Z")]),
+  }), "old"), null);
+
+  // Never chain onto a record that is itself aliased elsewhere.
+  check("an already-aliased successor is refused", renamedInto(reg({
+    old: rec("old", [root("m", "2026-07-01T00:00:00.000Z")]),
+    b: rec("b", [root("m", "2026-08-01T00:00:00.000Z"), root("b2", "2026-08-02T00:00:00.000Z")]),
+    c: rec("c", []),
+  }, { b: "c" }), "old"), null);
+
+  check("a record with no roots is refused", renamedInto(reg({
+    old: rec("old", []),
+    new: rec("new", [root("m", "2026-08-01T00:00:00.000Z"), root("n", "2026-08-02T00:00:00.000Z")]),
+  }), "old"), null);
+  check("an unknown repository is refused", renamedInto(reg({}), "nope"), null);
+}
+
 console.log("repositories-lifecycle-check passed");

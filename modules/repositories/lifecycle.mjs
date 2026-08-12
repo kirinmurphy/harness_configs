@@ -126,6 +126,79 @@ export function supersededBy(registry, repositoryId) {
   return successor;
 }
 
+// The repository that absorbed this one after a remote rename, or null.
+//
+// `supersededBy` above answers the same question from `localRootPaths`, the ownership index — which
+// is empty for any root registered before that index existed. This reads the `localRoots` arrays
+// instead, which every record has always had, and so covers exactly the old records the index
+// cannot see. `harness_configs`/`roborepo` on the live registry was one: three roots, none in the
+// index, while the shared rootId sat in plain view in both arrays.
+//
+// A rootId is a hash of an absolute path, so two records listing the same one is direct evidence the
+// same DIRECTORY was seen under both remotes. That is the fact Phase 2 said it did not have when it
+// refused to merge a rename automatically. Its stated worry was that "a deleted-then-recloned
+// directory produces identical stored data" — but the two are distinguishable here:
+//
+//   rename : the old record's roots are all still present on the new one. Nothing was left behind,
+//            because the directories did not change — only the remote did.
+//   reclone: the old record keeps roots the new one never saw (its own worktrees, a former path).
+//            A strict subset never holds, so this returns null and the two records stay separate.
+//
+// Which of the old record's roots have to carry over took two wrong tries, so the reasoning is
+// worth stating. Demanding ALL of them fails: a long-lived record accumulates directories abandoned
+// well before the rename (the live example had one last touched five days prior), and they say
+// nothing about the handover. Filtering by "last seen after the successor was created" fails for a
+// deeper reason — the old record STOPS being updated the moment the remote changes, so every one of
+// its timestamps predates the successor by construction and the filter admits nothing, ever.
+//
+// What does discriminate is the MOST RECENTLY SEEN root. That is the directory in use when the
+// remote changed, and it is the one the rename necessarily carried across:
+//
+//   rename : the newest root is on both records. The directory kept working; only its remote moved.
+//   reclone: the newest root belongs to the old record alone — the new clone lives somewhere else,
+//            or the old directory was replaced and never re-registered under the new id.
+//
+// Older roots are ignored deliberately. They are history, and requiring them to match punishes a
+// record for having been used longer.
+//
+// The action this justifies is an ALIAS, never a merge. An alias leaves both records intact, renders
+// one row, and is undone by deleting one line; the worst case is a row briefly missing rather than
+// one repository's work hidden inside another. That asymmetry is what makes acting automatically
+// defensible here when merging still would not be.
+export function renamedInto(registry, repositoryId) {
+  const record = registry?.repositories?.[repositoryId];
+  const roots = (record?.localRoots || []).filter((r) => r?.rootId);
+  if (!roots.length) return null;
+  // The directory in use when this record stopped being written to. Ties and missing timestamps fall
+  // back to the last entry, which is the order roots were appended in.
+  const newestRoot = roots.reduce((newest, r) => {
+    const a = Date.parse(r.lastSeenAt ?? "");
+    const b = Date.parse(newest.lastSeenAt ?? "");
+    if (!Number.isFinite(a)) return newest;
+    if (!Number.isFinite(b)) return r;
+    return a >= b ? r : newest;
+  });
+  const mine = new Set(roots.map((r) => r.rootId));
+  let match = null;
+  for (const [otherId, other] of Object.entries(registry.repositories || {})) {
+    if (otherId === repositoryId) continue;
+    // An already-aliased record is not a target; following it would build a chain toward a record
+    // that is itself pointing elsewhere.
+    if (registry.aliases?.[otherId]) continue;
+    const theirs = new Set((other?.localRoots || []).map((r) => r.rootId).filter(Boolean));
+    if (!theirs.size) continue;
+    // The directory this record was last working in has to be one the successor also knows.
+    if (!theirs.has(newestRoot.rootId)) continue;
+    // And the successor has to have gone on to see directories this record never did — otherwise
+    // there is nothing marking which of the two is the later identity.
+    if (theirs.size <= mine.size) continue;
+    // Two candidates means the evidence does not name a single successor. Refuse rather than choose.
+    if (match) return null;
+    match = otherId;
+  }
+  return match;
+}
+
 // The most recent moment anything about this repository was observed. Roots and discoveries both
 // carry lastSeenAt; the newest of them is the repository's.
 export function lastSeenAtFor(record) {

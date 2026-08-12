@@ -393,6 +393,14 @@ new settings surface, and it keeps `validateComposeProjects`
       moved from A to B — merge them?") rather than acting on it.
       A root-commit comparison would be real evidence, but collecting it costs a `git rev-list` per
       checkout on the common path, which this plan's non-goals exclude.
+      **Later correction — the "identical observation" premise above is false.** It is true of the
+      *ownership index* (`localRootPaths`), which is what this note was reasoning about, but not of
+      the `localRoots` arrays: a `rootId` is a hash of an absolute path, so the same one appearing on
+      two records is direct evidence the same directory was seen under both remotes, and the
+      most-recently-seen root distinguishes a rename from a reclone. See `renamedInto` and the
+      Follow-ups section. The conclusion that automatic *merging* is unsafe still stands — what
+      changed is that automatic *aliasing*, which is non-destructive and one-line reversible, is
+      supportable on this evidence and now happens.
 - [x] Hide records whose `lastSeenAt` is over 30 days old, and skip records that have no
       `lastSeenAt` at all. Reuse the registry's existing `visibility` rather than adding a parallel
       state.
@@ -675,10 +683,27 @@ Not blocking this plan; recorded where the work would start.
   The cost that would justify revisiting is container COUNT, since the call is one batched inspect
   over every container: 11 is small, and a machine running an order of magnitude more may land
   somewhere that matters. Re-measure there rather than assuming this result carries.
-- **A merge prompt for a repointed checkout.** `priorRepositoryForRoot` reports the prior owner and
-  `supersededBy` reports the successor; nothing offers the user the merge. The affordance would be
-  "this checkout moved from A to B — merge them?", acting only on an explicit answer. Still open —
-  it needs a UI control, a merge that rewrites checkout ownership, and an undo story.
+- **A merge prompt for a repointed checkout.** ~~Nothing offers the user the merge.~~ **No longer
+  needed for the rename case — it is now detected and resolved automatically.** A merge that rewrites
+  checkout ownership is still not built and still needs an undo story, but the duplicate card that
+  motivated the prompt no longer appears.
+  **Phase 2's premise was wrong, and this is the correction.** It declined to act on a rename because
+  it believed "a deleted-then-recloned directory produces exactly the same observation". It does not.
+  A `rootId` is a hash of an absolute path, so the same one on two records is direct evidence the
+  same DIRECTORY was seen under both remotes, and the most-recently-seen root separates the cases: a
+  rename carries it across (only the remote moved), while a reclone leaves it behind (the new clone
+  lives elsewhere). `renamedInto` in `modules/repositories/lifecycle.mjs` reads that, and
+  `applyRenameAliases` acts on it each scan.
+  Two earlier discriminators were tried and are recorded in that function's comment because both look
+  correct and are not: requiring EVERY root to carry over fails on any record old enough to have
+  abandoned a directory, and filtering roots by "last seen after the successor was created" can never
+  match anything, because the old record stops being written the moment the remote changes.
+  **The action is an alias, not a merge, and that asymmetry is what makes it safe to automate.** An
+  alias leaves both records intact, renders one row, and is undone by deleting one line; a wrong one
+  costs a row until removed. A merge could hide one repository's work inside another — still refused.
+  Verified live: the registry was reset to its pre-alias state and the portal re-detected and
+  re-aliased `harness_configs` -> `roborepo` on its first scan with no manual step, taking the list
+  from 9 rows to 8. Idempotent — four polls over 40s produced no revision bump.
   **What is now closed is the manual path.** The rename decision says a visible duplicate is "fixable
   with one `setAlias`", but the repository list did not consult aliases at all, so setting one
   changed nothing on the page and the fix the design points at did not work. `collectPersistedRepositories`

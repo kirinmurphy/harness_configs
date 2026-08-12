@@ -28,6 +28,8 @@ import {
   hideRepository,
   updateRegistry,
   resolveRegistryAlias,
+  renamedInto,
+  setAlias,
 } from "../../modules/repositories/index.mjs";
 import { createIdleGitCache } from "../../modules/repositories/idle-git-cache.mjs";
 
@@ -394,6 +396,7 @@ async function collectPersistedRepositories(runningRepositoryIds) {
   } catch {
     return [];
   }
+  registry = applyRenameAliases(registry);
   registry = applyAgeOut(registry);
   const out = [];
   const liveRoots = [];
@@ -442,6 +445,57 @@ async function collectPersistedRepositories(runningRepositoryIds) {
   // for repositories that have since been removed.
   idleGitCache.retain(liveRoots);
   return out;
+}
+
+// Alias a record onto the repository that a remote rename moved it into, and return the registry as
+// it now stands.
+//
+// Phase 2 refused to act on a rename because it believed the evidence could not distinguish one from
+// a deleted-and-recloned directory. `renamedInto` shows it can: a rootId is a hash of an absolute
+// path, so the two records naming the same one is direct evidence the same directory was seen under
+// both remotes, and the most-recently-used root separates the two cases (see lifecycle.mjs).
+//
+// The action stays an ALIAS, never a merge, and that is what makes doing it automatically
+// defensible. An alias leaves both records intact, renders one row instead of two, and is reversed
+// by deleting one line; a wrong one costs a row until it is removed. A merge — the thing Phase 2
+// actually refused — would rewrite ownership and could hide one repository's work inside another,
+// and is still not done here.
+//
+// Only ever writes when there is something to write, so the steady-state poll stays silent.
+function applyRenameAliases(registry) {
+  let pending;
+  try {
+    pending = Object.keys(registry.repositories || {})
+      // A record that already aliases somewhere is settled.
+      .filter((id) => !registry.aliases?.[id])
+      .map((id) => ({ id, into: renamedInto(registry, id) }))
+      .filter((entry) => entry.into);
+  } catch {
+    return registry;
+  }
+  if (!pending.length) return registry;
+  try {
+    updateRegistry({
+      stateRoot,
+      mutate: (reg) => {
+        let changed = false;
+        for (const { id, into } of pending) {
+          // Re-checked inside the mutation: the registry may have moved since the read above, and
+          // setAlias throws on a cycle rather than silently building one.
+          if (reg.aliases?.[id] || !reg.repositories?.[into]) continue;
+          try {
+            if (setAlias(reg, id, into)) changed = true;
+          } catch {
+            // A cycle or invalid target — leave the pair alone rather than failing the scan.
+          }
+        }
+        return changed;
+      },
+    });
+    return loadRegistry({ stateRoot });
+  } catch {
+    return registry;
+  }
 }
 
 // Hide records not seen in 30 days, and return the registry as it now stands.

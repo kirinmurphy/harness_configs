@@ -79,6 +79,7 @@ export {
   lastSeenAtFor,
   ageOutCandidates,
   supersededBy,
+  renamedInto,
 } from "./lifecycle.mjs";
 
 export {

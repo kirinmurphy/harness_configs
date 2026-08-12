@@ -421,10 +421,14 @@ function assertInteractiveMenuRedraw({ env }) {
 }
 
 function assertIndentedSelectionMarker({ env }) {
-  // One down per primary action (init, web, library, update) lands on the first child item under
-  // the Agent Config section, which is the indented row this check is about. Adding or removing a
-  // primary action changes this count.
-  const downs = "\\033\\[B".repeat(4);
+  // One down per primary action lands on the first child item under the Agent Config section,
+  // which is the indented row this check is about. Derived from the catalog rather than hardcoded
+  // so adding a primary command does not silently retarget the assertion at a different row.
+  // Primary actions are the leading rows before the first section header.
+  const rootItems = menuItems(catalog, null, []);
+  const primaryCount = rootItems.findIndex((item) => item.header);
+  assert.ok(primaryCount > 0, "root menu should list primary actions before the first section");
+  const downs = "\\033\\[B".repeat(primaryCount);
   const script = `
     set timeout 5
     spawn -noecho ${process.execPath} ${cliPath}

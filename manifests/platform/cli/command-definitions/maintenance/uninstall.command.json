@@ -2,9 +2,14 @@
   "path": ["maintenance", "uninstall"],
   "kind": "command",
   "title": "Uninstall",
-  "description": "Remove repo-owned files and install state",
+  "description": "Remove repo-owned files and install state (see `roborepo uninstall`)",
   "order": 90,
   "advanced": true,
-  "usage": "roborepo maintenance uninstall [--dry-run]",
-  "execution": { "adapter": "repoScript", "script": "uninstall" }
+  "usage": "roborepo maintenance uninstall [--dry-run] [--yes] [--delete-workspace]",
+  "interactiveStdio": true,
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/uninstall.mjs",
+    "export": "uninstallCommand"
+  }
 }

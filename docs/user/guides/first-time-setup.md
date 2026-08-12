@@ -24,10 +24,18 @@ Install on a new machine:
 ./scripts/install/main.sh
 ```
 
-Interactive installs apply a minimal baseline, then launch the onboarding wizard so you choose
-which behaviors to enable. The wizard walks the same sections the `/config`
-display shows — Token Optimization, Commands, Code Conventions, Chat-Time Output, and a read-only
-Permissions panel — one section per step:
+Or install the published package, with no repo checkout anywhere on the machine:
+
+```sh
+npm install -g codethings-roborepo-alpha
+roborepo init
+```
+
+`roborepo init` is the first-run workflow either way. It creates the workspace and state
+directories, detects which agent harnesses are on this machine, opens the Package Library so you
+choose which behaviors to enable, and applies the result. The chooser walks the same sections the
+`/config` display shows — Token Optimization, Commands, Code Conventions, Chat-Time Output, and a
+read-only Permissions panel — one section per step:
 
 - `←` / `→` move between sections
 - `↑` / `↓` move within a section
@@ -35,12 +43,22 @@ Permissions panel — one section per step:
 - `Enter` advances (and finishes on the last step); `Esc` finishes early
 
 Only the baseline is applied automatically; everything else is opt-in (telemetry stays off unless you
-turn it on). Noninteractive installs skip the wizard and apply the baseline headlessly. Rerun the
-wizard any time to change your choices:
+turn it on). Noninteractive runs skip the wizard and apply the baseline headlessly.
+
+`init` is safe to re-run: once initialization has completed it reports that and exits rather than
+replaying your choices. If it is interrupted partway — `Ctrl-C`, a failed step, a closed terminal —
+the next run resumes instead of starting over. Zero detected harnesses is a valid outcome; install
+or launch a harness later and run `roborepo harness refresh`.
+
+Rerun the chooser any time to change your choices:
 
 ```sh
-roborepo package manage
+roborepo library
 ```
+
+`roborepo library` and `roborepo package manage` are two names for the same workflow. `library` is
+the short one; the `package` namespace holds the detailed operations (`list`, `inspect`, `enable`,
+`disable`, `reconcile`).
 
 After the first install, use `roborepo` from anywhere. `roborepo update` re-runs the same installer
 to pick up new or changed config (there is no separate `install` verb):

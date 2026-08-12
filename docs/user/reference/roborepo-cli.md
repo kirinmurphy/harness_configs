@@ -6,6 +6,20 @@ After [installing roborepo](../guides/first-time-setup.md), install puts it on y
 > If `roborepo` is not found, run `roborepo doctor` (or `./bin/roborepo doctor` before the first
 > install) — it reports whether the command is installed and on `PATH`, with the exact fix.
 
+## First Run
+
+|                            |                                                                                                                                                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `roborepo init [--dry-run] [--force]` | Sets up a new installation: creates workspace/state directories, refreshes harness discovery, opens the Package Library, applies the result, and records that initialization completed. Safe to re-run — a completed install reports and exits instead of replaying the wizard. `--dry-run` previews without mutating; `--force` re-runs the full workflow on an already-initialized install. |
+| `roborepo library`         | Opens the Package Library to change which behaviors are enabled. Identical to `roborepo package manage`. |
+
+A bare, interactive `roborepo` on an uninitialized install goes into `init` automatically. Explicit
+commands are never gated on initialization — `doctor`, `version`, and `--help` work before it, and
+bare non-interactive invocations open the normal menu rather than a wizard, so scripts are safe.
+
+Zero detected harnesses is a valid initialization: install or launch a supported harness later and
+run `roborepo harness refresh`.
+
 ## Setup and Maintenance
 
 |                            |                                                                                                                                                                  |

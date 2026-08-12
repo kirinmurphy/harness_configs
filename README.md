@@ -30,7 +30,8 @@ Use the CLI to update items and configuration in your global setup so they work 
 | Command                          | What it does                                                                                         |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `roborepo`                       | Open the interactive menu — browse and run any command without memorizing flags.                     |
-| `roborepo package manage`        | Choose which behaviors (skills, commands, packages) are active.                                      |
+| `roborepo init`                  | Set up a new installation for first use. Safe to re-run; it will not replay your choices.            |
+| `roborepo library`               | Choose which behaviors (skills, commands, packages) are active. Same workflow as `roborepo package manage`. |
 | `roborepo update`                | Re-apply harness config on this machine to pick up new or changed global config.                     |
 | `roborepo mcp add <name-or-url>` | Register an MCP server with both Claude and Codex in one step.                                       |
 | `roborepo index code [path]`     | Index a repo's source with the enabled package-owned indexer (`roborepo package enable jcodemunch`). |
@@ -48,7 +49,16 @@ Use the CLI to update items and configuration in your global setup so they work 
 
 ## Global Behavior
 
-Installing the `roborepo` core applies a minimal baseline, then launches an onboarding wizard so you choose which behaviors to enable — skills, commands, code conventions, chat-time output, and token-optimization packages. The wizard mirrors the `/config` sections, one section per step (`←`/`→` between sections, `Space` to toggle, `Enter` to advance). Only the baseline is applied automatically; everything else is opt-in, and telemetry stays off unless you turn it on. Rerun the chooser any time with `roborepo package manage`. Noninteractive installs skip the wizard and apply the baseline headlessly.
+Installing the `roborepo` core applies a minimal baseline, then `roborepo init` walks you through choosing which behaviors to enable — skills, commands, code conventions, chat-time output, and token-optimization packages. The chooser mirrors the `/config` sections, one section per step (`←`/`→` between sections, `Space` to toggle, `Enter` to advance). Only the baseline is applied automatically; everything else is opt-in, and telemetry stays off unless you turn it on. Rerun the chooser any time with `roborepo library`. Noninteractive runs skip the wizard and apply the baseline headlessly.
+
+If you installed from npm, `roborepo init` is the one command to run next:
+
+```sh
+npm install -g codethings-roborepo-alpha
+roborepo init
+```
+
+Running `roborepo` on an installation that has not been initialized takes you into `init` automatically. Everything else — `roborepo doctor`, `roborepo version`, `--help` — stays available before initialization, so a broken install is still diagnosable.
 
 > **Just want token telemetry?** You can install only the local telemetry capture + portal — without the rest of the global config — with `roborepo telemetry install` (or `./bin/roborepo telemetry install` from a fresh clone). It turns capture on immediately, so you can measure your token usage before adopting the full suite; upgrade later by re-running the normal install. Use `roborepo web` to open the portal.
 

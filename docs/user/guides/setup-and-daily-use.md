@@ -1,6 +1,6 @@
 # Setup and Daily Use
 
-This repo owns your agent harness config (Claude Code, Codex) and exposes it at the paths agents already read. Setup installs the core once, then starts the onboarding wizard so you can choose which behaviors you want on that machine.
+This repo owns your agent harness config (Claude Code, Codex) and exposes it at the paths agents already read. Setup installs the core once, then `roborepo init` walks you through choosing which behaviors you want on that machine.
 
 For install workflow tradeoffs, see [install-workflows.md](install-workflows.md). For system details, see [../reference/architecture.md](../reference/architecture.md).
 
@@ -26,13 +26,13 @@ For install workflow tradeoffs, see [install-workflows.md](install-workflows.md)
 
 This installs the core CLI plus the shared baseline. It detects which harnesses are installed (Claude Code, Codex, or both), copies owned files, renders rules, exports mutable root config as local files, installs global commands, and adds shell snippets to your profile.
 
-Interactive install starts onboarding after the core install completes. If you skip it, or if install ran noninteractively, run:
+Set up the installation for first use:
 
 ```sh
-roborepo package manage
+roborepo init
 ```
 
-That workflow turns on or skips optional behavior packages such as skills, hooks, commands, rules, MCP defaults, permissions, and telemetry. Re-running `roborepo package manage` later shows selected options checked and unselected options unchecked.
+That workflow turns on or skips optional behavior packages such as skills, hooks, commands, rules, MCP defaults, permissions, and telemetry. To change those choices later, reopen the chooser with `roborepo library` — it shows selected options checked and unselected options unchecked.
 
 The installer has one materialization model: copy owned files, render generated rules, and preserve
 user-authored root config unless the selected collision policy says otherwise. See
@@ -74,10 +74,10 @@ Agent permission defaults start in `manifests/inventory/agent-permissions.json` 
 command buckets. Each entry resolves to `allow`, `ask`, or `deny`; there is no longer a profile
 bundle such as `readonly`, `interactive`, or `workspace`.
 
-Use the onboarding flow or config portal for normal machine-level changes:
+Use the Package Library or config portal for normal machine-level changes:
 
 ```sh
-roborepo package manage
+roborepo library
 roborepo web
 ```
 

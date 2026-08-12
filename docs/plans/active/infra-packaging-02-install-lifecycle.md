@@ -573,10 +573,21 @@ Not yet done in this slice: no documentation updates (Phase 6 owns them), and `r
 - [ ] Display the npm removal command after cleanup.
 - [ ] Keep workspace deletion out of the portal action entirely: the portal exposes preserve-only cleanup and shows the preserved workspace path. `--delete-workspace` stays a deliberate CLI opt-in rather than a button in a browser.
 
-### Phase 6 — Documentation and real-new-Mac acceptance
+### Phase 6a — First-run vocabulary documentation
 
-- [ ] Make package-install guidance end with `roborepo init`, not a checklist of internal commands.
-- [ ] Document `roborepo library` as the normal way to change functionality later.
+Split from the original Phase 6 and done alongside Phases 1-2: `init` and `library` shipped on the
+branch, so leaving their documentation until after Phases 3-5 would have merged behavior that no
+document described. The remaining Phase 6b items genuinely depend on later phases.
+
+- [x] Make package-install guidance end with `roborepo init`, not a checklist of internal commands.
+- [x] Document `roborepo library` as the normal way to change functionality later.
+- [x] Document the first-run routing contract: bare interactive invocation enters `init`, explicit commands are never gated, an interrupted `init` resumes, a completed `init` is a no-op report.
+- [x] Correct the stale claim in `docs/user/reference/roborepo.md` that the CLI "gates normal commands until onboarding has completed" — that gate was removed before this plan and the sentence had outlived it.
+- [x] Correct `docs/user/guides/install-workflows.md`'s claim that the installer starts the package chooser itself.
+- [x] Document that zero detected harnesses is a valid initialization outcome.
+
+### Phase 6b — Uninstall documentation and real-new-Mac acceptance
+
 - [ ] Document the two-part uninstall ownership model, including that managed uninstall preserves the workspace by default and that `--delete-workspace` is the explicit nested-only opt-in.
 - [ ] State that npm removal alone leaves separately stored RoboRepo state/configuration.
 - [ ] Generate a fresh Packaging 01 transfer artifact from the final tested commit.

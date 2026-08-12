@@ -35,7 +35,7 @@ The installer writes:
 - `~/.local/bin/roborepo`
 - install state at `~/.roborepo/install-state.json`
 
-Then it applies the default `base` bundle and starts `roborepo package manage` unless onboarding was already completed or explicitly skipped. On update, that base bundle still re-applies so rendered rules stay fresh even on an already-onboarded machine.
+Then it applies the default `base` bundle. Choosing the optional behaviors is `roborepo init`'s job, not the installer's. On update, that base bundle still re-applies so rendered rules stay fresh even on an already-initialized machine.
 
 ## Collision Policy
 
@@ -159,20 +159,27 @@ The checksum check confirms the transfer didn't corrupt the file. `npm install -
 globally, the same way a published package would install — `roborepo` is now on your `PATH`
 without a repo checkout anywhere on this machine.
 
-Confirm it worked:
+Then set it up for first use:
+
+```sh
+roborepo init
+```
+
+`init` creates the workspace and state directories, detects installed harnesses, opens the Package
+Library, and applies your selection. It should succeed with no harness binaries installed and no
+native harness home/config created yet — zero detected harnesses is a valid outcome.
+
+Confirm the result:
 
 ```sh
 roborepo version
-roborepo setup
 roborepo workspace status
-roborepo harness refresh
 roborepo harness list
-roborepo config apply
 roborepo doctor
 ```
 
-The first pass should work with no harness binaries installed and no native harness home/config
-created yet.
+The lower-level primitives (`setup`, `harness refresh`, `config apply`) still exist and are what
+the automated package smoke test drives, but a person setting up a machine only needs `init`.
 
 ### 4. Roll back if needed
 

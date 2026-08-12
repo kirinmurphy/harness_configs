@@ -1,7 +1,7 @@
 ---
 id: h4tqm2wz
 priority: medium
-next_action: Persist the repository record and its checkout roots when Localhost discovery resolves them, so a repository survives its processes stopping
+next_action: All 38 plan items are implemented and verified against live data. Remaining work is a merge affordance for a repointed checkout — detection and automatic aliasing exist, but nothing offers to merge two records, which needs a UI control, a mutation that rewrites checkout ownership, and an undo story
 blocked_by: []
 depends_on: []
 related:

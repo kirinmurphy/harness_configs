@@ -149,7 +149,7 @@ Because placement needs mounts for *every* stack — including ones whose reposi
 resolution could not handle. That is one batched `docker inspect` per scan with Compose projects.
 
 Remaining work (the Shared Services region on the card, member counts that exclude shared stacks) is
-tracked in `docs/plans/backlog/localhoster-workspace-model.md`.
+tracked in `docs/plans/active/localhoster-workspace-model.md`.
 
 ## Trust and safety properties
 

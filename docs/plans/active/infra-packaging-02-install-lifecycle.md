@@ -1,7 +1,7 @@
 ---
 id: 46up8y7a
 priority: high
-next_action: Add explicit initialization state and the public `roborepo init`, `roborepo library`, and `roborepo uninstall` surfaces, then route a bare uninitialized `roborepo` invocation into `init` before continuing the broader lifecycle hardening in this plan
+next_action: Phases 1-2 are implemented on branch plan-46up8y7a-install-lifecycle (init, first-run routing, initialization state, library alias). Continue with Phase 3 zero-to-N harness presentation — add the machine cohort to the config snapshot so the Agents grid stops implying every registered provider is installed — then the Phase 4 managed-uninstall work
 blocked_by: []
 depends_on: []
 related:
@@ -506,22 +506,38 @@ Document the public lifecycle vocabulary and remove first-run instructions that 
 
 ### Phase 1 — Pin the public lifecycle contract
 
-- [ ] Add an initialization-state path and focused read/write helpers with schema validation.
-- [ ] Add tests for missing, in-progress, and complete initialization state.
-- [ ] Add `roborepo init` to the command catalog and keep `setup` internal.
-- [ ] Implement `init` as a short orchestrator over existing setup/discovery/library/apply/verification functions rather than copying their logic.
-- [ ] Leave initialization in-progress on interruption or failed required step.
-- [ ] Make completed `init` idempotent and non-destructive.
-- [ ] Route bare interactive `roborepo` into `init` only when initialization is missing/in-progress.
-- [ ] Keep explicit help/version/doctor and automation paths usable without a forced onboarding gate.
-- [ ] Retire the vestigial `maybeRunPresetOnboarding()` call in `scripts/cli/main.mjs`: replace it with the new first-run routing rather than layering a second startup hook beside a no-op. Keep `--no-presets-onboard` accepted-and-ignored, or drop it deliberately as a documented removal.
+- [x] Add an initialization-state path and focused read/write helpers with schema validation.
+- [x] Add tests for missing, in-progress, and complete initialization state.
+- [x] Add `roborepo init` to the command catalog and keep `setup` internal.
+- [x] Implement `init` as a short orchestrator over existing setup/discovery/library/apply/verification functions rather than copying their logic.
+- [x] Leave initialization in-progress on interruption or failed required step.
+- [x] Make completed `init` idempotent and non-destructive.
+- [x] Route bare interactive `roborepo` into `init` only when initialization is missing/in-progress.
+- [x] Keep explicit help/version/doctor and automation paths usable without a forced onboarding gate.
+- [x] Retire the vestigial `maybeRunPresetOnboarding()` call in `scripts/cli/main.mjs`: replace it with the new first-run routing rather than layering a second startup hook beside a no-op. Keep `--no-presets-onboard` accepted-and-ignored, or drop it deliberately as a documented removal.
 
 ### Phase 2 — Add the Library front door
 
-- [ ] Add `roborepo library` as a root command that executes the same Package Library workflow as `roborepo package manage`.
-- [ ] Keep detailed package operations under the `package` namespace.
-- [ ] Update root help and interactive menu copy to teach **Library** first and **packages** inside that workflow.
-- [ ] Add command-catalog and PTY coverage proving the alias does not fork behavior.
+- [x] Add `roborepo library` as a root command that executes the same Package Library workflow as `roborepo package manage`.
+- [x] Keep detailed package operations under the `package` namespace.
+- [x] Update root help and interactive menu copy to teach **Library** first and **packages** inside that workflow.
+- [x] Add command-catalog and PTY coverage proving the alias does not fork behavior.
+
+#### Phases 1-2 implementation notes
+
+Landed on branch `plan-46up8y7a-install-lifecycle`.
+
+| Decision | Reasoning |
+| --- | --- |
+| `library` and `package manage` share a `packageLibrary` execution preset in `manifests/platform/cli-commands.json` | The plan requires the alias not fork behavior. Duplicating the execution block in two definition files would satisfy that on day one and drift later; one preset makes divergence structurally impossible. |
+| `package manage` lost `promoteToRoot` | With `library` at root, keeping the promotion listed the same workflow twice in root help. `package manage` stays reachable and documented under the package namespace. |
+| `init` does not call `config apply` after the Library handoff | `presetsOnboard` already applies the selection (and already handles the non-interactive default-apply path), so a following apply would re-run the same update script for no benefit. |
+| `maybeRunPresetOnboarding` deleted rather than left in place | It had decayed to an argv filter. `--no-presets-onboard` is still accepted-and-ignored in `main.mjs` so existing scripts do not break on an unknown flag. |
+| Corrupt initialization record reads as `missing` | Never-started and unreadable have the same recovery — run `init` — and a malformed state file must not be able to lock a user out of their first run. |
+
+Test-suite changes were setup fixes, not assertion weakening: the PTY checks drive a bare `roborepo`, which now reaches `init` on an uninitialized sandbox, so those sandboxes are seeded already-initialized. Menu assertions that hardcoded a row label or keypress count were re-anchored to indentation and offset, since those shift whenever a primary action is added.
+
+Not yet done in this slice: no documentation updates (Phase 6 owns them), and `roborepo uninstall` does not exist yet, so the `init` completion message describes the storage boundary without yet being able to point at a working managed-cleanup command.
 
 ### Phase 3 — Make zero-to-N harness presentation explicit
 

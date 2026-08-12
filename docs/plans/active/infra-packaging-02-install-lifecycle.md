@@ -1,6 +1,6 @@
 ---
 id: 46up8y7a
-priority: low
+priority: high
 next_action: Add explicit initialization state and the public `roborepo init`, `roborepo library`, and `roborepo uninstall` surfaces, then route a bare uninitialized `roborepo` invocation into `init` before continuing the broader lifecycle hardening in this plan
 blocked_by: []
 depends_on: []
@@ -10,7 +10,7 @@ related:
   - qjsbhel5
   - v6lvuu2
   - harness-presence-signal-expansion
-reviewed_commit: 2a56135734a21c6c8ad9435f76f2e9e092b81201
+reviewed_commit: 677371c6e95234caa69d532f799cfcb16f4c438e
 ---
 
 # Make npm Installation Lead Into a Coherent RoboRepo Lifecycle
@@ -43,7 +43,7 @@ The current CLI already has much of the machinery needed for a simpler product s
 - `package manage` is titled **Package Library** and routes into the live item-level package wizard in `scripts/cli/presets.mjs`.
 - `maintenance uninstall` is an advanced hidden command backed by the existing uninstall scripts.
 - `scripts/harnesses/state.mjs` persists machine-local provider discovery and enablement state.
-- bare `roborepo` currently opens the normal root menu after the pass-through onboarding hook in `scripts/cli/main.mjs`.
+- bare `roborepo` currently opens the normal root menu unconditionally. `scripts/cli/main.mjs` still calls `maybeRunPresetOnboarding()` first, but that function (`scripts/cli/presets.mjs`) is now a vestigial no-op: it only strips a legacy `--no-presets-onboard` flag from argv and never runs onboarding. There is no first-run branch anywhere in the startup path.
 
 The current lifecycle still exposes two different ownership models during removal. npm removes the package files it installed, while RoboRepo-generated files and state live elsewhere. Current npm releases do not implement package uninstall lifecycle scripts, so RoboRepo cannot rely on `npm uninstall` to call custom cleanup code. The product must teach and implement that boundary explicitly.
 
@@ -120,6 +120,7 @@ The user-facing surfaces do not all mean the same thing when they say “harness
 | --- | --- | --- |
 | `roborepo harness list` | All registered providers + persisted machine state | Correct for showing supported providers and their detected/enabled state |
 | Agents `/config` grid | All registered providers | A zero-harness machine still receives one column per registered provider |
+| ↳ source of that cohort | `configSnapshotHarnesses()` in `scripts/cli/config.mjs` maps `listHarnessProviders()` straight to `{id, displayName, rulesFile, settingsFile, hooksFile}` | It never reads `harnessStatePath`, so the snapshot carries no detected/enabled signal at all; `portal/config/templates.js` renders one column per entry off `snap.harnesses` |
 | Tokens `/tokens` filter | Harnesses observed in telemetry data | Filter is hidden when zero or one harness is observed; N buttons are generated dynamically |
 | install/uninstall shell gating | Strict harness home-directory presence | Intentionally narrower than richer discovery confidence |
 
@@ -129,7 +130,20 @@ This plan must not collapse these cohorts into one generic “harness list.” E
 
 `roborepo maintenance uninstall` is an advanced hidden command. The underlying uninstall code already contains ownership-aware removal for symlinks, generated rules, root config, backups, hooks, package projections, and remnant checks.
 
-The unsafe promotion point is state removal: `remove_runtime_state()` currently removes the whole RoboRepo state root, while the default workspace lives inside that root. A public uninstall must classify state and preserve user-owned workspace content rather than recursively deleting the root.
+The unsafe promotion point is state removal. `remove_runtime_state()` in `scripts/install/uninstall-lib.sh` removes several specific state files, then finishes with a recursive removal of the state root itself:
+
+```sh
+remove_path "${state_dir}/command-overrides.json" "remove"
+remove_path "${state_dir}/enabled-packages.json" "remove"
+remove_path "${state_dir}/telemetry" "remove"
+remove_path "${state_dir}/telemetry-backups" "remove"
+remove_path "${state_dir}/backups" "remove"
+remove_path "${state_dir}" "remove"   # <- takes <stateRoot>/workspace with it
+```
+
+`remove_path` runs `rm -rf`, so that final line deletes the default workspace at `<stateRoot>/workspace` along with everything else. A public uninstall must classify state and preserve user-owned workspace content rather than recursively deleting the root.
+
+Note that `workspaceRoot` is only *usually* nested: `scripts/cli/roots.mjs` resolves it from a `workspace-root.json` override before falling back to `path.join(stateRoot, "workspace")`. Cleanup must therefore resolve the effective workspace path rather than assume the nested default, and must handle a relocated workspace that sits entirely outside `stateRoot`.
 
 npm application uninstall is a separate operation:
 
@@ -280,7 +294,7 @@ Tests must include a synthetic extra provider where the current provider-test se
 Add:
 
 ```sh
-roborepo uninstall [--dry-run] [--yes]
+roborepo uninstall [--dry-run] [--yes] [--delete-workspace]
 ```
 
 The workflow must preview the ownership boundary before mutation. Interactive execution requires confirmation; noninteractive destructive execution refuses unless `--yes` is explicit. `--dry-run` never mutates.
@@ -296,6 +310,46 @@ Default behavior:
 | RoboRepo-owned shell/profile entries | unrelated shell configuration |
 
 The current broad `rm -rf stateRoot` behavior must be replaced by selective cleanup. Because the default workspace is nested under `stateRoot`, “preserve workspace” must be mechanically true, not just documented.
+
+Cleanup must resolve the effective workspace root the same way `scripts/cli/roots.mjs` does — honoring the `workspace-root.json` override — and handle both placements:
+
+| Workspace placement | Required cleanup behavior |
+| --- | --- |
+| nested default `<stateRoot>/workspace` | remove state entries selectively; never `rm -rf` the state root itself |
+| relocated outside `stateRoot` | leave the relocated tree untouched unconditionally |
+
+#### Workspace disposition policy (resolved)
+
+Two things are easily conflated here and must stay separate:
+
+| Thing | What it is | Policy |
+| --- | --- | --- |
+| the workspace tree | real user-authored content | preserved by default; deletable only in the nested case, only on explicit opt-in |
+| `workspace-root.json` | a machine-local pointer holding a path string | never a separate question; its fate follows the tree |
+
+The pointer is not independently meaningful — it matters only if the workspace it names still exists. Asking about it would make the user answer a second question about a bookkeeping file they have never heard of, immediately after they already expressed intent about their data. Derive it instead:
+
+- workspace preserved → preserve `workspace-root.json`, so a relocated workspace stays discoverable after reinstall;
+- nested workspace deleted via explicit opt-in → the pointer describes a path that no longer exists, so remove it too and say so in the result.
+
+**Deletion is offered only for a nested workspace.** A relocated workspace lives at a path the user deliberately chose — possibly a synced or backed-up folder — and RoboRepo did not create that location, so it must not take responsibility for removing it. For a relocated workspace, never offer deletion in the prompt and never honor `--delete-workspace` against it; preserve it, print its path, and let the user delete it themselves.
+
+Interactive prompt shape for the nested case:
+
+```text
+Managed cleanup will remove RoboRepo harness projections,
+generated rules, and machine-local state.
+
+Your workspace will be preserved:
+  ~/.roborepo/workspace  (18 files)
+
+  [Enter] preserve workspace (recommended)
+  [d]     also delete workspace
+```
+
+`--delete-workspace` is the noninteractive equivalent so automation opts in explicitly rather than being prompted. It is destructive, so it composes with the existing rule: noninteractive deletion refuses unless `--yes` is also explicit. Under `--dry-run` it reports the intended deletion without mutating.
+
+Consequence accepted: default managed uninstall leaves the workspace bytes behind, so it is not a zero-trace removal. That is the intended reading of the ownership thesis — RoboRepo removes what it created, and it did not create the user's workspace content. Users wanting zero trace have `--delete-workspace` and a printed path.
 
 After managed cleanup completes, print the package-manager step:
 
@@ -386,7 +440,8 @@ The two previously reproduced narrow removal defects—apply orphan cleanup and 
   - route `library` to the same package-management implementation as `package manage`;
   - stop presenting advanced maintenance uninstall as a separate user workflow.
 - `scripts/cli/main.mjs`
-  - add first-run routing before the normal root menu;
+  - add first-run routing before the normal root menu (the `resolved.kind === "root-menu"` branch);
+  - retire the no-op `maybeRunPresetOnboarding()` argv hook rather than stacking new logic beside it;
   - do not reinstate the old global onboarding gate.
 - New focused lifecycle/initialization module under `scripts/cli/`
   - read/write initialization state;
@@ -401,7 +456,7 @@ The two previously reproduced narrow removal defects—apply orphan cleanup and 
   - reuse the current Package Library wizard;
   - do not expose its internal `onboard` token as a public command.
 - `scripts/cli/config.mjs`
-  - expose enough machine harness state for truthful Agents presentation without losing registered-provider metadata.
+  - `configSnapshotHarnesses()` currently maps `listHarnessProviders()` with no state input; add the machine cohort by reading persisted discovery state (`harnessStatePath` via `scripts/harnesses/state.mjs`) without losing registered-provider metadata.
 - `scripts/cli/package-projection-cleanup.mjs`
   - continue as the ownership-aware package projection cleanup path.
 
@@ -459,6 +514,7 @@ Document the public lifecycle vocabulary and remove first-run instructions that 
 - [ ] Make completed `init` idempotent and non-destructive.
 - [ ] Route bare interactive `roborepo` into `init` only when initialization is missing/in-progress.
 - [ ] Keep explicit help/version/doctor and automation paths usable without a forced onboarding gate.
+- [ ] Retire the vestigial `maybeRunPresetOnboarding()` call in `scripts/cli/main.mjs`: replace it with the new first-run routing rather than layering a second startup hook beside a no-op. Keep `--no-presets-onboard` accepted-and-ignored, or drop it deliberately as a documented removal.
 
 ### Phase 2 — Add the Library front door
 
@@ -478,8 +534,12 @@ Document the public lifecycle vocabulary and remove first-run instructions that 
 
 ### Phase 4 — Promote safe managed uninstall
 
-- [ ] Characterize the current hidden uninstall against a workspace at the default `<stateRoot>/workspace` path.
-- [ ] Replace recursive state-root deletion with a selective ownership-based cleanup plan that preserves workspace content by default.
+- [ ] Characterize the current hidden uninstall against a workspace at the default `<stateRoot>/workspace` path, capturing the existing destructive behavior as a failing test before changing it.
+- [ ] Remove the final `remove_path "${state_dir}"` from `remove_runtime_state()` and replace recursive state-root deletion with a selective ownership-based cleanup plan that preserves workspace content by default.
+- [ ] Resolve the effective workspace root through the same `workspace-root.json` override logic as `scripts/cli/roots.mjs`; cover both the nested default and a workspace relocated outside `stateRoot`.
+- [ ] Implement the resolved workspace-disposition policy: preserve by default; tie `workspace-root.json`'s fate to the tree's rather than prompting for it separately.
+- [ ] Add `--delete-workspace` opt-in, honored only for a nested workspace, refusing noninteractively without `--yes`, and non-mutating under `--dry-run`.
+- [ ] Never offer or honor workspace deletion for a relocated workspace; preserve it and print its path.
 - [ ] Define structured preview/result data shared by CLI and portal adapters.
 - [ ] Add public `roborepo uninstall` with dry-run/preview and explicit confirmation.
 - [ ] Repoint or retire `roborepo maintenance uninstall` so there is one cleanup implementation.
@@ -495,13 +555,13 @@ Document the public lifecycle vocabulary and remove first-run instructions that 
 - [ ] Require explicit destructive confirmation.
 - [ ] Ensure the response reaches the browser before the portal server stops/removes its own runtime state.
 - [ ] Display the npm removal command after cleanup.
-- [ ] Keep workspace deletion out of the default portal action.
+- [ ] Keep workspace deletion out of the portal action entirely: the portal exposes preserve-only cleanup and shows the preserved workspace path. `--delete-workspace` stays a deliberate CLI opt-in rather than a button in a browser.
 
 ### Phase 6 — Documentation and real-new-Mac acceptance
 
 - [ ] Make package-install guidance end with `roborepo init`, not a checklist of internal commands.
 - [ ] Document `roborepo library` as the normal way to change functionality later.
-- [ ] Document the two-part uninstall ownership model.
+- [ ] Document the two-part uninstall ownership model, including that managed uninstall preserves the workspace by default and that `--delete-workspace` is the explicit nested-only opt-in.
 - [ ] State that npm removal alone leaves separately stored RoboRepo state/configuration.
 - [ ] Generate a fresh Packaging 01 transfer artifact from the final tested commit.
 - [ ] Run the real-new-Mac harness-count matrix below before restoring old workspace content or cloning the development repository.
@@ -545,7 +605,12 @@ Required assertions:
 - Agents and Tokens handle zero/one/N according to their documented cohorts;
 - a synthetic additional provider does not require UI/CLI source edits;
 - managed uninstall preserves workspace bytes at the default nested location;
+- managed uninstall leaves a workspace relocated outside `stateRoot` fully untouched;
+- `--delete-workspace` removes a nested workspace, and leaves a relocated one intact;
+- `--delete-workspace` without `--yes` refuses noninteractively, and mutates nothing under `--dry-run`;
+- `workspace-root.json` survives when the workspace is preserved and is removed when a nested workspace is deleted;
 - unmanaged/drifted harness content survives managed uninstall;
+- the config snapshot's Agents cohort reflects persisted discovery state, not the raw registered-provider list;
 - the portal and CLI produce the same removal plan for the same fixture;
 - npm package-install smoke still passes with no harness executables visible.
 
@@ -592,6 +657,7 @@ Confirm the application command disappears while the preserved workspace remains
 - `roborepo onboard` remains removed from the public CLI.
 - agent-related CLI/portal surfaces render zero, one, and N providers according to an explicitly defined cohort rather than hardcoded provider counts.
 - `roborepo uninstall` removes only proven RoboRepo-managed machine integration and preserves user-authored workspace content by default.
+- workspace deletion is an explicit opt-in available only for a nested workspace; a relocated workspace is never deleted by RoboRepo, and the `workspace-root.json` pointer follows the tree instead of prompting separately.
 - the portal exposes the same managed-uninstall semantics and cannot silently delete the npm application.
 - successful managed uninstall tells the user to remove the package with npm.
 - docs clearly state that npm package removal and RoboRepo-managed state cleanup are separate lifecycle operations.
@@ -599,7 +665,8 @@ Confirm the application command disappears while the preserved workspace remains
 
 ## Risks
 
-- The default workspace currently sits inside `stateRoot`; any leftover recursive state-root deletion can destroy user-authored content despite correct UI copy.
+- The default workspace currently sits inside `stateRoot`, and `remove_runtime_state()` ends with `remove_path "${state_dir}"` (an `rm -rf`); any leftover recursive state-root deletion destroys user-authored content despite correct UI copy.
+- `workspaceRoot` is overridable via `workspace-root.json`, so cleanup keyed to the nested default silently misclassifies a relocated workspace — in one direction leaving state behind, in the other deleting a tree the user placed deliberately.
 - “Registered,” “detected,” “enabled,” “home present,” and “observed in telemetry” are different harness cohorts. Reusing the wrong one can create misleading zero/one/N UI.
 - A portal uninstall request can terminate the process serving its own response if shutdown ordering is not explicit.
 - Existing shell uninstall logic has mature ownership checks; replacing too much of it at once would increase cleanup risk. Share policy incrementally rather than doing a wholesale rewrite for architectural purity.

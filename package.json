@@ -54,6 +54,7 @@
     "test:mcp-add-characterization": "node scripts/test/mcp-add-characterization-check.mjs",
     "test:mcp-package-lifecycle-characterization": "node scripts/test/mcp-package-lifecycle-characterization-check.mjs",
     "test:package-lifecycle": "node scripts/test/package-lifecycle-check.mjs",
+    "test:initialization-lifecycle": "node scripts/test/initialization-lifecycle-check.mjs",
     "test:package-default-enabled": "node scripts/test/package-default-enabled-check.mjs",
     "test:usage-statusline": "node scripts/test/usage-statusline-check.mjs",
     "test:usage-domain": "node scripts/test/usage-domain-check.mjs",

@@ -1,0 +1,124 @@
+// `roborepo init` — the single user-facing first-run workflow.
+//
+// This is an orchestrator, not an implementation. Every step below already exists as a primitive
+// (setup, harness refresh, the Package Library wizard, config apply); init's whole job is to run
+// them in the right order, keep the initialization record honest about how far it got, and give
+// the user one thing to read at the end. Any logic that belongs to a step belongs in that step's
+// module, not here — otherwise `init` and the primitive drift apart and the primitive becomes the
+// one nobody tests.
+//
+// Failure policy: the record is marked complete only after every required step returns. A throw,
+// a Ctrl-C, or a process exit anywhere in between leaves it "in-progress", which is what makes a
+// half-finished first run resumable instead of indistinguishable from a fresh install.
+
+import { listHarnessProviders } from "../harnesses/registry.mjs";
+import { discoverHarnessProviders } from "../harnesses/discovery.mjs";
+import { readHarnessState, writeHarnessState, applyDiscoveryToState } from "../harnesses/state.mjs";
+import { presetsOnboard } from "./presets.mjs";
+import { setupCommand } from "./workspace.mjs";
+import {
+  beginInitialization,
+  completeInitialization,
+  initializationPhase,
+} from "./initialization-state.mjs";
+
+// Refresh discovery and return the machine cohort rather than printing the provider table.
+// harnessRefresh() writes state and then dumps a tab-separated row per provider, which is the
+// right output for `roborepo harness refresh` and the wrong output mid-wizard, so init shares the
+// state-writing path and formats its own one-line summary.
+function refreshAndSummarizeHarnesses() {
+  const next = applyDiscoveryToState(readHarnessState(), discoverHarnessProviders(listHarnessProviders()));
+  writeHarnessState(next);
+
+  const detected = Object.entries(next.providers)
+    .filter(([, entry]) => entry.confidence !== "absent")
+    .map(([id]) => id);
+
+  return { state: next, detected };
+}
+
+function describeHarnesses(detected) {
+  if (detected.length === 0) {
+    return [
+      "No supported agent harnesses are currently detected.",
+      "RoboRepo is initialized; install or launch a supported harness later, then run `roborepo harness refresh`.",
+    ];
+  }
+  const names = detected.map((id) => listHarnessProviders().find((p) => p.id === id)?.manifest.displayName ?? id);
+  const list = names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
+  return [`Detected ${names.length === 1 ? "harness" : `${names.length} harnesses`}: ${list}.`];
+}
+
+function printNextActions() {
+  console.log("");
+  console.log("Next steps:");
+  console.log("  roborepo           open the main menu");
+  console.log("  roborepo library   browse and manage packages");
+  console.log("  roborepo web       open the portal in a browser");
+  console.log("  roborepo doctor    check installation health");
+}
+
+// Re-running a finished init must not replay the wizard: that would re-prompt for package
+// selections the user already made and re-apply configuration they may have since hand-edited.
+// Report and exit instead, pointing at the commands that *do* mutate.
+function reportAlreadyInitialized() {
+  console.log("RoboRepo is already initialized.");
+  console.log("");
+  console.log("  roborepo library      change which packages are enabled");
+  console.log("  roborepo config apply re-apply configuration");
+  console.log("  roborepo doctor       check installation health");
+}
+
+export async function initCommand(args = []) {
+  const dryRun = args.includes("--dry-run");
+  const force = args.includes("--force");
+  const invalid = args.filter((arg) => arg !== "--dry-run" && arg !== "--force");
+  if (invalid.length > 0) {
+    console.error(`unknown flag for init: ${invalid.join(" ")}`);
+    process.exit(2);
+  }
+
+  const phase = initializationPhase();
+
+  if (phase === "complete" && !force) {
+    reportAlreadyInitialized();
+    return;
+  }
+
+  if (dryRun) {
+    console.log("would initialize RoboRepo:");
+    console.log("  - create workspace and state directories");
+    console.log("  - refresh harness discovery");
+    console.log("  - open the Package Library to choose functionality");
+    console.log("  - apply the resulting configuration");
+    console.log(`  - mark initialization complete (currently: ${phase})`);
+    return;
+  }
+
+  if (phase === "in-progress") {
+    console.log("Resuming an interrupted initialization.");
+    console.log("");
+  }
+
+  beginInitialization();
+
+  setupCommand([]);
+
+  const { detected } = refreshAndSummarizeHarnesses();
+  for (const line of describeHarnesses(detected)) console.log(line);
+  console.log("");
+
+  // presetsOnboard owns both the interactive Package Library wizard and the non-interactive
+  // apply-the-defaults path, and applies the selection itself. init does not call config apply
+  // afterward: that would re-run the same update script a second time for no benefit.
+  await presetsOnboard([]);
+
+  completeInitialization();
+
+  console.log("");
+  console.log("RoboRepo is initialized.");
+  console.log("");
+  console.log("The npm package and your RoboRepo configuration have separate lifecycles.");
+  console.log("Removing the npm package does not remove your RoboRepo workspace or managed harness configuration.");
+  printNextActions();
+}

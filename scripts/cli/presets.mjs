@@ -20,13 +20,9 @@ const ANSI = process.stdout.isTTY && !process.env.ROBOREPO_NO_COLOR
   ? { reset: "\x1b[0m", bold: "\x1b[1m", magenta: "\x1b[35m" }
   : { reset: "", bold: "", magenta: "" };
 
-// Onboarding wizard disabled: install auto-applies all default bundles, so nothing is gated on an
-// onboarding step. The forced-gate body is recorded in docs/plans/completed/onboarding-reinstatement.md.
-// Kept as a pass-through (still called from main.mjs) so the gate can be reinstated in one place.
-export async function maybeRunPresetOnboarding(args) {
-  const filtered = args.filter((arg) => arg !== "--no-presets-onboard");
-  return filtered.length !== args.length ? filtered : args;
-}
+// The forced onboarding gate that used to live here (maybeRunPresetOnboarding) is gone: first-run
+// behavior is now `roborepo init`, routed from main.mjs via scripts/cli/first-run-routing.mjs.
+// The old gate's body is recorded in docs/plans/completed/onboarding-reinstatement.md.
 
 export async function presetsCommand(rest) {
   const [sub, ...args] = rest;

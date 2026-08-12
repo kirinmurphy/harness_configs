@@ -1256,7 +1256,11 @@ assert "menu: shows indexing namespace" grep -q "Indexing" "${menu_out}"
 assert "menu: shows skills namespace" grep -q "Skills" "${menu_out}"
 assert "menu: shows telemetry namespace" grep -q "Telemetry" "${menu_out}"
 assert "menu: shows maintenance namespace" grep -q "Maintenance" "${menu_out}"
-assert "menu: numbers root actions (web is 1)" grep -qE "1\) Open web portal" "${menu_out}"
+assert "menu: shows initialize action" grep -q "Initialize" "${menu_out}"
+# init leads the numbered root actions: it is the first thing a new install needs, ahead of the
+# portal and the package library.
+assert "menu: numbers root actions (init is 1)" grep -qE "1\) Initialize" "${menu_out}"
+assert "menu: numbers root actions (web is 2)" grep -qE "2\) Open web portal" "${menu_out}"
 assert "menu: items have descriptions" grep -q "Diagnose installation" "${menu_out}"
 assert "menu: numbered fallback exits cleanly on out-of-range/blank" \
   bash -c "printf '99\n' | node '${cli}' >'${work}/menu-invalid.out' 2>&1 && grep -q 'Select a number' '${work}/menu-invalid.out'"

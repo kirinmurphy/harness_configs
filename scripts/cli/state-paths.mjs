@@ -21,6 +21,11 @@ export function writeJsonState(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n");
 }
 export const installStatePath = path.join(roborepoStateDir, "install-state.json");
+// First-run lifecycle record: has `roborepo init` ever started, and did it finish. Deliberately
+// separate from installStatePath (which the shell installer owns) and from directory existence —
+// a workspace dir can exist because `setup` ran as an internal primitive without the user ever
+// completing initialization. See scripts/cli/initialization-state.mjs for the schema and policy.
+export const initializationStatePath = path.join(roborepoStateDir, "initialization.json");
 export const presetsStatePath = path.join(roborepoStateDir, "presets", "state.json");
 export const roborepoSkillsDir = path.join(roborepoStateDir, "skills");
 // Personal deny/ask/allow overrides layered on top of manifests/inventory/agent-permissions.json's

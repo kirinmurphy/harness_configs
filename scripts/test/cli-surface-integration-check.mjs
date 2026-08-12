@@ -22,6 +22,11 @@ try {
   };
   fs.mkdirSync(env.HOME, { recursive: true });
   fs.mkdirSync(env.ROBOREPO_STATE_DIR, { recursive: true });
+  // This suite exercises the command surface and the root menu, not the first-run workflow. A bare
+  // `roborepo` on an uninitialized install now routes to `init` (see cli/first-run-routing.mjs), so
+  // the sandbox is seeded as already-initialized to reach the menu under test. First-run routing
+  // itself is covered by scripts/test/initialization-lifecycle-check.mjs.
+  markInitialized(env.ROBOREPO_STATE_DIR);
 
   assertCli(["help"], { env, stdout: /Primary commands:/ });
 
@@ -357,6 +362,20 @@ function runGit(args, options = {}) {
   return result;
 }
 
+function markInitialized(stateDir) {
+  const timestamp = new Date().toISOString();
+  fs.writeFileSync(
+    path.join(stateDir, "initialization.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      workflowVersion: 1,
+      status: "complete",
+      startedAt: timestamp,
+      completedAt: timestamp,
+    }, null, 2) + "\n",
+  );
+}
+
 function assertInteractiveMenuRedraw({ env }) {
   const script = `
     set timeout 5
@@ -380,21 +399,36 @@ function assertInteractiveMenuRedraw({ env }) {
   assert.equal((screen.match(/ROBOREPO - Main Menu/g) || []).length, 1, `menu title duplicated after redraw\n${screen}`);
   assert.equal((screen.match(/^> /gm) || []).length, 1, `menu selection duplicated after redraw\n${screen}`);
   assert.match(screen, /^  Agent Config$/m, `root menu missing Agent Config section\n${screen}`);
-  assert.match(screen, /^  Open web portal\b/m, `primary action should keep selector gutter\n${screen}`);
+  // Primary actions sit at the two-column selector gutter ("  " when unselected, "> " when
+  // selected) rather than the four-space child indent used for namespace members. Matching either
+  // gutter keeps this about indentation, which is what it tests, instead of about which row the
+  // keypress sequence happens to land on — that shifts whenever a primary command is added.
+  assert.match(screen, /^(?:> |  )Open web portal\b/m, `primary action should keep selector gutter\n${screen}`);
   assert.doesNotMatch(screen, /^    Open web portal\b/m, `primary action should not get child indent\n${screen}`);
+  // `init` leads the primary actions: it is the first thing a new install needs.
+  assert.match(screen, /^(?:> |  )Initialize\b/m, `root menu missing Initialize primary action\n${screen}`);
+  assert.match(screen, /^(?:> |  )Package Library\b/m, `root menu missing Package Library primary action\n${screen}`);
   assert.match(screen, /^  Support$/m, `root menu missing Support section\n${screen}`);
   assert.match(screen, /^  Navigation$/m, `root menu missing Navigation section\n${screen}`);
   assert.match(screen, /^    Agent Files\b/m, `root menu missing renamed Agent Files item\n${screen}`);
   assert.match(screen, /^    Doctor\b/m, `root menu missing Support Doctor item\n${screen}`);
   assert.match(screen, /^    Maintenance\b/m, `root menu missing Support Maintenance item\n${screen}`);
-  assert.match(screen, /^> Package Library\b/m, `menu did not land on expected row\n${screen}`);
+  // down, down, up leaves the selector one row below the top item. Asserted by offset rather than
+  // by label so adding a primary command (init) does not require re-deriving the expected name;
+  // what matters is that the arrow keys moved the selector and left exactly one of it.
+  const primaryRows = screen.split("\n").filter((line) => /^(?:> |  )\S/.test(line) && !/^  (?:Agent Config|Support|Navigation)$/.test(line));
+  assert.equal(primaryRows[1], screen.split("\n").find((line) => line.startsWith("> ")), `menu did not land on expected row\n${screen}`);
 }
 
 function assertIndentedSelectionMarker({ env }) {
+  // One down per primary action (init, web, library, update) lands on the first child item under
+  // the Agent Config section, which is the indented row this check is about. Adding or removing a
+  // primary action changes this count.
+  const downs = "\\033\\[B".repeat(4);
   const script = `
     set timeout 5
     spawn -noecho ${process.execPath} ${cliPath}
-    send "\\033\\[B\\033\\[B\\033\\[Bq"
+    send "${downs}q"
     expect eof
   `;
   const result = spawnSync("expect", ["-c", script], {

@@ -25,15 +25,37 @@ for (const { tokens, node } of executableNodes) {
 
 const rootHelp = renderHelp(catalog);
 assert.match(rootHelp, /Primary commands:/);
-assert.match(rootHelp, /package manage/);
 assert.doesNotMatch(rootHelp, /skill render-commands/);
 assert.doesNotMatch(rootHelp, /roborepo onboard/);
-assert.equal(rootHelp.match(/package manage/g).length, 1);
-assert.ok(rootHelp.indexOf("web") < rootHelp.indexOf("package manage"));
-assert.ok(rootHelp.indexOf("package manage") < rootHelp.indexOf("update"));
-assert.equal(promotedRootEntries(catalog).length, 1);
+// `library` is the root-level front door for package management; `package manage` stays
+// discoverable under the package namespace but is no longer promoted to root, so root help
+// teaches one name for the workflow rather than two.
+assert.match(rootHelp, /library/);
+assert.doesNotMatch(rootHelp, /package manage/);
+assert.equal(promotedRootEntries(catalog).length, 0);
+// init leads the lifecycle vocabulary a new user reads first.
+assert.match(rootHelp, /init/);
+assert.ok(rootHelp.indexOf("init") < rootHelp.indexOf("web"));
+assert.ok(rootHelp.indexOf("web") < rootHelp.indexOf("library"));
+assert.ok(rootHelp.indexOf("library") < rootHelp.indexOf("update"));
 assert.equal(catalog.nodes.web.execution.prependArgs, undefined);
 assert.deepEqual(catalog.nodes.web.interactiveArgs, ["--detach"]);
+
+// --- `library` and `package manage` are two entry points to one implementation. Sharing the
+// packageLibrary execution preset makes divergence structurally impossible rather than a thing a
+// future edit has to remember to keep in sync. ---
+assert.deepEqual(
+  catalog.nodes.library.execution,
+  catalog.nodes.package.children.manage.execution,
+  "library and package manage must resolve to identical execution",
+);
+assert.equal(catalog.nodes.library.execution.export, "presetsCommand");
+assert.deepEqual(catalog.nodes.library.execution.prependArgs, ["onboard"]);
+
+// --- init is a public root command; setup stays internal so it is never taught as a first-run step. ---
+assert.equal(catalog.nodes.init.kind, "command");
+assert.equal(catalog.nodes.init.execution.module, "scripts/cli/initialize.mjs");
+assert.equal(catalog.nodes.setup.kind, "internal");
 
 const packageHelp = renderHelp(catalog, catalog.nodes.package, ["package"]);
 assert.match(packageHelp, /roborepo package - Manage and develop RoboRepo packages/);

@@ -403,10 +403,41 @@ new settings surface, and it keeps `validateComposeProjects`
 
 ### Phase 3 — Merge the inactive list into the repository list
 
-- [ ] Render persisted repositories in one list with their state, and read git for `idle`
+- [x] Render persisted repositories in one list with their state, and read git for `idle`
       repositories from the persisted checkout path.
-- [ ] Remove the "Inactive saved projects" section.
-- [ ] Carry forward saved app-slot identities that have never resolved to a repository.
+      `collectPersistedRepositories` reads the registry, derives lifecycle, and passes the result
+      into `buildLocalhosterSnapshot` as `persistedRepositories` — injected rather than read there,
+      so the builder stays a pure function of its inputs like `repositoryNames` already was. Running
+      repositories sort ahead of idle/stale ones; within each group the existing comparator applies.
+      Git for an idle checkout goes through `modules/repositories/idle-git-cache.mjs`, which is
+      explicitly the cross-poll cache `scan-cache.mjs` refuses to be. That refusal is answered rather
+      than ignored: nothing is keyed on the root alone. Every entry carries a fingerprint of the
+      checkout's git directory (mtimes of the dir, `HEAD`, `index`, `packed-refs`) and a hit requires
+      it to still match, so a commit, checkout, stage or fetch forces a re-read while an untouched
+      checkout costs one `git` call rather than one per ~10s poll. An unreadable checkout is never
+      cached — the same refusal to treat "cannot look" as evidence that `deriveLifecycle` makes.
+- [x] Remove the "Inactive saved projects" section.
+      Repositories now render in the main list with their own state. What is left is narrower and
+      renamed "Saved apps": app slots whose identity has never resolved to a repository, which have
+      no repository card to join. `inactiveProjects` entries carry a `repositoryId` so the portal can
+      filter out the ones already represented above.
+- [x] Carry forward saved app-slot identities that have never resolved to a repository.
+      They stay listed rather than being dropped — names, quick links and health checks are
+      configuration the user deliberately created, and the section empties itself as they resolve.
+- [x] Fold away a repository record whose every checkout has been repointed to another repository.
+      Not in the original plan, and only visible because of this phase. Phase 2 deliberately does not
+      merge on a rename: the checkout repoints and both records survive. While only running
+      repositories were listed the superseded record never appeared; rendering persisted ones made it
+      a second card with the same name as the repository that took its roots (the live registry had
+      exactly this — `local:616846d49a69fc81` beside `localhostr_web`). `deriveLifecycle` cannot
+      distinguish it alone, since a fully-repointed record and a never-resolved one both have zero
+      resolvable roots and both read `idle`.
+      `supersededBy` reports the successor and the caller folds the card; the record is untouched and
+      returns the moment any checkout resolves back to it. Deliberately conservative — null unless
+      the record has roots, every one is now owned by another repository, and they all agree on
+      which. `harness_configs`/`roborepo` on the live registry is correctly NOT folded: they share
+      two rootIds but no path was ever recorded for them, so ownership is unprovable and inferring
+      the merge would be the guess this design refuses to make.
 
 ### Phase 4 — Container ownership
 
@@ -484,8 +515,13 @@ new settings surface, and it keeps `validateComposeProjects`
 
 ## Validation
 
-- [ ] A repository discovered once remains listed after every one of its processes stops, with its
+- [x] A repository discovered once remains listed after every one of its processes stops, with its
       checkouts and their branches still shown.
+      Verified live: the portal lists 9 repositories, 4 `active` and 5 `idle`, where before it showed
+      only what was running. The `idle` ones with a recorded checkout path show that checkout's
+      branch read from disk; the ones registered before Phase 1 have no path on record and say so
+      rather than implying an empty repository. Covered by unit assertions in
+      `localhoster-repository-merge-check`.
 - [x] A steady-state poll writes nothing *within the `lastSeenAt` debounce window* — no revision bump
       when no record changed. Stated precisely because the unqualified version is not achievable and
       not desirable: `lastSeenAt` must keep advancing for a repository that is genuinely still

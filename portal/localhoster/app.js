@@ -168,15 +168,26 @@ function render(snapshot, { reconcile }) {
       })),
     },
     {
+      // What remains of the old "Inactive saved projects" list. Repositories are no longer here —
+      // they render in the main list above with their own lifecycle state, which is the whole point
+      // of persisting them: a repository you ran once and stopped stays listed, where before only
+      // ones you had explicitly configured an app slot for appeared at all.
+      //
+      // Saved app slots that have never resolved to a repository have nowhere to go, so they stay.
+      // They are configuration the user deliberately created — names, quick links, health checks —
+      // and dropping them because discovery has not yet matched them would lose real work. The
+      // section empties itself as they resolve.
       id: "inactive",
       kind: "group",
-      title: "Inactive saved projects",
-      meta: (n) => `${n} saved`,
-      cards: snapshot.inactiveProjects.map((project) => ({
-        key: `${project.identity}#${project.app?.id || ""}`,
-        hash: JSON.stringify(project),
-        build: () => tmpl.inactiveCard(project, cardActions()),
-      })),
+      title: "Saved apps",
+      meta: (n) => `${n} not yet matched to a repository`,
+      cards: snapshot.inactiveProjects
+        .filter((project) => !project.repositoryId)
+        .map((project) => ({
+          key: `${project.identity}#${project.app?.id || ""}`,
+          hash: JSON.stringify(project),
+          build: () => tmpl.inactiveCard(project, cardActions()),
+        })),
     },
   ];
 

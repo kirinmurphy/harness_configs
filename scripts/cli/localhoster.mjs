@@ -17,7 +17,15 @@ import {
 import { recordRepositoryDiscovery } from "./repositories.mjs";
 import { resolveProjectIdentity } from "../../modules/localhoster/identity.mjs";
 import { canonicalRepositoryId, rootId as computeRootId } from "../../modules/repositories/identity.mjs";
-import { loadRegistry, checkoutRootsFor } from "../../modules/repositories/index.mjs";
+import {
+  loadRegistry,
+  checkoutRootsFor,
+  deriveLifecycle,
+  lastSeenAtFor,
+  resolveGitDir,
+  supersededBy,
+} from "../../modules/repositories/index.mjs";
+import { createIdleGitCache } from "../../modules/repositories/idle-git-cache.mjs";
 
 const FRESHNESS_MS = 8000;
 const HISTORY_API_LIMIT = 200;
@@ -72,7 +80,15 @@ export async function refreshLocalhosterSnapshot() {
         discovery.instances.unshift(portal);
       }
       recordDiscoveredRepositories(discovery.instances, discovery.composeProjectGit);
-      lastSnapshot = buildSnapshot({ discovery, settings, refresh: { state: "idle", startedAt: null, error: null, generation } });
+      // After recording, so a repository discovered on THIS scan is already in the registry and is
+      // counted as running rather than appearing as idle on the poll that first found it.
+      const persistedRepositories = await collectPersistedRepositories(runningRepositoryIds(discovery));
+      lastSnapshot = buildSnapshot({
+        discovery,
+        settings,
+        refresh: { state: "idle", startedAt: null, error: null, generation },
+        persistedRepositories,
+      });
       // Only refreshes produce events. updateLocalhosterSettings also rebuilds a snapshot, but from
       // cached discovery with no fresh probe, so any diff there would be a settings artifact rather
       // than a real transition. Recorded after lastSnapshot is assigned so a history failure can
@@ -312,8 +328,106 @@ function scheduleRefresh() {
   if (!inFlightRefresh) refreshLocalhosterSnapshot().catch(() => {});
 }
 
-function buildSnapshot({ discovery, settings = loadSettings({ stateRoot }), refresh = { state: "idle", startedAt: null, error: null }, now = new Date() }) {
-  return buildLocalhosterSnapshot({ discovery, settings, refresh, now, repositoryNames: registryDisplayNames() });
+function buildSnapshot({ discovery, settings = loadSettings({ stateRoot }), refresh = { state: "idle", startedAt: null, error: null }, now = new Date(), persistedRepositories = [] }) {
+  return buildLocalhosterSnapshot({
+    discovery,
+    settings,
+    refresh,
+    now,
+    repositoryNames: registryDisplayNames(),
+    persistedRepositories,
+  });
+}
+
+// Cross-poll, fingerprint-guarded (see modules/repositories/idle-git-cache.mjs). Module-scoped
+// because it must survive between refreshes to be worth anything, which is safe here and not in
+// scan-cache.mjs precisely because every entry re-validates against the checkout's git directory.
+const idleGitCache = createIdleGitCache();
+
+// Every repository the registry knows that is NOT running right now, with its lifecycle state and —
+// for the ones whose checkout is still on disk — the git context read from that path.
+//
+// This is what retires the "Inactive saved projects" list. That list was built from saved app slots
+// in settings, so it only ever held projects the user had explicitly configured; a repository you
+// merely ran once and stopped appeared nowhere. Reading the registry instead means "seen once" is
+// enough to stay listed, which is the promise the persistence phases exist to keep.
+//
+// Best-effort in the same spirit as registryDisplayNames: an unreadable registry costs the idle
+// repositories and nothing else — the running ones come from discovery and are unaffected.
+async function collectPersistedRepositories(runningRepositoryIds) {
+  let registry;
+  try {
+    registry = loadRegistry({ stateRoot });
+  } catch {
+    return [];
+  }
+  const out = [];
+  const liveRoots = [];
+  for (const [id, record] of Object.entries(registry.repositories || {})) {
+    if (runningRepositoryIds.has(id)) continue;
+    // Hidden records are out of the normal list by definition; they return through "Show hidden",
+    // which reads the registry directly rather than this snapshot field.
+    if (record?.visibility === "hidden") continue;
+    // A record whose every checkout has been repointed to another repository — the surviving half of
+    // a rename Phase 2 deliberately did not merge. Listing it renders two cards with the same name,
+    // one of which is a remote nobody uses any more. The record is untouched; it is only folded out
+    // of this view, and it returns the moment any checkout resolves back to it.
+    if (supersededBy(registry, id)) continue;
+    const lifecycle = deriveLifecycle(registry, id, { runningRepositoryIds });
+    const checkouts = [];
+    for (const checkout of lifecycle.checkouts) {
+      // Git only for checkouts confirmed present. An absent or unreadable one has nothing to read,
+      // and asking would be a subprocess per poll that can only fail.
+      const git = checkout.state === "present" ? await readIdleGit(checkout.path) : null;
+      if (checkout.state === "present") liveRoots.push(checkout.path);
+      checkouts.push({
+        rootId: checkout.rootId,
+        kind: checkout.kind || null,
+        state: checkout.state,
+        reason: checkout.reason || null,
+        projectRoot: checkout.path,
+        git,
+      });
+    }
+    out.push({
+      repositoryId: id,
+      name: record?.displayName || null,
+      lifecycle: { state: lifecycle.state, reason: lifecycle.reason },
+      lastSeenAt: lastSeenAtFor(record),
+      favorite: record?.favorite === true,
+      checkouts,
+    });
+  }
+  // Bound the cache to checkouts still in play, so a long portal session does not accumulate entries
+  // for repositories that have since been removed.
+  idleGitCache.retain(liveRoots);
+  return out;
+}
+
+// Every repository with something live on this scan. Both sources count: a repository whose only
+// presence is a Compose stack is running just as much as one with a dev server, and omitting the
+// stacks would list it as idle directly above its own running containers.
+function runningRepositoryIds(discovery) {
+  const ids = new Set();
+  for (const instance of discovery?.instances || []) {
+    const id = instance?.project?.repositoryId;
+    if (id) ids.add(id);
+  }
+  for (const resolved of (discovery?.composeProjectGit || new Map()).values()) {
+    if (resolved?.repositoryId) ids.add(resolved.repositoryId);
+  }
+  return ids;
+}
+
+async function readIdleGit(projectRoot) {
+  try {
+    const resolved = resolveGitDir(projectRoot);
+    if (!resolved) return null;
+    return await idleGitCache.get(projectRoot, resolved.gitDir, () => collectGitContext(projectRoot));
+  } catch {
+    // A checkout that disappears mid-scan reports no git rather than failing the refresh.
+    return null;
+  }
 }
 
 // Canonical repository names from the registry, so a card is titled by its repository rather than by

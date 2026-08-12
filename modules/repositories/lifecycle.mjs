@@ -85,6 +85,47 @@ export function deriveLifecycle(registry, repositoryId, { runningRepositoryIds =
   return { state: "stale", reason: checkouts[0].reason, checkouts };
 }
 
+// The repository that now owns every checkout this one used to, or null.
+//
+// This is the read side of the rename decision Phase 2 made deliberately: when a checkout resolves
+// to a new git identity the checkout REPOINTS and both records survive, because a renamed remote and
+// a deleted-then-recloned directory produce identical stored data and a wrong merge hides one
+// repository's work inside another. Nothing is merged automatically, and that still holds.
+//
+// What changed is that the superseded record became visible. While only running repositories were
+// listed it never appeared; once persisted repositories render, a record whose every root has been
+// repointed shows up as a full idle card beside the record that took its roots — two "roborepo"
+// cards, one of which is a former remote nobody is using. deriveLifecycle cannot tell them apart on
+// its own, because a fully-repointed record and a never-resolved one both have zero resolvable
+// roots and both read as `idle`.
+//
+// So this reports the successor rather than acting on it — same discipline as priorRepositoryForRoot
+// in the other direction. The caller decides whether to fold the card away, and the record itself is
+// untouched and recoverable.
+//
+// Deliberately conservative. Null unless the record HAS roots (a record that never resolved one is
+// not superseded, just unresolved), EVERY one of them is now owned by another repository, and they
+// all agree on which. A record whose roots scattered across several successors is left alone: that
+// is not a rename, and guessing which one wins is the merge this design refuses to make.
+export function supersededBy(registry, repositoryId) {
+  const record = registry?.repositories?.[repositoryId];
+  const roots = record?.localRoots || [];
+  if (!roots.length) return null;
+  let successor = null;
+  for (const root of roots) {
+    const entry = registry.localRootPaths?.[root.rootId];
+    // A root with no recorded path says nothing about ownership — it was never located, so it cannot
+    // have been taken over. One of these is enough to stop the whole derivation.
+    if (!entry) return null;
+    if (entry.repositoryId === repositoryId) return null;
+    // The successor must still exist; a pointer to a deleted record is not a successor.
+    if (!registry.repositories?.[entry.repositoryId]) return null;
+    if (successor && successor !== entry.repositoryId) return null;
+    successor = entry.repositoryId;
+  }
+  return successor;
+}
+
 // The most recent moment anything about this repository was observed. Roots and discoveries both
 // carry lastSeenAt; the newest of them is the repository's.
 export function lastSeenAtFor(record) {

@@ -1697,6 +1697,10 @@ assert "repositories: browser-safe API contracts" \
 # and a reused directory repointing without silently merging two repositories.
 assert "repositories: lifecycle states, ageing, reused directories" \
   node "${repo_root}/scripts/test/repositories-lifecycle-check.mjs"
+# Cross-poll git caching for idle repositories: reused only while the checkout's git directory is
+# unchanged, so a long-lived portal cannot pin one branch reading forever.
+assert "repositories: idle git cache invalidates on checkout change" \
+  node "${repo_root}/scripts/test/repositories-idle-git-cache-check.mjs"
 
 # Localhoster module suite. Note: localhoster-check.mjs existed as an npm script but was never wired
 # into this file, so it had not been running in CI at all — added here alongside the new checks.

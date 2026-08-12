@@ -78,6 +78,7 @@ export {
   deriveLifecycle,
   lastSeenAtFor,
   ageOutCandidates,
+  supersededBy,
 } from "./lifecycle.mjs";
 
 export {

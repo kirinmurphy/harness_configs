@@ -309,13 +309,32 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
   // just not of any one checkout of it. The count still matches what the expanded card lists,
   // because the Shared Services region below lists them.
   const memberCount = repository.members.length + repository.composeGroups.length;
+  const lifecycleState = repository.lifecycle?.state || "active";
+  const isRunning = lifecycleState === "active";
   // Member count only. The container count was a second number competing with it in the collapsed
   // view, and it answers a question you only have once the card is open — where the containers are
   // listed anyway.
+  // "N members" describes a running repository. An idle one has none by definition, so it reports
+  // when it was last seen instead — the fact that actually distinguishes two idle repositories, and
+  // the one the 30-day ageing rule acts on.
   const node = fill(tpl("tpl-repository-card"), {
     title: repository.name,
-    meta: `${memberCount} member${memberCount === 1 ? "" : "s"}`,
+    meta: isRunning
+      ? `${memberCount} member${memberCount === 1 ? "" : "s"}`
+      : lastSeenLabel(repository.lastSeenAt),
   });
+  if (!isRunning) {
+    node.classList.add("is-not-running");
+    const badge = node.querySelector("[data-slot=lifecycle-state]");
+    if (badge) {
+      badge.hidden = false;
+      badge.textContent = lifecycleState;
+      badge.classList.add(`is-${lifecycleState}`);
+      // The reason is the useful half of `stale` — "checkout missing" vs "drive unreadable" are
+      // different problems with different fixes — and it is absent for an ordinary idle repository.
+      if (repository.lifecycle?.reason) badge.title = repository.lifecycle.reason;
+    }
+  }
   const tooltip = node.querySelector(".info-wrap > template").content;
   const memberNames = [
     ...repository.composeGroups.map((group) => `compose ${group.name}`),
@@ -507,8 +526,12 @@ function buildRootSection({ root, departed, repository, composeActions, instance
   }
   const composeGroups = root?.composeGroups || [];
   const memberCount = (root?.members || []).length + composeGroups.length;
+  // A checkout that is not on disk reports THAT, rather than "no active members" — which is true of
+  // a missing checkout but describes it as though the directory were sitting there idle. The
+  // distinction is the whole point of inspectCheckout returning three states instead of a boolean:
+  // "absent" is a fact about the directory, "unreadable" is an admission that we could not look.
   section.querySelector("[data-slot=root-meta]").textContent =
-    memberCount ? `${memberCount} member${memberCount === 1 ? "" : "s"}` : "no active members";
+    memberCount ? `${memberCount} member${memberCount === 1 ? "" : "s"}` : checkoutStateLabel(root);
   // Names them, where the row only counts them — same relationship the repository tooltip's
   // members-detail has to the card's own member count.
   if (rootTooltip) {
@@ -1273,6 +1296,22 @@ function applyPortHealthBadge(port, instance, state) {
   badge.textContent = "N/A";
   badge.dataset.tone = "neutral";
   badge.title = `No HTTP healthcheck · ${statusDetail(instance)}`;
+}
+
+function checkoutStateLabel(root) {
+  if (root?.checkoutState === "absent") return "checkout missing";
+  if (root?.checkoutState === "unreadable") return root.checkoutReason || "checkout unreadable";
+  return "no active members";
+}
+
+// A repository with no lastSeenAt is not "seen infinitely long ago" — such records exist (registered
+// by a source that never resolved a root) and the ageing rule deliberately never hides them, so the
+// card must not imply an age the registry does not claim.
+function lastSeenLabel(lastSeenAt) {
+  if (!lastSeenAt) return "not running";
+  const elapsed = Date.now() - Date.parse(lastSeenAt);
+  if (!Number.isFinite(elapsed) || elapsed < 0) return "not running";
+  return `last seen ${formatDuration(elapsed)} ago`;
 }
 
 function formatMemory(kb) {

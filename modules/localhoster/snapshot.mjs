@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { defaultSettings, resolveProjectAlias } from "./settings.mjs";
-import { providerUrlForRepositoryId } from "../repositories/identity.mjs";
+import { canonicalRepositoryId, providerUrlForRepositoryId } from "../repositories/identity.mjs";
 
 export function buildLocalhosterSnapshot({
   discovery,
@@ -12,6 +12,12 @@ export function buildLocalhosterSnapshot({
   // here so this stays a pure builder (the caller owns state access, as it already does for
   // settings). Empty is fine: naming falls back to whatever the running checkouts report.
   repositoryNames = new Map(),
+  // Repositories the registry knows that have nothing running right now, already carrying their
+  // lifecycle state and (for present checkouts) git context. Injected for the same reason as
+  // repositoryNames: reading the registry and shelling out to git are the caller's job, so this
+  // stays a pure function of its inputs. Empty means "no persistence available", which degrades to
+  // the pre-Phase-3 behaviour of listing only what is running.
+  persistedRepositories = [],
 } = {}) {
   const activeByProject = new Map();
   const unmatchedInstances = [];
@@ -125,6 +131,11 @@ export function buildLocalhosterSnapshot({
       }
       inactiveProjects.push({
         identity,
+        // Which repository this saved slot belongs to, when its identity resolves to one. Phase 3
+        // renders repositories from the registry instead, so a slot that HAS a repository is
+        // already represented by that repository's card and must not also appear as a loose saved
+        // app; only the never-resolved ones are still listed on their own.
+        repositoryId: canonicalRepositoryId(identity),
         name: project.name || inferredName(identity),
         favorite: project.favorite === true || app.favorite === true,
         hidden: false,
@@ -159,7 +170,7 @@ export function buildLocalhosterSnapshot({
     // Repository-keyed view over the same instances the three collections above hold. Built
     // alongside them during the migration (localhoster-repository-card-merge) so existing consumers
     // keep working while the portal moves over; the legacy three are removed once nothing reads them.
-    repositories: buildRepositories({ projects, composeProjects, unmatchedInstances, repositoryNames }),
+    repositories: buildRepositories({ projects, composeProjects, unmatchedInstances, repositoryNames, persistedRepositories }),
     inactiveProjects: inactiveProjects.sort(compareProjects),
     hiddenCount,
     settings: settingsSummary(settings),
@@ -208,7 +219,7 @@ function groupByContainer(instances) {
 // Only a real repositoryId groups. `process:` identities resolve to null (canonicalRepositoryId
 // returns null for them — no repository exists to be a member of) and stay unmatched, as do
 // Compose projects whose repo never resolved.
-function buildRepositories({ projects, composeProjects, unmatchedInstances, repositoryNames = new Map() }) {
+function buildRepositories({ projects, composeProjects, unmatchedInstances, repositoryNames = new Map(), persistedRepositories = [] }) {
   const byRepository = new Map();
 
   // A worktree's project-level `name` is commonly its branch or directory name (e.g.
@@ -233,6 +244,11 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances, repo
         providerUrl: providerUrlForRepositoryId(repositoryId),
         name: source.name,
         favorite: false,
+        // `active` by construction here: every entry created on the running path was created because
+        // something was discovered for it. The persisted-repository pass overwrites this with the
+        // registry-derived state for repositories that have nothing running.
+        lifecycle: { state: "active", reason: null },
+        lastSeenAt: null,
         composeGroups: [],
         // Compose stacks that belong to the repository but to no single checkout of it — mounts
         // spanning several checkouts, mounts resolving to none, or no bind mounts to judge by.
@@ -373,7 +389,51 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances, repo
     ]);
   }
 
-  return [...byRepository.values()].sort(compareRepositories);
+  // Everything above came from something running. These come from the registry instead, so the list
+  // stops being "what is up right now" and becomes "every repository, with its state" — which is what
+  // retires the separate inactive section.
+  //
+  // Guarded against double-listing: the caller already excludes running repositories, but a stack
+  // resolved on this scan can land in the registry a moment before the snapshot is built, and a
+  // repository appearing twice is far worse than one appearing a poll late.
+  for (const persisted of persistedRepositories) {
+    if (!persisted?.repositoryId || byRepository.has(persisted.repositoryId)) continue;
+    const entry = ensure(persisted.repositoryId, { name: persisted.name || labelFromRepositoryId(persisted.repositoryId) });
+    entry.favorite = persisted.favorite === true;
+    entry.lifecycle = persisted.lifecycle || { state: "idle", reason: null };
+    entry.lastSeenAt = persisted.lastSeenAt || null;
+    // Same root shape the running path builds, so the card renders one kind of section either way.
+    // members stays empty by construction: an idle repository has no instances, and that absence is
+    // the entire difference between the two states.
+    for (const checkout of persisted.checkouts || []) {
+      const root = ensureRoot(entry, checkout.rootId, checkout.git, checkout.projectRoot);
+      root.checkoutState = checkout.state;
+      root.checkoutReason = checkout.reason || null;
+    }
+    entry.roots.sort((a, b) => {
+      if (a.isWorktree !== b.isWorktree) return a.isWorktree ? 1 : -1;
+      return (a.git?.branch || "").localeCompare(b.git?.branch || "");
+    });
+    entry.duplicateGroups = [];
+    entry.cpuPercentOfHost = null;
+  }
+
+  // Running repositories first, then idle/stale — a card with something live on it outranks one
+  // without, whatever their names. Within each group the existing comparator applies, so favorites
+  // and alphabetical order still hold where they did before.
+  return [...byRepository.values()].sort((a, b) => {
+    const aIdle = a.lifecycle && a.lifecycle.state !== "active";
+    const bIdle = b.lifecycle && b.lifecycle.state !== "active";
+    if (aIdle !== bIdle) return aIdle ? 1 : -1;
+    return compareRepositories(a, b);
+  });
+}
+
+// Last path segment of a git: id, or a generic label for a local: one. Only used when the registry
+// has no displayName recorded — a repository registered by a source that never resolved a name.
+function labelFromRepositoryId(repositoryId) {
+  if (repositoryId.startsWith("git:")) return repositoryId.split("/").pop() || repositoryId;
+  return "repository";
 }
 
 // One process listening on several ports is one member, not several. A dev server commonly binds a

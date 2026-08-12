@@ -369,4 +369,89 @@ assert.ok(ownedRoot, "an owned stack creates the checkout section it was placed 
 assert.equal(ownedRoot.composeGroups.length, 1);
 assert.equal(ownedRoot.composeGroups[0].ownership, "owned");
 
+// --- Phase 3: persisted repositories join the same list ---
+// The point of the phase: a repository you ran once and stopped stays listed. Before this the page
+// showed only what was running, and the separate "Inactive saved projects" list held app slots the
+// user had configured — so an ordinary repository, run and stopped, appeared nowhere at all.
+const IDLE = "git:github.com/k/idle-one";
+const STALE = "git:github.com/k/stale-one";
+const withPersisted = buildLocalhosterSnapshot({
+  discovery: {
+    capabilities: { discovery: "supported" },
+    warnings: [],
+    composeProjectGit: new Map(),
+    instances: [instance({ pid: 800, port: 8200, command: "node", identity: MENUGOATS, repositoryId: MENUGOATS, status: 200, title: "Live" })],
+  },
+  settings: defaultSettings(),
+  now: new Date("2026-08-02T00:00:00.000Z"),
+  persistedRepositories: [
+    {
+      repositoryId: IDLE,
+      name: "idle-one",
+      lifecycle: { state: "idle", reason: null },
+      lastSeenAt: "2026-08-01T00:00:00.000Z",
+      favorite: false,
+      checkouts: [{ rootId: "idle-root", kind: "primary", state: "present", reason: null, projectRoot: "/tmp/idle-one", git: { branch: "main", isWorktree: false } }],
+    },
+    {
+      repositoryId: STALE,
+      name: "stale-one",
+      lifecycle: { state: "stale", reason: "checkout missing" },
+      lastSeenAt: "2026-07-01T00:00:00.000Z",
+      favorite: false,
+      checkouts: [{ rootId: "stale-root", kind: "primary", state: "absent", reason: "checkout missing", projectRoot: "/tmp/stale-one", git: null }],
+    },
+  ],
+});
+const idle = withPersisted.repositories.find((r) => r.repositoryId === IDLE);
+const staleRepo = withPersisted.repositories.find((r) => r.repositoryId === STALE);
+const live = withPersisted.repositories.find((r) => r.repositoryId === MENUGOATS);
+
+assert.equal(withPersisted.repositories.length, 3);
+// An idle repository keeps everything that does not depend on a live process — its checkouts, their
+// branches, its identity — and has no members, which is the entire difference.
+assert.equal(idle.lifecycle.state, "idle");
+assert.equal(idle.members.length, 0);
+assert.equal(idle.roots.length, 1);
+assert.equal(idle.roots[0].git.branch, "main");
+assert.equal(idle.lastSeenAt, "2026-08-01T00:00:00.000Z");
+// A checkout that is not on disk carries that as a fact about the directory, so the card can say
+// "checkout missing" rather than the misleading "no active members".
+assert.equal(staleRepo.lifecycle.state, "stale");
+assert.equal(staleRepo.roots[0].checkoutState, "absent");
+assert.equal(staleRepo.roots[0].checkoutReason, "checkout missing");
+// A running repository is `active` without anyone having to say so.
+assert.equal(live.lifecycle.state, "active");
+// Running sorts ahead of not-running, whatever the names say: "menugoats" would otherwise fall
+// between "idle-one" and "stale-one" alphabetically.
+assert.equal(withPersisted.repositories[0].repositoryId, MENUGOATS);
+
+// A repository that IS running must never also appear from the persisted list. The caller filters
+// running ids, but a stack resolved on this scan can reach the registry a moment before the snapshot
+// is built, and one repository rendering as two cards is worse than one rendering a poll late.
+const doubled = buildLocalhosterSnapshot({
+  discovery: {
+    capabilities: { discovery: "supported" },
+    warnings: [],
+    composeProjectGit: new Map(),
+    instances: [instance({ pid: 801, port: 8201, command: "node", identity: MENUGOATS, repositoryId: MENUGOATS, status: 200, title: "Live" })],
+  },
+  settings: defaultSettings(),
+  now: new Date("2026-08-02T00:00:00.000Z"),
+  persistedRepositories: [{
+    repositoryId: MENUGOATS,
+    name: "menugoats",
+    lifecycle: { state: "idle", reason: null },
+    lastSeenAt: "2026-08-01T00:00:00.000Z",
+    favorite: false,
+    checkouts: [{ rootId: "dupe", kind: "primary", state: "present", reason: null, projectRoot: "/tmp/menugoats", git: null }],
+  }],
+});
+assert.equal(doubled.repositories.filter((r) => r.repositoryId === MENUGOATS).length, 1);
+assert.equal(doubled.repositories[0].lifecycle.state, "active", "the running view wins over the persisted one");
+
+// Absent the field entirely, the snapshot is exactly what it was before Phase 3 — persistence being
+// unavailable costs the idle repositories and nothing else.
+assert.equal(snapshot.repositories.every((r) => r.lifecycle.state === "active"), true);
+
 console.log("localhoster repository merge check passed");

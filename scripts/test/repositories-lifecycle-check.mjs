@@ -86,4 +86,55 @@ check("no alias invented automatically", Object.keys(reg.aliases).length, 0);
 check("checkout repoints to the new owner", reg.localRootPaths.roota.repositoryId, RENAMED);
 check("prior owner is reportable for the UI", priorRepositoryForRoot(reg, { rootId: "roota", nextRepositoryId: ID }), RENAMED);
 
+// --- the read side of that repoint ---
+// Nothing is merged, so the old record survives with zero checkouts it still owns. That was
+// invisible while only running repositories were listed; once persisted ones render it becomes a
+// second card with the same name as the repository that took its roots. supersededBy reports the
+// successor so the caller can fold the card away without touching the record.
+const { supersededBy } = await import(M);
+// ID keeps `rootb` and only lost `roota`, so it is NOT superseded — it is a repository with one
+// checkout gone and one still its own, which is exactly the case that must keep its card.
+check("losing one checkout of two does not supersede", supersededBy(reg, ID), null);
+check("the record that took the root is not superseded", supersededBy(reg, RENAMED), null);
+
+// Everything below is a case where the answer must be null, because a wrong fold hides a repository
+// the user still has — the same asymmetry that made automatic aliasing the wrong default.
+{
+  const roots = { repositories: {
+    // The case this exists for: every checkout it had is now owned by one other repository. This is
+    // what a rename leaves behind, and the only shape that folds.
+    superseded: { localRoots: [{ rootId: "moved1" }, { rootId: "moved2" }], discoveries: [] },
+    // Never resolved a checkout at all. Unresolved is not superseded.
+    noRoots: { localRoots: [], discoveries: [] },
+    // One root still its own, one taken: a partial move is not a rename.
+    partial: { localRoots: [{ rootId: "keeps" }, { rootId: "taken" }], discoveries: [] },
+    // Roots scattered across two successors — not a rename, and picking a winner would be the merge
+    // this design refuses to make.
+    scattered: { localRoots: [{ rootId: "toA" }, { rootId: "toB" }], discoveries: [] },
+    // A root that was never located says nothing about ownership.
+    pathless: { localRoots: [{ rootId: "unlocated" }], discoveries: [] },
+    // Points at a record that no longer exists; a dangling pointer is not a successor.
+    dangling: { localRoots: [{ rootId: "toGone" }], discoveries: [] },
+    successorA: { localRoots: [], discoveries: [] },
+    successorB: { localRoots: [], discoveries: [] },
+  }, localRootPaths: {
+    moved1: { repositoryId: "successorA", path: "/m1" },
+    moved2: { repositoryId: "successorA", path: "/m2" },
+    keeps: { repositoryId: "partial", path: "/k" },
+    taken: { repositoryId: "successorA", path: "/t" },
+    toA: { repositoryId: "successorA", path: "/a" },
+    toB: { repositoryId: "successorB", path: "/b" },
+    toGone: { repositoryId: "deleted-record", path: "/g" },
+  } };
+  check("every root taken by one successor folds", supersededBy(roots, "superseded"), "successorA");
+  check("the successor itself is not superseded", supersededBy(roots, "successorA"), null);
+  check("no roots is not superseded", supersededBy(roots, "noRoots"), null);
+  check("partially repointed is not superseded", supersededBy(roots, "partial"), null);
+  check("roots split across successors is not superseded", supersededBy(roots, "scattered"), null);
+  check("a root with no recorded path blocks the verdict", supersededBy(roots, "pathless"), null);
+  check("a successor that no longer exists is not one", supersededBy(roots, "dangling"), null);
+  check("unknown repository", supersededBy(roots, "nope"), null);
+  check("missing registry", supersededBy(null, "x"), null);
+}
+
 console.log("repositories-lifecycle-check passed");

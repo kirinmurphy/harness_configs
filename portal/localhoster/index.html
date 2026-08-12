@@ -523,6 +523,9 @@
                 </template>
               </span>
               <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
+              <!-- Only present when the repository is NOT running. An active repository says so by
+                   listing its members, so a matching "running" badge would label the default. -->
+              <span class="repository-state-badge" data-slot="lifecycle-state" hidden></span>
             </div>
           </div>
           <!-- Repository-scoped actions only. Favorite and hide describe the whole repository,

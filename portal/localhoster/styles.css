@@ -998,6 +998,32 @@ dialog::backdrop {
 .resource-concern-badge[data-tone="danger"] {
   background: var(--danger);
 }
+/* Lifecycle state, shown only when a repository is NOT running — an active one says so by listing
+ * members. Outlined rather than filled: this is a neutral statement of fact competing with the
+ * resource badge beside it, which is filled precisely because it wants attention. */
+.repository-state-badge {
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--dim);
+}
+/* `stale` means every checkout is gone or unreadable — a repository that needs looking at, not just
+ * one that happens to be stopped. It is the only state that earns a colour. */
+.repository-state-badge.is-stale {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+/* The whole card recedes while nothing runs in it, so a glance down the list separates live work
+ * from history without reading a single badge. Text stays at full contrast — this is a de-emphasis,
+ * not a disabled control. */
+.repository-card.is-not-running {
+  opacity: 0.82;
+}
 .compose-container-head .info-wrap portal-info-icon .info-icon {
   width: var(--icon-sm);
   height: var(--icon-sm);

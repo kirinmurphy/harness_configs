@@ -666,15 +666,26 @@ new settings surface, and it keeps `validateComposeProjects`
 
 Not blocking this plan; recorded where the work would start.
 
-- **Cross-poll mount caching.** `classifyComposeProjects` runs one batched `docker inspect` per scan
-  with Compose projects. Mounts cannot change without the container being recreated, so caching by
-  container id is available. Not added — measure before optimising, per the Phase 4 note.
+- **Cross-poll mount caching.** ~~Measure before optimising.~~ **Measured — not worth doing.**
+  `collectDockerMounts` over the 11 containers running on this machine costs a median of 184ms
+  (range 146–327ms across five runs) against its own 6000ms timeout, while a full refresh takes
+  4.9–6.0s. The batched `docker inspect` is roughly 3% of the scan, so caching it would buy ~3% at
+  the cost of a second staleness question to reason about — mounts are immutable for a container's
+  lifetime, but a recreated container reusing an id would silently serve the old ones.
+  The cost that would justify revisiting is container COUNT, since the call is one batched inspect
+  over every container: 11 is small, and a machine running an order of magnitude more may land
+  somewhere that matters. Re-measure there rather than assuming this result carries.
 - **A merge prompt for a repointed checkout.** `priorRepositoryForRoot` reports the prior owner and
   `supersededBy` reports the successor; nothing offers the user the merge. The affordance would be
   "this checkout moved from A to B — merge them?", acting only on an explicit answer.
   `harness_configs`/`roborepo` on the live registry is the standing example: it reads as a rename but
   no path was recorded for the shared roots, so it cannot be proven and is deliberately left alone.
-- **`wireCopyBranchButton` leaves an enabled no-op button.** `portal/localhoster/templates.js` adds
-  `is-static` but skips the `disabled` + `aria-label` removal that `mountCopyDropdown` does, so a
-  button announcing "Copy branch name" does nothing. Unreachable with the current repositories —
-  latent, not a regression.
+- ~~**`wireCopyBranchButton` leaves an enabled no-op button.**~~ **Fixed.** It now takes the same
+  three steps `mountCopyDropdown` does — strip icons, `disabled = true`, remove `aria-label` —
+  rather than only the first. Stripping the icons made the control merely *look* inert: left enabled
+  it stayed focusable and clickable and kept announcing "Copy branch name" from the markup, so
+  sighted users saw plain text while keyboard and screen-reader users found a button that does
+  nothing. Appearance is unchanged, since `.is-static` already sets `pointer-events: none` and
+  neutral colors and no `:disabled` rule targets it.
+  It was also NOT unreachable, as previously recorded: `menugoats`, `traefik_vps` and
+  `localhostr_web` are all on `main`, which is exactly the default-branch case that triggers it.

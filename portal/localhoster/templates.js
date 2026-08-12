@@ -1091,6 +1091,13 @@ function wireCopyBranchButton(node, git) {
     // would leave the check behind on a control that can never reach that state.
     for (const icon of button.querySelectorAll("portal-icon")) icon.remove();
     button.classList.add("is-static");
+    // Same three steps mountCopyDropdown takes when it neutralizes this button, and for the same
+    // reason: stripping the icons only makes it LOOK inert. Left enabled it is still focusable, still
+    // clickable, and still announces "Copy branch name" from the markup's aria-label — a control that
+    // tells assistive technology it does something it no longer does. Sighted users see plain text;
+    // keyboard and screen-reader users find a button that does nothing.
+    button.disabled = true;
+    button.removeAttribute("aria-label");
     return;
   }
   wireCopyAffordance(button, {

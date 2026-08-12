@@ -1,7 +1,7 @@
 ---
 id: h4tqm2wz
 priority: medium
-next_action: All 38 plan items are implemented and verified against live data. Remaining work is a merge affordance for a repointed checkout — detection and automatic aliasing exist, but nothing offers to merge two records, which needs a UI control, a mutation that rewrites checkout ownership, and an undo story
+next_action: None. All 38 plan items are implemented and verified against live data, and the rename case that motivated a merge affordance is resolved by automatic aliasing instead — a merge was investigated and deliberately not built, because the data it would carry over turned out to be nothing anyone reads
 blocked_by: []
 depends_on: []
 related:
@@ -683,10 +683,18 @@ Not blocking this plan; recorded where the work would start.
   The cost that would justify revisiting is container COUNT, since the call is one batched inspect
   over every container: 11 is small, and a machine running an order of magnitude more may land
   somewhere that matters. Re-measure there rather than assuming this result carries.
-- **A merge prompt for a repointed checkout.** ~~Nothing offers the user the merge.~~ **No longer
-  needed for the rename case — it is now detected and resolved automatically.** A merge that rewrites
-  checkout ownership is still not built and still needs an undo story, but the duplicate card that
-  motivated the prompt no longer appears.
+- **A merge prompt for a repointed checkout.** ~~Nothing offers the user the merge.~~ **Closed, and
+  no merge is planned.** The rename case is detected and resolved automatically, and the duplicate
+  card that motivated the prompt no longer appears.
+  Merging was investigated on the live registry before being dropped, and the finding is the reason
+  it is closed rather than deferred: **there is nothing worth carrying over.** Diffing the two real
+  records showed empty `enrollments` on both sides, empty `aliases`, default visibility/activity, and
+  a `localRoots` set the successor already held. The only unique data was five days of "first seen"
+  provenance and two `rootId`s for directories that no longer exist.
+  Nothing points at the old record either: plan-docs derives `repositoryId` live from the git remote
+  (`modules/plan-docs/index.mjs`), as do discovery and the repository card, so after a rename they
+  follow the new id on the next scan. No plans, links, or settings are ever stranded on the old
+  record — which is what a merge would exist to rescue.
   **Phase 2's premise was wrong, and this is the correction.** It declined to act on a rename because
   it believed "a deleted-then-recloned directory produces exactly the same observation". It does not.
   A `rootId` is a hash of an absolute path, so the same one on two records is direct evidence the

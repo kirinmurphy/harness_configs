@@ -1,312 +1,606 @@
 ---
 id: 46up8y7a
 priority: low
-next_action: Continue broader lifecycle characterization only after the new-Mac test; the two clean-install blockers called out below now have narrow regression coverage
+next_action: Add explicit initialization state and the public `roborepo init`, `roborepo library`, and `roborepo uninstall` surfaces, then route a bare uninitialized `roborepo` invocation into `init` before continuing the broader lifecycle hardening in this plan
 blocked_by: []
 depends_on: []
 related:
   - c7b7swuh
   - 1rajbd5o
   - qjsbhel5
-reviewed_commit: 6905bcd24d32bb9ad130ea79ed9b8f7bc7d696d9
+  - v6lvuu2
+  - harness-presence-signal-expansion
+reviewed_commit: 2a56135734a21c6c8ad9435f76f2e9e092b81201
 ---
 
-# RoboRepo Packaging 02: Harden the Install Lifecycle
-
-## Scope ownership
-
-This plan exclusively owns lifecycle behavior after RoboRepo application files are available on a
-machine: install/setup, update/apply, repair, verify/doctor, uninstall, PATH and shell integration,
-moved-checkout recovery, version replacement, and preservation of user-owned data.
-
-It does not own creation of the one-time new-Mac transfer artifact, npm publication, or Homebrew
-formula work. Those belong to the other plans in this packaging suite. Channel-specific installers
-may invoke the lifecycle commands defined here, but they must not reimplement them.
+# Make npm Installation Lead Into a Coherent RoboRepo Lifecycle
 
 ## Summary
 
-Harden the commands and scripts that initialize, update, inspect, repair, verify, and remove a
-RoboRepo installation so they behave consistently across a development checkout and immutable
-package-manager installations. The lifecycle must preserve user-authored workspace content and
-machine state according to explicit ownership rules, avoid duplicate shell configuration, recover
-from relocated checkouts where applicable, and provide deterministic noninteractive behavior for
-automation.
+Make the package-installed RoboRepo experience begin and end with a small, understandable command surface.
+
+npm owns the RoboRepo application files. RoboRepo owns initialization, the configuration it projects into supported agent harnesses, its machine-local state, and safe cleanup of those projections. A new installation should therefore require only:
+
+```sh
+npm install -g codethings-roborepo-alpha
+roborepo init
+```
+
+`roborepo init` becomes the user-facing first-run workflow. The existing `setup` command remains an internal primitive for creating workspace/state structures, and `config apply` remains the explicit reconciliation primitive rather than a step a new user must know. A friendly top-level `roborepo library` command opens the same package-management workflow as `roborepo package manage`.
+
+Removal follows the same ownership boundary. `roborepo uninstall` removes RoboRepo-managed machine integration while preserving user-authored workspace content by default, then tells the user how to remove the application with the package manager. The portal exposes the same managed-cleanup workflow.
+
+This plan also makes zero, one, two, or any supported number of harnesses a deliberate first-run and UI state. It does not broaden the definition of harness presence; the existing `harness-presence-signal-expansion` plan still owns that decision.
 
 ## Context
 
-RoboRepo already separates application files from user-owned workspace and machine state. The
-remaining risk is operational: several generations of install scripts and package-mode commands may
-still disagree about backups, collisions, PATH changes, install-state records, repair behavior, and
-what uninstall is permitted to delete.
+The npm package now supplies a real `roborepo` executable without requiring a source checkout. The package smoke test already proves that an installed tarball can run the lower-level sequence `setup`, `harness refresh`, `harness list`, `config apply`, and `doctor`. Those are useful implementation and verification primitives, but they are too much lifecycle vocabulary for a first-time user.
 
-The new-Mac readiness plan proves one clean local tarball can install and initialize. It intentionally
-does not prove repeated lifecycle transitions such as updating an existing installation, moving a
-development checkout, downgrading an application snapshot, repairing stale links, or uninstalling
-without losing personal content.
+The current CLI already has much of the machinery needed for a simpler product surface:
+
+- `setup` is an internal command backed by `scripts/cli/workspace.mjs`.
+- `config apply` re-renders enabled package and harness configuration.
+- `package manage` is titled **Package Library** and routes into the live item-level package wizard in `scripts/cli/presets.mjs`.
+- `maintenance uninstall` is an advanced hidden command backed by the existing uninstall scripts.
+- `scripts/harnesses/state.mjs` persists machine-local provider discovery and enablement state.
+- bare `roborepo` currently opens the normal root menu after the pass-through onboarding hook in `scripts/cli/main.mjs`.
+
+The current lifecycle still exposes two different ownership models during removal. npm removes the package files it installed, while RoboRepo-generated files and state live elsewhere. Current npm releases do not implement package uninstall lifecycle scripts, so RoboRepo cannot rely on `npm uninstall` to call custom cleanup code. The product must teach and implement that boundary explicitly.
+
+This document continues to own the broader lifecycle scope already assigned to plan `46up8y7a`: apply/reconcile behavior, repair, verification, data preservation, shell integration, replacement, and uninstall. The first phases below prioritize the user-facing lifecycle needed for package installs; the broader hardening remains later work in the same lifecycle plan rather than a competing plan.
 
 ## Goals
 
-- Define one ownership model for application files, portable workspace content, machine state,
-  generated harness configuration, backups, and shell integration.
-- Make install/setup/update/apply/repair/verify/doctor/uninstall operations idempotent where their
-  semantics allow it.
-- Preserve `workspaceRoot` and explicitly retained `stateRoot` data across application replacement.
-- Make `apply` converge installed projections on the current declared configuration, removing
-  RoboRepo-owned resources the application no longer declares instead of only adding and updating
-  them. This is update-path convergence, distinct from uninstall.
-- Remove every RoboRepo-owned projection on uninstall, across all resource types and all harness
-  homes, and make the remnant check fail when any survive rather than reporting success.
-- Cover both removal paths with the same ownership rules, so a resource cannot be reachable by one
-  path and orphaned by the other. Update and uninstall are different triggers over one shared
-  definition of "RoboRepo owns this file".
-- Prevent uninstall from deleting user-authored workspace content by default.
-- Detect and handle collisions with unmanaged files without silently overwriting them.
-- Deduplicate PATH or shell-profile changes and remove only RoboRepo-owned entries.
-- Relocate shell helpers so immutable installations never depend on a development checkout path.
-- Repair stale links and install metadata after a development checkout moves.
-- Define supported upgrade and downgrade behavior for local or released package snapshots.
-- Support explicit noninteractive and dry-run behavior for automation.
-- Fail clearly when Node or required shell dependencies are absent or unsupported.
-- Keep onboarding explicit, skippable, repeatable, and recoverable after interruption.
-- Document which commands are development-only and which may intentionally modify repository source.
-- Verify the same core lifecycle contract in repository mode and installed-package mode.
+- Make npm the sole owner of package-mode application install, version replacement, and application removal.
+- Add `roborepo init` as the single user-facing first-run workflow.
+- Persist explicit initialization state so first-run behavior is not inferred from directory existence.
+- Make an interrupted initialization resumable and distinguish it from a completed installation.
+- Route a bare interactive `roborepo` invocation into `init` when the installation is not initialized.
+- Keep explicit commands available without reinstating the old forced-onboarding gate.
+- Keep `setup` internal and keep `config apply` available as an advanced/manual reconciliation primitive.
+- Add `roborepo library` as a friendly top-level alias for `roborepo package manage`.
+- Do not restore `roborepo onboard` as a public command.
+- Allow initialization to succeed with zero detected harnesses.
+- Make CLI and portal agent-related surfaces behave correctly for zero, one, two, and N harnesses without hardcoding Claude/Codex pairs.
+- Add a public `roborepo uninstall` workflow for RoboRepo-managed cleanup.
+- Preserve the portable/user-authored workspace by default during managed cleanup.
+- Add the same managed-uninstall action to the portal, backed by the same cleanup service as the CLI.
+- Explain during setup and in uninstall documentation that npm application removal does not remove separately stored RoboRepo configuration/workspace content.
+- Use the new Mac as a manual acceptance environment for zero-to-N harness permutations after the automated package smoke remains green.
 
 ## Non-goals
 
-- Building or retaining the new-Mac tarball.
-- Publishing npm versions or managing npm dist-tags.
-- Creating a Homebrew tap or formula.
-- Redesigning provider permissions, Antigravity support, or package-state reconciliation.
-- Migrating every cache, telemetry record, or session between machines.
+- Building the dedicated browser onboarding experience or the Browser-versus-Terminal choice. Plan `v6lvuu2` owns that follow-up.
+- Changing which preloaded package defaults become live before confirmation. Plan `v6lvuu2` owns staged first-run package selection.
+- Reintroducing a public `roborepo onboard` command.
+- Renaming or redefining `roborepo update` in this slice. Package mode currently aliases it to `config apply`; a clearer self-update story can be handled separately.
+- Broadening harness-presence semantics from strict home existence to executable/config confidence. `harness-presence-signal-expansion` owns that behavior.
+- Installing Claude, Codex, Gemini, or other harnesses for the user.
+- Having the portal or `roborepo uninstall` remove the npm package itself.
+- Publishing a stable npm release or adding Homebrew distribution.
+- Rebuilding the entire existing shell-based uninstall implementation before the user-facing lifecycle can ship.
 
-## Current state
+## Current State
 
-The repository has mature install, repair, doctor, verify, and uninstall scripts, plus package-mode
-CLI commands. Provider discovery and several install/uninstall paths are registry-driven. Existing
-tests cover many isolated-home scenarios, including zero or partial harness presence.
+### Application and configuration ownership
 
-The unresolved lifecycle work includes:
+RoboRepo already separates three roots:
 
-- upgrade and downgrade behavior across application versions;
-- clean reinstall and uninstall preservation guarantees;
-- moved-checkout recovery and stale absolute-path cleanup;
-- PATH deduplication and shell-helper placement;
-- consistent backup and collision policy;
-- a complete noninteractive lifecycle matrix;
-- temporary-`HOME` integration coverage using the actual command surface.
+| Layer | Current meaning | Intended lifecycle owner |
+| --- | --- | --- |
+| `appRoot` | Immutable installed application or development checkout | npm/package manager in package mode; checkout in development mode |
+| `workspaceRoot` | Editable portable user workspace; defaults to `<stateRoot>/workspace` | User |
+| `stateRoot` | Machine-local RoboRepo state; defaults to `~/.roborepo` | RoboRepo on behalf of the user |
 
-## Proposed design
+The default placement of `workspaceRoot` under `stateRoot` is important for uninstall: current `remove_runtime_state()` recursively removes the entire state root, so the existing hidden uninstall path cannot be promoted directly as the safe user-facing uninstall workflow. Workspace preservation must be enforced before `roborepo uninstall` becomes public.
 
-### Ownership contract
+### Existing first-run primitives
 
-| Layer | Owner | Replacement behavior | Uninstall behavior |
-| --- | --- | --- | --- |
-| `appRoot` | npm, Homebrew, or development checkout | Replaceable application snapshot | Package manager or explicit development uninstall may remove it |
-| `workspaceRoot` | User | Never replaced implicitly | Preserve by default; remove only through a separate explicit user-content action |
-| `stateRoot` | RoboRepo on behalf of the user | Migrate only through versioned state logic | Remove disposable install metadata only; preserve authored/portable records |
-| Generated harness files | RoboRepo-managed projection | Rebuild from app + workspace + state | Remove only proven RoboRepo-owned entries |
-| Shell profile entries | User file with RoboRepo-owned marker | Update one marked block idempotently | Remove only the marked block |
-| Backups | Lifecycle subsystem | Version and bound retention | Never restore stale RoboRepo-owned entries over newer user edits silently |
-
-### Shared lifecycle orchestration
-
-Keep channel installers thin. npm and Homebrew place application files; lifecycle commands perform
-workspace initialization and harness materialization. Development-checkout helpers use the same
-ownership and collision rules even when their application root is mutable.
-
-The public lifecycle should converge on these responsibilities:
+The current package-oriented sequence is:
 
 ```text
-setup      initialize missing workspace/state structures
-apply      materialize desired configuration from app + workspace + state
-update     apply the currently installed application snapshot
-repair     restore managed links/files and repair stale install metadata
-verify     run deterministic installed-state assertions
-doctor     diagnose repository or installed-state problems
-uninstall  remove RoboRepo-owned projections while preserving user content
+setup
+→ harness refresh
+→ harness list
+→ config apply
+→ doctor
 ```
 
-### Fixed clean-install blocker: `uninstall` left package-owned slash commands behind
+`setup` already has `kind: internal` in the command catalog and only initializes workspace/state structures. `config apply` is a public command that invokes the update script to materialize enabled packages and harness configuration.
 
-`roborepo maintenance uninstall` previously removed skills, `stateRoot`, and the harness root
-configs, then reported `ok: no active roborepo remnants` while package-generated slash-command
-files still existed in harness command directories.
+`package manage` already reuses the item-level wizard implemented in `scripts/cli/presets.mjs`; its command title is **Package Library**. The old top-level `onboard` command is removed, while the internal `onboard` sub-action remains an implementation detail of the package-management workflow.
 
-Reproduction, in an isolated `HOME`:
+### Harness-count behavior
+
+The provider registry currently contains Claude, Codex, and Gemini and is data-driven through `listHarnessProviders()`.
+
+The user-facing surfaces do not all mean the same thing when they say “harness”:
+
+| Surface | Current cohort | Consequence |
+| --- | --- | --- |
+| `roborepo harness list` | All registered providers + persisted machine state | Correct for showing supported providers and their detected/enabled state |
+| Agents `/config` grid | All registered providers | A zero-harness machine still receives one column per registered provider |
+| Tokens `/tokens` filter | Harnesses observed in telemetry data | Filter is hidden when zero or one harness is observed; N buttons are generated dynamically |
+| install/uninstall shell gating | Strict harness home-directory presence | Intentionally narrower than richer discovery confidence |
+
+This plan must not collapse these cohorts into one generic “harness list.” Each surface must state which cohort it presents and render zero/one/N intentionally.
+
+### Existing uninstall behavior
+
+`roborepo maintenance uninstall` is an advanced hidden command. The underlying uninstall code already contains ownership-aware removal for symlinks, generated rules, root config, backups, hooks, package projections, and remnant checks.
+
+The unsafe promotion point is state removal: `remove_runtime_state()` currently removes the whole RoboRepo state root, while the default workspace lives inside that root. A public uninstall must classify state and preserve user-owned workspace content rather than recursively deleting the root.
+
+npm application uninstall is a separate operation:
 
 ```sh
-roborepo package enable technical-writing
-roborepo config apply
-roborepo maintenance uninstall     # "ok: no active roborepo remnants" / "Uninstall complete."
-ls ~/.claude/commands              # technical-writing.md  <- still present
+npm uninstall -g codethings-roborepo-alpha
 ```
 
-The leftover file is unambiguously RoboRepo's: it carries both generated-file banners.
+That removes the npm-managed package, not the separately stored RoboRepo projections and user state. Current npm releases do not provide an uninstall lifecycle hook that RoboRepo can use to automatically bridge those two operations.
+
+## Proposed Design
+
+### 1. Public lifecycle vocabulary
+
+Make the normal user-facing lifecycle small:
+
+| Command | User meaning | Notes |
+| --- | --- | --- |
+| `roborepo init` | Set up this RoboRepo installation for first use | New public orchestration command |
+| `roborepo library` | Browse/change RoboRepo functionality | Friendly alias of `roborepo package manage` |
+| `roborepo doctor` | Diagnose installation/configuration health | Existing public diagnostic |
+| `roborepo uninstall` | Remove RoboRepo-managed machine integration | Preserves workspace by default; does not remove npm package |
+| `npm uninstall -g codethings-roborepo-alpha` | Remove the RoboRepo application | Package-manager operation, not a RoboRepo command |
+
+Keep these implementation primitives available without teaching them as the normal first-run path:
+
+| Primitive | Role |
+| --- | --- |
+| `roborepo setup` | Internal workspace/state initialization |
+| `roborepo config apply` | Explicit desired-state reconciliation |
+| `roborepo harness refresh` | Refresh machine harness discovery |
+| `roborepo package manage` | Canonical package namespace action behind `library` |
+
+Do not resurrect `roborepo onboard`.
+
+### 2. Explicit initialization state
+
+Add a machine-local state record through `scripts/cli/state-paths.mjs`, for example:
+
+```json
+{
+  "schemaVersion": 1,
+  "workflowVersion": 1,
+  "status": "in-progress",
+  "startedAt": "ISO-8601",
+  "completedAt": null
+}
+```
+
+The exact filename should live under `stateRoot` and be owned by a focused lifecycle/initialization module. The record must not duplicate package selections, harness discovery state, or workspace contents.
+
+Required states:
+
+| State | Meaning | Bare `roborepo` behavior |
+| --- | --- | --- |
+| missing | initialization has never started | offer/start `init` |
+| `in-progress` | initialization began but did not finish | offer/resume `init` |
+| `complete` | core first-run workflow finished successfully | open normal root menu |
+
+Mark initialization complete only after the required initialization workflow succeeds. An exception, Ctrl-C, or user exit before completion leaves the state resumable.
+
+### 3. `roborepo init` orchestration
+
+The first implementation should compose existing primitives rather than duplicate their logic.
+
+```mermaid
+flowchart TD
+  Start["roborepo init"] --> State["read initialization state"]
+  State --> Setup["run internal setup"]
+  Setup --> Refresh["refresh harness discovery"]
+  Refresh --> Count["summarize detected/enabled harness state"]
+  Count --> Library["enter current terminal Package Library workflow"]
+  Library --> Apply["apply resulting configuration"]
+  Apply --> Doctor["run focused post-init verification"]
+  Doctor --> Complete["mark initialization complete"]
+  Complete --> Ready["show next actions: roborepo / roborepo web / roborepo library"]
+```
+
+Milestone 1 deliberately uses the current terminal Package Library handoff and current package-default semantics. Plan `v6lvuu2` later replaces that handoff with Browser-versus-Terminal choice plus staged package-default review before apply.
+
+`init` must be idempotent. Re-running it after completion should not reset package selections or delete state. It should present a concise already-initialized outcome and allow the user to review setup or open the Library without silently replaying destructive work.
+
+### 4. Bare `roborepo` first-run routing
+
+Do not restore the old forced onboarding gate that blocked arbitrary commands.
+
+Instead:
+
+- bare `roborepo` + interactive terminal + missing/in-progress initialization state routes to `init`;
+- bare `roborepo` + completed initialization opens the normal root menu;
+- explicit `roborepo init` always enters the initialization workflow;
+- explicit diagnostics/help such as `version`, `doctor`, and `--help` remain usable before initialization;
+- automation must not be forced through an interactive wizard merely because initialization is incomplete.
+
+Keep the first-run routing in a focused lifecycle module called from `scripts/cli/main.mjs`; do not put initialization business rules into the command resolver or interactive menu renderer.
+
+### 5. `roborepo library` as the friendly package front door
+
+Add a top-level public command:
+
+```sh
+roborepo library
+```
+
+It must dispatch to the same implementation as:
+
+```sh
+roborepo package manage
+```
+
+There is one package-management workflow and one source of truth. `library` is vocabulary for users who have not learned the package model yet; `package ...` remains the detailed namespace for list/inspect/enable/disable/reconcile/development operations.
+
+Help/menu presentation should teach both without duplicating them:
 
 ```text
-<!-- Generated by scripts/build/render-slash-commands.mjs; do not edit directly. -->
-<!-- Owned by package: technical-writing -->
+Customize
+  library       Browse and manage RoboRepo packages
 ```
 
-`~/.claude/skills` is emptied correctly, so this is specific to the command projections. The
-`Owned by package:` marker is the mechanism a fix should key on — it already identifies the file's
-owner, and `scripts/install/uninstall-lib.sh` uses similar ownership tests elsewhere.
+`package manage` remains discoverable under the package namespace.
 
-This narrow blocker is fixed: uninstall now runs the shared package projection cleanup helper, and
-the remnant check fails on any command file that carries both the generated slash-command banner and
-`Owned by package:` marker. User-authored commands are still preserved.
+### 6. Zero-to-N harness contract
 
-### Fixed clean-install blocker: `apply` did not remove orphaned resources
+Initialization must treat zero harnesses as a normal state:
 
-`apply` is specified above as materializing desired configuration, but it previously only *added*
-and *updated*. A resource was removed from the harness homes when the user explicitly disabled its
-package; it was not removed when the package stopped declaring it. Installed state therefore drifted
-away from what the application actually provided, and the drift was invisible because the command
-reported success.
+```text
+No supported agent harnesses are currently detected.
+RoboRepo is initialized; install or launch a supported harness later and refresh discovery.
+```
 
-Reproduction, in an isolated `HOME`:
+Do not broaden the existing presence signal in this plan. Consume the state already produced by `harness refresh`, and leave richer executable/config/home semantics to `harness-presence-signal-expansion`.
+
+Define presentation cohorts explicitly:
+
+| Surface | Cohort to present | Zero | One | N |
+| --- | --- | --- | --- | --- |
+| `init` summary | machine discovery state | valid empty message | one named harness | concise list/count |
+| `harness list` | supported providers + state | all supported shown as absent/disabled | same table, one detected | same data-driven table |
+| Agents primary machine view | persisted discovery entries whose `confidence` is not `absent`; preserve each entry's enabled/disabled state | explicit “no agents detected” state | one provider presentation | generated provider presentation |
+| Tokens harness filter | harnesses with observable telemetry | no harness filter + empty-data guidance | no redundant filter | generated all + per-harness controls |
+| package/config internals | registered provider catalog where required | may still know all providers | same | same |
+
+The Agents API may retain the full supported-provider catalog for configuration metadata, but the primary user presentation must not imply that every registered provider is installed. Add explicit machine-state fields or a separate presentation list instead of making the browser infer presence from filenames.
+
+Tests must include a synthetic extra provider where the current provider-test seams allow it, so “N” means data-driven rather than exactly the three providers registered today.
+
+### 7. User-facing managed uninstall
+
+Add:
 
 ```sh
-roborepo package enable technical-writing
-roborepo config apply          # ~/.roborepo/skills: roborepo-support technical-writing
-# the package is then deleted from globals/packages/ (a branch switch, an upgrade that drops it)
-roborepo config apply          # reports "updated package registry", exit 0
-# ~/.roborepo/skills: roborepo-support technical-writing   <- still present
+roborepo uninstall [--dry-run] [--yes]
 ```
 
-The explicit-disable path is clean; `package disable` followed by `apply` removes the skill from
-both `<stateRoot>/skills` and the harness homes. Only the "declaration disappeared" path leaks.
+The workflow must preview the ownership boundary before mutation. Interactive execution requires confirmation; noninteractive destructive execution refuses unless `--yes` is explicit. `--dry-run` never mutates.
 
-This is an update-path defect, not an uninstall defect, and the distinction matters for where the
-fix belongs: `uninstall` is not involved, and making uninstall more thorough would not address it.
-This narrow blocker is fixed for projections with existing ownership proof: `config apply` now runs
-a reconcile cleanup that removes orphaned package-owned slash commands, managed package skill
-cache/view entries, and runtime assets while preserving unmanaged/user-authored content. Hooks, MCP
-entries, root config, and package-config scalars still use their existing explicit component removal
-paths; broader lifecycle inventory remains part of this backlog plan.
+Default behavior:
 
-Consequences worth capturing during characterization:
+| Remove | Preserve |
+| --- | --- |
+| RoboRepo-managed harness projections | user-authored workspace |
+| generated skills/commands/rules that have ownership proof | repositories/project checkouts |
+| RoboRepo-owned root-config content when safe | unmanaged harness files |
+| disposable machine-local caches/install metadata | drifted/user-modified config that cannot be proven safe to remove |
+| RoboRepo-owned shell/profile entries | unrelated shell configuration |
 
-- A development machine that switches between builds accumulates orphaned skills and commands, so it
-  is not a faithful stand-in for a fresh install. This is one reason
-  `infra-packaging-01-new-mac-install` validates in an isolated npm prefix and temporary home.
-- Removal must stay scoped to RoboRepo-owned projections. A reconcile pass that deletes anything it
-  does not recognize would delete user-authored content, which
-  [Non-goals](#non-goals) and the uninstall preservation rule forbid.
-- `apply` must remain idempotent: running it twice with no change must not remove and recreate files,
-  or drift reporting becomes meaningless.
+The current broad `rm -rf stateRoot` behavior must be replaced by selective cleanup. Because the default workspace is nested under `stateRoot`, “preserve workspace” must be mechanically true, not just documented.
 
-### Upgrade and downgrade model
+After managed cleanup completes, print the package-manager step:
 
-- Application replacement must not mutate the workspace before compatibility checks pass.
-- State migrations must be versioned, forward-only by default, and backed up before mutation.
-- A downgrade that cannot read newer state must fail with a clear recovery path instead of guessing.
-- `apply` after replacement is the only step that rematerializes generated harness configuration.
-- Re-running the same version must be idempotent.
+```text
+RoboRepo-managed configuration has been removed.
+Your workspace was preserved.
 
-### Shell and PATH integration
+Remove the application with:
+  npm uninstall -g codethings-roborepo-alpha
+```
 
-- Prefer package-manager-created command shims over profile mutation.
-- Any remaining RoboRepo PATH block must have stable ownership markers and deduplicate existing
-  equivalent entries.
-- Shell helpers required at runtime must live under `appRoot` or another explicit installed data
-  location, never a remembered source-checkout path.
-- Repair must identify stale checkout-derived paths and either rewrite or remove only managed
-  references.
+Do not have RoboRepo invoke npm on the user's behalf. This keeps package-manager ownership explicit and avoids self-removal/version-manager ambiguity.
 
-## Implementation plan
+`maintenance uninstall` should no longer represent a separate cleanup implementation. Make it an advanced compatibility entry to the same shared cleanup path or replace it with a clear redirect to `roborepo uninstall`.
 
-### Phase 1 — Characterization and ownership inventory
+### 8. Portal uninstall action
 
-- [ ] Inventory every writer and remover for `appRoot`, `workspaceRoot`, `stateRoot`, harness homes,
-      shell profiles, backups, install-state files, and symlinks.
-- [ ] Add isolated-home characterization tests for install, repeated install, update, repair,
-      verify, doctor, and uninstall.
-- [x] Pin both reproduced removal defects as regression tests: an
-      enabled package whose declaration disappears must leave its skill orphaned after `apply`, and
-      `maintenance uninstall` must leave `~/.claude/commands/<package>.md` behind while reporting no
-      remnants. The fixed tests now assert the opposite behavior.
-- [ ] Enumerate every resource type each harness receives (skills, commands, MCP entries, hooks,
-      root config) and record which removal path currently handles it, so the coverage gap is a
-      table rather than two known examples.
-- [ ] Record current behavior for zero, one, and multiple detected harnesses.
-- [ ] Characterize bootstrap and command failures when Node or required shell dependencies are missing or unsupported.
-- [ ] Identify every absolute checkout path persisted outside the checkout.
-- [ ] Classify state files as portable, machine-local durable, cache, or disposable install metadata.
+Expose **Uninstall RoboRepo** in a Maintenance panel on the existing `/config` surface without creating a new top-level page solely for this feature.
 
-### Phase 2 — Shared lifecycle contract
+The portal and CLI must consume one shared cleanup planner/executor:
 
-- [ ] Centralize ownership checks used by setup, apply, repair, verify, and uninstall, so update and
-      uninstall resolve "RoboRepo owns this file" through one definition instead of answering it
-      separately in each path.
-- [x] Give `apply` a reconcile step that removes owned projections the current application and
-      workspace no longer declare, while staying idempotent on a no-change run.
-- [ ] Make collision results explicit: managed, unmanaged-safe, conflict, replace-with-confirmation,
-      or unsupported.
-- [ ] Add shared dry-run and noninteractive result shapes.
-- [ ] Ensure channel installers delegate configuration materialization to the shared lifecycle.
-- [ ] Make onboarding explicit, skippable, idempotent on repeat, and recoverable after partial completion.
-- [ ] Classify and document development-only commands, including every command allowed to modify repository source.
-- [ ] Define one core lifecycle scenario matrix that runs in both repository mode and installed-package mode.
+```mermaid
+flowchart LR
+  CLI["roborepo uninstall"] --> Plan["shared uninstall plan"]
+  Portal["portal uninstall action"] --> Plan
+  Plan --> Preview["structured removal preview"]
+  Preview --> Confirm["explicit confirmation"]
+  Confirm --> Execute["shared ownership-aware cleanup"]
+  Execute --> Result["structured result + npm removal command"]
+```
 
-### Phase 3 — PATH, shell, and moved-checkout repair
+The portal flow must:
 
-- [ ] Deduplicate RoboRepo-owned shell profile entries.
-- [ ] Relocate runtime shell helpers out of checkout-specific locations.
-- [ ] Add repair logic for stale managed symlinks and persisted checkout paths.
-- [ ] Verify repair never rewrites unmanaged neighboring content.
+1. fetch a dry-run/preview;
+2. show what will be removed and what will be preserved;
+3. require explicit destructive confirmation;
+4. execute the same cleanup semantics as the CLI;
+5. return/display the npm removal command;
+6. allow the HTTP response to finish before stopping the portal process or deleting its PID state.
 
-### Phase 4 — Replacement, upgrade, downgrade, and reinstall
+Do not shell out from browser JavaScript. Keep mutation handling server-side behind the portal's existing origin/token protection.
 
-- [ ] Define versioned state compatibility and migration metadata.
-- [ ] Test same-version reinstall and application replacement with an existing workspace/state.
-- [ ] Test supported upgrade behavior using two fixture package snapshots.
-- [ ] Test downgrade refusal or recovery when newer state is incompatible.
-- [ ] Confirm failed replacement leaves the previous usable state recoverable.
+### 9. Installation and removal messaging
 
-### Phase 5 — Uninstall and data preservation
+The package installation itself should not run the old checkout installer.
 
-- [ ] Remove only proven RoboRepo-owned harness projections and shell entries, covering every
-      resource type from the Phase 1 table rather than skills alone.
-- [x] Make the remnant check fail when owned files survive, so "no active roborepo remnants" cannot
-      be printed while package-owned slash commands remain.
-- [ ] Preserve `workspaceRoot` by default.
-- [ ] Separate optional machine-state cleanup from application uninstall.
-- [ ] Verify repeated uninstall is safe and reports already-absent resources clearly.
-- [ ] Document recovery from partial uninstall or poisoned backups.
+The practical user workflow is:
+
+```text
+npm install -g codethings-roborepo-alpha
+
+RoboRepo installed.
+Run `roborepo init` to get started.
+```
+
+Do not depend on npm install-script output as the sole onboarding instruction; package-manager script output can be suppressed or restricted. Make the same next-step instruction visible in the package README/install guide and when a user runs bare `roborepo`.
+
+During first-run completion and in uninstall documentation, state the storage boundary plainly:
+
+```text
+The npm package and your RoboRepo configuration have separate lifecycles.
+Removing the npm package does not remove your RoboRepo workspace or managed harness configuration.
+Run `roborepo uninstall` first when you want a full managed cleanup.
+```
+
+### 10. Broader lifecycle hardening retained by this plan
+
+After the first-run/uninstall product surface is coherent, continue the still-open lifecycle work already owned here:
+
+- ownership inventory across every harness resource type;
+- collision and backup policy;
+- moved-checkout repair;
+- shell/PATH cleanup;
+- same-version reinstall;
+- upgrade/downgrade state compatibility;
+- dry-run/noninteractive result consistency;
+- repository-mode/package-mode parity.
+
+The two previously reproduced narrow removal defects—apply orphan cleanup and package-owned slash-command cleanup—are already fixed and should remain regression coverage, not pending tasks.
+
+## Code Touchpoints
+
+### CLI catalog and orchestration
+
+- `manifests/platform/cli/command-definitions/`
+  - add public root definitions for `init`, `library`, and `uninstall`;
+  - keep `internal/setup.command.json` internal;
+  - route `library` to the same package-management implementation as `package manage`;
+  - stop presenting advanced maintenance uninstall as a separate user workflow.
+- `scripts/cli/main.mjs`
+  - add first-run routing before the normal root menu;
+  - do not reinstate the old global onboarding gate.
+- New focused lifecycle/initialization module under `scripts/cli/`
+  - read/write initialization state;
+  - orchestrate setup, discovery, library handoff, apply, verification, completion;
+  - keep command composition separate from execution helpers.
+- `scripts/cli/state-paths.mjs`
+  - own the initialization-state path.
+
+### Package and configuration
+
+- `scripts/cli/presets.mjs`
+  - reuse the current Package Library wizard;
+  - do not expose its internal `onboard` token as a public command.
+- `scripts/cli/config.mjs`
+  - expose enough machine harness state for truthful Agents presentation without losing registered-provider metadata.
+- `scripts/cli/package-projection-cleanup.mjs`
+  - continue as the ownership-aware package projection cleanup path.
+
+### Harnesses
+
+- `scripts/harnesses/registry.mjs`
+- `scripts/harnesses/state.mjs`
+- `scripts/harnesses/discovery.mjs`
+- `scripts/cli/harness.mjs`
+  - keep provider iteration data-driven;
+  - consume existing discovery state without redefining presence in this plan.
+
+### Uninstall
+
+- `scripts/install/uninstall.sh`
+- `scripts/install/uninstall-lib.sh`
+  - split selective machine-state cleanup from workspace preservation;
+  - expose structured/shared cleanup behavior usable from the CLI/portal adapter;
+  - retain ownership and drift safety checks.
+- New focused shared uninstall planner/executor module if required to serve both CLI and portal without duplicating policy.
+
+### Portal
+
+- `scripts/cli/portal-server.mjs`
+  - register the protected uninstall preview/execute route or delegate to a focused maintenance route module.
+- `scripts/cli/portal-routes-config.mjs` or a new focused maintenance route module
+  - keep app-level maintenance out of unrelated rendering code.
+- `portal/config/`
+  - add the first maintenance action without hand-building multi-element markup in JavaScript;
+  - use real HTML `<template>` markup and the existing portal slot-fill conventions.
+- `portal/config/templates.js`
+  - make provider presentation consume the intended machine cohort.
+- `portal/telemetry/app.js`
+  - preserve dynamic observed-harness filtering and add/verify zero-data behavior.
+
+### Documentation
+
+- `README.md`
+- `docs/user/guides/first-time-setup.md`
+- `docs/user/guides/install-workflows.md`
+- `docs/user/reference/roborepo-cli.md`
+- `docs/user/reference/roborepo.md`
+
+Document the public lifecycle vocabulary and remove first-run instructions that require users to know internal primitives.
+
+## Implementation Plan
+
+### Phase 1 — Pin the public lifecycle contract
+
+- [ ] Add an initialization-state path and focused read/write helpers with schema validation.
+- [ ] Add tests for missing, in-progress, and complete initialization state.
+- [ ] Add `roborepo init` to the command catalog and keep `setup` internal.
+- [ ] Implement `init` as a short orchestrator over existing setup/discovery/library/apply/verification functions rather than copying their logic.
+- [ ] Leave initialization in-progress on interruption or failed required step.
+- [ ] Make completed `init` idempotent and non-destructive.
+- [ ] Route bare interactive `roborepo` into `init` only when initialization is missing/in-progress.
+- [ ] Keep explicit help/version/doctor and automation paths usable without a forced onboarding gate.
+
+### Phase 2 — Add the Library front door
+
+- [ ] Add `roborepo library` as a root command that executes the same Package Library workflow as `roborepo package manage`.
+- [ ] Keep detailed package operations under the `package` namespace.
+- [ ] Update root help and interactive menu copy to teach **Library** first and **packages** inside that workflow.
+- [ ] Add command-catalog and PTY coverage proving the alias does not fork behavior.
+
+### Phase 3 — Make zero-to-N harness presentation explicit
+
+- [ ] Add `machineHarnesses` (or an equivalent explicit presentation field) to the config snapshot without removing the registered provider catalog needed for supported-provider metadata; populate it from persisted discovery entries whose `confidence` is not `absent` and preserve each entry's enabled flag.
+- [ ] Make the Agents primary provider presentation show a truthful zero state when `machineHarnesses` is empty.
+- [ ] Verify one-provider and N-provider layouts are generated from data rather than fixed columns.
+- [ ] Preserve Tokens' observed-telemetry cohort and add a clear zero-data state; keep the harness filter hidden for one observed harness and generated for N.
+- [ ] Add focused tests for zero, one, two, all currently registered providers, and a synthetic extra provider where the test seam supports it.
+- [ ] Do not change strict-vs-rich harness detection semantics in this phase.
+
+### Phase 4 — Promote safe managed uninstall
+
+- [ ] Characterize the current hidden uninstall against a workspace at the default `<stateRoot>/workspace` path.
+- [ ] Replace recursive state-root deletion with a selective ownership-based cleanup plan that preserves workspace content by default.
+- [ ] Define structured preview/result data shared by CLI and portal adapters.
+- [ ] Add public `roborepo uninstall` with dry-run/preview and explicit confirmation.
+- [ ] Repoint or retire `roborepo maintenance uninstall` so there is one cleanup implementation.
+- [ ] Keep drifted/unmanaged harness content intact and report what was skipped.
+- [ ] Print the exact npm application-removal command after successful managed cleanup.
+- [ ] Verify repeated managed uninstall is safe.
+
+### Phase 5 — Add portal cleanup
+
+- [ ] Add protected preview and execute endpoints using the existing portal origin/token mutation guard.
+- [ ] Add an **Uninstall RoboRepo** Maintenance panel to the existing `/config` surface for the first implementation; do not create a new top-level portal page for this action.
+- [ ] Render removal/preservation preview from structured server data.
+- [ ] Require explicit destructive confirmation.
+- [ ] Ensure the response reaches the browser before the portal server stops/removes its own runtime state.
+- [ ] Display the npm removal command after cleanup.
+- [ ] Keep workspace deletion out of the default portal action.
+
+### Phase 6 — Documentation and real-new-Mac acceptance
+
+- [ ] Make package-install guidance end with `roborepo init`, not a checklist of internal commands.
+- [ ] Document `roborepo library` as the normal way to change functionality later.
+- [ ] Document the two-part uninstall ownership model.
+- [ ] State that npm removal alone leaves separately stored RoboRepo state/configuration.
+- [ ] Generate a fresh Packaging 01 transfer artifact from the final tested commit.
+- [ ] Run the real-new-Mac harness-count matrix below before restoring old workspace content or cloning the development repository.
+- [ ] Record any presence-signal observations in `harness-presence-signal-expansion` rather than broadening this plan mid-test.
+
+### Phase 7 — Continue broader lifecycle hardening
+
+- [ ] Complete the resource ownership/removal inventory across skills, commands, MCP, hooks, root config, shell entries, backups, state, and caches.
+- [ ] Finish collision/back-up policy characterization and deterministic dry-run/noninteractive behavior.
+- [ ] Finish moved-checkout and stale-path repair coverage.
+- [ ] Finish shell/PATH deduplication and package-manager-shim ownership cleanup.
+- [ ] Define same-version reinstall and versioned upgrade/downgrade state behavior.
+- [ ] Run the same core lifecycle matrix in development and installed-package modes.
 
 ## Validation
 
-- Repeated setup/apply/repair operations converge without duplicate output or shell entries.
-- The actual installed package passes lifecycle tests in a temporary home and prefix.
-- Moving a development checkout and running repair removes or rewrites every managed stale path.
-- Upgrade preserves workspace content and migrates state only through declared migrations.
-- Unsupported downgrade fails before destructive writes.
-- Uninstall removes application-owned projections while leaving workspace content intact, verified
-  by asserting the harness homes contain no file carrying an `Owned by package:` marker afterward.
-- A package whose declaration disappears from the application, without being disabled first, leaves
-  no orphaned skill or command after `apply`.
-- Both reproduced removal defects have a regression test that fails against today's implementation
-  and passes after the fix.
-- Tests cover interactive confirmation, `--yes`, `--dry-run`, and noninteractive refusal paths.
-- Missing or unsupported Node/shell dependencies fail before partial configuration writes and produce actionable diagnostics.
-- Onboarding can be skipped, repeated, and resumed without duplicate or contradictory state.
-- Repository mode and installed-package mode pass the same core setup/apply/repair/verify scenarios, with only channel-owned installation steps differing.
-- Reference documentation identifies every development-only command and repository-source write boundary.
-- `scripts/doctor.sh --quiet` and `scripts/test/test-roborepo.sh --quiet` remain green.
+### Automated behavior
+
+Add focused regression coverage first, then run the existing repository-native checks relevant to the shared lifecycle:
+
+```sh
+node scripts/test/cli-command-catalog-check.mjs
+node scripts/test/cli-surface-integration-check.mjs
+npm run test:harness-cli
+npm run test:harness-registry
+npm run test:telemetry-portal-state
+npm run test:package-lifecycle
+npm run test:package-install
+bash scripts/doctor.sh --quiet
+npm test
+```
+
+Required assertions:
+
+- uninitialized bare `roborepo` enters the first-run path in an interactive TTY;
+- explicit diagnostic/help commands remain callable before initialization;
+- interrupted `init` remains resumable;
+- completed `init` is idempotent;
+- `library` and `package manage` reach the same package-management implementation and persisted state;
+- zero detected harnesses is a successful initialization state;
+- Agents and Tokens handle zero/one/N according to their documented cohorts;
+- a synthetic additional provider does not require UI/CLI source edits;
+- managed uninstall preserves workspace bytes at the default nested location;
+- unmanaged/drifted harness content survives managed uninstall;
+- the portal and CLI produce the same removal plan for the same fixture;
+- npm package-install smoke still passes with no harness executables visible.
+
+### Real-new-Mac matrix
+
+Run the package artifact before cloning the repository and observe both CLI and portal after each transition:
+
+| Stage | Machine condition | Verify |
+| --- | --- | --- |
+| 0 | RoboRepo installed; no supported harness installed | `init` succeeds; Agents zero state; Tokens zero-data state; no crash or fake installed provider |
+| 1 | one harness executable installed but never launched | refresh/list/Agents reflect the current discovery contract exactly; record strict-vs-rich surprises without changing semantics here |
+| 2 | that harness launched once/home initialized | one-harness CLI and Agents state; package configuration applies safely |
+| 3 | second harness installed/initialized | two-harness presentation and filters |
+| N | all currently registered providers available | generated N-provider presentation; no Claude/Codex-only assumptions |
+
+Also verify:
+
+```sh
+roborepo version
+roborepo
+roborepo init
+roborepo library
+roborepo doctor
+roborepo web
+```
+
+For uninstall, perform the destructive test only after preserving any wanted workspace fixture:
+
+```sh
+roborepo uninstall
+npm uninstall -g codethings-roborepo-alpha
+```
+
+Confirm the application command disappears while the preserved workspace remains readable.
+
+## Acceptance Criteria
+
+- A package-mode user can understand the first-use flow as `npm install` → `roborepo init`.
+- `setup` is not presented as a normal user-facing first-run command.
+- bare interactive `roborepo` sends an uninitialized installation into `init` and a completed installation into the normal menu.
+- initialization state is explicit, versioned, resumable, and separate from package/harness/workspace data.
+- zero detected harnesses is a valid completed initialization.
+- `roborepo library` and `roborepo package manage` are two entry points to one package-management implementation.
+- `roborepo onboard` remains removed from the public CLI.
+- agent-related CLI/portal surfaces render zero, one, and N providers according to an explicitly defined cohort rather than hardcoded provider counts.
+- `roborepo uninstall` removes only proven RoboRepo-managed machine integration and preserves user-authored workspace content by default.
+- the portal exposes the same managed-uninstall semantics and cannot silently delete the npm application.
+- successful managed uninstall tells the user to remove the package with npm.
+- docs clearly state that npm package removal and RoboRepo-managed state cleanup are separate lifecycle operations.
+- the existing package-install smoke and relevant lifecycle/harness/portal tests remain green.
 
 ## Risks
 
-- Existing files may not have strong ownership markers, making safe removal ambiguous.
-- State migration work can accidentally turn machine-local caches into long-lived compatibility
-  obligations.
-- Shell behavior varies across zsh, bash, Homebrew, nvm, and other Node installations.
-- Repairing moved-checkout paths can damage user configuration if managed and unmanaged content are
-  not distinguished precisely.
-
-## Decisions
-
-- Package managers install application files; RoboRepo lifecycle commands configure user state.
-- User-authored workspace content survives update and uninstall by default.
-- Channel-specific plans consume this lifecycle contract rather than duplicating it.
-- Public release work remains blocked until lifecycle behavior needed by that release is verified.
+- The default workspace currently sits inside `stateRoot`; any leftover recursive state-root deletion can destroy user-authored content despite correct UI copy.
+- “Registered,” “detected,” “enabled,” “home present,” and “observed in telemetry” are different harness cohorts. Reusing the wrong one can create misleading zero/one/N UI.
+- A portal uninstall request can terminate the process serving its own response if shutdown ordering is not explicit.
+- Existing shell uninstall logic has mature ownership checks; replacing too much of it at once would increase cleanup risk. Share policy incrementally rather than doing a wholesale rewrite for architectural purity.
+- Package-mode `roborepo update` still reads like an application updater even though it aliases `config apply`; leaving the name unchanged is intentional scope control, but documentation must not imply it updates the npm package.

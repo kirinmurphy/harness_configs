@@ -18,6 +18,10 @@ export function buildLocalhosterSnapshot({
   // stays a pure function of its inputs. Empty means "no persistence available", which degrades to
   // the pre-Phase-3 behaviour of listing only what is running.
   persistedRepositories = [],
+  // Repositories the 30-day ageing sweep has hidden. Name and last-seen only — enough for the
+  // "Show hidden" affordance to offer them back, without deriving lifecycle or reading git for
+  // repositories that are by construction not on the page.
+  hiddenRepositories = [],
 } = {}) {
   const activeByProject = new Map();
   const unmatchedInstances = [];
@@ -172,6 +176,7 @@ export function buildLocalhosterSnapshot({
     // keep working while the portal moves over; the legacy three are removed once nothing reads them.
     repositories: buildRepositories({ projects, composeProjects, unmatchedInstances, repositoryNames, persistedRepositories }),
     inactiveProjects: inactiveProjects.sort(compareProjects),
+    hiddenRepositories,
     hiddenCount,
     settings: settingsSummary(settings),
   };

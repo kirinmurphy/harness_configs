@@ -225,6 +225,12 @@ export function hideRepository(registry, id, { hidden, now = new Date().toISOStr
   const target = hidden ? "hidden" : "visible";
   if (record.visibility === target) return false;
   record.visibility = target;
+  // Un-hiding is an explicit decision and has to outlast the thing that hid the record. The 30-day
+  // ageing sweep measures lastSeenAt, which restoring does not change — so without a marker the very
+  // next sweep would re-hide a repository the user just asked to see, forever. The marker is set
+  // only on restore and cleared on a deliberate re-hide, so hiding by hand still works.
+  if (hidden) delete record.restoredAt;
+  else record.restoredAt = now;
   record.updatedAt = now;
   return true;
 }

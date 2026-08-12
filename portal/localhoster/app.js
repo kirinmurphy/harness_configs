@@ -834,10 +834,41 @@ async function hideInstance(project, instance) {
 
 function renderSettingsDialog() {
   refs.settingsBody.replaceChildren(
+    // Two hidden lists, deliberately separate. "Hidden" holds projects and apps the user hid by
+    // hand, in Localhoster's settings. "Hidden repositories" holds whole repositories the 30-day
+    // ageing sweep retired from the list — a different store, a different actor, and a different
+    // thing to restore, so merging them would misreport who hid what.
     tmpl.settingsSection("Hidden", hiddenRows()),
+    tmpl.settingsSection("Hidden repositories", hiddenRepositoryRows()),
     tmpl.settingsSection("Associations", associationRows()),
     tmpl.settingsSection("Aliases", aliasRows()),
   );
+}
+
+function hiddenRepositoryRows() {
+  return (lastSnapshot.hiddenRepositories || []).map((item) =>
+    tmpl.settingsRow(
+      item.name,
+      // Records are never deleted, so a repository is here because it went 30 days unseen — saying
+      // when makes that legible rather than leaving the user to guess why it left the list.
+      item.lastSeenAt ? `last seen ${new Date(item.lastSeenAt).toLocaleDateString()}` : item.repositoryId,
+      "Show",
+      () => restoreHiddenRepository(item),
+    ),
+  );
+}
+
+async function restoreHiddenRepository(item) {
+  try {
+    const result = await api.setRepositoryVisibility({ repositoryId: item.repositoryId, hidden: false });
+    if (result.localhoster) applySnapshot(result.localhoster);
+    // The restore kicks a refresh server-side rather than rebuilding from cached discovery (the
+    // persisted-repository list is only assembled on the refresh path), so the repository appears on
+    // the next snapshot rather than in this response.
+    renderSettingsDialog();
+  } catch (err) {
+    showError(err.message);
+  }
 }
 
 function hiddenRows() {

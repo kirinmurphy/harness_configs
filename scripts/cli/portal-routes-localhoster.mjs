@@ -68,4 +68,19 @@ export const localhosterRoutes = defineRoutes([
   mutationRoute("project"),
   mutationRoute("alias"),
   mutationRoute("compose-project"),
+  // Not a mutationRoute: those all funnel into updateLocalhosterSettings, and repository visibility
+  // lives in the repository registry rather than in Localhoster's settings file. Same shape and same
+  // response contract, different store.
+  {
+    method: "POST",
+    path: "/api/localhoster/repository-visibility",
+    handler: (req, res, { handlers }) => {
+      readJsonBody(req, (body, err) => {
+        if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
+        const result = handlers.setLocalhosterRepositoryVisibility(body || {});
+        send(res, result.status || (result.ok ? 200 : 400), "application/json", JSON.stringify(result));
+      });
+      return true;
+    },
+  },
 ]);

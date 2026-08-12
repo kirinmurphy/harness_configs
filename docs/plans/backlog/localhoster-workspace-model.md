@@ -399,7 +399,29 @@ new settings surface, and it keeps `validateComposeProjects`
       `ageOutCandidates` returns candidates rather than hiding them, so the caller owns the write and
       a repository the user explicitly un-hid is not re-hidden behind their back. Ageing measures
       `lastSeenAt`, never time-spent-stale.
-- [ ] Add a "Show hidden" affordance so a hidden repository is one click from returning.
+- [x] Add a "Show hidden" affordance so a hidden repository is one click from returning.
+      A "Hidden repositories" section in the settings dialog, each row a Show button. Kept separate
+      from the existing "Hidden" section rather than merged into it: that one holds projects and apps
+      the user hid by hand in Localhoster's settings, this one holds whole repositories the ageing
+      sweep retired from the registry — different store, different actor, different thing to restore.
+      Two things had to be built underneath it. **The sweep had no caller**: `ageOutCandidates` was
+      covered by tests but nothing ever acted on it, so no record was ever hidden and there was
+      nothing for the affordance to show. `applyAgeOut` now runs it on the refresh path, which is
+      also the caller the Phase 2 note anticipated when it said the function returns candidates so
+      the caller owns the write.
+      **Restoring had to survive the next sweep.** Ageing measures `lastSeenAt`, and restoring does
+      not change it, so a restored record is still 30 days old and would have been re-hidden on the
+      very next poll — forever. `hideRepository` now stamps `restoredAt` on restore and clears it on
+      a deliberate re-hide, and the sweep skips records carrying it. Without that marker the
+      affordance would appear to work and silently undo itself.
+      Visibility is written through its own route rather than `updateLocalhosterSettings`, since it
+      lives in the repository registry, not the settings file. No revision guard: it is one boolean
+      per record with no cross-field invariant. The restore kicks a refresh rather than rebuilding
+      from cached discovery — the persisted-repository list is assembled on the refresh path, so
+      rebuilding would have dropped every idle repository from the page instead of adding one back.
+      Verified live end to end: hiding took the list 9 -> 8 with the record listed under hidden;
+      restoring returned it to 9 with `restoredAt` persisted; and a simulated sweep 40 days out hides
+      the other 9 candidates while leaving the restored one alone.
 
 ### Phase 3 — Merge the inactive list into the repository list
 
@@ -536,8 +558,12 @@ new settings surface, and it keeps `validateComposeProjects`
       dropped because a rename and a repurposed directory are indistinguishable from stored data,
       and a wrong merge is worse than a visible duplicate. Covered by "new id gets its own record
       (no silent merge)" / "no alias invented automatically" in the lifecycle tests.
-- [ ] A record older than 30 days is hidden, returns via "Show hidden", and is never removed.
-      (`ageOutCandidates` is covered by tests; the "Show hidden" affordance is still outstanding.)
+- [x] A record older than 30 days is hidden, returns via "Show hidden", and is never removed.
+      The full round trip is covered in `repositories-lifecycle-check` and was exercised against the
+      live portal. Nothing in the path deletes: hiding sets `visibility`, restoring clears it, and the
+      record is untouched throughout. The load-bearing assertion is that a restored record is STILL
+      technically aged — it stays an `ageOutCandidates` result — and is protected by `restoredAt`
+      rather than by anything about its age, since nothing about restoring makes it younger.
 - [x] A record with no `lastSeenAt` is never hidden by age.
 - [x] A repository that becomes `stale` does not start ageing toward hidden — only `lastSeenAt`
       drives that, so an unplugged drive does not hide a repository still in use.

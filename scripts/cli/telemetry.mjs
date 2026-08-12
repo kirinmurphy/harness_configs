@@ -29,6 +29,7 @@ import {
   loadLocalhosterMetadata,
   refreshLocalhosterSnapshot,
   updateLocalhosterSettings,
+  setLocalhosterRepositoryVisibility,
   setLocalhosterPortalInfo,
 } from "./localhoster.mjs";
 import {
@@ -757,6 +758,7 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     loadLocalhoster: () => loadLocalhosterSnapshot(),
     refreshLocalhoster: () => refreshLocalhosterSnapshot(),
     updateLocalhosterSettings: (params) => updateLocalhosterSettings(params),
+    setLocalhosterRepositoryVisibility: (params) => setLocalhosterRepositoryVisibility(params),
     loadLocalhosterHistory: (key) => loadLocalhosterHistory(key),
     loadLocalhosterMetadata: (key) => loadLocalhosterMetadata(key),
     loadRepositories: () => { reconcileTelemetryRepositories(); return loadRepositoriesPayload(); },

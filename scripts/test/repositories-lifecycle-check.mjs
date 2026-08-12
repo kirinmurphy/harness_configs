@@ -137,4 +137,43 @@ check("the record that took the root is not superseded", supersededBy(reg, RENAM
   check("missing registry", supersededBy(null, "x"), null);
 }
 
+// --- hide / restore round trip ---
+// The contract the plan states outright: a record is hidden, returns via "Show hidden", and is never
+// removed. Nothing here deletes, and every step is reversible.
+{
+  const { hideRepository, validateRegistry, REGISTRY_VERSION } = await import(M);
+  const nowIso = new Date(nowMs).toISOString();
+  const oldIso = new Date(nowMs - 40 * 24 * 60 * 60 * 1000).toISOString();
+  const RID = "local:aaaaaaaaaaaaaaaa";
+  const record = () => ({
+    id: RID, kind: "local", displayName: "aged-repo", providerUrl: null, normalizedRemote: null,
+    localRoots: [{ rootId: "r", kind: "primary", firstSeenAt: oldIso, lastSeenAt: oldIso }],
+    discoveries: [], enrollments: {}, aliases: [], visibility: "visible",
+    resolution: "resolved", activity: "unknown", createdAt: oldIso, updatedAt: oldIso,
+  });
+  const synthReg = { version: REGISTRY_VERSION, revision: 1, repositories: { [RID]: record() }, localRootPaths: {}, aliases: {} };
+
+  check("a 40-day-old record is an age-out candidate", ageOutCandidates(synthReg, { now: nowMs }).length, 1);
+  check("hiding reports a change", hideRepository(synthReg, RID, { hidden: true, now: nowIso }), true);
+  check("hiding twice is a no-op", hideRepository(synthReg, RID, { hidden: true, now: nowIso }), false);
+  check("hidden records are not re-listed as candidates", ageOutCandidates(synthReg, { now: nowMs }).length, 0);
+  check("the record still exists after hiding", Boolean(synthReg.repositories[RID]), true);
+  validateRegistry(synthReg);
+
+  check("restoring reports a change", hideRepository(synthReg, RID, { hidden: false, now: nowIso }), true);
+  check("restored record is visible again", synthReg.repositories[RID].visibility, "visible");
+  // The load-bearing part. Ageing measures lastSeenAt, and restoring does not change it — so the
+  // record is STILL an age-out candidate the moment it is restored. Without a marker the next sweep
+  // would re-hide it immediately, and every sweep after that, making "Show hidden" useless.
+  check("restored record is still technically aged", ageOutCandidates(synthReg, { now: nowMs }).length, 1);
+  check("...but carries restoredAt so the sweep can skip it", Boolean(synthReg.repositories[RID].restoredAt), true);
+  validateRegistry(synthReg);
+
+  // Hiding by hand after a restore has to work, so the marker clears rather than pinning the record
+  // visible forever.
+  hideRepository(synthReg, RID, { hidden: true, now: nowIso });
+  check("a deliberate re-hide clears the restore marker", synthReg.repositories[RID].restoredAt, undefined);
+  validateRegistry(synthReg);
+}
+
 console.log("repositories-lifecycle-check passed");

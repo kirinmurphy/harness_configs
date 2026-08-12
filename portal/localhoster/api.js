@@ -38,3 +38,9 @@ export function updateAlias(payload) {
 export function updateComposeProject(payload) {
   return portalPostJson("/api/localhoster/compose-project", payload);
 }
+
+// Repository visibility lives in the repository registry rather than Localhoster's settings, so this
+// carries no settings revision — see setLocalhosterRepositoryVisibility for why none is needed.
+export function setRepositoryVisibility(payload) {
+  return portalPostJson("/api/localhoster/repository-visibility", payload);
+}

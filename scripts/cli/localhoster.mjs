@@ -24,6 +24,9 @@ import {
   lastSeenAtFor,
   resolveGitDir,
   supersededBy,
+  ageOutCandidates,
+  hideRepository,
+  updateRegistry,
 } from "../../modules/repositories/index.mjs";
 import { createIdleGitCache } from "../../modules/repositories/idle-git-cache.mjs";
 
@@ -164,6 +167,34 @@ export function updateLocalhosterSettings(input) {
     }
     return { ok: false, status: 400, error: String(err?.message || err), localhoster: loadLocalhosterSnapshot() };
   }
+}
+
+// Bring a hidden repository back, or hide one by hand. Same response contract as
+// updateLocalhosterSettings so the portal's mutate-then-apply path is identical, but the write lands
+// in the repository registry rather than in Localhoster's settings.
+//
+// No revision check: repository visibility is a single boolean per record with no cross-field
+// invariant, so a concurrent write can only ever agree or be the user's own later decision. The
+// settings revision guard exists for edits that must not silently clobber a different field.
+export function setLocalhosterRepositoryVisibility({ repositoryId, hidden }) {
+  if (!repositoryId || typeof repositoryId !== "string") {
+    return { ok: false, status: 400, error: "repositoryId is required", localhoster: loadLocalhosterSnapshot() };
+  }
+  try {
+    updateRegistry({
+      stateRoot,
+      mutate: (reg) => hideRepository(reg, repositoryId, { hidden: hidden === true }),
+    });
+  } catch (err) {
+    return { ok: false, status: 400, error: String(err?.message || err), localhoster: loadLocalhosterSnapshot() };
+  }
+  // Deliberately NOT a buildSnapshot from cached discovery, the way the settings mutations do it.
+  // The persisted-repository list is assembled on the refresh path (it derives lifecycle and reads
+  // git), so rebuilding here would hand back a snapshot with `persistedRepositories` defaulted to
+  // empty — dropping every idle repository from the page, not just changing the one that was
+  // restored. Kicking a refresh costs one scan and returns the list actually reflecting the change.
+  scheduleRefresh();
+  return { ok: true, localhoster: loadLocalhosterSnapshot() };
 }
 
 export function setLocalhosterPortalInfo(info) {
@@ -336,6 +367,7 @@ function buildSnapshot({ discovery, settings = loadSettings({ stateRoot }), refr
     now,
     repositoryNames: registryDisplayNames(),
     persistedRepositories,
+    hiddenRepositories: collectHiddenRepositories(),
   });
 }
 
@@ -361,6 +393,7 @@ async function collectPersistedRepositories(runningRepositoryIds) {
   } catch {
     return [];
   }
+  registry = applyAgeOut(registry);
   const out = [];
   const liveRoots = [];
   for (const [id, record] of Object.entries(registry.repositories || {})) {
@@ -402,6 +435,65 @@ async function collectPersistedRepositories(runningRepositoryIds) {
   // for repositories that have since been removed.
   idleGitCache.retain(liveRoots);
   return out;
+}
+
+// Hide records not seen in 30 days, and return the registry as it now stands.
+//
+// ageOutCandidates deliberately returns candidates rather than hiding them, so that the write stays
+// with a caller who can decide — this is that caller. Nothing is ever deleted: hiding moves a record
+// out of the normal list and "Show hidden" brings it back, which is the whole contract.
+//
+// Only ever hides. A record the user explicitly un-hid must not be re-hidden behind their back on
+// the next poll, so un-hiding is a one-way door from this sweep's perspective: `lastSeenAt` is what
+// ageing measures, and restoring a record does not change it. The registry's own `hiddenAt` records
+// when the sweep acted, so a restored record is distinguishable from one never hidden.
+function applyAgeOut(registry) {
+  let candidates;
+  try {
+    candidates = ageOutCandidates(registry);
+  } catch {
+    return registry;
+  }
+  if (!candidates.length) return registry;
+  // A record the user restored keeps its restoredAt marker; skip those so the sweep cannot undo an
+  // explicit decision the moment it runs again.
+  const actionable = candidates.filter(({ repositoryId }) => !registry.repositories?.[repositoryId]?.restoredAt);
+  if (!actionable.length) return registry;
+  try {
+    updateRegistry({
+      stateRoot,
+      mutate: (reg) => {
+        let changed = false;
+        for (const { repositoryId } of actionable) {
+          if (hideRepository(reg, repositoryId, { hidden: true })) changed = true;
+        }
+        return changed;
+      },
+    });
+    return loadRegistry({ stateRoot });
+  } catch {
+    // A registry that cannot be written costs the sweep and nothing else; the scan continues.
+    return registry;
+  }
+}
+
+// Records the ageing sweep has hidden, for the "Show hidden" affordance. Name and last-seen only —
+// enough to decide whether to bring one back, without paying to derive lifecycle or read git for
+// repositories that are, by construction, not on the page.
+function collectHiddenRepositories() {
+  try {
+    const registry = loadRegistry({ stateRoot });
+    return Object.entries(registry.repositories || {})
+      .filter(([, record]) => record?.visibility === "hidden")
+      .map(([repositoryId, record]) => ({
+        repositoryId,
+        name: record.displayName || repositoryId,
+        lastSeenAt: lastSeenAtFor(record),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return [];
+  }
 }
 
 // Every repository with something live on this scan. Both sources count: a repository whose only

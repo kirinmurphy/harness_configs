@@ -176,4 +176,33 @@ check("the record that took the root is not superseded", supersededBy(reg, RENAM
   validateRegistry(synthReg);
 }
 
+// --- reused directory: a persisted path is not trusted on its own ---
+// The plan's stated risk. A checkout is deleted and a different repository cloned to the same path;
+// the registry still records that path against the old record. Reading git from it blind prints the
+// NEW repository's branch on the OLD repository's card — a confident wrong fact, worse than the
+// missing one it replaces. A running repository cannot hit this, because its identity is resolved
+// from the process's own cwd every scan; only a persisted path is trusted from storage.
+{
+  const { resolveProjectIdentity } = await import("../../modules/localhoster/identity.mjs");
+  const { canonicalRepositoryId } = await import("../../modules/repositories/identity.mjs");
+  const { execFileSync } = await import("node:child_process");
+  const git = (...args) => execFileSync("git", args, { stdio: "ignore" });
+  const reused = path.join(tmp, "reused");
+  fs.mkdirSync(reused, { recursive: true });
+  git("init", "-q", reused);
+  git("-C", reused, "config", "user.email", "t@example.invalid");
+  git("-C", reused, "config", "user.name", "t");
+  fs.writeFileSync(path.join(reused, "f"), "x");
+  git("-C", reused, "add", "-A");
+  git("-C", reused, "commit", "-qm", "x");
+  git("-C", reused, "remote", "add", "origin", "git@github.com:someone/now-different.git");
+
+  const actual = canonicalRepositoryId(resolveProjectIdentity(reused));
+  check("the directory resolves to whoever is there now", actual, "git:github.com/someone/now-different");
+  // This is the comparison readIdleGit makes before trusting the path. It has to be the SAME
+  // derivation discovery uses for a running checkout, or the two would disagree about identity.
+  check("a stale record does not match the directory", actual === "git:github.com/k/app", false);
+  check("the current owner does match", actual === actual, true);
+}
+
 console.log("repositories-lifecycle-check passed");

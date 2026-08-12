@@ -607,6 +607,13 @@ new settings surface, and it keeps `validateComposeProjects`
 - **A reused directory.** If a checkout is deleted and a different repository is cloned to the same
   path, reading git from the persisted path would attribute the wrong branch to the record. Verify
   the resolved repository identity still matches before trusting a persisted path.
+  **Addressed in Phase 3.** `readIdleGit` re-resolves the path through the same derivation discovery
+  uses for a running checkout — `canonicalRepositoryId(resolveProjectIdentity(root))` — and returns
+  no git unless the answer still matches the record. A mismatch yields absence rather than an error:
+  the repository is still known, its checkout is just no longer where the record says, which is the
+  same "listed, honest about what it does not know" state as a checkout with no path at all.
+  Only persisted paths need this. A running repository resolves its identity from the process's own
+  cwd on every scan, so it can never inherit a stale one.
 - **Records accumulate permanently by design.** Nothing is ever deleted. Measured cost is ~1.1 KB
   per repository, so a thousand repositories is about 1 MB. The scaling concern is not storage but
   write amplification: the registry is one JSON file rewritten per scan, so a large registry is
@@ -620,6 +627,17 @@ new settings surface, and it keeps `validateComposeProjects`
   available if measurement warrants it.
 - **Symlinked or relative mount sources** may not resolve to a checkout by prefix match. Falls into
   `unverified`, which is the safe direction — repository level, stated as inferred.
+  **Partly fixed, and the original wording was wrong about the outcome.** These land in `shared`
+  (`repo-root`), not `unverified` — mounts exist, they just match nothing, which is a positive claim
+  of sharing rather than an absence of evidence. That distinction is the point of having both states,
+  and it made the failure worse than this risk assumed.
+  The macOS symlink case is now handled: `comparablePath` collapses `/private` ahead of `/var`,
+  `/tmp` and `/etc` on both sides of the comparison, so a checkout under any of them matches. This
+  was not hypothetical — it misclassified every stack in the live fixture.
+  Still open: a relative mount source, and symlinks other than the `/private` ones. Both still yield
+  `shared`. A general symlink resolver is deliberately not used — the comparison must agree with the
+  realpath identity.mjs already stored, not discover new equivalences, and resolving per mount per
+  checkout would put filesystem calls on the poll's hot path.
 
 ## Open questions
 
@@ -632,3 +650,31 @@ new settings surface, and it keeps `validateComposeProjects`
 - **Does `shared` deserve a distinct visual weight from a checkout row?** It is a peer in the
   hierarchy but a different kind of thing. Starting with the same row treatment under its own
   heading; revisit once it can be seen on a real card.
+  **Revisited, and the answer is no — keep the peer treatment.** Seen on the live fixture, the
+  heading plus position already carry it: the region sits below every checkout, which is the
+  containment being described, and the stack renders as a full (non-member) compose card because
+  without an owning checkout there is no root section to inherit git context from. That difference
+  is legible without a second visual language for it. The one thing worth stating in words rather
+  than styling is *why* it is shared, and that is in the tooltip via `OWNERSHIP_EVIDENCE` — "mounts
+  span several checkouts" and "mounts resolve to no checkout" are different claims and read as such.
+  Left open: whether an `unverified` stack (no bind mounts at all) should be visually distinguished
+  from a genuinely `shared` one. They render identically today and are deliberately different claims
+  — evidence of sharing vs absence of evidence. No real repository has produced an `unverified`
+  stack yet, so there is nothing to look at.
+
+## Follow-ups
+
+Not blocking this plan; recorded where the work would start.
+
+- **Cross-poll mount caching.** `classifyComposeProjects` runs one batched `docker inspect` per scan
+  with Compose projects. Mounts cannot change without the container being recreated, so caching by
+  container id is available. Not added — measure before optimising, per the Phase 4 note.
+- **A merge prompt for a repointed checkout.** `priorRepositoryForRoot` reports the prior owner and
+  `supersededBy` reports the successor; nothing offers the user the merge. The affordance would be
+  "this checkout moved from A to B — merge them?", acting only on an explicit answer.
+  `harness_configs`/`roborepo` on the live registry is the standing example: it reads as a rename but
+  no path was recorded for the shared roots, so it cannot be proven and is deliberately left alone.
+- **`wireCopyBranchButton` leaves an enabled no-op button.** `portal/localhoster/templates.js` adds
+  `is-static` but skips the `disabled` + `aria-label` removal that `mountCopyDropdown` does, so a
+  button announcing "Copy branch name" does nothing. Unreachable with the current repositories —
+  latent, not a regression.

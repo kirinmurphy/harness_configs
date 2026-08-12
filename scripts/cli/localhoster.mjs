@@ -411,7 +411,7 @@ async function collectPersistedRepositories(runningRepositoryIds) {
     for (const checkout of lifecycle.checkouts) {
       // Git only for checkouts confirmed present. An absent or unreadable one has nothing to read,
       // and asking would be a subprocess per poll that can only fail.
-      const git = checkout.state === "present" ? await readIdleGit(checkout.path) : null;
+      const git = checkout.state === "present" ? await readIdleGit(checkout.path, id) : null;
       if (checkout.state === "present") liveRoots.push(checkout.path);
       checkouts.push({
         rootId: checkout.rootId,
@@ -511,10 +511,26 @@ function runningRepositoryIds(discovery) {
   return ids;
 }
 
-async function readIdleGit(projectRoot) {
+// Git for a persisted checkout path, but only once that path is confirmed to still BE this
+// repository.
+//
+// The plan's "reused directory" risk: a checkout is deleted and a different repository cloned to the
+// same path. The registry still records the path against the old record, so reading git from it
+// blind would print the new repository's branch on the old repository's card — a wrong fact stated
+// confidently, which is worse than the missing one it replaces. A running repository never has this
+// problem, because its identity is resolved from the process's own cwd on every scan; only a
+// persisted path is trusted from storage.
+//
+// So the path is re-resolved through exactly the derivation discovery uses
+// (canonicalRepositoryId(resolveProjectIdentity(root))) and the answer must still match. A mismatch
+// yields no git rather than an error: the repository is genuinely still known, its checkout is just
+// no longer where the record says, which is the same "listed, honest about what it does not know"
+// state as a checkout with no recorded path at all.
+async function readIdleGit(projectRoot, repositoryId) {
   try {
     const resolved = resolveGitDir(projectRoot);
     if (!resolved) return null;
+    if (canonicalRepositoryId(resolveProjectIdentity(projectRoot)) !== repositoryId) return null;
     return await idleGitCache.get(projectRoot, resolved.gitDir, () => collectGitContext(projectRoot));
   } catch {
     // A checkout that disappears mid-scan reports no git rather than failing the refresh.

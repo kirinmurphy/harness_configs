@@ -205,4 +205,37 @@ check("the record that took the root is not superseded", supersededBy(reg, RENAM
   check("the current owner does match", actual === actual, true);
 }
 
+// --- an alias is the user overruling the refusal to guess ---
+// supersededBy infers from repointed checkouts and returns null whenever the evidence is short —
+// which is right, but leaves a real rename showing two cards when the roots predate the path index
+// and ownership cannot be proven. setAlias is the sanctioned fix the plan points at, and the
+// repository list resolves through it: an id that aliases elsewhere is not its own record any more,
+// so it is skipped and only the survivor renders.
+{
+  const { setAlias, resolveRegistryAlias, validateRegistry, REGISTRY_VERSION } = await import(M);
+  const nowIsoBase = new Date(nowMs).toISOString();
+  const OLD = "git:github.com/k/old-name";
+  const NEW = "git:github.com/k/new-name";
+  const aliased = {
+    version: REGISTRY_VERSION, revision: 1, aliases: {}, localRootPaths: {},
+    repositories: {
+      [OLD]: { id: OLD, kind: "git", displayName: "shared-name", providerUrl: null, normalizedRemote: null, localRoots: [], discoveries: [], enrollments: {}, aliases: [], visibility: "visible", resolution: "resolved", activity: "unknown", createdAt: nowIsoBase, updatedAt: nowIsoBase },
+      [NEW]: { id: NEW, kind: "git", displayName: "shared-name", providerUrl: null, normalizedRemote: null, localRoots: [], discoveries: [], enrollments: {}, aliases: [], visibility: "visible", resolution: "resolved", activity: "unknown", createdAt: nowIsoBase, updatedAt: nowIsoBase },
+    },
+  };
+  // Both records resolve to themselves, so both would render — the duplicate the user sees.
+  check("before aliasing, the old id is its own record", resolveRegistryAlias(aliased, OLD), OLD);
+  check("supersededBy cannot prove the rename", supersededBy(aliased, OLD), null);
+
+  check("setAlias reports a change", setAlias(aliased, OLD, NEW), true);
+  check("the old id now resolves to the new one", resolveRegistryAlias(aliased, OLD), NEW);
+  // This inequality is exactly the test collectPersistedRepositories makes to skip the row.
+  check("...so the old row is skipped", resolveRegistryAlias(aliased, OLD) !== OLD, true);
+  check("the survivor still renders", resolveRegistryAlias(aliased, NEW), NEW);
+  check("the alias is recorded on the survivor", aliased.repositories[NEW].aliases.includes(OLD), true);
+  // Nothing is deleted: the aliased record survives and can be recovered.
+  check("the aliased record still exists", Boolean(aliased.repositories[OLD]), true);
+  validateRegistry(aliased);
+}
+
 console.log("repositories-lifecycle-check passed");

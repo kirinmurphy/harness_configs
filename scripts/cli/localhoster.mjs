@@ -27,6 +27,7 @@ import {
   ageOutCandidates,
   hideRepository,
   updateRegistry,
+  resolveRegistryAlias,
 } from "../../modules/repositories/index.mjs";
 import { createIdleGitCache } from "../../modules/repositories/idle-git-cache.mjs";
 
@@ -406,6 +407,12 @@ async function collectPersistedRepositories(runningRepositoryIds) {
     // one of which is a remote nobody uses any more. The record is untouched; it is only folded out
     // of this view, and it returns the moment any checkout resolves back to it.
     if (supersededBy(registry, id)) continue;
+    // An alias is the user stating outright that this record IS another one — the sanctioned fix the
+    // rename decision points at when it says a visible duplicate is "fixable with one setAlias".
+    // Without this the list ignored aliases entirely, so setting one changed nothing on the page and
+    // the duplicate it exists to resolve stayed put. Unlike supersededBy, which infers from repointed
+    // checkouts and refuses to guess, this acts on an explicit instruction.
+    if (resolveRegistryAlias(registry, id) !== id) continue;
     const lifecycle = deriveLifecycle(registry, id, { runningRepositoryIds });
     const checkouts = [];
     for (const checkout of lifecycle.checkouts) {

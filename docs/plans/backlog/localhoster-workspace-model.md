@@ -677,9 +677,20 @@ Not blocking this plan; recorded where the work would start.
   somewhere that matters. Re-measure there rather than assuming this result carries.
 - **A merge prompt for a repointed checkout.** `priorRepositoryForRoot` reports the prior owner and
   `supersededBy` reports the successor; nothing offers the user the merge. The affordance would be
-  "this checkout moved from A to B — merge them?", acting only on an explicit answer.
-  `harness_configs`/`roborepo` on the live registry is the standing example: it reads as a rename but
-  no path was recorded for the shared roots, so it cannot be proven and is deliberately left alone.
+  "this checkout moved from A to B — merge them?", acting only on an explicit answer. Still open —
+  it needs a UI control, a merge that rewrites checkout ownership, and an undo story.
+  **What is now closed is the manual path.** The rename decision says a visible duplicate is "fixable
+  with one `setAlias`", but the repository list did not consult aliases at all, so setting one
+  changed nothing on the page and the fix the design points at did not work. `collectPersistedRepositories`
+  now skips any record whose id resolves elsewhere. The distinction from `supersededBy` is the point:
+  that one INFERS from repointed checkouts and refuses to guess, this one acts on an explicit
+  instruction, so it can resolve cases the evidence never could.
+  `harness_configs`/`roborepo` was exactly such a case — three roots, none with a recorded path,
+  unprovable from stored data. The user confirmed the rename, an alias was set, and the list went
+  from two `roborepo` rows to one with both records intact.
+  Worth recording precisely, because the plan's own framing was slightly off: the duplicate was never
+  *visible as* `harness_configs`. Its `displayName` is already "roborepo", so it rendered as a second
+  card with the same name — which is harder to notice than a stray unfamiliar one.
 - ~~**`wireCopyBranchButton` leaves an enabled no-op button.**~~ **Fixed.** It now takes the same
   three steps `mountCopyDropdown` does — strip icons, `disabled = true`, remove `aria-label` —
   rather than only the first. Stripping the icons made the control merely *look* inert: left enabled

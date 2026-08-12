@@ -244,10 +244,18 @@ function recordDiscoveredRepositories(instances, composeProjectGit = null) {
       name: null,
     });
   }
+  // Deduped per (repository, checkout), not per repository. Keying on the repository alone recorded
+  // only whichever checkout was seen first and silently dropped the rest, so a repository open in
+  // several worktrees at once never accumulated more than one root — and the Compose classifier,
+  // which tests mounts against every known checkout, could not return `conflict` even for a stack
+  // that demonstrably mounts two of them. A repository with N live checkouts is N cheap registry
+  // writes on the first scan and none afterwards (registerLocalRootPath debounces on lastSeenAt).
   for (const project of sources) {
     const repositoryId = project?.repositoryId;
-    if (!repositoryId || seen.has(repositoryId)) continue;
-    seen.add(repositoryId);
+    if (!repositoryId) continue;
+    const rootKey = `${repositoryId} ${project.rootId || project.projectRoot || ""}`;
+    if (seen.has(rootKey)) continue;
+    seen.add(rootKey);
     try {
       recordRepositoryDiscovery({
         repositoryId,

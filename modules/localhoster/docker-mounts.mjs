@@ -85,9 +85,17 @@ function bindSources(mounts) {
 //
 // Only stripped when a real host path remains underneath. A literal /host_mnt directory is not
 // assumed to exist, but neither is the prefix removed to produce an empty path.
+//
+// Repeated slashes come off for the same reason: a compose file interpolating a variable that
+// already ends in "/" (TMPDIR on macOS does) yields sources like /var/folders/T//project/data, which
+// no prefix comparison matches and which no UI printing the path makes obvious.
+//
+// The /private symlink difference is NOT handled here, deliberately — it has to be applied to the
+// checkout roots as well as the mounts, so it lives with the comparison in classifyComposeOwnership
+// rather than on one side of it.
 function hostPathFromMountSource(source) {
-  const stripped = source.replace(/^\/host_mnt(?=\/)/, "");
-  return stripped || source;
+  const stripped = source.replace(/^\/host_mnt(?=\/)/, "") || source;
+  return stripped.replace(/\/{2,}/g, "/");
 }
 
 export async function defaultRunCommand(command, args, { timeoutMs } = {}) {

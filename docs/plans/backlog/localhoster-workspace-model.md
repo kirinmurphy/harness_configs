@@ -430,6 +430,25 @@ new settings surface, and it keeps `validateComposeProjects`
       mounts the resolution pass already fetched. Supersedes the old "no `docker inspect` once
       `working_dir` resolved" test, which guarded cost; placement correctness outranks it.
       Cross-poll caching not yet added — measure before optimising.
+- [x] Two placement bugs the live fixture exposed, neither of them fixture-specific.
+      **Path spelling.** The registry stores realpath-resolved checkout roots (identity.mjs keeps
+      rootIds reproducible for a directory however it was reached) while Docker reports the
+      unresolved path. On macOS `/var`, `/tmp` and `/etc` are symlinks into `/private`, so any
+      checkout under them compared as a different string than the root it actually is: every mount
+      missed, and the stack was declared `shared`/`repo-root` — a positive claim of sharing produced
+      by nothing but a spelling difference. A compose file interpolating `TMPDIR` (which ends in
+      `/`) added doubled slashes on top. Both sides now reduce through `comparablePath` in
+      `classifyComposeOwnership`; the mount side also collapses repeated slashes in
+      `docker-mounts.mjs`. Evidence keeps the original root spelling. `/private` is collapsed only
+      ahead of the three directories macOS actually links there — this must agree with what
+      identity.mjs already stored, not discover new equivalences.
+      **One checkout per repository.** `recordDiscoveredRepositories` deduped its sources on
+      `repositoryId` alone, so only the first checkout of a repository was ever registered and the
+      rest were silently dropped. A repository open in several worktrees could therefore never
+      accumulate more than one root — which meant `conflict` was unreachable in practice, however
+      many checkouts a stack demonstrably mounted. Now keyed on (repository, checkout).
+      Neither bug is visible without a multi-checkout repository running a stack that mounts more
+      than one of them, which is exactly the shape no real repository on this machine has.
 - [x] Set `rootId` only for `owned`; leave it `null` for `shared`/`unverified`.
       Also required persisting compose-resolved checkouts: `recordDiscoveredRepositories` only walked
       listener instances, so a repository whose only presence is a container stack was registered
@@ -501,19 +520,15 @@ new settings surface, and it keeps `validateComposeProjects`
       main-root fallback fails the first, routing every stack to shared fails the second.
 - [x] Manual: a repository with a shared backing stack (configuration 1) renders that stack once at
       repository level, not under any worktree.
-      Verified against the live fixture. `docker inspect` reported the two checkout mounts plus
-      `/etc/localtime`; `classifyComposeOwnership` returned `shared`/`conflict` with no `rootId`, and
-      feeding that verdict through `buildLocalhosterSnapshot` put the stack in
-      `sharedComposeGroups` with both roots — main and worktree — holding zero compose groups.
-      One limitation worth recording: the fixture's stack publishes no ports, and discovery
-      correlates containers to instances only by published host port (`discovery.mjs:447`), so the
-      fixture never appears in a live portal scan on its own. The verdict and the routing were
-      therefore checked against real `docker inspect` output driven through the real snapshot
-      builder, rather than by reading the rendered page. Giving the fixture a published port would
-      close that last gap.
-      (The first attempt wedged its container in Docker Desktop 29.4.1 — stuck in `Created` with
-      `start`/`inspect`/`rm -f` all hanging on that one container while the daemon served every
-      other. It cleared on its own; a clean re-run came up in ~3s. Transient, not a fixture defect.)
+      Verified end to end through the live portal, which required giving the fixture a published
+      port: discovery correlates containers to instances only by published host port
+      (`indexDockerContainersByHostPort`), so a port-less stack never enters a scan at all. The
+      fixture now serves a loopback-only listener on 39117, and its stack renders with
+      `ownership=shared`, `evidence=conflict`, `rootId=null`, in `sharedComposeGroups`, with no root
+      claiming it.
+      Getting there exposed two real product bugs, both fixed and both invisible without this
+      fixture — see the Phase 4 notes above for the path-normalization one and the per-checkout
+      registration one. Neither was a fixture artifact; both would misclassify real repositories.
 - [x] Manual: a repository with a per-checkout stack (configuration 2) still renders it under its
       own checkout.
       Verified live: `menugoats` and `traefik_vps` each classify `owned`/`bind-mount`, carry a

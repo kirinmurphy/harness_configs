@@ -348,6 +348,48 @@ async function runCommand(command, args) {
   // A checkout with no recorded path cannot be matched against and must not throw.
   assert.equal(classifyComposeOwnership(["/repo/db"], [{ rootId: "x", path: null }]).ownership, "shared");
   assert.equal(classifyComposeOwnership(null, null).ownership, "unverified");
+
+  // The two sides of the comparison are spelled differently in production and must still meet.
+  //
+  // The registry stores realpath-resolved roots (/private/var/...) because rootIds have to be
+  // reproducible for a directory however it was reached; Docker reports the unresolved path
+  // (/var/...), and a compose file interpolating TMPDIR — which ends in "/" on macOS — adds a
+  // doubled slash on top. Comparing raw strings made every checkout under /var, /tmp or /etc match
+  // nothing, so its stack was declared `shared` on a spelling difference alone. Caught on the live
+  // fixture, whose scratch repo lives in TMPDIR.
+  const symlinked = [
+    { rootId: "main", path: "/private/var/folders/ab/T/fixture" },
+    { rootId: "wt", path: "/private/var/folders/ab/T/fixture-wt" },
+  ];
+  const spanning = classifyComposeOwnership(
+    ["/var/folders/ab/T//fixture/data", "/var/folders/ab/T//fixture-wt/data", "/etc/localtime"],
+    symlinked,
+  );
+  assert.equal(spanning.ownership, "shared");
+  assert.equal(spanning.evidence.kind, "conflict");
+  // Evidence reports the checkout as the rest of the system spells it, not the rewritten form.
+  assert.deepEqual(spanning.evidence.checkoutPaths, [
+    "/private/var/folders/ab/T/fixture",
+    "/private/var/folders/ab/T/fixture-wt",
+  ]);
+
+  const symlinkedSingle = classifyComposeOwnership(["/var/folders/ab/T//fixture/data"], symlinked);
+  assert.equal(symlinkedSingle.ownership, "owned");
+  assert.equal(symlinkedSingle.rootId, "main");
+
+  // Normalization must not invent matches. A mount that lands in no checkout is still shared, and
+  // /private is only collapsed ahead of the directories macOS actually symlinks there — a literal
+  // /private/data directory is a real path, not a spelling of /data.
+  assert.equal(classifyComposeOwnership(["/etc/localtime"], symlinked).ownership, "shared");
+  assert.equal(
+    classifyComposeOwnership(["/private/data/x"], [{ rootId: "p", path: "/data" }]).ownership,
+    "shared",
+  );
+  // Agreeing spellings keep working, in both directions.
+  assert.equal(classifyComposeOwnership(["/private/var/a/app/x"], [{ rootId: "q", path: "/private/var/a/app" }]).ownership, "owned");
+  assert.equal(classifyComposeOwnership(["/var/a/app/x"], [{ rootId: "r", path: "/var/a/app" }]).ownership, "owned");
+  // A trailing slash on a stored root would otherwise fail every "root + /" prefix test.
+  assert.equal(classifyComposeOwnership(["/Users/me/app/data"], [{ rootId: "s", path: "/Users/me/app/" }]).ownership, "owned");
 }
 
 console.log("ok: localhoster compose project identity resolution");

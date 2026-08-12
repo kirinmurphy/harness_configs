@@ -245,12 +245,25 @@ export function classifyComposeOwnership(mountPaths, checkoutRoots) {
   }
   // A mount "lands in" a checkout when it is that directory or anything beneath it. Longest match
   // wins so a worktree nested under its parent clone is attributed to the worktree, not the clone.
+  //
+  // Compared on comparablePath, not the raw strings. The registry stores realpath-resolved checkout
+  // roots (identity.mjs keeps rootIds reproducible for a directory however it was reached) while
+  // Docker reports the unresolved path, so on macOS a checkout under /var, /tmp or /etc — all
+  // symlinks into /private — otherwise fails every prefix test and the stack is declared `shared`
+  // on nothing but a spelling difference. Evidence keeps the ORIGINAL root path: it is the checkout
+  // as the rest of the system refers to it, and the tooltip should not show a rewritten path.
   const matched = new Map();
   for (const mountPath of paths) {
+    const mount = comparablePath(mountPath);
     let best = null;
+    let bestLength = 0;
     for (const root of roots) {
-      if (mountPath !== root.path && !mountPath.startsWith(`${root.path}/`)) continue;
-      if (!best || root.path.length > best.path.length) best = root;
+      const candidate = comparablePath(root.path);
+      if (mount !== candidate && !mount.startsWith(`${candidate}/`)) continue;
+      if (!best || candidate.length > bestLength) {
+        best = root;
+        bestLength = candidate.length;
+      }
     }
     if (best) matched.set(best.rootId, best);
   }
@@ -272,6 +285,21 @@ export function classifyComposeOwnership(mountPaths, checkoutRoots) {
   // Mounts exist but resolve to no known checkout — the repository root itself, or a sibling path.
   // Positive evidence that the stack is not checkout-specific.
   return { ownership: "shared", evidence: { kind: "repo-root", checkoutPaths: [] } };
+}
+
+// Both sides of the placement comparison reduced to one spelling. Pure string work — no realpath()
+// call, which would put a filesystem hit per mount per checkout on the poll's hot path and would
+// still be wrong for a checkout that has since been deleted.
+//
+// /private is the only symlink collapsed, and only ahead of the three directories macOS actually
+// links there. A general symlink resolver is not wanted: this must agree with what identity.mjs
+// already stored, not discover new equivalences.
+function comparablePath(value) {
+  const collapsed = String(value).replace(/\/{2,}/g, "/");
+  const unprefixed = collapsed.replace(/^\/private(?=\/(?:var|tmp|etc)(?:\/|$))/, "");
+  const candidate = unprefixed || collapsed;
+  // A trailing slash on a checkout root would make every prefix test fail against "root + /".
+  return candidate.length > 1 ? candidate.replace(/\/+$/, "") : candidate;
 }
 
 async function collectGitForComposeProjects(containers, settings, {

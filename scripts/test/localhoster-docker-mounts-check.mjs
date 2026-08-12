@@ -124,4 +124,39 @@ assert.deepEqual(parseDockerInspectOutput(null), new Map());
   assert.deepEqual(result, new Map());
 }
 
+// Docker Desktop on macOS reports bind sources through its VM gateway prefix. Every consumer
+// compares these against real host paths, so the prefix comes off here — a stack whose mounts
+// "resolve to no checkout" is indistinguishable from a legitimately shared one.
+assert.deepEqual(
+  parseDockerInspectOutput(JSON.stringify({
+    Id: "ccccccccccccdddd",
+    Mounts: [{ Type: "bind", Source: "/host_mnt/Users/me/app/data" }],
+  })).get("cccccccccccc"),
+  ["/Users/me/app/data"],
+);
+
+// Repeated slashes come off for the same reason: a compose file interpolating a variable that
+// already ends in "/" — TMPDIR on macOS does — produces these, and no prefix comparison matches
+// them. Caught on the live fixture, whose scratch repo lives under TMPDIR.
+assert.deepEqual(
+  parseDockerInspectOutput(JSON.stringify({
+    Id: "eeeeeeeeeeeeffff",
+    Mounts: [{ Type: "bind", Source: "/var/folders/ab/T//fixture/data" }],
+  })).get("eeeeeeeeeeee"),
+  ["/var/folders/ab/T/fixture/data"],
+);
+
+// Both at once, and the de-dup still applies: two sources that differ only in slash count are one
+// path, not two.
+assert.deepEqual(
+  parseDockerInspectOutput(JSON.stringify({
+    Id: "1111111111112222",
+    Mounts: [
+      { Type: "bind", Source: "/host_mnt/var/folders/ab/T//fixture/data" },
+      { Type: "bind", Source: "/host_mnt/var/folders/ab/T/fixture/data" },
+    ],
+  })).get("111111111111"),
+  ["/var/folders/ab/T/fixture/data"],
+);
+
 console.log("ok: localhoster docker-mounts provider");

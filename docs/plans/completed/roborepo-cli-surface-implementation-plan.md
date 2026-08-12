@@ -738,11 +738,11 @@ At minimum, inspect and update:
 - `scripts/install/main.sh`
 - `scripts/install/repair.sh`
 - `README.md`
-- `docs/guides/`
-- `docs/reference/services/roborepo-cli.md`
-- `docs/reference/services/roborepo.md`
-- `docs/reference/services/roborepo-skills.md`
-- `docs/reference/internal/`
+- `docs/user/guides/`
+- `docs/user/reference/roborepo-cli.md`
+- `docs/user/reference/roborepo.md`
+- `docs/user/reference/roborepo-skills.md`
+- `docs/internal/`
 - `portal/`
 - `scripts/test/`
 - `package.json` packaged-file and test-script declarations

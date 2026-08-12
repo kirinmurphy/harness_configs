@@ -380,7 +380,7 @@ function closeMarkerModal() {
 
 document.getElementById("openmarkermodal").addEventListener("click", () => openCreateMarkerModal());
 
-// --- "view docs" popup: renders docs/guides/telemetry.md server-side rather than duplicating its
+// --- "view docs" popup: renders docs/user/guides/telemetry.md server-side rather than duplicating its
 // content into this page. Each <portal-info-icon> next to a panel heading (or the filter bar's own
 // "filters" icon) opens the same popup pre-scrolled to that heading's slug id (data-doc-anchor),
 // via one delegated listener rather than wiring every icon individually — same shared component

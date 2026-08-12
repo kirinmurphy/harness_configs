@@ -18,19 +18,13 @@
     "scripts/install/",
     "scripts/lib/",
     "scripts/maintenance/",
+    "scripts/release/",
     "portal/",
     "scripts/doctor.sh",
     "scripts/verify-install.sh",
     "shell/",
     "README.md",
-    "docs/reference/services/roborepo.md",
-    "docs/reference/services/localhoster.md",
-    "docs/reference/services/telemetry.md",
-    "docs/reference/services/architecture.md",
-    "docs/guides/plan/lifecycle/plan-docs.md",
-    "docs/guides/plan/lifecycle/integration-check.md",
-    "docs/reference/services/plans-portal.md",
-    "docs/reference/internal/config-collision-handling.md"
+    "docs/user/"
   ],
   "scripts": {
     "build": "npm run --silent pack:dry-run",
@@ -96,7 +90,8 @@
     "pack:smoke": "npm pack",
     "test:package-install": "node scripts/test/package-install-smoke.mjs",
     "prepare:new-mac-install": "node scripts/test/package-install-smoke.mjs",
-    "publish:alpha": "npm pack --dry-run && npm publish --access public"
+    "publish:npm": "bash scripts/release/publish-npm.sh",
+    "test:publish-npm": "node scripts/test/publish-npm-check.mjs"
   },
   "engines": {
     "node": ">=20"

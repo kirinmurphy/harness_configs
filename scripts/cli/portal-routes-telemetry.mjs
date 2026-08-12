@@ -8,7 +8,7 @@ import { defineRoutes } from "./portal-router.mjs";
 
 export const telemetryRoutes = defineRoutes([
   {
-    // Backs the page's "view docs" popup — server-rendered docs/guides/telemetry.md, so the popup
+    // Backs the page's "view docs" popup — server-rendered docs/user/guides/telemetry.md, so the popup
     // and the on-disk guide are always the same content, never a second copy to keep in sync.
     path: "/api/telemetry/guide",
     handler: (req, res, { handlers }) => {

@@ -46,6 +46,13 @@ while IFS=$'\t' read -r _h kind src_rel home_abs _flags; do
 done < <(manifest_rows)
 
 strip_package_hooks
+if command -v node >/dev/null 2>&1; then
+  if [[ "${dry_run}" -eq 1 ]]; then
+    node "${repo_root}/scripts/cli/package-projection-cleanup.mjs" --all --dry-run || true
+  else
+    node "${repo_root}/scripts/cli/package-projection-cleanup.mjs" --all || true
+  fi
+fi
 
 while IFS=$'\t' read -r _id home_path _present _display_name _root_config_path; do
   [[ -z "${home_path}" ]] && continue

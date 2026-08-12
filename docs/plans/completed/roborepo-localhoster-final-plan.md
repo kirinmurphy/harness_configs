@@ -594,8 +594,8 @@ Expand `scripts/test/localhoster-check.mjs` and split fixtures by provider when 
 
 ## Documentation Updates
 
-- Expand `docs/reference/services/localhoster.md` with the final concept model, providers, identity scoring, history, API, privacy, and troubleshooting.
-- Keep `docs/reference/services/portal.md` focused on shared architecture; mention only the Localhoster page and API dispatcher there.
+- Expand `docs/user/reference/localhoster.md` with the final concept model, providers, identity scoring, history, API, privacy, and troubleshooting.
+- Keep `docs/user/reference/portal.md` focused on shared architecture; mention only the Localhoster page and API dispatcher there.
 - Update `README.md` and the CLI reference with Localhoster capabilities.
 - Add a short user guide explaining quick links, manual associations, inactive projects, health paths, and network-exposure warnings.
 - Include troubleshooting for hostname-sensitive apps, self-signed HTTPS, Docker Desktop, identity conflicts, stale snapshots, and platform limitations.
@@ -621,7 +621,7 @@ Close these during final phase 1 if they naturally share code with V2 migration:
 
 ## Implementation Sequence
 
-1. **Complete the V1 gate.** Finish the V1 gaps listed above, update `docs/reference/services/localhoster.md`, and keep `localhoster-v1` backlog until manual macOS validation is recorded.
+1. **Complete the V1 gate.** Finish the V1 gaps listed above, update `docs/user/reference/localhoster.md`, and keep `localhoster-v1` backlog until manual macOS validation is recorded.
 2. **Add schema V2 and aliases.** Migrate settings in place with backup, defaults, fixture tests, alias storage, favorite/hidden flags, health config, match hints, and preferences. Keep V1 mutation compatibility.
 3. **Split provider architecture.** Extract listener, origin, probe, identity, capability, snapshot, and settings responsibilities while preserving current CLI/API behavior.
 4. **Add refresh coordinator semantics.** Add provider cadences, stale provider retention, superseded-generation aborts, bounded concurrency, progress, and partial warnings.

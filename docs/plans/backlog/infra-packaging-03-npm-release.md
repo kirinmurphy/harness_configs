@@ -33,9 +33,10 @@ behavior to the repository checkout.
 ## Context
 
 The root `package.json` already declares an unpublished package, a `roborepo` binary, a runtime
-`files` allowlist, ESM mode, and a Node engine requirement. `npm pack` and a manual isolated global
-installation have worked. The repository does not yet have a publish workflow, registry credentials
-or trusted-publishing configuration, a finalized package name, or a release policy.
+`files` allowlist, ESM mode, and a Node engine requirement. `npm pack`, the real-artifact
+package-install smoke runner, and local retained transfer artifact generation now exist. The
+repository does not yet have a publish workflow, registry credentials or trusted-publishing
+configuration, a finalized package name, or a release policy.
 
 The new-Mac plan proves a local tarball works. npm distribution adds a registry, immutable published
 versions, dist-tags, and release provenance. It should reuse the same pack/install smoke test rather
@@ -66,7 +67,9 @@ than creating a second package-validation path.
 - `package.json` uses `codethings-roborepo-alpha` at `0.1.0-beta.0` and is not private.
 - `bin/roborepo` is the package executable.
 - The package uses an explicit `files` allowlist.
-- `npm run pack:dry-run` and `npm run pack:smoke` exist; both stop at producing a tarball.
+- `npm run pack:dry-run` and `npm run pack:smoke` exist; `npm run test:package-install` installs a
+  freshly packed tarball into an isolated prefix/home, and `npm run prepare:new-mac-install` retains
+  the exact tested local-transfer artifact.
 - CI runs doctor, the repository suite, and package catalog/lifecycle checks on macOS and Linux,
   plus a Windows installer parse job, but has no publication job.
 - No npm version has been published and no stable release contract exists.

@@ -35,7 +35,7 @@ section links the matching step in [the teaching doc](harnesses-explained.md).
 
 The rest of this doc takes each element in turn: what it does, how parity works, and what you do
 to change it. For what survives an install/update per element — backups, drift, staged candidates —
-see [Config Collision Handling → Per-Element Persistence](config-collision-handling.md#per-element-persistence).
+see [Config Collision Handling → Per-Element Persistence](../user/reference/config-collision-handling.md#per-element-persistence).
 
 ## Global rules (`CLAUDE.md` / `AGENTS.md`)
 
@@ -203,7 +203,7 @@ stays `{}` until a baseline is added. (Why parity isn't the goal here:
 [explained.md Step 7](harnesses-explained.md#step-7--when-parity-isnt-the-goal-root-config).)
 
 For exact update, backup, staged-candidate, and uninstall behavior, see
-[Config Collision Handling](config-collision-handling.md).
+[Config Collision Handling](../user/reference/config-collision-handling.md).
 
 ## Preset bundles (`presets.json`)
 
@@ -223,7 +223,7 @@ roborepo update   # exports baseline when missing/identical, asks before merging
 
 Merge options and drift behavior are covered in
 [How It Works → Root Config](../services/architecture.md#root-config-export) and
-[Config Collision Handling](config-collision-handling.md).
+[Config Collision Handling](../user/reference/config-collision-handling.md).
 
 ## Keeping a machine in sync
 

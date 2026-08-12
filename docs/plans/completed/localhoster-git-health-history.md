@@ -23,7 +23,7 @@ with no repository configuration required. Delivered.
 ## Current State
 
 Shipped. Every goal below is implemented, covered by fixture tests, and verified against a live
-portal. Reference documentation is in `docs/reference/services/localhoster.md`.
+portal. Reference documentation is in `docs/user/reference/localhoster.md`.
 
 ## Dependency on Canonical Repository Identity (v2)
 
@@ -112,7 +112,7 @@ CI. It is now wired in alongside the three new checks.
 
 ## Known Limits
 
-Carried into `docs/reference/services/localhoster.md` under Current Limits:
+Carried into `docs/user/reference/localhoster.md` under Current Limits:
 
 - `health.path` is stored and validated but not yet probed; probes still hit the origin root.
   Honoring it requires a second probe per app.

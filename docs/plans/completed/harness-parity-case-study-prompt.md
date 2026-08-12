@@ -19,7 +19,7 @@ context for whoever runs it.
 
 > Write a long-form architecture case study about how RoboRepo keeps two AI coding harnesses — Claude
 > Code and Codex — in configuration parity. The source material is
-> `docs/reference/internal/harnesses-explained.md`; read it first and treat its seven-step
+> `docs/internal/harnesses-explained.md`; read it first and treat its seven-step
 > "amount of machinery" progression as the backbone of the post.
 >
 > The thesis: parity is not "automate everything." It's spending exactly as much machinery as the
@@ -70,7 +70,7 @@ context for whoever runs it.
 
 | Need | Read |
 | --- | --- |
-| The narrative spine + every takeaway line | `docs/reference/internal/harnesses-explained.md` |
-| Exact commands / source locations (for fact-checking only) | `docs/reference/internal/harness-anatomy.md` |
-| Symlink + install mechanics (for the analogy's grounding) | `docs/reference/services/architecture.md` |
-| Hook specifics (Claude JSON-control vs Codex text) | `docs/reference/services/claude-hooks.md`, `codex-hooks.md` |
+| The narrative spine + every takeaway line | `docs/internal/harnesses-explained.md` |
+| Exact commands / source locations (for fact-checking only) | `docs/internal/harness-anatomy.md` |
+| Symlink + install mechanics (for the analogy's grounding) | `docs/user/reference/architecture.md` |
+| Hook specifics (Claude JSON-control vs Codex text) | `docs/user/reference/claude-hooks.md`, `codex-hooks.md` |

@@ -43,7 +43,7 @@ Implemented and verified:
 Completion evidence:
 
 - 2026-07-20 macOS manual validation was rerun with isolated `ROBOREPO_STATE_ROOT`, temp Git-backed Node apps, and the real portal API.
-- Passed: multiple real Node apps were discovered, project friendly-name mutation worked, app name/origin mutation worked, link add/edit/delete/reorder worked through `/api/localhoster/links`, a wildcard-bound app produced `bind.scope: "wildcard"` with `bind.warning: "Listener is exposed beyond loopback."`, `/docs/reference/services/localhoster.md` was served by the portal, and cached refresh state remained `idle`/`refreshing` on ordinary polling.
+- Passed: multiple real Node apps were discovered, project friendly-name mutation worked, app name/origin mutation worked, link add/edit/delete/reorder worked through `/api/localhoster/links`, a wildcard-bound app produced `bind.scope: "wildcard"` with `bind.warning: "Listener is exposed beyond loopback."`, `/docs/user/reference/localhoster.md` was served by the portal, and cached refresh state remained `idle`/`refreshing` on ordinary polling.
 - Passed: after stopping and restarting a saved Git-backed app on a new port, explicit `/api/localhoster/refresh` returned the project as active and rebuilt the saved `resume` quick link against the new origin.
 - Not exercised manually: the unsupported-platform docs link, because the unsupported notice is browser-rendered and no unsupported-platform fixture was active in the macOS portal run.
 - Verified: `npm run test:localhoster`, `npm test`, and `git diff --check` passed.
@@ -274,7 +274,7 @@ Wire these functions into the `handlers` object passed by the existing `serveCom
 
 ## Add the Portal Page in the Existing Structure
 
-Follow `docs/reference/services/portal.md` exactly:
+Follow `docs/user/reference/portal.md` exactly:
 
 1. Add `{ path: "/localhoster", id: "localhoster", title: "Localhoster", dir: "localhoster" }` to `PAGES` in `scripts/cli/portal-server.mjs`.
 2. Do not manually edit navigation. `portal/shared/theme.js` will render the new page from the injected manifest.
@@ -395,9 +395,9 @@ Extend the portal smoke checks in `scripts/test/test-roborepo.sh` to verify:
 
 ## Documentation Updates
 
-- Update `docs/reference/services/portal.md` page list, directory layout, dispatch list, and manual checks.
-- Add `docs/reference/services/localhoster.md` describing discovery, identity resolution, settings, API, security, limits, and key files.
-- Update `README.md` and `docs/reference/services/roborepo-cli.md` so `roborepo serve` lists `/localhoster`.
+- Update `docs/user/reference/portal.md` page list, directory layout, dispatch list, and manual checks.
+- Add `docs/user/reference/localhoster.md` describing discovery, identity resolution, settings, API, security, limits, and key files.
+- Update `README.md` and `docs/user/reference/roborepo-cli.md` so `roborepo serve` lists `/localhoster`.
 - Document `roborepo localhoster`, `--json`, and `--open` in the CLI catalog and reference.
 - Add `scripts/test/localhoster-check.mjs` to `package.json` as `test:localhoster` and include it in the broad test runner.
 

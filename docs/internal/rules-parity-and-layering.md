@@ -13,7 +13,7 @@ Every managed harness should share the same global behavior defaults without han
 - Harness-specific fragments hold differences that should reach one harness only.
 - Root harness config files are conditional defaults, one per provider (`~/.claude/settings.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`).
 - The installer preserves user-owned root config through the `keep`, `overwrite`, and `abort`
-  collision policies documented in [Config Collision Handling](config-collision-handling.md).
+  collision policies documented in [Config Collision Handling](../user/reference/config-collision-handling.md).
 - Repo-local instructions still layer through project files such as `CLAUDE.md`, `AGENTS.md`, and repo instructions.
 
 ## Implemented Behavior

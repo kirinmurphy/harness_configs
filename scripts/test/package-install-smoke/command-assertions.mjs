@@ -3,8 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-export function runCommand(binPath, args, cwd, env) {
+export function runCommand(binPath, args, cwd, env, { expectFailure = false } = {}) {
   const result = spawnSync(binPath, args, { cwd, env, encoding: "utf8" });
+  if (expectFailure) return result;
   assert.equal(
     result.status,
     0,

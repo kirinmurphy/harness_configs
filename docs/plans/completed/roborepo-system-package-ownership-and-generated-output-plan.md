@@ -975,17 +975,17 @@ roborepo skill render-commands --check
 Update these current documents after implementation:
 
 - `README.md`
-- `docs/reference/services/architecture.md`
-- `docs/reference/internal/harness-anatomy.md`
-- `docs/reference/internal/harnesses-explained.md`
-- `docs/reference/internal/rules-parity-and-layering.md`
-- `docs/reference/internal/config-collision-handling.md`
-- `docs/reference/services/claude-hooks.md`
-- `docs/reference/services/codex-hooks.md`
-- `docs/reference/services/jcodemunch.md`
-- `docs/reference/services/jdocmunch.md`
-- `docs/reference/services/roborepo.md`
-- `docs/guides/install-workflows.md`
+- `docs/user/reference/architecture.md`
+- `docs/internal/harness-anatomy.md`
+- `docs/internal/harnesses-explained.md`
+- `docs/internal/rules-parity-and-layering.md`
+- `docs/user/reference/config-collision-handling.md`
+- `docs/user/reference/claude-hooks.md`
+- `docs/user/reference/codex-hooks.md`
+- `docs/user/reference/jcodemunch.md`
+- `docs/user/reference/jdocmunch.md`
+- `docs/user/reference/roborepo.md`
+- `docs/user/guides/install-workflows.md`
 - `docs/architecture/config-code-separation.md`
 - `docs/architecture/manifest-and-symlinks.md`
 

@@ -7,7 +7,7 @@ Localhoster (`/localhoster`), and Tokens (`/tokens`). It is static HTML/CSS/brow
 served by a loopback-only Node HTTP server — no build step, no framework, no bundler. This doc
 covers the shared architecture (page manifest, browser API helpers, server route dispatch) that
 every page relies on. Page-specific behavior lives in
-`docs/reference/services/config-control-panel.md` and `docs/reference/services/plans-portal.md`.
+`docs/user/reference/config-control-panel.md` and `docs/user/reference/plans-portal.md`.
 
 ## Directory Layout
 

@@ -13,7 +13,7 @@ reviewed_commit:
 > **Status: implemented.** Both additions below shipped — the Commands section and the
 > default-on, toggleable Chat-Time Output section (convention capture, impact awareness,
 > skill visibility) merged into both harnesses. Current behavior is documented in
-> [config-control-panel.md](../../reference/services/config-control-panel.md); this plan is
+> [config-control-panel.md](../../user/reference/config-control-panel.md); this plan is
 > retained for the design rationale and the superseded-wizard history.
 
 ## Purpose
@@ -39,7 +39,7 @@ file; see Superseded Approach at the end for what changed and why.
 
 The config panel is built from a few nouns. Source of truth differs per noun — some live
 in the user's live harness config, some in repo manifests, some in roborepo state. Full
-detail lives in [`docs/reference/services/config-control-panel.md`](../../reference/services/config-control-panel.md);
+detail lives in [`docs/user/reference/config-control-panel.md`](../../user/reference/config-control-panel.md);
 the essentials:
 
 - **Package** — a named feature made of typed components, defined in
@@ -202,7 +202,7 @@ move is presentation/reversibility without a behavior change on a fresh install.
    skills and the toggle links/unlinks the skill; each Chat-Time Output behavior toggles its
    own rules block independently; disabling one leaves the others; a fresh install has all
    three on; re-render/doctor stays green. Use throwaway temp HOME dirs.
-8. **Docs.** Update `docs/reference/services/config-control-panel.md` (the four-section list
+8. **Docs.** Update `docs/user/reference/config-control-panel.md` (the four-section list
    becomes five-plus) and the README behavior sections if the section names change.
 
 ## Open Decisions

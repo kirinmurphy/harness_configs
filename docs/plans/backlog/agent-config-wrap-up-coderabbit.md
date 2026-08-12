@@ -140,11 +140,11 @@ non-deprecated Codex command-extension API is documented later.
 Update all surfaces that currently imply Claude/Codex command parity:
 
 - `README.md`
-- `docs/reference/internal/skills-and-commands.md`
-- `docs/reference/internal/harnesses-explained.md`
-- `docs/reference/services/architecture.md`
-- `docs/reference/services/roborepo.md`
-- `docs/guides/setup-and-daily-use.md`
+- `docs/internal/skills-and-commands.md`
+- `docs/internal/harnesses-explained.md`
+- `docs/user/reference/architecture.md`
+- `docs/user/reference/roborepo.md`
+- `docs/user/guides/setup-and-daily-use.md`
 - portal configuration/resource labels and help text
 
 Show both invocations where applicable: `/wrap-up` for Claude and `$wrap-up` for Codex.

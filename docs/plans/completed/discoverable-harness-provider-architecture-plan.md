@@ -1363,8 +1363,8 @@ On first run:
   cases for the missing-value and unregistered-id errors) — old-flag references left only in two
   comments describing past behavior accurately (`scripts/cli/packages.mjs`'s historical
   `mcp add --builtin --only-claude` note, and this test file's own docstring), not live code paths.
-  Updated user-facing docs (`docs/reference/services/roborepo.md`,
-  `docs/reference/internal/harness-anatomy.md`) to show `--harness <id>` instead of the old flags.
+  Updated user-facing docs (`docs/user/reference/roborepo.md`,
+  `docs/internal/harness-anatomy.md`) to show `--harness <id>` instead of the old flags.
   380/380 tests passing (378 -> 380), doctor 100/100 clean, `git status` confirmed only the intended
   six files touched before running either check.
 - [x] Add package lifecycle contract fixtures for supported, unsupported, and degraded capabilities.
@@ -1720,7 +1720,7 @@ On first run:
   `roborepo harness detected` (`scripts/cli/harness.mjs`, backed by the registry) with a
   hardcoded-claude/codex fallback only for sandboxes that don't copy `scripts/harnesses/`.
 - [x] Update architecture, installation, telemetry, package, skills/commands, and daily-use docs.
-  Audited every doc under `docs/architecture/`, `docs/guides/`, and `docs/reference/` that
+  Audited every doc under `docs/architecture/`, `docs/user/guides/`, and `docs/reference/` that
   mentions `claude`/`codex`/`harness` for staleness against the provider-registry migration (15
   files identified via `grep -l`). Checked each against the new registry API
   (`listHarnessProviders`/`hasHarnessProvider`/`getHarnessProvider`) and the retired
@@ -1744,7 +1744,7 @@ On first run:
   documentation from manifests" without a separate build-time doc generator to maintain. Verified
   by running `roborepo harness inspect claude` and cross-checking every path/capability against
   `globals/harnesses/{claude,codex}/provider.json` directly, then cross-checked both manifests
-  against `docs/reference/internal/harness-anatomy.md`'s hand-authored elements table (rules,
+  against `docs/internal/harness-anatomy.md`'s hand-authored elements table (rules,
   skills, permissions, root-config paths; all declared capabilities represented). No drift found —
   the hand-authored teaching/reference docs (`harness-anatomy.md`, `harnesses-explained.md`)
   already match manifest reality, and the CLI's live `inspect` output covers the machine-readable

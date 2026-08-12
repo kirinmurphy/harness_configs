@@ -12,7 +12,7 @@ export function configRootInspect() {
     if (row.state === "drifted") {
       console.log(`  last-known hash:  ${row.lastHash}`);
       console.log(`  current hash:     ${row.currentHash}`);
-      console.log(`  run \`roborepo update\` to resolve — see docs/reference/internal/config-collision-handling.md`);
+      console.log(`  run \`roborepo update\` to resolve — see docs/user/reference/config-collision-handling.md`);
       // Codex owns a native profile mechanism for permanent personal config; point drifted Codex
       // users at it instead of re-drifting the managed baseline every update. Claude has no
       // equivalent, so this hint is Codex-only. See config-collision-handling.md "Codex Native Profiles".

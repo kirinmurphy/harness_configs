@@ -419,7 +419,7 @@ records.
 
 ### Phase 6 — Documentation
 
-- [ ] Update `docs/reference/services/sessions.md`.
+- [ ] Update `docs/user/reference/sessions.md`.
 - [ ] Document reconciliation evidence and non-guarantees.
 - [ ] Document terminal registration lifecycle.
 - [ ] Document concurrency defaults and override behavior.

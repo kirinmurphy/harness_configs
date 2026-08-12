@@ -71,7 +71,7 @@ Synced via `roborepo skill sync-global`; confirmed materialized at
 ## Why a reference doc, and why this one first
 
 Skills in this repo are trigger-matched independently by `description`
-frontmatter — see `docs/reference/internal/skills-and-commands.md`. There is
+frontmatter — see `docs/internal/skills-and-commands.md`. There is
 no cross-skill loading mechanism; a reference doc is not a special
 construct either harness understands, it's just a file the skill's body
 tells the agent to `Read` conditionally. `plan-docs` already proves this
@@ -136,7 +136,7 @@ Sequence discussed:
 
 This is structurally triggered (before ending a turn that produced code
 changes), not natural-language-matched, so per
-`docs/reference/internal/skills-and-commands.md`'s decision rules it
+`docs/internal/skills-and-commands.md`'s decision rules it
 belongs as an **always-on rule** addition (like the existing Verification
 section in global `CLAUDE.md`), not a skill. Not drafted yet.
 
@@ -200,7 +200,7 @@ require guessing a shared shape from only one migrated page).
 - `docs/plans/completed/portal-config-web-components-plan.md` — the config
   refactor (shipped); contains the concrete file-split map and custom-element
   verdicts that motivated this doc.
-- `docs/reference/internal/skills-and-commands.md` — skill vs. rule vs. hook
+- `docs/internal/skills-and-commands.md` — skill vs. rule vs. hook
   decision model; source for the always-on-rule call on the validation
   persona and the reference-doc mechanism explanation.
 - `globals/packages/plan-docs/skills/plan-docs/` — the existing

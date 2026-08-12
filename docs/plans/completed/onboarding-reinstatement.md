@@ -21,7 +21,7 @@ reviewed_commit:
 The bundle-toggle onboarding UI was disabled (not deleted) so that installation auto-applies every
 default package/tool silently. Per-feature configuration now lives in the package model and config
 control panel (`roborepo onboard` + the `/config` dashboard); see
-[`config-control-panel.md`](../../reference/services/config-control-panel.md) and the completed plan
+[`config-control-panel.md`](../../user/reference/config-control-panel.md) and the completed plan
 [`config-panel-behavior-sections.md`](config-panel-behavior-sections.md).
 
 This doc records exactly what was removed or changed and how to restore it, so the working,
@@ -217,7 +217,7 @@ without the UI:
 To restore: re-add the `expect "Select numbers to toggle"` / `send "\r"` lines to those two expect
 scripts, and revert `test_fresh_managed` to assert the deferred-onboarding behavior.
 
-### 7. Guide docs — `docs/guides/install-workflows.md` and `docs/guides/first-time-setup.md`
+### 7. Guide docs — `docs/user/guides/install-workflows.md` and `docs/user/guides/first-time-setup.md`
 
 Two guides walked through the interactive wizard. They were rewritten to describe headless
 default-apply. Original content, for restore:

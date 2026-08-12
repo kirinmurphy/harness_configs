@@ -15,7 +15,7 @@ reviewed_commit:
 Completed. All checklist items landed (manifest single-sourced, shared API helpers adopted by
 every page including the config source-inspect fetch, server routes split by domain,
 `showError()` added to config/telemetry to match the `plans` page convention, maintainer guide
-at `docs/reference/services/portal.md`). Verified via `npm test` (285/285 passing) and manual
+at `docs/user/reference/portal.md`). Verified via `npm test` (285/285 passing) and manual
 code cross-check against every checklist item.
 
 ## Purpose
@@ -185,8 +185,8 @@ stay page-local until there is a second consumer. Only shared primitives should 
   modules with `type="module"`?
 - Should route-domain handlers live beside `portal-server.mjs` or in a new `scripts/cli/portal/`
   directory?
-- Should the portal maintainer guide live under `docs/reference/services/portal.md` or be folded
-  into the existing `docs/reference/services/roborepo.md`?
+- Should the portal maintainer guide live under `docs/user/reference/portal.md` or be folded
+  into the existing `docs/user/reference/roborepo.md`?
 
 ## Success Criteria
 

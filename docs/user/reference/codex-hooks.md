@@ -14,8 +14,7 @@ in intent with Claude (the same goal, achieved with Codex's own mechanism), and
 > Hooks are authored per-harness, not generated from a shared source. The format
 > and output protocols differ enough (Codex emits plain text with a `statusMessage`;
 > Claude emits JSON-control output) that the handful of shared behaviors are
-> duplicated by hand rather than rendered. See
-> [harnesses-explained.md](../internal/harnesses-explained.md#2-hooks--reacting-to-events).
+> duplicated by hand rather than rendered.
 
 ---
 

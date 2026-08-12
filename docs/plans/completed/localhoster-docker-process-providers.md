@@ -84,7 +84,7 @@ merged/committed to `main`.
   `discoverDocker`/`collectProcess` no-op stubs so they don't shell out to a real `docker`/`ps`).
 - Portal: read-only Docker/Compose badge and CPU/RSS/elapsed line added to the instance card,
   rendered only when the corresponding field is non-null.
-- Docs: `docs/reference/services/localhoster.md` updated with a "Docker and process metrics"
+- Docs: `docs/user/reference/localhoster.md` updated with a "Docker and process metrics"
   section; "Current Limits" no longer lists Docker/process as uncollected.
 - **Live manual validation performed** (Docker Desktop was available after a stuck-process restart):
   ran `discoverDockerRecords` and full `discoverInstances` against a real running Compose stack

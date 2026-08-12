@@ -13,6 +13,7 @@ import { writeRootConfig } from "./root-config-writes.mjs";
 import { hookFilePath, mergeHooksInto, unmergeHooksFrom, installHookScripts, removeHookScripts } from "./hook-composition.mjs";
 import { installRuntimeAsset, mergeHarnessConfig, removeRuntimeAsset, unmergeHarnessConfig } from "./package-harness-config.mjs";
 import { installPackageCommands, removePackageCommands } from "./slash-commands.mjs";
+import { cleanupPackageProjections } from "./package-projection-cleanup.mjs";
 import { getHarnessProvider } from "../harnesses/registry.mjs";
 
 export const USER_CLAUDE_SETTINGS = rootConfigActive.claude;
@@ -478,12 +479,9 @@ export async function reconcileEnabledPackages(rest = []) {
   const dryRun = rest.includes("--dry-run");
   const catalog = loadPackageCatalog({ includeUnavailable: true });
   const enabledIds = effectiveEnabledIds(catalog);
-  if (enabledIds.length === 0) {
-    console.log("reconcile: no enabled packages");
-    return;
-  }
   const known = new Set(catalog.map((pkg) => pkg.id));
   const stale = [];
+  let reconciled = 0;
   for (const id of enabledIds) {
     if (!known.has(id)) {
       stale.push(id);
@@ -491,7 +489,10 @@ export async function reconcileEnabledPackages(rest = []) {
       continue;
     }
     await enablePackage([id, "--reconcile", ...(dryRun ? ["--dry-run"] : [])]);
+    reconciled++;
   }
+  if (reconciled === 0) console.log("reconcile: no enabled packages");
+  cleanupPackageProjections({ dryRun });
   if (!dryRun) {
     for (const id of stale) setPackageEnabled(id, false);
   }

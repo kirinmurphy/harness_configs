@@ -15,7 +15,7 @@ reviewed_commit:
 > the typed-component model (`mcp`/`rules`/`hooks`/`permissions`/`plugin`/`service`/
 > `skill`), and package composition (`requires`) are all built. Current behavior is
 > documented in
-> [`docs/reference/services/config-control-panel.md`](../../reference/services/config-control-panel.md).
+> [`docs/user/reference/config-control-panel.md`](../../user/reference/config-control-panel.md).
 > This plan is kept for history; do not treat it as current behavior.
 
 ## Purpose

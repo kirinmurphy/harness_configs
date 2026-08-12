@@ -1,7 +1,7 @@
 ---
 id: c7b7swuh
 priority: high
-next_action: Implement `scripts/test/package-install-smoke.mjs`, the isolated real-artifact smoke runner, and register it as `npm run test:package-install`
+next_action: Run the final validation commands, generate the retained transfer artifact from a clean worktree, then perform the real new-Mac observation sequence before cloning the repository
 blocked_by: []
 depends_on: []
 related:
@@ -72,12 +72,14 @@ The package foundation already exists:
   mode with an npm-owned `appRoot`, and `doctor` passes with no harness installed. Restoring a
   working tarball is therefore already done, not an open prerequisite of this plan.
 - `scripts/test/test-roborepo.sh` exercises package-mode behavior against a constructed fake
-  application root, but it does not install the actual npm tarball.
+  application root, while `scripts/test/package-install-smoke.mjs` now installs the actual npm
+  tarball into an isolated prefix and temporary home.
 - `.github/workflows/ci.yml` runs doctor, the repository test suite, and the package catalog and
   lifecycle checks on macOS and Linux, plus a Windows installer parse job, but it does not execute
   the globally installed package artifact.
-- `package.json` already defines `pack:dry-run` (`npm pack --dry-run`) and `pack:smoke` (`npm
-  pack`); neither installs the resulting tarball, so no isolated install runner exists yet.
+- `package.json` defines `pack:dry-run`, `pack:smoke`, `test:package-install`, and
+  `prepare:new-mac-install`. The package-install smoke runner exists and is the guard for the real
+  transfer artifact.
 
 The remaining transition risk is therefore not broad feature completeness. It is accidental
 coupling to the checkout: omitted package files, a binary that resolves the wrong root, writes into
@@ -95,10 +97,10 @@ installed command.
 | `scripts/cli/workspace.mjs` | `setup`, workspace initialization/status/import, and package-mode workspace behavior | Exercised by the smoke workflow; no speculative rewrite |
 | `scripts/doctor.sh` | Repository and installed-package health checks | Exercised from the installed artifact; preserve package-mode skipping of development-only files |
 | `scripts/test/test-roborepo.sh` | Fast repository and simulated-package behavior coverage | Remains separate; do not embed the slower global-prefix installation in this runner |
-| `scripts/test/package-install-smoke.mjs` | New real-artifact orchestrator | Add pack, isolated install, command execution, hashing, assertions, cleanup, and optional artifact retention |
+| `scripts/test/package-install-smoke.mjs` | Real-artifact orchestrator | Maintains pack, isolated install, command execution, hashing, assertions, cleanup, zero-harness PATH isolation, and optional artifact retention |
 | `manifests/platform/source-files.tsv` | Declares source/runtime files and package-mode applicability | Update only when the smoke test proves a required packaged file is missing or mis-scoped |
 | `.github/workflows/ci.yml` | macOS/Linux repository validation matrix | Add one explicit package-install smoke step to both legs |
-| `docs/guides/install-workflows.md` | User-facing installation choices | Add the implemented local-tarball/new-Mac workflow after behavior is verified |
+| `docs/user/guides/install-workflows.md` | User-facing installation choices | Add the implemented local-tarball/new-Mac workflow after behavior is verified |
 
 ## Goals
 
@@ -106,7 +108,8 @@ installed command.
 - Install without writing to the machine's real npm prefix, home directory, harness homes, or
   RoboRepo state.
 - Prove the package works before any RoboRepo source checkout exists in the test environment.
-- Run `version`, `setup`, `workspace status`, `config apply`, and `doctor` from the installed binary.
+- Run `version`, `setup`, `workspace status`, `harness refresh`, `harness list`, `config apply`,
+  and `doctor` from the installed binary.
 - Prove `appRoot` is inside the isolated npm prefix and remains byte-identical after runtime
   commands.
 - Prove workspace and state are created outside `appRoot` under the temporary home.
@@ -176,7 +179,7 @@ flowchart TD
   Pack --> Install[npm install -g --prefix temp-prefix tarball]
   Install --> Resolve[Resolve exact temp-prefix/bin/roborepo]
   Resolve --> Snapshot[Hash installed appRoot]
-  Snapshot --> Commands[version → setup → workspace status → config apply → doctor]
+  Snapshot --> Commands[version → setup → workspace status → harness refresh/list → config apply → doctor]
   Commands --> Assertions[Assert roots, files, path isolation, and no appRoot mutation]
   Assertions --> Retain{--output-dir supplied?}
   Retain -->|No| Cleanup[Delete sandbox]
@@ -283,10 +286,10 @@ noninteractive controls required by `setup` and `config apply`. Set `ROBOREPO_MO
 explicitly: `scripts/cli/roots.mjs` otherwise infers mode by probing for `.git` and `local/skills`,
 and the assertion should not depend on that heuristic.
 
-Construct a minimal process environment that still exposes the current Node/npm toolchain
-but does not intentionally expose developer-installed Claude, Codex, Gemini, or Antigravity
-executables. The zero-harness case is the transition baseline: an absent or unsupported harness must
-not prevent RoboRepo itself from installing and initializing.
+Construct a minimal process environment that exposes only the current Node/npm toolchain and
+required system utility paths, and assert that `claude`, `codex`, and `gemini` are not resolvable.
+The zero-harness case is the transition baseline: an absent or unsupported harness must not prevent
+RoboRepo itself from installing and initializing.
 
 ### CI placement
 
@@ -323,6 +326,7 @@ Before creating the artifact:
    npm test
    npm run pack:dry-run
    npm run test:package-install
+   bash scripts/doctor.sh --quiet
    ```
 4. Record the current workspace location with:
    ```sh
@@ -351,6 +355,8 @@ Install Node `>=20` and npm first. Before cloning RoboRepo or importing the old 
    roborepo version
    roborepo setup
    roborepo workspace status
+   roborepo harness refresh
+   roborepo harness list
    roborepo config apply
    roborepo doctor
    ```
@@ -451,8 +457,8 @@ uninstall must not be treated as permission to delete personal workspace content
       parsed JSON (`[0].filename`) rather than guessing it. `--pack-destination` is required:
       `npm pack` otherwise writes into the current working directory, i.e. the checkout.
 - [x] Install the tarball under a temporary `--prefix` and invoke its exact binary path.
-- [x] Run `version`, `setup`, `workspace status`, `config apply`, and `doctor` from a neutral
-      directory.
+- [x] Run `version`, `setup`, `workspace status`, `harness refresh`, `harness list`,
+      `config apply`, and `doctor` from a neutral directory.
 - [x] Assert package, application, workspace, and state roots.
 - [x] Hash `appRoot` before and after runtime commands.
 - [x] Scan generated files under `dirs.home`, `dirs.workspaceRoot`, and `dirs.stateRoot` for
@@ -483,15 +489,17 @@ uninstall must not be treated as permission to delete personal workspace content
 
 ### Phase 4 — Transition documentation and real-machine verification
 
-- [x] Add the final old-Mac/new-Mac workflow to `docs/guides/install-workflows.md` after commands and
+- [x] Add the final old-Mac/new-Mac workflow to `docs/user/guides/install-workflows.md` after commands and
       output names are implemented.
-- [ ] Generate a retained artifact on the old Mac from the recorded source commit.
+- [ ] Generate a retained artifact on the old Mac from the recorded source commit after
+      `npm test`, `npm run pack:dry-run`, `npm run test:package-install`, and
+      `bash scripts/doctor.sh --quiet` pass.
 - [ ] Install and validate it on the new Mac before cloning the repository.
 - [ ] Restore a dedicated workspace or exercise `roborepo workspace import <old-checkout-or-workspace>` only after the clean baseline passes.
 - [ ] Clone the repository and verify packaged and development entry points coexist.
 - [ ] Verify package mode and checkout mode share `workspaceRoot` and `stateRoot` while reporting
       different `appRoot` values, and that running `config apply` from either entry point leaves
-      content authored through the other in place. See `docs/guides/infra/root-domains.md`.
+      content authored through the other in place. See `docs/user/guides/infra/root-domains.md`.
 - [ ] Record actual results, known provider-specific findings, and anything not verified in this
       plan's final `Verification` section before completion.
 
@@ -501,7 +509,8 @@ Automated acceptance requires:
 
 - `npm test` passes.
 - `npm run pack:dry-run` passes.
-- `npm run test:package-install` passes locally on macOS.
+- `npm run test:package-install` passes locally on macOS and proves no harness executable is
+  available in the smoke environment.
 - The package-install CI step passes on `macos-latest` and `ubuntu-latest`.
 - Re-running the smoke command leaves no persistent package installation or temporary home.
 - Retained mode produces one tested tarball, one matching checksum, and one provenance manifest.
@@ -537,7 +546,7 @@ Run from worktree `infra-packaging-01-new-mac-install`, commits `da322ff` → `c
   this branch has been pushed. That acceptance line is unverified pending a real CI run.
 - `manifests/platform/source-files.tsv` directory-coverage question (Phase 1) left open, recorded as
   deferred in the Phase 1 checklist above — not a blocker for the smoke runner.
-- Phase 4 (real old-Mac/new-Mac hardware transition, `docs/guides/install-workflows.md` update) not
+- Phase 4 (real old-Mac/new-Mac hardware transition, `docs/user/guides/install-workflows.md` update) not
   attempted this pass; remains open.
 
 Manual transition acceptance requires:

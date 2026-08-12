@@ -4,7 +4,7 @@
 
 Roborepo installs shared Claude Code and Codex defaults without silently replacing user-authored config. This reference documents the exact collision behavior for copied files, rendered rules, and root config.
 
-For the user-facing walkthrough, start with [../../guides/install-workflows.md](../../guides/install-workflows.md).
+For the user-facing walkthrough, start with [../guides/install-workflows.md](../guides/install-workflows.md).
 
 ## Concept Model
 
@@ -47,11 +47,9 @@ local settings by using the same structured merge path instead of staging or rep
 file like a normal managed copy.
 
 The installer records the merged active file after it writes it, so later drift reports are based on
-the current shared-notebook state. See
-`docs/plans/completed/root-config-layered-inheritance.md` for the full design and
-`scripts/cli/root-config-state.mjs` for the implementation. All three install paths (`presets.mjs`
-JS bundle-apply, `install-lib.sh` bash direct-installer, `install-windows.ps1` PowerShell) implement
-this check. On Windows both the `Invoke-RootConfigPreflight` collision resolver and the later
+the current shared-notebook state. All three install paths (`presets.mjs` JS bundle-apply,
+`install-lib.sh` bash direct-installer, `install-windows.ps1` PowerShell) implement this check. On
+Windows both the `Invoke-RootConfigPreflight` collision resolver and the later
 `Export-UserConfig` write path are drift-aware, so a clean baseline change is not wrongly prompted as
 a collision.
 
@@ -72,9 +70,8 @@ staged update is the actionable signal).
 
 Drift detection tells a user honestly when their root config diverged from roborepo's baseline, but
 it does not give them a place to keep personal config that *survives* every `roborepo update`
-untouched. Roborepo deliberately does not build a userland overlay for this (an overlay can't keep
-its promise once the user hand-edits the real file or a native harness flow writes to it — see
-`docs/plans/completed/root-config-layered-inheritance.md`, "Why The Overlay Design Was Dropped").
+untouched. Roborepo deliberately does not build a userland overlay for this: an overlay cannot keep
+its promise once the user hand-edits the real file or a native harness flow writes to it.
 
 For **Codex** users, the harness already provides exactly this natively — use it instead of fighting
 drift:
@@ -136,9 +133,8 @@ For root config rows, the installer may create a timestamped `*_original_*` file
 The sections above describe the mechanism (policy, drift hash, backups) generically. This table is the
 per-element view: for each harness element, what survives a first install and what survives an
 `roborepo update`. The mechanism is always one of the above — this just names which one applies where.
-For *why* each element gets its parity tool see
-[How the Harnesses Work](harnesses-explained.md); for the source location and command to change it see
-[Harness Anatomy](harness-anatomy.md#elements-at-a-glance).
+For each managed element, the table names the user-visible persistence behavior. Maintainer
+implementation details live outside the packaged user docs.
 
 | Element | On install | On update |
 | --- | --- | --- |

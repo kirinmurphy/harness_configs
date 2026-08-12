@@ -64,4 +64,4 @@ The installer always materializes config by copying owned files and rendering ge
 
 Use `--on-conflict keep`, `--on-conflict overwrite`, or `--on-conflict abort` to make this explicit. Without a flag, roborepo reuses the saved `onConflict` value from `~/.roborepo/install-state.json`; first noninteractive installs default to `keep`.
 
-For the full decision model and terminal-style walkthroughs, see [Install Workflow Choices](install-workflows.md). For exact collision behavior, see [Config Collision Handling](../reference/internal/config-collision-handling.md).
+For the full decision model and terminal-style walkthroughs, see [Install Workflow Choices](install-workflows.md). For exact collision behavior, see [Config Collision Handling](../reference/config-collision-handling.md).

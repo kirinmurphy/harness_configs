@@ -35,6 +35,7 @@ function main() {
 
   const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-package-smoke-"));
   const dirs = {
+    sandbox,
     packDest: path.join(sandbox, "pack"),
     prefix: path.join(sandbox, "prefix"),
     cache: path.join(sandbox, "cache"),
@@ -47,6 +48,10 @@ function main() {
 
   try {
     const env = smokeEnv(dirs);
+    for (const harnessExe of ["claude", "codex", "gemini"]) {
+      const probe = runCommand("sh", ["-c", `command -v ${harnessExe}`], dirs.cwd, env, { expectFailure: true });
+      assert.notEqual(probe.status, 0, `smoke PATH unexpectedly exposes ${harnessExe}: ${probe.stdout}`);
+    }
     const { tarballPath, tarballName } = packTarball(repoRoot, dirs.packDest);
     installTarball(dirs, tarballPath, env);
 
@@ -65,6 +70,8 @@ function main() {
     assertWorkspaceInitialized(dirs.workspaceRoot);
 
     runCommand(binPath, ["workspace", "status"], dirs.cwd, env);
+    runCommand(binPath, ["harness", "refresh"], dirs.cwd, env);
+    runCommand(binPath, ["harness", "list"], dirs.cwd, env);
 
     const applyOut = runCommand(binPath, ["config", "apply"], dirs.cwd, env);
     assert.match(applyOut.stdout, /updated root config/, `expected config apply to report updated root configs\n${applyOut.stdout}`);

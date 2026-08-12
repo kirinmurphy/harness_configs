@@ -118,12 +118,12 @@ Per decision "base + nothing auto, prompt for rest":
 
 ### 6. Docs
 
-- `docs/guides/first-time-setup.md`: describe the post-install wizard (5 steps, ←/→ nav) and that
+- `docs/user/guides/first-time-setup.md`: describe the post-install wizard (5 steps, ←/→ nav) and that
   `roborepo onboard` reruns it. Note minimal default.
 - `README.md` "Global Behavior": replace "installs everything automatically" copy with "install lands
   a minimal baseline, then the onboarding wizard lets you pick behavior; rerun with `roborepo
   onboard`."
-- `docs/guides/install-workflows.md`: update the managed/adopt walkthroughs to show the wizard step.
+- `docs/user/guides/install-workflows.md`: update the managed/adopt walkthroughs to show the wizard step.
 
 ### 7. Tests — `scripts/test/`
 

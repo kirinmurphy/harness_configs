@@ -47,7 +47,7 @@ const STATIC_TYPES = {
 // Single source of truth for portal HTML pages. To add a page: (1) add an entry here, (2) create
 // portal/<dir>/{index.html,styles.css,app.js} linking /portal/shared/base.css + theme.js. The
 // browser nav (portal/shared/theme.js) reads this list from window.ROBOREPO_PORTAL, injected by
-// pageHtml() below, so there is nothing to hand-sync client-side. See docs/reference/services/portal.md.
+// pageHtml() below, so there is nothing to hand-sync client-side. See docs/user/reference/portal.md.
 // Each page's HTML is just its index.html read from disk (mirrors static assets). `default: true`
 // marks the page served at "/" (what `roborepo web` opens). Keep "/config" as a stable alias for
 // existing docs, tests, and saved browser links.

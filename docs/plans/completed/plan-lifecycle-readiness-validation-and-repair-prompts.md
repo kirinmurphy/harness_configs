@@ -299,7 +299,7 @@ after identity, stale-state, boundary, and collision checks, and already threw
       tests in `plan-docs-check.mjs`; portal-state tests extended.
 - [x] All four plans checks registered in `scripts/test/test-roborepo.sh` — they had npm scripts
       but were unreachable from `npm test`, so plans regressions could pass CI unnoticed.
-- [x] `plan-schema.md` and `docs/reference/services/plans-portal.md` updated.
+- [x] `plan-schema.md` and `docs/user/reference/plans-portal.md` updated.
 
 ### Deviations from the plan as written
 

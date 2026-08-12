@@ -117,8 +117,8 @@ roborepo doctor --installed
 
 This is a separate workflow from the checkout-based install above. Use it when you want to get
 `roborepo` running on a new Mac from a real npm package artifact, before that Mac has a clone of
-this repository. It installs the CLI itself, not your global harness config — run the checkout
-install (above) afterward if you also want config materialized on the new machine.
+this repository. Keep the bare `roborepo` command pointing at the packaged snapshot. Use package-mode
+commands such as `roborepo config apply` to materialize live configuration.
 
 ### 1. On the old Mac: build and verify a transfer artifact
 
@@ -163,8 +163,16 @@ Confirm it worked:
 
 ```sh
 roborepo version
+roborepo setup
+roborepo workspace status
+roborepo harness refresh
+roborepo harness list
+roborepo config apply
 roborepo doctor
 ```
+
+The first pass should work with no harness binaries installed and no native harness home/config
+created yet.
 
 ### 4. Roll back if needed
 
@@ -172,11 +180,47 @@ roborepo doctor
 npm uninstall -g codethings-roborepo-alpha
 ```
 
-### 5. Add your config and a repo checkout (optional)
+### 5. Observe harness discovery
 
-The steps above only install the CLI binary. If you also want your global harness config on this
-machine, run the checkout install workflow from the top of this guide against a cloned copy of the
-repository. Package mode (no checkout) and checkout mode are designed to share the same
-`workspaceRoot` and `stateRoot`, so cloning a checkout later is meant to build on what the packaged
-CLI already set up rather than replace it — this coexistence is still being verified, so confirm
-with `roborepo workspace status` after cloning rather than assuming it.
+Use this as an observation sequence for the real new-machine test:
+
+1. Install RoboRepo with no harnesses installed.
+2. Run:
+   ```sh
+   roborepo version
+   roborepo setup
+   roborepo workspace status
+   roborepo harness refresh
+   roborepo harness list
+   roborepo config apply
+   roborepo doctor
+   ```
+3. Install one harness binary, but do not launch it yet.
+4. Run `roborepo harness refresh`, `roborepo harness list`, and `roborepo doctor`; record what
+   RoboRepo sees.
+5. Launch that harness once so it creates its native home/config.
+6. Run `roborepo harness refresh`, `roborepo harness list`, `roborepo config apply`, and
+   `roborepo doctor` again; record the difference.
+
+This is only an observation sequence. It does not expand harness presence signals or implement a
+new provider behavior.
+
+### 6. Clone for development later
+
+Clone the repository only after the packaged baseline works. Do not run the checkout installer just
+to materialize harness config; doing that can replace or shadow the packaged global command with a
+checkout symlink.
+
+```sh
+git clone <repo-url>
+cd roborepo
+./bin/roborepo version
+```
+
+Use:
+
+- `roborepo` for the globally installed package snapshot;
+- `./bin/roborepo` for development code from the checkout.
+
+Both entry points may write the same live `~/.roborepo` and harness config. Check which code path
+ran with `roborepo version` or `./bin/roborepo version` before comparing behavior.

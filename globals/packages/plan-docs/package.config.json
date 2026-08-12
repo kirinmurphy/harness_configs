@@ -11,11 +11,11 @@
   "urls": [
     {
       "label": "Guide",
-      "url": "https://github.com/kirinmurphy/harness_configs/blob/main/docs/guides/plan/lifecycle/plan-docs.md"
+      "url": "https://github.com/kirinmurphy/harness_configs/blob/main/docs/user/guides/plan/lifecycle/plan-docs.md"
     },
     {
       "label": "Reference",
-      "url": "https://github.com/kirinmurphy/harness_configs/blob/main/docs/reference/services/plans-portal.md"
+      "url": "https://github.com/kirinmurphy/harness_configs/blob/main/docs/user/reference/plans-portal.md"
     }
   ],
   "resources": [

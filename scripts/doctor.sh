@@ -71,15 +71,29 @@ check_json() {
 check_toml() {
   local path="${repo_root}/$1"
   if command -v python3 >/dev/null 2>&1; then
-    python3 - "${path}" <<'PY' >/dev/null && ok "$1 parses" || fail "$1 invalid TOML"
+    local status
+    set +e
+    python3 - "${path}" <<'PY' >/dev/null
 import sys
 try:
     import tomllib
 except ModuleNotFoundError:
-    import tomli as tomllib
+    try:
+        import tomli as tomllib
+    except ModuleNotFoundError:
+        sys.exit(42)
 with open(sys.argv[1], "rb") as f:
     tomllib.load(f)
 PY
+    status=$?
+    set -e
+    if [[ "${status}" -eq 0 ]]; then
+      ok "$1 parses"
+    elif [[ "${status}" -eq 42 ]]; then
+      ok "python3 TOML parser unavailable; skipped $1 parse"
+    else
+      fail "$1 invalid TOML"
+    fi
   else
     ok "python3 unavailable; skipped $1 parse"
   fi
@@ -462,7 +476,7 @@ else
   "${repo_root}/scripts/build/link-skills.sh" --check || failed=1
 fi
 
-# skill audit --check catches a stale docs/reference/internal/skill-invocation-audit.md, which is
+# skill audit --check catches a stale docs/internal/skill-invocation-audit.md, which is
 # generated from the package manifests and goes out of date whenever a skill resource is added or
 # removed. Development-only: the audit is regenerated from repository source, and a packaged install
 # ships a subset of globals/packages/, so running it against an installed tree reports a staleness

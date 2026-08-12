@@ -2,7 +2,7 @@
 
 This repo owns your agent harness config (Claude Code, Codex) and exposes it at the paths agents already read. Setup installs the core once, then starts the onboarding wizard so you can choose which behaviors you want on that machine.
 
-For install workflow tradeoffs, see [install-workflows.md](install-workflows.md). For system details, see [../reference/services/architecture.md](../reference/services/architecture.md).
+For install workflow tradeoffs, see [install-workflows.md](install-workflows.md). For system details, see [../reference/architecture.md](../reference/architecture.md).
 
 ---
 
@@ -38,7 +38,7 @@ The installer has one materialization model: copy owned files, render generated 
 user-authored root config unless the selected collision policy says otherwise. See
 [install-workflows.md](install-workflows.md) for the step-by-step flow and collision behavior.
 
-Root config export merges the repo baseline with the active local file when a root-config row collides, preserving the local content and cleaning up redundant backup originals after a no-op resolution. The installer does not auto-merge user config for other managed paths, or silently replace non-root conflicts. If another harness file or global command target already exists and is not managed by this repo, install stops before changing files and prints a merge prompt after the blocking action. See [Config Collision Handling](../reference/internal/config-collision-handling.md) for exact behavior.
+Root config export merges the repo baseline with the active local file when a root-config row collides, preserving the local content and cleaning up redundant backup originals after a no-op resolution. The installer does not auto-merge user config for other managed paths, or silently replace non-root conflicts. If another harness file or global command target already exists and is not managed by this repo, install stops before changing files and prints a merge prompt after the blocking action. See [Config Collision Handling](../reference/config-collision-handling.md) for exact behavior.
 
 **The script is safe to re-run** — owned copies and rendered rules are refreshed, and local Claude/Codex settings are merged with the repo baseline instead of replaced. If a past update left recoverable local settings in a backup, `roborepo update` or `roborepo doctor --installed` will point you at `roborepo repair local-config --dry-run`.
 
@@ -62,7 +62,7 @@ If onboarding has not been completed yet, `roborepo` runs that workflow before m
 ./scripts/test/test-install-collisions.sh
 ```
 
-This runs against temporary `HOME` directories only. See [Config Collision Handling](../reference/internal/config-collision-handling.md#validation) for what it covers.
+This runs against temporary `HOME` directories only. See [Config Collision Handling](../reference/config-collision-handling.md#validation) for what it covers.
 
 ---
 
@@ -102,7 +102,7 @@ Everything below is driven by one command, **`roborepo`** — the single front d
 indexing, skills, and maintenance. It is installed and added to your `PATH` automatically by the
 installer (no manual PATH step on macOS/Linux); open a new shell after the first install so it
 resolves. Run `roborepo` with no arguments for an interactive menu, or call a subcommand directly
-as shown below. Full reference: [roborepo CLI](../reference/services/roborepo.md).
+as shown below. Full reference: [roborepo CLI](../reference/roborepo.md).
 
 ### Browse and manage plan docs
 

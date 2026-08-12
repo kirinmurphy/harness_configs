@@ -194,7 +194,7 @@ accurate `package.config.json` automatically renders a complete portal card.
 | `roborepo package reconcile` | Re-applies every currently-enabled package (full reconciliation entry point — see Apply behavior). |
 | `roborepo package adopt-live [--dry-run]` | Detects externally-installed (unmanaged) package behavior and marks it enabled in the registry without re-installing it. |
 
-Add these rows to `docs/reference/services/roborepo-cli.md` and to
+Add these rows to `docs/user/reference/roborepo-cli.md` and to
 `local/skills/roborepo-development/SKILL.md`'s own CLI list whenever this table changes.
 
 ## Apply behavior (already automatic — do not reintroduce a manual step)

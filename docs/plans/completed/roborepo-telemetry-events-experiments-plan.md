@@ -88,7 +88,7 @@ Shared domain functions live in `scripts/cli/telemetry-markers.mjs` (`createMark
 
 **`experimentStatus` is intentionally thin:** cohort sizing, sample counts, and a "ready" verdict need the Phase 5 metrics/cohort engine (none of that exists yet). Status today reports only what's derivable from the experiment record + marker timeline (lifecycle state, definition, elapsed time) and always returns `ready: false` with a `data_quality_warnings` entry noting cohort sizing isn't implemented. Do not backfill fake readiness logic before Phase 5's cohort model lands — replace this stub then.
 
-Added a manual-invocation `telemetry-marker` skill (`globals/packages/telemetry/skills/telemetry-marker/SKILL.md`) with a slash-command entrypoint, wired into `globals/packages/telemetry/package.config.json`. After editing package.config.json or the skill, regenerate `generated/packages/telemetry/*/commands/telemetry-marker.md` via `node scripts/build/render-slash-commands.mjs` and refresh `docs/reference/internal/skill-invocation-audit.md` via `roborepo skill audit` — both are checked by `test-roborepo.sh` and were the source of spurious full-suite failures during this phase (stale generated output, not actual regressions).
+Added a manual-invocation `telemetry-marker` skill (`globals/packages/telemetry/skills/telemetry-marker/SKILL.md`) with a slash-command entrypoint, wired into `globals/packages/telemetry/package.config.json`. After editing package.config.json or the skill, regenerate `generated/packages/telemetry/*/commands/telemetry-marker.md` via `node scripts/build/render-slash-commands.mjs` and refresh `docs/internal/skill-invocation-audit.md` via `roborepo skill audit` — both are checked by `test-roborepo.sh` and were the source of spurious full-suite failures during this phase (stale generated output, not actual regressions).
 
 Tests: `scripts/test/telemetry-marker-cli-check.mjs` (new, wired as `test:telemetry-marker-cli` + a `test-roborepo.sh` assertion) drives the real CLI process end-to-end (mark creation, validation errors, full experiment start/status/end/re-end-rejected lifecycle, export completeness) rather than only unit-testing the domain functions — this is what caught the config_snapshot_id bug above.
 
@@ -212,13 +212,13 @@ Tests: no new pure-module test file this phase (the additions are either DOM-ren
 
 Recorded 2026-07-22, at plan completion.
 
-**Documentation**: added `docs/reference/services/telemetry.md`, a single consolidated reference doc
+**Documentation**: added `docs/user/reference/telemetry.md`, a single consolidated reference doc
 (matching this repo's existing per-service-doc convention — see `localhoster.md` covering settings/
 API/security/limits in one file rather than split guides) covering capture, markers, experiments,
 configuration snapshots, the cohort/metrics/comparison model, package telemetry policies, the CLI
 report, the portal (including every new Phase 6/7 UI piece), the full API surface (read and mutating
 routes), privacy/retention, and a schema-version table. Added to `package.json`'s `files` array so it
-ships with the package. Updated `docs/reference/services/portal.md`'s route inventory line for
+ships with the package. Updated `docs/user/reference/portal.md`'s route inventory line for
 `portal-routes-telemetry.mjs` to list the six new marker/experiment/analysis endpoints (it previously
 only listed `/api/data`, `/api/session`, `/api/insights-llm` from the Phase 0-era wiring) and pointed
 it at the new telemetry.md for the domain detail, keeping portal.md itself focused on the shared
@@ -367,7 +367,7 @@ pattern) instead of one comma-packed sentence, and the data-quality caveats coll
 `<details class="quality-issues">` bullet list instead of a semicolon-joined paragraph.
 
 **Mermaid diagrams in the "view docs" guide popup now render live**, closing a gap the Phase 6 notes
-didn't call out: `docs/guides/telemetry.md`'s mermaid fenced blocks previously rendered as escaped
+didn't call out: `docs/user/guides/telemetry.md`'s mermaid fenced blocks previously rendered as escaped
 source text only (no CDN dependency, so no runtime renderer existed). Vendored `mermaid.min.js`
 (v11.16.0, MIT, `portal/shared/vendor/`) rather than loading from a CDN, keeping the portal
 loopback-only/offline-capable per its existing architecture constraint — `markdown-render.mjs` now

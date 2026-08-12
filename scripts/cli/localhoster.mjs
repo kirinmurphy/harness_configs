@@ -462,6 +462,14 @@ async function collectPersistedRepositories(runningRepositoryIds) {
 // and is still not done here.
 //
 // Only ever writes when there is something to write, so the steady-state poll stays silent.
+//
+// Cost is quadratic in repository count — every record is tested against every other — and it runs
+// on each ~10s poll to catch an event that happens maybe once a year. Measured before leaving it
+// that way: 0.075ms for the 10 records on this machine, extrapolating to ~7.5ms at 100 and ~190ms
+// at 500, against a scan that takes ~5s. Pure in-memory comparison, no I/O, so it stays well inside
+// the noise until a registry is far larger than any real one. If it ever does register, the fix is
+// to run it only when the record set has changed since the last sweep rather than to make the
+// comparison cleverer.
 function applyRenameAliases(registry) {
   let pending;
   try {

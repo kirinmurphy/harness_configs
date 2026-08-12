@@ -267,6 +267,9 @@ check:
 - `POST /api/localhoster/association`
 - `POST /api/localhoster/project`
 - `POST /api/localhoster/alias`
+- `POST /api/localhoster/repository-visibility` — hides or restores a whole repository. Unlike the
+  routes above it writes the repository registry, not Localhoster's settings, so it carries no
+  settings revision: visibility is one boolean per record with no cross-field invariant to protect.
 
 Revision conflicts return `409` with the current snapshot.
 
@@ -276,7 +279,9 @@ The portal uses these same mutation routes for curation:
   preference, health path/status policy, and match hints.
 - The action menu can favorite or hide an app without deleting saved links.
 - The settings dialog lists hidden items, manual associations, and aliases so local decisions can
-  be restored or removed.
+  be restored or removed. It also lists hidden *repositories* separately: those are whole
+  repositories the 30-day ageing sweep retired from the list, which live in the repository registry
+  rather than in Localhoster's settings, and each row restores one.
 - Removing an association deletes only the association entry. Saved project/app settings and quick
   links remain in settings.
 - Alias creation requires an explicit confirmation checkbox and uses the cycle-safe server-side
@@ -349,6 +354,13 @@ The current V2 foundation stores and resolves confirmed aliases and exposes a ma
 confirmation workflow in the portal. It does not yet auto-suggest path-to-Git alias candidates.
 Future final-phase work will surface those prompts when discovery evidence says a `path:<realpath>`
 project and a Git remote identity are likely the same project.
+
+One alias case *is* now applied automatically: a repository whose Git remote was renamed. Two
+records sharing a `rootId` is direct evidence the same directory was seen under both remotes (a
+`rootId` is a hash of an absolute path), and the most-recently-seen root separates a rename from a
+deleted-and-recloned directory. That case is aliased on sight rather than prompted, because an alias
+leaves both records intact and is undone by removing one entry. Merging records — which would
+rewrite checkout ownership — is still never done automatically.
 
 See [Docker and process metrics](#docker-and-process-metrics) for what Docker/Compose and process
 collection cover today, including the host-port merge limitation on Docker Desktop for macOS.

@@ -157,42 +157,16 @@
       <button class="globals-default" type="button" data-slot="button"></button>
     </template>
     <!-- Skill category sections + shared item/badge primitives -->
-    <template id="tpl-section-token-optimization">
+    <!-- One generic package section. Heading, description, and footnote all come from
+         manifests/inventory/package-categories.json, so a new category renders with no edit
+         here. Previously this was four near-identical templates keyed by category label, and a
+         category without a template was silently dropped from the page. -->
+    <template id="tpl-section-packages">
       <section class="panel">
-        <div class="panel-head"><h2>Token Optimization</h2></div>
+        <div class="panel-head"><h2 data-slot="heading"></h2></div>
+        <p class="panel-desc" data-slot="description" hidden></p>
         <div data-slot="items"></div>
-      </section>
-    </template>
-    <template id="tpl-section-commands">
-      <section class="panel">
-        <div class="panel-head"><h2>Skills - Workflows</h2></div>
-        <p class="panel-desc">
-          Named slash-command workflows you start intentionally.
-        </p>
-        <div data-slot="items"></div>
-      </section>
-    </template>
-    <template id="tpl-section-code-conventions">
-      <section class="panel">
-        <div class="panel-head"><h2>Skills - Code Conventions</h2></div>
-        <p class="panel-desc">
-          Skills auto-loaded when relevant — shape output without an explicit
-          command.
-        </p>
-        <div data-slot="items"></div>
-        <p class="panel-footnote">
-          * roborepo-support — help skill for this repo, always loaded.
-        </p>
-      </section>
-    </template>
-    <template id="tpl-section-chat-time-output">
-      <section class="panel">
-        <div class="panel-head"><h2>Chat-Time Output</h2></div>
-        <p class="panel-desc">
-          Inline chat notes the agent adds while responding — no files written,
-          no workflow started.
-        </p>
-        <div data-slot="items"></div>
+        <p class="panel-footnote" data-slot="footnote" hidden></p>
       </section>
     </template>
     <template id="tpl-permissions-section">

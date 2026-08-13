@@ -244,6 +244,10 @@ export function buildBehaviorView(snap) {
     .map((section) => ({
       category: section.label,
       categoryId: section.id,
+      // Section prose lives in the category manifest, not in each consumer's markup, so adding a
+      // category needs no template edit in the portal or the CLI printer.
+      description: section.description,
+      footnote: section.footnote,
       items: section.items.sort((a, b) => a.order - b.order || a.label.localeCompare(b.label)),
       contextCost: sectionContextCost(section.items),
     }));

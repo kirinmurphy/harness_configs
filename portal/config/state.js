@@ -9,13 +9,6 @@ export const TOGGLE_ENDPOINT = {
   skill: "/api/config/skills",
 };
 
-export const SECTION_TEMPLATE_ID = {
-  "Token Optimization": "tpl-section-token-optimization",
-  Commands: "tpl-section-commands",
-  "Code Conventions": "tpl-section-code-conventions",
-  "Chat-Time Output": "tpl-section-chat-time-output",
-};
-
 // Display order, loosest to strictest. Order-independent everywhere it is used as a membership
 // check; only affects how bucket options are presented.
 export const BUCKETS = ["allow", "ask", "deny"];

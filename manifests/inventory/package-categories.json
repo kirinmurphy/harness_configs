@@ -9,26 +9,32 @@
     {
       "id": "monitoring",
       "label": "Monitoring",
+      "description": "Observe what agents actually do — logs and usage capture. Never changes behavior.",
       "order": 15
     },
     {
       "id": "skills-dev-lifecycle",
       "label": "Skills - Development Life Cycle",
+      "description": "Named slash-command workflows you start intentionally, in the order you use them.",
       "order": 20
     },
     {
       "id": "skills-writing",
       "label": "Skills - Writing Assistants",
+      "description": "Long-form writing workflows — case studies and structured documentation.",
       "order": 25
     },
     {
       "id": "code-conventions",
       "label": "Code Conventions",
+      "description": "Skills auto-loaded when relevant — shape output without an explicit command.",
+      "footnote": "* roborepo-support — help skill for this repo, always loaded.",
       "order": 30
     },
     {
       "id": "chat-time-output",
       "label": "Chat-Time Output",
+      "description": "Inline chat notes the agent adds while responding — no files written, no workflow started.",
       "order": 40
     },
     {

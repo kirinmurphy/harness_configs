@@ -4,7 +4,6 @@
 
 import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
 import {
-  SECTION_TEMPLATE_ID,
   resolveDriftChip,
   harnessChipSpec,
   rulesChipSpec,
@@ -225,11 +224,15 @@ function configItemElement(item, actions) {
   return node;
 }
 
+// Every package category renders through one template, driven by the section data the server
+// already sends. No per-category branch: a category added to the manifest appears here without a
+// portal edit, and none can be silently dropped for lacking a template.
 export function standardSection(section, { onInspectClick, onToggle, contextCost }) {
-  const templateId = SECTION_TEMPLATE_ID[section.category];
-  if (!templateId) return null;
-  const panel = tpl(templateId);
+  const panel = tpl("tpl-section-packages");
   panel.classList.toggle("wide", !!section.wide);
+  toggleSlot(panel, "heading", true, section.category);
+  toggleSlot(panel, "description", !!section.description, section.description);
+  toggleSlot(panel, "footnote", !!section.footnote, section.footnote);
 
   panel.querySelector('[data-slot="items"]').replaceChildren(
     ...section.items.map((item) => configItemElement(item, { onInspect: onInspectClick, onToggle, contextCost })),

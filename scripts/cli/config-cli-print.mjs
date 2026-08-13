@@ -36,10 +36,13 @@ export function printConfigStatus(view) {
       ? `\n${section.category}  (${section.description})`
       : `\n${section.category}`;
     console.log(header);
+    // Harness-level caveats for this section, shown once rather than repeated on every affected
+    // item. Text comes from the provider manifest, so no harness is named in platform code.
+    for (const notice of section.notices || []) console.log(`  note: ${notice.note}`);
     for (const item of section.items) {
       if (item.kind === "behavior") {
         const override = item.overridden ? `  (custom, default: ${item.defaultBucket})` : "";
-        const codexNote = item.codexOnly ? "  [Codex only]" : item.noCodexAsk ? "  [no per-command ask on Codex]" : "";
+        const codexNote = item.codexOnly ? "  [Codex only]" : "";
         console.log(`  ${item.bucket.padEnd(6)} ${item.label}${override}${codexNote}`);
         if (item.description) console.log(`         ${item.description}`);
       } else if (item.kind === "arbitrary-list") {

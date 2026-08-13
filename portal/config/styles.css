@@ -274,6 +274,11 @@ main {
   flex-wrap: wrap;
   gap: 8px;
 }
+/* Push the bucket control and the badges that follow it to the right edge, so every row's
+   allow/ask/deny lines up in one column instead of floating after a variable-width label. */
+.behavior-head > [data-slot="bucket-control"] {
+  margin-left: auto;
+}
 .behavior-label {
   color: var(--ink);
   font-weight: 600;

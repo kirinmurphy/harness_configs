@@ -19,6 +19,28 @@ import { buildPackageLiveState } from "./package-probes.mjs";
 import { inspectSkill, skillInventorySource } from "./skill-inventory.mjs";
 import { readLiveRulesFile } from "./config-live-rules.mjs";
 import { buildRootConfigView } from "./root-config-view.mjs";
+
+// Harnesses whose permission model has no per-item "ask" tier, and which are actually present on
+// this machine. The fact and its wording both come from the provider manifest
+// (extensions.roborepo.perCommandAsk / perCommandAskNote) — platform code must not hardcode which
+// harness has the limitation, so a new provider declares it without editing this file. Returned as
+// one section-level notice rather than a per-item flag: the caveat is a property of the harness,
+// not of any individual permission.
+function askTierNotices() {
+  const notices = [];
+  for (const provider of listHarnessProviders()) {
+    const ext = provider.manifest.extensions?.roborepo ?? {};
+    if (ext.perCommandAsk !== false) continue;
+    const home = harnessHome[provider.manifest.id];
+    if (!home || !fs.existsSync(home)) continue;
+    notices.push({
+      harness: provider.manifest.id,
+      displayName: provider.manifest.displayName,
+      note: ext.perCommandAskNote || `${provider.manifest.displayName} has no per-command ask tier.`,
+    });
+  }
+  return notices;
+}
 import { configRootInspect, printConfigStatus } from "./config-cli-print.mjs";
 import {
   packageSkillIds,
@@ -233,6 +255,9 @@ export function buildBehaviorView(snap) {
       kind: "permissions",
       // Permission entries are config syntax, not prompt text — never given a token number.
       contextCost: { label: "not-prompt-context" },
+      // Section-level caveats about harnesses present on this machine (e.g. one with no
+      // per-command ask tier). Empty when every installed harness supports the full model.
+      notices: askTierNotices(),
       // Flat model: every behavior (named — pinned, shown first — or arbitrary, user-added) is
       // independently deny/ask/allow. No separate profile bundle or project scope; global only.
       // `perms` (snap.permissions, from config-mutate.mjs effectivePermissions()) already merges
@@ -250,10 +275,6 @@ export function buildBehaviorView(snap) {
           // "go-online" has no Claude equivalent (Claude doesn't sandbox network); surfaced so the
           // UI can note it rather than silently implying parity across harnesses.
           codexOnly: !!b.codexOnly,
-          // Codex has no per-command ask tier — an ask-bucket behavior/command falls through to
-          // Codex's approval_policy fallback instead of a real per-item prompt. Flagged here so
-          // the UI can show the caveat next to any behavior currently set to ask.
-          noCodexAsk: b.bucket === "ask",
         })),
         {
           id: "arbitrary-commands",

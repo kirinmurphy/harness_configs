@@ -126,7 +126,6 @@ export function behaviorRow(item, { onApplyBucket }) {
   fill(wrap, { label: item.label });
   toggleSlot(wrap, "codex-only", item.codexOnly);
   toggleSlot(wrap, "description", item.description, item.description);
-  toggleSlot(wrap, "no-codex-ask", item.noCodexAsk && !item.codexOnly);
   toggleSlot(wrap, "default-bucket", item.overridden, "default: " + item.defaultBucket);
   toggleSlot(wrap, "override-badge", item.overridden);
   const reset = toggleSlot(wrap, "reset", item.overridden);
@@ -159,7 +158,6 @@ function arbitraryItemRow(c, { onApplyBucket }) {
   const line = tpl("tpl-arbitrary-item");
   const err = line.querySelector('[data-slot="err"]');
   fill(line, { label: c.label });
-  toggleSlot(line, "no-codex-ask", c.noCodexAsk);
 
   line.querySelector('[data-slot="bucket-control"]').replaceWith(bucketControl({
     current: c.bucket,

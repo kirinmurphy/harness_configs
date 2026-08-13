@@ -6,7 +6,9 @@
 // between behaviorRow and arbitraryListRow in templates.js.
 import { portalTpl as tpl } from "/portal/shared/api.js";
 
-const BUCKETS = ["deny", "ask", "allow"];
+// Display order, loosest to strictest. Validation order lives in config-mutate.mjs and is
+// order-independent; changing this array only changes how the segmented control reads.
+const BUCKETS = ["allow", "ask", "deny"];
 
 class BucketControlElement extends HTMLElement {
   connectedCallback() {

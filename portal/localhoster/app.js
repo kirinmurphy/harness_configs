@@ -414,12 +414,13 @@ function cardActions() {
   };
 }
 
-// Repository-scoped. Settings are keyed per-app and per-compose-project, so a repository action
-// fans out to every member it contains rather than writing a repository-level record that the
-// schema has no place for.
+// Repository-scoped. Actions whose subject is the repository itself (pin, hide, associate) write to
+// the repository registry against its id. Actions whose subject is a running app still fan out to
+// members, because that is where per-app settings are keyed — the distinction is whether the state
+// has to survive the process exiting.
 function repositoryActions() {
   return {
-    onToggleFavorite: toggleRepositoryFavorite,
+    onTogglePinned: toggleRepositoryPinned,
     onHide: hideRepository,
     onToggleMenu: toggleActionMenu,
     onCloseMenus: closeActionMenus,
@@ -429,36 +430,20 @@ function repositoryActions() {
   };
 }
 
-async function toggleRepositoryFavorite(repository) {
-  // Favorited when anything under it is; the toggle therefore turns everything off if any member is
-  // currently on, and everything on otherwise.
-  const anyFavorite = repository.members.some((member) => member.instance?.app?.favorite === true)
-    || repository.composeGroups.some((group) => group.favorite === true);
+// One write to the repository registry, against the repository's own id.
+//
+// This replaces a fan-out that wrote a `favorite` flag to every member and compose group. That
+// approach could not express the state it was asked to store: an idle repository has no members, so
+// the loops ran zero times and the toggle silently did nothing — the user clicked and the page did
+// not change. Pinning belongs to the repository, which exists whether or not anything is running in
+// it, so it is stored there.
+async function toggleRepositoryPinned(repository) {
   try {
-    // Each write returns the next revision, so they are threaded rather than issued in parallel —
-    // a stale revision is rejected by the API as a conflicting edit.
-    let latest = null;
-    let revision = lastSnapshot.settingsRevision;
-    for (const group of repository.composeGroups) {
-      const result = await api.updateComposeProject({
-        revision,
-        composeProject: group.name,
-        favorite: !anyFavorite,
-      });
-      latest = result.localhoster || result;
-      revision = latest.settingsRevision;
-    }
-    for (const member of repository.members) {
-      const result = await api.updateProject({
-        revision,
-        projectIdentity: member.projectIdentity,
-        appId: member.instance?.app?.id || "web",
-        appFavorite: !anyFavorite,
-      });
-      latest = result.localhoster || result;
-      revision = latest.settingsRevision;
-    }
-    if (latest) applySnapshot(latest);
+    const result = await api.setRepositoryPinned({
+      repositoryId: repository.repositoryId,
+      pinned: !repository.pinned,
+    });
+    applySnapshot(result.localhoster || result);
   } catch (err) {
     showError(err.message);
   }
@@ -539,6 +524,34 @@ function openAddLinkDialog(project, instance) {
   openLinkDialog(project, instance);
 }
 
+// The saved links for one app, in the {id, label, path} shape the routes panel renders.
+function currentLinksFor(project, instance) {
+  const appId = instance.app?.id || "web";
+  const projectIdentity = project.identity || instance.project?.identity;
+  return state.currentLinks(lastSnapshot, projectIdentity, appId);
+}
+
+// Removes one saved link by id, writing the remaining set back — the links API replaces the whole
+// array rather than patching one entry, so "delete" is "save everything except this".
+async function deleteLink(project, instance, linkId) {
+  const appId = instance.app?.id || "web";
+  const projectIdentity = project.identity || instance.project?.identity;
+  const remaining = state
+    .currentLinks(lastSnapshot, projectIdentity, appId)
+    .filter((link) => link.id !== linkId);
+  try {
+    const result = await api.updateLinks({
+      revision: lastSnapshot.settingsRevision,
+      projectIdentity,
+      appId,
+      links: remaining,
+    });
+    applySnapshot(result.localhoster || result);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
 // Mounts a portal-menu-button (portal/shared/menu-button.js) into the card's reserved
 // routes-trigger slot (see index.html). Panel content is fetched live, so it is built once on
 // first open rather than for every card on every render — same lazy-fetch discipline
@@ -549,15 +562,28 @@ function mountRoutesTrigger(slotNode, project, instance) {
   // "Routes" alone read as framework-internal plumbing rather than as pages you can open.
   button.label = "Pages/Routes";
   let loaded = false;
+  // Rebuilt when the app's saved links change, not on every open: the discovered half costs a fetch
+  // and does not change between polls, but the user-added half is now editable from inside this very
+  // panel — so an add, edit, or delete has to invalidate the cached content or the list would still
+  // show what it held when it was first opened.
+  let renderedLinkState = null;
+  const linkStateKey = () => JSON.stringify(currentLinksFor(project, instance));
   const originalToggle = button.toggle.bind(button);
   button.toggle = async () => {
-    if (!loaded) {
+    if (!loaded || renderedLinkState !== linkStateKey()) {
       loaded = true;
+      renderedLinkState = linkStateKey();
       button.panelContent = await buildRoutesDropdown(project, instance, {
         onStale: () => load({ force: true }),
         captureLink: captureRouteLink,
         isSaved: isRouteSaved,
         onOpenApiRoute: openApiRouteDialog,
+        // User-added links render in the Pages section as their own source, alongside discovered
+        // ones — this is where adding and editing them now lives, rather than on the three-dot menu.
+        userLinks: currentLinksFor(project, instance),
+        onAddLink: openAddLinkDialog,
+        onEditLink: openLinkDialog,
+        onDeleteLink: deleteLink,
       });
     }
     originalToggle();
@@ -777,15 +803,26 @@ function toggleActionMenu(card) {
   closeActionMenus();
   menu.hidden = !willOpen;
   trigger.setAttribute("aria-expanded", willOpen ? "true" : "false");
+  // Lifts this card above the ones after it for as long as the menu is open. Cards are opaque
+  // siblings painted in DOM order, so without this the next card covers the panel however high its
+  // own z-index is — the panel cannot escape its card's stacking context. Applied to the nearest
+  // card so a menu on a nested member card raises the member, and the outer repository card is
+  // raised too when the menu belongs to it.
+  if (willOpen) menu.closest(".instance-card")?.classList.add("has-open-menu");
 }
 
 function closeActionMenus() {
   for (const menu of refs.content.querySelectorAll("[data-menu]")) {
     menu.hidden = true;
-    menu
-      .closest(".instance-card")
-      ?.querySelector("[data-action=menu]")
-      ?.setAttribute("aria-expanded", "false");
+    const card = menu.closest(".instance-card");
+    card?.querySelector("[data-action=menu]")?.setAttribute("aria-expanded", "false");
+    card?.classList.remove("has-open-menu");
+  }
+  // Cleared everywhere rather than only on cards that still hold a [data-menu]: a card can be
+  // rebuilt by a poll while its menu is open, and a stale raised card would keep covering its
+  // neighbours with nothing visible to explain why.
+  for (const raised of refs.content.querySelectorAll(".has-open-menu")) {
+    raised.classList.remove("has-open-menu");
   }
 }
 

@@ -184,8 +184,7 @@ function normalizeRequestBody(requestBody, doc) {
     || null;
   if (!mediaType) return null;
   const schema = resolveRef(body.content[mediaType]?.schema, doc) || {};
-  const properties = schema.properties && typeof schema.properties === "object" ? schema.properties : {};
-  const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+  const { properties, required } = collectObjectShape(schema, doc);
   const fields = Object.entries(properties).map(([name, rawProperty]) => {
     const property = resolveRef(rawProperty, doc) || {};
     return {
@@ -196,6 +195,54 @@ function normalizeRequestBody(requestBody, doc) {
     };
   });
   return { mediaType, required: body.required === true, fields };
+}
+
+// The object shape a schema describes, looking through the wrappers real specs actually use.
+// Reading `schema.properties` alone was correct only for a bare inline object: every other shape
+// below yielded zero fields, and the panel reported "No parameters documented" for a body that was
+// fully documented — the failure mode that makes a contract panel worse than no panel, because it
+// states an absence rather than admitting it did not look.
+//
+//   allOf  - merged. This is composition: "these fields AND those", so the union is the real shape.
+//            Generators (FastAPI, NestJS, zod-to-openapi) emit it for any schema built on a base.
+//   oneOf  - first branch only, and anyOf likewise. A union has no single field list, and merging
+//   anyOf    alternatives would invent an object no valid request matches. The first branch is the
+//            one the curl builder would send, so it is the one worth describing.
+//   array  - described by its items. A bulk POST body is one shape repeated; naming the element's
+//            fields is the useful answer, and the type column still reports the wrapper.
+//
+// Depth-capped for the same reason resolveRef is: a self-referential schema is legal and would
+// otherwise recurse forever.
+function collectObjectShape(node, doc, depth = 0) {
+  const empty = { properties: {}, required: new Set() };
+  const schema = resolveRef(node, doc);
+  if (!schema || typeof schema !== "object" || depth > 8) return empty;
+
+  if (schema.properties && typeof schema.properties === "object") {
+    return {
+      properties: schema.properties,
+      required: new Set(Array.isArray(schema.required) ? schema.required : []),
+    };
+  }
+  if (Array.isArray(schema.allOf)) {
+    const merged = { properties: {}, required: new Set() };
+    for (const branch of schema.allOf) {
+      const part = collectObjectShape(branch, doc, depth + 1);
+      Object.assign(merged.properties, part.properties);
+      for (const name of part.required) merged.required.add(name);
+    }
+    return merged;
+  }
+  for (const keyword of ["oneOf", "anyOf"]) {
+    if (Array.isArray(schema[keyword]) && schema[keyword].length) {
+      return collectObjectShape(schema[keyword][0], doc, depth + 1);
+    }
+  }
+  if (schema.items) return collectObjectShape(schema.items, doc, depth + 1);
+  // A free-form object (`type: object` with no properties) or a map-shaped one
+  // (`additionalProperties`) genuinely has no named fields to list. Returning empty here is honest:
+  // the panel's "No parameters documented" is then a true statement rather than a parse failure.
+  return empty;
 }
 
 // Keyed by path AND method, not path alone. An OpenAPI document routinely defines several

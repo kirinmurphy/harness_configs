@@ -235,6 +235,21 @@ export function hideRepository(registry, id, { hidden, now = new Date().toISOStr
   return true;
 }
 
+// Pin or unpin a repository. Idempotent — returns false when nothing changed.
+//
+// Deliberately a repository-level fact rather than a per-member one: pinning survives the process
+// exiting, so an idle repository keeps its position in the list. The old per-app/per-compose
+// `favorite` could not do this — an idle repository has no members to hold the flag, so the toggle
+// wrote to an empty list and silently did nothing.
+export function pinRepository(registry, id, { pinned, now = new Date().toISOString() }) {
+  const record = requireRecord(registry, id, "pin");
+  const target = pinned === true;
+  if ((record.pinned === true) === target) return false;
+  record.pinned = target;
+  record.updatedAt = now;
+  return true;
+}
+
 // Find the repository a checkout already belongs to, when a scan resolves that same checkout to a
 // DIFFERENT canonical id than last time.
 //

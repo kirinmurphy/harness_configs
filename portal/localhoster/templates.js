@@ -75,7 +75,12 @@ const OWNERSHIP_EVIDENCE = {
 // operation, not N unrelated ones. Each container is its own row (not each published port) since a
 // single container publishing several host ports (e.g. one Traefik proxy on 80/443/8080) is one
 // operational unit, not three. See docs/plans/active/localhoster-compose-project-grouping.md.
-export function composeProjectCard(composeProject, actions, { isMember = false, repositoryName = null } = {}) {
+// `hideProviderLink` covers the shared-services case, which is neither of the two the isMember flag
+// distinguishes: the card is standalone (no owning checkout to inherit git context from, so it keeps
+// its own badge) but it is NOT top-level, so the repository header above it already carries the one
+// provider link this repository gets. Without this it rendered a second, identical GitHub link a few
+// rows under the first.
+export function composeProjectCard(composeProject, actions, { isMember = false, repositoryName = null, hideProviderLink = false } = {}) {
   const allInstances = composeProject.containers.flatMap((c) => c.instances);
   const portCount = allInstances.length;
   // One CPU reading per container (not per port — a container's ports would otherwise multiply
@@ -138,7 +143,7 @@ export function composeProjectCard(composeProject, actions, { isMember = false, 
   // Git context belongs to the repository, which already shows it once above; a member repeating it
   // is the same branch and dirty state a few lines apart.
   if (!isMember) {
-    applyGitBadge(node, tooltip, composeProject.git, composeProject.providerUrl);
+    applyGitBadge(node, tooltip, composeProject.git, hideProviderLink ? null : composeProject.providerUrl, { hideProviderLink });
     wireCopyBranchButton(node, composeProject.git);
   }
   applyResourceConcernBadge(node, aggregateCpu);
@@ -307,7 +312,11 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
   // match what the expanded card actually lists.
   // Shared stacks count here, at repository level: they are genuinely members of this repository,
   // just not of any one checkout of it. The count still matches what the expanded card lists,
-  // because the Shared Services region below lists them.
+  // because the Shared services region below lists them.
+  //
+  // repository.composeGroups is the flat cross-root array and ALREADY contains the shared stacks
+  // (snapshot.mjs pushes every group into it before routing a null-rootId one to sharedComposeGroups
+  // as well), so they must not be added again here.
   const memberCount = repository.members.length + repository.composeGroups.length;
   const lifecycleState = repository.lifecycle?.state || "active";
   const isRunning = lifecycleState === "active";
@@ -336,8 +345,14 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
     }
   }
   const tooltip = node.querySelector(".info-wrap > template").content;
+  // Shared stacks are marked as such rather than listed indistinguishably among the rest. The list
+  // is the one place every member of every checkout appears together, so an unqualified name here
+  // read as "a member of some worktree" — the exact reading the Shared services region exists to
+  // correct.
+  const sharedGroupNames = new Set((repository.sharedComposeGroups || []).map((group) => group.name));
   const memberNames = [
-    ...repository.composeGroups.map((group) => `compose ${group.name}`),
+    ...repository.composeGroups.map((group) =>
+      sharedGroupNames.has(group.name) ? `compose ${group.name} (shared)` : `compose ${group.name}`),
     ...repository.members.map((member) => member.name),
   ];
   // Both figures are totals across EVERY checkout (repository.members is the flat cross-root array;
@@ -378,8 +393,17 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
   // an app plus an admin panel and a dashboard surfaces all three.
   wireRepositoryActions(node, repository, repositoryActions);
 
+  // Resolved before the header entrypoint below, which reads it: the title row's URL is the main
+  // checkout's, so the roots split has to happen before the header is filled in.
+  const mainRoot = repository.roots.find((root) => !root.isWorktree);
+
+  // Main checkout only. The header names the repository, so the URL beside it has to be the one that
+  // IS the repository — its main checkout. A worktree's port is a fact about that worktree and
+  // already appears on its own row; promoting it here made two rows claim the same rank, and left a
+  // worktree-only repository advertising a feature branch as though it were the canonical address.
+  // A repository with no main checkout running therefore shows no URL at all, by design.
   const entrypointSlot = node.querySelector("[data-slot=entrypoint]");
-  const entrypoints = repository.members.filter((member) => member.entrypoint && member.instance?.origin);
+  const entrypoints = (mainRoot?.members || []).filter((member) => member.entrypoint && member.instance?.origin);
   if (entrypoints.length) {
     entrypointSlot.hidden = false;
     // The dash is a property of having a URL, not of the title, so it appears with the URL and a
@@ -413,7 +437,6 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
   }
 
   const rootsSlot = node.querySelector("[data-slot=roots]");
-  const mainRoot = repository.roots.find((root) => !root.isWorktree);
   const worktreeRoots = repository.roots.filter((root) => root.isWorktree);
   // The main section always renders, even with no rootId resolved at all (no member has ever
   // reported one) — canonical repository identity must never appear to depend on which root
@@ -468,7 +491,10 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
     heading.textContent = "Shared services";
     rootsSlot.append(heading);
     for (const group of sharedGroups) {
-      const card = composeProjectCard(group, composeActions, { repositoryName: repository.name });
+      const card = composeProjectCard(group, composeActions, {
+        repositoryName: repository.name,
+        hideProviderLink: true,
+      });
       card.classList.add("repository-shared-service");
       rootsSlot.append(card);
     }
@@ -516,7 +542,12 @@ function buildRootSection({ root, departed, repository, composeActions, instance
   // header uses one level up — opening this checkout's app never requires expanding its members.
   // Port-only display (":4322"): every listener here is loopback by construction, so the host is
   // implied and repeating it on every row would be noise the branch/port pair didn't need.
-  const rootEntrypoints = (root?.members || []).filter((member) => member.entrypoint && member.instance?.origin);
+  // Worktree rows only. The main checkout's entrypoint is the repository's own address and is shown
+  // once on the title row; repeating it here stated the same port twice on one card, a line apart.
+  // Worktree ports have no such home above, so they stay.
+  const rootEntrypoints = root?.isWorktree
+    ? (root.members || []).filter((member) => member.entrypoint && member.instance?.origin)
+    : [];
   const entrypointSlot = section.querySelector("[data-slot=root-entrypoint]");
   if (rootEntrypoints.length) {
     entrypointSlot.hidden = false;
@@ -530,8 +561,18 @@ function buildRootSection({ root, departed, repository, composeActions, instance
   // a missing checkout but describes it as though the directory were sitting there idle. The
   // distinction is the whole point of inspectCheckout returning three states instead of a boolean:
   // "absent" is a fact about the directory, "unreadable" is an admission that we could not look.
-  section.querySelector("[data-slot=root-meta]").textContent =
-    memberCount ? `${memberCount} member${memberCount === 1 ? "" : "s"}` : checkoutStateLabel(root);
+  // A checkout with nothing running is reported as "Inactive" rather than "no active members": the
+  // row keeps its git badge either way (the branch is a fact about the checkout, not about what
+  // happens to be listening), so what the meta has left to say is simply whether it is running.
+  // "N members" is a count worth expanding; "Inactive" is not, so the row also stops behaving like a
+  // disclosure — see below. `absent`/`unreadable` keep their own wording, which says something
+  // "Inactive" would flatten away: the directory is gone, or we could not read it.
+  const metaSlot = section.querySelector("[data-slot=root-meta]");
+  const isInactive = !memberCount && !departed.length && !root?.checkoutState;
+  metaSlot.textContent = memberCount
+    ? `${memberCount} member${memberCount === 1 ? "" : "s"}`
+    : (isInactive ? "Inactive" : checkoutStateLabel(root));
+  if (isInactive) metaSlot.classList.add("is-inactive");
   // Names them, where the row only counts them — same relationship the repository tooltip's
   // members-detail has to the card's own member count.
   if (rootTooltip) {
@@ -564,6 +605,16 @@ function buildRootSection({ root, departed, repository, composeActions, instance
     card.classList.add("is-offline");
     members.append(card);
   }
+  // An empty row has nothing behind the caret, so it stops presenting itself as expandable: the
+  // chevron goes and the summary refuses the toggle. A disclosure that opens onto nothing is the
+  // same lie as the disabled-but-clickable copy button above — it advertises content it does not
+  // have. Kept as a <details> rather than swapped for a <div> so reconcileSection in app.js still
+  // finds this root by dataset.rootId across rebuilds.
+  if (!section.querySelector("[data-slot=members]").children.length) {
+    section.classList.add("is-empty");
+    section.querySelector(".compose-project-chevron")?.remove();
+    section.querySelector("summary").addEventListener("click", (event) => event.preventDefault());
+  }
   return section;
 }
 
@@ -581,11 +632,18 @@ function wireRepositoryActions(node, repository, actions) {
     event.stopPropagation();
     actions.onToggleMenu(node);
   });
-  node.querySelector("[data-action=favorite]")?.addEventListener("click", (event) => {
-    event.preventDefault();
-    actions.onCloseMenus();
-    actions.onToggleFavorite(repository);
-  });
+  // The label states what the click will DO, not what the repository currently is — "Unpin" on a
+  // pinned repository. A menu item that named the current state would read as a status line and
+  // leave the action ambiguous.
+  const pin = node.querySelector("[data-action=pin]");
+  if (pin) {
+    pin.textContent = repository.pinned ? "Unpin" : "Pin";
+    pin.addEventListener("click", (event) => {
+      event.preventDefault();
+      actions.onCloseMenus();
+      actions.onTogglePinned(repository);
+    });
+  }
   node.querySelector("[data-action=hide]")?.addEventListener("click", (event) => {
     event.preventDefault();
     actions.onCloseMenus();
@@ -690,7 +748,7 @@ export function instanceCard(project, instance, actions) {
     origin.textContent = "origin unavailable";
     origin.removeAttribute("href");
   }
-  mountInstanceCopyMenu(node, instance);
+  mountInstanceCopyPid(node, instance);
   const warning = tooltip.querySelector("[data-slot=warning]");
   if (instance.bind.warning) {
     warning.hidden = false;
@@ -1164,20 +1222,29 @@ function mountCopyDropdown(section, root) {
 // Assembled from what this instance actually has — an inactive card with no origin still offers its
 // PID — and the whole control stays hidden if that leaves nothing, matching the correct-or-absent
 // discipline the badges follow.
-function mountInstanceCopyMenu(node, instance) {
-  const slot = node.querySelector("[data-slot=copy-menu]");
-  if (!slot) return;
-  const items = [];
-  if (instance.origin) {
-    items.push({ label: "Copy URL", value: instance.origin });
-    if (instance.bind?.port) items.push({ label: "Copy port", value: String(instance.bind.port) });
+// Copy PID as a menu entry rather than a dropdown on the row.
+//
+// The dropdown this replaces offered three values, two of which the row already gave you: the
+// origin is a link you click, and the port is the visible half of it. A caret guarding one genuinely
+// useful value is a click that asks a question with one answer — the same reasoning mountCopyDropdown
+// applies to the root rows. The PID keeps its place because it is the one value here you cannot
+// reach any other way.
+//
+// Absent, not disabled, when there is no PID: a container member reports none, and an entry that
+// copies an empty string reports success while writing nothing.
+function mountInstanceCopyPid(node, instance) {
+  const button = node.querySelector("[data-action=copy-pid]");
+  if (!button) return;
+  const pid = instance.process?.pid;
+  if (!pid) {
+    button.remove();
+    return;
   }
-  if (instance.process?.pid) items.push({ label: "Copy PID", value: String(instance.process.pid) });
-  if (!items.length) return;
-  const menu = document.createElement("portal-copy-menu");
-  menu.items = items;
-  slot.append(menu);
-  slot.hidden = false;
+  button.hidden = false;
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    portalCopyText(String(pid));
+  });
 }
 
 // Maps a container image to one of the tech glyphs in portal/shared/icon.js. Matched against the
@@ -1416,16 +1483,10 @@ function wireCardActions(node, project, instance, actions) {
     event.stopPropagation();
     actions.onToggleMenu(node);
   });
-  node.querySelector("[data-action=link]").addEventListener("click", () => {
-    actions.onCloseMenus();
-    actions.onAddLink(project, instance);
-  });
-  node.querySelector("[data-action=edit]").addEventListener("click", () => {
-    actions.onCloseMenus();
-    actions.onEditLinks(project, instance);
-  });
-  // No copy/open wiring: those menu entries were removed because the origin link in the same row
-  // already opens on click and the row carries its own copy affordance.
+  // No link wiring here any more: Add link / Edit links moved into the Pages & Routes panel, where
+  // user-added links sit alongside discovered ones as another source. No copy/open wiring either —
+  // those entries were removed because the origin link in the same row already opens on click and
+  // the row carries its own copy affordance.
   const history = node.querySelector("[data-action=history]");
   // Only an instance the current snapshot minted a key for has readable history.
   if (!instance.opaqueKey || !actions.onHistory) history.hidden = true;

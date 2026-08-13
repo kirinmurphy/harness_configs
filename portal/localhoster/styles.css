@@ -123,6 +123,14 @@ main {
   display: grid;
   gap: 6px;
 }
+/* Raised only while one of its menus is open, and applied to the CARD rather than the panel — see
+ * the .menu-panel note. Transient by design: leaving every card raised would make the sibling order
+ * meaningless again, and a permanent `position: relative` here would create a stacking context on
+ * every card for the benefit of the one that is open. Toggled in toggleActionMenu/closeActionMenus. */
+.instance-card.has-open-menu {
+  position: relative;
+  z-index: 20;
+}
 /* A repository card is a container for two full-bleed bands (the title row and the worktree list)
  * rather than a padded box: the worktree list needs to reach the card's edges so it reads as a
  * distinct surface, which it cannot do while the card's own padding insets it. Padding moves to the
@@ -307,6 +315,18 @@ main {
   font-size: var(--text-xs);
   margin-left: auto;
 }
+/* "Inactive" is a state, not a quantity — it recedes below the member counts it sits among rather
+ * than reading as one more figure. Opacity instead of a new colour token: --dim is already the
+ * faintest ink the palette defines, and both themes derive their own from it. */
+.repository-root-meta.is-inactive {
+  opacity: 0.72;
+  font-style: italic;
+}
+/* Nothing behind the caret, so the row drops the affordances of a disclosure it no longer performs
+ * (the chevron is removed and the toggle refused in buildRootSection). */
+.repository-root.is-empty > summary {
+  cursor: default;
+}
 .repository-root .compose-project-chevron {
   transition: transform 0.15s ease;
   color: var(--dim);
@@ -396,6 +416,11 @@ main {
   width: var(--icon-md);
   height: var(--icon-md);
 }
+/* z-index alone was not enough: cards are siblings with their own opaque background and no
+ * position, so they paint in DOM order and the NEXT card covered the previous card's open menu.
+ * A z-index only orders elements inside one stacking context, and the panel's context ended at its
+ * own card. The card holding an open menu is raised instead (see .instance-card.has-open-menu), so
+ * the whole card — and therefore its panel — sits above every card below it. */
 .menu-panel {
   position: absolute;
   z-index: 10;
@@ -861,9 +886,17 @@ dialog::backdrop {
 /* .repository-roots (not .repository-members) is now the drawer's actual last band — it can hold
  * several root sections, each with its own members list — so the bottom radius belongs on its last
  * child instead of on the last member of what may not be the last section. */
+/* Radius only — no overflow:hidden. Clipping here rounded the drawer's bottom corners but also cut
+ * off any action menu opened inside the last root section, which is absolutely positioned and has
+ * to escape its ancestors. Same trade the repository card itself already refuses (see its note):
+ * the band rounds its own corners, and its children round theirs, so nothing needs to clip. */
 .repository-roots > :last-child {
   border-radius: 0 0 6px 6px;
-  overflow: hidden;
+}
+/* The corner-rounding that overflow:hidden used to do for free. Only the last member of the last
+ * root section touches the drawer's bottom edge, so only it needs the radius. */
+.repository-roots > :last-child .repository-members > :last-child {
+  border-radius: 0 0 6px 6px;
 }
 /* Light theme's --panel is pure white, so mixing toward --ink can only darken it — the opposite of
  * the intent. There is no lighter surface available above white, so the drawer steps *down* to the
@@ -1143,34 +1176,88 @@ dialog::backdrop {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  min-width: 14rem;
+  /* Fits the widest source label ("User Added") on one line with its path beside it. At 14rem the
+     source column wrapped to two lines, which made every user row twice the height of its
+     neighbours and broke the list's alignment. */
+  min-width: 24rem;
   /* Wider than the page-only list used to need: an API row expands to a parameter table and a curl
      command, and wrapping those at 22rem made every command a ragged multi-line block. */
   max-width: 34rem;
 }
 /* Separates Pages (things you open) from API Routes (things you call). Only rendered when that
    section has entries, so a page-only app never shows an empty "API Routes" heading. */
+/* Banded rather than bare text: Pages and API Routes are different kinds of thing (one you open,
+   one you call), and at a glance a plain uppercase line read as just another row in the list. A
+   filled bar with its own rules reads as a divider between two lists instead of an entry in one. */
 .routes-section-heading {
-  padding: 0.4rem 0.5rem 0.2rem;
+  padding: 0.35rem 0.5rem;
   font-size: var(--text-xs);
   font-weight: 600;
-  color: var(--dim);
+  /* --dim lost too much contrast against the filled band; the heading is the thing that separates
+     the sections, so it carries body-weight color. */
+  color: var(--ink);
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  /* Full-bleed against the panel's own padding, so the band spans the dropdown's width rather than
+     floating inset with the rows. */
+  margin: 0 -0.25rem;
+  /* Flex so the heading's optional action sits at the right end of the same row as its title. */
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
+/* A plain button, not a CTA: adding a link is one option among the rows below, not the panel's
+ * purpose. `margin-left: auto` right-aligns it without the title needing a width. */
+.routes-heading-action {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  /* The heading is uppercased; the button is a label, not a heading, so it opts back out. */
+  text-transform: none;
+  letter-spacing: normal;
+  padding: 0.1rem 0.4rem;
+}
+/* Sits where the saved checkmark would be, so a row's trailing content lands in one place whether
+ * it reports state or offers actions. */
+.route-link-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+.route-row-action {
+  border: 0;
+  background: transparent;
+  padding: 0.1rem;
+  display: inline-flex;
+  color: var(--dim);
+  cursor: pointer;
+}
+.route-row-action:hover {
+  color: var(--ink);
+}
+/* Extra air above a second section only. The band now carries its own border, so this no longer
+   adds one — it just keeps API Routes from crowding the last Pages row. */
 .routes-section-heading:not(:first-child) {
-  margin-top: 0.25rem;
-  border-top: 1px solid var(--line);
+  margin-top: 0.6rem;
 }
 .route-link-row {
   display: grid;
-  grid-template-columns: 4.5rem 1fr auto;
+  /* 5.75rem is what "User Added" needs at this font size without wrapping — the longest label in
+     SOURCE_LABELS, and the one that set the column's width requirement. */
+  grid-template-columns: 5.75rem 1fr auto;
   align-items: center;
   gap: 0.5rem;
   padding: 0.35rem 0.5rem;
   border-radius: 4px;
   color: inherit;
   text-decoration: none;
+}
+/* The source label is a fixed-width column, so it must not wrap inside it. */
+.route-link-row [data-slot=source] {
+  white-space: nowrap;
 }
 .route-link-row:hover {
   background: var(--panel);
@@ -1182,7 +1269,9 @@ dialog::backdrop {
    since these endpoints mostly cannot be usefully opened in a browser. */
 .route-api-row {
   display: grid;
-  grid-template-columns: 3.5rem 1fr;
+  /* Third column holds the saved checkmark, which a saved API route shows here rather than as a
+     duplicate row under Pages. */
+  grid-template-columns: 3.5rem 1fr auto;
   align-items: baseline;
   gap: 0.5rem;
   width: 100%;
@@ -1197,6 +1286,9 @@ dialog::backdrop {
 }
 .route-api-row:hover {
   background: var(--panel);
+}
+.route-api-row [data-slot=saved-check] {
+  color: var(--ok);
 }
 /* Color-coded by side effect, not by verb identity: read-only GET reads calm, creates/updates read
    as attention-worthy, and DELETE as destructive — the distinction that matters when scanning a

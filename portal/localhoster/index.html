@@ -299,10 +299,11 @@
                    applySecondaryPorts. -->
               <span class="secondary-ports" data-slot="secondary-ports" hidden></span>
               <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
-              <!-- Per-row copy actions (URL, port, PID). Mounted by mountInstanceCopyMenu, which
-                   reveals this slot only once it has at least one item to offer — an instance with
-                   no origin still has a PID worth copying, but never nothing at all. -->
-              <span class="card-copy-menu" data-slot="copy-menu" hidden></span>
+              <!-- The per-row copy dropdown (URL, port, PID) was removed: two of its three entries
+                   restated what the row already gives you — the origin is a link you click, the
+                   port is the visible half of it. The PID, the one value you cannot get any other
+                   way, moved to this card's three-dot menu as its first entry. -->
+
               <span class="info-wrap" data-tip-html="template">
                 <portal-info-icon
                   aria-label="Show instance details"
@@ -371,9 +372,18 @@
             <div class="menu-panel" data-menu hidden>
               <!-- Copy URL and Open were removed: the origin link in this same row already opens
                    on click, and the row carries its own copy affordance. Both entries restated
-                   default link behavior rather than adding an action. -->
-              <button type="button" data-action="link">Add link</button>
-              <button type="button" data-action="edit">Edit links</button>
+                   default link behavior rather than adding an action.
+
+                   Copy PID leads: it is the one value here you cannot get by clicking the row, and
+                   the one you reach for when a process needs killing rather than visiting. It
+                   replaces the row's separate copy dropdown, whose other two entries (URL, port)
+                   were both obtainable from the row itself.
+
+                   Add link / Edit links moved to the Pages & Routes panel, where user-added links
+                   now sit alongside discovered ones as just another source. -->
+              <button type="button" data-action="copy-pid" data-slot="copy-pid" hidden>
+                Copy PID
+              </button>
               <button type="button" data-action="history">View history</button>
               <button type="button" data-action="associate">
                 Change association
@@ -528,7 +538,7 @@
               <span class="repository-state-badge" data-slot="lifecycle-state" hidden></span>
             </div>
           </div>
-          <!-- Repository-scoped actions only. Favorite and hide describe the whole repository,
+          <!-- Repository-scoped actions only. Pin and hide describe the whole repository,
                not one listener inside it; per-member actions (links, association, history) stay
                on the member cards where they apply. -->
           <!-- Hidden until earned — see tpl-card's note. -->
@@ -544,7 +554,7 @@
             </button>
             <div class="menu-panel" data-menu hidden>
               <button type="button" data-action="repo">Associate repo</button>
-              <button type="button" data-action="favorite">Toggle favorite</button>
+              <button type="button" data-action="pin" data-slot="pin-label">Pin</button>
               <button type="button" data-action="hide">Hide</button>
             </div>
           </div>
@@ -701,12 +711,38 @@
          checkmark is a static indicator, not a toggle; there is no "remove" affordance here, that
          still lives in "Edit links" for the same reason a browser bookmarks bar isn't managed from
          its own autocomplete dropdown. -->
+    <!-- The trailing slot holds either the saved checkmark (a discovered route that has been
+         captured) or the edit/delete pair (a user-added one). They are mutually exclusive and share
+         the row's end position: a user link is saved by definition, so a checkmark there would state
+         something that is never in question, where the actions are what that row actually needs. -->
     <template id="tpl-route-link-row">
       <a class="route-link-row" data-slot="href" target="_blank" rel="noreferrer">
         <span class="history-type" data-slot="source"></span>
         <span class="history-detail" data-slot="path"></span>
         <portal-icon name="check" size="sm" data-slot="saved-check" hidden></portal-icon>
+        <span class="route-link-actions" data-slot="row-actions" hidden>
+          <button type="button" class="route-row-action" data-action="edit-link" aria-label="Edit link">
+            <portal-icon name="pencil" size="sm"></portal-icon>
+          </button>
+          <!-- `close` rather than a trash glyph: the icon set has no trash, and close already reads
+               as "remove this" everywhere else in the portal. Adding a one-use glyph for parity with
+               a convention this UI does not otherwise follow is not worth the surface. -->
+          <button type="button" class="route-row-action" data-action="delete-link" aria-label="Delete link">
+            <portal-icon name="close" size="sm"></portal-icon>
+          </button>
+        </span>
       </a>
+    </template>
+    <!-- Section heading with an optional right-aligned action. Used by the Pages heading to carry
+         "+ Add", which is a plain button rather than a CTA: adding a link is one option among the
+         rows below it, not the panel's primary purpose. -->
+    <template id="tpl-routes-section-heading">
+      <div class="routes-section-heading">
+        <span data-slot="title"></span>
+        <button type="button" class="routes-heading-action" data-slot="action" hidden>
+          + Add
+        </button>
+      </div>
     </template>
     <!-- An API route is described, not opened. Most need a method, a body, or auth, so a plain link
          would 404/405 or dump JSON. The row is a button that opens the contract modal
@@ -715,6 +751,9 @@
       <button type="button" class="route-api-row">
         <span class="route-api-method" data-slot="method"></span>
         <span class="route-api-path" data-slot="path"></span>
+        <!-- A saved API route renders here only, never as a duplicate row under Pages, so this is
+             where its saved state has to appear. -->
+        <portal-icon name="check" size="sm" data-slot="saved-check" hidden></portal-icon>
       </button>
     </template>
     <template id="tpl-route-param-table">

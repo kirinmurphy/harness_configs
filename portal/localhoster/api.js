@@ -44,3 +44,8 @@ export function updateComposeProject(payload) {
 export function setRepositoryVisibility(payload) {
   return portalPostJson("/api/localhoster/repository-visibility", payload);
 }
+
+// Registry-backed like visibility above, and revisionless for the same reason.
+export function setRepositoryPinned(payload) {
+  return portalPostJson("/api/localhoster/repository-pinned", payload);
+}

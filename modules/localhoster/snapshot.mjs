@@ -22,6 +22,11 @@ export function buildLocalhosterSnapshot({
   // "Show hidden" affordance to offer them back, without deriving lifecycle or reading git for
   // repositories that are by construction not on the page.
   hiddenRepositories = [],
+  // Ids of repositories the user has pinned, from the repository registry. Injected for the same
+  // reason as repositoryNames: the registry is the caller's to read. A Set rather than a flag on
+  // each record because it is consulted once per repository, including for ones that arrived on the
+  // running path and therefore have no persisted record to carry it.
+  pinnedRepositoryIds = new Set(),
 } = {}) {
   const activeByProject = new Map();
   const unmatchedInstances = [];
@@ -174,7 +179,7 @@ export function buildLocalhosterSnapshot({
     // Repository-keyed view over the same instances the three collections above hold. Built
     // alongside them during the migration (localhoster-repository-card-merge) so existing consumers
     // keep working while the portal moves over; the legacy three are removed once nothing reads them.
-    repositories: buildRepositories({ projects, composeProjects, unmatchedInstances, repositoryNames, persistedRepositories }),
+    repositories: buildRepositories({ projects, composeProjects, unmatchedInstances, repositoryNames, persistedRepositories, pinnedRepositoryIds }),
     inactiveProjects: inactiveProjects.sort(compareProjects),
     hiddenRepositories,
     hiddenCount,
@@ -224,7 +229,7 @@ function groupByContainer(instances) {
 // Only a real repositoryId groups. `process:` identities resolve to null (canonicalRepositoryId
 // returns null for them — no repository exists to be a member of) and stay unmatched, as do
 // Compose projects whose repo never resolved.
-function buildRepositories({ projects, composeProjects, unmatchedInstances, repositoryNames = new Map(), persistedRepositories = [] }) {
+function buildRepositories({ projects, composeProjects, unmatchedInstances, repositoryNames = new Map(), persistedRepositories = [], pinnedRepositoryIds = new Set() }) {
   const byRepository = new Map();
 
   // A worktree's project-level `name` is commonly its branch or directory name (e.g.
@@ -248,7 +253,10 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances, repo
         identityKind: repositoryId.startsWith("git:") ? "git" : "local",
         providerUrl: providerUrlForRepositoryId(repositoryId),
         name: source.name,
-        favorite: false,
+        // Read from the repository registry (see pinnedRepositoryIds below), never from the members
+        // — a pin has to survive the process exiting, and an idle repository has no members to hold
+        // it. Defaults false here and is set once the registry has been consulted.
+        pinned: false,
         // `active` by construction here: every entry created on the running path was created because
         // something was discovered for it. The persisted-repository pass overwrites this with the
         // registry-derived state for repositories that have nothing running.
@@ -292,7 +300,6 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances, repo
   for (const project of projects) {
     if (!project.repositoryId) continue;
     const entry = ensure(project.repositoryId, project);
-    entry.favorite = entry.favorite || project.favorite === true;
     const rootId = project.rootId || `unresolved:${project.repositoryId}`;
     const root = ensureRoot(entry, rootId, project.git, project.projectRoot);
     noteName(project.repositoryId, project.name, root.isWorktree);
@@ -306,7 +313,6 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances, repo
   for (const composeProject of composeProjects) {
     if (!composeProject.repositoryId) continue;
     const entry = ensure(composeProject.repositoryId, composeProject);
-    entry.favorite = entry.favorite || composeProject.favorite === true;
     // A Compose stack is one deploy unit — `docker compose down` stops every container at once —
     // so it stays a named sub-group rather than flattening 11 Supabase containers into the member
     // list ahead of the single dev server the user actually cares about.
@@ -404,7 +410,6 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances, repo
   for (const persisted of persistedRepositories) {
     if (!persisted?.repositoryId || byRepository.has(persisted.repositoryId)) continue;
     const entry = ensure(persisted.repositoryId, { name: persisted.name || labelFromRepositoryId(persisted.repositoryId) });
-    entry.favorite = persisted.favorite === true;
     entry.lifecycle = persisted.lifecycle || { state: "idle", reason: null };
     entry.lastSeenAt = persisted.lastSeenAt || null;
     // Same root shape the running path builds, so the card renders one kind of section either way.
@@ -423,10 +428,25 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances, repo
     entry.cpuPercentOfHost = null;
   }
 
-  // Running repositories first, then idle/stale — a card with something live on it outranks one
-  // without, whatever their names. Within each group the existing comparator applies, so favorites
-  // and alphabetical order still hold where they did before.
-  return [...byRepository.values()].sort((a, b) => {
+  // Applied to every entry at once, after both the running and persisted passes, because a pin is a
+  // property of the repository rather than of how this scan happened to find it — resolving it in
+  // one place is what makes an idle repository pinnable at all.
+  for (const [repositoryId, entry] of byRepository) {
+    entry.pinned = pinnedRepositoryIds.has(repositoryId);
+  }
+
+  return sortRepositoriesForDisplay([...byRepository.values()]);
+}
+
+// Running repositories first, then idle/stale — a card with something live on it outranks one
+// without, whatever their names. Within each group compareRepositories applies, so pins and
+// alphabetical order still hold where they did before.
+//
+// Exported because the pin mutation re-sorts an existing snapshot in place rather than rebuilding
+// it (see setLocalhosterRepositoryPinned): pinning changes the order, and the order must be derived
+// the same way in both paths or the list would reshuffle on the next poll.
+export function sortRepositoriesForDisplay(repositories) {
+  return [...repositories].sort((a, b) => {
     const aIdle = a.lifecycle && a.lifecycle.state !== "active";
     const bIdle = b.lifecycle && b.lifecycle.state !== "active";
     if (aIdle !== bIdle) return aIdle ? 1 : -1;
@@ -594,9 +614,29 @@ function compareMembers(a, b) {
 // Favorites first, then portable git-backed repositories ahead of path-derived local ones. Offline
 // ordering within a group is unchanged — it still falls out of the member sort.
 function compareRepositories(a, b) {
-  if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+  if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+  // Most recently started first, among repositories that have something running. elapsedSeconds is
+  // time SINCE start, so smaller is newer. Only meaningful for active repositories — an idle one has
+  // no process to have started — so it is compared only when both sides report one, and ties (or a
+  // pair with no metrics at all) fall through to the existing name ordering rather than shuffling.
+  const aStarted = startedRank(a);
+  const bStarted = startedRank(b);
+  if (aStarted !== bStarted) return aStarted - bStarted;
   if (a.identityKind !== b.identityKind) return a.identityKind === "git" ? -1 : 1;
   return a.name.localeCompare(b.name) || a.repositoryId.localeCompare(b.repositoryId);
+}
+
+// Smallest elapsed time across a repository's members — the most recently started thing in it, which
+// is what "recently started" means for a card that can hold several processes. Infinity for a
+// repository with no usable metric, so it sorts after every repository that has one without
+// disturbing their relative order.
+function startedRank(repository) {
+  let best = Infinity;
+  for (const member of repository.members || []) {
+    const elapsed = member.instance?.processMetrics?.elapsedSeconds;
+    if (typeof elapsed === "number" && Number.isFinite(elapsed) && elapsed < best) best = elapsed;
+  }
+  return best;
 }
 
 // Groups instances by project identity, then by "shape" (same page title + same relative cwd)
@@ -644,6 +684,11 @@ function ensureProject(map, identity, settings, instance) {
       repositoryId: instance.project.repositoryId ?? null,
       providerUrl: instance.project.repositoryId ? providerUrlForRepositoryId(instance.project.repositoryId) : null,
       rootId: instance.project.rootId ?? null,
+      // Carried for the same reason as rootId: it identifies WHICH checkout this is, and it is the
+      // one fact that distinguishes two worktrees on the same branch. buildRepositories passes it to
+      // ensureRoot, which is where the root row's "Copy worktree path" item reads it from — without
+      // it every root reported projectRoot: null and that item could never appear.
+      projectRoot: instance.project.projectRoot ?? null,
       // Git context is per-root, so every instance under one project reports the same value; take it
       // from the first instance that has one rather than duplicating it on each.
       git: instance.project.git ?? null,

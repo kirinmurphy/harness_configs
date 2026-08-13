@@ -12,6 +12,7 @@ import {
   healthIndexFromSnapshot,
   loadSettings,
   readHistoryEvents,
+  sortRepositoriesForDisplay,
   updateSettings,
 } from "../../modules/localhoster/index.mjs";
 import { recordRepositoryDiscovery } from "./repositories.mjs";
@@ -26,6 +27,7 @@ import {
   supersededBy,
   ageOutCandidates,
   hideRepository,
+  pinRepository,
   updateRegistry,
   resolveRegistryAlias,
   renamedInto,
@@ -200,6 +202,46 @@ export function setLocalhosterRepositoryVisibility({ repositoryId, hidden }) {
   return { ok: true, localhoster: loadLocalhosterSnapshot() };
 }
 
+// Pin or unpin a repository. Same contract and same no-revision-check reasoning as
+// setLocalhosterRepositoryVisibility above: one boolean per record, no cross-field invariant.
+//
+// Returns a snapshot that already reflects the write, rather than scheduling a refresh and handing
+// back the cached one. scheduleRefresh is fire-and-forget: it resolves after this function has
+// returned, so loadLocalhosterSnapshot would answer from the snapshot built BEFORE the pin and the
+// portal would render the old state until something else re-fetched — the pin appearing to do
+// nothing until a manual page refresh.
+//
+// Rebuilding here is cheap and safe precisely because pinning needs no fresh discovery: it is a
+// registry read layered over the discovery already cached, unlike visibility (which must re-derive
+// the persisted-repository list and therefore genuinely needs a scan).
+export function setLocalhosterRepositoryPinned({ repositoryId, pinned }) {
+  if (!repositoryId || typeof repositoryId !== "string") {
+    return { ok: false, status: 400, error: "repositoryId is required", localhoster: loadLocalhosterSnapshot() };
+  }
+  try {
+    updateRegistry({
+      stateRoot,
+      mutate: (reg) => pinRepository(reg, repositoryId, { pinned: pinned === true }),
+    });
+  } catch (err) {
+    return { ok: false, status: 400, error: String(err?.message || err), localhoster: loadLocalhosterSnapshot() };
+  }
+  if (lastSnapshot) {
+    // Patched in place rather than rebuilt. A rebuild would need persistedRepositories, which is
+    // assembled only on the refresh path — passing it empty drops every idle repository from the
+    // page (the trap documented on setLocalhosterRepositoryVisibility), and reconstructing it from
+    // the snapshot would duplicate that logic badly. Pinning touches exactly one boolean per
+    // repository and the order derived from it, so applying both directly is the whole change.
+    const pinnedIds = registryPinnedIds();
+    const repositories = lastSnapshot.repositories.map((repository) => ({
+      ...repository,
+      pinned: pinnedIds.has(repository.repositoryId),
+    }));
+    lastSnapshot = { ...lastSnapshot, repositories: sortRepositoriesForDisplay(repositories) };
+  }
+  return { ok: true, localhoster: loadLocalhosterSnapshot() };
+}
+
 export function setLocalhosterPortalInfo(info) {
   portalInfo = info;
   if (lastSnapshot) {
@@ -371,6 +413,7 @@ function buildSnapshot({ discovery, settings = loadSettings({ stateRoot }), refr
     repositoryNames: registryDisplayNames(),
     persistedRepositories,
     hiddenRepositories: collectHiddenRepositories(),
+    pinnedRepositoryIds: registryPinnedIds(),
   });
 }
 
@@ -640,6 +683,21 @@ function registryDisplayNames() {
     return names;
   } catch {
     return new Map();
+  }
+}
+
+// Same read-and-degrade shape as registryDisplayNames: an unreadable registry costs the pins, not
+// the page.
+function registryPinnedIds() {
+  try {
+    const registry = loadRegistry({ stateRoot });
+    const pinned = new Set();
+    for (const [id, record] of Object.entries(registry.repositories || {})) {
+      if (record.pinned === true) pinned.add(id);
+    }
+    return pinned;
+  } catch {
+    return new Set();
   }
 }
 

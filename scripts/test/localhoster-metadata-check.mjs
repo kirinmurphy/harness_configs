@@ -3,8 +3,28 @@
 // filtering, and the safety guards (loopback-only, no redirects followed, body cap). fetchText is
 // stubbed per test so nothing here opens a real socket.
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
 import http from "node:http";
-import { discoverMetadataSuggestions, fetchLoopbackText, findCurrentInstanceByOpaqueKey } from "../../modules/localhoster/index.mjs";
+import { discoverMetadataSuggestions, fetchLoopbackText, findCurrentInstanceByOpaqueKey, probeHttpCandidates } from "../../modules/localhoster/index.mjs";
+// mergeSavedLinks is pure and DOM-free, but it lives in a portal module whose sibling imports use
+// browser-absolute paths ("/portal/shared/api.js") that node cannot resolve. Rather than move
+// rendering logic out of the view or stand up a DOM, read the source and evaluate just that one
+// exported function. It is self-contained — no imports, no globals — so this stays honest: the
+// assertions below run the same code the browser does, byte for byte.
+const mergeSavedLinks = await loadMergeSavedLinks();
+
+async function loadMergeSavedLinks() {
+  const source = await fs.readFile(
+    new URL("../../portal/localhoster/suggestions-view.js", import.meta.url),
+    "utf8",
+  );
+  const start = source.indexOf("export function mergeSavedLinks");
+  assert.ok(start !== -1, "mergeSavedLinks not found in suggestions-view.js");
+  // Ends at the next top-level declaration; the function body's own closing brace is indented.
+  const end = source.indexOf("\n}\n", start) + 3;
+  const body = source.slice(start, end).replace("export function", "function");
+  return (0, eval)(`${body}; mergeSavedLinks`);
+}
 
 function stubFetch(byUrl) {
   return async (url) => byUrl[url] || { ok: false, status: 404, body: null, contentType: null };
@@ -353,6 +373,83 @@ try {
     assert.equal(findCurrentInstanceByOpaqueKey({ projects: [], unmatchedInstances: [] }, "lk_missing"), null);
   }
   console.log("ok  invalid opaque key resolves to no instance");
+
+  // ---- IPv6-only listeners are reachable ----
+  // URL.hostname keeps an IPv6 literal's brackets; http.request's `hostname` option does not want
+  // them and goes to DNS instead, failing ENOTFOUND. Every IPv6-only listener was therefore probed
+  // as dead and dropped from the snapshot — an Astro dev server on [::1]:4321 disappeared while the
+  // same process's wildcard HMR port survived. Uses a real server on ::1 because the bug was
+  // exactly in how a live socket gets addressed.
+  {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end("<html><head><title>v6 app</title></head><body>ok</body></html>");
+    });
+    try {
+      await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "::1", resolve);
+      });
+      const { port } = server.address();
+      const [viaV6] = await probeHttpCandidates([
+        { protocol: "http", host: "::1", port, origin: `http://[::1]:${port}` },
+      ]);
+      assert.equal(viaV6.http, true, "IPv6 literal origin must be probed, not sent to DNS");
+      assert.equal(viaV6.status, 200);
+      assert.equal(viaV6.title, "v6 app");
+    } catch (err) {
+      // A machine with IPv6 loopback disabled cannot host this fixture; skip rather than fail on an
+      // environment difference the code under test has no say in.
+      if (err?.code !== "EADDRNOTAVAIL") throw err;
+      console.log("skip  IPv6 loopback unavailable on this host");
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  }
+  console.log("ok  IPv6-only listeners are probed rather than dropped");
+
+  // ---- Saved-link merge (portal/localhoster/suggestions-view.js) ----
+  // Saving a route must not rewrite where it came from, and a saved API path must not appear both
+  // as a Page and under API Routes. Both were real regressions: /tokens came from the sitemap but
+  // rendered as "User Added", and a saved /api path listed twice.
+  {
+    const pagesIn = [
+      { path: "/tokens", source: "sitemap", kind: "page" },
+      { path: "/plans", source: "sitemap", kind: "page" },
+    ];
+    const apisIn = [
+      { path: "/api/plans", source: "openapi", kind: "api", method: "GET" },
+      { path: "/api/plans", source: "openapi", kind: "api", method: "DELETE" },
+    ];
+    const links = [
+      { id: "l1", path: "/tokens", label: "Design Tokens" },
+      { id: "l2", path: "/api/plans", label: "Plans API" },
+      { id: "l3", path: "/scratch", label: "My Scratch Page" },
+    ];
+    const { pages, apis } = mergeSavedLinks(pagesIn, apisIn, links);
+
+    // A saved sitemap route keeps source "sitemap" — NOT "user" — and gains the saved marker,
+    // the user's label, and the link id the edit/delete actions need.
+    const tokens = pages.find((p) => p.path === "/tokens");
+    assert.equal(tokens.source, "sitemap");
+    assert.equal(tokens.saved, true);
+    assert.equal(tokens.label, "Design Tokens");
+    assert.equal(tokens.linkId, "l1");
+
+    // An undiscovered saved path is the only genuine "User Added" row, and leads the list.
+    assert.equal(pages[0].path, "/scratch");
+    assert.equal(pages[0].source, "user");
+
+    // The saved API path renders under API Routes only, never duplicated into Pages.
+    assert.equal(pages.some((p) => p.path === "/api/plans"), false);
+    assert.equal(apis.find((a) => a.method === "GET").saved, true);
+    // One link records a path, not a method, so the sibling DELETE stays unmarked.
+    assert.equal(apis.find((a) => a.method === "DELETE").saved, undefined);
+
+    // An unsaved discovered route is untouched.
+    assert.equal(pages.find((p) => p.path === "/plans").saved, undefined);
+  }
+  console.log("ok  saved links merge without overwriting a route's discovered source");
 } finally {
   // no shared temp state to clean up — every fixture above is either an in-memory stub or a
   // self-closing http.createServer.

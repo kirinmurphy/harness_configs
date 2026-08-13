@@ -33,7 +33,7 @@ export function fetchLoopbackText(url, { timeoutMs = DEFAULT_TIMEOUT_MS, maxBody
     const client = parsed.protocol === "https:" ? https : http;
     const req = client.request({
       protocol: parsed.protocol,
-      hostname: parsed.hostname,
+      hostname: requestHostname(parsed),
       port: parsed.port,
       path: `${parsed.pathname}${parsed.search}`,
       method: "GET",
@@ -84,6 +84,18 @@ export async function probeHttpCandidates(candidates, options = {}) {
   return results;
 }
 
+// URL.hostname keeps an IPv6 literal's brackets ("[::1]"), but http.request's `hostname` option
+// wants the bare address — handed the bracketed form it goes to DNS and fails ENOTFOUND. Every
+// IPv6-only listener was therefore probed as unreachable and dropped from the snapshot: an Astro
+// dev server binding [::1]:4321 vanished while the same process's wildcard HMR port survived,
+// leaving the card showing infrastructure ports and no page.
+//
+// `localhost` alone does not cover this. It resolves to 127.0.0.1 here, so an IPv6-only listener
+// refuses that connection — the ::1 candidate is the only one that can reach it.
+function requestHostname(url) {
+  return url.hostname.startsWith("[") ? url.hostname.slice(1, -1) : url.hostname;
+}
+
 async function probeOrigin(origin, { timeoutMs, protocol } = {}) {
   const url = new URL(origin);
   const client = url.protocol === "https:" ? https : http;
@@ -92,7 +104,7 @@ async function probeOrigin(origin, { timeoutMs, protocol } = {}) {
   return new Promise((resolve) => {
     const req = client.request({
       protocol: url.protocol,
-      hostname: url.hostname,
+      hostname: requestHostname(url),
       port: url.port,
       path: `${url.pathname}${url.search}`,
       method: "GET",

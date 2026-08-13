@@ -83,4 +83,18 @@ export const localhosterRoutes = defineRoutes([
       return true;
     },
   },
+  // Registry-backed for the same reason as repository-visibility: a pin is a property of the
+  // repository and has to outlive the processes running in it.
+  {
+    method: "POST",
+    path: "/api/localhoster/repository-pinned",
+    handler: (req, res, { handlers }) => {
+      readJsonBody(req, (body, err) => {
+        if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
+        const result = handlers.setLocalhosterRepositoryPinned(body || {});
+        send(res, result.status || (result.ok ? 200 : 400), "application/json", JSON.stringify(result));
+      });
+      return true;
+    },
+  },
 ]);

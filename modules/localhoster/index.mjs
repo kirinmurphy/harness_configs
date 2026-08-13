@@ -92,4 +92,5 @@ export {
 export {
   buildLocalhosterSnapshot,
   findCurrentInstanceByOpaqueKey,
+  sortRepositoriesForDisplay,
 } from "./snapshot.mjs";

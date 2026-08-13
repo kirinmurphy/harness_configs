@@ -16,17 +16,37 @@
 import { portalFillSlots as fill, portalTpl as tpl } from "/portal/shared/api.js";
 import { fetchMetadata } from "./api.js";
 
+// Source and saved-state are two different facts, and this column reports only the first: where the
+// path came from. Saving a discovered route does not change where it came from, so a /tokens found
+// in the sitemap stays "Sitemap" after you click it and gets a checkmark instead — previously it
+// came back relabeled "User Added", which erased its real origin and made a discovered route
+// indistinguishable from one typed by hand.
+//
+// "User Added" therefore means exactly one thing: a link the user authored that no discovery source
+// reported.
 const SOURCE_LABELS = {
   openapi: "OpenAPI",
   sitemap: "Sitemap",
   manifest: "Manifest",
   robots: "Robots",
+  user: "User Added",
 };
 
 // captureLink(project, instance, suggestion) must return the mutation's result (or throw) — same
 // contract updateLinks already has. isSaved(instance, path) tells a row whether to show the
 // checkmark, decided by the caller (app.js) since it owns lastSnapshot/currentLinks, not this view.
-export async function buildRoutesDropdown(project, instance, { onStale, captureLink, isSaved, onOpenApiRoute } = {}) {
+export async function buildRoutesDropdown(project, instance, {
+  onStale,
+  captureLink,
+  isSaved,
+  onOpenApiRoute,
+  // User-added links for this app, as [{ id, label, path }], plus the actions that maintain them.
+  // Supplied by app.js, which owns lastSnapshot and the mutation calls.
+  userLinks = [],
+  onAddLink,
+  onEditLink,
+  onDeleteLink,
+} = {}) {
   let result;
   try {
     result = await fetchMetadata(instance.opaqueKey);
@@ -41,20 +61,28 @@ export async function buildRoutesDropdown(project, instance, { onStale, captureL
   }
 
   const suggestions = result?.suggestions || [];
-  if (!suggestions.length) return message("No discovered routes.");
 
   // `kind` is set by the backend (modules/localhoster/metadata.mjs). Falling back on its absence
   // keeps this working against a cached snapshot minted before that field existed.
-  const pages = suggestions.filter((s) => (s.kind || "page") === "page");
-  const apis = suggestions.filter((s) => s.kind === "api");
+  const discoveredPages = suggestions.filter((s) => (s.kind || "page") === "page");
+  const discoveredApis = suggestions.filter((s) => s.kind === "api");
 
+  const { pages, apis } = mergeSavedLinks(discoveredPages, discoveredApis, userLinks);
+
+  // The panel now has a reason to exist even with nothing discovered: it is where links are added.
   const list = document.createElement("div");
   list.className = "routes-dropdown-list";
-  if (pages.length) {
-    list.append(sectionHeading("Pages"));
+  if (pages.length || onAddLink) {
+    list.append(sectionHeading("Pages", onAddLink ? () => onAddLink(project, instance) : null));
     for (const suggestion of pages) {
-      list.append(routeLinkRow(project, instance, suggestion, { captureLink, isSaved }));
+      list.append(routeLinkRow(project, instance, suggestion, {
+        captureLink,
+        isSaved,
+        onEditLink,
+        onDeleteLink,
+      }));
     }
+    if (!pages.length) list.append(message("No pages yet."));
   }
   if (apis.length) {
     list.append(sectionHeading("API Routes"));
@@ -65,10 +93,58 @@ export async function buildRoutesDropdown(project, instance, { onStale, captureL
   return list;
 }
 
-function sectionHeading(text) {
-  const heading = document.createElement("div");
-  heading.className = "routes-section-heading";
-  heading.textContent = text;
+// Folds the app's saved links into the discovered routes. Pure, DOM-free, and exported so
+// localhoster-metadata-check.mjs can exercise the rules below directly — they are where "User
+// Added" used to swallow a route's real source.
+//
+// Three rules, each fixing a way the old merge conflated "saved" with "authored":
+//   1. A saved link matching a discovered route decorates that route — saved marker, the user's
+//      label, the link id the edit/delete actions need — but never overwrites its `source`. Saving
+//      a route does not change where it was found. (A /tokens found in the sitemap previously came
+//      back labeled "User Added".)
+//   2. Only a saved path that nothing discovered is a genuine "User Added" row.
+//   3. A saved API path therefore renders under API Routes alone, never also as a Page: rule 2
+//      excludes it from `authored` because API discovery already reported that path.
+export function mergeSavedLinks(discoveredPages, discoveredApis, userLinks = []) {
+  const linksByPath = new Map(userLinks.map((link) => [link.path, link]));
+  const decorate = (suggestion) => {
+    const link = linksByPath.get(suggestion.path);
+    if (!link) return suggestion;
+    // `source` is deliberately NOT overwritten — that is the bug this merge exists to fix.
+    return { ...suggestion, saved: true, linkId: link.id, label: link.label || suggestion.label };
+  };
+
+  const discoveredPaths = new Set([...discoveredPages, ...discoveredApis].map((s) => s.path));
+  const authored = userLinks
+    .filter((link) => !discoveredPaths.has(link.path))
+    .map((link) => ({ source: "user", path: link.path, label: link.label, linkId: link.id, saved: true }));
+
+  return {
+    // Authored links lead: they were chosen deliberately, where a discovered one was merely found.
+    pages: [...authored, ...discoveredPages.map(decorate)],
+    // A saved link records a path, not a method, while an OpenAPI document routinely defines several
+    // operations on one path (GET and DELETE /api/plans/{key}). Marking all of them saved off a
+    // single link would overstate what the user actually kept, so only the GET — the operation a
+    // saved, openable link can correspond to — takes the marker.
+    apis: discoveredApis.map((s) => ((s.method || "GET") === "GET" ? decorate(s) : s)),
+  };
+}
+
+// `onAction` mounts the heading's right-aligned button (currently "+ Add" on Pages). Absent for
+// headings that have no action, which keeps the button out of the DOM rather than disabled.
+function sectionHeading(text, onAction = null) {
+  const heading = fill(tpl("tpl-routes-section-heading"), { title: text });
+  const action = heading.querySelector("[data-slot=action]");
+  if (onAction) {
+    action.hidden = false;
+    action.addEventListener("click", (event) => {
+      // The panel stays open behind the add dialog: the dialog is about the list you are looking
+      // at, and closing the thing you are editing to edit it loses that context.
+      event.preventDefault();
+      event.stopPropagation();
+      onAction();
+    });
+  }
   return heading;
 }
 
@@ -76,15 +152,40 @@ function sectionHeading(text) {
 // using a link does — and only once. A route already in app.links (isSaved) is a pure navigation,
 // no mutation call at all, so re-clicking a saved link never risks a stale-revision 409 for
 // something that's already true.
-function routeLinkRow(project, instance, suggestion, { captureLink, isSaved }) {
-  const saved = isSaved?.(instance, suggestion.path) ?? false;
+function routeLinkRow(project, instance, suggestion, { captureLink, isSaved, onEditLink, onDeleteLink }) {
+  // Saved-ness is a property of the row, not of its source: a Sitemap route the user saved is as
+  // editable as one they typed. `linkId` is what the edit/delete mutations need, so a row offers
+  // them exactly when it has one.
+  const saved = suggestion.saved || (isSaved?.(instance, suggestion.path) ?? false);
+  const isSavedLink = Boolean(suggestion.linkId);
   const row = fill(tpl("tpl-route-link-row"), {
     source: SOURCE_LABELS[suggestion.source] || suggestion.source,
-    path: suggestion.path,
+    // A saved link's own label is the name the user gave it; an unsaved one has only its path.
+    path: suggestion.label || suggestion.path,
     href: { href: suggestion.path.startsWith("/") ? `${instance.origin || ""}${suggestion.path}` : suggestion.path },
   });
   const check = row.querySelector("[data-slot=saved-check]");
-  if (check) check.hidden = !saved;
+  if (check) check.hidden = !saved || isSavedLink;
+
+  // Edit/delete take the checkmark's place on a saved link — see the template's note on why the two
+  // are mutually exclusive.
+  if (isSavedLink) {
+    const actions = row.querySelector("[data-slot=row-actions]");
+    if (actions) actions.hidden = false;
+    // Both sit inside the row's anchor, so each must stop the click from also navigating.
+    row.querySelector("[data-action=edit-link]")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onEditLink?.(project, instance, suggestion.linkId);
+    });
+    row.querySelector("[data-action=delete-link]")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onDeleteLink?.(project, instance, suggestion.linkId);
+    });
+    return row;
+  }
+
   if (!saved) {
     row.addEventListener("click", () => {
       // Fire-and-forget: the link opens via the anchor's own default behavior regardless of
@@ -106,6 +207,10 @@ function apiRouteRow(instance, suggestion, onOpenApiRoute) {
     path: suggestion.path,
   });
   row.querySelector("[data-slot=method]").dataset.method = (suggestion.method || "GET").toLowerCase();
+  // A saved API route lives only here now, never as a duplicate Page row, so this is the one place
+  // its saved state can be shown.
+  const check = row.querySelector("[data-slot=saved-check]");
+  if (check) check.hidden = !suggestion.saved;
   row.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();

@@ -6,7 +6,7 @@
   "lifecycle": "optional",
   "presentation": {
     "category": "token-optimization",
-    "order": 5
+    "order": 10
   },
   "resources": [
     {

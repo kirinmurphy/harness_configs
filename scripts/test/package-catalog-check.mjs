@@ -27,18 +27,20 @@ for (const name of ["index code", "index docs", "watch code"]) {
 }
 
 const slashNames = loadSlashCommandPlan().commands.map((command) => command.name).sort();
-for (const name of ["case-study", "frontend-design", "plan-docs", "tighten", "wrap-up", "plan-promote", "plan-start"]) {
+for (const name of ["case-study", "plan-docs", "tighten", "wrap-up", "plan-promote", "plan-start"]) {
   assert(slashNames.includes(name), `missing slash command: ${name}`);
 }
 
 const snapshot = readConfigSnapshot();
 const sections = new Map(snapshot.behaviorView.map((section) => [section.category, section]));
 assert(sections.has("Token Optimization"), "missing Token Optimization section");
-assert(sections.has("Commands"), "missing Commands section");
+assert(sections.has("Monitoring"), "missing Monitoring section");
+assert(sections.has("Skills - Development Life Cycle"), "missing Skills - Development Life Cycle section");
+assert(sections.has("Skills - Writing Assistants"), "missing Skills - Writing Assistants section");
 assert(sections.has("Code Conventions"), "missing Code Conventions section");
 assert(sections.has("Chat-Time Output"), "missing Chat-Time Output section");
 assert(sections.get("Token Optimization").items.some((item) => item.id === "jcodemunch"), "jcodemunch not visible in Token Optimization");
-assert(sections.get("Commands").items.some((item) => item.label === "/tighten"), "/tighten not visible in Commands");
+assert(sections.get("Skills - Development Life Cycle").items.some((item) => item.id === "tighten"), "tighten not visible in Skills - Development Life Cycle");
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-package-catalog-"));
 try {

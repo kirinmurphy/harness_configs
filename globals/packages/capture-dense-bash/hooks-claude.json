@@ -1,0 +1,13 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "Bash",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"$HOME/.claude/hooks/capture-dense-bash.mjs\""
+        }
+      ]
+    }
+  ]
+}

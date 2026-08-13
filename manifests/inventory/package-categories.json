@@ -7,9 +7,19 @@
       "order": 10
     },
     {
-      "id": "commands",
-      "label": "Commands",
+      "id": "monitoring",
+      "label": "Monitoring",
+      "order": 15
+    },
+    {
+      "id": "skills-dev-lifecycle",
+      "label": "Skills - Development Life Cycle",
       "order": 20
+    },
+    {
+      "id": "skills-writing",
+      "label": "Skills - Writing Assistants",
+      "order": 25
     },
     {
       "id": "code-conventions",

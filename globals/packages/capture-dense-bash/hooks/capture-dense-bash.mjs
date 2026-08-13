@@ -21,6 +21,26 @@ import path from 'node:path'
 // log can later be filtered to "dense AND would-prompt" without this hook being fragile.
 
 const DENSE_LINE_THRESHOLD = 3
+const LONG_COMMAND_CHARS = 160
+
+// A command is worth capturing when it is hard to READ or impossible to ALLOWLIST — not merely
+// when it is multi-line. The original newline-only rule missed the most common offenders, which
+// are single-line: `cd x && echo "=== y ===" && cmd`. Each clause below marks one property that
+// defeats prefix matching, so the log can be filtered by which one fired.
+function densityReasons(cmd) {
+  const reasons = []
+  if (cmd.split('\n').length >= DENSE_LINE_THRESHOLD) reasons.push('multiline')
+  // Composition: a chained string can never match a `Bash(head:*)` prefix rule.
+  if (/&&|\|\||;/.test(cmd)) reasons.push('chained')
+  // A leading `cd` makes every command in that directory unmatchable.
+  if (/^\s*cd\s/.test(cmd)) reasons.push('leading-cd')
+  // Decorative headers/trailers: pure noise that makes the string unrepeatable.
+  if (/echo\s+["']?(===|---|\w+=\$\?)/.test(cmd)) reasons.push('echo-decoration')
+  // Inline env assignment before the binary defeats prefix matching like `cd` does.
+  if (/^\s*[A-Z_][A-Z0-9_]*=/.test(cmd)) reasons.push('inline-env')
+  if (cmd.length > LONG_COMMAND_CHARS) reasons.push('long')
+  return reasons
+}
 
 const fail = () => process.exit(0) // any error => silent passthrough, never disturb the call
 
@@ -36,7 +56,8 @@ const command = typeof toolInput.command === 'string' ? toolInput.command : ''
 if (!command) fail()
 
 const lineCount = command.split('\n').length
-if (lineCount < DENSE_LINE_THRESHOLD) process.exit(0) // not dense — nothing to capture
+const reasons = densityReasons(command)
+if (reasons.length === 0) process.exit(0) // ordinary, allowlistable command — nothing to capture
 
 // --- Best-effort allowlist match ---------------------------------------------------------
 // Claude matches Bash permissions by literal prefix inside `Bash(<prefix>)`, where a trailing
@@ -73,6 +94,7 @@ const record = {
   cwd: input.cwd || null,
   lineCount,
   charCount: command.length,
+  reasons,
   wouldPrompt,
   command,
 }

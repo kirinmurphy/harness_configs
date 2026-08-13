@@ -1,7 +1,7 @@
 ---
 id: 46up8y7a
 priority: high
-next_action: Phases 1-6a are implemented on branch plan-46up8y7a-install-lifecycle, plus the 6b documentation. Remaining work is Phase 7 lifecycle hardening (ownership inventory, collision/backup policy, moved-checkout repair, shell/PATH dedup, reinstall and upgrade/downgrade state, dev-vs-package parity) and the two 6b items that need real hardware: a fresh transfer artifact and the new-Mac harness-count matrix
+next_action: Phases 1-6a are implemented on branch plan-46up8y7a-install-lifecycle, plus the 6b documentation. Phase 7's first two items are done (ownership inventory, collision/backup policy), each fixing a real defect. Remaining Phase 7 work is moved-checkout repair, shell/PATH dedup, reinstall and upgrade/downgrade state, and dev-vs-package parity, plus the three 6b items that need real hardware: a fresh transfer artifact, the new-Mac harness-count matrix, and presence-signal observations
 blocked_by: []
 depends_on: []
 related:
@@ -614,12 +614,48 @@ both need the physical machine, so neither can be closed from this branch.
 
 ### Phase 7 — Continue broader lifecycle hardening
 
-- [ ] Complete the resource ownership/removal inventory across skills, commands, MCP, hooks, root config, shell entries, backups, state, and caches.
-- [ ] Finish collision/back-up policy characterization and deterministic dry-run/noninteractive behavior.
+- [x] Complete the resource ownership/removal inventory across skills, commands, MCP, hooks, root config, shell entries, backups, state, and caches.
+- [x] Finish collision/back-up policy characterization and deterministic dry-run/noninteractive behavior.
 - [ ] Finish moved-checkout and stale-path repair coverage.
 - [ ] Finish shell/PATH deduplication and package-manager-shim ownership cleanup.
 - [ ] Define same-version reinstall and versioned upgrade/downgrade state behavior.
 - [ ] Run the same core lifecycle matrix in development and installed-package modes.
+
+#### Phase 7 implementation notes (ownership inventory + collision/backup policy)
+
+Two real defects surfaced, each found by characterizing current behavior against a sandboxed
+fixture rather than by reading the code.
+
+**1. `<stateRoot>/runtime` leaked through managed uninstall.** Package runtime assets
+(`runtimeAssetDestination` in `scripts/cli/package-harness-config.mjs`) are written to
+`<stateRoot>/runtime/<pkg>/`. `pruneRuntimeAssets` removes individual files, but it runs on package
+*disable* and leaves the `runtime/` directory; `remove_runtime_state()` never listed it at all.
+Managed uninstall therefore left the directory behind, and `check_no_active_remnants` — which sweeps
+every child of the state root — then reported it and **exited nonzero**. So the leak did not fail
+silently; it made every uninstall on a machine that had ever enabled a runtime-asset package report
+failure. Fixed by removing `${state_dir}/runtime` in `remove_runtime_state()`.
+
+| Decision | Reasoning |
+| --- | --- |
+| The inventory is a test, not a prose table | An enumerated removal list is safe but not self-maintaining, which is exactly how `runtime/` was missed. `testEveryDeclaredStatePathIsClassified` parses `state-paths.mjs` (the single declaration point for state-root paths) and fails when a declared path is classified neither owned nor preserved, and separately asserts each owned entry actually appears in `remove_runtime_state()`. A new state path now fails at introduction instead of leaking into a user's state root. |
+| Classification is binary | Every state-root child is either disposable machine state roborepo created (removed) or user content and the pointer that follows it (preserved). There is no third category, so a two-list model is complete by construction. |
+
+**2. An invalid conflict policy silently skipped collisions.** The collision dispatch in
+`install-lib.sh` has no catch-all `*)` case, and `install-harness.sh` accepted `--on-conflict`
+without validating it (unlike `main.sh`, which always has). A typo'd value therefore matched none of
+`overwrite|keep|abort`: the colliding path was skipped with no backup, no staged `_update_`, no
+warning — and the install still **exited 0**, reporting success while leaving that path
+unconfigured. User data was not destroyed (the pre-install backup runs earlier), but the outcome was
+a false success and a silently unconfigured harness.
+
+Fixed at both layers deliberately: `install-harness.sh` validates its flag like `main.sh` does, and
+`choose_path_conflict_action` re-validates `ROBOREPO_ON_CONFLICT` where it is consumed, because the
+env var can be set directly and bypass every entry point's flag parsing.
+
+Dry-run determinism was characterized and found already correct: two dry runs over identical
+fixtures produce byte-identical output once the install timestamp is normalized, and mutate nothing.
+The remaining difference is the intended `*_update_<TIMESTAMP>` path, not a defect. Noninteractive
+installs already default to `--on-conflict=keep` and announce it.
 
 ## Validation
 

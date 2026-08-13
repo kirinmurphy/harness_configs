@@ -20,6 +20,26 @@ const uninstallSh = path.join(repoRoot, "scripts/install/uninstall.sh");
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-managed-uninstall-"));
 let caseId = 0;
+
+// Resource ownership inventory (Phase 7).
+//
+// The state root is the one place roborepo accumulates machine-local state, and
+// remove_runtime_state() enumerates what it deletes rather than removing the root wholesale (the
+// workspace lives inside it). An enumerated list is safe but not self-maintaining: a new state path
+// added to state-paths.mjs is simply missed, and the leftover then fails --check-clean. That is
+// exactly how <stateRoot>/runtime (package runtime assets) leaked — projection cleanup pruned the
+// files on package disable but never the directory, and uninstall never removed it at all.
+//
+// Every child of the state root is one of exactly two things:
+
+// Disposable machine state roborepo created — managed uninstall must remove all of it.
+const OWNED_STATE_ENTRIES = [
+  "command-overrides.json", "enabled-packages.json", "telemetry", "telemetry-backups", "backups",
+  "presets", "rules", "config-state", "harnesses", "repositories", "usage", "portal", "skills",
+  "runtime", "install-state.json", "initialization.json", "experimental.json",
+];
+// User-owned content, or a pointer whose fate follows it — preserved by default.
+const PRESERVED_STATE_ENTRIES = ["workspace", "workspace-root.json"];
 try {
   testNestedWorkspacePreservedByDefault();
   testRelocatedWorkspaceUntouched();
@@ -29,6 +49,8 @@ try {
   testDryRunMutatesNothing();
   testRepeatedUninstallIsSafe();
   testCheckCleanToleratesPreservedWorkspace();
+  testStateRootOwnershipInventory();
+  testEveryDeclaredStatePathIsClassified();
   await testPortalUninstallRequiresExplicitConfirm();
   testPortalSurfaceIsPreserveOnly();
   console.log("managed uninstall checks passed");
@@ -156,6 +178,64 @@ function testCheckCleanToleratesPreservedWorkspace() {
   const dirty = spawnSync("bash", [uninstallSh, "--check-clean"], { cwd: repoRoot, env: env(f), encoding: "utf8" });
   assert.equal(dirty.status, 1, "genuine leftover state must still be reported");
   assert.match(dirty.stderr, /remnant/, "and must name what was left behind");
+}
+
+// --- Resource ownership inventory (Phase 7). See OWNED_STATE_ENTRIES near the top of this file.
+
+// Seeds every owned entry, runs a real managed uninstall, and asserts the state root is left holding
+// nothing but the preserved workspace. Catches a leak directly rather than via a --check-clean
+// failure whose message names only the symptom.
+function testStateRootOwnershipInventory() {
+  const f = fixture();
+  for (const entry of OWNED_STATE_ENTRIES) {
+    const target = path.join(f.stateDir, entry);
+    if (entry.endsWith(".json")) fs.writeFileSync(target, "{}\n");
+    else {
+      fs.mkdirSync(path.join(target, "nested"), { recursive: true });
+      fs.writeFileSync(path.join(target, "nested", "asset"), "disposable\n");
+    }
+  }
+  const result = runCli(f, ["uninstall", "--yes"]);
+  assert.equal(result.status, 0, `uninstall failed:\n${result.stdout}\n${result.stderr}`);
+
+  const leftover = fs.readdirSync(f.stateDir).sort();
+  assert.deepEqual(
+    leftover, ["workspace"],
+    `managed uninstall must leave only the preserved workspace; leaked: ${leftover.join(", ")}`,
+  );
+  assert.equal(fs.readFileSync(f.skill, "utf8"), "USER AUTHORED\n", "workspace bytes still intact");
+}
+
+// The list above is only trustworthy while it matches what the code actually writes. state-paths.mjs
+// is the single declaration point for state-root paths, so every path it exports must be classified
+// as owned or preserved. Adding a state path without deciding its removal disposition fails here,
+// at the point of introduction, instead of silently leaking into a user's state root.
+function testEveryDeclaredStatePathIsClassified() {
+  const source = fs.readFileSync(path.join(repoRoot, "scripts/cli/state-paths.mjs"), "utf8");
+  const classified = new Set([...OWNED_STATE_ENTRIES, ...PRESERVED_STATE_ENTRIES]);
+
+  // Both shapes that name a state-root child: path.join(roborepoStateDir, "<name>", ...) and the
+  // portalPidPathForPort helper's joined form.
+  const declared = new Set();
+  for (const match of source.matchAll(/path\.join\(\s*roborepoStateDir\s*,\s*"([^"]+)"/g)) {
+    declared.add(match[1]);
+  }
+  assert.ok(declared.size > 0, "failed to parse any state paths — the parser, not the code, is stale");
+
+  const unclassified = [...declared].filter((name) => !classified.has(name)).sort();
+  assert.deepEqual(
+    unclassified, [],
+    `state-paths.mjs declares state-root ${unclassified.length === 1 ? "entry" : "entries"} `
+      + `[${unclassified.join(", ")}] that managed uninstall does not classify. Add each to `
+      + `OWNED_STATE_ENTRIES (and to remove_runtime_state() in scripts/install/uninstall-lib.sh) or `
+      + `to PRESERVED_STATE_ENTRIES.`,
+  );
+
+  // The owned list must also stay in sync with the shell that does the removing.
+  const lib = fs.readFileSync(path.join(repoRoot, "scripts/install/uninstall-lib.sh"), "utf8");
+  const removeBlock = lib.slice(lib.indexOf("remove_runtime_state()"), lib.indexOf("remove_durable_install_backups()"));
+  const missing = OWNED_STATE_ENTRIES.filter((entry) => !removeBlock.includes(`\${state_dir}/${entry}`));
+  assert.deepEqual(missing, [], `remove_runtime_state() never removes: ${missing.join(", ")}`);
 }
 
 // --- Portal surface. Exercised through the route handler directly rather than over HTTP against a

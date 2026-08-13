@@ -487,6 +487,31 @@ test_direct_harness_conflict_dry_run_reports() {
     || fail "direct Codex dry-run prevents mutation"
 }
 
+# An unrecognized conflict policy must fail loudly. The collision dispatch in install-lib.sh has no
+# catch-all case, so before this guard a typo'd value matched none of overwrite/keep/abort: the
+# colliding path was silently skipped and the install still exited 0, reporting success while
+# leaving that path unconfigured. Covers both ways the policy arrives — the flag and the env var,
+# which bypasses flag parsing entirely.
+test_invalid_conflict_policy_refuses() {
+  local home_dir
+  home_dir="$(make_home)"
+  seed_user_configs "$home_dir"
+
+  local rc=0
+  HOME="$home_dir" "$repo_root/scripts/install/install-harness.sh" claude --on-conflict overwite \
+    >"$home_dir/out" 2>&1 || rc=$?
+  [[ "$rc" -eq 2 ]] && pass "invalid --on-conflict exits 2" || fail "invalid --on-conflict exits 2" "$home_dir/out"
+  assert_file_contains "$home_dir/out" "invalid --on-conflict" "invalid --on-conflict names the bad value"
+
+  rc=0
+  HOME="$home_dir" ROBOREPO_ON_CONFLICT="overwite" "$repo_root/scripts/install/install-harness.sh" claude \
+    >"$home_dir/out_env" 2>&1 || rc=$?
+  [[ "$rc" -eq 2 ]] && pass "invalid ROBOREPO_ON_CONFLICT exits 2" || fail "invalid ROBOREPO_ON_CONFLICT exits 2" "$home_dir/out_env"
+
+  # The user's original config must be exactly as seeded — a refused run mutates nothing.
+  assert_file_contains "$home_dir/.claude/settings.json" '"model":"opus"' "refused install leaves user config untouched"
+}
+
 test_adopt_keep_preserves_root_configs() {
   local home_dir
   home_dir="$(make_home)"
@@ -978,6 +1003,7 @@ test_repair_local_config_recovers_backup_only_codex_settings
 test_rendered_rules_backup_then_render
 test_global_command_conflict_blocks_before_mutation
 test_direct_harness_conflict_dry_run_reports
+test_invalid_conflict_policy_refuses
 test_conflict_policy_prompt_on_clean_machine
 test_onboarding_wizard_toggles_and_applies
 test_overwrite_policy_preserves_existing_root_configs

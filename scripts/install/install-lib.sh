@@ -200,6 +200,17 @@ choose_path_conflict_action() {
   local prompt_out="/dev/stderr"
 
   if [[ -n "${ROBOREPO_ON_CONFLICT:-}" ]]; then
+    # Entry points validate their own flag, but ROBOREPO_ON_CONFLICT can also be set directly in the
+    # environment. Re-check here because the dispatch below has no catch-all case: an unrecognized
+    # value would match nothing and silently skip the collision, leaving the path unconfigured while
+    # the install still exits 0.
+    case "${ROBOREPO_ON_CONFLICT}" in
+      overwrite|keep|abort) ;;
+      *)
+        echo "error: invalid ROBOREPO_ON_CONFLICT '${ROBOREPO_ON_CONFLICT}' (expected overwrite|keep|abort)" >&2
+        return 1
+        ;;
+    esac
     CONFIG_COLLISION_ACTION="${ROBOREPO_ON_CONFLICT}"
     return 0
   fi

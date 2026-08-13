@@ -3,9 +3,37 @@
     {
       "id": "write-files",
       "label": "Write files",
-      "description": "Create and edit files (Write, Edit tools).",
-      "kind": "tools",
+      "description": "Master gate for file writes (Write, Edit). Set to deny/ask to shut writing off everywhere. WHERE writes are allowed is set by write-scope; this behavior deliberately emits no unscoped rule of its own, because a bare Write/Edit entry would out-rank every path-scoped rule and silently defeat the scoping.",
+      "kind": "tools-gate",
       "tools": ["Write", "Edit"],
+      "scopedBy": "write-scope",
+      "bucket": "allow"
+    },
+    {
+      "id": "read-files",
+      "label": "Read files",
+      "description": "Master gate for file reads. WHERE reads are allowed is set by read-scope. Harnesses that cannot express path scoping (Gemini's Policy Engine) fall back to this whole-tool decision.",
+      "kind": "tools-gate",
+      "tools": ["Read"],
+      "scopedBy": "read-scope",
+      "bucket": "allow"
+    },
+    {
+      "id": "read-scope",
+      "label": "Read scope",
+      "description": "Where files may be read without prompting: the projects tree and temp dirs. Paths outside these prompt.",
+      "kind": "tools-scoped",
+      "tools": ["Read"],
+      "paths": ["~/projects/**", "/tmp/**", "/private/tmp/**", "/private/var/folders/**"],
+      "bucket": "allow"
+    },
+    {
+      "id": "write-scope",
+      "label": "Write scope",
+      "description": "Where files may be written without prompting: the projects tree only (covers repos and their worktrees). Paths outside prompt.",
+      "kind": "tools-scoped",
+      "tools": ["Write", "Edit"],
+      "paths": ["~/projects/**"],
       "bucket": "allow"
     },
     {
@@ -35,15 +63,95 @@
     {
       "id": "push-pull-prs",
       "label": "Push / pull / PRs",
-      "description": "Move code to or from a remote (git push, git pull).",
+      "description": "Move code to or from a remote (git push, git pull). Prompts so a push can be approved in-session; force variants are denied separately by rewrite-history.",
       "kind": "commands",
       "commands": [["git", "push"], ["git", "pull"]],
+      "bucket": "ask"
+    },
+    {
+      "id": "switch-branches",
+      "label": "Switch branches",
+      "description": "Change the checked-out branch (git checkout, git switch). Prompts because it moves the working tree out from under in-flight work.",
+      "kind": "commands",
+      "commands": [["git", "checkout"], ["git", "switch"]],
+      "bucket": "ask"
+    },
+    {
+      "id": "rewrite-history",
+      "label": "Rewrite published history",
+      "description": "Force-push or otherwise overwrite remote history. Denied outright — recovery depends on someone else still holding the old objects.",
+      "kind": "commands",
+      "commands": [
+        ["git", "push", "--force"],
+        ["git", "push", "-f"],
+        ["git", "push", "--force-with-lease"]
+      ],
       "bucket": "deny"
+    },
+    {
+      "id": "occupy-main",
+      "label": "Check out the main branch",
+      "description": "Move the working tree onto main. Denied so agent work stays on feature branches. Prefix-matched, so it is a guardrail against the common form, not an airtight block.",
+      "kind": "commands",
+      "commands": [
+        ["git", "checkout", "main"],
+        ["git", "switch", "main"],
+        ["git", "checkout", "-B", "main"]
+      ],
+      "bucket": "deny"
+    },
+    {
+      "id": "run-wrapped-commands",
+      "label": "Run output-capped commands",
+      "description": "The agent-facing runner: `roborepo agent-run` caps output AND validates its argv against this manifest before spawning (see scripts/cli/agent-run-policy.mjs). Plain `roborepo run` is deliberately NOT listed here — it spawns whatever it is given, and Claude's prefix matcher cannot see past the wrapper, so allowlisting it would silently override every deny/ask bucket below.",
+      "kind": "commands",
+      "commands": [["roborepo", "agent-run"]],
+      "bucket": "allow"
+    },
+    {
+      "id": "inspect-roborepo",
+      "label": "Inspect roborepo state",
+      "description": "Read-only roborepo namespaces (doctor, telemetry, git, index, config show). Safe to run unattended; none of them mutate config.",
+      "kind": "commands",
+      "commands": [
+        ["roborepo", "doctor"],
+        ["roborepo", "verify"],
+        ["roborepo", "telemetry"],
+        ["roborepo", "git"],
+        ["roborepo", "index"],
+        ["roborepo", "localhoster"],
+        ["roborepo", "version"],
+        ["roborepo", "plans"]
+      ],
+      "bucket": "allow"
+    },
+    {
+      "id": "mutate-harness-config",
+      "label": "Change harness configuration",
+      "description": "roborepo namespaces that rewrite generated config or installed state (update, maintenance, mcp, package, skill, config set). Prompts. Anything NOT listed here — including namespaces added later — falls through to a prompt by default, so new subcommands never silently gain access.",
+      "kind": "commands",
+      "commands": [
+        ["roborepo", "update"],
+        ["roborepo", "maintenance"],
+        ["roborepo", "mcp"],
+        ["roborepo", "package"],
+        ["roborepo", "skill"],
+        ["roborepo", "config"],
+        ["roborepo", "harness"],
+        ["roborepo", "apply"],
+        ["roborepo", "permissions"],
+        ["roborepo", "rules"],
+        ["roborepo", "setup"],
+        ["roborepo", "workspace"],
+        ["roborepo", "presets"],
+        ["roborepo", "bundle"],
+        ["roborepo", "experimental"],
+        ["roborepo", "onboard-intro"]
+      ],
+      "bucket": "ask"
     }
   ],
-  "tools": {
-    "read": ["Read"]
-  },
+  "tools": {},
   "mcp": {},
   "commands": {
     "allow": [
@@ -58,9 +166,6 @@
       ["./scripts/doctor.sh"],
       ["./scripts/verify-install.sh"],
       ["./scripts/install/main.sh", "--dry-run"],
-      ["roborepo", "doctor"],
-      ["roborepo", "verify"],
-      ["roborepo", "update", "--dry-run"],
       ["npm", "run", "skills:compile"],
       ["npm", "run", "skills:validate"],
       ["npm", "install"],

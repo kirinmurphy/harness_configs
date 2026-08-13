@@ -115,7 +115,6 @@
       "kind": "commands",
       "commands": [
         ["roborepo", "doctor"],
-        ["roborepo", "verify"],
         ["roborepo", "telemetry"],
         ["roborepo", "git"],
         ["roborepo", "index"],

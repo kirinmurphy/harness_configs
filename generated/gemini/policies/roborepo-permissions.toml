@@ -108,12 +108,6 @@ priority = 500
 
 [[rule]]
 toolName = "run_shell_command"
-commandPrefix = "roborepo verify"
-decision = "allow"
-priority = 500
-
-[[rule]]
-toolName = "run_shell_command"
 commandPrefix = "roborepo telemetry"
 decision = "allow"
 priority = 500

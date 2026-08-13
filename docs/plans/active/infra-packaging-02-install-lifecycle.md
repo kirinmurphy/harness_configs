@@ -1,7 +1,7 @@
 ---
 id: 46up8y7a
 priority: high
-next_action: Phases 1-2 are implemented on branch plan-46up8y7a-install-lifecycle (init, first-run routing, initialization state, library alias). Continue with Phase 3 zero-to-N harness presentation — add the machine cohort to the config snapshot so the Agents grid stops implying every registered provider is installed — then the Phase 4 managed-uninstall work
+next_action: Phases 1-6a are implemented on branch plan-46up8y7a-install-lifecycle, plus the 6b documentation. Remaining work is Phase 7 lifecycle hardening (ownership inventory, collision/backup policy, moved-checkout repair, shell/PATH dedup, reinstall and upgrade/downgrade state, dev-vs-package parity) and the two 6b items that need real hardware: a fresh transfer artifact and the new-Mac harness-count matrix
 blocked_by: []
 depends_on: []
 related:
@@ -541,47 +541,76 @@ Not yet done in this slice: no documentation updates (Phase 6 owns them), and `r
 
 ### Phase 3 — Make zero-to-N harness presentation explicit
 
-- [ ] Add `machineHarnesses` (or an equivalent explicit presentation field) to the config snapshot without removing the registered provider catalog needed for supported-provider metadata; populate it from persisted discovery entries whose `confidence` is not `absent` and preserve each entry's enabled flag.
-- [ ] Make the Agents primary provider presentation show a truthful zero state when `machineHarnesses` is empty.
-- [ ] Verify one-provider and N-provider layouts are generated from data rather than fixed columns.
-- [ ] Preserve Tokens' observed-telemetry cohort and add a clear zero-data state; keep the harness filter hidden for one observed harness and generated for N.
-- [ ] Add focused tests for zero, one, two, all currently registered providers, and a synthetic extra provider where the test seam supports it.
-- [ ] Do not change strict-vs-rich harness detection semantics in this phase.
+- [x] Add `machineHarnesses` (or an equivalent explicit presentation field) to the config snapshot without removing the registered provider catalog needed for supported-provider metadata; populate it from persisted discovery entries whose `confidence` is not `absent` and preserve each entry's enabled flag.
+- [x] Make the Agents primary provider presentation show a truthful zero state when `machineHarnesses` is empty.
+- [x] Verify one-provider and N-provider layouts are generated from data rather than fixed columns.
+- [x] Preserve Tokens' observed-telemetry cohort and add a clear zero-data state; keep the harness filter hidden for one observed harness and generated for N.
+- [x] Add focused tests for zero, one, two, all currently registered providers, and a synthetic extra provider where the test seam supports it.
+- [x] Do not change strict-vs-rich harness detection semantics in this phase.
 
 ### Phase 4 — Promote safe managed uninstall
 
-- [ ] Characterize the current hidden uninstall against a workspace at the default `<stateRoot>/workspace` path, capturing the existing destructive behavior as a failing test before changing it.
-- [ ] Remove the final `remove_path "${state_dir}"` from `remove_runtime_state()` and replace recursive state-root deletion with a selective ownership-based cleanup plan that preserves workspace content by default.
-- [ ] Resolve the effective workspace root through the same `workspace-root.json` override logic as `scripts/cli/roots.mjs`; cover both the nested default and a workspace relocated outside `stateRoot`.
-- [ ] Implement the resolved workspace-disposition policy: preserve by default; tie `workspace-root.json`'s fate to the tree's rather than prompting for it separately.
-- [ ] Add `--delete-workspace` opt-in, honored only for a nested workspace, refusing noninteractively without `--yes`, and non-mutating under `--dry-run`.
-- [ ] Never offer or honor workspace deletion for a relocated workspace; preserve it and print its path.
-- [ ] Define structured preview/result data shared by CLI and portal adapters.
-- [ ] Add public `roborepo uninstall` with dry-run/preview and explicit confirmation.
-- [ ] Repoint or retire `roborepo maintenance uninstall` so there is one cleanup implementation.
-- [ ] Keep drifted/unmanaged harness content intact and report what was skipped.
-- [ ] Print the exact npm application-removal command after successful managed cleanup.
-- [ ] Verify repeated managed uninstall is safe.
+- [x] Characterize the current hidden uninstall against a workspace at the default `<stateRoot>/workspace` path, capturing the existing destructive behavior as a failing test before changing it.
+- [x] Remove the final `remove_path "${state_dir}"` from `remove_runtime_state()` and replace recursive state-root deletion with a selective ownership-based cleanup plan that preserves workspace content by default.
+- [x] Resolve the effective workspace root through the same `workspace-root.json` override logic as `scripts/cli/roots.mjs`; cover both the nested default and a workspace relocated outside `stateRoot`.
+- [x] Implement the resolved workspace-disposition policy: preserve by default; tie `workspace-root.json`'s fate to the tree's rather than prompting for it separately.
+- [x] Add `--delete-workspace` opt-in, honored only for a nested workspace, refusing noninteractively without `--yes`, and non-mutating under `--dry-run`.
+- [x] Never offer or honor workspace deletion for a relocated workspace; preserve it and print its path.
+- [x] Define structured preview/result data shared by CLI and portal adapters.
+- [x] Add public `roborepo uninstall` with dry-run/preview and explicit confirmation.
+- [x] Repoint or retire `roborepo maintenance uninstall` so there is one cleanup implementation.
+- [x] Keep drifted/unmanaged harness content intact and report what was skipped.
+- [x] Print the exact npm application-removal command after successful managed cleanup.
+- [x] Verify repeated managed uninstall is safe.
 
 ### Phase 5 — Add portal cleanup
 
-- [ ] Add protected preview and execute endpoints using the existing portal origin/token mutation guard.
-- [ ] Add an **Uninstall RoboRepo** Maintenance panel to the existing `/config` surface for the first implementation; do not create a new top-level portal page for this action.
-- [ ] Render removal/preservation preview from structured server data.
-- [ ] Require explicit destructive confirmation.
-- [ ] Ensure the response reaches the browser before the portal server stops/removes its own runtime state.
-- [ ] Display the npm removal command after cleanup.
-- [ ] Keep workspace deletion out of the portal action entirely: the portal exposes preserve-only cleanup and shows the preserved workspace path. `--delete-workspace` stays a deliberate CLI opt-in rather than a button in a browser.
+- [x] Add protected preview and execute endpoints using the existing portal origin/token mutation guard.
+- [x] Add an **Uninstall RoboRepo** Maintenance panel to the existing `/config` surface for the first implementation; do not create a new top-level portal page for this action.
+- [x] Render removal/preservation preview from structured server data.
+- [x] Require explicit destructive confirmation.
+- [x] Ensure the response reaches the browser before the portal server stops/removes its own runtime state.
+- [x] Display the npm removal command after cleanup.
+- [x] Keep workspace deletion out of the portal action entirely: the portal exposes preserve-only cleanup and shows the preserved workspace path. `--delete-workspace` stays a deliberate CLI opt-in rather than a button in a browser.
 
-### Phase 6 — Documentation and real-new-Mac acceptance
+### Phase 6a — First-run vocabulary documentation
 
-- [ ] Make package-install guidance end with `roborepo init`, not a checklist of internal commands.
-- [ ] Document `roborepo library` as the normal way to change functionality later.
-- [ ] Document the two-part uninstall ownership model, including that managed uninstall preserves the workspace by default and that `--delete-workspace` is the explicit nested-only opt-in.
-- [ ] State that npm removal alone leaves separately stored RoboRepo state/configuration.
+Split from the original Phase 6 and done alongside Phases 1-2: `init` and `library` shipped on the
+branch, so leaving their documentation until after Phases 3-5 would have merged behavior that no
+document described. The remaining Phase 6b items genuinely depend on later phases.
+
+- [x] Make package-install guidance end with `roborepo init`, not a checklist of internal commands.
+- [x] Document `roborepo library` as the normal way to change functionality later.
+- [x] Document the first-run routing contract: bare interactive invocation enters `init`, explicit commands are never gated, an interrupted `init` resumes, a completed `init` is a no-op report.
+- [x] Correct the stale claim in `docs/user/reference/roborepo.md` that the CLI "gates normal commands until onboarding has completed" — that gate was removed before this plan and the sentence had outlived it.
+- [x] Correct `docs/user/guides/install-workflows.md`'s claim that the installer starts the package chooser itself.
+- [x] Document that zero detected harnesses is a valid initialization outcome.
+
+### Phase 6b — Uninstall documentation and real-new-Mac acceptance
+
+- [x] Document the two-part uninstall ownership model, including that managed uninstall preserves the workspace by default and that `--delete-workspace` is the explicit nested-only opt-in.
+- [x] State that npm removal alone leaves separately stored RoboRepo state/configuration.
 - [ ] Generate a fresh Packaging 01 transfer artifact from the final tested commit.
 - [ ] Run the real-new-Mac harness-count matrix below before restoring old workspace content or cloning the development repository.
 - [ ] Record any presence-signal observations in `harness-presence-signal-expansion` rather than broadening this plan mid-test.
+
+#### Phases 3-6 implementation notes
+
+| Decision | Reasoning |
+| --- | --- |
+| Cohort policy extracted to `portal/shared/harness-cohort.js` | The portal's template modules import `/portal/shared/api.js` by absolute browser URL and cannot load in Node. Extracting the DOM-free policy is what makes zero/one/N testable at all — there is no jsdom in this zero-dependency repo. |
+| Machine cohort keeps user-disabled providers | A harness the user turned off is still on the machine. Collapsing "disabled" into "absent" would misreport it. |
+| `roborepo uninstall` wraps the shell implementation rather than replacing it | Its ownership and drift checks are mature; the plan explicitly warns against a wholesale rewrite. The CLI module owns flags, confirmation, and messaging only. |
+| Portal cleanup is preserve-only | `uninstallExecute` pins the delete flag off, so no request shape reaches workspace deletion through the browser. Irreversibly removing authored content should be a typed CLI opt-in, not a button. |
+| Portal route tested at the handler, not over HTTP | The first version started a detached `roborepo web` per case; `web stop` could not reap it across sandboxed `HOME`s and the suite hung past 7 minutes. The security-relevant behavior (confirm gate, preserve-only, error mapping) is all handler-side, and the origin/token guard belongs to `portal-server.mjs`, which owns it for every route. |
+
+Two pre-existing bugs surfaced while implementing Phase 4 and are fixed here: `uninstall.sh` ran its
+remnant check after a dry run (which removes nothing, so `--dry-run` always exited nonzero), and
+that check listed the state root itself, which reports every correct preserve-by-default run as
+unclean.
+
+Still open in 6b: generating a fresh transfer artifact and running the new-Mac harness-count matrix
+both need the physical machine, so neither can be closed from this branch.
 
 ### Phase 7 — Continue broader lifecycle hardening
 

@@ -227,7 +227,8 @@ main {
  * box taller than itself. `:empty` hides the row, but the grid gap survives it, so members that
  * render only a title row collapse the gap entirely. */
 .instance-card.is-member .card-main:not(:has(.card-git-row:not(:empty))),
-.compose-project-card.is-member .card-main:not(:has(.card-git-row:not(:empty))) {
+.compose-project-card.is-member
+  .card-main:not(:has(.card-git-row:not(:empty))) {
   gap: 0;
 }
 .card-title {
@@ -251,7 +252,7 @@ main {
  * the card's last band, in both states, so it unconditionally carries the bottom radius. */
 .repository-card > .card-git-row:not(:empty) {
   margin-top: 0;
-  padding: 8px 16px;
+  margin-right: 5px;
   background: color-mix(in srgb, var(--ink) 9%, var(--panel));
   border-top: 1px solid var(--line);
   border-radius: 0 0 6px 6px;
@@ -743,14 +744,21 @@ dialog::backdrop {
  * the control most obviously *for* expanding was the one part of the summary with no feedback.
  * Closed only: once open the drill-down becomes a tab joined to the drawer (see below), and a hover
  * tint over it would fight that connection. */
-.repository-disclosure:not([open]) > summary .repository-drilldown-row:hover .repository-drilldown {
+.repository-disclosure:not([open])
+  > summary
+  .repository-drilldown-row:hover
+  .repository-drilldown {
   background: var(--row-hover-overlay);
   border-radius: 6px;
 }
 /* Hovering the drill-down underlines the title, matching the title row's own hover: both are the
  * same click with the same result, so they name the same target. Needs :has() on the summary —
  * the title row precedes this one, so no sibling combinator can reach backwards to it. */
-.repository-card > .repository-disclosure > summary:has(.repository-drilldown-row:hover) .card-title h3 {
+.repository-card
+  > .repository-disclosure
+  > summary:has(.repository-drilldown-row:hover)
+  .card-title
+  h3 {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -776,7 +784,10 @@ dialog::backdrop {
   border-bottom: 0;
   margin-bottom: -1px;
 }
-:root[data-theme="light"] .repository-disclosure[open] > summary .repository-drilldown {
+:root[data-theme="light"]
+  .repository-disclosure[open]
+  > summary
+  .repository-drilldown {
   background: var(--bg);
 }
 /* The whole title row is the click target, so the whole row takes the hover — feedback confined to
@@ -790,22 +801,36 @@ dialog::backdrop {
  * :has() lets the row withdraw its own hover while the pointer is over a nested control. Those
  * controls stop propagation and do NOT toggle the card, so showing the expand affordance over them
  * would promise a click that does something else entirely. */
-.repository-card > .repository-disclosure > summary .card-title-row:hover:not(:has(.repository-nested-control:hover)) {
+.repository-card
+  > .repository-disclosure
+  > summary
+  .card-title-row:hover:not(:has(.repository-nested-control:hover)) {
   /* Layered over the card's own surface rather than replacing it: --row-hover-overlay is a tint, so
    * it composites onto --panel here and onto the drawer elsewhere, staying equally visible on both.
    * The flat --row-hover it replaces was tuned against --bg and sat 1.5 luminance from --panel. */
-  background: linear-gradient(var(--row-hover-overlay), var(--row-hover-overlay)), var(--panel);
+  background:
+    linear-gradient(var(--row-hover-overlay), var(--row-hover-overlay)),
+    var(--panel);
 }
 /* Underlining the title on hover is the convention for "this opens something", and it names what
  * the click acts on. Applied from the row so hovering anywhere in it underlines the title, not only
  * a direct hover over the text — and withdrawn over nested controls for the same reason as above. */
-.repository-card > .repository-disclosure > summary .card-title-row:hover:not(:has(.repository-nested-control:hover)) .card-title h3 {
+.repository-card
+  > .repository-disclosure
+  > summary
+  .card-title-row:hover:not(:has(.repository-nested-control:hover))
+  .card-title
+  h3 {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 /* Keyboard parity: <summary> is focusable, and a keyboard user gets the same affordance a mouse
  * user does rather than only the browser's default outline. */
-.repository-card > .repository-disclosure > summary:focus-visible .card-title h3 {
+.repository-card
+  > .repository-disclosure
+  > summary:focus-visible
+  .card-title
+  h3 {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -985,7 +1010,9 @@ dialog::backdrop {
  * --text-2xs. Light theme's --dim is already near the floor against a near-white drawer, so the pill
  * steps to --desc-dim (the existing "dim but still body-readable" token) for 5.4:1. Dark theme needs
  * no equivalent: --dim clears AA there at 5.06:1. */
-:root[data-theme="light"] .instance-card.is-member.is-support:not(.is-offline) .card-title::after {
+:root[data-theme="light"]
+  .instance-card.is-member.is-support:not(.is-offline)
+  .card-title::after {
   color: var(--desc-dim);
 }
 /* The canonical entrypoint(s). Sits at heading level because reaching the running app is the

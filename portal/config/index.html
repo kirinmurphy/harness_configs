@@ -115,6 +115,47 @@
         </div>
       </section>
     </template>
+    <!-- Managed cleanup. Preserve-only by construction: there is no workspace-deletion control
+         here, because irreversibly removing a user's authored content should be a deliberate typed
+         CLI opt-in (roborepo uninstall --delete-workspace), not a button. -->
+    <template id="tpl-maintenance">
+      <section class="panel wide">
+        <h2>Maintenance</h2>
+        <div class="maintenance-row">
+          <div class="maintenance-copy">
+            <strong>Uninstall RoboRepo</strong>
+            <span>
+              Removes RoboRepo-managed harness configuration and machine-local state. Your workspace
+              is preserved. This does not remove the npm package.
+            </span>
+          </div>
+          <button type="button" class="danger" data-slot="preview">Preview cleanup</button>
+        </div>
+        <div class="maintenance-detail" data-slot="detail" hidden></div>
+      </section>
+    </template>
+    <template id="tpl-maintenance-preview">
+      <div class="maintenance-preview">
+        <div data-slot="preserved" class="maintenance-preserve"></div>
+        <div class="maintenance-removals">
+          <strong>Will be removed</strong>
+          <ul data-slot="removals"></ul>
+        </div>
+        <div class="maintenance-actions">
+          <button type="button" class="danger" data-slot="confirm">Remove managed configuration</button>
+          <button type="button" data-slot="cancel">Cancel</button>
+        </div>
+        <div class="maintenance-error" data-slot="error"></div>
+      </div>
+    </template>
+    <template id="tpl-maintenance-result">
+      <div class="maintenance-result">
+        <strong>RoboRepo-managed configuration has been removed.</strong>
+        <div data-slot="preserved"></div>
+        <div>Remove the application with:</div>
+        <code data-slot="npm"></code>
+      </div>
+    </template>
     <template id="tpl-config-header-cell">
       <div role="columnheader" data-slot="label"></div>
     </template>

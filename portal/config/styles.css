@@ -711,3 +711,61 @@ dialog#config-modal::backdrop {
     border-top: none;
   }
 }
+
+/* Maintenance panel: app-level lifecycle actions (managed uninstall). */
+.maintenance-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.maintenance-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--dim);
+}
+.maintenance-copy strong {
+  color: var(--fg);
+}
+.maintenance-detail {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.maintenance-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.maintenance-preserve {
+  color: var(--fg);
+}
+.maintenance-removals ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  max-height: 220px;
+  overflow-y: auto;
+  color: var(--dim);
+  font-family: var(--mono, monospace);
+  font-size: var(--text-xs);
+}
+.maintenance-actions {
+  display: flex;
+  gap: 8px;
+}
+.maintenance-error:not(:empty) {
+  color: var(--danger);
+}
+.maintenance-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.maintenance-result code {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  width: fit-content;
+}

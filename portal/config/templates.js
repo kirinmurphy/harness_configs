@@ -323,3 +323,88 @@ export function configFiles(snap, { onInspectClick }) {
   }
   return panel;
 }
+
+// --------------------------------------------------------------------------- maintenance
+
+// Managed cleanup panel. Preview -> explicit confirm -> result, all server-driven: the browser
+// never decides what gets removed, it only renders the plan the server produced and posts back a
+// confirmation. Workspace deletion is deliberately not offered here (see index.html).
+export function maintenancePanel({ onPreview, onExecute }) {
+  const panel = tpl("tpl-maintenance");
+  const detail = panel.querySelector("[data-slot=detail]");
+  const previewBtn = panel.querySelector("[data-slot=preview]");
+
+  previewBtn.addEventListener("click", async () => {
+    previewBtn.disabled = true;
+    try {
+      const preview = await onPreview();
+      detail.replaceChildren(renderPreview(preview, { onExecute, detail, previewBtn }));
+      detail.hidden = false;
+    } catch (err) {
+      detail.replaceChildren(errorText(err));
+      detail.hidden = false;
+    } finally {
+      previewBtn.disabled = false;
+    }
+  });
+
+  return panel;
+}
+
+function renderPreview(preview, { onExecute, detail, previewBtn }) {
+  const node = tpl("tpl-maintenance-preview");
+  const preserved = node.querySelector("[data-slot=preserved]");
+  preserved.textContent = preview.workspace
+    ? `Your workspace will be preserved: ${preview.workspace}`
+    : "No workspace found.";
+
+  const list = node.querySelector("[data-slot=removals]");
+  for (const line of preview.removals || []) {
+    const li = document.createElement("li");
+    li.textContent = line;
+    list.append(li);
+  }
+  if (!(preview.removals || []).length) {
+    const li = document.createElement("li");
+    li.textContent = "Nothing managed left to remove.";
+    list.append(li);
+  }
+
+  const errorEl = node.querySelector("[data-slot=error]");
+  node.querySelector("[data-slot=cancel]").addEventListener("click", () => {
+    detail.hidden = true;
+    detail.replaceChildren();
+  });
+
+  const confirmBtn = node.querySelector("[data-slot=confirm]");
+  confirmBtn.addEventListener("click", async () => {
+    confirmBtn.disabled = true;
+    errorEl.textContent = "";
+    try {
+      const result = await onExecute();
+      detail.replaceChildren(renderResult(result));
+      previewBtn.disabled = true;
+    } catch (err) {
+      errorEl.textContent = (err && err.message) || String(err);
+      confirmBtn.disabled = false;
+    }
+  });
+
+  return node;
+}
+
+function renderResult(result) {
+  const node = tpl("tpl-maintenance-result");
+  node.querySelector("[data-slot=preserved]").textContent = result.workspace
+    ? `Your workspace was preserved: ${result.workspace}`
+    : "";
+  node.querySelector("[data-slot=npm]").textContent = result.npmCommand || "";
+  return node;
+}
+
+function errorText(err) {
+  const div = document.createElement("div");
+  div.className = "maintenance-error";
+  div.textContent = (err && err.message) || String(err);
+  return div;
+}

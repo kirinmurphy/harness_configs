@@ -6,6 +6,7 @@ import { repoRoot } from "./paths.mjs";
 import { computePortalSourceHash } from "./portal-source-hash.mjs";
 import { send } from "./portal-routes-http.mjs";
 import { handleConfigApi } from "./portal-routes-config.mjs";
+import { handleMaintenanceApi } from "./portal-routes-maintenance.mjs";
 import { handlePlansApi } from "./portal-routes-plans.mjs";
 import { handleLocalhosterApi } from "./portal-routes-localhoster.mjs";
 import { handleTelemetryApi } from "./portal-routes-telemetry.mjs";
@@ -210,6 +211,7 @@ function route(req, res, handlers, mutationToken) {
   }
 
   if (handleConfigApi(req, res, urlPath, qs, handlers)) return;
+  if (handleMaintenanceApi(req, res, urlPath, qs, handlers)) return;
   if (handlePlansApi(req, res, urlPath, qs, handlers)) return;
   if (handleLocalhosterApi(req, res, urlPath, qs, handlers)) return;
   if (handleRepositoriesApi(req, res, urlPath, qs, handlers)) return;

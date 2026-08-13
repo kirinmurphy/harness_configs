@@ -20,6 +20,20 @@ bare non-interactive invocations open the normal menu rather than a wizard, so s
 Zero detected harnesses is a valid initialization: install or launch a supported harness later and
 run `roborepo harness refresh`.
 
+## Uninstall
+
+|                            |                                                                                                                                                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `roborepo uninstall [--dry-run] [--yes] [--delete-workspace]` | Removes RoboRepo-managed harness configuration and machine-local state. Your workspace is preserved by default. `--dry-run` previews without changing anything; `--yes` is required to run destructively without a TTY; `--delete-workspace` additionally removes a workspace stored inside the RoboRepo state directory. |
+
+Removal has two owners. `roborepo uninstall` removes what RoboRepo created;
+`npm uninstall -g codethings-roborepo-alpha` removes the application. Neither does the other's job,
+so removing the npm package alone leaves your RoboRepo configuration and workspace in place.
+
+A workspace relocated outside the state directory is never deleted by RoboRepo, including with
+`--delete-workspace`. See
+[install-workflows.md](../guides/install-workflows.md#uninstall) for the full ownership model.
+
 ## Setup and Maintenance
 
 |                            |                                                                                                                                                                  |

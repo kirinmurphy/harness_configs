@@ -768,6 +768,11 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     mutateSkill: (id, enabled) => setSkillInstalled(id, enabled),
     mutateBehavior: (behaviorId, bucket) => setBehaviorBucket(behaviorId, bucket),
     mutateCommand: (tokens, bucket) => setCommandBucket(tokens, bucket),
+    // Managed cleanup, shared with `roborepo uninstall` so both consume one implementation of what
+    // is safe to remove. Imported lazily: the portal starts on every `roborepo web` and has no
+    // reason to load the uninstall path unless someone opens the Maintenance panel.
+    uninstallPreview: async () => (await import("./uninstall.mjs")).uninstallPreview(),
+    uninstallExecute: async () => (await import("./uninstall.mjs")).uninstallExecute(),
     onListening: (actualPort) => {
       setLocalhosterPortalInfo({ port: actualPort });
       if (options.open) openLocalUrl(`${portalUrl(actualPort)}${openPath}`);

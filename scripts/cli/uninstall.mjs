@@ -110,6 +110,42 @@ export async function uninstallCommand(args = []) {
   return status;
 }
 
+// --- Portal-facing API. Same shell implementation as the CLI, so the two cannot drift on what is
+// safe to remove; only the presentation differs. Workspace deletion is intentionally not
+// expressible here — the portal surface is preserve-only (see portal-routes-maintenance.mjs). ---
+
+export function uninstallPreview() {
+  const result = spawnSync("bash", [UNINSTALL_SCRIPT, "--dry-run"], {
+    encoding: "utf8",
+    env: { ...process.env, ROBOREPO_UNINSTALL_DELETE_WORKSPACE: "0" },
+  });
+  const lines = (result.stdout || "").split("\n").filter(Boolean);
+  return {
+    ok: result.status === 0,
+    workspace: fs.existsSync(workspaceRoot) ? workspaceRoot : null,
+    workspacePreserved: true,
+    removals: lines.filter((line) => line.startsWith("remove")),
+    preserved: lines.filter((line) => line.startsWith("preserve")),
+    npmCommand: `npm uninstall -g ${NPM_PACKAGE}`,
+    stderr: result.stderr || "",
+  };
+}
+
+export function uninstallExecute() {
+  const result = spawnSync("bash", [UNINSTALL_SCRIPT], {
+    encoding: "utf8",
+    env: { ...process.env, ROBOREPO_UNINSTALL_DELETE_WORKSPACE: "0" },
+  });
+  return {
+    ok: result.status === 0,
+    workspace: fs.existsSync(workspaceRoot) ? workspaceRoot : null,
+    workspacePreserved: true,
+    output: (result.stdout || "").split("\n").filter(Boolean),
+    npmCommand: `npm uninstall -g ${NPM_PACKAGE}`,
+    stderr: result.stderr || "",
+  };
+}
+
 function runScript({ dryRun, deleteWorkspace }) {
   const result = spawnSync("bash", [UNINSTALL_SCRIPT, ...(dryRun ? ["--dry-run"] : [])], {
     stdio: "inherit",

@@ -98,11 +98,63 @@ unchanged: package registry
 
 ## Uninstall
 
+Removal is **two operations with two owners**, and doing only one leaves the other behind:
+
+| Step | Removes | Owned by |
+| --- | --- | --- |
+| `roborepo uninstall` | RoboRepo-managed harness configuration and machine-local state | RoboRepo |
+| `npm uninstall -g codethings-roborepo-alpha` | the application files npm installed | npm |
+
+Run them in that order:
+
 ```sh
 roborepo uninstall
+npm uninstall -g codethings-roborepo-alpha
 ```
 
-Uninstall removes roborepo-owned copied files, rendered rules, managed skill copies, shell wiring, and install state. If a genuine pre-install backup exists under `~/.roborepo/backups/pre-install/`, uninstall restores it.
+**Removing the npm package alone does not remove your RoboRepo configuration, workspace, or the
+files RoboRepo projected into your harnesses.** Those live outside the package directory, so npm
+does not know about them. Likewise `roborepo uninstall` never removes the npm package — RoboRepo
+does not invoke your package manager on your behalf.
+
+Managed cleanup removes roborepo-owned copied files, rendered rules, managed skill copies, shell
+wiring, package projections, and machine-local state. If a genuine pre-install backup exists under
+`~/.roborepo/backups/pre-install/`, it is restored. Content that has drifted from what RoboRepo
+wrote, and harness files RoboRepo does not own, are left alone and reported.
+
+### Your workspace is preserved
+
+By default your workspace survives, including the common case where it sits at
+`~/.roborepo/workspace` inside the state directory:
+
+```sh
+roborepo uninstall            # workspace preserved
+roborepo uninstall --dry-run  # preview; changes nothing
+```
+
+To remove it as well, ask explicitly:
+
+```sh
+roborepo uninstall --delete-workspace
+```
+
+Two limits on that flag, both deliberate:
+
+- It applies only to a workspace **inside** the RoboRepo state directory. A workspace you relocated
+  with `roborepo workspace use <path>` is never deleted by RoboRepo, even with the flag — RoboRepo
+  did not create that location, so removing it is yours to do.
+- Combined with `--dry-run` it still previews rather than deletes.
+
+Noninteractive runs refuse to remove anything unless you pass `--yes`, so a script cannot delete
+your configuration by accident:
+
+```sh
+roborepo uninstall --yes
+```
+
+The portal exposes the same managed cleanup at `/config` → **Maintenance**, with a preview and an
+explicit confirmation. The browser action is preserve-only: there is no workspace-deletion control
+there, because that is a deliberate typed choice rather than a button.
 
 ## Verification
 

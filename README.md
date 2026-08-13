@@ -43,6 +43,7 @@ Use the CLI to update items and configuration in your global setup so they work 
 | `roborepo localhoster [--json] [--open]` | List active localhost HTTP apps, save route shortcuts, report capability limits, or open `/localhoster`. |
 | `roborepo telemetry enable` / `disable` | Turn token-usage capture on or off. `telemetry status` shows capture state; `telemetry purge --all --backup` resets capture, backing up first. |
 | `roborepo doctor`                | Health-check the install and report what is linked, missing, or drifted.                             |
+| `roborepo uninstall`             | Remove RoboRepo-managed configuration and machine state. Preserves your workspace; does not remove the npm package. |
 
 [View all roborepo commands](docs/user/reference/roborepo-cli.md)
 [View the skills interface](docs/user/reference/roborepo-skills.md)

@@ -405,7 +405,6 @@ function cardActions() {
     onEditLinks: openLinkDialog,
     onAssociate: openAppDialog,
     onAlias: openAliasDialog,
-    onToggleFavorite: toggleFavorite,
     onHide: hideInstance,
     onToggleMenu: toggleActionMenu,
     onCloseMenus: closeActionMenus,
@@ -477,7 +476,6 @@ async function hideRepository(repository) {
 function composeProjectActions() {
   return {
     onAssociateRepo: openComposeRepoDialog,
-    onToggleFavorite: toggleComposeFavorite,
     onHide: hideComposeProject,
     onToggleMenu: toggleActionMenu,
     onCloseMenus: closeActionMenus,
@@ -492,19 +490,6 @@ function openComposeRepoDialog(composeProject) {
   fields.setValue("compose-repo-path", composeProject.repoPath || "");
   fields.setText("compose-repo-error", "");
   refs.composeRepoDialog.showModal();
-}
-
-async function toggleComposeFavorite(composeProject) {
-  try {
-    const result = await api.updateComposeProject({
-      revision: lastSnapshot.settingsRevision,
-      composeProject: composeProject.name,
-      favorite: !composeProject.favorite,
-    });
-    applySnapshot(result.localhoster || result);
-  } catch (err) {
-    showError(err.message);
-  }
 }
 
 async function hideComposeProject(composeProject) {
@@ -823,22 +808,6 @@ function closeActionMenus() {
   // neighbours with nothing visible to explain why.
   for (const raised of refs.content.querySelectorAll(".has-open-menu")) {
     raised.classList.remove("has-open-menu");
-  }
-}
-
-async function toggleFavorite(project, instance) {
-  const projectIdentity = project.identity || instance.project?.identity;
-  const appId = instance.app?.id || "web";
-  try {
-    const result = await api.updateProject({
-      revision: lastSnapshot.settingsRevision,
-      projectIdentity,
-      appId,
-      appFavorite: !(instance.app?.favorite === true),
-    });
-    applySnapshot(result.localhoster || result);
-  } catch (err) {
-    showError(err.message);
   }
 }
 

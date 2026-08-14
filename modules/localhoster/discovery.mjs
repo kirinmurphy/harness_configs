@@ -461,6 +461,20 @@ async function classifyComposeProjects(containers, byProjectName, {
     // stacks have no checkout" rather than to a wrong one. This is the line that fixes the original
     // bug: a working_dir-derived rootId no longer survives into a stack that mounts say is shared.
     resolved.rootId = verdict.ownership === "owned" ? verdict.rootId : null;
+    // The CHECKOUT-SPECIFIC half of git goes with rootId, for the same reason. Branch, HEAD, dirty,
+    // and ahead/behind are facts about one working tree, so a stack that mounts several has no
+    // business reporting any of them: the card showed "main branch" on a shared group whose whole
+    // claim is that it belongs to no single checkout, inherited from whichever checkout happened to
+    // resolve the repository.
+    //
+    // `root` and `provider` survive, because those describe the REPOSITORY, which a shared stack
+    // does still belong to — that is how it gets grouped onto a repository card at all. Nulling the
+    // whole object also erased the repo root (see localhoster-compose-identity-check's "git context
+    // is collected against the repo ROOT" case), which is a different claim from "which checkout".
+    if (verdict.ownership !== "owned" && resolved.git) {
+      const { root, provider } = resolved.git;
+      resolved.git = { root, provider };
+    }
   }
   return byProjectName;
 }

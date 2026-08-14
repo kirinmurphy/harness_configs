@@ -389,9 +389,10 @@
                 Change association
               </button>
               <button type="button" data-action="alias">Confirm alias</button>
-              <button type="button" data-action="favorite">
-                Toggle favorite
-              </button>
+              <!-- No favorite here: pinning is a repository-level idea (see the repository card's
+                   Pin action), and offering it per member asked the user to favorite one port of a
+                   thing they were already pinning as a whole. Hide stays — hiding one noisy
+                   listener is a real per-member need. -->
               <button type="button" data-action="hide">Hide</button>
             </div>
           </div>
@@ -465,7 +466,8 @@
               <div class="menu-panel" data-menu hidden>
                 <!-- "Associate repo" moved to the repository card's menu: it binds a path to the
                      whole repository, not to this one Compose stack. -->
-                <button type="button" data-action="favorite">Toggle favorite</button>
+                <!-- Favorite removed for the same reason as on the instance card: pinning belongs
+                     to the repository, not to one Compose stack under it. -->
                 <button type="button" data-action="hide">Hide</button>
               </div>
             </div>

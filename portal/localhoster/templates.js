@@ -113,10 +113,9 @@ export function composeProjectCard(composeProject, actions, { isMember = false, 
     // repository card is a drill-in with nothing behind it.
     node.querySelector(".compose-project-chevron")?.remove();
     node.open = true;
-    // Favorite and hide describe the whole repository and now live on its menu; leaving copies here
-    // would offer two controls for one setting. Repo association stays: it is specific to this
-    // stack, not to the repository it resolved into.
-    node.querySelector("[data-action=favorite]")?.remove();
+    // Hide describes the whole repository and now lives on its menu; leaving a copy here would
+    // offer two controls for one setting. Repo association stays: it is specific to this stack, not
+    // to the repository it resolved into. (Favorite is gone entirely — pinning is repository-level.)
     node.querySelector("[data-action=hide]")?.remove();
   }
   const tooltip = node.querySelector(".info-wrap > template").content;
@@ -221,13 +220,8 @@ function wireComposeCardActions(node, composeProject, actions) {
     actions.onCloseMenus();
     actions.onAssociateRepo(composeProject);
   });
-  // Optional for the same reason as wireCardActions: these are removed on a compose card nested
-  // inside a repository card, where favorite and hide belong to the repository.
-  node.querySelector("[data-action=favorite]")?.addEventListener("click", (event) => {
-    event.preventDefault();
-    actions.onCloseMenus();
-    actions.onToggleFavorite(composeProject);
-  });
+  // Optional for the same reason as wireCardActions: hide is removed on a compose card nested
+  // inside a repository card, where it belongs to the repository.
   node.querySelector("[data-action=hide]")?.addEventListener("click", (event) => {
     event.preventDefault();
     actions.onCloseMenus();
@@ -705,9 +699,9 @@ export function instanceCard(project, instance, actions) {
   // should not compete visually with the repository name above it.
   if (project.isMember) {
     node.classList.add("is-member");
-    // Favorite and hide are repository-scoped and live on the repository menu; the actions left
-    // here (links, copy, open, history, association, alias) genuinely describe this one listener.
-    node.querySelector("[data-action=favorite]")?.remove();
+    // Hide is repository-scoped and lives on the repository menu; the actions left here (links,
+    // copy, open, history, association, alias) genuinely describe this one listener. (Favorite is
+    // gone entirely — pinning is repository-level.)
     node.querySelector("[data-action=hide]")?.remove();
   }
   const tooltip = node.querySelector(".info-wrap > template").content;
@@ -1513,12 +1507,8 @@ function wireCardActions(node, project, instance, actions) {
     actions.onCloseMenus();
     actions.onAlias(project, instance);
   });
-  // Optional: favorite and hide are repository-scoped, so a card nested inside a repository card has
-  // had these buttons removed before wiring runs. A standalone card still has them.
-  node.querySelector("[data-action=favorite]")?.addEventListener("click", () => {
-    actions.onCloseMenus();
-    actions.onToggleFavorite(project, instance);
-  });
+  // Optional: hide is repository-scoped, so a card nested inside a repository card has had this
+  // button removed before wiring runs. A standalone card still has it.
   node.querySelector("[data-action=hide]")?.addEventListener("click", () => {
     actions.onCloseMenus();
     actions.onHide(project, instance);

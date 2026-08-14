@@ -1,7 +1,7 @@
 ---
 id: 46up8y7a
 priority: high
-next_action: Phases 1-6a are implemented on branch plan-46up8y7a-install-lifecycle, plus the 6b documentation. Phase 7's first two items are done (ownership inventory, collision/backup policy), each fixing a real defect. Remaining Phase 7 work is moved-checkout repair, shell/PATH dedup, reinstall and upgrade/downgrade state, and dev-vs-package parity, plus the three 6b items that need real hardware: a fresh transfer artifact, the new-Mac harness-count matrix, and presence-signal observations
+next_action: Phases 1-6a are implemented on branch plan-46up8y7a-install-lifecycle, plus the 6b documentation. Phase 7 items 1-3 are done (ownership inventory, collision/backup policy, moved-checkout repair), each fixing a real defect. Remaining Phase 7 work is shell/PATH dedup, reinstall and upgrade/downgrade state, and dev-vs-package parity, plus the three 6b items that need real hardware: a fresh transfer artifact, the new-Mac harness-count matrix, and presence-signal observations
 blocked_by: []
 depends_on: []
 related:

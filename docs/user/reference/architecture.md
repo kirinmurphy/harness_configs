@@ -260,6 +260,38 @@ verbs `update`/`doctor` to the existing bash scripts (the first install is the
 shell bootstrap `install/main.sh`, so there is no root-level `install` verb). Shared skill logic
 lives in `scripts/cli/skill-lib.mjs`.
 
+## Runtime State
+
+The materialization map above covers what installation *puts* on disk. This covers what accumulates
+there afterwards: observability data roborepo writes while you work, all of it machine-local, none
+of it part of the portable profile.
+
+| Store | Path under `<stateRoot>` | Shape | Bound |
+| --- | --- | --- | --- |
+| Localhoster history | `localhoster/history.jsonl` | append-only JSONL | 14 days (user preference, 1–365), 2MB |
+| Telemetry spool | `telemetry/spool/<harness>.jsonl` | append-only JSONL | 25MB per harness |
+| Telemetry markers | `telemetry/events/markers.jsonl` | append-only JSONL | 5MB |
+| Telemetry snapshots | `telemetry/snapshots/` | one file per id | 5MB total |
+| Telemetry experiments | `telemetry/experiments/` | one file per id | 5MB total |
+| Dense bash capture | `capture/<harness>/dense-bash.jsonl` | append-only JSONL | 30 days, 10MB |
+| Usage snapshots | `usage/latest/<harness>.json` | overwritten per harness | self-bounding |
+
+Each store trims itself on write; nothing runs on a schedule. The decision of *what* is stale lives
+in one place (`modules/retention/`), while the write stays with each store, because the correct
+write differs by reader: a reader that holds a byte cursor needs an in-place shrink it can detect,
+and a reader that reads whole files needs an atomic rename.
+
+Durable user intent — the repository registry, command overrides, enabled packages — is not listed
+here. It never expires and is not observability data.
+
+```
+roborepo maintenance stores                  # sizes against bounds
+roborepo maintenance stores reset <id>       # apply that store's policy now
+roborepo maintenance stores reset <id> --all # clear it outright
+```
+
+`roborepo doctor --installed` fails when a store is over its cap.
+
 ## Sync Flow
 
 ```mermaid

@@ -62,6 +62,15 @@ export function toMillis(now) {
   return now instanceof Date ? now.getTime() : new Date(now).getTime();
 }
 
+// Shared so the CLI, the portal, and doctor all render a store's size the same way. A store
+// reported as "18.8MB" in one surface and "18,874,368 bytes" in another reads as two different
+// numbers.
+export function formatBytes(bytes) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)}KB`;
+  return `${bytes}B`;
+}
+
 // Given per-entry byte costs (oldest first) and the total, how many of the oldest must go to fit
 // under the cap.
 //

@@ -4,6 +4,7 @@ export {
   cutoffMillis,
   dropCountForBytes,
   dropVerdict,
+  formatBytes,
   keepVerdict,
   normalizePolicy,
   toMillis,

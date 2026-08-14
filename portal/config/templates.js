@@ -209,6 +209,38 @@ export function permissionsSection(section, callbacks) {
   return panel;
 }
 
+// Read-only view of what roborepo keeps on disk. No reset control here on purpose — clearing a
+// store is destructive and belongs behind `roborepo maintenance stores reset <id>`.
+export function storesSection(section) {
+  const panel = tpl("tpl-stores-section");
+  panel.querySelector('[data-slot="description"]').textContent = section.description || "";
+  panel.querySelector('[data-slot="rows"]').replaceChildren(...section.items.map(storeRow));
+  return panel;
+}
+
+function storeRow(item) {
+  const row = tpl("tpl-store-row");
+  row.querySelector('[data-slot="label"]').textContent = item.label;
+  row.querySelector('[data-slot="path"]').textContent = item.path;
+  const size = item.maxBytes
+    ? `${formatBytes(item.bytes)} of ${formatBytes(item.maxBytes)}`
+    : formatBytes(item.bytes);
+  row.querySelector('[data-slot="size"]').textContent = item.over ? `${size} — over cap` : size;
+  // Only an over-cap store is worth colouring; a store at 3% and one at 80% are both fine, and
+  // shading the difference would imply an action the user does not need to take.
+  row.querySelector('[data-slot="dot"]').classList.add(item.over ? "off" : "on");
+  return row;
+}
+
+// Duplicated from modules/retention/policy.mjs rather than imported: this file is served to the
+// browser, which cannot resolve a repo-relative Node module path. Keep the two in step — a store
+// shown as "18.8MB" in the portal and something else in the CLI reads as two different numbers.
+function formatBytes(bytes) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)}KB`;
+  return `${bytes}B`;
+}
+
 function permissionRow(item, callbacks) {
   if (item.kind === "behavior") return behaviorRow(item, callbacks);
   if (item.kind === "arbitrary-list") return arbitraryListRow(item, callbacks);

@@ -13,6 +13,8 @@ After [installing roborepo](../guides/first-time-setup.md), install puts it on y
 | `roborepo update [--verbose]` | Applies this repo's harness config to this machine: copied files, rendered rules, root config export, global command install, and shell wiring. Use after pulling repo changes; `--verbose` includes unchanged items in the report. |
 | `roborepo repair [--dry-run] [--on-conflict ...]` | Repairs a moved or renamed checkout by relinking stale symlinks against the current path; it leaves copied config content alone. |
 | `roborepo maintenance repair local-config [--dry-run or --apply]` | Recovers safe local Claude/Codex settings from recent backups when `update` or `doctor --installed` reports local config repair candidates. |
+| `roborepo maintenance stores [list]` | Lists the local stores roborepo keeps on disk — telemetry spools, localhoster history, capture logs — with each one's size against its bound. |
+| `roborepo maintenance stores reset <id> [--all]` | Reclaims space in one store. Applies that store's own retention policy, or with `--all` clears it outright. Store ids come from `stores list`. |
 | `roborepo doctor`          | Runs harness health checks for config files, links, helper commands, dependencies, and generated outputs.                                                        |
 | `roborepo doctor --installed [--verbose]` | Runs post-install verification that the installed harness paths resolve correctly; default output is concise.                                      |
 | `roborepo rules [--check]` | Renders generated Claude/Codex global instruction files, or verifies them with `--check`.                                                                        |

@@ -175,6 +175,27 @@
         <div data-slot="rows"></div>
       </section>
     </template>
+    <template id="tpl-stores-section">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Local Stores</h2>
+          <span class="muted" data-slot="description"></span>
+        </div>
+        <div data-slot="rows"></div>
+      </section>
+    </template>
+    <template id="tpl-store-row">
+      <div class="item">
+        <span class="dot" data-slot="dot"></span>
+        <div class="item-body">
+          <div class="item-row">
+            <span class="item-label" data-slot="label"></span>
+            <span class="muted" data-slot="size"></span>
+          </div>
+          <div class="muted" data-slot="path"></div>
+        </div>
+      </div>
+    </template>
     <template id="tpl-config-item">
       <div class="item">
         <span class="dot" data-slot="dot"></span>

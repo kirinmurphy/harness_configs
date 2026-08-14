@@ -3,6 +3,7 @@ import path from "node:path";
 import { repoRoot, harnessHome, rootConfigActive, rootConfigBaseline } from "./paths.mjs";
 import { presetsStatePath, telemetryDir } from "./state-paths.mjs";
 import { effectivePermissions } from "./config-mutate.mjs";
+import { storeHealth } from "./maintenance-stores.mjs";
 import { renderMarkdown } from "./markdown-render.mjs";
 import {
   renderRulesPreview,
@@ -297,7 +298,33 @@ export function buildBehaviorView(snap) {
         },
       ],
     },
+    storesSection(),
   ];
+}
+
+// What roborepo is keeping on disk, and how close each store is to its bound. Read-only here:
+// resetting is `roborepo maintenance stores reset <id>`, a destructive action that belongs behind
+// an explicit command rather than a click in a config dashboard.
+//
+// Sizes are measured on read, so this is a live view rather than a cached one. Stores that do not
+// exist yet report zero instead of being hidden — "nothing captured yet" is information.
+function storesSection() {
+  return {
+    category: "Local Stores",
+    kind: "stores",
+    description: "Observability data roborepo keeps on disk. Each store trims itself on write.",
+    // On-disk bytes, not prompt tokens — the same distinction the Permissions section draws.
+    contextCost: { label: "not-prompt-context" },
+    items: storeHealth().map((store) => ({
+      id: store.id,
+      label: store.id,
+      kind: "store",
+      path: store.path,
+      bytes: store.bytes,
+      maxBytes: store.maxBytes,
+      over: store.over,
+    })),
+  };
 }
 
 // Active rollups only count enabled items; potential totals let the UI show what enabling the

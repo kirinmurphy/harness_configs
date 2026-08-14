@@ -1,4 +1,5 @@
 import { buildRootConfigView, ROOT_CONFIG_STATE_LABEL } from "./root-config-view.mjs";
+import { formatBytes } from "../../modules/retention/index.mjs";
 
 // Read-only report of baseline vs. active root config vs. drift state, per harness. No writes —
 // see docs/plans/completed/root-config-layered-inheritance.md for the update/repair behavior that acts on
@@ -54,6 +55,13 @@ export function printConfigStatus(view) {
           console.log(`    ${c.bucket.padEnd(6)} ${c.label}${override}`);
         }
         if ((item.items || []).length > 5) console.log(`    … (${item.items.length - 5} more — see: roborepo web)`);
+      } else if (item.kind === "store") {
+        // Size against bound, not an on/off state — a store is never "enabled", it just holds data.
+        const size = item.maxBytes
+          ? `${formatBytes(item.bytes)} of ${formatBytes(item.maxBytes)}`
+          : formatBytes(item.bytes);
+        console.log(`  ${item.label}  ${size}${item.over ? "  (over cap)" : ""}`);
+        console.log(`      ${item.path}`);
       } else if (item.kind === "info") {
         console.log(`  ${item.label}`);
         if (item.description) console.log(`    ${item.description}`);

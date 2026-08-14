@@ -418,39 +418,48 @@ data, and the package description records the new location.
 
 ### Phase 5 — surfaces and documentation
 
-- [ ] Add the `maintenance stores` command definitions and module.
-- [ ] Add per-store `doctor` checks in `scripts/doctor.sh`.
-- [ ] Add a Monitoring row to the portal showing each store's size against its bound.
+- [x] Add the `maintenance stores` command definitions and module. `list`, `reset <id>` (applies the
+      store's own policy), and `reset <id> --all` (clears outright), covered by
+      `scripts/test/maintenance-stores-check.mjs`.
+- [x] Add per-store `doctor` checks in `scripts/doctor.sh`. One `check_store_bounds` covering the
+      whole registry rather than one check per store, so a new store needs no doctor edit. Runs
+      under `--installed` (runtime state, not source layout); `doctor --installed` is now 113 checks.
+- [x] Add a portal row showing each store's size against its bound. It became its own **Local
+      Stores** section rather than a Monitoring row: Monitoring is a list of package toggles, and a
+      store is not something you enable. Read-only by design — resetting is destructive and stays
+      behind the CLI.
 
 Documentation lands here, not earlier — every gap below describes behavior the earlier phases
 build, and documenting a cap before it exists is worse than the current silence. Targets, from a
 survey of `docs/user/` at `81b0c43`:
 
-- [ ] `docs/user/reference/telemetry.md` — the section at "Privacy and retention" is entirely
-      privacy and says nothing about retention. Add the actual bounds for the spool, markers,
-      snapshots, and experiments, and note that `telemetry purge --all` remains the only full reset.
-- [ ] `docs/user/reference/architecture.md` — no section describes what accumulates under
-      `stateRoot` at runtime; it covers materialization and sync only. Add the store table (path,
-      shape, bound) so the runtime footprint is documented beside the install-time layout.
-- [ ] `docs/user/reference/roborepo-cli.md` — document `maintenance stores` and its reset forms.
-- [ ] `docs/user/reference/localhoster.md` — already documents `historyRetentionDays` correctly at
-      its Retention bullet. Verify it still matches after the Phase 2 migration rather than
-      rewriting it; this is the one store whose retention is already user-facing and correct.
-- [ ] `globals/packages/capture-dense-bash/package.config.json` — the `description` names the old
-      `~/.claude/logs` path. Already listed in Phase 4; confirm it reads correctly once the store
-      moves, since the package description is user-facing in `package manage`.
+- [x] `docs/user/reference/telemetry.md` — split the old "Privacy and retention" heading, which was
+      entirely privacy, into `## Privacy` and a real `## Retention` with the bounds table and the
+      two non-obvious behaviors (trims overshoot to ~70%; a running experiment is never evicted).
+- [x] `docs/user/reference/architecture.md` — added `## Runtime State` before Sync Flow. The doc
+      covered what installation puts on disk but nothing about what accumulates afterwards.
+- [x] `docs/user/reference/roborepo-cli.md` — documented `maintenance stores` and its reset forms.
+- [x] `docs/user/reference/localhoster.md` — verified, not rewritten. All three of its bullets
+      (retention preference, 2MB cap, atomic compaction) still hold after the migration.
+- [x] `globals/packages/capture-dense-bash/package.config.json` — done in Phase 4; the description
+      now names the new path and states the bound.
 
 ## Validation
 
 Run targeted checks, not a full sweep — `npm run test:*` exceeds the command timeout.
 
 ```
-node scripts/test/retention-policy-check.mjs
-node scripts/test/localhoster-history-check.mjs
-node scripts/test/telemetry-spool-store-check.mjs
-node scripts/test/capture-dense-bash-check.mjs
-node scripts/test/cli-command-catalog-check.mjs
-roborepo doctor
+node scripts/test/retention-policy-check.mjs        pass (7 stores registered)
+node scripts/test/maintenance-stores-check.mjs      pass
+node scripts/test/telemetry-store-bounds-check.mjs  pass
+node scripts/test/capture-dense-bash-check.mjs      pass
+node scripts/test/localhoster-history-check.mjs     pass (unmodified)
+node scripts/test/telemetry-spool-store-check.mjs   pass (unmodified)
+node scripts/test/package-catalog-check.mjs         pass
+node scripts/test/cli-command-catalog-check.mjs     pass
+node scripts/test/telemetry-marker-cli-check.mjs    pass
+roborepo doctor                                     pass (103 checks)
+roborepo doctor --installed                         pass (113 checks)
 ```
 
 Acceptance criteria:
@@ -459,11 +468,22 @@ Acceptance criteria:
 - Every store in the registry has a non-null bound, asserted by a test over the registry itself.
 - The dense-bash hook's path matches `denseBashLogPath` under a sandboxed state root.
 - `roborepo doctor` reports every store's headroom and passes on a clean install.
-- No staleness arithmetic survives outside `modules/retention/`. `retention-policy-check.mjs`
-  asserts this by scanning `scripts/` and `modules/` for the constants that encode a cutoff
-  (`RETENTION_DAYS`, `MAX_BYTES`, `KEEP_FRACTION`, `COMPACT_FLOOR`) and failing on any hit outside
-  the engine and its own tests. The names are the ones already in use at `ea84711`, which is what
-  makes the scan meaningful rather than decorative.
+- No staleness *arithmetic* survives outside `modules/retention/`. Met: no store computes a cutoff
+  timestamp or a keep-fraction any more; each passes a policy object and acts on the returned
+  verdict.
+
+  The originally planned enforcement — a scan failing on any `MAX_BYTES` / `RETENTION_DAYS` /
+  `KEEP_FRACTION` constant outside the engine — was **not built, deliberately**. It would fail
+  today on correct code: policy *values* stay with the stores that own them
+  (`HISTORY_MAX_BYTES`, `MARKERS_MAX_BYTES`, `SPOOL_MAX_BYTES`), because a bound is a property of
+  the store, not of the measuring engine. The scan cannot tell a declared value from a
+  hand-rolled calculation, so it would enforce the wrong invariant. The engine's own tests plus
+  each store's contract test cover the real one.
+
+  The dense-bash hook is the one genuine exception: it reimplements the ladder because it runs as
+  a copied runtime asset outside the CLI's module graph and cannot import the engine, the same
+  constraint that forces it to re-resolve `stateRoot`. `capture-dense-bash-check.mjs` pins its
+  behavior.
 
 ## Risks
 
@@ -477,14 +497,22 @@ Acceptance criteria:
 
 ## Open questions
 
-- **Is the spool's 40MB intended?** Both spool files are within the 25MB per-harness cap, so
-  nothing is malfunctioning — but nothing has ever drained or trimmed them either, and `codex.jsonl`
-  has been static at 21.4MB since 2026-08-11. Resolve during Phase 2 whether the spool is meant to
-  be drained after analysis (in which case the real bug is a missing drain, not a missing cap) or
-  is genuinely the durable store. This changes whether 25MB is the right number.
-- **Should experiments be bounded by age rather than bytes?** Experiments are live records a user
-  created deliberately, and unlike snapshots they are mutable. Expiring one mid-experiment would be
-  wrong. A byte cap cannot do that; an age cap could. The plan currently uses bytes for that reason,
-  but a count bound with a floor may express the intent better.
-- **Should `maintenance stores reset` require `--apply`?** `repair skill-links` does. Reset is
-  destructive but scoped and its data is re-derivable, so acting immediately may be acceptable.
+All three questions this plan opened are resolved; the answers are recorded with the tasks that
+settled them.
+
+- **Is the spool's 40MB intended?** Yes. Nothing drains it, so it is the durable store rather than a
+  buffer, and 25MB per harness is the right kind of bound. Resolved in Phase 2.
+- **Should experiments be bounded by age rather than bytes?** Neither, on its own. Bytes bound the
+  set, and a separate liveness guard makes a running experiment ineligible for eviction regardless
+  of size — the concern behind the question was liveness, not the choice of dimension. Resolved in
+  Phase 3.
+- **Should `maintenance stores reset` require `--apply`?** No. A bare `reset` applies the store's
+  own policy, which is what the write path would have done anyway, so it is not destructive in the
+  sense `repair skill-links` guards against. `--all` is the destructive form and says so.
+
+One question remains open, and it is new:
+
+- **Should the caps be configurable?** Only localhoster's window is, because it already was. Every
+  other bound is a literal in `modules/retention/registry.mjs`. The registry supports per-store
+  preference resolution (`preferenceKey` + `resolveStorePolicy`), so exposing more is cheap — but no
+  user has asked, and an unused setting is a maintenance cost. Revisit if someone hits a cap.

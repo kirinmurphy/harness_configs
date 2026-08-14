@@ -33,12 +33,37 @@ for (const name of ["case-study", "plan-docs", "tighten", "wrap-up", "plan-promo
 
 const snapshot = readConfigSnapshot();
 const sections = new Map(snapshot.behaviorView.map((section) => [section.category, section]));
-assert(sections.has("Token Optimization"), "missing Token Optimization section");
-assert(sections.has("Monitoring"), "missing Monitoring section");
-assert(sections.has("Skills - Development Life Cycle"), "missing Skills - Development Life Cycle section");
-assert(sections.has("Skills - Writing Assistants"), "missing Skills - Writing Assistants section");
-assert(sections.has("Code Conventions"), "missing Code Conventions section");
-assert(sections.has("Chat-Time Output"), "missing Chat-Time Output section");
+
+// Every category in the manifest that owns at least one package must reach the rendered view.
+//
+// Derived from the manifest rather than listed, so adding a category extends the assertion for
+// free. This is a regression guard, not a reproduction: three categories once shipped invisible
+// because portal/config/state.js kept a second hard-coded category->template map
+// (SECTION_TEMPLATE_ID) that a new category had to be added to by hand. Commit 8c82f6e deleted that
+// map and made the portal render from this manifest, so the failure is structurally gone. What this
+// catches is a future reintroduction of per-category wiring anywhere between manifest and view.
+//
+// Categories with no packages are skipped: buildBehaviorView filters empty sections deliberately,
+// so an unused category is absent by design, not by failure.
+const categories = JSON.parse(
+  fs.readFileSync(path.join(import.meta.dirname, "../../manifests/inventory/package-categories.json"), "utf8"),
+).categories;
+const populated = new Set(catalog.map((pkg) => pkg.presentation?.category).filter(Boolean));
+for (const category of categories) {
+  if (!populated.has(category.id)) continue;
+  assert(
+    sections.has(category.label),
+    `category "${category.id}" (${category.label}) has packages but renders no section — `
+      + "every populated manifest category must appear in behaviorView",
+  );
+}
+
+// Non-package sections are appended by buildBehaviorView rather than coming from the manifest, so
+// they need their own assertion — the loop above cannot see them.
+for (const label of ["Permissions", "Local Stores"]) {
+  assert(sections.has(label), `missing ${label} section`);
+}
+
 assert(sections.get("Token Optimization").items.some((item) => item.id === "jcodemunch"), "jcodemunch not visible in Token Optimization");
 assert(sections.get("Skills - Development Life Cycle").items.some((item) => item.id === "tighten"), "tighten not visible in Skills - Development Life Cycle");
 

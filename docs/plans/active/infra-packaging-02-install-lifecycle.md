@@ -881,6 +881,33 @@ making this deterministic means having the test wait for a settled frame rather 
 substring — that plan's call, not this one's. Recorded so the next 394/1 does not cost someone the
 time to re-derive that it is unrelated to install lifecycle.
 
+### Manual smoke checklist before/after publishing
+
+Automated coverage cannot reach these. Ordered by how much each is the *only* evidence for its
+surface, not by effort.
+
+| # | Check | Why automation cannot cover it |
+| --- | --- | --- |
+| 1 | `roborepo web` → `/config` → **Uninstall RoboRepo** panel: preview, confirm, read the result and the printed npm command | The portal cleanup route is tested at the handler only. Starting a detached `roborepo web` per case hung the suite past 7 minutes and stranded processes, because `web stop` cannot reap a server started under a different sandboxed HOME. This is the only shipped surface with no end-to-end coverage. |
+| 2 | Bare `roborepo` in a real terminal, on an uninitialized install | First-run routing is asserted through the pure `resolveFirstRunRoute` function and through piped stdin. Neither is a real TTY, and the routing rule keys on interactivity. |
+| 3 | `roborepo library`, toggle one package, save with Enter | The wizard's raw-mode keypress handling. The PTY test covers one toggle-and-save path; a human finds the rest. |
+| 4 | On a real machine: `npm i -g` → `roborepo init` → `roborepo doctor` | Every sandbox had a synthetic `~/.claude`. A real one has years of user content that no fixture reproduces. |
+| 5 | `roborepo uninstall --dry-run` on a real machine, and read the preview | Non-destructive, and the preview is the thing a user is asked to trust before the destructive run. |
+
+Stub executables (a `#!/bin/sh` file named `claude`/`codex`/`gemini` on PATH) are enough to exercise
+the `confirmed` discovery branch, so "real harness binaries" is no longer a gap — see
+`testUninstallWithConfirmedHarnesses` in `managed-uninstall-check.mjs`. What stubs cannot cover is
+item 4: a home directory with real accumulated user content.
+
+Sequencing note: build the npm artifact from the merged commit, not from the feature branch. The
+smoke test asserts a clean worktree, and Phase 6b's transfer artifact is specified to come from the
+final tested commit.
+
+Merge note: the branch conflicts with `main` in exactly one file — this document — because plan-status
+syncs were committed directly to `main` while the implementation worktree kept editing the same file.
+No source conflicts. The worktree copy is the superset, so resolve by taking it wholesale; the
+`main`-side syncs describe earlier states of the same phases.
+
 ## Validation
 
 ### Automated behavior

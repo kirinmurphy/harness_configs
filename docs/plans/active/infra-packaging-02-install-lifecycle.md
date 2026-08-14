@@ -617,7 +617,7 @@ both need the physical machine, so neither can be closed from this branch.
 - [x] Complete the resource ownership/removal inventory across skills, commands, MCP, hooks, root config, shell entries, backups, state, and caches.
 - [x] Finish collision/back-up policy characterization and deterministic dry-run/noninteractive behavior.
 - [x] Finish moved-checkout and stale-path repair coverage.
-- [ ] Finish shell/PATH deduplication and package-manager-shim ownership cleanup.
+- [x] Finish shell/PATH deduplication and package-manager-shim ownership cleanup.
 - [ ] Define same-version reinstall and versioned upgrade/downgrade state behavior.
 - [ ] Run the same core lifecycle matrix in development and installed-package modes.
 
@@ -723,6 +723,40 @@ data-driven loop, so a newly registered provider keeps working without an edit h
 Both stale tests predate this branch and fail identically on `main`. They are fixed here rather than
 left red because the suite is the verification gate for the rest of Phase 7 — with it aborting at
 the wizard test, roughly half its cases (70 of 133) never ran at all.
+
+A follow-up commit routed the six remaining hand-rolled entry-point guards through the same helper.
+They appeared in four different spellings (`path.resolve(...)` comparisons, a
+`` `file://${argv[1]}` `` template, and a `new URL(...).pathname` form), and all six were verified
+broken against a symlinked checkout before conversion — `path.resolve()` normalizes a path but does
+not resolve symlinks. A test assertion now fails the suite if any module reintroduces the pattern,
+so the helper holds by construction rather than by memory.
+
+#### Phase 7 implementation notes (shell/PATH dedup and shim ownership)
+
+Deduplication and shim ownership were both already correct, and characterization confirmed it:
+
+- three consecutive `install-shell-snippets.sh` + `install-global-commands.sh` runs produce exactly
+  one PATH export and one marker comment (exact-line matching, not append-on-every-run);
+- the PATH line is `repo_root`-independent, so it survives a checkout move without duplicating;
+- `check_command_target` recognizes its own link and the recorded prior checkout, silently reclaims
+  a dangling link from a moved checkout, and refuses with a merge-review prompt on a genuine
+  unmanaged collision. An npm-installed `roborepo` on `~/.local/bin` is preserved, not clobbered —
+  the install exits 1 and changes nothing, which is the correct ownership boundary for package mode.
+
+**One defect found: uninstall left dangling shell wiring behind.** `remove_shell_wiring`'s awk filter
+matched `source` lines against the *current* `repo_root` only. A profile wired by a checkout that had
+since moved or been deleted kept its `source` line while the marker comments around it were stripped
+— and uninstall still printed "no active roborepo remnants" and exited 0, so every new shell errored
+on the missing file with nothing left to explain why.
+
+The filter now also matches `recorded_repo` (the prior checkout, already resolved in this file) and,
+generally, any `source ".../shell/..."` line whose target no longer exists.
+
+| Decision | Reasoning |
+| --- | --- |
+| Dangling-target test rather than a broader path pattern | It is what makes generalizing safe. A user's own `source` line points at a file that exists, so it is never touched; only a path roborepo can no longer account for is pruned. Verified both directions in the regression test. |
+| The `# Harness config shell helpers` marker also triggers the prune | The marker is written verbatim by the installer, so its presence alone is proof roborepo wired this profile — needed to reach a stale line when neither repo root matches. |
+| awk local named `quote_end`, not `close` | `close` is a reserved word in the awk shipped with macOS; using it is a hard parse error, which surfaced as uninstall exiting 2 mid-run. |
 
 ## Validation
 

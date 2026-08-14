@@ -748,7 +748,10 @@ remove_shell_wiring() {
 
   for profile in "${HOME}/.zshrc" "${HOME}/.bashrc" "${HOME}/.bash_profile" "${HOME}/.profile"; do
     [[ -f "${profile}" ]] || continue
-    if grep -Fq "${repo_root}/shell/" "${profile}" || grep -Fqx "${line}" "${profile}"; then
+    if grep -Fq "${repo_root}/shell/" "${profile}" \
+      || { [[ -n "${recorded_repo}" ]] && grep -Fq "${recorded_repo}/shell/" "${profile}"; } \
+      || grep -Fqx "${line}" "${profile}" \
+      || grep -Fqx "# Harness config shell helpers" "${profile}"; then
       if [[ "${dry_run}" -eq 1 ]]; then
         echo "prune: would remove roborepo shell wiring from ${profile}"
         continue
@@ -761,9 +764,31 @@ remove_shell_wiring() {
       # authored these exact strings. Dropping the marker regardless of what follows also cleans
       # up comments orphaned by earlier uninstall runs that pruned the wiring line but not the
       # marker. Blank lines elsewhere in the profile are left untouched.
-      awk -v repo_root="${repo_root}" -v path_line="${line}" '
+      #
+      # Wiring lines are matched against the current checkout, the recorded prior checkout, and
+      # any `source ".../shell/..."` line whose target no longer exists. Keying only on repo_root
+      # left a dangling `source` behind whenever the checkout had moved (or was already deleted)
+      # since the wiring was written — uninstall reported success and "no active remnants" while
+      # every new shell errored on the missing file. The dangling-target test is what makes this
+      # safe to generalize: a user's own `source` line points at a file that exists, so it is
+      # never touched; only a path roborepo can no longer account for is pruned.
+      awk -v repo_root="${repo_root}" -v recorded_repo="${recorded_repo}" -v path_line="${line}" '
+        # `close` is a reserved word in the awk shipped with macOS, so the end index is named
+        # quote_end here rather than the more obvious close.
+        function wiring_target(l,   rest, quote_end) {
+          if (index(l, "source \"") != 1) return ""
+          rest = substr(l, 9)
+          quote_end = index(rest, "\"")
+          if (quote_end == 0) return ""
+          return substr(rest, 1, quote_end - 1)
+        }
         $0 == path_line { next }
         index($0, "source \"" repo_root "/shell/") == 1 { next }
+        recorded_repo != "" && index($0, "source \"" recorded_repo "/shell/") == 1 { next }
+        {
+          target = wiring_target($0)
+          if (target != "" && target ~ /\/shell\// && system("test -e \"" target "\"") != 0) next
+        }
         $0 == "# Harness config shell helpers" { next }
         $0 == "# Harness config global commands" { next }
         { print }

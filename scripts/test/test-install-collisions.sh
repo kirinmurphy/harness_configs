@@ -641,6 +641,29 @@ test_uninstall_reclaims_real_dir_link_remnant() {
     || fail "uninstall reclaims a real-dir roborepo copy left at a link path" "$home_dir/uninstall.out"
 }
 
+# Shell wiring written by a checkout that has since moved (or been deleted) must still be pruned.
+# The awk filter used to key only on the CURRENT repo_root, so a profile wired by a prior checkout
+# kept its `source` line while the marker comments around it were stripped -- uninstall printed
+# "no active roborepo remnants" and exited 0 while every new shell errored on the missing file.
+# The user's own source line, pointing at a file that exists, must survive either way.
+test_uninstall_prunes_stale_shell_wiring() {
+  local home_dir
+  home_dir="$(make_home)"
+  mkdir -p "$home_dir/my/shell"
+  echo "echo hi" > "$home_dir/my/shell/mine.sh"
+
+  printf '# user content\nsource "%s/my/shell/mine.sh"\n# Harness config shell helpers\nsource "%s/gone-checkout/shell/helpers.sh"\n# Harness config global commands\nexport PATH="${HOME}/.local/bin:${PATH}"\n' \
+    "$home_dir" "$home_dir" > "$home_dir/.zshrc"
+
+  HOME="$home_dir" "$repo_root/scripts/install/uninstall.sh" >"$home_dir/u.out" 2>&1 \
+    || fail "uninstall succeeds with stale shell wiring" "$home_dir/u.out"
+
+  assert_file_not_contains "$home_dir/.zshrc" "gone-checkout" "stale wiring from a prior checkout is pruned"
+  assert_file_not_contains "$home_dir/.zshrc" "Harness config" "orphaned marker comments are pruned"
+  assert_file_contains "$home_dir/.zshrc" "my/shell/mine.sh" "a user's own source line is preserved"
+  assert_file_contains "$home_dir/.zshrc" "^# user content" "unrelated user content is preserved"
+}
+
 test_uninstall_removes_runtime_state_and_backups() {
   local home_dir
   home_dir="$(make_home)"
@@ -1072,6 +1095,7 @@ test_uninstall_reclaims_repo_copies_and_restores_originals
 test_uninstall_preserves_user_modified_copy
 test_uninstall_reclaims_real_dir_link_remnant
 test_uninstall_removes_runtime_state_and_backups
+test_uninstall_prunes_stale_shell_wiring
 test_uninstall_check_clean_reports_remnant
 test_cli_entry_points_run_through_symlinked_path
 test_uninstall_stops_repo_owned_processes

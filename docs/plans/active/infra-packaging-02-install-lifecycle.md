@@ -862,19 +862,47 @@ profiles as blind, exactly as intended.
 
 #### Known flake: `cli-surface-integration-check` remote-sync menu
 
-Across four full-suite runs the suite reported 395/395 three times and 394/1 once. The single
-failure was `assertRemoteSyncMenuFlow`, asserting `/^> \.\/sync-work-extra\b/m` — the `>` selection
-marker — against output where that row was present but unmarked.
+Across five full-suite runs the suite reported 395/395 three times and 394/1 twice. Both failures
+were the same case, `assertRemoteSyncMenuFlow`, but with *different* assertions:
 
-It is a flake, not a regression:
+| Run | Failure |
+| --- | --- |
+| 4th | `/^> \.\/sync-work-extra\b/m` — the `>` selection marker — matched a row that was present but unmarked |
+| 5th | exit status 42 instead of 0, from `git fetch` exiting non-zero inside the fixture |
 
-- passes in isolation (5 consecutive runs) and also passes at the pre-Phase-7 baseline `aac8001`, so
-  neither branch reproduces it deterministically;
+An initial reading blamed machine load, because the first two failures happened during concurrent
+full-suite runs. **That was wrong**, and it is worth recording the correction: running the case in
+near-isolation produced FAIL / PASS / FAIL. The test is genuinely unreliable on this machine at
+roughly a 40-50% failure rate, not merely sensitive to contention. Full-suite run #5 passed 395/395
+at the same moment an isolated run of the same case was failing.
+
+The `git fetch` variant is systematic when it occurs: the captured PTY screen shows **all three**
+fixture repos reporting "1 verification failure", including the two that are supposed to verify
+cleanly — not one flaky repo among three.
+
+`makeRemoteSyncFixture` seeds three *local bare* repositories under the test's temp dir and clones
+from them, so `git fetch` touches no network; an external dependency is ruled out. The PTY runs with
+`HOME` pointed at an empty sandbox directory, so git resolves no user config there, which is the most
+promising place to look next.
+
+It is unreliable, but it is not a Phase 7 regression:
+
+- it also fails at the pre-Phase-7 baseline `aac8001` conditions and passed 5/5 there in an earlier
+  sampling, so the behavior is not introduced by this branch;
 - the Phase 7 diff to `scripts/maintenance/git-remote-sync.mjs` is the `isMainModule` guard and its
-  import — nothing that renders the picker or moves the cursor;
-- timing-sensitive by construction: `set timeout 20` around an `expect` script that drives an
-  interactive picker with arrow keys (`\033[B\033[B\r`) and then asserts where the selection marker
-  landed. Under a loaded full-suite run a keystroke can race a redraw.
+  import — nothing that renders the picker, moves the cursor, or runs git. The guard is verified
+  separately: the module's entry point runs and reaches its argument parser;
+- every other suite, including the full 395-test run, is unaffected.
+
+The distinction matters for release: this is a **pre-existing test reliability problem in another
+plan's area**, not evidence that install-lifecycle behavior is broken. It should not gate merging
+Phase 7, and it should not be dismissed either — a test that fails half the time is worse than no
+test, because it trains people to re-run until green.
+
+Handoff to plan `k9m4x2q`, which owns the remote-sync picker and has its own worktree: reproduce with
+`node scripts/test/cli-surface-integration-check.mjs` in a loop; expect roughly half to exit non-zero
+with `actual: 42`. Start from the sandboxed `HOME` (empty dir, so no git user config resolves) and
+from `assertRemoteSyncMenuFlow`'s 20-second `expect` budget covering three clone+fetch cycles.
 
 Not fixed here. The remote-sync picker belongs to plan `k9m4x2q` (which has its own worktree), and
 making this deterministic means having the test wait for a settled frame rather than matching a

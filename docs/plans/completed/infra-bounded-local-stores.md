@@ -1,7 +1,7 @@
 ---
 id: wu7h7gdp
 priority: medium
-next_action: Build the Phase 1 staleness policy engine in modules/retention/ with unit tests covering both the append-log and file-set shapes
+next_action:
 blocked_by: []
 depends_on: []
 related:
@@ -484,6 +484,46 @@ Acceptance criteria:
   a copied runtime asset outside the CLI's module graph and cannot import the engine, the same
   constraint that forces it to re-resolve `stateRoot`. `capture-dense-bash-check.mjs` pins its
   behavior.
+
+## Verification
+
+All five phases are implemented and committed. Every store in the registry has a bound, and the two
+that were already bounded came through the migration with their contract tests unmodified — which
+was the whole point of keeping those tests as the contract.
+
+```
+node scripts/test/retention-policy-check.mjs        pass (7 stores registered)
+node scripts/test/maintenance-stores-check.mjs      pass
+node scripts/test/telemetry-store-bounds-check.mjs  pass
+node scripts/test/capture-dense-bash-check.mjs      pass
+node scripts/test/localhoster-history-check.mjs     pass (unmodified)
+node scripts/test/telemetry-spool-store-check.mjs   pass (unmodified)
+node scripts/test/package-catalog-check.mjs         pass
+node scripts/test/cli-command-catalog-check.mjs     pass
+node scripts/test/telemetry-marker-cli-check.mjs    pass
+roborepo doctor                                     pass (103 checks)
+roborepo doctor --installed                         pass (113 checks)
+```
+
+Confirmed against a real install after the work landed:
+
+```
+localhoster-history           451KB (22% of cap)
+telemetry-spool-claude       18.8MB (75% of cap)
+telemetry-spool-codex        21.4MB (86% of cap)
+telemetry-markers              671B  (0% of cap)
+telemetry-snapshots             13KB (0% of cap)
+telemetry-experiments             0B (0% of cap)
+capture-dense-bash-claude         0B (0% of cap)
+```
+
+### What was not built
+
+- The constant-scanning test named in Validation. It would fail on correct code; the reasoning is
+  recorded there.
+- Migration of existing `~/.claude/logs/dense-bash.jsonl` content to the new location. Throwaway
+  observation data, and the package description names the new path.
+- Configurable caps for anything but localhoster's window. Left as the one open question.
 
 ## Risks
 

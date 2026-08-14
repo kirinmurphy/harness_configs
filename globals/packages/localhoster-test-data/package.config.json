@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "localhoster-test-data",
+  "label": "Localhoster Test Data",
+  "description": "Provisions a live shared-Compose fixture (one repository, two checkouts, one stack mounting both) so Localhoster's shared-ownership verdict can be exercised against real docker inspect output. Disable stops the stack and leaves the checkouts on disk.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "monitoring",
+    "order": 90
+  },
+  "resources": [
+    {
+      "type": "service",
+      "id": "localhoster-test-data"
+    }
+  ]
+}

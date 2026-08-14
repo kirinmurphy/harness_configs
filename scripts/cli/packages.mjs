@@ -685,6 +685,7 @@ function enabledDependents(pkgId, catalog) {
 // new service = register its { id → loader } here; the package model itself stays generic.
 const SERVICE_HANDLERS = {
   telemetry: async () => (await import("./telemetry.mjs")).setTelemetryEnabled,
+  "localhoster-test-data": async () => (await import("./localhoster-test-data.mjs")).setLocalhosterTestData,
 };
 
 async function setService(id, enabled) {

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "capture-dense-bash",
   "label": "Capture Dense Bash",
-  "description": "Silently logs shell commands that are hard to read or impossible to allowlist (chained, cd-prefixed, echo-decorated, inline-env, long) to ~/.claude/logs/dense-bash.jsonl, with a best-effort wouldPrompt flag. Observation only — never blocks or rewrites a call. Enable it to gather evidence before deciding which allowlist entries and command-surface rules are worth adopting.",
+  "description": "Silently logs shell commands that are hard to read or impossible to allowlist (chained, cd-prefixed, echo-decorated, inline-env, long) to <stateRoot>/capture/<harness>/dense-bash.jsonl, with a best-effort wouldPrompt flag. Bounded at 30 days and 10MB. Observation only — never blocks or rewrites a call. Enable it to gather evidence before deciding which allowlist entries and command-surface rules are worth adopting.",
   "lifecycle": "optional",
   "presentation": {
     "category": "monitoring",

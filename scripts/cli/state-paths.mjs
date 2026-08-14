@@ -39,6 +39,19 @@ export const repositoriesRegistryPath = path.join(roborepoStateDir, "repositorie
 // which resolves this same path independently because it also runs as a copied runtime asset.
 export const usageDir = path.join(roborepoStateDir, "usage");
 export const usageLatestDir = path.join(usageDir, "latest");
+// Observation logs written by capture packages — shell commands, and whatever later packages
+// record. Segmented by harness because each record already carries a harness dimension and one
+// harness's corpus should be resettable on its own.
+//
+// Machine-local, and classified Sensitive machine history / Exclude by
+// docs/plans/backlog/infra-portable-user-profile-backup.md: these logs hold real paths, hostnames,
+// and arguments, so they sit under stateRoot rather than the portable profile boundary. They are
+// deliberately NOT under a harness's own directory (~/.claude/logs and the like) — that is a
+// container the user may disable or remove, and it cannot be sandboxed by ROBOREPO_STATE_ROOT.
+export const captureDir = path.join(roborepoStateDir, "capture");
+export function denseBashLogPath(harness) {
+  return path.join(captureDir, harness, "dense-bash.jsonl");
+}
 export const telemetryDir = path.join(roborepoStateDir, "telemetry");
 export const telemetrySpoolDir = path.join(telemetryDir, "spool");
 export const telemetryCollectorDir = path.join(telemetryDir, "collector");

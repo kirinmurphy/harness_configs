@@ -400,14 +400,21 @@ Two things the implementation forced, both worth keeping:
 
 ### Phase 4 — dense-bash
 
-- [ ] Add `captureDir` and `denseBashLogPath` to `scripts/cli/state-paths.mjs`.
-- [ ] Point the hook at the resolved path, self-resolving `stateRoot` per the usage-statusline
+- [x] Add `captureDir` and `denseBashLogPath` to `scripts/cli/state-paths.mjs`.
+- [x] Point the hook at the resolved path, self-resolving `stateRoot` per the usage-statusline
       precedent.
-- [ ] Apply the 30-day / 10MB bound on append, reusing the log-store gate so the hook stays cheap.
-- [ ] Update the `description` in `globals/packages/capture-dense-bash/package.config.json`, which
-      names the old path.
-- [ ] Add `scripts/test/capture-dense-bash-check.mjs` asserting the hook's resolved path equals
-      `denseBashLogPath`, under a sandboxed `ROBOREPO_STATE_ROOT`.
+- [x] Apply the 30-day / 10MB bound on append, keeping the hook cheap via the same
+      stat → floor → sample-oldest ladder. The hook cannot import `modules/retention` for the same
+      reason it cannot import the path constant, so the ladder is reimplemented there; the policy
+      numbers mirror the registry entry and the test pins the behavior.
+- [x] Update the `description` in `globals/packages/capture-dense-bash/package.config.json`, which
+      named the old path. It now names the new one and states the bound.
+- [x] Add `scripts/test/capture-dense-bash-check.mjs` asserting the hook's resolved path equals
+      `denseBashLogPath`, under a sandboxed `ROBOREPO_STATE_ROOT`. It drives the real hook as a
+      subprocess with a PreToolUse payload, and also asserts nothing is written under `~/.claude`.
+
+Existing logs at `~/.claude/logs/dense-bash.jsonl` are left where they are — throwaway observation
+data, and the package description records the new location.
 
 ### Phase 5 — surfaces and documentation
 

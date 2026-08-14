@@ -99,17 +99,118 @@ const record = {
   command,
 }
 
+// Persist to a single stable file per harness so dense-command patterns accumulate ACROSS sessions
+// and survive reboots — the whole point is to mine the corpus later. session_id is a field on each
+// record, so collapsing to one file loses nothing.
+//
+// This hook runs as a copied runtime asset in ~/.claude/hooks/, outside the CLI's module graph, so
+// it cannot import scripts/cli/state-paths.mjs. It re-resolves stateRoot with the same env
+// precedence instead, matching usage-snapshot-store.mjs, which solves the identical problem. The
+// path must stay in agreement with denseBashLogPath(); a test asserts it under a sandboxed root.
+function stateRoot() {
+  return (
+    process.env.ROBOREPO_STATE_ROOT ||
+    process.env.ROBOREPO_STATE_DIR ||
+    path.join(os.homedir(), '.roborepo')
+  )
+}
+
+const MAX_BYTES = 10 * 1024 * 1024
+const MAX_AGE_DAYS = 30
+const FLOOR_BYTES = 64 * 1024
+const KEEP_FRACTION = 0.7
+
 try {
-  // Persist to a single stable file so dense-command patterns accumulate ACROSS sessions and
-  // survive reboots — the whole point is to mine the corpus later. (Previously this wrote a
-  // per-session file under $TMPDIR, which was wiped before it could ever be analyzed.)
-  // session_id is kept as a field on each record, so collapsing to one file loses nothing.
-  const logDir = path.join(os.homedir(), '.claude', 'logs')
-  fs.mkdirSync(logDir, { recursive: true })
-  const logPath = path.join(logDir, 'dense-bash.jsonl')
+  const logPath = path.join(stateRoot(), 'capture', 'claude', 'dense-bash.jsonl')
+  fs.mkdirSync(path.dirname(logPath), { recursive: true })
   fs.appendFileSync(logPath, JSON.stringify(record) + '\n')
+  capLog(logPath)
 } catch {
   // swallow — observation must never break the tool call
+}
+
+// Bound the log the same way modules/retention does, reimplemented here for the same reason the
+// path is: this file cannot import from the CLI. The policy numbers mirror the capture-dense-bash
+// entry in modules/retention/registry.mjs.
+//
+// Cheap by construction: stat first, skip below the floor, and only read the file when it is
+// actually over the cap or its oldest record has expired. keepFraction overshoots on trim so this
+// does not re-trip on the very next command.
+function capLog(logPath) {
+  let size
+  try {
+    size = fs.statSync(logPath).size
+  } catch {
+    return
+  }
+  if (size <= FLOOR_BYTES) return
+
+  const cutoff = Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000
+  if (size <= MAX_BYTES && !oldestExpired(logPath, cutoff)) return
+
+  let lines
+  try {
+    lines = fs.readFileSync(logPath, 'utf8').split('\n').filter(l => l.trim())
+  } catch {
+    return
+  }
+
+  // Age first (the meaningful policy), then bytes as the backstop. Records are appended in time
+  // order, so expiry is a prefix — stop at the first live record rather than filtering, so a
+  // hand-edited or clock-skewed line cannot strand everything after it.
+  let dropped = 0
+  while (dropped < lines.length - 1) {
+    const at = tsOf(lines[dropped])
+    if (at === null || at >= cutoff) break
+    dropped += 1
+  }
+
+  let remaining = lines.slice(dropped)
+  let bytes = remaining.reduce((sum, line) => sum + Buffer.byteLength(line, 'utf8') + 1, 0)
+  if (bytes > MAX_BYTES) {
+    const target = Math.floor(MAX_BYTES * KEEP_FRACTION)
+    let extra = 0
+    while (extra < remaining.length - 1 && bytes > target) {
+      bytes -= Buffer.byteLength(remaining[extra], 'utf8') + 1
+      extra += 1
+    }
+    remaining = remaining.slice(extra)
+    dropped += extra
+  }
+  if (dropped === 0) return
+
+  try {
+    fs.writeFileSync(logPath, remaining.join('\n') + '\n')
+  } catch {
+    // Best-effort: a failed trim just leaves the file large until the next capture.
+  }
+}
+
+function oldestExpired(logPath, cutoff) {
+  let head
+  try {
+    const fd = fs.openSync(logPath, 'r')
+    try {
+      const buffer = Buffer.alloc(4096)
+      const read = fs.readSync(fd, buffer, 0, 4096, 0)
+      head = buffer.subarray(0, read).toString('utf8').split('\n', 1)[0]
+    } finally {
+      fs.closeSync(fd)
+    }
+  } catch {
+    return true
+  }
+  const at = tsOf(head)
+  return at === null ? true : at < cutoff
+}
+
+function tsOf(line) {
+  try {
+    const parsed = Date.parse(JSON.parse(line).ts)
+    return Number.isFinite(parsed) ? parsed : null
+  } catch {
+    return null
+  }
 }
 
 process.exit(0)

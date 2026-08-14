@@ -42,6 +42,7 @@
     "test:localhoster-process": "node scripts/test/localhoster-process-check.mjs",
     "test:retention": "node scripts/test/retention-policy-check.mjs",
     "test:telemetry-store-bounds": "node scripts/test/telemetry-store-bounds-check.mjs",
+    "test:capture-dense-bash": "node scripts/test/capture-dense-bash-check.mjs",
     "test:repositories": "node scripts/test/repositories-check.mjs",
     "test:repositories-branch-sync": "node scripts/test/repositories-branch-sync-check.mjs",
     "test:repositories-service": "node scripts/test/repositories-service-check.mjs",

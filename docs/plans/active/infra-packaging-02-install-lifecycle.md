@@ -1,7 +1,7 @@
 ---
 id: 46up8y7a
 priority: high
-next_action: Phases 1-6a are implemented on branch plan-46up8y7a-install-lifecycle, plus the 6b documentation. Phase 7 items 1-3 are done (ownership inventory, collision/backup policy, moved-checkout repair), each fixing a real defect. Remaining Phase 7 work is shell/PATH dedup, reinstall and upgrade/downgrade state, and dev-vs-package parity, plus the three 6b items that need real hardware: a fresh transfer artifact, the new-Mac harness-count matrix, and presence-signal observations
+next_action: Phases 1-7 are implemented on branch plan-46up8y7a-install-lifecycle. All six Phase 7 hardening items are done, each fixing a real defect found by characterization. The only remaining work is the three Phase 6b items that need physical hardware: a fresh transfer artifact from the final tested commit, the new-Mac harness-count matrix, and recording presence-signal observations in harness-presence-signal-expansion
 blocked_by: []
 depends_on: []
 related:
@@ -617,9 +617,9 @@ both need the physical machine, so neither can be closed from this branch.
 - [x] Complete the resource ownership/removal inventory across skills, commands, MCP, hooks, root config, shell entries, backups, state, and caches.
 - [x] Finish collision/back-up policy characterization and deterministic dry-run/noninteractive behavior.
 - [x] Finish moved-checkout and stale-path repair coverage.
-- [ ] Finish shell/PATH deduplication and package-manager-shim ownership cleanup.
-- [ ] Define same-version reinstall and versioned upgrade/downgrade state behavior.
-- [ ] Run the same core lifecycle matrix in development and installed-package modes.
+- [x] Finish shell/PATH deduplication and package-manager-shim ownership cleanup.
+- [x] Define same-version reinstall and versioned upgrade/downgrade state behavior.
+- [x] Run the same core lifecycle matrix in development and installed-package modes.
 
 #### Phase 7 implementation notes (ownership inventory + collision/backup policy)
 
@@ -723,6 +723,90 @@ data-driven loop, so a newly registered provider keeps working without an edit h
 Both stale tests predate this branch and fail identically on `main`. They are fixed here rather than
 left red because the suite is the verification gate for the rest of Phase 7 — with it aborting at
 the wizard test, roughly half its cases (70 of 133) never ran at all.
+
+A follow-up commit routed the six remaining hand-rolled entry-point guards through the same helper.
+They appeared in four different spellings (`path.resolve(...)` comparisons, a
+`` `file://${argv[1]}` `` template, and a `new URL(...).pathname` form), and all six were verified
+broken against a symlinked checkout before conversion — `path.resolve()` normalizes a path but does
+not resolve symlinks. A test assertion now fails the suite if any module reintroduces the pattern,
+so the helper holds by construction rather than by memory.
+
+#### Phase 7 implementation notes (shell/PATH dedup and shim ownership)
+
+Deduplication and shim ownership were both already correct, and characterization confirmed it:
+
+- three consecutive `install-shell-snippets.sh` + `install-global-commands.sh` runs produce exactly
+  one PATH export and one marker comment (exact-line matching, not append-on-every-run);
+- the PATH line is `repo_root`-independent, so it survives a checkout move without duplicating;
+- `check_command_target` recognizes its own link and the recorded prior checkout, silently reclaims
+  a dangling link from a moved checkout, and refuses with a merge-review prompt on a genuine
+  unmanaged collision. An npm-installed `roborepo` on `~/.local/bin` is preserved, not clobbered —
+  the install exits 1 and changes nothing, which is the correct ownership boundary for package mode.
+
+**One defect found: uninstall left dangling shell wiring behind.** `remove_shell_wiring`'s awk filter
+matched `source` lines against the *current* `repo_root` only. A profile wired by a checkout that had
+since moved or been deleted kept its `source` line while the marker comments around it were stripped
+— and uninstall still printed "no active roborepo remnants" and exited 0, so every new shell errored
+on the missing file with nothing left to explain why.
+
+The filter now also matches `recorded_repo` (the prior checkout, already resolved in this file) and,
+generally, any `source ".../shell/..."` line whose target no longer exists.
+
+| Decision | Reasoning |
+| --- | --- |
+| Dangling-target test rather than a broader path pattern | It is what makes generalizing safe. A user's own `source` line points at a file that exists, so it is never touched; only a path roborepo can no longer account for is pruned. Verified both directions in the regression test. |
+| The `# Harness config shell helpers` marker also triggers the prune | The marker is written verbatim by the installer, so its presence alone is proof roborepo wired this profile — needed to reach a stale line when neither repo root matches. |
+| awk local named `quote_end`, not `close` | `close` is a reserved word in the awk shipped with macOS; using it is a hard parse error, which surfaced as uninstall exiting 2 mid-run. |
+
+#### Phase 7 implementation notes (reinstall and upgrade/downgrade state)
+
+Two of the three directions were already correct and are now characterized:
+
+- **same-version reinstall** — two consecutive `main.sh` runs leave harness content byte-identical
+  and create zero `*_original_*` / `*_update_*` files. Already asserted by
+  `test_idempotency_no_extra_backups`, so no duplicate test was added.
+- **upgrade** — a record from an older workflow reads as `complete`, and re-running `init` reports
+  "already initialized" and leaves the record byte-for-byte intact. This is what the independent
+  `workflowVersion` field was designed for: a newer release recognizes an installation completed
+  under an older workflow without a schema migration.
+
+**Downgrade was broken.** Installing an older RoboRepo over a newer one (`npm install -g
+codethings-roborepo-alpha@<older>`) made `init` **silently overwrite the newer installation's state**
+and replay the entire first-run workflow. The cause is that `readInitializationState` treats any
+record it cannot validate as "never started" — correct for a corrupt file, wrong for a newer one.
+A newer record is well-formed and meaningful; this build simply cannot interpret all of it.
+
+Reads still degrade to "not initialized" (this build genuinely cannot vouch for the record's shape).
+Writes now refuse: `writeInitializationState` throws rather than clobbering a higher `schemaVersion`,
+and `init` checks `readFutureInitializationState()` before doing any work so the user gets an
+explanation instead of a stack trace from halfway through a partially-mutating workflow.
+
+| Decision | Reasoning |
+| --- | --- |
+| `--force` also refuses | `--force` means "re-run initialization", not "discard a newer installation's state". Asserted for both `init` and `init --force`. |
+| Guard at read-time in `init`, not only at write-time | `beginInitialization()` runs after `init` has already printed and is followed by `setupCommand`; throwing there would abort mid-workflow. Checking first makes the refusal total and the message clean. |
+| Newer record still reads as null rather than being surfaced as "initialized" | Reporting it as complete would make this build claim an initialization state it cannot verify. Refusing to write is the narrow fix; pretending to understand the record is not. |
+
+#### Phase 7 implementation notes (development/package mode parity)
+
+The package smoke test drove only the lower-level primitive sequence (`setup`, `harness refresh`,
+`harness list`, `config apply`, `doctor`) — the path this plan's own documentation stopped telling
+users about. None of the public lifecycle vocabulary the plan added was exercised in package mode at
+all, so "works when installed from npm" was verified for a sequence a package-mode user never types.
+
+The smoke test now also runs `init`, a second `init` (idempotence), `library`, and
+`uninstall --dry-run` against the real installed tarball, and the same eleven-command matrix was run
+in development mode for comparison. Both modes pass identically.
+
+| Decision | Reasoning |
+| --- | --- |
+| `uninstall` is exercised as `--dry-run` only in the smoke test | A real managed cleanup would delete sandbox state that the test's later assertions (appRoot immutability, coupling scans) still read. The destructive path already has fixture-based coverage in `managed-uninstall-check.mjs`; what package mode adds is proof the command runs at all from an installed tarball. |
+| The second `init` asserts "already initialized" | Idempotence is the property most likely to break in package mode specifically, because `setup` has already created the directories — the exact case that must not read as initialization state. |
+| Assertions verified with a negative control | Deliberately breaking one assertion made the suite exit 1, confirming the new helper actually executes rather than passing vacuously. Worth doing here because the helper sits behind a long tarball build, where a silently-skipped block would look identical to a pass. |
+
+Note for future runs: `package-install-smoke.mjs` asserts `npm_execpath`, so it must be invoked as
+`npm run test:package-install`. Running it directly with `node` fails in setup, before any real
+assertion — which reads like a product failure but is not one.
 
 ## Validation
 

@@ -136,8 +136,13 @@ export function behaviorRow(item, { onApplyBucket }) {
   // Delete shows only on a row the user actually customized. "revert" restores the shipped
   // default; "remove" drops a user-added command that has no default to fall back to. Both are
   // the same request — bucket "default" — the labels differ because the outcomes differ.
-  const del = toggleSlot(wrap, "reset", item.deletable, item.deletable === "remove" ? "remove" : "revert");
+  //
+  // A row without a delete swaps the button for an inert placeholder of the same width instead of
+  // hiding it, so the bucket controls stay in one column across both groups.
+  const del = wrap.querySelector('[data-slot="reset"]');
   if (item.deletable) {
+    del.hidden = false;
+    del.textContent = item.deletable === "remove" ? "remove" : "revert";
     del.addEventListener("click", async () => {
       if (item.deletable === "remove") {
         const ok = window.confirm("Remove \"" + item.label + "\" from your permissions?");
@@ -145,6 +150,11 @@ export function behaviorRow(item, { onApplyBucket }) {
       }
       await onApplyBucket({ ...target, bucket: "default" }, err);
     });
+  } else {
+    const placeholder = document.createElement("span");
+    placeholder.className = "reset-placeholder";
+    placeholder.setAttribute("aria-hidden", "true");
+    del.replaceWith(placeholder);
   }
 
   wrap.querySelector('[data-slot="bucket-control"]').replaceWith(bucketControl({
@@ -186,8 +196,27 @@ export function permissionsSection(section, callbacks) {
   emptySlot.hidden = yours.length > 0;
   panel.querySelector('[data-slot="yours-head"]').hidden = yours.length === 0;
 
+  // Defaults are grouped by category, in manifest order (safest first), so 38 rows read as seven
+  // short lists instead of one wall. A category with no entries is skipped rather than shown
+  // empty. Anything whose category is missing from the taxonomy lands in a trailing "Other" group
+  // rather than vanishing — a row the user cannot see is worse than an imperfectly filed one.
   const defaultsSlot = panel.querySelector('[data-slot="defaults"]');
-  defaultsSlot.replaceChildren(...defaults.map((it) => permissionRow(it, callbacks)));
+  const categories = section.categories || [];
+  const remaining = new Set(defaults);
+  const groups = [];
+  for (const category of categories) {
+    const rows = defaults.filter((it) => it.category === category.id);
+    for (const row of rows) remaining.delete(row);
+    if (rows.length > 0) groups.push({ label: category.label, description: category.description, rows });
+  }
+  if (remaining.size > 0) groups.push({ label: "Other", description: "", rows: [...remaining] });
+
+  defaultsSlot.replaceChildren(...groups.flatMap((group) => {
+    const head = tpl("tpl-perm-category");
+    fill(head, { label: group.label, count: String(group.rows.length) });
+    toggleSlot(head, "description", group.description, group.description);
+    return [head, ...group.rows.map((it) => permissionRow(it, callbacks))];
+  }));
   const toggle = panel.querySelector('[data-slot="defaults-toggle"]');
   const setOpen = (open) => {
     defaultsExpanded = open;

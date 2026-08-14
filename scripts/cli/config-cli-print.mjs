@@ -42,10 +42,8 @@ function printPermissionRow(item) {
 }
 
 // Permissions splits into what the user changed and what shipped as-is — the same split the portal
-// draws. The user's own settings print in full however many there are; the defaults are capped,
-// since 25+ unchanged rows are noise in a status report and the portal is the place to browse them.
-const DEFAULTS_PREVIEW = 5;
-
+// draws. The user's own settings print in full however many there are; the defaults collapse to
+// per-category counts, since 38 unchanged rows are noise in a status report.
 function printPermissions(section) {
   const items = section.items || [];
   const yours = items.filter((item) => item.overridden);
@@ -57,11 +55,19 @@ function printPermissions(section) {
   }
   for (const item of yours) printPermissionRow(item);
 
+  // Defaults print as per-category counts rather than rows. The portal is where you browse them;
+  // in a status report the useful signal is "these groups exist and nothing in them is customized",
+  // which a count conveys and 38 lines of allow/allow/allow do not.
   console.log(`\n  Defaults (${defaults.length})`);
-  for (const item of defaults.slice(0, DEFAULTS_PREVIEW)) printPermissionRow(item);
-  if (defaults.length > DEFAULTS_PREVIEW) {
-    console.log(`    … (${defaults.length - DEFAULTS_PREVIEW} more — see: roborepo web)`);
+  const counted = new Set();
+  for (const category of section.categories || []) {
+    const rows = defaults.filter((item) => item.category === category.id);
+    for (const row of rows) counted.add(row);
+    if (rows.length > 0) console.log(`    ${String(rows.length).padStart(3)}  ${category.label}`);
   }
+  const uncategorized = defaults.filter((item) => !counted.has(item));
+  if (uncategorized.length > 0) console.log(`    ${String(uncategorized.length).padStart(3)}  Other`);
+  console.log("    see them all: roborepo web");
 }
 
 // Renders the behaviorView (from buildBehaviorView) as the `roborepo config status` terminal report.

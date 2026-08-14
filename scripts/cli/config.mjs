@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { repoRoot, harnessHome, rootConfigActive, rootConfigBaseline } from "./paths.mjs";
 import { presetsStatePath, telemetryDir } from "./state-paths.mjs";
-import { effectivePermissions } from "./config-mutate.mjs";
+import { effectivePermissions, permissionCategories } from "./config-mutate.mjs";
 import { storeHealth } from "./maintenance-stores.mjs";
 import { renderMarkdown } from "./markdown-render.mjs";
 import {
@@ -263,6 +263,11 @@ export function buildBehaviorView(snap) {
       // are shipped defaults. Derived here so the portal and the CLI printer never re-derive
       // (and never disagree about) where the split falls.
       customizedCount: permItems.filter((it) => it.overridden).length,
+      // Category taxonomy for the defaults list, manifest-ordered safest-to-riskiest. Only the
+      // defaults are grouped: YOURS is usually one to three rows, where headings cost more than
+      // they organize. Shipped as data so consumers render whatever the manifest defines rather
+      // than carrying their own copy of the list.
+      categories: permissionCategories(),
       // Permission entries are config syntax, not prompt text — never given a token number.
       contextCost: { label: "not-prompt-context" },
       // Section-level caveats about harnesses present on this machine (e.g. one with no
@@ -322,6 +327,7 @@ function permissionItems(perms) {
       defaultBucket: b.defaultBucket,
       // A named behavior always has a manifest default to fall back to, so its delete is a revert.
       deletable: b.overridden ? "revert" : null,
+      category: b.category ?? null,
       // "go-online" has no Claude equivalent (Claude doesn't sandbox network); surfaced so the
       // UI can note it rather than silently implying parity across harnesses.
       codexOnly: !!b.codexOnly,
@@ -337,6 +343,7 @@ function permissionItems(perms) {
       overridden: c.overridden,
       defaultBucket: c.defaultBucket,
       deletable: c.overridden ? (c.defaultBucket ? "revert" : "remove") : null,
+      category: c.category ?? null,
       noCodexAsk: c.bucket === "ask",
     })),
   ];

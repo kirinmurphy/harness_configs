@@ -121,6 +121,26 @@ for (const item of permissions.items) {
   );
 }
 
+// The defaults list groups by category, so an entry whose category is missing from the taxonomy
+// falls into a catch-all "Other" bucket. That is a safety net, not a destination: every shipped
+// entry should file under a real category, and a new behavior added without one should fail here
+// rather than quietly landing in Other.
+const categoryIds = new Set((permissions.categories || []).map((category) => category.id));
+assert(categoryIds.size > 0, "Permissions section exposes no category taxonomy");
+for (const item of permissions.items) {
+  assert(
+    item.category && categoryIds.has(item.category),
+    `permission "${item.label}" has category=${JSON.stringify(item.category)}, which is not in the `
+      + `manifest taxonomy (${[...categoryIds].join(", ")}) — add a category to its manifest entry`,
+  );
+}
+// Categories arrive pre-sorted so consumers render them in manifest order without re-sorting.
+const orders = (permissions.categories || []).map((category) => category.order ?? 99);
+assert(
+  orders.every((value, i) => i === 0 || orders[i - 1] <= value),
+  "permission categories are not sorted by order — consumers render them as given",
+);
+
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-package-catalog-"));
 try {
   fs.mkdirSync(path.join(tempRoot, "manifests", "inventory"), { recursive: true });

@@ -860,6 +860,27 @@ only thing standing between "the watcher passes" and "the watcher works". Verifi
 when the watcher regresses: reverting `snapshot()` to the directory-only form makes it report the
 profiles as blind, exactly as intended.
 
+#### Known flake: `cli-surface-integration-check` remote-sync menu
+
+Across four full-suite runs the suite reported 395/395 three times and 394/1 once. The single
+failure was `assertRemoteSyncMenuFlow`, asserting `/^> \.\/sync-work-extra\b/m` — the `>` selection
+marker — against output where that row was present but unmarked.
+
+It is a flake, not a regression:
+
+- passes in isolation (5 consecutive runs) and also passes at the pre-Phase-7 baseline `aac8001`, so
+  neither branch reproduces it deterministically;
+- the Phase 7 diff to `scripts/maintenance/git-remote-sync.mjs` is the `isMainModule` guard and its
+  import — nothing that renders the picker or moves the cursor;
+- timing-sensitive by construction: `set timeout 20` around an `expect` script that drives an
+  interactive picker with arrow keys (`\033[B\033[B\r`) and then asserts where the selection marker
+  landed. Under a loaded full-suite run a keystroke can race a redraw.
+
+Not fixed here. The remote-sync picker belongs to plan `k9m4x2q` (which has its own worktree), and
+making this deterministic means having the test wait for a settled frame rather than matching a
+substring — that plan's call, not this one's. Recorded so the next 394/1 does not cost someone the
+time to re-derive that it is unrelated to install lifecycle.
+
 ## Validation
 
 ### Automated behavior

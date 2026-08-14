@@ -45,6 +45,7 @@ try {
   testFirstRunRouting();
   testExplicitCommandsBypassInit();
   testAliasReachesSameImplementation();
+  testNewerRecordIsNeverOverwritten();
   console.log("initialization lifecycle checks passed");
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -163,6 +164,51 @@ function testExplicitCommandsBypassInit() {
       `explicit command must run before initialization: ${args.join(" ")}`,
     );
   }
+}
+
+// --- Downgrade: an older RoboRepo must not destroy a newer installation's state. A newer-schema
+// record is well-formed, just not interpretable by this build, so it reads as "not initialized"
+// like a corrupt one — but writing over it is a different act entirely. Before this guard, an
+// older CLI replayed the whole first-run workflow and overwrote the record with its own. ---
+function testNewerRecordIsNeverOverwritten() {
+  resetState();
+  const newer = {
+    schemaVersion: 99,
+    workflowVersion: 9,
+    status: "complete",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    completedAt: "2026-01-01T00:01:00.000Z",
+  };
+  fs.mkdirSync(path.dirname(initializationStatePath), { recursive: true });
+  fs.writeFileSync(initializationStatePath, `${JSON.stringify(newer)}\n`);
+
+  assert.equal(readInitializationState(), null, "an uninterpretable record must not read as valid");
+  assert.throws(
+    () => beginInitialization(),
+    /newer RoboRepo/i,
+    "beginInitialization must refuse rather than clobber a newer record",
+  );
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(initializationStatePath, "utf8")),
+    newer,
+    "the newer record must survive the refused write byte-for-byte",
+  );
+
+  // Through the real CLI, including --force: "re-run initialization" never means "discard a newer
+  // installation's state". Both must exit nonzero with an explanation, not a stack trace.
+  const env = { ...process.env, HOME: tmp, ROBOREPO_STATE_DIR: stateDir, ROBOREPO_PRESETS_ONBOARD: "skip" };
+  for (const args of [["init"], ["init", "--force"]]) {
+    const result = spawnSync(process.execPath, [cli, ...args], { cwd: repoRoot, env, encoding: "utf8", input: "" });
+    assert.equal(result.status, 1, `${args.join(" ")} must refuse a newer record`);
+    assert.match(result.stderr, /newer version of RoboRepo/i, `${args.join(" ")} must explain why`);
+    assert.doesNotMatch(result.stderr, /at writeInitializationState/, "must not surface a raw stack trace");
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(initializationStatePath, "utf8")),
+      newer,
+      `${args.join(" ")} must leave the newer record intact`,
+    );
+  }
+  resetState();
 }
 
 // --- `roborepo library` and `roborepo package manage` must reach one implementation. Asserted

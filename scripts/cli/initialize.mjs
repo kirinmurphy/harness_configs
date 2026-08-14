@@ -20,6 +20,7 @@ import {
   beginInitialization,
   completeInitialization,
   initializationPhase,
+  readFutureInitializationState,
 } from "./initialization-state.mjs";
 
 // Refresh discovery and return the machine cohort rather than printing the provider table.
@@ -76,6 +77,20 @@ export async function initCommand(args = []) {
   if (invalid.length > 0) {
     console.error(`unknown flag for init: ${invalid.join(" ")}`);
     process.exit(2);
+  }
+
+  // A record written by a newer RoboRepo reads as "not initialized" (this build cannot vouch for
+  // its shape), which would otherwise make init replay the entire first-run workflow and overwrite
+  // it. Report the downgrade and stop before touching anything — including under --force, which
+  // means "re-run initialization", not "discard a newer installation's state".
+  const future = readFutureInitializationState();
+  if (future) {
+    console.error("This installation was initialized by a newer version of RoboRepo.");
+    console.error(`  record schemaVersion: ${future.schemaVersion} (this build understands 1)`);
+    console.error("");
+    console.error("Upgrade RoboRepo again, or remove the initialization record to start over:");
+    console.error("  roborepo doctor        check installation health");
+    process.exit(1);
   }
 
   const phase = initializationPhase();

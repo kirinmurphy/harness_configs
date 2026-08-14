@@ -56,11 +56,35 @@ export function validateInitializationState(state) {
   if (errors.length > 0) throw new Error(`invalid initialization state:\n  ${errors.join("\n  ")}`);
 }
 
+// True when the record on disk was written by a build that understands a newer schema than this
+// one. Deliberately separate from "corrupt": a newer record is well-formed and meaningful, this
+// build just cannot interpret all of it. Treating the two the same let an older CLI overwrite a
+// newer installation's state and silently replay the whole first-run workflow (a downgrade, e.g.
+// `npm install -g codethings-roborepo-alpha@older` on a machine already initialized by a newer
+// release). Reads still degrade to "not initialized"; only writes are refused.
+export function isFutureInitializationState(state) {
+  return Number.isInteger(state?.schemaVersion) && state.schemaVersion > SCHEMA_VERSION;
+}
+
+function readRawInitializationState() {
+  return readJsonState(initializationStatePath, null);
+}
+
+// The on-disk record when it is newer than this build understands, otherwise null. Callers use it
+// to report the downgrade before doing any work, rather than letting writeInitializationState
+// throw partway through a workflow that has already mutated other state.
+export function readFutureInitializationState() {
+  const state = readRawInitializationState();
+  return isFutureInitializationState(state) ? state : null;
+}
+
 // Returns null when initialization has never started. A corrupt or unreadable record is treated
 // as never-started rather than fatal: the recovery for both is the same (run init), and a broken
-// state file must not be able to lock a user out of their own first run.
+// state file must not be able to lock a user out of their own first run. A newer-schema record
+// also reads as null — this build genuinely cannot vouch for it — but writeInitializationState
+// refuses to clobber it, so "cannot read" never silently becomes "destroyed".
 export function readInitializationState() {
-  const state = readJsonState(initializationStatePath, null);
+  const state = readRawInitializationState();
   if (state === null) return null;
   try {
     validateInitializationState(state);
@@ -72,6 +96,15 @@ export function readInitializationState() {
 
 export function writeInitializationState(state) {
   validateInitializationState(state);
+  const existing = readRawInitializationState();
+  if (isFutureInitializationState(existing)) {
+    throw new Error(
+      `refusing to overwrite initialization state written by a newer RoboRepo `
+      + `(schemaVersion ${existing.schemaVersion}; this build understands ${SCHEMA_VERSION}).\n`
+      + `  ${initializationStatePath}\n`
+      + `Upgrade RoboRepo again, or remove that file to re-initialize from scratch.`,
+    );
+  }
   writeJsonState(initializationStatePath, state);
   return state;
 }

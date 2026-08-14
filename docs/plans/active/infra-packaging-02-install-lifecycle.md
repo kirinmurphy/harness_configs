@@ -618,7 +618,7 @@ both need the physical machine, so neither can be closed from this branch.
 - [x] Finish collision/back-up policy characterization and deterministic dry-run/noninteractive behavior.
 - [x] Finish moved-checkout and stale-path repair coverage.
 - [x] Finish shell/PATH deduplication and package-manager-shim ownership cleanup.
-- [ ] Define same-version reinstall and versioned upgrade/downgrade state behavior.
+- [x] Define same-version reinstall and versioned upgrade/downgrade state behavior.
 - [ ] Run the same core lifecycle matrix in development and installed-package modes.
 
 #### Phase 7 implementation notes (ownership inventory + collision/backup policy)
@@ -757,6 +757,35 @@ generally, any `source ".../shell/..."` line whose target no longer exists.
 | Dangling-target test rather than a broader path pattern | It is what makes generalizing safe. A user's own `source` line points at a file that exists, so it is never touched; only a path roborepo can no longer account for is pruned. Verified both directions in the regression test. |
 | The `# Harness config shell helpers` marker also triggers the prune | The marker is written verbatim by the installer, so its presence alone is proof roborepo wired this profile — needed to reach a stale line when neither repo root matches. |
 | awk local named `quote_end`, not `close` | `close` is a reserved word in the awk shipped with macOS; using it is a hard parse error, which surfaced as uninstall exiting 2 mid-run. |
+
+#### Phase 7 implementation notes (reinstall and upgrade/downgrade state)
+
+Two of the three directions were already correct and are now characterized:
+
+- **same-version reinstall** — two consecutive `main.sh` runs leave harness content byte-identical
+  and create zero `*_original_*` / `*_update_*` files. Already asserted by
+  `test_idempotency_no_extra_backups`, so no duplicate test was added.
+- **upgrade** — a record from an older workflow reads as `complete`, and re-running `init` reports
+  "already initialized" and leaves the record byte-for-byte intact. This is what the independent
+  `workflowVersion` field was designed for: a newer release recognizes an installation completed
+  under an older workflow without a schema migration.
+
+**Downgrade was broken.** Installing an older RoboRepo over a newer one (`npm install -g
+codethings-roborepo-alpha@<older>`) made `init` **silently overwrite the newer installation's state**
+and replay the entire first-run workflow. The cause is that `readInitializationState` treats any
+record it cannot validate as "never started" — correct for a corrupt file, wrong for a newer one.
+A newer record is well-formed and meaningful; this build simply cannot interpret all of it.
+
+Reads still degrade to "not initialized" (this build genuinely cannot vouch for the record's shape).
+Writes now refuse: `writeInitializationState` throws rather than clobbering a higher `schemaVersion`,
+and `init` checks `readFutureInitializationState()` before doing any work so the user gets an
+explanation instead of a stack trace from halfway through a partially-mutating workflow.
+
+| Decision | Reasoning |
+| --- | --- |
+| `--force` also refuses | `--force` means "re-run initialization", not "discard a newer installation's state". Asserted for both `init` and `init --force`. |
+| Guard at read-time in `init`, not only at write-time | `beginInitialization()` runs after `init` has already printed and is followed by `setupCommand`; throwing there would abort mid-workflow. Checking first makes the refusal total and the message clean. |
+| Newer record still reads as null rather than being surfaced as "initialized" | Reporting it as complete would make this build claim an initialization state it cannot verify. Refusing to write is the narrow fix; pretending to understand the record is not. |
 
 ## Validation
 

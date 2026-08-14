@@ -40,6 +40,7 @@
     "test:localhoster-compose-identity": "node scripts/test/localhoster-compose-identity-check.mjs",
     "test:localhoster-repository-merge": "node scripts/test/localhoster-repository-merge-check.mjs",
     "test:localhoster-process": "node scripts/test/localhoster-process-check.mjs",
+    "test:retention": "node scripts/test/retention-policy-check.mjs",
     "test:repositories": "node scripts/test/repositories-check.mjs",
     "test:repositories-branch-sync": "node scripts/test/repositories-branch-sync-check.mjs",
     "test:repositories-service": "node scripts/test/repositories-service-check.mjs",

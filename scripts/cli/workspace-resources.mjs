@@ -111,11 +111,15 @@ export function loadWorkspaceMcpServers({ builtInNames = new Set(), overrides = 
   return servers;
 }
 
+// `dryRun` only reaches the scaffold step: validation itself reads. It defaults to false so the
+// setup path (workspace.mjs) keeps creating the workspace as before — the flag exists so a caller
+// previewing changes does not materialize a workspace as a side effect of validating one.
 export function validateWorkspace({
   builtInPackageIds = new Set(readBuiltInPackages().map((pkg) => pkg.id)),
   builtInMcpNames = new Set(readBuiltInMcpServers().map((server) => server.name)),
+  dryRun = false,
 } = {}) {
-  initializeWorkspace();
+  initializeWorkspace({ dryRun });
   const overrides = readWorkspaceOverrides();
   validateWorkspaceSkills();
   validateWorkspaceCommands();
@@ -125,7 +129,7 @@ export function validateWorkspace({
 }
 
 export function applyWorkspaceAssets({ dryRun = false } = {}) {
-  validateWorkspace();
+  validateWorkspace({ dryRun });
   const applied = {
     skills: applyWorkspaceSkills({ dryRun }),
     commands: applyWorkspaceCommands({ dryRun }),

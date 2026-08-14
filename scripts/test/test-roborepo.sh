@@ -1552,6 +1552,12 @@ assert "root-config-state: drift detection distinguishes baseline changes from u
 assert "root-config-merge: Codex merge preserves local keys and tables" \
   node "${repo_root}/scripts/test/root-config-merge-check.mjs"
 
+# Sweeps every --dry-run command in the catalog rather than trusting each command's own test to have
+# snapshotted the right roots. The command list is derived from the catalog, so a newly added
+# --dry-run command is covered as soon as it is registered.
+assert "dry-run purity: no --dry-run command mutates state" \
+  node "${repo_root}/scripts/test/dry-run-purity-check.mjs"
+
 assert "root-config-write-policy: Claude global model is stripped from root config writes" \
   node "${repo_root}/scripts/test/root-config-write-policy-check.mjs"
 

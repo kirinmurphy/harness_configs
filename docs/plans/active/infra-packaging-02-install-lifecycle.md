@@ -808,6 +808,36 @@ Note for future runs: `package-install-smoke.mjs` asserts `npm_execpath`, so it 
 `npm run test:package-install`. Running it directly with `node` fails in setup, before any real
 assertion — which reads like a product failure but is not one.
 
+#### Phase 7 follow-up: shared dry-run purity check
+
+A post-implementation audit of the Phase 7 fixes found no regressions from them, but did surface one
+pre-existing leak: `workspace-resources.mjs --dry-run` created the entire workspace scaffold.
+`applyWorkspaceAssets` threads `dryRun` into its own apply calls, but the `validateWorkspace()` it
+calls first ran `initializeWorkspace()` with no `dryRun` at all.
+
+The leak is less interesting than why nothing caught it. "`--dry-run` mutates nothing" was asserted
+per-command by hand, so it held only for the roots a given test happened to snapshot — and no test
+snapshotted the workspace root around that particular command. That is a checkable invariant being
+enforced by whether someone remembers to look.
+
+`scripts/test/lib/assert-dry-run-clean.mjs` now snapshots every root a command could touch, runs it,
+and re-snapshots. `scripts/test/dry-run-purity-check.mjs` sweeps every `--dry-run` command, derived
+from the command catalog so a newly registered one is covered without editing the test. It caught the
+workspace leak mechanically, with a before/after diff naming the exact roots.
+
+Fix: `validateWorkspace` accepts `dryRun` (defaulting to false, so the setup path in `workspace.mjs`
+keeps scaffolding as before) and `applyWorkspaceAssets` passes its own flag through.
+
+| Decision | Reasoning |
+| --- | --- |
+| Built on the existing `hashDirectory` | It already hashes content, mode, and symlink targets, so the check also catches a dry run that rewrites a file to identical bytes with different permissions, or retargets a symlink. A second walker would have been strictly worse. |
+| Absent trees compare as a `<absent>` sentinel rather than being skipped | Appearing-from-nothing is precisely the shape of the scaffold leak. Skipping missing roots would have made this exact bug invisible to the sweep built to find it. |
+| Commands needing arguments are explicitly skipped with a stated reason | Seven of the fourteen catalog `--dry-run` commands need an id or path. Listing them with reasons makes "not covered here" a visible decision rather than a silent gap. |
+| The sweep collects all failures instead of stopping at the first | The point of a sweep is to report the whole surface at once; stopping early would hide later leaks behind the first one. |
+
+Verified clean by the sweep: `init`, `update`, `uninstall`, `config apply`, `config rules render`,
+`mcp apply`, `maintenance repair local-config`, and `workspace-resources.mjs` after the fix.
+
 ## Validation
 
 ### Automated behavior

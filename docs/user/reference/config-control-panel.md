@@ -77,7 +77,10 @@ panel renders:
   awareness, skill visibility), each a `rules` package merged into every managed harness. On by
   default; toggling adds/removes the behavior's rules block.
 - **Permissions** — flat behavior and command buckets. Named behaviors and arbitrary commands can
-  be set to `allow`, `ask`, `deny`, or reset to the manifest default.
+  be set to `allow`, `ask`, `deny`, or reset to the manifest default. They render as one merged
+  list split by authorship rather than by kind: entries the user customized appear first, each
+  with a delete control, above the shipped defaults collapsed behind a count. Delete reverts to
+  the manifest default, or removes the entry outright when it was user-added and has no default.
 
 ## Current Behavior
 

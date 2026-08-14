@@ -28,6 +28,42 @@ export function configRootInspect() {
   console.log("");
 }
 
+// One permission row: named behavior and arbitrary command print identically, because which kind
+// an entry is has no bearing on what the reader does with it.
+function printPermissionRow(item) {
+  // "added" distinguishes a command the user introduced (no default to state) from one they
+  // re-bucketed. Deleting the first removes it; deleting the second restores the default.
+  const override = item.overridden && item.defaultBucket
+    ? `  (custom, default: ${item.defaultBucket})`
+    : item.overridden ? "  (custom, added)" : "";
+  const codexNote = item.codexOnly ? "  [Codex only]" : "";
+  console.log(`  ${item.bucket.padEnd(6)} ${item.label}${override}${codexNote}`);
+  if (item.description) console.log(`         ${item.description}`);
+}
+
+// Permissions splits into what the user changed and what shipped as-is — the same split the portal
+// draws. The user's own settings print in full however many there are; the defaults are capped,
+// since 25+ unchanged rows are noise in a status report and the portal is the place to browse them.
+const DEFAULTS_PREVIEW = 5;
+
+function printPermissions(section) {
+  const items = section.items || [];
+  const yours = items.filter((item) => item.overridden);
+  const defaults = items.filter((item) => !item.overridden);
+
+  console.log(`  Yours (${yours.length})`);
+  if (yours.length === 0) {
+    console.log("    nothing customized — all permissions are at their shipped defaults");
+  }
+  for (const item of yours) printPermissionRow(item);
+
+  console.log(`\n  Defaults (${defaults.length})`);
+  for (const item of defaults.slice(0, DEFAULTS_PREVIEW)) printPermissionRow(item);
+  if (defaults.length > DEFAULTS_PREVIEW) {
+    console.log(`    … (${defaults.length - DEFAULTS_PREVIEW} more — see: roborepo web)`);
+  }
+}
+
 // Renders the behaviorView (from buildBehaviorView) as the `roborepo config status` terminal report.
 export function printConfigStatus(view) {
   const check = (v) => (v ? "[x]" : "[ ]");
@@ -40,21 +76,15 @@ export function printConfigStatus(view) {
     // Harness-level caveats for this section, shown once rather than repeated on every affected
     // item. Text comes from the provider manifest, so no harness is named in platform code.
     for (const notice of section.notices || []) console.log(`  note: ${notice.note}`);
+    // Permissions groups by authorship instead of listing flat, matching the portal.
+    if (section.kind === "permissions") {
+      printPermissions(section);
+      if (section.footnote) console.log(`\n  * ${section.footnote}`);
+      continue;
+    }
     for (const item of section.items) {
-      if (item.kind === "behavior") {
-        const override = item.overridden ? `  (custom, default: ${item.defaultBucket})` : "";
-        const codexNote = item.codexOnly ? "  [Codex only]" : "";
-        console.log(`  ${item.bucket.padEnd(6)} ${item.label}${override}${codexNote}`);
-        if (item.description) console.log(`         ${item.description}`);
-      } else if (item.kind === "arbitrary-list") {
-        console.log(`  ${item.label}`);
-        if (item.description) console.log(`    ${item.description}`);
-        const show = (item.items || []).slice(0, 5);
-        for (const c of show) {
-          const override = c.overridden ? "  (custom)" : "";
-          console.log(`    ${c.bucket.padEnd(6)} ${c.label}${override}`);
-        }
-        if ((item.items || []).length > 5) console.log(`    … (${item.items.length - 5} more — see: roborepo web)`);
+      if (item.kind === "behavior" || item.kind === "arbitrary-item") {
+        printPermissionRow(item);
       } else if (item.kind === "store") {
         // Size against bound, not an on/off state — a store is never "enabled", it just holds data.
         const size = item.maxBytes

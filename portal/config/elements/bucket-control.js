@@ -1,9 +1,7 @@
 // <bucket-control></bucket-control> — a deny/ask/allow segmented control. Set .current (bucket
 // string) and .onSelect (async callback — caller owns confirm+POST+error-routing; the element
 // does NOT bake in a confirm-dialog policy since the message text differs by call site) as
-// properties right after creation. .compact toggles the tighter spacing used in arbitrary-command
-// rows. Eliminates the deny/ask/allow button-building loop that was duplicated near-verbatim
-// between behaviorRow and arbitraryListRow in templates.js.
+// properties right after creation.
 import { portalTpl as tpl } from "/portal/shared/api.js";
 
 // Display order, loosest to strictest. Validation order lives in config-mutate.mjs and is
@@ -30,17 +28,9 @@ class BucketControlElement extends HTMLElement {
     return this._onSelect;
   }
 
-  set compact(value) {
-    this._compact = !!value;
-    if (this.isConnected) this.render();
-  }
-  get compact() {
-    return !!this._compact;
-  }
-
   render() {
     const wrap = document.createElement("div");
-    wrap.className = "bucket-group" + (this._compact ? " bucket-group-compact" : "");
+    wrap.className = "bucket-group";
     for (const bucket of BUCKETS) {
       const btn = tpl("tpl-bucket-btn");
       btn.classList.add("bucket-" + bucket);

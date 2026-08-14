@@ -253,52 +253,97 @@ export function buildBehaviorView(snap) {
       contextCost: sectionContextCost(section.items),
     }));
 
+  const permItems = permissionItems(perms);
   return [
     ...sections,
     {
       category: "Permissions",
       kind: "permissions",
+      // Group boundary for consumers: the first `customizedCount` items are the user's, the rest
+      // are shipped defaults. Derived here so the portal and the CLI printer never re-derive
+      // (and never disagree about) where the split falls.
+      customizedCount: permItems.filter((it) => it.overridden).length,
       // Permission entries are config syntax, not prompt text — never given a token number.
       contextCost: { label: "not-prompt-context" },
       // Section-level caveats about harnesses present on this machine (e.g. one with no
       // per-command ask tier). Empty when every installed harness supports the full model.
       notices: askTierNotices(),
-      // Flat model: every behavior (named — pinned, shown first — or arbitrary, user-added) is
-      // independently deny/ask/allow. No separate profile bundle or project scope; global only.
+      // Flat model: every permission entry — whether a named behavior (semantic, e.g. "git push")
+      // or an arbitrary command (a literal token array, e.g. "npm test") — is independently
+      // deny/ask/allow. No profile bundle, no project scope; global only.
+      //
+      // The list is NOT split by that semantic-vs-literal distinction: which kind an entry is, is
+      // an implementation detail the person setting a permission does not care about. It is split
+      // by whether THEY changed it — `yours` (customized, with a delete affordance) above
+      // `defaults` (as shipped, collapsed behind a count). `kind` survives on each row because
+      // consumers dispatch the right control off it (and presets.mjs's onboarding wizard selects
+      // named behaviors by it), but it no longer decides grouping or order.
+      //
       // `perms` (snap.permissions, from config-mutate.mjs effectivePermissions()) already merges
       // manifest defaults with personal overrides — this just reshapes it for display.
-      items: [
-        ...(perms?.behaviors || []).map((b) => ({
-          id: b.id,
-          label: b.label,
-          description: b.description,
-          active: true,
-          kind: "behavior",
-          bucket: b.bucket,
-          overridden: b.overridden,
-          defaultBucket: b.defaultBucket,
-          // "go-online" has no Claude equivalent (Claude doesn't sandbox network); surfaced so the
-          // UI can note it rather than silently implying parity across harnesses.
-          codexOnly: !!b.codexOnly,
-        })),
-        {
-          id: "arbitrary-commands",
-          label: "Other commands",
-          description: "Commands not covered by the behaviors above — added and edited here.",
-          active: true,
-          kind: "arbitrary-list",
-          items: (perms?.arbitrary || []).map((c) => ({
-            id: c.id,
-            label: c.label,
-            bucket: c.bucket,
-            overridden: c.overridden,
-            defaultBucket: c.defaultBucket,
-            noCodexAsk: c.bucket === "ask",
-          })),
-        },
-      ],
+      items: permItems,
     },
     storesSection(),
+  ];
+}
+
+// One merged permission list, ordered by whether the user customized the entry rather than by
+// which internal kind it is. Named behaviors and arbitrary commands interleave freely.
+//
+// Within each group, rows keep the existing loosest-to-strictest bucket order (allow, ask, deny)
+// and then sort by label, so a given entry sits in a stable place across renders.
+//
+// `deletable` is what the delete affordance means for a row, and it is NOT the same question as
+// `overridden`:
+//   - a customized named behavior reverts to its manifest default    -> "revert"
+//   - an arbitrary command with defaultBucket "allow" is a manifest   -> "revert"
+//     default the user re-bucketed, so it reverts too
+//   - an arbitrary command with defaultBucket null was ADDED by the   -> "remove"
+//     user; there is no default to fall back to, so delete drops it
+// Every arbitrary command currently shipped is a manifest default, so the "remove" case has no
+// live example — it is still reachable the moment someone adds a command, and must not regress.
+const BUCKET_ORDER = { allow: 0, ask: 1, deny: 2 };
+
+function permissionRowSort(a, b) {
+  return (BUCKET_ORDER[a.bucket] ?? 99) - (BUCKET_ORDER[b.bucket] ?? 99)
+    || a.label.localeCompare(b.label);
+}
+
+function permissionItems(perms) {
+  const rows = [
+    ...(perms?.behaviors || []).map((b) => ({
+      id: b.id,
+      label: b.label,
+      description: b.description,
+      active: true,
+      kind: "behavior",
+      bucket: b.bucket,
+      overridden: b.overridden,
+      defaultBucket: b.defaultBucket,
+      // A named behavior always has a manifest default to fall back to, so its delete is a revert.
+      deletable: b.overridden ? "revert" : null,
+      // "go-online" has no Claude equivalent (Claude doesn't sandbox network); surfaced so the
+      // UI can note it rather than silently implying parity across harnesses.
+      codexOnly: !!b.codexOnly,
+    })),
+    ...(perms?.arbitrary || []).map((c) => ({
+      id: c.id,
+      label: c.label,
+      active: true,
+      kind: "arbitrary-item",
+      // The mutate endpoint addresses arbitrary commands by token array, not by id.
+      tokens: c.label.split(" "),
+      bucket: c.bucket,
+      overridden: c.overridden,
+      defaultBucket: c.defaultBucket,
+      deletable: c.overridden ? (c.defaultBucket ? "revert" : "remove") : null,
+      noCodexAsk: c.bucket === "ask",
+    })),
+  ];
+
+  return [
+    ...rows.filter((r) => r.overridden).sort(permissionRowSort),
+    ...rows.filter((r) => !r.overridden).sort(permissionRowSort),
   ];
 }
 

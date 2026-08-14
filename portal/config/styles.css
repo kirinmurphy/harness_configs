@@ -302,9 +302,6 @@ main {
   gap: 0;
   margin-left: auto;
 }
-.bucket-group-compact {
-  margin-left: 12px;
-}
 .bucket-btn {
   font:
     var(--text-2xs)/1.4 ui-monospace,
@@ -363,42 +360,41 @@ main {
 .reset-link:hover {
   color: var(--accent);
 }
-/* arbitrary (non-named) command list */
-.arbitrary-list {
-  width: 100%;
-}
-.arbitrary-head {
-  color: var(--ink);
-  font-weight: 600;
-}
-.arbitrary-desc {
+/* Permission groups: the user's own settings, then the shipped defaults behind a disclosure. */
+.perm-group-head {
   color: var(--dim);
-  margin-top: 3px;
-  margin-bottom: 8px;
-}
-.arbitrary-items {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 260px;
-  overflow-y: auto;
-}
-.arbitrary-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 14px 0 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
 }
-.arbitrary-label {
-  font:
-    var(--text-2xs)/1.4 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace;
-  color: var(--ink);
-  flex: 1;
-  overflow-wrap: anywhere;
+.perm-group-head:first-of-type {
+  margin-top: 0;
+  border-top: none;
+  padding-top: 0;
 }
+.perm-empty {
+  color: var(--dim);
+  font-size: var(--text-2xs);
+  padding: 2px 0 4px;
+}
+/* Reads as the heading it sits in rather than as a control, since it only expands a list. */
+.perm-defaults-toggle {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.perm-defaults-toggle:hover {
+  color: var(--accent);
+}
+/* add-a-command control (section-level) */
 .arbitrary-add {
   display: flex;
   align-items: center;

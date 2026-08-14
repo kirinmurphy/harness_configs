@@ -67,6 +67,60 @@ for (const label of ["Permissions", "Local Stores"]) {
 assert(sections.get("Token Optimization").items.some((item) => item.id === "jcodemunch"), "jcodemunch not visible in Token Optimization");
 assert(sections.get("Skills - Development Life Cycle").items.some((item) => item.id === "tighten"), "tighten not visible in Skills - Development Life Cycle");
 
+// Every item `kind` buildBehaviorView emits must be handled by every consumer that branches on it.
+//
+// The kinds are read off the live view, so a new one is covered the moment it ships — the point is
+// to fail on the kind nobody wired up, which is exactly the case a hard-coded list would miss.
+// Renaming a kind in config.mjs without updating a consumer silently drops those rows from that
+// surface: the CLI printer falls through to its generic package branch and prints a checkbox for
+// something that is not a package, and the portal renders an empty row. Both are quiet failures
+// that look like styling bugs, so they are worth catching here rather than by eye.
+//
+// Consumers are matched by source text rather than executed: printConfigStatus writes to stdout and
+// the portal templates need a DOM, so neither can be called from a plain node check. A string match
+// is coarse, but it is checking a literal that must appear in a branch either way.
+const consumers = [
+  { path: "scripts/cli/config-cli-print.mjs", label: "CLI printer (printConfigStatus)" },
+  { path: "portal/config/templates.js", label: "portal templates (permissionRow/renderSection)" },
+];
+// Kinds whose rows are rendered by a section-level template rather than a per-item branch, so no
+// consumer names them. Keep this list short — an entry here is an assertion deliberately waived.
+const sectionRenderedKinds = new Set(["store"]);
+const emittedKinds = new Set(
+  snapshot.behaviorView
+    .flatMap((section) => section.items || [])
+    .map((item) => item.kind)
+    .filter(Boolean),
+);
+for (const consumer of consumers) {
+  const source = fs.readFileSync(path.join(import.meta.dirname, "../..", consumer.path), "utf8");
+  for (const kind of emittedKinds) {
+    if (sectionRenderedKinds.has(kind)) continue;
+    assert(
+      source.includes(`"${kind}"`),
+      `buildBehaviorView emits item kind "${kind}" but ${consumer.label} never branches on it — `
+        + `those rows render blank or fall through to the wrong branch in ${consumer.path}`,
+    );
+  }
+}
+
+// The Permissions section splits on authorship (customized vs shipped default), not on item kind.
+// customizedCount is the boundary both the portal and the CLI printer read, so it must agree with
+// the items themselves rather than being computed twice and drifting.
+const permissions = sections.get("Permissions");
+assert(
+  permissions.customizedCount === permissions.items.filter((item) => item.overridden).length,
+  "Permissions customizedCount disagrees with the number of overridden items",
+);
+// A delete affordance on a row with no override would revert something the user never set.
+for (const item of permissions.items) {
+  assert(
+    Boolean(item.deletable) === Boolean(item.overridden),
+    `permission "${item.label}" has deletable=${item.deletable} but overridden=${item.overridden} — `
+      + "delete must appear on exactly the customized rows",
+  );
+}
+
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-package-catalog-"));
 try {
   fs.mkdirSync(path.join(tempRoot, "manifests", "inventory"), { recursive: true });

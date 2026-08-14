@@ -172,7 +172,32 @@
     <template id="tpl-permissions-section">
       <section class="panel">
         <div class="panel-head"><h2>Permissions</h2></div>
-        <div data-slot="rows"></div>
+        <div class="perm-group-head" data-slot="yours-head">Yours</div>
+        <div data-slot="yours"></div>
+        <div class="perm-empty" data-slot="yours-empty" hidden>
+          Nothing customized yet — every permission below is the shipped default.
+        </div>
+        <div class="perm-group-head" data-slot="defaults-head">
+          <button
+            type="button"
+            class="perm-defaults-toggle"
+            data-slot="defaults-toggle"
+            aria-expanded="false"
+          ></button>
+        </div>
+        <div data-slot="defaults" hidden></div>
+        <div class="arbitrary-add">
+          <input
+            type="text"
+            class="arbitrary-input"
+            placeholder="add a command, e.g. docker run"
+            data-slot="input"
+          />
+          <button type="button" class="arbitrary-add-btn" data-slot="add-btn">
+            add as ask
+          </button>
+          <span class="item-err" data-slot="add-err"></span>
+        </div>
       </section>
     </template>
     <template id="tpl-stores-section">
@@ -268,38 +293,6 @@
         <div class="behavior-desc" data-slot="description" hidden></div>
         <div class="behavior-default" data-slot="default-bucket" hidden></div>
         <div class="item-err" data-slot="err"></div>
-      </div>
-    </template>
-    <template id="tpl-arbitrary-list-row">
-      <div class="arbitrary-list">
-        <div class="arbitrary-head" data-slot="label"></div>
-        <div class="arbitrary-desc" data-slot="description" hidden></div>
-        <div class="arbitrary-items" data-slot="items"></div>
-        <div class="arbitrary-add">
-          <input
-            type="text"
-            class="arbitrary-input"
-            placeholder="add a command, e.g. docker run"
-            data-slot="input"
-          />
-          <button type="button" class="arbitrary-add-btn" data-slot="add-btn">
-            add as ask
-          </button>
-          <span class="item-err" data-slot="add-err"></span>
-        </div>
-      </div>
-    </template>
-    <template id="tpl-arbitrary-item">
-      <div class="arbitrary-item">
-        <span class="arbitrary-label" data-slot="label"></span>
-        <span data-slot="bucket-control"></span>
-        <button
-          type="button"
-          class="reset-link"
-          data-slot="reset"
-          hidden
-        ></button>
-        <span class="item-err" data-slot="err"></span>
       </div>
     </template>
     <!-- Raw permission list row -->

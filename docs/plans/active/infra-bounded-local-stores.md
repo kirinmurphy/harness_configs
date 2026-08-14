@@ -385,11 +385,29 @@ Both stores must come out behaviorally identical; their existing tests are the c
 - [ ] Add `scripts/test/capture-dense-bash-check.mjs` asserting the hook's resolved path equals
       `denseBashLogPath`, under a sandboxed `ROBOREPO_STATE_ROOT`.
 
-### Phase 5 — surfaces
+### Phase 5 — surfaces and documentation
 
 - [ ] Add the `maintenance stores` command definitions and module.
 - [ ] Add per-store `doctor` checks in `scripts/doctor.sh`.
 - [ ] Add a Monitoring row to the portal showing each store's size against its bound.
+
+Documentation lands here, not earlier — every gap below describes behavior the earlier phases
+build, and documenting a cap before it exists is worse than the current silence. Targets, from a
+survey of `docs/user/` at `81b0c43`:
+
+- [ ] `docs/user/reference/telemetry.md` — the section at "Privacy and retention" is entirely
+      privacy and says nothing about retention. Add the actual bounds for the spool, markers,
+      snapshots, and experiments, and note that `telemetry purge --all` remains the only full reset.
+- [ ] `docs/user/reference/architecture.md` — no section describes what accumulates under
+      `stateRoot` at runtime; it covers materialization and sync only. Add the store table (path,
+      shape, bound) so the runtime footprint is documented beside the install-time layout.
+- [ ] `docs/user/reference/roborepo-cli.md` — document `maintenance stores` and its reset forms.
+- [ ] `docs/user/reference/localhoster.md` — already documents `historyRetentionDays` correctly at
+      its Retention bullet. Verify it still matches after the Phase 2 migration rather than
+      rewriting it; this is the one store whose retention is already user-facing and correct.
+- [ ] `globals/packages/capture-dense-bash/package.config.json` — the `description` names the old
+      `~/.claude/logs` path. Already listed in Phase 4; confirm it reads correctly once the store
+      moves, since the package description is user-facing in `package manage`.
 
 ## Validation
 

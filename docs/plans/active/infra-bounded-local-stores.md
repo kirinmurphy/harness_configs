@@ -229,7 +229,7 @@ magnitude, not a population.
 
 | Store | Measured now | maxAgeDays | maxBytes | Basis |
 | --- | --- | --- | --- | --- |
-| Localhoster history | 456KB / 1,589 events / 14 days | 14 | 2MB | unchanged; steady state sits well under cap |
+| Localhoster history | 456KB / 1,589 events / 14 days | 14 (user-set, 1–365) | 2MB | unchanged; steady state sits well under cap |
 | Telemetry spool (claude) | 17.6MB | none | 25MB | unchanged; drain buffer, age is meaningless |
 | Telemetry spool (codex) | 21.4MB | none | 25MB | unchanged |
 | Telemetry markers | 671B / 3 records | none | 5MB | ~224B/record, user-authored; cap is a runaway guard only |
@@ -354,6 +354,11 @@ Both stores must come out behaviorally identical; their existing tests are the c
 - [ ] Trace whether anything drains the spool after analysis, and record the finding. If a drain is
       intended and missing, that is a separate bug — file it rather than absorbing it here. Resolves
       the first Open question, and decides whether 25MB stays the right cap.
+- [ ] Make the registry's localhoster policy read `preferences.historyRetentionDays` instead of the
+      hard-coded 14. Phase 1 registered the default as if it were fixed, but the value is a
+      user-settable preference (1–365, `modules/localhoster/settings-schema.mjs`) already read at
+      `scripts/cli/localhoster.mjs:264`. Migrating without this would silently override a user's
+      choice — the registry needs per-store policy resolution, not just literals.
 - [ ] Rewrite `compactHistory` in `modules/localhoster/history.mjs` to take its verdict from the
       engine, keeping the temp-file-plus-rename commit exactly as is.
 - [ ] Rewrite `capSpool` in `scripts/cli/telemetry-capture.mjs` the same way, keeping the in-place

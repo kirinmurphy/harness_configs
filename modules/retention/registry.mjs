@@ -28,7 +28,12 @@ export function retentionStores(stateRoot) {
       label: "Localhoster history",
       shape: LOG_SHAPE,
       target: path.join(stateRoot, "localhoster", "history.jsonl"),
-      // Unchanged from DEFAULT_RETENTION_DAYS/HISTORY_MAX_BYTES/HISTORY_COMPACT_FLOOR_BYTES.
+      // Matches DEFAULT_RETENTION_DAYS/HISTORY_MAX_BYTES/HISTORY_COMPACT_FLOOR_BYTES.
+      //
+      // maxAgeDays is the DEFAULT only. The live value is a user preference
+      // (preferences.historyRetentionDays, 1-365, see modules/localhoster/settings-schema.mjs) that
+      // scripts/cli/localhoster.mjs already passes through. Phase 2 must resolve it per call rather
+      // than trusting this literal, or migrating the store silently overrides the user's choice.
       policy: { maxAgeDays: 14, maxBytes: 2 * MB, floorBytes: 64 * 1024, keepFraction: null },
       description: "App health, origin, and exposure transitions.",
     },

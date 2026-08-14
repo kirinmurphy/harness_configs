@@ -46,7 +46,7 @@
       "type": "hooks",
       "source": "hooks-claude.json",
       "harness": "claude",
-      "scripts": ["hooks/block-source-exploration.mjs"]
+      "scripts": ["hooks/block-source-exploration.mjs", "hooks/session-health.mjs"]
     },
     {
       "type": "hooks",

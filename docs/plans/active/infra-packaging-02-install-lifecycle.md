@@ -838,6 +838,28 @@ keeps scaffolding as before) and `applyWorkspaceAssets` passes its own flag thro
 Verified clean by the sweep: `init`, `update`, `uninstall`, `config apply`, `config rules render`,
 `mcp apply`, `maintenance repair local-config`, and `workspace-resources.mjs` after the fix.
 
+**A review pass over the new helper found a hole in the helper itself.** Its first version watched
+six roots — the three harness homes, `~/.local/bin`, the state root, and the workspace — chosen from
+what seemed likely rather than from what the installer writes. Grepping `${HOME}/` across
+`scripts/install/` showed five more: the four shell profiles and `~/.gitignore_global`, plus
+`~/.roborepo-backups` and `~/.agents`. Those omissions mattered specifically: **both removal defects
+found earlier in this phase — the dangling `source` line and backup handling — live in exactly the
+paths the watcher was not watching.**
+
+Adding them exposed a second defect. `hashDirectory` throws `ENOTDIR` on a plain file, and shell
+profiles are files, so `snapshot()`'s catch-all would have returned a constant `<unreadable: ENOTDIR>`
+on both sides of every comparison — reporting success for any profile mutation. `snapshot()` now
+handles files, directories, and symlinks distinctly, and only `ENOENT` maps to `<absent>`.
+
+A per-root negative control (write into each watched root, assert the helper catches it) now passes
+13/13. That control is what turned both holes up; without it the helper would have looked correct
+while being blind to the exact class of bug that motivated building it.
+
+That control is now a permanent case in the sweep rather than a one-off command, since it is the
+only thing standing between "the watcher passes" and "the watcher works". Verified it still fails
+when the watcher regresses: reverting `snapshot()` to the directory-only form makes it report the
+profiles as blind, exactly as intended.
+
 ## Validation
 
 ### Automated behavior

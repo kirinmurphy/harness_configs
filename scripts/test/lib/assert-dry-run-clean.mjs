@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -21,15 +22,26 @@ import { hashDirectory } from "./hash-directory.mjs";
 // hashDirectory covers content, mode, and symlink targets, so this also catches a dry run that
 // rewrites a file to identical bytes with different permissions, or retargets a symlink.
 
-// A tree's identity: its hash, or a sentinel when it is absent. Absent-vs-present is itself the
+// A path's identity: its hash, or a sentinel when it is absent. Absent-vs-present is itself the
 // signal for scaffold leaks, so "missing" has to be a comparable value rather than a skip.
-function snapshot(root) {
+//
+// Handles files as well as directories. Several watched roots are single files (shell profiles,
+// ~/.gitignore_global), and hashDirectory throws ENOTDIR on those — which the catch below would
+// have turned into a constant "<unreadable>" on both sides of the comparison, silently making every
+// profile change invisible. A watcher that cannot see the file it is watching is worse than no
+// watcher, because it reports success.
+function snapshot(target) {
   try {
-    if (!fs.existsSync(root)) return "<absent>";
-    return hashDirectory(root);
+    const stat = fs.lstatSync(target);
+    if (stat.isSymbolicLink()) return `symlink:${fs.readlinkSync(target)}`;
+    if (stat.isFile()) {
+      return `file:${stat.mode}:${crypto.createHash("sha256").update(fs.readFileSync(target)).digest("hex")}`;
+    }
+    return hashDirectory(target);
   } catch (err) {
-    // An unreadable tree is reported rather than silently treated as absent: that would make a
-    // permissions failure look like a passing dry run.
+    if (err.code === "ENOENT") return "<absent>";
+    // Anything else is reported rather than silently treated as absent: a permissions failure must
+    // not look like a passing dry run.
     return `<unreadable: ${err.code || err.message}>`;
   }
 }
@@ -81,14 +93,29 @@ export function assertDryRunClean({ label, argv, cwd, env, roots, expectStatus =
  * The roots a roborepo dry run must never touch, for a sandboxed HOME.
  * Kept here so a new command's dry-run test cannot forget one — adding a root protects every
  * caller at once, which is the whole point of centralizing this.
+ *
+ * Derived from what the installer and uninstaller actually write (grep `${HOME}/` across
+ * scripts/install/), not from what seems likely. The shell profiles and backup roots matter as much
+ * as the harness dirs: the two removal defects found during this phase's hardening were a dangling
+ * `source` line left in a profile and backup handling, neither of which lives under a harness home.
+ * A watcher that skipped them would have been blind to exactly the class of bug that motivated it.
  */
 export function roborepoDryRunRoots({ home, stateRoot, workspaceRoot }) {
   return [
     path.join(home, ".claude"),
     path.join(home, ".codex"),
     path.join(home, ".gemini"),
+    path.join(home, ".agents"),
     path.join(home, ".local", "bin"),
     stateRoot ?? path.join(home, ".roborepo"),
     workspaceRoot ?? path.join(home, ".roborepo", "workspace"),
+    path.join(home, ".roborepo-backups"),
+    // Individual files, not directories. snapshot() hashes a file the same way, so a dry run that
+    // appends a PATH export or a `source` line to a profile is caught as a content change.
+    path.join(home, ".zshrc"),
+    path.join(home, ".bashrc"),
+    path.join(home, ".bash_profile"),
+    path.join(home, ".profile"),
+    path.join(home, ".gitignore_global"),
   ];
 }

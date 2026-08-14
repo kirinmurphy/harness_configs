@@ -54,10 +54,51 @@ try {
   // that is how install/main.sh invokes it.
   runModuleCase("workspace-resources.mjs", [path.join(repoRoot, "scripts/cli/workspace-resources.mjs")]);
 
+  testWatcherSeesEveryRoot();
+
   assert.equal(failures, 0, `${failures} command(s) mutated state under --dry-run`);
   console.log("dry-run purity checks passed");
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+// The watcher's own negative control: write into each watched root and assert the helper notices.
+//
+// This is what caught two holes in the helper itself. Its first version watched only the harness
+// homes, ~/.local/bin, and the state/workspace roots — omitting the shell profiles, which is exactly
+// where this phase's dangling-`source`-line defect lived. And because hashDirectory throws ENOTDIR
+// on a plain file, adding the profiles alone would have made snapshot() return a constant
+// "<unreadable>" on both sides of every comparison, silently reporting success for any profile
+// change. A watcher that cannot see the path it watches is worse than none, because it passes.
+function testWatcherSeesEveryRoot() {
+  const dirs = sandbox("watcher-self-check");
+  // A pre-existing profile, so the file branch is exercised as an append rather than a create.
+  fs.writeFileSync(path.join(dirs.home, ".zshrc"), "existing\n");
+  const roots = roborepoDryRunRoots(dirs);
+
+  const blind = [];
+  for (const root of roots) {
+    const leak = `const fs=require("fs"),p=${JSON.stringify(root)};`
+      + `try{if(fs.statSync(p).isFile()){fs.appendFileSync(p,"LEAK\\n")}`
+      + `else{fs.mkdirSync(p+"/leak",{recursive:true})}}catch{fs.mkdirSync(p,{recursive:true})}`;
+    let caught = false;
+    try {
+      assertDryRunClean({
+        label: `watcher self-check ${root}`,
+        argv: [process.execPath, "-e", leak],
+        cwd: repoRoot,
+        env: envFor(dirs),
+        roots,
+      });
+    } catch {
+      caught = true;
+    }
+    if (!caught) blind.push(root);
+  }
+
+  report("watcher sees every root it claims to watch", () => {
+    assert.deepEqual(blind, [], `the dry-run watcher is blind to:\n  ${blind.join("\n  ")}`);
+  });
 }
 
 function dryRunCommands() {

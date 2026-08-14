@@ -12,6 +12,7 @@ import {
   workspaceRoot,
   workspaceSkillsDir,
 } from "./paths.mjs";
+import { isMainModule } from "./roots.mjs";
 import { hasHarnessProvider, listHarnessProviders } from "../harnesses/registry.mjs";
 import { resolveHarnessPath } from "../harnesses/paths.mjs";
 
@@ -491,7 +492,7 @@ function isSlug(value) {
   return /^[a-z0-9][a-z0-9-]*$/.test(String(value || ""));
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (isMainModule(import.meta.url)) {
   const dryRun = process.argv.includes("--dry-run");
   try {
     applyWorkspaceAssets({ dryRun });

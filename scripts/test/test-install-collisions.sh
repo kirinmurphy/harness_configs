@@ -718,6 +718,16 @@ test_cli_entry_points_run_through_symlinked_path() {
     || fail "root-config-merge entry point runs through a symlinked path" "$home_dir/rcm.out"
   assert_file_contains "$home_dir/rcm.out" "usage: root-config-merge.mjs" \
     "root-config-merge reports usage rather than silently doing nothing"
+
+  # No module may reintroduce a hand-rolled guard: path.resolve() normalizes but does NOT resolve
+  # symlinks, so every variant of that comparison has the same silent-no-op failure. isMainModule()
+  # in roots.mjs is the one correct implementation.
+  local strays
+  strays="$(grep -rln "process\.argv\[1\]" "$repo_root/scripts" "$repo_root/bin" --include="*.mjs" 2>/dev/null \
+    | xargs grep -l "import\.meta\.url" 2>/dev/null \
+    | grep -v "/roots\.mjs$" || true)"
+  [[ -z "$strays" ]] && pass "no hand-rolled main-module guards remain" \
+    || fail "no hand-rolled main-module guards remain: $strays"
 }
 
 test_uninstall_stops_repo_owned_processes() {

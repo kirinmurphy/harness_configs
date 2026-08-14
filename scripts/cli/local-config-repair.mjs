@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { rootConfigActive, rootConfigBaseline } from "./paths.mjs";
+import { isMainModule } from "./roots.mjs";
 import { getHarnessProvider } from "../harnesses/registry.mjs";
 import { recordWrite } from "./root-config-state.mjs";
 
@@ -337,5 +337,4 @@ function timestamp() {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
-if (isMain) localConfigRepairCommand(process.argv.slice(2));
+if (isMainModule(import.meta.url)) localConfigRepairCommand(process.argv.slice(2));

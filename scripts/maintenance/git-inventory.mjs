@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import readline from "node:readline/promises";
-import { fileURLToPath } from "node:url";
+import { isMainModule } from "../cli/roots.mjs";
 
 const DEFAULT_MAX_DEPTH = 3;
 const SKIP_DIRS = new Set([
@@ -974,7 +974,7 @@ function formatCount(value) {
   return value == null ? "unknown" : String(value);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   gitInventory().catch((err) => {
     process.stderr.write(`git-inventory: ${err.message}\n`);
     process.exitCode = 1;

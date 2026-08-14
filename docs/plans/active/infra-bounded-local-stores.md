@@ -378,8 +378,22 @@ size), `HISTORY_COMPACT_FLOOR_BYTES` for the append path.
 
 ### Phase 3 — bound what is unbounded
 
-- [ ] Bound `telemetry/events/markers.jsonl` in `scripts/cli/telemetry-schemas/persistence.mjs`.
-- [ ] Bound the snapshots and experiments directories via the file-set store.
+- [x] Bound `telemetry/events/markers.jsonl` in `scripts/cli/telemetry-schemas/persistence.mjs`.
+- [x] Bound the snapshots and experiments directories via the file-set store.
+- [x] Add `scripts/test/telemetry-store-bounds-check.mjs`, registered as
+      `npm run test:telemetry-store-bounds`.
+
+Two things the implementation forced, both worth keeping:
+
+- **Every cap needs `keepFraction`.** Trimming to exactly the cap re-trips it on the next write, so
+  the store rewrites itself on every append forever — quadratic, and bad enough that the first
+  version of the test exceeded a 120s timeout. All three caps now overshoot to ~70%, matching
+  `SPOOL_KEEP_FRACTION`, which existed for this reason.
+- **A running experiment is never evictable.** An experiment with no `end_marker_id` is still live
+  and its end marker will reference the file later, so `capFileSet` takes an `isEvictable`
+  predicate and experiments pass one that only releases finished records. The test writes the
+  running experiment first, making it the oldest by mtime and therefore the first victim if the
+  guard regresses.
 - [x] Remove `telemetryDbPath` from `scripts/cli/state-paths.mjs` and its line from
       `telemetry status`. Landed early with Phase 1 — it was dead code with three references and no
       test coverage, so it did not need to wait for the stores it sat beside.

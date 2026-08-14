@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { repoRoot, harnessHome } from "./paths.mjs";
+import { isMainModule } from "./roots.mjs";
 import { installStatePath, presetsStatePath } from "./state-paths.mjs";
 import { readConfigSnapshot, buildBehaviorView } from "./config.mjs";
 import { mutatePackage, setBehaviorBucket } from "./config-mutate.mjs";
@@ -966,7 +966,7 @@ function rejectUnknownFlags(args, allowed) {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   presetsCommand(process.argv.slice(2)).catch((err) => {
     console.error(err?.stack || String(err));
     process.exit(1);

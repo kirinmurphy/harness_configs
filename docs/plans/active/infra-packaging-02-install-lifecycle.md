@@ -616,7 +616,7 @@ both need the physical machine, so neither can be closed from this branch.
 
 - [x] Complete the resource ownership/removal inventory across skills, commands, MCP, hooks, root config, shell entries, backups, state, and caches.
 - [x] Finish collision/back-up policy characterization and deterministic dry-run/noninteractive behavior.
-- [ ] Finish moved-checkout and stale-path repair coverage.
+- [x] Finish moved-checkout and stale-path repair coverage.
 - [ ] Finish shell/PATH deduplication and package-manager-shim ownership cleanup.
 - [ ] Define same-version reinstall and versioned upgrade/downgrade state behavior.
 - [ ] Run the same core lifecycle matrix in development and installed-package modes.
@@ -656,6 +656,73 @@ Dry-run determinism was characterized and found already correct: two dry runs ov
 fixtures produce byte-identical output once the install timestamp is normalized, and mutate nothing.
 The remaining difference is the intended `*_update_<TIMESTAMP>` path, not a defect. Noninteractive
 installs already default to `--on-conflict=keep` and announce it.
+
+#### Phase 7 implementation notes (moved-checkout and stale-path repair)
+
+`repair.sh` itself was already correct, and characterization confirmed it: installing from one path,
+physically moving the checkout, and repairing from the new path re-points the dangling
+`~/.local/bin/roborepo` link, rewrites the recorded repo root, and is a no-op on a second run.
+Uninstall after a move also correctly reclaims links left by the prior path, via `recorded_repo`.
+
+**The defect found here was not move-specific.** Uninstall exited 1 with roborepo-authored
+`CLAUDE.md`/`AGENTS.md` left behind — and a control run with *no* move failed identically. Root
+cause: every one of these modules guards its CLI entry point with
+
+```js
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+```
+
+`process.argv[1]` is the path as invoked; `import.meta.url` is fully resolved. On macOS a checkout
+under `/var/...` resolves to `/private/var/...`, so the comparison is **false**, the entry-point
+block never runs, and the CLI **exits 0 having done nothing**. Any symlinked checkout has the same
+shape. Three modules shared the bug: `rules-render.mjs`, `root-config-merge.mjs`, `presets.mjs`.
+
+Blast radius is wider than uninstall, because these are shelled out to as subprocesses:
+
+| Caller | Consequence of the silent no-op |
+| --- | --- |
+| `uninstall-lib.sh` → `rules-render.mjs --remove-managed` | managed rules blocks survive uninstall; the remnant check then fails the run |
+| `install-harness.sh` → `rules-render.mjs <harness>` | home rules never rendered on install |
+| `doctor.sh` → `rules-render.mjs --check` | health check passes without checking anything |
+| `install-lib.sh` → `root-config-merge.mjs` | writes merge output to a temp file that is then `mv`'d over the user's root config — a no-op subprocess means installing an **empty config** |
+
+Fixed with one shared `isMainModule(import.meta.url)` helper in `roots.mjs` (the leaf module all
+three can import without a registry cycle) that compares `realpathSync` on both sides. Three
+hand-rolled copies of a subtle path comparison is what let this persist, so the helper is shared
+rather than fixed three times.
+
+| Decision | Reasoning |
+| --- | --- |
+| Helper lives in `roots.mjs`, not `paths.mjs` | `paths.mjs` imports the harness registry; `root-config-merge.mjs` deliberately avoids that cycle. `roots.mjs` is the existing leaf module and already imports `fs` and `fileURLToPath`. |
+| Falls back to the unresolved path when `realpathSync` throws | Keeps the guard usable at module load for a path that does not exist yet, instead of throwing during import. |
+| Regression test drives a symlinked repo root | Reproduces the mismatch without depending on the platform's temp-dir layout, so it still fails on Linux where `/tmp` is not symlinked. |
+
+Separately, `test_onboarding_wizard_toggles_and_applies` in `test-install-collisions.sh` was stale
+and had been failing the whole suite since Phases 1-2 of this plan: it still spawned `roborepo
+onboard`, which those phases removed. The command exited immediately with its replacement notice, so
+every subsequent `expect` send hit a closed spawn id and killed the run under `set -e` — **before
+any assertion could print**, which is why the suite failed with no `FAIL:` line and looked like it
+simply stopped after the previous test. Repointed at `package manage`, and at the wizard's current
+save key (Enter; Esc now returns to the previous menu without applying).
+
+Fixing that one revealed further stale assertions behind it — the suite had been dying too early to
+reach them. All were in `test_windows_installer_root_preflight_order`, all from the same commit
+(`6e968a2`), which replaced hand-listed per-harness calls in `install-windows.ps1` with a loop over
+`$KnownHarnessIds`:
+
+| Stale anchor | Replaced with | Why |
+| --- | --- | --- |
+| `# Claude managed links` | `# Per-harness managed links` | comment renamed by the refactor |
+| `Invoke-ManifestRows "Claude" @("claude")` | `foreach ($id in $KnownHarnessIds)` + `Invoke-ManifestRows $HarnessDisplayNames[$id] @($id)` | the literal pinned an implementation that no longer exists, and pinned the Claude/Codex pair this repo is moving away from |
+| `Invoke-ManifestRows "Codex" @("codex")` | (same loop assertion) | as above |
+
+The properties under test are unchanged and still hold: root-config collisions are resolved before
+anything is linked, and manifest rows are applied per harness — now asserted against the
+data-driven loop, so a newly registered provider keeps working without an edit here.
+
+Both stale tests predate this branch and fail identically on `main`. They are fixed here rather than
+left red because the suite is the verification gate for the rest of Phase 7 — with it aborting at
+the wizard test, roughly half its cases (70 of 133) never ran at all.
 
 ## Validation
 

@@ -194,20 +194,23 @@ test_onboarding_wizard_toggles_and_applies() {
   HOME="$home_dir" "$repo_root/scripts/install/main.sh" < /dev/null >/dev/null 2>&1
 
   command -v expect >/dev/null 2>&1 || fail "expect is required for interactive installer tests"
-  # Space toggles the highlighted item; Esc finishes, triggering the deferred batch apply.
+  # Drives `package manage`: this plan removed the public `onboard` command, and the wizard now
+  # saves on Enter rather than Esc (Esc returns to the previous menu without applying). The old
+  # script sent `onboard` + Esc, so it spawned a command that immediately exited with "`roborepo
+  # onboard` was replaced by...", and every later send hit a closed spawn id — killing the suite
+  # before its own assertions could report anything.
   HC_HOME="$home_dir" HC_REPO="$repo_root" expect <<'EOF' >"$home_dir/wiz.out" 2>&1
-set timeout 45
-spawn env HOME=$env(HC_HOME) ROBOREPO_STATE_DIR=$env(HC_HOME)/.roborepo node $env(HC_REPO)/scripts/cli/main.mjs onboard
+set timeout 90
+spawn env HOME=$env(HC_HOME) ROBOREPO_STATE_DIR=$env(HC_HOME)/.roborepo node $env(HC_REPO)/scripts/cli/main.mjs package manage
 expect "Step 1"
 send " "
-send "\033"
-expect "Onboarding complete"
+send "\r"
 expect eof
 EOF
 
   assert_file_contains "$home_dir/wiz.out" "Applying changes" "wizard runs deferred batch apply after a toggle"
   assert_file_not_contains "$home_dir/wiz.out" "failed:" "wizard toggle applies without error"
-  assert_file_contains "$home_dir/wiz.out" "Onboarding complete" "wizard finishes cleanly"
+  assert_file_contains "$home_dir/wiz.out" "enable jcodemunch — ok" "wizard applies the toggled package"
   trap - RETURN
   cp "$claude_settings_backup" "$repo_root/generated/claude/settings.json"
 }
@@ -683,6 +686,40 @@ test_uninstall_check_clean_reports_remnant() {
   assert_file_contains "$home_dir/check.out" "remnant: $home_dir/.roborepo/telemetry" "check-clean names telemetry remnant"
 }
 
+# Entry-point guards must compare real paths. `process.argv[1] === fileURLToPath(import.meta.url)`
+# is false whenever the invoking path and the resolved module path differ by a symlink — on macOS a
+# checkout under /var resolves to /private/var, so every one of these CLIs silently did nothing and
+# exited 0. That made `uninstall.sh` leave roborepo-authored CLAUDE.md/AGENTS.md behind and then
+# fail its own remnant check. Runs each script through a symlinked repo root, which reproduces the
+# mismatch without depending on the platform's temp-dir layout.
+test_cli_entry_points_run_through_symlinked_path() {
+  local home_dir link_root
+  home_dir="$(make_home)"
+  link_root="$home_dir/linked-repo"
+  ln -s "$repo_root" "$link_root"
+
+  printf '<!-- BEGIN managed:roborepo-code-style -->\nGENERATED\n<!-- END managed:roborepo-code-style -->\nuser tail\n' \
+    > "$home_dir/.claude/CLAUDE.md"
+
+  HOME="$home_dir" ROBOREPO_STATE_DIR="$home_dir/.roborepo" \
+    node "$link_root/scripts/cli/rules-render.mjs" --remove-managed claude >"$home_dir/rr.out" 2>&1
+
+  assert_file_not_contains "$home_dir/.claude/CLAUDE.md" "BEGIN managed:roborepo-code-style" \
+    "rules-render --remove-managed runs when invoked through a symlinked path"
+  assert_file_contains "$home_dir/.claude/CLAUDE.md" "user tail" \
+    "rules-render --remove-managed preserves user content outside the block"
+
+  # root-config-merge has no --help; called with no arguments it prints its usage line and exits 2
+  # from inside the same entry-point block. Silence plus exit 0 is precisely the broken-guard
+  # signature, so this distinguishes "ran and rejected the args" from "never ran at all".
+  local rcm_status=0
+  HOME="$home_dir" node "$link_root/scripts/cli/root-config-merge.mjs" >"$home_dir/rcm.out" 2>&1 || rcm_status=$?
+  [[ "$rcm_status" -eq 2 ]] && pass "root-config-merge entry point runs through a symlinked path" \
+    || fail "root-config-merge entry point runs through a symlinked path" "$home_dir/rcm.out"
+  assert_file_contains "$home_dir/rcm.out" "usage: root-config-merge.mjs" \
+    "root-config-merge reports usage rather than silently doing nothing"
+}
+
 test_uninstall_stops_repo_owned_processes() {
   local home_dir pid process_root
   home_dir="$(make_home)"
@@ -906,15 +943,24 @@ test_windows_installer_root_preflight_order() {
   local windows_script root_line claude_line
   windows_script="$repo_root/scripts/install/install-windows.ps1"
   root_line="$(awk '/^Invoke-RootConfigPreflight$/ { print NR; exit }' "$windows_script")"
-  claude_line="$(awk '/^# Claude managed links/ { print NR; exit }' "$windows_script")"
+  # The per-harness link loop replaced the old hand-listed "# Claude managed links" block in
+  # 6e968a2, which left this anchor matching nothing and failing the assertion (and, under set -e,
+  # the whole suite) on every run since. The property under test is unchanged: root config
+  # collisions are resolved before anything is linked.
+  claude_line="$(awk '/^# Per-harness managed links/ { print NR; exit }' "$windows_script")"
 
   [[ -n "$root_line" && -n "$claude_line" && "$root_line" -lt "$claude_line" ]] \
     && pass "Windows installer resolves root config collisions before linking" \
     || fail "Windows installer resolves root config collisions before linking" "$windows_script"
   assert_file_contains "$windows_script" 'function Get-ManifestRows' "Windows installer reads manifest rows"
   assert_file_contains "$windows_script" 'Resolve-ManifestHomeRoot' "Windows installer resolves manifest home roots"
-  assert_file_contains "$windows_script" 'Invoke-ManifestRows "Claude" @\("claude"\)' "Windows installer applies Claude manifest rows"
-  assert_file_contains "$windows_script" 'Invoke-ManifestRows "Codex" @\("codex"\)' "Windows installer applies Codex manifest rows"
+  # Same refactor (6e968a2) replaced the hand-listed per-harness calls with a loop over
+  # $KnownHarnessIds, so asserting the literal 'Invoke-ManifestRows "Claude" @("claude")' pinned an
+  # implementation that no longer exists — and pinned the Claude/Codex pair this repo has been
+  # moving away from. Assert the data-driven loop instead, which is what keeps a newly registered
+  # provider working without an edit here.
+  assert_file_contains "$windows_script" 'foreach \(\$id in \$KnownHarnessIds\)' "Windows installer iterates registered harnesses"
+  assert_file_contains "$windows_script" 'Invoke-ManifestRows \$HarnessDisplayNames\[\$id\] @\(\$id\)' "Windows installer applies manifest rows per harness"
   assert_file_contains "$windows_script" 'if \(-not \$adoptRootConfig\[\$row.Harness\]\)' "Windows installer skips adopted root config from manifest"
   assert_file_not_contains "$windows_script" 'Link-Item "globals/codex/AGENTS.md"' "Windows installer does not hand-list Codex AGENTS link"
   assert_file_not_contains "$windows_script" 'Link-Item "generated/codex/AGENTS.md"' "Windows installer does not hand-list generated Codex AGENTS link"
@@ -1017,6 +1063,7 @@ test_uninstall_preserves_user_modified_copy
 test_uninstall_reclaims_real_dir_link_remnant
 test_uninstall_removes_runtime_state_and_backups
 test_uninstall_check_clean_reports_remnant
+test_cli_entry_points_run_through_symlinked_path
 test_uninstall_stops_repo_owned_processes
 test_idempotency_no_extra_backups
 test_root_config_drift_silent_update_vs_real_collision

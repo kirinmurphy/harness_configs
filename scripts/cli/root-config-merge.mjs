@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { isMainModule } from "./roots.mjs";
 
 function isPlainObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -228,7 +228,7 @@ export function normalizeRootConfigContent(harness, content) {
 // works here with no further changes. Wrapped in an async IIFE (not a bare top-level await) since
 // Node's top-level-await support inside a conditional block left an unsettled-promise warning and
 // a hung process in practice.
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   const [harness, repoPath, localPath, outPath] = process.argv.slice(2);
   if (!harness || !repoPath || !localPath || !outPath) {
     console.error("usage: root-config-merge.mjs <harness> <repoPath> <localPath> <outPath>");

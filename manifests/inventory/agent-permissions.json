@@ -45,14 +45,17 @@
     {
       "id": "write-scope",
       "label": "Write scope",
-      "description": "Where files may be written without prompting: the projects tree only (covers repos and their worktrees). Paths outside prompt.",
+      "description": "Where files may be written without prompting: the projects tree, plus the temp dirs agent scratch work lands in. Paths outside these prompt.",
       "kind": "tools-scoped",
       "tools": [
         "Write",
         "Edit"
       ],
       "paths": [
-        "~/projects/**"
+        "~/projects/**",
+        "/tmp/**",
+        "/private/tmp/**",
+        "/private/var/folders/**"
       ],
       "bucket": "allow",
       "category": "files"

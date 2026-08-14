@@ -40,7 +40,6 @@ export const repositoriesRegistryPath = path.join(roborepoStateDir, "repositorie
 export const usageDir = path.join(roborepoStateDir, "usage");
 export const usageLatestDir = path.join(usageDir, "latest");
 export const telemetryDir = path.join(roborepoStateDir, "telemetry");
-export const telemetryDbPath = path.join(telemetryDir, "telemetry.sqlite");
 export const telemetrySpoolDir = path.join(telemetryDir, "spool");
 export const telemetryCollectorDir = path.join(telemetryDir, "collector");
 export const telemetryEventsDir = path.join(telemetryDir, "events");

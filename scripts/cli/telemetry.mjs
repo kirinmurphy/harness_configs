@@ -6,7 +6,7 @@ import net from "node:net";
 import { spawnSync, spawn } from "node:child_process";
 import { markTelemetrySelected } from "./presets.mjs";
 import { repoRoot, stateRoot, harnessHome, rootConfigActive } from "./paths.mjs";
-import { portalPidPathForPort, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir, repositoriesRegistryPath } from "./state-paths.mjs";
+import { portalPidPathForPort, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir, repositoriesRegistryPath } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { readMarkers, readSnapshot, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
 import { readSourceFile } from "./config-source-lookup.mjs";
@@ -407,7 +407,6 @@ function telemetryStatus(args) {
   rejectArgs(args);
   const state = readTelemetryState();
   console.log(`enabled: ${state.enabled === true ? "yes" : "no"}`);
-  console.log(`database: ${telemetryDbPath}`);
   console.log(`spool:    ${telemetrySpoolDir}`);
   console.log(`collector:${telemetryCollectorDir}`);
 }

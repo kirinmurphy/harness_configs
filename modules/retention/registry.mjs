@@ -30,11 +30,13 @@ export function retentionStores(stateRoot) {
       target: path.join(stateRoot, "localhoster", "history.jsonl"),
       // Matches DEFAULT_RETENTION_DAYS/HISTORY_MAX_BYTES/HISTORY_COMPACT_FLOOR_BYTES.
       //
-      // maxAgeDays is the DEFAULT only. The live value is a user preference
-      // (preferences.historyRetentionDays, 1-365, see modules/localhoster/settings-schema.mjs) that
-      // scripts/cli/localhoster.mjs already passes through. Phase 2 must resolve it per call rather
-      // than trusting this literal, or migrating the store silently overrides the user's choice.
+      // maxAgeDays here is the DEFAULT. The live value is a user preference
+      // (preferences.historyRetentionDays, 1-365, see modules/localhoster/settings-schema.mjs), so
+      // this entry declares `preferenceKey` and callers pass the resolved value through
+      // resolveStorePolicy. Reporting surfaces that have no settings loaded still show a truthful
+      // default rather than nothing.
       policy: { maxAgeDays: 14, maxBytes: 2 * MB, floorBytes: 64 * 1024, keepFraction: null },
+      preferenceKey: "historyRetentionDays",
       description: "App health, origin, and exposure transitions.",
     },
     {
@@ -98,6 +100,22 @@ export function retentionStores(stateRoot) {
 
 export function findRetentionStore(stateRoot, id) {
   return retentionStores(stateRoot).find((store) => store.id === id) ?? null;
+}
+
+// Overlay a live user preference onto a store's declared default.
+//
+// The registry cannot read the preference itself: localhoster owns its settings file, and importing
+// it here would point a leaf module at a feature module. So the store declares WHICH preference
+// governs it and the caller — which already has the settings loaded — supplies the value.
+//
+// An out-of-range or missing value falls back to the declared default rather than throwing.
+// Retention runs on the append path, and a hand-edited settings file must not be able to stop a
+// store from being written to.
+export function resolveStorePolicy(store, preferences = null) {
+  if (!store.preferenceKey || !preferences) return store.policy;
+  const value = preferences[store.preferenceKey];
+  if (!Number.isInteger(value) || value < 1 || value > 365) return store.policy;
+  return { ...store.policy, maxAgeDays: value };
 }
 
 // Every registered store must actually be bounded. Called by the test, and by the registry's own

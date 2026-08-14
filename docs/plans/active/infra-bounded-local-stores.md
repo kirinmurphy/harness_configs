@@ -351,20 +351,30 @@ engine that already has its own tests.
 
 Both stores must come out behaviorally identical; their existing tests are the contract.
 
-- [ ] Trace whether anything drains the spool after analysis, and record the finding. If a drain is
-      intended and missing, that is a separate bug — file it rather than absorbing it here. Resolves
-      the first Open question, and decides whether 25MB stays the right cap.
-- [ ] Make the registry's localhoster policy read `preferences.historyRetentionDays` instead of the
-      hard-coded 14. Phase 1 registered the default as if it were fixed, but the value is a
-      user-settable preference (1–365, `modules/localhoster/settings-schema.mjs`) already read at
-      `scripts/cli/localhoster.mjs:264`. Migrating without this would silently override a user's
-      choice — the registry needs per-store policy resolution, not just literals.
-- [ ] Rewrite `compactHistory` in `modules/localhoster/history.mjs` to take its verdict from the
+- [x] Trace whether anything drains the spool after analysis. **Nothing does.** Both readers
+      (`readSpoolEvents` at `scripts/cli/telemetry.mjs:925` and `readSpoolEventsCached` at :967) are
+      read-only, and the only deletion path in the codebase is `telemetry purge --all`. The spool is
+      the durable store, not a buffer — so there is no missing drain to file, and a byte cap is the
+      correct and only bound for it. The 40MB observed across two files is expected behavior below a
+      per-file cap that has simply never fired.
+- [x] Make the registry's localhoster policy read `preferences.historyRetentionDays` instead of the
+      hard-coded 14. Added `preferenceKey` plus `resolveStorePolicy(store, preferences)` — the
+      registry declares which preference governs a store and the caller supplies the value, so a
+      leaf module never imports a feature module. The append path was already correct
+      (`scripts/cli/localhoster.mjs:264` passes the preference through); this is for the reporting
+      surfaces in Phase 5, which would otherwise show a default that disagrees with the live value.
+- [x] Rewrite `compactHistory` in `modules/localhoster/history.mjs` to take its verdict from the
       engine, keeping the temp-file-plus-rename commit exactly as is.
-- [ ] Rewrite `capSpool` in `scripts/cli/telemetry-capture.mjs` the same way, keeping the in-place
-      write. Add the gate ladder it currently lacks.
-- [ ] Confirm `scripts/test/localhoster-history-check.mjs` and
-      `scripts/test/telemetry-spool-store-check.mjs` pass unmodified.
+- [x] Rewrite `capSpool` in `scripts/cli/telemetry-capture.mjs` the same way, keeping the in-place
+      write. It now gets the gate it lacked, via `measureLog`.
+- [x] Confirm `scripts/test/localhoster-history-check.mjs` and
+      `scripts/test/telemetry-spool-store-check.mjs` pass unmodified. Both green.
+
+The migration surfaced one behavior difference worth recording: the compaction floor belongs to the
+append path, not to `compactHistory` itself. Routing a direct call through a floored policy let a
+small file keep expired events, which `localhoster-history-check.mjs:112` caught. `floorBytes` is
+now a parameter — `0` for a direct call (an explicit request to compact applies the policy at any
+size), `HISTORY_COMPACT_FLOOR_BYTES` for the append path.
 
 ### Phase 3 — bound what is unbounded
 

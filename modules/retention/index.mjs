@@ -21,5 +21,6 @@ export {
   LOG_SHAPE,
   assertBounded,
   findRetentionStore,
+  resolveStorePolicy,
   retentionStores,
 } from "./registry.mjs";

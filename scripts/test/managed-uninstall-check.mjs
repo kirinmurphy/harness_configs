@@ -51,6 +51,7 @@ try {
   testCheckCleanToleratesPreservedWorkspace();
   testStateRootOwnershipInventory();
   testEveryDeclaredStatePathIsClassified();
+  testUninstallWithConfirmedHarnesses();
   await testPortalUninstallRequiresExplicitConfirm();
   testPortalSurfaceIsPreserveOnly();
   console.log("managed uninstall checks passed");
@@ -178,6 +179,56 @@ function testCheckCleanToleratesPreservedWorkspace() {
   const dirty = spawnSync("bash", [uninstallSh, "--check-clean"], { cwd: repoRoot, env: env(f), encoding: "utf8" });
   assert.equal(dirty.status, 1, "genuine leftover state must still be reported");
   assert.match(dirty.stderr, /remnant/, "and must name what was left behind");
+}
+
+// --- Managed uninstall on a machine where the harnesses are actually installed.
+//
+// Every other fixture here creates ~/.claude and ~/.codex but puts no executable on PATH, so
+// discovery grades them "possible" (home-only evidence). A real user's machine grades "confirmed"
+// (executable + home/config), which is a different branch of normalizeConfidence and therefore a
+// different set of providers reported as detected. Uninstall iterates detected providers, so the
+// cohort it walks here is genuinely larger than in the other cases.
+//
+// Stub executables rather than real ones: the check is about which discovery branch runs, not about
+// the harnesses' behavior, and requiring real installs would make this unrunnable in CI — the exact
+// reason harness-cli-check.mjs documents skipping it.
+//
+// POSIX-only, like the rest of this file (which drives bash uninstall scripts): the `#!/bin/sh`
+// stubs are resolved by `which`, and discovery uses `where` on win32. Skipped there rather than
+// silently asserting nothing.
+function testUninstallWithConfirmedHarnesses() {
+  if (process.platform === "win32") {
+    console.log("skip: confirmed-harness uninstall (POSIX-only stub executables)");
+    return;
+  }
+  const f = fixture();
+  const binDir = path.join(f.home, "stub-bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  for (const exe of ["claude", "codex", "gemini"]) {
+    const stub = path.join(binDir, exe);
+    fs.writeFileSync(stub, "#!/bin/sh\necho stub\n");
+    fs.chmodSync(stub, 0o755);
+  }
+  // Config alongside the home dir, so evidence is executable + config -> confirmed.
+  fs.mkdirSync(path.join(f.home, ".claude"), { recursive: true });
+  fs.writeFileSync(path.join(f.home, ".claude", "settings.json"), '{"model":"opus"}\n');
+
+  const withStubs = { PATH: `${binDir}:${process.env.PATH}` };
+  const refresh = runCli(f, ["harness", "refresh"], withStubs);
+  assert.equal(refresh.status, 0, `harness refresh failed:\n${refresh.stdout}${refresh.stderr}`);
+  assert.match(
+    refresh.stdout,
+    /confirmed/,
+    `stub executables must raise at least one provider to confirmed\n${refresh.stdout}`,
+  );
+
+  const result = runCli(f, ["uninstall", "--yes"], withStubs);
+  assert.equal(result.status, 0, `uninstall failed with confirmed harnesses:\n${result.stdout}${result.stderr}`);
+  assert.equal(fs.readFileSync(f.skill, "utf8"), "USER AUTHORED\n", "workspace must survive");
+  assert.ok(
+    fs.existsSync(path.join(f.home, ".claude", "settings.json")),
+    "a user's own root config must survive managed uninstall",
+  );
 }
 
 // --- Resource ownership inventory (Phase 7). See OWNED_STATE_ENTRIES near the top of this file.

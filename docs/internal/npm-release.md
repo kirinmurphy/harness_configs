@@ -70,6 +70,9 @@ bash scripts/doctor.sh --quiet
 `--next-release-info` intentionally does not run these checks. It is for quick release metadata,
 not release readiness.
 
+See [Testing RoboRepo](testing.md) for the full maintainer test matrix, focused post-merge checks,
+portal smoke guidance, and sandbox-specific rerun rules.
+
 ## Failure Rules
 
 The workflow stops before publishing when:

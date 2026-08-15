@@ -35,8 +35,8 @@ let caseId = 0;
 // Disposable machine state roborepo created — managed uninstall must remove all of it.
 const OWNED_STATE_ENTRIES = [
   "command-overrides.json", "enabled-packages.json", "telemetry", "telemetry-backups", "backups",
-  "presets", "rules", "config-state", "harnesses", "repositories", "usage", "portal", "skills",
-  "runtime", "install-state.json", "initialization.json", "experimental.json",
+  "presets", "rules", "config-state", "harnesses", "repositories", "usage", "capture", "portal",
+  "skills", "runtime", "install-state.json", "initialization.json", "experimental.json",
 ];
 // User-owned content, or a pointer whose fate follows it — preserved by default.
 const PRESERVED_STATE_ENTRIES = ["workspace", "workspace-root.json"];

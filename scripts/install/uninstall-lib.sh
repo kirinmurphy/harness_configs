@@ -465,6 +465,9 @@ remove_runtime_state() {
   remove_path "${state_dir}/harnesses" "remove"
   remove_path "${state_dir}/repositories" "remove"
   remove_path "${state_dir}/usage" "remove"
+  # Observation logs written by capture packages (see state-paths.mjs captureDir). Agent-generated
+  # records of what ran, not user content, so uninstall owns them exactly as it owns telemetry.
+  remove_path "${state_dir}/capture" "remove"
   remove_path "${state_dir}/portal" "remove"
   remove_path "${state_dir}/skills" "remove"
   # Package runtime assets (see scripts/cli/package-harness-config.mjs runtimeAssetDestination).

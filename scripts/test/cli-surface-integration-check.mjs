@@ -97,11 +97,15 @@ function assertTelemetryMenuSections() {
   assert(!labels.includes("Stop"), "portal stop should not appear in normal telemetry menu");
 }
 
+// The telemetry package presents under Monitoring, not Token Optimization: the catalog
+// reorganization that split rules from diagnostics moved it there alongside Capture Dense Bash,
+// and renamed its label to "Token Telemetry". Both are asserted here so a future move breaks this
+// check rather than silently showing the package under a stale heading.
 function assertPackageLibraryLabels() {
-  const tokenSection = readConfigSnapshot().behaviorView.find((section) => section.category === "Token Optimization");
-  const labels = tokenSection?.items.map((item) => item.label) || [];
-  assert(labels.includes("Token Monitoring"), "telemetry package should show product label in Package Library");
-  assert(!labels.includes("/telemetry-marker"), "Token Optimization should not show telemetry slash-command label");
+  const section = readConfigSnapshot().behaviorView.find((s) => s.category === "Monitoring");
+  const labels = section?.items.map((item) => item.label) || [];
+  assert(labels.includes("Token Telemetry"), "telemetry package should show product label in Package Library");
+  assert(!labels.includes("/telemetry-marker"), "Monitoring should not show telemetry slash-command label");
 }
 
 function assertRootAgentConfigOrder() {

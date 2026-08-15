@@ -52,8 +52,9 @@ always matches the label:
 
 **Usage severity** (styles any `## used` value, independently of pacing):
 
-- `0–70%` → white; `71–85%` → orange; `86–100%` → red.
-- Strict boundaries: `70%` and `85%` themselves stay white/orange; `71%` and `86%` cross.
+- `0–29%` → white (normal); `30–49%` → yellow (caution); `50–59%` → orange (warning); `60–100%` → red (critical).
+- Inclusive lower bounds: each threshold percent belongs to its tier (`30%` is caution, not normal;
+  `60%` is critical, not warning).
 
 **Surplus is never orange or red** for being large. A high total-used value may still color the
 `## used` text on its own — debt/surplus severity and total-used severity are computed and styled

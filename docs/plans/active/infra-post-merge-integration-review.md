@@ -106,7 +106,7 @@ Known failures or gaps that must not be misreported as merge regressions:
 - [ ] Review shared-state integration for `scripts/cli/state-paths.mjs`, managed uninstall
   classification, `modules/retention/*`, localhoster, telemetry spool, package catalog labels,
   capture-dense-bash, usage statusline, and shared rules changes.
-- [ ] Check usage-statusline severity thresholds and fix any merge damage where context
+- [x] Check usage-statusline severity thresholds and fix any merge damage where context
   percentage thresholds were accidentally applied to weekly or monthly spend rates.
 - [ ] Browser-smoke `/config` and the Uninstall panel, recording console/network errors and a
   walkthrough artifact if browser automation is available.

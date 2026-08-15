@@ -109,6 +109,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node \"$HOME/.claude/hooks/provider/repo-write-scope.mjs\""
+          },
+          {
+            "type": "command",
             "command": "node \"$HOME/.claude/hooks/roborepo-write-guard.mjs\""
           }
         ]

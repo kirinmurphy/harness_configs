@@ -56,6 +56,15 @@ function findBehavior(behaviors, id) {
 // Filesystem write access derives from the write-files behavior specifically. "deny" or "ask"
 // both mean Codex's sandbox should not be opened for arbitrary writes; only an explicit "allow"
 // opens workspace-write.
+//
+// This is also Codex's implementation of the platform's `repo-write-boundary` behavior. Codex has
+// no per-path permission rules, so it cannot ask per write the way Claude's hook does; what it has
+// is a sandbox whose writable area is the workspace. Leaving the boundary on therefore means
+// `workspace-write` — writes stay inside the workspace and anything outside is refused by the
+// sandbox rather than prompted. Switching the boundary off ("allow") is the only case where a
+// wider `danger-full-access` would be correct, and that is deliberately NOT rendered here: opening
+// the whole filesystem is a bigger step than turning off a prompt, and should be an explicit
+// Codex-side choice rather than a side effect of a permissions toggle.
 function codexSandboxMode(behaviors) {
   const writeFiles = findBehavior(behaviors, "write-files");
   return writeFiles?.bucket === "allow" ? "workspace-write" : "read-only";
@@ -193,6 +202,11 @@ export function claudePermissions(manifest, overrides = {}, { home = os.homedir(
       }
       continue;
     }
+    // A repo-scope behavior states an intent no permission rule can express — the boundary is the
+    // checkout the session is in, and rule paths are literal. Each provider enforces it in whatever
+    // mechanism it has (Claude: a PreToolUse hook; Codex: its workspace sandbox), so the platform
+    // renders nothing here and the bucket travels to the provider instead.
+    if (b.kind === "repo-scope") continue;
     if (b.kind === "network") continue; // Codex-only concept; no Claude equivalent to render.
     if (b.kind !== "commands") continue;
     const bucket = b.bucket === "deny" ? deny : b.bucket === "ask" ? ask : allow;

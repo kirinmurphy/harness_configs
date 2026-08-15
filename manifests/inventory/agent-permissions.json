@@ -61,6 +61,18 @@
       "category": "files"
     },
     {
+      "id": "repo-write-boundary",
+      "label": "Write outside the repo",
+      "description": "Writes inside the repository you are working in proceed; writes outside it follow this setting. Enforced at tool-call time, so the boundary is the current checkout rather than a fixed directory.",
+      "kind": "repo-scope",
+      "tools": [
+        "Write",
+        "Edit"
+      ],
+      "category": "files",
+      "bucket": "ask"
+    },
+    {
       "id": "delete-files",
       "label": "Delete files",
       "description": "Remove files from disk (rm, git rm).",

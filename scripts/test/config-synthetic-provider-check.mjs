@@ -38,7 +38,7 @@ fs.writeFileSync(
     displayName: "Acme Coder",
     commandName: "acme",
     adapter: "acme",
-    detection: { minimumConfidence: "possible" },
+    detection: { executables: ["acme"], minimumConfidence: "possible" },
     paths: {
       home: { path: "~/.acme", kind: "directory" },
       rootConfig: { path: "~/.acme/settings.json", kind: "file" },
@@ -162,14 +162,15 @@ fs.writeFileSync(
     "  process.exit(1);",
     "}",
     "",
-    "// (5) The machine cohort is derived from persisted discovery state, so it must pick up a",
-    "// synthetic provider with no source edit, must exclude providers discovery calls absent, and",
-    "// must keep an explicitly-disabled-but-present provider visible (it IS on the machine, it is",
-    "// just not managed). This is the distinction that makes the Agents view truthful.",
+    "// (5) The machine cohort combines persisted discovery state with bounded live discovery. It",
+    "// picks up a synthetic provider with no source edit, keeps an explicitly-disabled-but-present",
+    "// provider visible (it IS on the machine, it is just not managed), and also includes a provider",
+    "// whose persisted state says absent when live discovery can still see home/executable evidence.",
+    "// This is the distinction that makes the Agents view truthful even before refresh can write.",
     "const machine = configSnapshotMachineHarnesses();",
     "const ids = machine.map((h) => h.id).sort().join(',');",
-    "if (ids !== 'acme,codex') {",
-    "  console.error('FAIL machine cohort ids: ' + ids + ' (expected acme,codex)');",
+    "if (ids !== 'acme,claude,codex') {",
+    "  console.error('FAIL machine cohort ids: ' + ids + ' (expected acme,claude,codex)');",
     "  process.exit(1);",
     "}",
     "const acmeMachine = machine.find((h) => h.id === 'acme');",
@@ -180,6 +181,11 @@ fs.writeFileSync(
     "const codexMachine = machine.find((h) => h.id === 'codex');",
     "if (!codexMachine || codexMachine.enabled !== false) {",
     "  console.error('FAIL user-disabled provider must stay visible: ' + JSON.stringify(codexMachine));",
+    "  process.exit(1);",
+    "}",
+    "const claudeMachine = machine.find((h) => h.id === 'claude');",
+    "if (!claudeMachine || claudeMachine.enabled !== true) {",
+    "  console.error('FAIL live-present stale-absent provider must appear enabled: ' + JSON.stringify(claudeMachine));",
     "  process.exit(1);",
     "}",
     "// The registered catalog is unchanged by any of this -- config metadata still knows all three.",
@@ -194,10 +200,54 @@ fs.writeFileSync(
 
 const result = spawnSync(process.execPath, [probeScript], {
   encoding: "utf8",
-  env: { ...process.env, ROBOREPO_STATE_DIR: stateDir },
+  env: { ...process.env, PATH: ["/usr/bin", "/bin"].join(path.delimiter), ROBOREPO_STATE_DIR: stateDir },
 });
 assert.equal(result.status, 0, `synthetic third-provider probe failed:\n${result.stdout}\n${result.stderr}`);
 assert.match(result.stdout, /ok/);
+
+// Empty/stale state must not make the Agents page claim "no harnesses detected" when bounded live
+// discovery can see a provider. This catches the exact regression where `/agents` depended only on
+// ~/.roborepo/harnesses/state.json and ignored executable evidence until `roborepo harness refresh`
+// was able to write machine state.
+fs.writeFileSync(
+  path.join(stateDir, "harnesses", "state.json"),
+  JSON.stringify({
+    schemaVersion: 1,
+    lastDiscoveredAt: "2026-01-01T00:00:00.000Z",
+    providers: {
+      acme: { enabled: false, selectionSource: "discovery", confidence: "absent", evidence: [] },
+    },
+  }, null, 2),
+);
+const toolBin = path.join(tmp, "tools");
+fs.mkdirSync(toolBin, { recursive: true });
+fs.writeFileSync(path.join(toolBin, "acme"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+
+const liveProbeScript = path.join(tmp, "live-probe.mjs");
+fs.writeFileSync(
+  liveProbeScript,
+  [
+    `import { configSnapshotMachineHarnesses } from ${JSON.stringify(path.join(appRoot, "scripts", "cli", "config.mjs"))};`,
+    "",
+    "const machine = configSnapshotMachineHarnesses();",
+    "const acme = machine.find((h) => h.id === 'acme');",
+    "if (!acme || acme.enabled !== true || acme.confidence !== 'probable') {",
+    "  console.error('FAIL live-discovered acme: ' + JSON.stringify(machine));",
+    "  process.exit(1);",
+    "}",
+    "console.log('ok');",
+  ].join("\n"),
+);
+const liveFallbackResult = spawnSync(process.execPath, [liveProbeScript], {
+  encoding: "utf8",
+  env: {
+    ...process.env,
+    PATH: [toolBin, "/usr/bin", "/bin"].join(path.delimiter),
+    ROBOREPO_STATE_DIR: stateDir,
+  },
+});
+assert.equal(liveFallbackResult.status, 0, `live discovery fallback probe failed:\n${liveFallbackResult.stdout}\n${liveFallbackResult.stderr}`);
+assert.match(liveFallbackResult.stdout, /ok/);
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log("config synthetic third-provider checks passed");

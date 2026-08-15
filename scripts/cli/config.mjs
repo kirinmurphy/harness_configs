@@ -53,6 +53,7 @@ import {
 import { renderCommandSourceHtml } from "./config-source-render.mjs";
 import { buildContextCost } from "./context-cost.mjs";
 import { hasHarnessProvider, listHarnessProviders, getHarnessProvider } from "../harnesses/registry.mjs";
+import { discoverHarnessProviders } from "../harnesses/discovery.mjs";
 import { readHarnessState } from "../harnesses/state.mjs";
 import { resolveHarnessPath } from "../harnesses/paths.mjs";
 
@@ -100,15 +101,33 @@ export function configSnapshotHarnesses() {
 // not managed. An empty array is a legitimate, common state (fresh install, no harnesses yet).
 export function configSnapshotMachineHarnesses() {
   const state = readHarnessState();
+  const discoveries = new Map(
+    discoverHarnessProviders(listHarnessProviders())
+      .filter((entry) => entry.confidence !== "absent")
+      .map((entry) => [entry.providerId, entry]),
+  );
+
   return listHarnessProviders()
-    .map((provider) => ({ provider, entry: state.providers[provider.id] }))
-    .filter(({ entry }) => entry && entry.confidence !== "absent")
-    .map(({ provider, entry }) => ({
-      id: provider.id,
-      displayName: provider.manifest.displayName,
-      enabled: entry.enabled === true,
-      confidence: entry.confidence,
-    }));
+    .map((provider) => {
+      const entry = state.providers[provider.id];
+      const discovered = discoveries.get(provider.id);
+      if (!entry && !discovered) return null;
+      if (!discovered && entry?.confidence === "absent") return null;
+      const userDisabled = entry?.selectionSource === "user" && entry.enabled === false;
+      const confidence = discovered?.confidence ?? entry.confidence;
+      const enabled = userDisabled
+        ? false
+        : discovered
+          ? entry?.confidence === "absent" ? true : entry?.enabled ?? true
+          : entry.enabled === true;
+      return {
+        id: provider.id,
+        displayName: provider.manifest.displayName,
+        enabled,
+        confidence,
+      };
+    })
+    .filter(Boolean);
 }
 
 export function readConfigSnapshot() {

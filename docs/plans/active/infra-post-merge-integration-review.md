@@ -1,7 +1,7 @@
 ---
 id: 48krno27
 priority: high
-next_action: Create a review worktree from current main, then verify the merged permissions and install lifecycle work without running destructive uninstall actions.
+next_action: Verify current main directly, committing any confirmed fixes to main without pushing or running destructive uninstall actions.
 blocked_by: []
 depends_on: []
 related:
@@ -45,12 +45,16 @@ purity, and managed uninstall harness confidence.
 
 - Verify the merge landed intact on main and did not drop or mangle the six install lifecycle
   fixes or the permissions workstreams.
+- Fix confirmed regressions directly on main, with explicit-path commits and no push.
 - Run the automated test surface without using broad `npm run test:*` sweeps that exceed the
   command timeout.
 - Fix the known `cli-surface-integration-check.mjs` generated-permissions fixture leak and add
   a guard so tracked generated permission files cannot be rewritten by a fake `$HOME`.
 - Review permission data flow consumers, especially `repo-scope` handling.
 - Browser-smoke `/config` and the Uninstall panel without executing a real uninstall.
+- Verify the usage-statusline threshold change only applies the new yellow warning level and
+  revised thresholds to context percentage; weekly and monthly spend rates should keep their
+  previous thresholds unless a separate decision changes them.
 - Reconcile active and directly advanced backlog plans with what now exists on main.
 - Report whether main is safe to publish from.
 
@@ -83,7 +87,8 @@ Known failures or gaps that must not be misreported as merge regressions:
 
 - [x] Confirm `jcodemunch` availability and resolve the repo.
 - [x] Remove the stale Node v16 resolver from the active path.
-- [ ] Create or reuse a non-main worktree for review after this plan is committed.
+- [x] Keep the review on main so confirmed fixes land on the branch being validated.
+- [ ] Commit fixes on main with explicit paths only; do not push.
 - [ ] Stash unrelated dirty files before clean-worktree-sensitive package smoke, then restore
   them afterward.
 - [ ] Confirm main contains the merged branch commits and inspect the install lifecycle conflict
@@ -101,6 +106,8 @@ Known failures or gaps that must not be misreported as merge regressions:
 - [ ] Review shared-state integration for `scripts/cli/state-paths.mjs`, managed uninstall
   classification, `modules/retention/*`, localhoster, telemetry spool, package catalog labels,
   capture-dense-bash, usage statusline, and shared rules changes.
+- [ ] Check usage-statusline severity thresholds and fix any merge damage where context
+  percentage thresholds were accidentally applied to weekly or monthly spend rates.
 - [ ] Browser-smoke `/config` and the Uninstall panel, recording console/network errors and a
   walkthrough artifact if browser automation is available.
 - [ ] Update stale active and backlog plan docs, including `reviewed_commit` where verified.

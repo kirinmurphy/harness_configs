@@ -1,7 +1,7 @@
 ---
 id: 46up8y7a
 priority: high
-next_action: Phases 1-6a are implemented on branch plan-46up8y7a-install-lifecycle, plus the 6b documentation. Phase 7's first two items are done (ownership inventory, collision/backup policy), each fixing a real defect. Remaining Phase 7 work is moved-checkout repair, shell/PATH dedup, reinstall and upgrade/downgrade state, and dev-vs-package parity, plus the three 6b items that need real hardware: a fresh transfer artifact, the new-Mac harness-count matrix, and presence-signal observations
+next_action: Phases 1-7 are implemented on branch plan-46up8y7a-install-lifecycle. All six Phase 7 hardening items are done, each fixing a real defect found by characterization. The only remaining work is the three Phase 6b items that need physical hardware: a fresh transfer artifact from the final tested commit, the new-Mac harness-count matrix, and recording presence-signal observations in harness-presence-signal-expansion
 blocked_by: []
 depends_on: []
 related:
@@ -616,10 +616,10 @@ both need the physical machine, so neither can be closed from this branch.
 
 - [x] Complete the resource ownership/removal inventory across skills, commands, MCP, hooks, root config, shell entries, backups, state, and caches.
 - [x] Finish collision/back-up policy characterization and deterministic dry-run/noninteractive behavior.
-- [ ] Finish moved-checkout and stale-path repair coverage.
-- [ ] Finish shell/PATH deduplication and package-manager-shim ownership cleanup.
-- [ ] Define same-version reinstall and versioned upgrade/downgrade state behavior.
-- [ ] Run the same core lifecycle matrix in development and installed-package modes.
+- [x] Finish moved-checkout and stale-path repair coverage.
+- [x] Finish shell/PATH deduplication and package-manager-shim ownership cleanup.
+- [x] Define same-version reinstall and versioned upgrade/downgrade state behavior.
+- [x] Run the same core lifecycle matrix in development and installed-package modes.
 
 #### Phase 7 implementation notes (ownership inventory + collision/backup policy)
 
@@ -656,6 +656,296 @@ Dry-run determinism was characterized and found already correct: two dry runs ov
 fixtures produce byte-identical output once the install timestamp is normalized, and mutate nothing.
 The remaining difference is the intended `*_update_<TIMESTAMP>` path, not a defect. Noninteractive
 installs already default to `--on-conflict=keep` and announce it.
+
+#### Phase 7 implementation notes (moved-checkout and stale-path repair)
+
+`repair.sh` itself was already correct, and characterization confirmed it: installing from one path,
+physically moving the checkout, and repairing from the new path re-points the dangling
+`~/.local/bin/roborepo` link, rewrites the recorded repo root, and is a no-op on a second run.
+Uninstall after a move also correctly reclaims links left by the prior path, via `recorded_repo`.
+
+**The defect found here was not move-specific.** Uninstall exited 1 with roborepo-authored
+`CLAUDE.md`/`AGENTS.md` left behind — and a control run with *no* move failed identically. Root
+cause: every one of these modules guards its CLI entry point with
+
+```js
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+```
+
+`process.argv[1]` is the path as invoked; `import.meta.url` is fully resolved. On macOS a checkout
+under `/var/...` resolves to `/private/var/...`, so the comparison is **false**, the entry-point
+block never runs, and the CLI **exits 0 having done nothing**. Any symlinked checkout has the same
+shape. Three modules shared the bug: `rules-render.mjs`, `root-config-merge.mjs`, `presets.mjs`.
+
+Blast radius is wider than uninstall, because these are shelled out to as subprocesses:
+
+| Caller | Consequence of the silent no-op |
+| --- | --- |
+| `uninstall-lib.sh` → `rules-render.mjs --remove-managed` | managed rules blocks survive uninstall; the remnant check then fails the run |
+| `install-harness.sh` → `rules-render.mjs <harness>` | home rules never rendered on install |
+| `doctor.sh` → `rules-render.mjs --check` | health check passes without checking anything |
+| `install-lib.sh` → `root-config-merge.mjs` | writes merge output to a temp file that is then `mv`'d over the user's root config — a no-op subprocess means installing an **empty config** |
+
+Fixed with one shared `isMainModule(import.meta.url)` helper in `roots.mjs` (the leaf module all
+three can import without a registry cycle) that compares `realpathSync` on both sides. Three
+hand-rolled copies of a subtle path comparison is what let this persist, so the helper is shared
+rather than fixed three times.
+
+| Decision | Reasoning |
+| --- | --- |
+| Helper lives in `roots.mjs`, not `paths.mjs` | `paths.mjs` imports the harness registry; `root-config-merge.mjs` deliberately avoids that cycle. `roots.mjs` is the existing leaf module and already imports `fs` and `fileURLToPath`. |
+| Falls back to the unresolved path when `realpathSync` throws | Keeps the guard usable at module load for a path that does not exist yet, instead of throwing during import. |
+| Regression test drives a symlinked repo root | Reproduces the mismatch without depending on the platform's temp-dir layout, so it still fails on Linux where `/tmp` is not symlinked. |
+
+Separately, `test_onboarding_wizard_toggles_and_applies` in `test-install-collisions.sh` was stale
+and had been failing the whole suite since Phases 1-2 of this plan: it still spawned `roborepo
+onboard`, which those phases removed. The command exited immediately with its replacement notice, so
+every subsequent `expect` send hit a closed spawn id and killed the run under `set -e` — **before
+any assertion could print**, which is why the suite failed with no `FAIL:` line and looked like it
+simply stopped after the previous test. Repointed at `package manage`, and at the wizard's current
+save key (Enter; Esc now returns to the previous menu without applying).
+
+Fixing that one revealed further stale assertions behind it — the suite had been dying too early to
+reach them. All were in `test_windows_installer_root_preflight_order`, all from the same commit
+(`6e968a2`), which replaced hand-listed per-harness calls in `install-windows.ps1` with a loop over
+`$KnownHarnessIds`:
+
+| Stale anchor | Replaced with | Why |
+| --- | --- | --- |
+| `# Claude managed links` | `# Per-harness managed links` | comment renamed by the refactor |
+| `Invoke-ManifestRows "Claude" @("claude")` | `foreach ($id in $KnownHarnessIds)` + `Invoke-ManifestRows $HarnessDisplayNames[$id] @($id)` | the literal pinned an implementation that no longer exists, and pinned the Claude/Codex pair this repo is moving away from |
+| `Invoke-ManifestRows "Codex" @("codex")` | (same loop assertion) | as above |
+
+The properties under test are unchanged and still hold: root-config collisions are resolved before
+anything is linked, and manifest rows are applied per harness — now asserted against the
+data-driven loop, so a newly registered provider keeps working without an edit here.
+
+Both stale tests predate this branch and fail identically on `main`. They are fixed here rather than
+left red because the suite is the verification gate for the rest of Phase 7 — with it aborting at
+the wizard test, roughly half its cases (70 of 133) never ran at all.
+
+A follow-up commit routed the six remaining hand-rolled entry-point guards through the same helper.
+They appeared in four different spellings (`path.resolve(...)` comparisons, a
+`` `file://${argv[1]}` `` template, and a `new URL(...).pathname` form), and all six were verified
+broken against a symlinked checkout before conversion — `path.resolve()` normalizes a path but does
+not resolve symlinks. A test assertion now fails the suite if any module reintroduces the pattern,
+so the helper holds by construction rather than by memory.
+
+#### Phase 7 implementation notes (shell/PATH dedup and shim ownership)
+
+Deduplication and shim ownership were both already correct, and characterization confirmed it:
+
+- three consecutive `install-shell-snippets.sh` + `install-global-commands.sh` runs produce exactly
+  one PATH export and one marker comment (exact-line matching, not append-on-every-run);
+- the PATH line is `repo_root`-independent, so it survives a checkout move without duplicating;
+- `check_command_target` recognizes its own link and the recorded prior checkout, silently reclaims
+  a dangling link from a moved checkout, and refuses with a merge-review prompt on a genuine
+  unmanaged collision. An npm-installed `roborepo` on `~/.local/bin` is preserved, not clobbered —
+  the install exits 1 and changes nothing, which is the correct ownership boundary for package mode.
+
+**One defect found: uninstall left dangling shell wiring behind.** `remove_shell_wiring`'s awk filter
+matched `source` lines against the *current* `repo_root` only. A profile wired by a checkout that had
+since moved or been deleted kept its `source` line while the marker comments around it were stripped
+— and uninstall still printed "no active roborepo remnants" and exited 0, so every new shell errored
+on the missing file with nothing left to explain why.
+
+The filter now also matches `recorded_repo` (the prior checkout, already resolved in this file) and,
+generally, any `source ".../shell/..."` line whose target no longer exists.
+
+| Decision | Reasoning |
+| --- | --- |
+| Dangling-target test rather than a broader path pattern | It is what makes generalizing safe. A user's own `source` line points at a file that exists, so it is never touched; only a path roborepo can no longer account for is pruned. Verified both directions in the regression test. |
+| The `# Harness config shell helpers` marker also triggers the prune | The marker is written verbatim by the installer, so its presence alone is proof roborepo wired this profile — needed to reach a stale line when neither repo root matches. |
+| awk local named `quote_end`, not `close` | `close` is a reserved word in the awk shipped with macOS; using it is a hard parse error, which surfaced as uninstall exiting 2 mid-run. |
+
+#### Phase 7 implementation notes (reinstall and upgrade/downgrade state)
+
+Two of the three directions were already correct and are now characterized:
+
+- **same-version reinstall** — two consecutive `main.sh` runs leave harness content byte-identical
+  and create zero `*_original_*` / `*_update_*` files. Already asserted by
+  `test_idempotency_no_extra_backups`, so no duplicate test was added.
+- **upgrade** — a record from an older workflow reads as `complete`, and re-running `init` reports
+  "already initialized" and leaves the record byte-for-byte intact. This is what the independent
+  `workflowVersion` field was designed for: a newer release recognizes an installation completed
+  under an older workflow without a schema migration.
+
+**Downgrade was broken.** Installing an older RoboRepo over a newer one (`npm install -g
+codethings-roborepo-alpha@<older>`) made `init` **silently overwrite the newer installation's state**
+and replay the entire first-run workflow. The cause is that `readInitializationState` treats any
+record it cannot validate as "never started" — correct for a corrupt file, wrong for a newer one.
+A newer record is well-formed and meaningful; this build simply cannot interpret all of it.
+
+Reads still degrade to "not initialized" (this build genuinely cannot vouch for the record's shape).
+Writes now refuse: `writeInitializationState` throws rather than clobbering a higher `schemaVersion`,
+and `init` checks `readFutureInitializationState()` before doing any work so the user gets an
+explanation instead of a stack trace from halfway through a partially-mutating workflow.
+
+| Decision | Reasoning |
+| --- | --- |
+| `--force` also refuses | `--force` means "re-run initialization", not "discard a newer installation's state". Asserted for both `init` and `init --force`. |
+| Guard at read-time in `init`, not only at write-time | `beginInitialization()` runs after `init` has already printed and is followed by `setupCommand`; throwing there would abort mid-workflow. Checking first makes the refusal total and the message clean. |
+| Newer record still reads as null rather than being surfaced as "initialized" | Reporting it as complete would make this build claim an initialization state it cannot verify. Refusing to write is the narrow fix; pretending to understand the record is not. |
+
+#### Phase 7 implementation notes (development/package mode parity)
+
+The package smoke test drove only the lower-level primitive sequence (`setup`, `harness refresh`,
+`harness list`, `config apply`, `doctor`) — the path this plan's own documentation stopped telling
+users about. None of the public lifecycle vocabulary the plan added was exercised in package mode at
+all, so "works when installed from npm" was verified for a sequence a package-mode user never types.
+
+The smoke test now also runs `init`, a second `init` (idempotence), `library`, and
+`uninstall --dry-run` against the real installed tarball, and the same eleven-command matrix was run
+in development mode for comparison. Both modes pass identically.
+
+| Decision | Reasoning |
+| --- | --- |
+| `uninstall` is exercised as `--dry-run` only in the smoke test | A real managed cleanup would delete sandbox state that the test's later assertions (appRoot immutability, coupling scans) still read. The destructive path already has fixture-based coverage in `managed-uninstall-check.mjs`; what package mode adds is proof the command runs at all from an installed tarball. |
+| The second `init` asserts "already initialized" | Idempotence is the property most likely to break in package mode specifically, because `setup` has already created the directories — the exact case that must not read as initialization state. |
+| Assertions verified with a negative control | Deliberately breaking one assertion made the suite exit 1, confirming the new helper actually executes rather than passing vacuously. Worth doing here because the helper sits behind a long tarball build, where a silently-skipped block would look identical to a pass. |
+
+Note for future runs: `package-install-smoke.mjs` asserts `npm_execpath`, so it must be invoked as
+`npm run test:package-install`. Running it directly with `node` fails in setup, before any real
+assertion — which reads like a product failure but is not one.
+
+#### Phase 7 follow-up: shared dry-run purity check
+
+A post-implementation audit of the Phase 7 fixes found no regressions from them, but did surface one
+pre-existing leak: `workspace-resources.mjs --dry-run` created the entire workspace scaffold.
+`applyWorkspaceAssets` threads `dryRun` into its own apply calls, but the `validateWorkspace()` it
+calls first ran `initializeWorkspace()` with no `dryRun` at all.
+
+The leak is less interesting than why nothing caught it. "`--dry-run` mutates nothing" was asserted
+per-command by hand, so it held only for the roots a given test happened to snapshot — and no test
+snapshotted the workspace root around that particular command. That is a checkable invariant being
+enforced by whether someone remembers to look.
+
+`scripts/test/lib/assert-dry-run-clean.mjs` now snapshots every root a command could touch, runs it,
+and re-snapshots. `scripts/test/dry-run-purity-check.mjs` sweeps every `--dry-run` command, derived
+from the command catalog so a newly registered one is covered without editing the test. It caught the
+workspace leak mechanically, with a before/after diff naming the exact roots.
+
+Fix: `validateWorkspace` accepts `dryRun` (defaulting to false, so the setup path in `workspace.mjs`
+keeps scaffolding as before) and `applyWorkspaceAssets` passes its own flag through.
+
+| Decision | Reasoning |
+| --- | --- |
+| Built on the existing `hashDirectory` | It already hashes content, mode, and symlink targets, so the check also catches a dry run that rewrites a file to identical bytes with different permissions, or retargets a symlink. A second walker would have been strictly worse. |
+| Absent trees compare as a `<absent>` sentinel rather than being skipped | Appearing-from-nothing is precisely the shape of the scaffold leak. Skipping missing roots would have made this exact bug invisible to the sweep built to find it. |
+| Commands needing arguments are explicitly skipped with a stated reason | Seven of the fourteen catalog `--dry-run` commands need an id or path. Listing them with reasons makes "not covered here" a visible decision rather than a silent gap. |
+| The sweep collects all failures instead of stopping at the first | The point of a sweep is to report the whole surface at once; stopping early would hide later leaks behind the first one. |
+
+Verified clean by the sweep: `init`, `update`, `uninstall`, `config apply`, `config rules render`,
+`mcp apply`, `maintenance repair local-config`, and `workspace-resources.mjs` after the fix.
+
+**A review pass over the new helper found a hole in the helper itself.** Its first version watched
+six roots — the three harness homes, `~/.local/bin`, the state root, and the workspace — chosen from
+what seemed likely rather than from what the installer writes. Grepping `${HOME}/` across
+`scripts/install/` showed five more: the four shell profiles and `~/.gitignore_global`, plus
+`~/.roborepo-backups` and `~/.agents`. Those omissions mattered specifically: **both removal defects
+found earlier in this phase — the dangling `source` line and backup handling — live in exactly the
+paths the watcher was not watching.**
+
+Adding them exposed a second defect. `hashDirectory` throws `ENOTDIR` on a plain file, and shell
+profiles are files, so `snapshot()`'s catch-all would have returned a constant `<unreadable: ENOTDIR>`
+on both sides of every comparison — reporting success for any profile mutation. `snapshot()` now
+handles files, directories, and symlinks distinctly, and only `ENOENT` maps to `<absent>`.
+
+A per-root negative control (write into each watched root, assert the helper catches it) now passes
+13/13. That control is what turned both holes up; without it the helper would have looked correct
+while being blind to the exact class of bug that motivated building it.
+
+That control is now a permanent case in the sweep rather than a one-off command, since it is the
+only thing standing between "the watcher passes" and "the watcher works". Verified it still fails
+when the watcher regresses: reverting `snapshot()` to the directory-only form makes it report the
+profiles as blind, exactly as intended.
+
+#### Known flake: `cli-surface-integration-check` remote-sync menu
+
+Across five full-suite runs the suite reported 395/395 three times and 394/1 twice. Both failures
+were the same case, `assertRemoteSyncMenuFlow`, but with *different* assertions:
+
+| Run | Failure |
+| --- | --- |
+| 4th | `/^> \.\/sync-work-extra\b/m` — the `>` selection marker — matched a row that was present but unmarked |
+| 5th | exit status 42 instead of 0, from `git fetch` exiting non-zero inside the fixture |
+
+Diagnosing this took three passes and two wrong answers, so the sampling is recorded in full rather
+than just the conclusion:
+
+| Sample | Result | Machine load at the time |
+| --- | --- | --- |
+| A — 5 isolated runs | 5 pass / 0 fail | low |
+| B — 3 "near-isolated" runs | 1 pass / 2 fail | ~30 (a full suite was still running) |
+| C — 5 runs | 4 pass / 1 fail | decaying from ~16 |
+| D — 12 runs | **12 pass / 0 fail** | ~11 falling to ~4 |
+| Full-suite runs | 3 pass / 2 fail of 5 | 2 failures during concurrent suites |
+
+Totals: 22 pass / 3 fail across 25 isolated runs (12%), and **every failure occurred at elevated
+load**. Sample B was mislabeled — a full suite was still running during it — which is what produced
+the interim "40-50% unreliable, not load-sensitive" reading. That interim conclusion was wrong; load
+sensitivity is the explanation the whole dataset supports.
+
+The `git fetch` variant is systematic *within* a failing run: the captured PTY screen shows all three
+fixture repos reporting "1 verification failure", including the two that should verify cleanly. That
+is consistent with the 20-second `expect` budget being exhausted before three sequential clone+fetch
+cycles finish, not with one repo being flaky.
+
+`makeRemoteSyncFixture` seeds three *local bare* repositories under the test's temp dir, so no
+network is involved. The PTY also runs with `HOME` pointed at an empty sandbox directory, so git
+resolves no user config there — worth checking, but the load correlation is the stronger signal.
+
+It is load-sensitive, and it is not a Phase 7 regression:
+
+- it also fails at the pre-Phase-7 baseline `aac8001` conditions and passed 5/5 there in an earlier
+  sampling, so the behavior is not introduced by this branch;
+- the Phase 7 diff to `scripts/maintenance/git-remote-sync.mjs` is the `isMainModule` guard and its
+  import — nothing that renders the picker, moves the cursor, or runs git. The guard is verified
+  separately: the module's entry point runs and reaches its argument parser;
+- every other suite, including the full 395-test run, is unaffected.
+
+The distinction matters for release: this is a **pre-existing test-reliability problem in another
+plan's area**, not evidence that install-lifecycle behavior is broken. It should not gate merging
+Phase 7. It also should not be waved off — 12% on a developer machine becomes far worse on a loaded
+CI runner, and an intermittently failing test trains people to re-run until green.
+
+Handoff to plan `k9m4x2q`, which owns the remote-sync picker and has its own worktree: reproduce by
+running `node scripts/test/cli-surface-integration-check.mjs` in a loop *while the machine is busy*
+(a concurrent `test-roborepo.sh` is enough); on an idle machine it passes 12/12 and the bug is
+invisible. The likely fix is raising or removing `assertRemoteSyncMenuFlow`'s 20-second `expect`
+budget, which currently has to cover three sequential clone+fetch cycles plus interactive redraws.
+
+Not fixed here. The remote-sync picker belongs to plan `k9m4x2q` (which has its own worktree), and
+making this deterministic means having the test wait for a settled frame rather than matching a
+substring — that plan's call, not this one's. Recorded so the next 394/1 does not cost someone the
+time to re-derive that it is unrelated to install lifecycle.
+
+### Manual smoke checklist before/after publishing
+
+Automated coverage cannot reach these. Ordered by how much each is the *only* evidence for its
+surface, not by effort.
+
+| # | Check | Why automation cannot cover it |
+| --- | --- | --- |
+| 1 | `roborepo web` → `/config` → **Uninstall RoboRepo** panel: preview, confirm, read the result and the printed npm command | The portal cleanup route is tested at the handler only. Starting a detached `roborepo web` per case hung the suite past 7 minutes and stranded processes, because `web stop` cannot reap a server started under a different sandboxed HOME. This is the only shipped surface with no end-to-end coverage. |
+| 2 | Bare `roborepo` in a real terminal, on an uninitialized install | First-run routing is asserted through the pure `resolveFirstRunRoute` function and through piped stdin. Neither is a real TTY, and the routing rule keys on interactivity. |
+| 3 | `roborepo library`, toggle one package, save with Enter | The wizard's raw-mode keypress handling. The PTY test covers one toggle-and-save path; a human finds the rest. |
+| 4 | On a real machine: `npm i -g` → `roborepo init` → `roborepo doctor` | Every sandbox had a synthetic `~/.claude`. A real one has years of user content that no fixture reproduces. |
+| 5 | `roborepo uninstall --dry-run` on a real machine, and read the preview | Non-destructive, and the preview is the thing a user is asked to trust before the destructive run. |
+
+Stub executables (a `#!/bin/sh` file named `claude`/`codex`/`gemini` on PATH) are enough to exercise
+the `confirmed` discovery branch, so "real harness binaries" is no longer a gap — see
+`testUninstallWithConfirmedHarnesses` in `managed-uninstall-check.mjs`. What stubs cannot cover is
+item 4: a home directory with real accumulated user content.
+
+Sequencing note: build the npm artifact from the merged commit, not from the feature branch. The
+smoke test asserts a clean worktree, and Phase 6b's transfer artifact is specified to come from the
+final tested commit.
+
+Merge note: the branch conflicts with `main` in exactly one file — this document — because plan-status
+syncs were committed directly to `main` while the implementation worktree kept editing the same file.
+No source conflicts. The worktree copy is the superset, so resolve by taking it wholesale; the
+`main`-side syncs describe earlier states of the same phases.
 
 ## Validation
 

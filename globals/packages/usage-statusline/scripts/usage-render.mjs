@@ -5,16 +5,18 @@
 
 export const ANSI = {
   normalPercent: "[0m", // explicit bright white — normal percentages are never left muted (plan decision 10)
+  caution: "[38;5;220m", // yellow
   warning: "[38;5;208m", // orange
   critical: "[91m", // bright red
   reset: "[0m",
 };
 
 // Tones that receive an ANSI color. label/unavailable stay terminal-default (no escape).
-const TONED = new Set(["normalPercent", "warning", "critical"]);
+const TONED = new Set(["normalPercent", "caution", "warning", "critical"]);
 
 const SEVERITY_TONE = {
   normal: "normalPercent",
+  caution: "caution",
   warning: "warning",
   critical: "critical",
 };

@@ -203,7 +203,7 @@ mutation-token contract, route dispatch). Telemetry-specific pieces:
 All mutating routes are POST-only and use the portal's standard loopback-origin + mutation-token
 guard (see `docs/user/reference/portal.md`).
 
-## Privacy and retention
+## Privacy
 
 Telemetry never stores full prompts, shell commands, tool results, transcripts, or absolute paths by
 default — only hashes, lengths, categories, and bounded previews (a 200-character prompt preview; a
@@ -212,6 +212,42 @@ persisted). Estimated token/cost figures (~4 chars/token) are clearly distinguis
 provider-reported counters. `telemetry export`/`backup`/`purge` cover markers, snapshots, and
 experiments alongside the spool; `purge --backup` remains recoverable. The portal server binds to
 loopback only.
+
+## Retention
+
+Every telemetry store trims itself as it is written. Nothing runs on a schedule, and no data is
+removed while you are not using the tool.
+
+| Store | Path under `<stateRoot>` | Bound |
+| --- | --- | --- |
+| Capture spool | `telemetry/spool/<harness>.jsonl` | 25MB per harness |
+| Markers | `telemetry/events/markers.jsonl` | 5MB |
+| Configuration snapshots | `telemetry/snapshots/` | 5MB total |
+| Experiments | `telemetry/experiments/` | 5MB total |
+
+None of these expire by age. The spool is the durable record rather than a queue — nothing drains it
+after analysis — so an old capture is still the only copy of that session, and only size bounds it.
+
+Two behaviors are worth knowing:
+
+- **Trims overshoot.** A store at its cap drops to roughly 70% rather than to exactly the cap, so a
+  trim happens rarely instead of on every subsequent write.
+- **A running experiment is never removed.** An experiment with no `end_marker_id` is still live and
+  its end marker will reference it, so only finished experiments are eligible for eviction.
+
+Markers, snapshots, and experiments sit three to four orders of magnitude below their caps in normal
+use; those bounds exist to stop a runaway, not to manage everyday growth.
+
+Inspect current sizes, or reclaim space early, with:
+
+```
+roborepo maintenance stores
+roborepo maintenance stores reset telemetry-spool-claude
+roborepo maintenance stores reset telemetry-spool-claude --all
+```
+
+`reset` applies the store's own policy; `--all` clears it outright. `telemetry purge --all` remains
+the way to remove every telemetry store at once, and `purge --backup` keeps a recoverable copy.
 
 ## Schema versions
 

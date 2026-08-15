@@ -12,6 +12,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { measureLog } from "../retention/index.mjs";
 
 export const HISTORY_EVENT_VERSION = 1;
 export const HISTORY_EVENT_TYPES = [
@@ -78,47 +79,44 @@ export function appendHistoryEvents(events, options = {}) {
   return { written: valid.length, compacted: maybeCompact({ stateRoot, fsApi, now, retentionDays }) };
 }
 
-// Drop events past the retention window, then trim to the size cap if still oversized. Retention
-// runs first because it is the user-meaningful policy; the size cap is only a backstop against a
-// pathological flapping app.
+// Drop events past the retention window, then trim to the size cap if still oversized.
 //
-// The rewrite is atomic (temp file + rename, following writeRegistry in
-// modules/repositories/registry.mjs). Do NOT copy capSpool's in-place writeFileSync from
+// The measurement — which events are stale and how many must go — comes from modules/retention,
+// shared with the telemetry spool and every other bounded store. Only the commit is local, and it
+// stays local deliberately: the rewrite is atomic (temp file + rename, following writeRegistry in
+// modules/repositories/registry.mjs). Do NOT switch to capSpool's in-place writeFileSync from
 // telemetry-capture.mjs — that is only safe because its reader detects the resulting shrink via byte
 // offsets, which this reader has no way to notice.
+// `floorBytes` skips the work on a file too small to be worth measuring. That gate belongs to the
+// append path, which calls this on every write — a direct call is an explicit request to compact,
+// so it applies the policy regardless of size. Passing floorBytes: 0 here is what keeps a small
+// file's expired events from surviving a deliberate compaction.
 export function compactHistory({
   stateRoot,
   fsApi = fs,
   now = new Date(),
   retentionDays = DEFAULT_RETENTION_DAYS,
+  floorBytes = 0,
 } = {}) {
   const filePath = historyPathFor(stateRoot);
+  const policy = { ...policyFor(retentionDays), floorBytes };
+  const verdict = measureLog({ filePath, policy, now, fsApi });
+  if (!verdict.act) return false;
+
   const events = readHistoryEvents({ stateRoot, fsApi });
   if (!events.length) return false;
 
-  const cutoff = toMillis(now) - Math.max(1, retentionDays) * 24 * 60 * 60 * 1000;
-  let kept = events.filter((event) => Date.parse(event.at) >= cutoff);
-
-  // Size the retained set without serializing it. Each line's byte length is computed once, then a
-  // suffix walk finds how many of the oldest events must go — serializing inside a trim loop would
-  // re-stringify the whole array on every iteration, which dominates the cost on a large file.
-  const lengths = kept.map((event) => Buffer.byteLength(JSON.stringify(event), "utf8") + 1);
-  let total = lengths.reduce((sum, length) => sum + length, 0);
-  let dropped = 0;
-  while (dropped < lengths.length - 1 && total > HISTORY_MAX_BYTES) {
-    total -= lengths[dropped];
-    dropped += 1;
-  }
-  if (dropped) kept = kept.slice(dropped);
-
-  // Nothing aged out and nothing had to be trimmed: leave the file alone rather than rewriting it
-  // byte-for-byte. This is the steady state on every append once the file clears the compact floor.
+  // measureLog counts physical lines, including any that failed to parse; readHistoryEvents drops
+  // those. Clamping keeps a corrupt line from shifting the cut into live events — the retained set
+  // can only ever be too generous, never too small.
+  const dropped = Math.min(verdict.dropCount, events.length - 1);
+  const kept = events.slice(dropped);
   if (kept.length === events.length) return false;
-  const serialized = serialize(kept);
+
   try {
     const dir = path.dirname(filePath);
     const temp = path.join(dir, `.history.${process.pid}.${Date.now()}.tmp`);
-    fsApi.writeFileSync(temp, serialized);
+    fsApi.writeFileSync(temp, serialize(kept));
     fsApi.renameSync(temp, filePath);
     return true;
   } catch {
@@ -126,44 +124,30 @@ export function compactHistory({
   }
 }
 
-// Gate compaction on two cheap checks before paying for a full read+parse. Above the floor there is
-// usually still nothing to do — retention only bites once a day's worth of events has aged out — so
-// the oldest line is sampled first and the file is only fully read when that line is actually
-// expired or the hard cap is breached.
-function maybeCompact({ stateRoot, fsApi, now, retentionDays }) {
-  let size = 0;
-  try {
-    size = fsApi.statSync(historyPathFor(stateRoot)).size;
-  } catch {
-    return false;
-  }
-  if (size <= HISTORY_COMPACT_FLOOR_BYTES) return false;
-  if (size <= HISTORY_MAX_BYTES && !oldestEventExpired({ stateRoot, fsApi, now, retentionDays })) {
-    return false;
-  }
-  return compactHistory({ stateRoot, fsApi, now, retentionDays });
+// retentionDays is a user preference (1-365) resolved by the caller; the byte cap and compaction
+// floor are fixed. Mirrors the localhoster-history entry in modules/retention/registry.mjs, which
+// declares the same numbers for reporting surfaces.
+function policyFor(retentionDays) {
+  return {
+    maxAgeDays: Math.max(1, retentionDays),
+    maxBytes: HISTORY_MAX_BYTES,
+    floorBytes: HISTORY_COMPACT_FLOOR_BYTES,
+    keepFraction: null,
+  };
 }
 
-// Parse only the first line. Events are appended in time order, so if the oldest one is still inside
-// the retention window, nothing else can be outside it either.
-function oldestEventExpired({ stateRoot, fsApi, now, retentionDays }) {
-  let head;
-  try {
-    const fd = fsApi.openSync(historyPathFor(stateRoot), "r");
-    try {
-      const buffer = Buffer.alloc(512);
-      const read = fsApi.readSync(fd, buffer, 0, 512, 0);
-      head = buffer.subarray(0, read).toString("utf8").split("\n", 1)[0];
-    } finally {
-      fsApi.closeSync(fd);
-    }
-  } catch {
-    return true;
-  }
-  const first = parseEvent(head);
-  if (!first) return true;
-  const cutoff = toMillis(now) - Math.max(1, retentionDays) * 24 * 60 * 60 * 1000;
-  return Date.parse(first.at) < cutoff;
+// The append path applies the compaction floor: below it, retention is not worth a stat's worth of
+// follow-up on every write. measureLog does the rest of the ladder (cap check, then parse only the
+// oldest record) internally, so the hand-rolled maybeCompact + oldestEventExpired pair this
+// replaced is gone.
+function maybeCompact({ stateRoot, fsApi, now, retentionDays }) {
+  return compactHistory({
+    stateRoot,
+    fsApi,
+    now,
+    retentionDays,
+    floorBytes: HISTORY_COMPACT_FLOOR_BYTES,
+  });
 }
 
 function serialize(events) {
@@ -206,8 +190,4 @@ function normalizeEvent(event) {
 
 function stringOrNull(value) {
   return typeof value === "string" && value ? value : null;
-}
-
-function toMillis(now) {
-  return now instanceof Date ? now.getTime() : new Date(now).getTime();
 }

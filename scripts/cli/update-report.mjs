@@ -353,7 +353,9 @@ function groupsChanged(groups, labels) {
 function notableLines(output) {
   return String(output || "").split(/\r?\n/).filter((line) => {
     return /^(warn|fail|error|needs action|conflict|abort):/i.test(line)
-      || /MERGE REVIEW REQUIRED|Run: roborepo repair local-config/.test(line);
+      // "maintenance" optional: this filters the output of whatever roborepo produced it, which
+      // may be an older installed copy still printing the pre-namespace spelling.
+      || /MERGE REVIEW REQUIRED|Run: roborepo (?:maintenance )?repair local-config/.test(line);
   });
 }
 
@@ -399,5 +401,5 @@ function printLocalConfigRepairHint() {
   const harnesses = plans.map((plan) => plan.harness).join(", ");
   console.log("");
   console.log(`Local config repair candidates found (${harnesses}).`);
-  console.log("Run: roborepo repair local-config --dry-run");
+  console.log("Run: roborepo maintenance repair local-config --dry-run");
 }

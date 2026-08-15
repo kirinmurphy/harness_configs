@@ -5,7 +5,7 @@
   "description": "Write a long-form architecture case study about a real design decision.",
   "lifecycle": "optional",
   "presentation": {
-    "category": "commands",
+    "category": "skills-writing",
     "order": 10
   },
   "resources": [

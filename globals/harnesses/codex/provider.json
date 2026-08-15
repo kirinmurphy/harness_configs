@@ -38,7 +38,9 @@
     "roborepo": {
       "rootConfigFormat": "toml",
       "hooksStorage": "dedicated-json-sidecar",
-      "mcpStorage": "toml-mcp_servers-table"
+      "mcpStorage": "toml-mcp_servers-table",
+      "perCommandAsk": false,
+      "perCommandAskNote": "Codex has no per-command ask tier. Items set to ask fall through to Codex's approval_policy instead of prompting individually."
     }
   }
 }

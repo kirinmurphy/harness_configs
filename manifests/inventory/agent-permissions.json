@@ -3,18 +3,91 @@
     {
       "id": "write-files",
       "label": "Write files",
-      "description": "Create and edit files (Write, Edit tools).",
-      "kind": "tools",
-      "tools": ["Write", "Edit"],
-      "bucket": "allow"
+      "description": "Master gate for file writes (Write, Edit). Set to deny/ask to shut writing off everywhere. WHERE writes are allowed is set by write-scope; this behavior deliberately emits no unscoped rule of its own, because a bare Write/Edit entry would out-rank every path-scoped rule and silently defeat the scoping.",
+      "kind": "tools-gate",
+      "tools": [
+        "Write",
+        "Edit"
+      ],
+      "scopedBy": "write-scope",
+      "bucket": "allow",
+      "category": "files"
+    },
+    {
+      "id": "read-files",
+      "label": "Read files",
+      "description": "Master gate for file reads. WHERE reads are allowed is set by read-scope. Harnesses that cannot express path scoping (Gemini's Policy Engine) fall back to this whole-tool decision.",
+      "kind": "tools-gate",
+      "tools": [
+        "Read"
+      ],
+      "scopedBy": "read-scope",
+      "bucket": "allow",
+      "category": "files"
+    },
+    {
+      "id": "read-scope",
+      "label": "Read scope",
+      "description": "Where files may be read without prompting: the projects tree and temp dirs. Paths outside these prompt.",
+      "kind": "tools-scoped",
+      "tools": [
+        "Read"
+      ],
+      "paths": [
+        "~/projects/**",
+        "/tmp/**",
+        "/private/tmp/**",
+        "/private/var/folders/**"
+      ],
+      "bucket": "allow",
+      "category": "files"
+    },
+    {
+      "id": "write-scope",
+      "label": "Write scope",
+      "description": "Where files may be written without prompting: the projects tree, plus the temp dirs agent scratch work lands in. Paths outside these prompt.",
+      "kind": "tools-scoped",
+      "tools": [
+        "Write",
+        "Edit"
+      ],
+      "paths": [
+        "~/projects/**",
+        "/tmp/**",
+        "/private/tmp/**",
+        "/private/var/folders/**"
+      ],
+      "bucket": "allow",
+      "category": "files"
+    },
+    {
+      "id": "repo-write-boundary",
+      "label": "Write outside the repo",
+      "description": "Writes inside the repository you are working in proceed; writes outside it follow this setting. Enforced at tool-call time, so the boundary is the current checkout rather than a fixed directory.",
+      "kind": "repo-scope",
+      "tools": [
+        "Write",
+        "Edit"
+      ],
+      "category": "files",
+      "bucket": "ask"
     },
     {
       "id": "delete-files",
       "label": "Delete files",
       "description": "Remove files from disk (rm, git rm).",
       "kind": "commands",
-      "commands": [["rm"], ["git", "rm"]],
-      "bucket": "ask"
+      "commands": [
+        [
+          "rm"
+        ],
+        [
+          "git",
+          "rm"
+        ]
+      ],
+      "bucket": "ask",
+      "category": "destructive"
     },
     {
       "id": "go-online",
@@ -22,59 +95,422 @@
       "description": "Sandbox network access. Codex-only — Claude does not sandbox network egress.",
       "kind": "network",
       "codexOnly": true,
-      "bucket": "deny"
+      "bucket": "deny",
+      "category": "network"
     },
     {
       "id": "commit-code",
       "label": "Commit code",
       "description": "Stage and commit changes locally (git add, git commit).",
       "kind": "commands",
-      "commands": [["git", "add"], ["git", "commit"]],
-      "bucket": "allow"
+      "commands": [
+        [
+          "git",
+          "add"
+        ],
+        [
+          "git",
+          "commit"
+        ]
+      ],
+      "bucket": "allow",
+      "category": "git"
     },
     {
       "id": "push-pull-prs",
       "label": "Push / pull / PRs",
-      "description": "Move code to or from a remote (git push, git pull).",
+      "description": "Move code to or from a remote (git push, git pull). Prompts so a push can be approved in-session; force variants are denied separately by rewrite-history.",
       "kind": "commands",
-      "commands": [["git", "push"], ["git", "pull"]],
-      "bucket": "deny"
+      "commands": [
+        [
+          "git",
+          "push"
+        ],
+        [
+          "git",
+          "pull"
+        ]
+      ],
+      "bucket": "ask",
+      "category": "git"
+    },
+    {
+      "id": "switch-branches",
+      "label": "Switch branches",
+      "description": "Change the checked-out branch (git checkout, git switch). Prompts because it moves the working tree out from under in-flight work.",
+      "kind": "commands",
+      "commands": [
+        [
+          "git",
+          "checkout"
+        ],
+        [
+          "git",
+          "switch"
+        ]
+      ],
+      "bucket": "ask",
+      "category": "git"
+    },
+    {
+      "id": "rewrite-history",
+      "label": "Rewrite published history",
+      "description": "Force-push or otherwise overwrite remote history. Denied outright — recovery depends on someone else still holding the old objects.",
+      "kind": "commands",
+      "commands": [
+        [
+          "git",
+          "push",
+          "--force"
+        ],
+        [
+          "git",
+          "push",
+          "-f"
+        ],
+        [
+          "git",
+          "push",
+          "--force-with-lease"
+        ]
+      ],
+      "bucket": "deny",
+      "category": "git"
+    },
+    {
+      "id": "occupy-main",
+      "label": "Check out the main branch",
+      "description": "Move the working tree onto main. Denied so agent work stays on feature branches. Prefix-matched, so it is a guardrail against the common form, not an airtight block.",
+      "kind": "commands",
+      "commands": [
+        [
+          "git",
+          "checkout",
+          "main"
+        ],
+        [
+          "git",
+          "switch",
+          "main"
+        ],
+        [
+          "git",
+          "checkout",
+          "-B",
+          "main"
+        ]
+      ],
+      "bucket": "deny",
+      "category": "git"
+    },
+    {
+      "id": "run-wrapped-commands",
+      "label": "Run output-capped commands",
+      "description": "The agent-facing runner: `roborepo agent-run` caps output AND validates its argv against this manifest before spawning (see scripts/cli/agent-run-policy.mjs). Plain `roborepo run` is deliberately NOT listed here — it spawns whatever it is given, and Claude's prefix matcher cannot see past the wrapper, so allowlisting it would silently override every deny/ask bucket below.",
+      "kind": "commands",
+      "commands": [
+        [
+          "roborepo",
+          "agent-run"
+        ]
+      ],
+      "bucket": "allow",
+      "category": "observability"
+    },
+    {
+      "id": "inspect-roborepo",
+      "label": "Inspect roborepo state",
+      "description": "Read-only roborepo namespaces (doctor, telemetry, git, index, config show). Safe to run unattended; none of them mutate config.",
+      "kind": "commands",
+      "commands": [
+        [
+          "roborepo",
+          "doctor"
+        ],
+        [
+          "roborepo",
+          "telemetry"
+        ],
+        [
+          "roborepo",
+          "git"
+        ],
+        [
+          "roborepo",
+          "index"
+        ],
+        [
+          "roborepo",
+          "localhoster"
+        ],
+        [
+          "roborepo",
+          "version"
+        ],
+        [
+          "roborepo",
+          "plans"
+        ]
+      ],
+      "bucket": "allow",
+      "category": "observability"
+    },
+    {
+      "id": "mutate-harness-config",
+      "label": "Change harness configuration",
+      "description": "roborepo namespaces that rewrite generated config or installed state (update, maintenance, mcp, package, skill, config set). Prompts. Anything NOT listed here — including namespaces added later — falls through to a prompt by default, so new subcommands never silently gain access.",
+      "kind": "commands",
+      "commands": [
+        [
+          "roborepo",
+          "update"
+        ],
+        [
+          "roborepo",
+          "maintenance"
+        ],
+        [
+          "roborepo",
+          "mcp"
+        ],
+        [
+          "roborepo",
+          "package"
+        ],
+        [
+          "roborepo",
+          "skill"
+        ],
+        [
+          "roborepo",
+          "config"
+        ],
+        [
+          "roborepo",
+          "harness"
+        ],
+        [
+          "roborepo",
+          "apply"
+        ],
+        [
+          "roborepo",
+          "permissions"
+        ],
+        [
+          "roborepo",
+          "rules"
+        ],
+        [
+          "roborepo",
+          "setup"
+        ],
+        [
+          "roborepo",
+          "workspace"
+        ],
+        [
+          "roborepo",
+          "presets"
+        ],
+        [
+          "roborepo",
+          "bundle"
+        ],
+        [
+          "roborepo",
+          "experimental"
+        ],
+        [
+          "roborepo",
+          "onboard-intro"
+        ]
+      ],
+      "bucket": "ask",
+      "category": "configuration"
     }
   ],
-  "tools": {
-    "read": ["Read"]
-  },
+  "tools": {},
   "mcp": {},
   "commands": {
     "allow": [
-      ["npm", "test"],
-      ["npm", "run", "test"],
-      ["pnpm", "test"],
-      ["pnpm", "run", "test"],
-      ["pytest"],
-      ["uv", "run", "pytest"],
-      ["go", "test"],
-      ["cargo", "test"],
-      ["./scripts/doctor.sh"],
-      ["./scripts/verify-install.sh"],
-      ["./scripts/install/main.sh", "--dry-run"],
-      ["roborepo", "doctor"],
-      ["roborepo", "verify"],
-      ["roborepo", "update", "--dry-run"],
-      ["npm", "run", "skills:compile"],
-      ["npm", "run", "skills:validate"],
-      ["npm", "install"],
-      ["npm", "run", "lint"],
-      ["npm", "run", "build:preview"],
-      ["npm", "run", "build"],
-      ["npm", "run", "dev"],
-      ["npm", "run", "check"],
-      ["npx", "tsc"],
-      ["npx", "next", "lint"],
-      ["npx", "eslint"],
-      ["npx", "jest"],
-      ["git", "status"],
-      ["git", "log"]
+      [
+        "npm",
+        "test"
+      ],
+      [
+        "npm",
+        "run",
+        "test"
+      ],
+      [
+        "pnpm",
+        "test"
+      ],
+      [
+        "pnpm",
+        "run",
+        "test"
+      ],
+      [
+        "pytest"
+      ],
+      [
+        "uv",
+        "run",
+        "pytest"
+      ],
+      [
+        "go",
+        "test"
+      ],
+      [
+        "cargo",
+        "test"
+      ],
+      [
+        "./scripts/doctor.sh"
+      ],
+      [
+        "./scripts/verify-install.sh"
+      ],
+      [
+        "./scripts/install/main.sh",
+        "--dry-run"
+      ],
+      [
+        "npm",
+        "run",
+        "skills:compile"
+      ],
+      [
+        "npm",
+        "run",
+        "skills:validate"
+      ],
+      [
+        "npm",
+        "install"
+      ],
+      [
+        "npm",
+        "run",
+        "lint"
+      ],
+      [
+        "npm",
+        "run",
+        "build:preview"
+      ],
+      [
+        "npm",
+        "run",
+        "build"
+      ],
+      [
+        "npm",
+        "run",
+        "dev"
+      ],
+      [
+        "npm",
+        "run",
+        "check"
+      ],
+      [
+        "npx",
+        "tsc"
+      ],
+      [
+        "npx",
+        "next",
+        "lint"
+      ],
+      [
+        "npx",
+        "eslint"
+      ],
+      [
+        "npx",
+        "jest"
+      ],
+      [
+        "git",
+        "status"
+      ],
+      [
+        "git",
+        "log"
+      ]
+    ]
+  },
+  "categories": [
+    {
+      "id": "files",
+      "label": "Files",
+      "order": 1,
+      "description": "What the agent may read and write, and where."
+    },
+    {
+      "id": "observability",
+      "label": "Observability",
+      "order": 2,
+      "description": "Read-only inspection that changes nothing."
+    },
+    {
+      "id": "build",
+      "label": "Build & Test",
+      "order": 3,
+      "description": "Test runners, linters, builds, and repo scripts."
+    },
+    {
+      "id": "git",
+      "label": "Git",
+      "order": 4,
+      "description": "History and branch operations."
+    },
+    {
+      "id": "destructive",
+      "label": "Destructive",
+      "order": 5,
+      "description": "Removes work. Hard or impossible to undo."
+    },
+    {
+      "id": "network",
+      "label": "Network",
+      "order": 6,
+      "description": "Reaching outside this machine."
+    },
+    {
+      "id": "configuration",
+      "label": "Configuration",
+      "order": 7,
+      "description": "Changes how the agent itself is configured."
+    }
+  ],
+  "commandCategories": {
+    "defaultCategory": "build",
+    "rules": [
+      {
+        "prefix": [
+          "git",
+          "status"
+        ],
+        "category": "observability"
+      },
+      {
+        "prefix": [
+          "git",
+          "log"
+        ],
+        "category": "observability"
+      },
+      {
+        "prefix": [
+          "git"
+        ],
+        "category": "git"
+      }
     ]
   }
 }

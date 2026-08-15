@@ -265,6 +265,11 @@ main {
 .perm-row:first-of-type {
   border-top: none;
 }
+/* A row directly under a category heading gets its separator from the heading's own rule; drawing
+   both stacks two lines a few pixels apart. */
+.perm-category + .perm-row {
+  border-top: none;
+}
 .behavior-row {
   width: 100%;
 }
@@ -273,6 +278,24 @@ main {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+/* Push the bucket control to the right edge so every row's allow/ask/deny lines up in one column
+   instead of floating after a variable-width label. Targets the custom element, not the
+   [data-slot] placeholder: bucketControl() replaces that node, so a slot-based selector matches
+   nothing once the row is built. */
+.behavior-head > bucket-control {
+  margin-left: auto;
+}
+/* Delete sits after the bucket control, at the end of the row, and the slot is reserved on EVERY
+   row — otherwise a row with a delete link pushes its bucket control left and the column stops
+   lining up between the Yours and Defaults groups. Rows without one keep an empty placeholder of
+   the same width rather than a [hidden] button: base.css hides [hidden] with `display: none
+   !important`, which no per-row rule can (or should) override. */
+.behavior-head > .reset-link,
+.behavior-head > .reset-placeholder {
+  width: 4rem;
+  flex: none;
+  text-align: right;
 }
 .behavior-label {
   color: var(--ink);
@@ -296,9 +319,6 @@ main {
   display: inline-flex;
   gap: 0;
   margin-left: auto;
-}
-.bucket-group-compact {
-  margin-left: 12px;
 }
 .bucket-btn {
   font:
@@ -324,19 +344,23 @@ main {
 .bucket-btn:hover:not(:disabled) {
   color: var(--ink);
 }
+/* The active bucket is a filled chip rather than a tinted outline: at this size a 1px coloured
+   border reads as "slightly different", while a solid fill reads as "this one is selected" from
+   across the panel. Label stays white on every fill so the colour carries the meaning alone. */
+.bucket-btn.current {
+  color: #fff;
+  font-weight: 600;
+}
 .bucket-btn.bucket-deny.current {
-  background: var(--panel);
-  color: var(--danger);
+  background: var(--danger);
   border-color: var(--danger);
 }
 .bucket-btn.bucket-ask.current {
-  background: var(--panel);
-  color: var(--warn);
-  border-color: var(--warn-line);
+  background: var(--warn);
+  border-color: var(--warn);
 }
 .bucket-btn.bucket-allow.current {
-  background: var(--panel);
-  color: var(--ok);
+  background: var(--ok);
   border-color: var(--ok);
 }
 .bucket-btn:disabled {
@@ -358,42 +382,72 @@ main {
 .reset-link:hover {
   color: var(--accent);
 }
-/* arbitrary (non-named) command list */
-.arbitrary-list {
-  width: 100%;
-}
-.arbitrary-head {
-  color: var(--ink);
-  font-weight: 600;
-}
-.arbitrary-desc {
+/* Permission groups: the user's own settings, then the shipped defaults behind a disclosure. */
+.perm-group-head {
   color: var(--dim);
-  margin-top: 3px;
-  margin-bottom: 8px;
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 14px 0 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
 }
-.arbitrary-items {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 260px;
-  overflow-y: auto;
+.perm-group-head:first-of-type {
+  margin-top: 0;
+  border-top: none;
+  padding-top: 0;
 }
-.arbitrary-item {
+/* Category heading inside the defaults list. Sits between rows, so it needs enough space above to
+   read as a new group rather than as a caption on the row before it. */
+.perm-category {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
+  flex-wrap: wrap;
+  margin: 16px 0 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.perm-category:first-child {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: none;
+}
+.perm-category-label {
+  color: var(--ink);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.perm-category-count {
+  color: var(--dim);
   font-size: var(--text-2xs);
 }
-.arbitrary-label {
-  font:
-    var(--text-2xs)/1.4 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace;
-  color: var(--ink);
-  flex: 1;
-  overflow-wrap: anywhere;
+.perm-category-desc {
+  color: var(--dim);
+  font-size: var(--text-2xs);
 }
+.perm-empty {
+  color: var(--dim);
+  font-size: var(--text-2xs);
+  padding: 2px 0 4px;
+}
+/* Reads as the heading it sits in rather than as a control, since it only expands a list. */
+.perm-defaults-toggle {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.perm-defaults-toggle:hover {
+  color: var(--accent);
+}
+/* add-a-command control (section-level) */
 .arbitrary-add {
   display: flex;
   align-items: center;

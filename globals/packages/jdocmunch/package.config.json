@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "id": "jdocmunch",
-  "label": "JDocMunch doc intelligence",
+  "label": "Doc Indexing (with JDocMunch)",
   "description": "Local docs index with section search, TOC, and context retrieval. Routes doc exploration through jdocmunch tools instead of reading full files.",
   "lifecycle": "optional",
   "presentation": {
     "category": "token-optimization",
-    "order": 20
+    "order": 30
   },
   "urls": [
     {

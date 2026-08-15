@@ -157,49 +157,69 @@
       <button class="globals-default" type="button" data-slot="button"></button>
     </template>
     <!-- Skill category sections + shared item/badge primitives -->
-    <template id="tpl-section-token-optimization">
+    <!-- One generic package section. Heading, description, and footnote all come from
+         manifests/inventory/package-categories.json, so a new category renders with no edit
+         here. Previously this was four near-identical templates keyed by category label, and a
+         category without a template was silently dropped from the page. -->
+    <template id="tpl-section-packages">
       <section class="panel">
-        <div class="panel-head"><h2>Token Optimization</h2></div>
+        <div class="panel-head"><h2 data-slot="heading"></h2></div>
+        <p class="panel-desc" data-slot="description" hidden></p>
         <div data-slot="items"></div>
-      </section>
-    </template>
-    <template id="tpl-section-commands">
-      <section class="panel">
-        <div class="panel-head"><h2>Skills - Workflows</h2></div>
-        <p class="panel-desc">
-          Named slash-command workflows you start intentionally.
-        </p>
-        <div data-slot="items"></div>
-      </section>
-    </template>
-    <template id="tpl-section-code-conventions">
-      <section class="panel">
-        <div class="panel-head"><h2>Skills - Code Conventions</h2></div>
-        <p class="panel-desc">
-          Skills auto-loaded when relevant — shape output without an explicit
-          command.
-        </p>
-        <div data-slot="items"></div>
-        <p class="panel-footnote">
-          * roborepo-support — help skill for this repo, always loaded.
-        </p>
-      </section>
-    </template>
-    <template id="tpl-section-chat-time-output">
-      <section class="panel">
-        <div class="panel-head"><h2>Chat-Time Output</h2></div>
-        <p class="panel-desc">
-          Inline chat notes the agent adds while responding — no files written,
-          no workflow started.
-        </p>
-        <div data-slot="items"></div>
+        <p class="panel-footnote" data-slot="footnote" hidden></p>
       </section>
     </template>
     <template id="tpl-permissions-section">
       <section class="panel">
         <div class="panel-head"><h2>Permissions</h2></div>
+        <div class="perm-group-head" data-slot="yours-head">Yours</div>
+        <div data-slot="yours"></div>
+        <div class="perm-empty" data-slot="yours-empty" hidden>
+          Nothing customized yet — every permission below is the shipped default.
+        </div>
+        <div class="perm-group-head" data-slot="defaults-head">
+          <button
+            type="button"
+            class="perm-defaults-toggle"
+            data-slot="defaults-toggle"
+            aria-expanded="false"
+          ></button>
+        </div>
+        <div data-slot="defaults" hidden></div>
+        <div class="arbitrary-add">
+          <input
+            type="text"
+            class="arbitrary-input"
+            placeholder="add a command, e.g. docker run"
+            data-slot="input"
+          />
+          <button type="button" class="arbitrary-add-btn" data-slot="add-btn">
+            add as ask
+          </button>
+          <span class="item-err" data-slot="add-err"></span>
+        </div>
+      </section>
+    </template>
+    <template id="tpl-stores-section">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Local Stores</h2>
+          <span class="muted" data-slot="description"></span>
+        </div>
         <div data-slot="rows"></div>
       </section>
+    </template>
+    <template id="tpl-store-row">
+      <div class="item">
+        <span class="dot" data-slot="dot"></span>
+        <div class="item-body">
+          <div class="item-row">
+            <span class="item-label" data-slot="label"></span>
+            <span class="muted" data-slot="size"></span>
+          </div>
+          <div class="muted" data-slot="path"></div>
+        </div>
+      </div>
     </template>
     <template id="tpl-config-item">
       <div class="item">
@@ -272,46 +292,14 @@
         </div>
         <div class="behavior-desc" data-slot="description" hidden></div>
         <div class="behavior-default" data-slot="default-bucket" hidden></div>
-        <div class="codex-note" data-slot="no-codex-ask" hidden>
-          Codex has no per-command ask — runs without a prompt there unless
-          another setting forces approval.
-        </div>
         <div class="item-err" data-slot="err"></div>
       </div>
     </template>
-    <template id="tpl-arbitrary-list-row">
-      <div class="arbitrary-list">
-        <div class="arbitrary-head" data-slot="label"></div>
-        <div class="arbitrary-desc" data-slot="description" hidden></div>
-        <div class="arbitrary-items" data-slot="items"></div>
-        <div class="arbitrary-add">
-          <input
-            type="text"
-            class="arbitrary-input"
-            placeholder="add a command, e.g. docker run"
-            data-slot="input"
-          />
-          <button type="button" class="arbitrary-add-btn" data-slot="add-btn">
-            add as ask
-          </button>
-          <span class="item-err" data-slot="add-err"></span>
-        </div>
-      </div>
-    </template>
-    <template id="tpl-arbitrary-item">
-      <div class="arbitrary-item">
-        <span class="arbitrary-label" data-slot="label"></span>
-        <span data-slot="bucket-control"></span>
-        <button
-          type="button"
-          class="reset-link"
-          data-slot="reset"
-          hidden
-        ></button>
-        <span class="codex-note" data-slot="no-codex-ask" hidden
-          >no per-command ask on Codex</span
-        >
-        <span class="item-err" data-slot="err"></span>
+    <template id="tpl-perm-category">
+      <div class="perm-category">
+        <span class="perm-category-label" data-slot="label"></span>
+        <span class="perm-category-count" data-slot="count"></span>
+        <span class="perm-category-desc" data-slot="description" hidden></span>
       </div>
     </template>
     <!-- Raw permission list row -->

@@ -5,7 +5,7 @@
   "description": "Bring an integration branch to a verified, reviewed state: sync, audit worktrees, validate plans against code, review the diff, run tests.",
   "lifecycle": "optional",
   "presentation": {
-    "category": "commands",
+    "category": "skills-dev-lifecycle",
     "order": 60
   },
   "resources": [

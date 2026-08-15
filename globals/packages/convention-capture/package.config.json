@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "convention-capture",
   "label": "Convention capture",
-  "description": "Agents surface newly confirmed conventions as an inline capture candidate note during chat.",
+  "description": "Agents surface newly confirmed conventions as an inline capture candidate note during chat, and flag repeatable work that a script or hook could do deterministically instead.",
   "lifecycle": "optional",
   "presentation": {
     "category": "chat-time-output",

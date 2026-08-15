@@ -27,7 +27,7 @@ const MARKER_LINES = new Set([
 ]);
 
 function usage() {
-  console.error("usage: roborepo repair local-config [--dry-run|--apply|--check|--hint]");
+  console.error("usage: roborepo maintenance repair local-config [--dry-run|--apply|--check|--hint]");
 }
 
 export function localConfigRepairCommand(args = []) {
@@ -94,6 +94,15 @@ function buildHarnessPlan(harness) {
   if (activeNormalized !== activeText) issues.push("remove duplicated generated marker lines");
 
   for (const backup of backups.slice(0, 1)) {
+    // A backup older than the generated baseline cannot recover anything current. The merge below
+    // is additive (backup ∪ active), and no backup records intent, so a setting the user has since
+    // deleted on purpose still looks "missing" and gets proposed for restoration — every update,
+    // forever. describeWhyNow() already names this case; skipping it here means the hint stops
+    // firing for a repair whose only effect would be to undo the user's own edits.
+    //
+    // Deliberately not applied to the newer-than-baseline case: there, "missing in active" really
+    // can mean a setting an install dropped, which is what this command exists to recover.
+    if (isStaleBackup(backup, baselinePath)) continue;
     const backupText = fs.readFileSync(backup.path, "utf8");
     const backupMerged = mergeRootConfig(harness, baselineText, backupText);
     const repaired = normalizeGeneratedMarkers(mergeRootConfig(harness, backupMerged, activeText));
@@ -230,6 +239,17 @@ function describeWhyNow(backup, baselinePath, activePath) {
   }
 }
 
+// Unreadable timestamps => not stale. This gates whether a recovery is offered at all, so an
+// unknown answer must fall back to showing the plan (with describeWhyNow's caveat) rather than
+// silently hiding a repair the user may genuinely need.
+function isStaleBackup(backup, baselinePath) {
+  try {
+    return backup.mtimeMs < fs.statSync(baselinePath).mtimeMs;
+  } catch {
+    return false;
+  }
+}
+
 function backupCandidates(harness, activePath) {
   const dir = path.dirname(activePath);
   const ext = path.extname(activePath);
@@ -270,7 +290,7 @@ function normalizeGeneratedMarkers(text) {
 function printHint(plans, { prefix }) {
   const harnesses = plans.map((plan) => plan.harness).join(", ");
   console.log(`${prefix}: local config repair candidates found (${harnesses}).`);
-  console.log("      Run: roborepo repair local-config --dry-run");
+  console.log("      Run: roborepo maintenance repair local-config --dry-run");
 }
 
 function printPlan(plans, mode) {

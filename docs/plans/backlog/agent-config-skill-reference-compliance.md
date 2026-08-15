@@ -1,11 +1,11 @@
 ---
 id: k7p3m2q
-priority: medium
-next_action: Update technical-writing so write covers create/edit/revise and always loads review-loop.md, while review remains read-only evaluation
+priority: high
+next_action: Update technical-writing SKILL.md so write always loads review-loop.md and owns create/edit/revise workflows
 blocked_by: []
 depends_on: []
 related: []
-reviewed_commit: 2a56135734a21c6c8ad9435f76f2e9e092b81201
+reviewed_commit: 677371c6e95234caa69d532f799cfcb16f4c438e
 ---
 
 # Make Skill Reference Loading and Validation Reliable
@@ -63,7 +63,18 @@ An agent can therefore follow the documented `write` reference list literally an
 
 ### Critical plan rules are deep in references
 
-`plan-docs` correctly requires `plan-schema.md`, which contains important creation rules: filename shape, repository namespaces, H1 behavior, opaque IDs, allowed frontmatter, and folder-derived lifecycle. These are artifact-validity rules, but several are not surfaced as explicit creation gates in the entry-point skill or enforced by the current programmatic validator.
+`globals/packages/plan-docs/skills/plan-docs/SKILL.md` correctly requires `references/plan-schema.md` for named modes. The schema contains artifact-validity rules that are easy to miss when they remain only in the deeper reference:
+
+| Rule area | Current contract |
+| --- | --- |
+| Frontmatter | `id`, `priority`, `next_action`, `blocked_by`, `depends_on`, `related`, and `reviewed_commit` are the supported plan fields |
+| Forbidden metadata | lifecycle/status timestamps and similar derived metadata do not belong in frontmatter |
+| Lifecycle | lifecycle comes from `docs/plans/<lifecycle>/`, not a `status` field |
+| Naming | filename is `<namespace>-<slug>.md`; project namespaces come from `docs/plans/plans-config.json` |
+| Identity | new plans use an opaque 6–8 character lowercase base36 ID that survives renames and moves |
+| H1 | title is reader-facing prose rather than a mechanically expanded filename |
+
+The entry-point skill says to read the schema, but it does not restate the critical creation gates. The current programmatic validator also does not enforce filename/namespace correctness.
 
 ### Programmatic plan validation is incomplete
 
@@ -71,7 +82,7 @@ The plan-docs validator already handles frontmatter parsing, IDs, priorities, re
 
 ### Technical-writing validation is procedural rather than enforced
 
-`references/review-loop.md` defines two distinct roles:
+`globals/packages/technical-writing/skills/technical-writing/references/review-loop.md` defines two distinct roles:
 
 | Role | Responsibility |
 | --- | --- |
@@ -80,11 +91,15 @@ The plan-docs validator already handles frontmatter parsing, IDs, priorities, re
 
 The Validator must not rewrite the document, each pass must be surfaced in chat, and the loop continues until the Validator reports no violations or reaches the documented pass cap. Today, running that loop still depends on the authoring agent remembering to load it.
 
+There is also a concrete scope mismatch: `technical-writing write` requires `references/representation.md`, but `review-loop.md` does not include `representation.md` in its explicit Validator rule list. A document can therefore be authored under a representation rule that the Validator is not clearly required to check.
+
+`globals/packages/technical-writing/skills/technical-writing/agents/openai.yaml` currently contains only a description. It does not encode a separate executable Validator contract, so this plan must not assume the agent metadata already provides role separation.
+
 ### Omitted references can materially change implementation plans
 
-Recent review exposed substantive constraints that were easy to miss when references were not loaded: Mermaid edges require verb labels, data-model-heavy designs may need an ER diagram, framework-less portal markup should use the repo's real `<template>` convention, shared CLI/portal behavior should remain in shared domain code, and verification should use the smallest repository-native test that proves the behavior.
+The paired skills contain implementation constraints that materially affect a plan when they apply: `technical-writing` requires verb-labeled Mermaid edges and representation choices matched to content; framework-less JavaScript markup uses real HTML `<template>` elements instead of nested DOM builders; shared CLI/portal logic belongs in shared domain code rather than presentation layers; and test changes should begin with the smallest repository-native check that proves the behavior.
 
-This shows that reference loading affects implementation correctness, not only formatting quality.
+Reference loading therefore affects implementation correctness, not only formatting quality.
 
 ## Proposed Design
 
@@ -151,7 +166,23 @@ flowchart LR
     H -->|allows| D[drafting]
 ```
 
-Before writing plan body content, the agent must establish lifecycle destination, namespace, filename, H1, opaque ID, priority, relationship arrays, and a concrete next action.
+Before writing plan body content, the agent must establish the plan identity and minimal frontmatter contract. Creation still begins in `docs/plans/backlog/`; if the user also asked to start the plan, the workflow validates the backlog plan first and then runs the start workflow to move the same stable ID into `docs/plans/active/`.
+
+| Field or decision | Required behavior |
+| --- | --- |
+| `id` | Generate one opaque 6–8 character lowercase base36 ID; never derive it from the title or filename |
+| `priority` | Use only `high`, `medium`, `low`, or `none` |
+| `next_action` | Non-empty for a ready backlog plan and for an active plan |
+| `blocked_by` | Always an array |
+| `depends_on` | Always an array |
+| `related` | Always an array |
+| `reviewed_commit` | Record only a commit deliberately reviewed against the plan; leave empty when no such review occurred |
+| Lifecycle | Derive from the folder; never add a `status` field |
+| Namespace | Prefer the more-specific project namespace from `docs/plans/plans-config.json` |
+| Filename | `<namespace>-<specific-slug>.md`, with no lifecycle/status/date/version suffix |
+| H1 | Reader-facing outcome prose, not a filename transformation |
+
+Do not add `status`, `validated`, `updated_at`, `created_at`, `owner`, `percent_complete`, `estimated_hours`, or `tags` unless the plan schema is intentionally changed first.
 
 ### 4. Add deterministic filename and namespace findings to plan-docs
 
@@ -183,15 +214,18 @@ This matches the existing findings architecture, which is already intended to pr
 
 ### 6. Make qualitative Validator coverage explicit
 
-For a single durable technical document, the Validator should account for:
+For a single durable technical document, the Validator should resolve this rule set explicitly:
 
-- Core Writing Philosophy in `SKILL.md`
-- `doc-shapes.md`, or `plan-docs` schema when the artifact is a plan
-- `section-guidance.md`
-- `representation.md`
-- `anti-patterns.md`
-- `doc-organization.md` when revising a documentation set
-- applicable paired skills that materially constrain the artifact
+| Rule source | When required |
+| --- | --- |
+| Core Writing Philosophy in `SKILL.md` | Always |
+| `doc-shapes.md` | Non-plan documents |
+| `plan-docs` schema | Plans under `docs/plans` instead of generic doc shapes |
+| `section-guidance.md` | Durable document review |
+| `representation.md` | Durable document review |
+| `anti-patterns.md` | Durable document review |
+| `doc-organization.md` | Only when revising a documentation set |
+| applicable paired skills | When explicitly requested or materially relevant to the implementation guidance |
 
 The report format remains:
 
@@ -215,24 +249,73 @@ When the user explicitly asks for paired implementation skills, those skills are
 
 References remain conditional. For example, `javascript-typescript/references/framework-less-markup.md` is required only when implementation touches framework-less DOM structure.
 
-### 8. Add reference-loading observability
+### 8. Make plan creation run both validation layers
+
+A plan is both a managed lifecycle artifact and a durable technical document. `plan-docs create` should therefore orchestrate both validation layers instead of expecting the user to remember a second command.
+
+```mermaid
+flowchart LR
+    U[User requests a plan] -->|invokes| C[plan-docs create]
+    C -->|creates in| B[backlog]
+    B -->|runs| P[plan-docs schema and readiness validation]
+    P -->|reports findings to| R[Creator revision]
+    P -->|reports zero findings to| T[technical-writing Validator]
+    T -->|reports violations to| R
+    R -->|re-runs| P
+    T -->|reports zero violations| D[validated backlog plan]
+    D -->|when user requested start| S[plan-docs start]
+    S -->|moves stable id to| A[active]
+```
+
+The two validators have different ownership:
+
+- `plan-docs` checks deterministic schema, lifecycle, relationship, naming, and repository-consistency rules.
+- `technical-writing` checks qualitative document rules such as organization, representation, anti-patterns, and reader clarity.
+
+A clean technical-writing report must not override a plan-docs finding, and a mechanically valid plan must not bypass the qualitative Validator.
+
+### 9. Add reference-loading observability
 
 For workflows RoboRepo itself generates or launches, record or surface selected skill, selected mode, required reference paths, applicable paired skills, and validation result.
 
 Do not capture private model reasoning. If a harness cannot prove a reference was actually read, report the expected reference set rather than falsely claiming execution evidence.
 
-### 9. Strengthen skill authoring conventions
+### 10. Strengthen skill authoring conventions
 
-Durable RoboRepo skills should follow this convention:
+Durable RoboRepo skills should follow one consistent contract:
 
-1. Put concise completion gates in `SKILL.md`.
-2. Put detailed procedures, examples, and edge cases in references.
-3. For each named mode, list all required references explicitly.
-4. A reference containing a mandatory completion step must be loaded by the mode that produces the artifact.
-5. Do not require an agent to infer that it should invoke a second mode to finish the first.
-6. Mechanically enforce deterministic invariants.
-7. Keep qualitative review in a separate read-only Validator pass.
-8. Add regression tests for reference routing and deterministic validators.
+| Rule | Purpose |
+| --- | --- |
+| Put concise completion gates in `SKILL.md` | Makes invalid completion visibly noncompliant even before a deep reference is read |
+| Put procedures, examples, and edge cases in references | Preserves depth without bloating the entry point |
+| List every required reference for each named mode | Removes inference from reference routing |
+| Load mandatory completion references from the artifact-producing mode | Prevents a required finishing step from becoming unreachable |
+| Do not require a second inferred mode to finish the first | Keeps the user-facing invocation contract simple |
+| Mechanically enforce deterministic invariants | Moves filename/frontmatter/schema correctness out of model memory |
+| Keep qualitative review in a read-only Validator pass | Separates authoring from grading |
+| Add regression coverage for routing and validators | Prevents future skill edits from silently dropping the contract |
+
+## Affected Repository Files
+
+Verified current implementation surfaces at `reviewed_commit`:
+
+| Area | Current path | Planned use |
+| --- | --- | --- |
+| technical-writing mode routing | `globals/packages/technical-writing/skills/technical-writing/SKILL.md` | make `write` load the review loop and define write/review boundaries |
+| technical-writing Validator | `globals/packages/technical-writing/skills/technical-writing/references/review-loop.md` | include the complete applicable rule set, including representation |
+| technical-writing agent metadata | `globals/packages/technical-writing/skills/technical-writing/agents/openai.yaml` | investigate whether existing metadata can strengthen role separation without inventing unsupported schema |
+| plan-docs entry point | `globals/packages/plan-docs/skills/plan-docs/SKILL.md` | surface creation completion gates |
+| plan schema | `globals/packages/plan-docs/skills/plan-docs/references/plan-schema.md` | remain authoritative for frontmatter, naming, namespace, and lifecycle rules |
+| create workflow | `globals/packages/plan-docs/skills/plan-docs/references/workflow-create.md` | create in backlog, use minimal frontmatter, validate readiness |
+| start workflow | `globals/packages/plan-docs/skills/plan-docs/references/workflow-start.md` | move a validated selected plan from backlog to active while preserving ID |
+| validate workflow | `globals/packages/plan-docs/skills/plan-docs/references/workflow-validate.md` | include naming/namespace and repository-consistency checks |
+| findings catalog | `modules/plan-docs/findings.mjs` | add structured naming findings |
+| plan-doc domain orchestration | `modules/plan-docs/index.mjs` | consume naming validation without embedding all naming rules in this already-large module |
+| lifecycle policy | `modules/plan-docs/lifecycle-policy.mjs` | consume naming findings where lifecycle readiness needs them |
+| repair prompt | `modules/plan-docs/repair-prompt.mjs` | receive the same structured findings rather than duplicate rule text |
+| plan tests | `scripts/test/plan-docs-check.mjs`, `scripts/test/plan-docs-findings-check.mjs`, `scripts/test/plan-docs-repair-check.mjs` | regression coverage for new plan rules |
+
+Prefer a focused new module such as `modules/plan-docs/naming.mjs` for deterministic filename/namespace logic rather than adding another responsibility to `modules/plan-docs/index.mjs`. Confirm the final module boundary against local conventions during implementation.
 
 ## Implementation Plan
 
@@ -250,7 +333,7 @@ Durable RoboRepo skills should follow this convention:
 - [ ] Add an explicit pre-draft namespace/filename/H1 checkpoint to `plan-docs create`.
 - [ ] State at the entry point that `docs/plans/plans-config.json` must be read before creating or renaming a plan when present.
 - [ ] Keep detailed naming rules authoritative in `plan-schema.md`.
-- [ ] Ensure explicit user requests to start newly created work can transition it to `active` without changing its stable ID.
+- [ ] Keep `plan-docs create` backlog-only; when the user also requested start, validate the new backlog plan and then invoke the start workflow to move the same stable ID into `active`.
 - [ ] Ensure lifecycle remains folder-derived and is never duplicated into frontmatter.
 
 ### Phase 3 — Add programmatic naming validation
@@ -264,13 +347,23 @@ Durable RoboRepo skills should follow this convention:
 ### Phase 4 — Tighten the technical-writing Validator contract
 
 - [ ] Update `review-loop.md` to enumerate the minimum applicable reference set rather than relying only on “read every rule.”
+- [ ] Fix the current Validator scope mismatch by explicitly adding `representation.md`.
 - [ ] Explicitly include `representation.md` in Validator coverage.
 - [ ] Define how paired implementation skills contribute constraints to validation.
 - [ ] Keep the Validator read-only.
 - [ ] Require each pass to identify reference/rule, document location, and violation.
 - [ ] Preserve the 10-pass cap.
+- [ ] Inspect `agents/openai.yaml` consumption before changing it; strengthen role metadata only if the existing schema supports that behavior.
 
-### Phase 5 — Add skill-routing regression coverage
+### Phase 5 — Integrate plan creation with both validators
+
+- [ ] Update `plan-docs create` instructions so a durable plan runs plan-docs validation and the technical-writing Validator before delivery.
+- [ ] Define retry ordering: plan-docs findings or technical-writing violations return to the Creator; the revised draft is rechecked.
+- [ ] If the user requested the plan be started, run the start workflow only after the backlog artifact has passed the required creation checks.
+- [ ] Preserve the same stable `id` across the backlog-to-active move.
+- [ ] Surface the technical-writing Validator report on every pass as required by `review-loop.md`.
+
+### Phase 6 — Add skill-routing regression coverage
 
 - [ ] Add characterization tests for the reference matrix declared by `technical-writing`.
 - [ ] Add characterization tests for the reference matrix declared by `plan-docs`.
@@ -278,20 +371,23 @@ Durable RoboRepo skills should follow this convention:
 - [ ] Test that create/edit/revise requests resolve to `write` rather than requiring separate modes.
 - [ ] Test that `technical-writing review` remains read-only and does not imply document mutation.
 - [ ] Test that `plan-docs create` requires naming/schema references and repository namespace configuration.
+- [ ] Test that plan creation runs deterministic plan validation and the technical-writing Validator contract before an optional start transition.
 - [ ] Test naming findings through the plan-docs domain.
 - [ ] Prefer externally meaningful workflow/config output over internal helper-call assertions.
 
-### Phase 6 — Add skill authoring guidance and audit support
+### Phase 7 — Add skill authoring guidance and structural audit support
 
 - [ ] Document the “references provide depth; `SKILL.md` provides gates” convention in maintainer guidance.
-- [ ] Review skill scaffolding generated by RoboRepo and add completion-gate/reference-matrix prompts where useful.
-- [ ] Evaluate whether `skill-audit` can detect structural problems such as a mandatory completion reference unreachable from an artifact-producing mode.
+- [ ] Inspect the current skill/package validation ownership before choosing where a new structural audit belongs.
+- [ ] Add a structural check that can detect problems such as a mandatory completion reference unreachable from an artifact-producing mode.
+- [ ] Do not assume a dedicated audit subsystem already exists; choose the ownership from verified current validation boundaries.
 - [ ] Keep audit findings structural rather than attempting to judge arbitrary prose semantics mechanically.
 
-### Phase 7 — Add lightweight runtime observability
+### Phase 8 — Add lightweight runtime observability
 
 - [ ] Identify workflows where RoboRepo controls the prompt/reference set strongly enough to report expected resources accurately.
 - [ ] Surface selected skill, mode, required references, and validation result in an existing diagnostics/reporting surface where appropriate.
+- [ ] If this adds framework-less portal markup, follow the existing real-HTML `<template>` + slot-fill convention; do not build nested multi-element structures with JavaScript DOM-builder calls or runtime HTML strings.
 - [ ] Do not claim a model read a reference when the harness cannot prove it.
 - [ ] Do not capture or persist private model reasoning.
 
@@ -313,7 +409,7 @@ Durable RoboRepo skills should follow this convention:
 ### Test design
 
 - Use repository-native test scripts discovered from `package.json`.
-- Add the smallest regression test first for each changed behavior.
+- For each behavior change or bug fix, add or identify the smallest regression check first and run it before implementation to prove it catches the old behavior.
 - Assert observable reference matrices, findings, generated repair information, or user-visible workflow behavior rather than incidental internal calls.
 - Use isolated temporary plan repositories for plan naming/lifecycle fixtures.
 - Do not write tests against real user plan state.
@@ -347,10 +443,30 @@ Do not invent a new lint, formatter, or typecheck command solely for this work.
 
 - Should new filename findings initially be advisory for legacy plans that predate the naming convention, or should compatibility be determined from repository inventory before implementation?
 - Should the reference matrix remain encoded only in Markdown instructions, or should RoboRepo eventually expose a small machine-readable skill workflow manifest that can be validated without parsing prose?
-- Is `skill-audit` the right place for structural reference reachability checks, or should those checks live in package validation/build tooling?
+- Should structural reference-reachability checks live with existing package/skill validation, or should implementation introduce a dedicated audit module after ownership is inspected?
 - Which existing diagnostics surface is the best home for expected skill/reference-set reporting?
 
 None of these questions blocks Phase 1 or Phase 2.
+
+## Repository Review
+
+Repository state for this revision was deliberately reviewed at:
+
+```text
+677371c6e95234caa69d532f799cfcb16f4c438e
+```
+
+Verified facts used by this plan:
+
+| Fact | Repository evidence |
+| --- | --- |
+| `technical-writing write` does not require `review-loop.md` | `globals/packages/technical-writing/skills/technical-writing/SKILL.md` |
+| the current Validator list omits `representation.md` | `globals/packages/technical-writing/skills/technical-writing/references/review-loop.md` |
+| OpenAI skill metadata currently carries only a description | `globals/packages/technical-writing/skills/technical-writing/agents/openai.yaml` |
+| plan creation begins in backlog and start moves selected work to active | `globals/packages/plan-docs/skills/plan-docs/references/workflow-create.md`, `globals/packages/plan-docs/skills/plan-docs/references/workflow-start.md` |
+| `agent-config` is the project namespace covering skills and harness configuration | `docs/plans/plans-config.json` |
+| structured findings feed validation/lifecycle errors/repair prompts from one catalog | `modules/plan-docs/findings.mjs` |
+| plan-focused and full-suite verification commands exist | `package.json` |
 
 ## Success Criteria
 

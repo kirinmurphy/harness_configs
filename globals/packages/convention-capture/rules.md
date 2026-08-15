@@ -32,4 +32,6 @@ The test is whether the task has a checkable right answer that does not need jud
 
 Prefer the cheapest durable mechanism that actually runs: an existing test file over a new one, a shared helper over a repeated snippet, a hook over an instruction the model must remember.
 
-Do not flag one-off work, exploratory debugging, or tasks that genuinely need judgment about intent. Do not flag when the deterministic version already exists — point at it instead. If the offload is small and clearly in scope, just implement it and say so rather than flagging it.
+**Build it, don't flag it, when the work is additive and non-destructive.** A new assertion, a new test, a shared helper, or a stricter check that only adds coverage is not a proposal — it is the work. If there is no compelling argument against it, implement it and report what you built. Flagging is for cases where the mechanism would change existing behavior, delete something, force a design decision, or land well outside the current task's scope. "The user might not want more validation" is not a compelling argument; asking costs them a round-trip to say yes to something already worth doing.
+
+Do not flag one-off work, exploratory debugging, or tasks that genuinely need judgment about intent. Do not flag when the deterministic version already exists — point at it instead.

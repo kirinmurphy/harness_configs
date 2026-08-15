@@ -1,11 +1,28 @@
 {
   "permissions": {
     "allow": [
-      "Read",
-      "Write",
-      "Edit",
+      "Read(//Users/kirinmurphy/projects/**)",
+      "Read(//tmp/**)",
+      "Read(//private/tmp/**)",
+      "Read(//private/var/folders/**)",
+      "Write(//Users/kirinmurphy/projects/**)",
+      "Write(//tmp/**)",
+      "Write(//private/tmp/**)",
+      "Write(//private/var/folders/**)",
+      "Edit(//Users/kirinmurphy/projects/**)",
+      "Edit(//tmp/**)",
+      "Edit(//private/tmp/**)",
+      "Edit(//private/var/folders/**)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
+      "Bash(roborepo agent-run:*)",
+      "Bash(roborepo doctor:*)",
+      "Bash(roborepo telemetry:*)",
+      "Bash(roborepo git:*)",
+      "Bash(roborepo index:*)",
+      "Bash(roborepo localhoster:*)",
+      "Bash(roborepo version:*)",
+      "Bash(roborepo plans:*)",
       "Bash(npm test:*)",
       "Bash(npm run test:*)",
       "Bash(pnpm test:*)",
@@ -17,9 +34,6 @@
       "Bash(./scripts/doctor.sh:*)",
       "Bash(./scripts/verify-install.sh:*)",
       "Bash(./scripts/install/main.sh --dry-run:*)",
-      "Bash(roborepo doctor:*)",
-      "Bash(roborepo verify:*)",
-      "Bash(roborepo update --dry-run:*)",
       "Bash(npm run skills:compile:*)",
       "Bash(npm run skills:validate:*)",
       "Bash(npm install:*)",
@@ -36,12 +50,36 @@
       "Bash(git log:*)"
     ],
     "deny": [
-      "Bash(git push:*)",
-      "Bash(git pull:*)"
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git checkout main:*)",
+      "Bash(git switch main:*)",
+      "Bash(git checkout -B main:*)"
     ],
     "ask": [
       "Bash(rm:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(roborepo update:*)",
+      "Bash(roborepo maintenance:*)",
+      "Bash(roborepo mcp:*)",
+      "Bash(roborepo package:*)",
+      "Bash(roborepo skill:*)",
+      "Bash(roborepo config:*)",
+      "Bash(roborepo harness:*)",
+      "Bash(roborepo apply:*)",
+      "Bash(roborepo permissions:*)",
+      "Bash(roborepo rules:*)",
+      "Bash(roborepo setup:*)",
+      "Bash(roborepo workspace:*)",
+      "Bash(roborepo presets:*)",
+      "Bash(roborepo bundle:*)",
+      "Bash(roborepo experimental:*)",
+      "Bash(roborepo onboard-intro:*)"
     ]
   },
   "hooks": {
@@ -69,6 +107,10 @@
       {
         "matcher": "Write|Edit",
         "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/provider/repo-write-scope.mjs\""
+          },
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/roborepo-write-guard.mjs\""

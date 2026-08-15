@@ -40,7 +40,7 @@ user-authored root config unless the selected collision policy says otherwise. S
 
 Root config export merges the repo baseline with the active local file when a root-config row collides, preserving the local content and cleaning up redundant backup originals after a no-op resolution. The installer does not auto-merge user config for other managed paths, or silently replace non-root conflicts. If another harness file or global command target already exists and is not managed by this repo, install stops before changing files and prints a merge prompt after the blocking action. See [Config Collision Handling](../reference/config-collision-handling.md) for exact behavior.
 
-**The script is safe to re-run** — owned copies and rendered rules are refreshed, and local Claude/Codex settings are merged with the repo baseline instead of replaced. If a past update left recoverable local settings in a backup, `roborepo update` or `roborepo doctor --installed` will point you at `roborepo repair local-config --dry-run`.
+**The script is safe to re-run** — owned copies and rendered rules are refreshed, and local Claude/Codex settings are merged with the repo baseline instead of replaced. If a past update left recoverable local settings in a backup, `roborepo update` or `roborepo doctor --installed` will point you at `roborepo maintenance repair local-config --dry-run`.
 
 If onboarding has not been completed yet, `roborepo` runs that workflow before most normal commands. `--no-presets-onboard` or `ROBOREPO_PRESETS_ONBOARD=skip` bypasses install-time onboarding and the later command gate for automation.
 
@@ -169,8 +169,8 @@ It leaves copied config files and directories alone; use `--on-conflict` only fo
 noninteractive recovery.
 
 If local Claude/Codex settings were damaged by an older update, use
-`roborepo repair local-config --dry-run` to inspect recoverable settings, then
-`roborepo repair local-config --apply` to restore them after repair backups are written.
+`roborepo maintenance repair local-config --dry-run` to inspect recoverable settings, then
+`roborepo maintenance repair local-config --apply` to restore them after repair backups are written.
 
 ### Edit global rules
 

@@ -8,6 +8,15 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { runPackageCommand } from "./package-commands.mjs";
+import { checkAgentRun } from "./agent-run-policy.mjs";
+import { repoRoot } from "./paths.mjs";
+
+// Loaded directly rather than via cli/permissions-render.mjs: that module pulls in
+// root-config-writes.mjs -> paths.mjs's registry half, which would cycle back through the
+// harness registry. agent-run only needs the raw manifest.
+function loadPermissionManifest() {
+  return JSON.parse(fs.readFileSync(path.join(repoRoot, "manifests", "inventory", "agent-permissions.json"), "utf8"));
+}
 
 /** Resolve an optional [path] arg to an absolute path; default = cwd. */
 function resolveTarget(arg) {
@@ -86,6 +95,26 @@ export function runCmd(rest) {
     console.error(`usage: roborepo run <cmd> [args...]`);
     process.exit(2);
   }
+  spawnTrimmed(rest);
+}
+
+// `agent-run` is `run` plus an argv policy check. It exists so a single allowlist entry
+// (`Bash(roborepo agent-run:*)`) can be both stable-prefixed AND safe: plain `run` deliberately
+// stays unrestricted for interactive use and must NOT be allowlisted, since its payload is
+// invisible to Claude's prefix matcher. See scripts/cli/agent-run-policy.mjs for the full
+// rationale and why spawnSync-without-a-shell is what makes the check enforceable.
+export function agentRunCmd(rest) {
+  const verdict = checkAgentRun(rest, loadPermissionManifest());
+  if (!verdict.ok) {
+    console.error(verdict.message);
+    process.exit(2);
+  }
+  spawnTrimmed(rest);
+}
+
+function spawnTrimmed(rest) {
+  // No shell: argv goes straight to execve, so shell metacharacters in arguments are inert.
+  // agent-run's policy check depends on this — do not switch to `shell: true`.
   const r = spawnSync(rest[0], rest.slice(1), { encoding: "utf8" });
   if (r.error) {
     console.error(`fail: ${rest.join(" ")} — ${r.error.message}`);

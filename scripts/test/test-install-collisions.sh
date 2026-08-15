@@ -421,7 +421,7 @@ test_repair_local_config_recovers_backup_only_codex_settings() {
   if HOME="$home_dir" node "$repo_root/scripts/cli/local-config-repair.mjs" --check >"$home_dir/check.out" 2>&1; then
     fail "local-config check detects recoverable Codex settings" "$home_dir/check.out"
   fi
-  assert_file_contains "$home_dir/check.out" "roborepo repair local-config --dry-run" "local-config check recommends exact repair command"
+  assert_file_contains "$home_dir/check.out" "roborepo maintenance repair local-config --dry-run" "local-config check recommends exact repair command"
 
   HOME="$home_dir" node "$repo_root/scripts/cli/local-config-repair.mjs" --dry-run >"$home_dir/dry.out" 2>&1
   assert_file_contains "$home_dir/dry.out" "recover local-only settings" "local-config dry-run reports recovered backup content"

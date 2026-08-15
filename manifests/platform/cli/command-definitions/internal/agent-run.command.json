@@ -1,0 +1,14 @@
+{
+  "path": ["agent-run"],
+  "kind": "command",
+  "title": "Agent run command",
+  "description": "Run an allowlisted command with trimmed output (policy-checked)",
+  "order": 951,
+  "advanced": true,
+  "usage": "roborepo agent-run <cmd> [args...]",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/index.mjs",
+    "export": "agentRunCmd"
+  }
+}

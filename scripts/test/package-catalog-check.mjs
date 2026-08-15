@@ -27,18 +27,119 @@ for (const name of ["index code", "index docs", "watch code"]) {
 }
 
 const slashNames = loadSlashCommandPlan().commands.map((command) => command.name).sort();
-for (const name of ["case-study", "frontend-design", "plan-docs", "tighten", "wrap-up", "plan-promote", "plan-start"]) {
+for (const name of ["case-study", "plan-docs", "tighten", "wrap-up", "plan-promote", "plan-start"]) {
   assert(slashNames.includes(name), `missing slash command: ${name}`);
 }
 
 const snapshot = readConfigSnapshot();
 const sections = new Map(snapshot.behaviorView.map((section) => [section.category, section]));
-assert(sections.has("Token Optimization"), "missing Token Optimization section");
-assert(sections.has("Commands"), "missing Commands section");
-assert(sections.has("Code Conventions"), "missing Code Conventions section");
-assert(sections.has("Chat-Time Output"), "missing Chat-Time Output section");
+
+// Every category in the manifest that owns at least one package must reach the rendered view.
+//
+// Derived from the manifest rather than listed, so adding a category extends the assertion for
+// free. This is a regression guard, not a reproduction: three categories once shipped invisible
+// because portal/config/state.js kept a second hard-coded category->template map
+// (SECTION_TEMPLATE_ID) that a new category had to be added to by hand. Commit 8c82f6e deleted that
+// map and made the portal render from this manifest, so the failure is structurally gone. What this
+// catches is a future reintroduction of per-category wiring anywhere between manifest and view.
+//
+// Categories with no packages are skipped: buildBehaviorView filters empty sections deliberately,
+// so an unused category is absent by design, not by failure.
+const categories = JSON.parse(
+  fs.readFileSync(path.join(import.meta.dirname, "../../manifests/inventory/package-categories.json"), "utf8"),
+).categories;
+const populated = new Set(catalog.map((pkg) => pkg.presentation?.category).filter(Boolean));
+for (const category of categories) {
+  if (!populated.has(category.id)) continue;
+  assert(
+    sections.has(category.label),
+    `category "${category.id}" (${category.label}) has packages but renders no section — `
+      + "every populated manifest category must appear in behaviorView",
+  );
+}
+
+// Non-package sections are appended by buildBehaviorView rather than coming from the manifest, so
+// they need their own assertion — the loop above cannot see them.
+for (const label of ["Permissions", "Local Stores"]) {
+  assert(sections.has(label), `missing ${label} section`);
+}
+
 assert(sections.get("Token Optimization").items.some((item) => item.id === "jcodemunch"), "jcodemunch not visible in Token Optimization");
-assert(sections.get("Commands").items.some((item) => item.label === "/tighten"), "/tighten not visible in Commands");
+assert(sections.get("Skills - Development Life Cycle").items.some((item) => item.id === "tighten"), "tighten not visible in Skills - Development Life Cycle");
+
+// Every item `kind` buildBehaviorView emits must be handled by every consumer that branches on it.
+//
+// The kinds are read off the live view, so a new one is covered the moment it ships — the point is
+// to fail on the kind nobody wired up, which is exactly the case a hard-coded list would miss.
+// Renaming a kind in config.mjs without updating a consumer silently drops those rows from that
+// surface: the CLI printer falls through to its generic package branch and prints a checkbox for
+// something that is not a package, and the portal renders an empty row. Both are quiet failures
+// that look like styling bugs, so they are worth catching here rather than by eye.
+//
+// Consumers are matched by source text rather than executed: printConfigStatus writes to stdout and
+// the portal templates need a DOM, so neither can be called from a plain node check. A string match
+// is coarse, but it is checking a literal that must appear in a branch either way.
+const consumers = [
+  { path: "scripts/cli/config-cli-print.mjs", label: "CLI printer (printConfigStatus)" },
+  { path: "portal/config/templates.js", label: "portal templates (permissionRow/renderSection)" },
+];
+// Kinds whose rows are rendered by a section-level template rather than a per-item branch, so no
+// consumer names them. Keep this list short — an entry here is an assertion deliberately waived.
+const sectionRenderedKinds = new Set(["store"]);
+const emittedKinds = new Set(
+  snapshot.behaviorView
+    .flatMap((section) => section.items || [])
+    .map((item) => item.kind)
+    .filter(Boolean),
+);
+for (const consumer of consumers) {
+  const source = fs.readFileSync(path.join(import.meta.dirname, "../..", consumer.path), "utf8");
+  for (const kind of emittedKinds) {
+    if (sectionRenderedKinds.has(kind)) continue;
+    assert(
+      source.includes(`"${kind}"`),
+      `buildBehaviorView emits item kind "${kind}" but ${consumer.label} never branches on it — `
+        + `those rows render blank or fall through to the wrong branch in ${consumer.path}`,
+    );
+  }
+}
+
+// The Permissions section splits on authorship (customized vs shipped default), not on item kind.
+// customizedCount is the boundary both the portal and the CLI printer read, so it must agree with
+// the items themselves rather than being computed twice and drifting.
+const permissions = sections.get("Permissions");
+assert(
+  permissions.customizedCount === permissions.items.filter((item) => item.overridden).length,
+  "Permissions customizedCount disagrees with the number of overridden items",
+);
+// A delete affordance on a row with no override would revert something the user never set.
+for (const item of permissions.items) {
+  assert(
+    Boolean(item.deletable) === Boolean(item.overridden),
+    `permission "${item.label}" has deletable=${item.deletable} but overridden=${item.overridden} — `
+      + "delete must appear on exactly the customized rows",
+  );
+}
+
+// The defaults list groups by category, so an entry whose category is missing from the taxonomy
+// falls into a catch-all "Other" bucket. That is a safety net, not a destination: every shipped
+// entry should file under a real category, and a new behavior added without one should fail here
+// rather than quietly landing in Other.
+const categoryIds = new Set((permissions.categories || []).map((category) => category.id));
+assert(categoryIds.size > 0, "Permissions section exposes no category taxonomy");
+for (const item of permissions.items) {
+  assert(
+    item.category && categoryIds.has(item.category),
+    `permission "${item.label}" has category=${JSON.stringify(item.category)}, which is not in the `
+      + `manifest taxonomy (${[...categoryIds].join(", ")}) — add a category to its manifest entry`,
+  );
+}
+// Categories arrive pre-sorted so consumers render them in manifest order without re-sorting.
+const orders = (permissions.categories || []).map((category) => category.order ?? 99);
+assert(
+  orders.every((value, i) => i === 0 || orders[i - 1] <= value),
+  "permission categories are not sorted by order — consumers render them as given",
+);
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-package-catalog-"));
 try {

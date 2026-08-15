@@ -345,6 +345,34 @@ function applyOverrides(manifest, overrides) {
   }
 }
 
+// The permission category taxonomy, manifest-ordered. Consumers group the defaults list by this
+// rather than hard-coding headings, so adding a category is a manifest edit and nothing else.
+export function permissionCategories() {
+  try {
+    const manifest = loadPermissionManifest();
+    return [...(manifest.categories ?? [])].sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+  } catch {
+    return [];
+  }
+}
+
+// Which category an arbitrary command belongs to, by longest matching leading-token prefix. A
+// command the rules do not name falls to defaultCategory rather than to an "uncategorized" bucket,
+// so a user-added command always lands somewhere real. Longest-prefix wins so ["git","status"]
+// (observability) beats the broader ["git"] (git) rule regardless of rule order in the manifest.
+function commandCategory(manifest, tokens) {
+  const spec = manifest.commandCategories;
+  if (!spec) return null;
+  let best = null;
+  for (const rule of spec.rules ?? []) {
+    const prefix = rule.prefix ?? [];
+    if (prefix.length > tokens.length) continue;
+    if (!prefix.every((token, i) => token === tokens[i])) continue;
+    if (!best || prefix.length > best.length) best = { length: prefix.length, category: rule.category };
+  }
+  return best?.category ?? spec.defaultCategory ?? null;
+}
+
 // Effective behaviors (manifest defaults + personal overrides layered on top) plus the arbitrary
 // commands (manifest.commands.allow defaults + personal additions/bucket changes), each carrying
 // override status for display. This is the single source both config.mjs's buildBehaviorView
@@ -357,6 +385,7 @@ export function effectivePermissions() {
     ...b,
     overridden: overrides.behaviors[b.id] != null,
     defaultBucket: manifest.behaviors.find((mb) => mb.id === b.id)?.bucket,
+    category: manifest.behaviors.find((mb) => mb.id === b.id)?.category ?? null,
   }));
   const defaultAllowKeys = new Set((manifest.commands?.allow ?? []).map(overrideKeyForCommand));
   const arbitrary = resolveArbitraryCommands(manifest, overrides.commands).map((c) => {
@@ -369,6 +398,7 @@ export function effectivePermissions() {
       bucket: c.bucket,
       overridden: overrides.commands[key] != null,
       defaultBucket: defaultAllowKeys.has(key) ? "allow" : null,
+      category: commandCategory(manifest, c.tokens),
       arbitrary: true,
     };
   });

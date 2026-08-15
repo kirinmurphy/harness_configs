@@ -149,7 +149,7 @@ roborepo run <cmd> [args...]
 
 roborepo update  [--dry-run] [--verbose]
 roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]
-roborepo repair local-config [--dry-run|--apply]
+roborepo maintenance repair local-config [--dry-run|--apply]
 roborepo doctor  [--installed] [--verbose]
 roborepo doctor --installed [--verbose]
 roborepo rules   [--check]
@@ -241,7 +241,7 @@ Lifecycle behavior:
 - `roborepo doctor` validates command resource shape and duplicate ownership inside package
   dependency closures; `roborepo doctor --installed` checks live install links too.
 - `roborepo repair` relinks moved install paths and preserves package command state because the
-  command registry is path-independent runtime state. `roborepo repair local-config --dry-run`
+  command registry is path-independent runtime state. `roborepo maintenance repair local-config --dry-run`
   handles the separate case where local Claude/Codex settings can be safely recovered from backup.
 - `roborepo uninstall` removes `~/.roborepo/enabled-packages.json`, so no package command ownership
   survives uninstall.

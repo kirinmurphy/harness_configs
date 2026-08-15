@@ -5,9 +5,10 @@
 
 export const BALANCE_TOLERANCE = 5; // |used - elapsed| < 5 points is Balanced (5 itself is not)
 
-// Total-used severity. Strict: 70 stays normal, 71 crosses to warning; 85 stays warning, 86 crosses
-// to critical (plan decisions 7-8). Kept as ordered pairs so the boundary is one place to edit.
-export const USAGE_SEVERITY = { warningAbove: 70, criticalAbove: 85 };
+// Total-used severity. Three tiers, inclusive lower bounds: below 30 is normal; 30-49 is caution;
+// 50-59 is warning; 60+ is critical. Each threshold is the first percent that belongs to its tier
+// (e.g. 30 itself is caution, not normal). Kept as one object so each boundary is one place to edit.
+export const USAGE_SEVERITY = { cautionAtLeast: 30, warningAtLeast: 50, criticalAtLeast: 60 };
 
 // Debt (used ahead of elapsed) severity. 5-19 points warning, >=20 critical (plan decision 6).
 export const DEBT_SEVERITY = { warningAtLeast: 5, criticalAtLeast: 20 };
@@ -38,8 +39,9 @@ export function elapsedPercent({ resetsAt, durationMinutes, now }) {
 
 export function usageSeverity(usedPercent) {
   if (!Number.isFinite(usedPercent)) return "unavailable";
-  if (usedPercent > USAGE_SEVERITY.criticalAbove) return "critical";
-  if (usedPercent > USAGE_SEVERITY.warningAbove) return "warning";
+  if (usedPercent >= USAGE_SEVERITY.criticalAtLeast) return "critical";
+  if (usedPercent >= USAGE_SEVERITY.warningAtLeast) return "warning";
+  if (usedPercent >= USAGE_SEVERITY.cautionAtLeast) return "caution";
   return "normal";
 }
 

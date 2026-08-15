@@ -339,6 +339,25 @@ check_harness_registry() {
   fi
 }
 
+# Bounded local stores (telemetry spools, localhoster history, capture logs) must stay under their
+# byte caps. Each store trims itself on write, so an over-cap store means its write path has not run
+# since the data accumulated — visible here rather than only when the disk fills.
+check_store_bounds() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped local store bounds check"
+    return 0
+  fi
+  local output
+  if output="$(node "${repo_root}/scripts/cli/maintenance-stores.mjs" --check 2>&1)"; then
+    ok "local stores within their bounds"
+  else
+    failed=1
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && echo "${line}" >&2
+    done <<< "${output}"
+  fi
+}
+
 check_local_config_repair_candidates() {
   if ! command -v node >/dev/null 2>&1; then
     ok "node unavailable; skipped local config repair check"
@@ -500,6 +519,7 @@ if [[ "${check_installed}" -eq 1 ]]; then
     node "${repo_root}/scripts/cli/rules-render.mjs" --check || failed=1
   fi
   check_local_config_repair_candidates
+  check_store_bounds
   # Base install owns only roborepo-support. Optional skills are checked through their package/toggle
   # state, not as unconditional install payload. Provider iteration (docs/plans/active/
   # discoverable-harness-provider-architecture-plan.md Phase 4) instead of a fixed Claude/Codex pair.

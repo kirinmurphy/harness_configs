@@ -82,11 +82,20 @@ export function renderGeminiPolicyRules(providerManifest, behaviorManifest, over
 
   for (const b of behaviors) {
     if (b.kind === "network") continue;
-    if (b.kind === "tools") {
+    // "tools-gate" is the on/off master for a tool set whose WHERE is expressed by a companion
+    // "tools-scoped" behavior. Gemini's Policy Engine matches on tool name only — it has no path
+    // predicate — so the scoped rules cannot be represented here. Rendering the gate as a plain
+    // whole-tool rule is the correct degradation: Gemini keeps the allow/ask/deny decision and
+    // simply applies it everywhere, rather than losing the gate entirely.
+    if (b.kind === "tools" || b.kind === "tools-gate") {
       const names = geminiToolNames(providerManifest, b.tools ?? []);
       if (names.length > 0) rules.push(renderToolRule(names, b.bucket));
       continue;
     }
+    // Skipped deliberately: a path-scoped allow rendered as an unscoped allow would be strictly
+    // MORE permissive than the manifest says. The governing gate above already carries the
+    // decision, so dropping these loses no restriction.
+    if (b.kind === "tools-scoped") continue;
     if (b.kind !== "commands") continue;
     for (const pattern of b.commands ?? []) rules.push(renderShellCommandRule(pattern, b.bucket));
   }

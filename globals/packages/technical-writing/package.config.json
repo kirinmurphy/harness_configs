@@ -5,8 +5,8 @@
   "description": "General technical writing guidance for reader-facing docs: doc shapes, section-writing guidance, anti-patterns, and a prose review loop",
   "lifecycle": "optional",
   "presentation": {
-    "category": "commands",
-    "order": 100
+    "category": "skills-writing",
+    "order": 20
   },
   "resources": [
     {

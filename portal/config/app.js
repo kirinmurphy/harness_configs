@@ -60,6 +60,7 @@ function renderStandardSection(section, contextCost) {
 
 function renderSection(section, contextCost) {
   if (section.kind === "permissions") return renderPermissionsSection(section);
+  if (section.kind === "stores") return tmpl.storesSection(section);
   return renderStandardSection(section, contextCost);
 }
 

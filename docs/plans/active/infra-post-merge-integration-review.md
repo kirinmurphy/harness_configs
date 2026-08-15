@@ -1,13 +1,13 @@
 ---
 id: 48krno27
 priority: high
-next_action: Verify current main directly, committing any confirmed fixes to main without pushing or running destructive uninstall actions.
+next_action: Publish decision is ready: main is safe to publish after accepting the documented Linux/Windows and real-browser gaps.
 blocked_by: []
 depends_on: []
 related:
   - ia1q1z9
   - permissions-ui-revamp
-reviewed_commit:
+reviewed_commit: fae604c4d3d294c795b3e5d2de83d0776c57bcef
 ---
 
 # Post-Merge Integration Review Before Package Publication
@@ -34,6 +34,8 @@ The review starts from the local main history around these commits:
 | `9711668` | Main merged into the install lifecycle branch |
 | `1d4cb64` | Integration fixes from the install lifecycle merge |
 | `45e31cf` | Local plan synchronization already on main |
+| `83c18ce` | Post-merge fix: generated permissions are deterministic under fake/package homes |
+| `fae604c` | Post-merge fix: `/agents` shows live-detected harnesses when persisted state is stale |
 
 The permissions work touched permission taxonomy, package catalog organization, retention
 stores, capture-dense-bash state, usage statusline thresholds, and shared rules. The install
@@ -73,14 +75,18 @@ purity, and managed uninstall harness confidence.
 - `jcodemunch` is available through the deferred MCP tool surface and resolves this repo as
   `kirinmurphy/roborepo`.
 - A browser-control connector is not currently exposed. Browser smoke will require either an
-  exposed browser connector or an approved local Playwright install/run.
+  exposed browser connector or an approved local Playwright install/run. Browser-equivalent portal
+  API smoke was completed through `roborepo web`; no real uninstall was executed. A follow-up
+  `/api/config` smoke after `fae604c` confirmed the page reports Claude, Codex, and Gemini as
+  machine harnesses on this machine.
 
 Known failures or gaps that must not be misreported as merge regressions:
 
 - `scripts/test/hook-composition-check.mjs` is known pre-existing.
 - `scripts/test/usage-statusline-check.mjs` is known pre-existing renderer/test format drift.
 - `scripts/test/cli-surface-integration-check.mjs` has a known load-sensitive remote-sync flake;
-  rerun it in isolation before calling a failure a regression.
+  rerun it in isolation before calling a failure a regression. It passed in isolation at
+  `83c18ce`.
 - Linux and Windows lifecycle validation remain gaps unless separately exercised.
 
 ## Implementation Plan
@@ -88,31 +94,54 @@ Known failures or gaps that must not be misreported as merge regressions:
 - [x] Confirm `jcodemunch` availability and resolve the repo.
 - [x] Remove the stale Node v16 resolver from the active path.
 - [x] Keep the review on main so confirmed fixes land on the branch being validated.
-- [ ] Commit fixes on main with explicit paths only; do not push.
-- [ ] Stash unrelated dirty files before clean-worktree-sensitive package smoke, then restore
-  them afterward.
-- [ ] Confirm main contains the merged branch commits and inspect the install lifecycle conflict
+- [x] Commit fixes on main with explicit paths only; do not push.
+- [x] Confirm no unrelated dirty files before clean-worktree-sensitive package smoke.
+- [x] Confirm main contains the merged branch commits and inspect the install lifecycle conflict
   resolution in `docs/plans/active/infra-packaging-02-install-lifecycle.md`.
-- [ ] Run the automated suites with Node >=20, including dry-run purity, managed uninstall, and
+- [x] Run the automated suites with Node >=20, including dry-run purity, managed uninstall, and
   package install smoke through `npm run test:package-install`.
-- [ ] Run individual `scripts/test/*.mjs` files not already covered, classifying any failures
+- [x] Run individual `scripts/test/*.mjs` files not already covered, classifying any failures
   as merge regressions, known flakes, or pre-existing failures with evidence from `fa51221`
   where needed.
-- [ ] Fix the `cli-surface-integration-check.mjs` tracked generated-permissions leak and add a
+- [x] Fix the `cli-surface-integration-check.mjs` tracked generated-permissions leak and add a
   `generated/` clean-diff guard.
-- [ ] Review and exercise the permission data flow from `manifests/inventory/agent-permissions.json`
+- [x] Review and exercise the permission data flow from `manifests/inventory/agent-permissions.json`
   through CLI, portal, harness renderers, generated artifacts, and the Claude repo-write-scope
   hook.
-- [ ] Review shared-state integration for `scripts/cli/state-paths.mjs`, managed uninstall
+- [x] Review shared-state integration for `scripts/cli/state-paths.mjs`, managed uninstall
   classification, `modules/retention/*`, localhoster, telemetry spool, package catalog labels,
   capture-dense-bash, usage statusline, and shared rules changes.
 - [x] Check usage-statusline severity thresholds and fix any merge damage where context
   percentage thresholds were accidentally applied to weekly or monthly spend rates.
-- [ ] Browser-smoke `/config` and the Uninstall panel, recording console/network errors and a
-  walkthrough artifact if browser automation is available.
-- [ ] Update stale active and backlog plan docs, including `reviewed_commit` where verified.
-- [ ] Produce the final report with verification commands, regressions, reviewed surfaces, plan
+- [x] Browser-smoke `/config` and the Uninstall panel, recording console/network errors and a
+  walkthrough artifact if browser automation is available. Browser automation was unavailable;
+  `/config`, `/api/config`, and uninstall preview were smoked through the local portal.
+- [x] Update stale active and backlog plan docs, including `reviewed_commit` where verified.
+- [x] Produce the final report with verification commands, regressions, reviewed surfaces, plan
   updates, and work not completed.
+
+## Review Outcome
+
+Current main is publishable from the reviewed commit, with two documented gaps: Linux and Windows
+lifecycle validation were not run, and no real browser automation was available. The portal was
+started through `roborepo web`, `/config` HTML and `/api/config` loaded successfully, and the
+uninstall preview confirmed workspace-preserving behavior without executing cleanup.
+
+The only confirmed regression found during this pass was generated Claude permissions depending on
+the process `$HOME`, which made fake-home and package-installed doctor checks drift from the
+tracked generated fixture. Commit `83c18ce` fixes that by giving generated permission renders a
+stable placeholder home while preserving live render behavior through the explicit render options.
+The CLI surface test now guards the generated permission files against fake-home rewrites.
+
+A second issue was found from the live `/agents` page: persisted harness state could be stale
+`absent`, causing the page to show "No agent harnesses detected" even when bounded live discovery
+could see provider evidence. Commit `fae604c` fixes the config snapshot by combining persisted
+state with live discovery for display only, while preserving explicit user-disabled state.
+
+`scripts/test/usage-statusline-check.mjs` still fails on the known pre-existing text-format drift:
+the test expects `Context: 70% used`, while the renderer emits `Context: 70%`. The domain-level
+usage test passed, and the threshold separation fix is already committed in `45228e4` and
+`256dbc5`.
 
 ## Validation
 

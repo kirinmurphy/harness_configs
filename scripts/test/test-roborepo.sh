@@ -33,6 +33,18 @@ cleanup() {
   fi
   chmod -R u+rwx "${work}" 2>/dev/null || true
   rm -rf "${work}" 2>/dev/null || true
+  # Tests run the real CLI against a temp HOME, but appRoot still points at this checkout, so
+  # anything rendering root config writes to TRACKED files under generated/ — stamping a temp path
+  # into generated/claude/settings.json, which then gets committed by accident. Report it here (in
+  # the trap, so a mid-suite failure still surfaces it) and fail even if every assertion passed.
+  local dirty
+  dirty="$(git -C "${repo_root}" status --porcelain -- generated 2>/dev/null || true)"
+  if [[ -n "${dirty}" ]]; then
+    echo ""
+    echo "FAIL: the suite modified tracked generated/ files; tests must not write into this checkout:"
+    echo "${dirty}"
+    status=1
+  fi
   exit "${status}"
 }
 trap cleanup EXIT

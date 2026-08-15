@@ -144,9 +144,10 @@ export const claudeProvider = defineHarnessProvider({
       locate,
       parse,
     },
-    // 4th param (target path) is Codex-only (used in an error message); Claude's render ignores it.
+    // 4th param (target path) is Codex-only (used in an error message). The optional 5th param lets
+    // the generated build render a deterministic home while live config renders keep using os.homedir().
     permissions: {
-      render: (current, manifest, overrides) => renderClaudeSettings(current, manifest, overrides),
+      render: (current, manifest, overrides, _target, options = {}) => renderClaudeSettings(current, manifest, overrides, options),
     },
   },
 });

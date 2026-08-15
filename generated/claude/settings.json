@@ -1,15 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Read(//Users/kirinmurphy/projects/**)",
+      "Read(//Users/you/projects/**)",
       "Read(//tmp/**)",
       "Read(//private/tmp/**)",
       "Read(//private/var/folders/**)",
-      "Write(//Users/kirinmurphy/projects/**)",
+      "Write(//Users/you/projects/**)",
       "Write(//tmp/**)",
       "Write(//private/tmp/**)",
       "Write(//private/var/folders/**)",
-      "Edit(//Users/kirinmurphy/projects/**)",
+      "Edit(//Users/you/projects/**)",
       "Edit(//tmp/**)",
       "Edit(//private/tmp/**)",
       "Edit(//private/var/folders/**)",

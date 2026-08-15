@@ -12,11 +12,18 @@ import { repoRoot } from "../cli/paths.mjs";
 const cliPath = path.join(repoRoot, "scripts", "cli", "main.mjs");
 const catalog = loadCommandCatalog();
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-cli-surface-"));
+const generatedPermissionFiles = [
+  path.join(repoRoot, "generated", "claude", "settings.json"),
+  path.join(repoRoot, "generated", "codex", "config.toml"),
+  path.join(repoRoot, "generated", "codex", "rules", "default.rules"),
+  path.join(repoRoot, "generated", "gemini", "policies", "roborepo-permissions.toml"),
+];
 
 try {
   const env = {
     ...process.env,
     HOME: path.join(workDir, "home"),
+    ROBOREPO_GENERATED_HOME: generatedHomeForRepo(repoRoot),
     ROBOREPO_STATE_DIR: path.join(workDir, "state"),
     ROBOREPO_SKIP_MCP: "1",
   };
@@ -176,6 +183,7 @@ function assertInteractiveHelpPause({ env }) {
 }
 
 function assertSilentCommandReturnsToMenu({ env }) {
+  const before = readGeneratedPermissionFiles();
   const script = `
     set timeout 10
     spawn -noecho ${process.execPath} ${cliPath}
@@ -199,6 +207,11 @@ function assertSilentCommandReturnsToMenu({ env }) {
   }
 
   assert.equal(result.status, 0, `silent command PTY exit\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  assert.deepEqual(
+    readGeneratedPermissionFiles(),
+    before,
+    "fake HOME menu command should not rewrite tracked generated permission files",
+  );
 }
 
 function assertRemoteSyncMenuFlow({ env }) {
@@ -377,6 +390,16 @@ function markInitialized(stateDir) {
       startedAt: timestamp,
       completedAt: timestamp,
     }, null, 2) + "\n",
+  );
+}
+
+function generatedHomeForRepo(root) {
+  return path.join(path.sep, "Users", "you");
+}
+
+function readGeneratedPermissionFiles() {
+  return Object.fromEntries(
+    generatedPermissionFiles.map((file) => [path.relative(repoRoot, file), fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null]),
   );
 }
 

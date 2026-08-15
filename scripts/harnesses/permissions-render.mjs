@@ -230,9 +230,9 @@ export function claudePermissions(manifest, overrides = {}, { home = os.homedir(
 
 // Merge generated permissions into existing Claude settings, preserving every other key except
 // `model`. Global roborepo settings must not pin Claude's model; leave that to the harness/user.
-export function renderClaudeSettings(current, manifest, overrides = {}) {
+export function renderClaudeSettings(current, manifest, overrides = {}, options = {}) {
   const settings = current.trim() ? JSON.parse(current) : {};
   delete settings.model;
-  settings.permissions = claudePermissions(manifest, overrides);
+  settings.permissions = claudePermissions(manifest, overrides, options);
   return `${JSON.stringify(settings, null, 2)}\n`;
 }

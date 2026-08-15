@@ -15,7 +15,7 @@ process.env.ROBOREPO_STATE_DIR = stateDir;
 
 const pkg = path.join(repoRoot, "globals/packages/usage-statusline/scripts");
 const { adaptClaudeStatusPayload, adaptCodexRateLimitSnapshot } = await import(`${pkg}/usage-adapters.mjs`);
-const { assessBalance, assessUsage, usageSeverity, elapsedPercent } = await import(`${pkg}/usage-domain.mjs`);
+const { assessBalance, assessUsage, rateLimitSeverity, usageSeverity, elapsedPercent } = await import(`${pkg}/usage-domain.mjs`);
 const { renderStatusLine } = await import(`${pkg}/usage-render.mjs`);
 const { writeLatestSnapshot, readLatestSnapshot } = await import(`${pkg}/usage-snapshot-store.mjs`);
 const portalUsage = await import(`${repoRoot}/scripts/cli/portal-usage.mjs`);
@@ -103,7 +103,7 @@ for (const c of fixtures.pacing) {
   assert.equal(balance.state, c.state, `${c.name}: state`);
   if (c.magnitude !== undefined) assert.equal(balance.magnitude, c.magnitude, `${c.name}: magnitude`);
   if (balance.state === "debt") assert.equal(balance.debtSeverity, c.debtSeverity, `${c.name}: debtSeverity`);
-  assert.equal(usageSeverity(c.usedPercent), c.usedSeverity, `${c.name}: usedSeverity`);
+  assert.equal(rateLimitSeverity(c.usedPercent), c.usedSeverity, `${c.name}: rateLimitSeverity`);
   // Full weekly text via the renderer, using a reset time that reproduces the fixture's elapsed%.
   const snap = adaptClaudeStatusPayload({
     rate_limits: { seven_day: { used_percentage: c.usedPercent, resets_at: resetForElapsed(c.elapsedPercent, 10080) } },
@@ -115,28 +115,29 @@ for (const c of fixtures.pacing) {
 for (const c of fixtures.usageSeverity) {
   assert.equal(usageSeverity(c.usedPercent), c.usedSeverity, `usage severity at ${c.usedPercent}`);
 }
+for (const c of fixtures.rateLimitSeverity) {
+  assert.equal(rateLimitSeverity(c.usedPercent), c.usedSeverity, `rate limit severity at ${c.usedPercent}`);
+}
 
 // --- renderer contract ------------------------------------------------------
 {
   // used-only weekly (no reset) and unavailable segments.
   const snap = adaptClaudeStatusPayload({ rate_limits: { seven_day: { used_percentage: 85 } } }, { now });
   const line = renderStatusLine(assessUsage(snap, { now }), { color: false });
-  assert.equal(line, "Context: — · 5h: — · Weekly: 85% used", "used-only + em-dash fallbacks");
+  assert.equal(line, "Context: — · 5h: — · Weekly: 85%", "used-only + em-dash fallbacks");
 }
 {
-  // Independent styling: only "20% debt" and "90% used" colored; elapsed stays white.
+  // Independent styling: weekly used value and debt magnitude are colored separately.
   const snap = adaptClaudeStatusPayload({
     rate_limits: { seven_day: { used_percentage: 90, resets_at: resetForElapsed(70, 10080) } },
   }, { now });
   const colored = renderStatusLine(assessUsage(snap, { now }), { color: true });
   const red = `${ESC}[91m`;
-  const white = `${ESC}[97m`;
   assert.ok(colored.includes(`${red}20% debt${ESC}[0m`), "debt magnitude is red");
-  assert.ok(colored.includes(`${red}90% used${ESC}[0m`), "used value is red");
-  assert.ok(colored.includes(`${white}70% elapsed${ESC}[0m`), "elapsed stays explicit white");
-  // The label text carries no color of its own — it appears verbatim, then the colored debt fragment.
-  assert.ok(colored.includes(`Weekly: ${red}`), "label is plain; color begins only at the debt fragment");
-  assert.equal(stripAnsi(colored), "Context: — · 5h: — · Weekly: 20% debt (90% used / 70% elapsed)");
+  assert.ok(colored.includes(`${red}90%${ESC}[0m`), "used value is red");
+  // The label text carries no color of its own — it appears verbatim, then the colored used fragment.
+  assert.ok(colored.includes(`Weekly: ${red}`), "label is plain; color begins only at the used fragment");
+  assert.equal(stripAnsi(colored), "Context: — · 5h: — · Weekly: 90% (20% debt)");
   assert.equal(colored.split("\n").length, 1, "output is a single line");
 }
 {
@@ -181,7 +182,7 @@ for (const c of fixtures.usageSeverity) {
   const res = portalUsage.buildUsageResponse({ now: now + 1000 });
   assert.equal(res.schema, 1);
   assert.equal(res.harnesses.claude.available, true, "claude snapshot surfaces");
-  assert.equal(res.harnesses.claude.usage.context.severity, "normal");
+  assert.equal(res.harnesses.claude.usage.context.severity, "caution");
   assert.equal(res.harnesses.claude.usage.weekly.balance.state, "debt", "used 70 ahead of elapsed 60 is debt");
   assert.ok(!JSON.stringify(res).includes("source"), "diagnostics source block never escapes to API");
   assert.ok(!JSON.stringify(res).includes(os.homedir()), "no home paths leak");

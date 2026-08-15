@@ -29,9 +29,9 @@ function usedFragment(usedPercent, usedSeverity) {
   return { text: `${usedPercent}%`, tone: severityTone(usedSeverity) };
 }
 
-// Weekly fragments. With elapsed known we emit the pacing form (debt/surplus/balanced) plus the
-// used/elapsed detail; elapsed is always normalPercent white regardless of used severity. Without
-// elapsed we fall back to the compact used-only form. Neither available -> em dash.
+// Weekly fragments. With elapsed known we emit used percent plus compact pacing
+// (debt/surplus/balanced). Without elapsed we fall back to the compact used-only form.
+// Neither available -> em dash.
 function weeklyFragments(weekly) {
   if (!weekly.available) return [{ text: "Weekly: —", tone: "unavailable" }];
   if (weekly.elapsedPercent === undefined) {

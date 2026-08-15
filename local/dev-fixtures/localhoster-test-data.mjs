@@ -20,7 +20,10 @@
 // tree that may have been edited, and deleting one to turn a fixture off is a destructive default.
 // Removal is deliberate and manual; the path is printed so it is easy to do by hand.
 //
-// Usage (from the dev checkout):
+// Usage (from the dev checkout) — prefer the CLI, which is the same script underneath:
+//   roborepo dev fixture start|stop|status   (or `roborepo dev start` for fixture + portal)
+//
+// Direct invocation still works and is what the CLI shells out to:
 //   node local/dev-fixtures/localhoster-test-data.mjs start
 //   node local/dev-fixtures/localhoster-test-data.mjs stop
 //   node local/dev-fixtures/localhoster-test-data.mjs status

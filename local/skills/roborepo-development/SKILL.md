@@ -118,6 +118,39 @@ Everything else (the two symlink levels, the layer table) lives in
   Global scope: `~/.codex/skills/<name>` (Codex) and `~/.claude/skills/<name>` (Claude) — roborepo
   links per-skill symlinks at install time (`link_global_skills` in install-lib.sh). Symlinked skill
   folders are followed. No `.agents/skills` anywhere.
+- **`internal` is VISIBILITY, not availability.** Two different axes get conflated constantly:
+
+  | Axis | Mechanism | Means |
+  |------|-----------|-------|
+  | Visibility | `kind: "internal"` on a command definition | Hidden from menus and scoped help; **still runs fine on end-user machines** |
+  | Availability | Script under `local/` + `requiresDevelopmentCheckout` | Absent from npm installs; dev checkout only |
+
+  `internal` does NOT mean "not for users" — `setup`, `bundle`, `onboard-intro`, and `presets` are
+  all `internal` *because* they are machine-invoked install-time commands that must run on every
+  end-user machine. It means "not something a human browses to."
+
+  For dev-checkout-only behavior use `local/` plus the gate. `package.json`'s `files` never
+  publishes `local/`, but it DOES publish `manifests/` — so the command definition reaches an npm
+  user even when the script it points at does not. Without `requireDevelopmentCheckout()`
+  (`cli/roots.mjs`) that surfaces as a bare `missing script:` path error instead of an explanation.
+  Belt and suspenders: the script is absent AND the gate fires.
+- **The `dev` namespace** (`manifests/platform/cli/command-definitions/dev/`, `cli/dev.mjs`) holds
+  development-checkout-only tooling. `dev start`/`dev stop`/`dev status` orchestrate by calling the
+  same commands a human would (the fixture script, `web`/`web stop`) so there is one authoritative
+  code path per service — do not give the orchestrator its own copy of that logic, and do not add
+  thin per-service wrappers that only re-expose what a root command already does. The namespace
+  carries `advanced: true` to stay out of the root menu; its children deliberately do not, because
+  `includeAdvanced: false` in `help-renderer.mjs` would hide them from `roborepo help dev` too.
+- **`web --detach` cold starts are slow.** The portal warms telemetry/localhoster views before it
+  binds — measured ~29s on a normal dev checkout. `waitForPortalReady` allows 60s for that; do not
+  "tidy" it back down to a few seconds or every cold detached start fails while the child goes on
+  to bind moments later.
+- **Resolve before killing when starting a portal.** Both `serveCommand`'s foreground path and
+  `startDetachedPortal` call `resolvePortalPort` FIRST and only `killExistingServer` after the reuse
+  branch has declined. The detached path used to kill first, which made its reuse branch dead code:
+  every `web --detach` SIGTERMed a healthy portal and respawned it. `resolvePortalPort` already
+  covers what the early kill was for — it restarts a STALE portal (one running code that changed
+  since it started) and waits for the port to free. Keep the two paths in the same order.
 
 ## The `roborepo` CLI (the single consumer front door)
 
@@ -151,6 +184,9 @@ Subcommands, grouped by category:
   `enable`/`disable` already apply live immediately — no `roborepo update` needed afterward.
 - `setup` / `apply` / `workspace` / `version` — package-mode setup and root inspection tools.
 - `web` / `telemetry ...` — local portal and telemetry capture/reporting.
+- `dev start|stop|status`, `dev fixture start|stop|status` (`cli/dev.mjs`) — development-checkout-only
+  tooling, gated by `requireDevelopmentCheckout()`. See the `dev` namespace note above before adding
+  to it.
 - `update`/`repair`/`uninstall`/`doctor`/`rules`/`permissions` — lifecycle verbs that
   dispatch to the existing scripts. `update` re-runs `scripts/install/main.sh`; in package mode it
   aliases to `apply`.

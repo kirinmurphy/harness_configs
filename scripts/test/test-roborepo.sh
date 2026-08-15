@@ -373,6 +373,10 @@ mkdir -p \
   "${new_harness}/globals/harnesses" \
   "${new_harness}/local/skills"
 cp -R "${repo_root}/scripts/cli/." "${new_harness}/scripts/cli/"
+# modules/ travels with scripts/cli/: maintenance-stores.mjs imports modules/localhoster/settings.mjs
+# and modules/retention/, so a fixture without it dies at import time before any assertion runs.
+mkdir -p "${new_harness}/modules"
+cp -R "${repo_root}/modules/." "${new_harness}/modules/"
 # See the mcp_harness copy below for why scripts/harnesses/ and globals/harnesses/ must travel
 # with scripts/cli/ now that paths.mjs (Phase 3) derives harness paths from the provider registry.
 cp -R "${repo_root}/scripts/harnesses/." "${new_harness}/scripts/harnesses/"
@@ -776,6 +780,13 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/portal/status' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.appRoot==='${repo_root}'&&String(j.portalDir).endsWith('/portal')&&Number.isInteger(j.pid)&&j.pages.some(p=>p.id==='localhoster'&&p.path==='/localhoster')?0:1)})\""
   assert "config: web reuses an existing current portal" \
     bash -c "${cfg_env} node '${cli}' web --no-open --port '${cfg_port}' >'${cfg_home}/portal-reuse.log' 2>&1 && grep -q 'already running' '${cfg_home}/portal-reuse.log'"
+  # `web --detach` must ADOPT a healthy portal, not replace it. startDetachedPortal used to call
+  # killExistingServer BEFORE its reuse check, which made that branch dead code: every detached
+  # start SIGTERMed a working server and respawned it (~30s, and it left you with none if the
+  # respawn failed). Asserting the PID is unchanged is what catches a regression to kill-first —
+  # a plain "does it serve afterwards" check passes either way, which is why the bug went unseen.
+  assert "config: web --detach adopts a healthy portal instead of restarting it" \
+    bash -c "${cfg_env} node '${cli}' web --detach --no-open --port '${cfg_port}' >'${cfg_home}/portal-detach.log' 2>&1 && test \"\$(curl -s 'http://127.0.0.1:${cfg_port}/api/portal/status' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{process.stdout.write(String(JSON.parse(s).pid))})\")\" = '${cfg_srv}'"
   cfg_token="$(curl -s "http://127.0.0.1:${cfg_port}/config" | sed -n 's/.*name="roborepo-portal-token" content="\([^"]*\)".*/\1/p' | head -1)"
   assert "config: portal exposes mutation token only in served HTML" \
     bash -c "test -n '${cfg_token}'"
@@ -1117,6 +1128,9 @@ mcp_home="${work}/mcp-home"
 mkdir -p "${mcp_harness}/scripts/cli" "${mcp_harness}/scripts/harnesses" "${mcp_harness}/generated/codex" "${mcp_harness}/generated/claude" "${mcp_harness}/globals/harnesses" "${mcp_harness}/manifests/inventory" "${mcp_harness}/manifests/platform"
 mkdir -p "${mcp_home}/.codex" "${mcp_home}/.claude"
 cp -R "${repo_root}/scripts/cli/." "${mcp_harness}/scripts/cli/"
+# Same reason as new-harness above: scripts/cli/ imports modules/, so it has to travel along.
+mkdir -p "${mcp_harness}/modules"
+cp -R "${repo_root}/modules/." "${mcp_harness}/modules/"
 cp -R "${repo_root}/scripts/harnesses/." "${mcp_harness}/scripts/harnesses/"
 cp -R "${repo_root}/globals/harnesses/." "${mcp_harness}/globals/harnesses/"
 cp "${repo_root}/manifests/inventory/mcp-presets.json" "${mcp_harness}/manifests/inventory/mcp-presets.json"

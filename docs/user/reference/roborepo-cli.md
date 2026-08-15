@@ -69,7 +69,8 @@ Package development is a maintainer workflow; package users usually only need `p
 | | |
 | --- | --- |
 | `roborepo web` | Starts the local portal. `/config` manages packages/permissions, `/plans` browses plan docs, `/localhoster` lists local web apps, and `/telemetry` shows token usage when telemetry has data. |
-| `roborepo web` | Starts the same portal detached and opens it in the browser. |
+| `roborepo web --detach [--no-open] [--port <n>]` | Starts the same portal detached and opens it in the browser. A cold start warms its views before binding and can take ~30s. |
+| `roborepo web stop [--port <n>]` | Stops the detached portal. PID files are tracked per port, so pass the same `--port` used to start it. |
 | `roborepo localhoster [--json] [--open]` | Lists active localhost HTTP apps, prints the portal snapshot as JSON, or opens `/localhoster`. |
 
 The `/plans` page scans configured roots for `docs/plans/**/*.md`. See
@@ -78,6 +79,10 @@ The `/plans` page scans configured roots for `docs/plans/**/*.md`. See
 
 The `/localhoster` page discovers local HTTP apps on macOS, keeps machine-local saved links under
 the RoboRepo state root, and reports per-provider capability limits. See [Localhoster](localhoster.md).
+
+> `roborepo dev …` exists only in a Git checkout of roborepo itself; the scripts it drives are not
+> published to npm, so an installed copy reports that it requires a development checkout. Nothing
+> in this reference depends on it.
 
 ## Indexing
 

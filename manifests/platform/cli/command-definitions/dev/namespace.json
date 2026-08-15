@@ -1,0 +1,13 @@
+{
+  "path": ["dev"],
+  "kind": "namespace",
+  "title": "Development",
+  "description": "Development-checkout-only tooling (unavailable in npm installs)",
+  "advanced": true,
+  "order": 900,
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/dev.mjs",
+    "export": "devCommand"
+  }
+}

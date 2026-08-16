@@ -3,9 +3,23 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// Claude's implementation of the platform's `repo-scope` behavior. Fires on Write/Edit: writes
-// inside the repository the session is working in proceed, writes outside it get the bucket the
-// manifest assigns to `repo-write-boundary`.
+// Claude's implementation of the platform's `repo-scope` behavior. Fires on Read/Write/Edit.
+//
+// The zone differs by operation, deliberately:
+//
+//   WRITES  are bounded to the checkout in use. A worktree is its own boundary; writing from a
+//           worktree into its primary checkout prompts. That is how one session clobbers another's
+//           in-flight work, and it is rare — isolation is the reason to branch in the first place.
+//   READS   span the whole repository family: a worktree, its primary checkout, and its siblings.
+//           Reading main to compare against a branch is routine and harmless, and prompting for it
+//           would train approval reflex on an operation that never needed review.
+//
+// Anything outside gets the bucket the manifest assigns to `repo-write-boundary`.
+//
+// Reads are NOT unrestricted outside the family. An enumerated denylist (`read-secrets`) covers
+// known credential material, but it cannot cover what it does not name — a tax document, a client
+// repository under NDA. The perimeter is what handles unknown-sensitive files, which is why the
+// denylist does not replace it.
 //
 // OWNERSHIP: the platform states the intent (manifests/inventory/agent-permissions.json declares
 // the behavior, its label, and its bucket); this file is how Claude specifically enforces it. Codex
@@ -99,6 +113,32 @@ const alwaysAllowed = [
 
 const contains = (dir, target) => target === dir || target.startsWith(dir + path.sep)
 
+// Containment is a string comparison, so both sides have to describe a path the same way. They do
+// not by default: on macOS `os.tmpdir()` yields `/var/folders/...` while git records the resolved
+// `/private/var/folders/...` in its worktree pointer files, and `/var` is a symlink to `/private/var`.
+// The same mismatch appears wherever a checkout sits under a symlinked parent.
+//
+// Resolving both sides removes the discrepancy. A path that cannot be resolved (it does not exist
+// yet — the common case for a Write creating a new file) falls back to the lexical form, which is
+// what the walk already produced.
+function realpath(p) {
+  // Walk up to the nearest ancestor that exists, resolve that, then re-append the segments that do
+  // not exist yet. A Write commonly targets a file — and sometimes whole directories — that are not
+  // on disk, so resolving only the immediate parent is not enough.
+  let dir = p
+  const trailing = []
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync(dir), ...trailing)
+    } catch {
+      const up = path.dirname(dir)
+      if (up === dir) return p // reached the filesystem root without resolving anything
+      trailing.unshift(path.basename(dir))
+      dir = up
+    }
+  }
+}
+
 function repositoryRoot(start) {
   let dir
   try {
@@ -108,15 +148,82 @@ function repositoryRoot(start) {
   }
   for (;;) {
     // `.git` is a directory in a normal checkout and a file in a linked worktree; either marks a
-    // root, so no stat-type check is wanted here.
-    if (fs.existsSync(path.join(dir, '.git'))) return dir
+    // root, so no stat-type check is wanted here. The root is resolved before being returned so it
+    // compares correctly against a resolved target — see realpath() above.
+    if (fs.existsSync(path.join(dir, '.git'))) return realpath(dir)
     const up = path.dirname(dir)
     if (up === dir) return null
     dir = up
   }
 }
 
-const target = path.resolve(filePath)
+// The primary checkout behind a root, or null when the root IS the primary checkout.
+//
+// In a linked worktree `.git` is a FILE reading `gitdir: <path>/.git/worktrees/<name>`. The
+// `commondir` file beside that gitdir points back at the primary `.git` (normally `../..`), whose
+// parent is the primary checkout. Both are plain file reads — no `git` spawn, keeping this on the
+// same cheap footing as the root walk above.
+//
+// Returns null on anything unexpected. A read that cannot resolve a family simply falls back to the
+// worktree-only boundary, which is the safe direction: it prompts more, never less.
+function primaryCheckout(root) {
+  let pointer
+  try {
+    const dotGit = path.join(root, '.git')
+    if (!fs.statSync(dotGit).isFile()) return null // a normal checkout is already primary
+    pointer = fs.readFileSync(dotGit, 'utf8').trim()
+  } catch {
+    return null
+  }
+
+  const match = /^gitdir:\s*(.+)$/.exec(pointer)
+  if (!match) return null
+  const gitDir = path.resolve(root, match[1].trim())
+
+  try {
+    const commonRaw = fs.readFileSync(path.join(gitDir, 'commondir'), 'utf8').trim()
+    if (!commonRaw) return null
+    // commondir is normally relative to the worktree's gitdir; tolerate an absolute value too.
+    const commonDir = path.resolve(gitDir, commonRaw)
+    const primary = realpath(path.dirname(commonDir))
+    return primary && primary !== root ? primary : null
+  } catch {
+    return null
+  }
+}
+
+// Every checkout that counts as "the same project" for a READ: the current root, its primary
+// checkout, and every sibling worktree registered under that primary.
+function repositoryFamily(root) {
+  const family = [root]
+  // From a linked worktree, the primary is behind the `.git` pointer. From the primary itself
+  // there is no pointer to follow — it IS the primary, and its own worktrees are enumerated below.
+  const primary = primaryCheckout(root) ?? root
+  if (primary !== root) family.push(primary)
+
+  // Worktrees are listed under the primary's .git/worktrees/<name>/gitdir, each naming that
+  // worktree's own `.git` file. This is what makes the relation symmetric: a worktree reaches its
+  // primary through the pointer, and the primary reaches every worktree through this directory.
+  // Missing or unreadable entries are skipped rather than fatal.
+  try {
+    const worktreesDir = path.join(primary, '.git', 'worktrees')
+    for (const name of fs.readdirSync(worktreesDir)) {
+      try {
+        const gitdirFile = fs.readFileSync(path.join(worktreesDir, name, 'gitdir'), 'utf8').trim()
+        if (!gitdirFile) continue
+        const sibling = realpath(path.dirname(path.resolve(gitdirFile)))
+        if (sibling && !family.includes(sibling)) family.push(sibling)
+      } catch {
+        continue
+      }
+    }
+  } catch {
+    // No worktrees directory, or unreadable: the family is just root plus primary.
+  }
+  return family
+}
+
+const target = realpath(path.resolve(filePath))
 
 // cwd is the session's working directory, which may be a subdirectory of the checkout.
 const root = repositoryRoot(input.cwd || process.cwd())
@@ -125,13 +232,22 @@ const root = repositoryRoot(input.cwd || process.cwd())
 // scratch path — cloning into /tmp to test something is normal — and when it does, the repository
 // boundary is still the boundary that matters. Testing scratch first would hand back "allowed" for
 // every path in that clone, including writes into a sibling clone beside it.
-if (root && contains(root, target)) {
+// Reads see the whole repository family; writes see only the checkout in use. `tool_name` is absent
+// on malformed input, in which case the narrower write zone applies — the safe default.
+const isRead = input.tool_name === 'Read'
+const zone = root ? (isRead ? repositoryFamily(root) : [root]) : []
+
+const inZone = zone.find(dir => contains(dir, target))
+if (inZone) {
   process.stdout.write(
     JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         permissionDecision: 'allow',
-        permissionDecisionReason: 'Inside the current repository.',
+        permissionDecisionReason:
+          inZone === root
+            ? 'Inside the current repository.'
+            : `Inside the same repository family (${inZone}).`,
       },
     }),
   )
@@ -162,8 +278,9 @@ process.stdout.write(
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: bucket,
-      permissionDecisionReason:
-        `This path is outside the repository you are working in (${root}). Writing here affects files that are not part of this checkout.`,
+      permissionDecisionReason: isRead
+        ? `This path is outside the repository family you are working in (${root}). Reading here reaches files that are not part of this project.`
+        : `This path is outside the repository you are working in (${root}). Writing here affects files that are not part of this checkout.`,
     },
   }),
 )

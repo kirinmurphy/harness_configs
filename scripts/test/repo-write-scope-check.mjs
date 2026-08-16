@@ -35,9 +35,9 @@ fs.mkdirSync(path.join(repoA, ".git"), { recursive: true });
 fs.mkdirSync(path.join(repoB, ".git"), { recursive: true });
 fs.writeFileSync(path.join(worktree, ".git"), `gitdir: ${path.join(repoA, ".git/worktrees/wt")}\n`);
 
-function decide(cwd, filePath, env = {}) {
+function decide(cwd, filePath, env = {}, toolName = "Write") {
   const result = spawnSync(process.execPath, [hook], {
-    input: JSON.stringify({ cwd, tool_input: { file_path: filePath } }),
+    input: JSON.stringify({ cwd, tool_name: toolName, tool_input: { file_path: filePath } }),
     encoding: "utf8",
     env: { ...process.env, ...env },
   });
@@ -45,6 +45,31 @@ function decide(cwd, filePath, env = {}) {
   if (!result.stdout.trim()) return "defer";
   return JSON.parse(result.stdout).hookSpecificOutput.permissionDecision;
 }
+
+// A REAL git repository with a REAL linked worktree, built with git itself. The family resolution
+// reads `.git`, `commondir`, and `.git/worktrees/*/gitdir` directly rather than spawning git, so
+// the fixture has to be genuine — hand-written pointer files would test the parser against this
+// test's own assumptions about the format instead of against git's actual output.
+const git = (cwd, ...args) => {
+  const r = spawnSync("git", args, { cwd, encoding: "utf8" });
+  assert.equal(r.status, 0, `git ${args.join(" ")} failed: ${r.stderr}`);
+  return r.stdout.trim();
+};
+
+const realRepo = path.join(tmp, "real-repo");
+fs.mkdirSync(realRepo, { recursive: true });
+git(realRepo, "init", "-q", "-b", "main");
+git(realRepo, "config", "user.email", "test@example.com");
+git(realRepo, "config", "user.name", "Test");
+fs.writeFileSync(path.join(realRepo, "README.md"), "x\n");
+git(realRepo, "add", "README.md");
+git(realRepo, "commit", "-qm", "init");
+
+const realWorktree = path.join(tmp, "real-worktree");
+git(realRepo, "worktree", "add", "-q", "-b", "feature", realWorktree);
+
+const secondWorktree = path.join(tmp, "second-worktree");
+git(realRepo, "worktree", "add", "-q", "-b", "other", secondWorktree);
 
 const cases = [
   // [name, cwd, target, expected]
@@ -67,11 +92,46 @@ const cases = [
   ["session not in any repository", os.homedir(), path.join(os.homedir(), "notes.md"), "defer"],
 ];
 
+// Reads span the repository FAMILY; writes stay bounded to the checkout in use. This asymmetry is
+// the point of the feature: reading main from a worktree to compare against a branch is routine,
+// while writing into main from a worktree is how one session clobbers another's in-flight work.
+const familyCases = [
+  // [name, cwd, target, tool, expected]
+  ["read: worktree reading its primary checkout", realWorktree, path.join(realRepo, "README.md"), "Read", "allow"],
+  ["read: worktree reading a sibling worktree", realWorktree, path.join(secondWorktree, "README.md"), "Read", "allow"],
+  ["read: primary reading one of its worktrees", realRepo, path.join(realWorktree, "README.md"), "Read", "allow"],
+  ["read: inside the worktree itself", realWorktree, path.join(realWorktree, "a.md"), "Read", "allow"],
+  // The family is one project, not "any repository": an unrelated checkout is still outside.
+  ["read: unrelated repository", realWorktree, path.join(repoB, "index.js"), "Read", "ask"],
+  // Writes are unchanged by the family logic.
+  ["write: worktree writing its primary checkout", realWorktree, path.join(realRepo, "README.md"), "Write", "ask"],
+  ["write: worktree writing a sibling worktree", realWorktree, path.join(secondWorktree, "x.md"), "Write", "ask"],
+  ["write: inside the worktree itself", realWorktree, path.join(realWorktree, "a.md"), "Write", "allow"],
+  ["edit: worktree editing its primary checkout", realWorktree, path.join(realRepo, "README.md"), "Edit", "ask"],
+];
+
 try {
   for (const [name, cwd, target, expected] of cases) {
     const actual = decide(cwd, target);
     assert.equal(actual, expected, `${name}: expected ${expected}, got ${actual}`);
   }
+
+  for (const [name, cwd, target, tool, expected] of familyCases) {
+    const actual = decide(cwd, target, {}, tool);
+    assert.equal(actual, expected, `${name}: expected ${expected}, got ${actual}`);
+  }
+
+  // An absent tool_name must fall back to the narrower WRITE zone. Widening on missing input would
+  // hand out family-scoped access on exactly the malformed payloads the hook cannot interpret.
+  const noToolName = spawnSync(process.execPath, [hook], {
+    input: JSON.stringify({ cwd: realWorktree, tool_input: { file_path: path.join(realRepo, "README.md") } }),
+    encoding: "utf8",
+  });
+  assert.equal(
+    JSON.parse(noToolName.stdout).hookSpecificOutput.permissionDecision,
+    "ask",
+    "missing tool_name must use the write boundary, not the wider read family",
+  );
 
   // The platform/provider seam: the outside-the-repo decision belongs to the manifest behavior
   // `repo-write-boundary`, layered with personal overrides, and this hook only enforces whatever it

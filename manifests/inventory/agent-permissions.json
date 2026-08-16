@@ -28,13 +28,12 @@
     {
       "id": "read-scope",
       "label": "Read scope",
-      "description": "Where files may be read without prompting: the projects tree and temp dirs. Paths outside these prompt.",
+      "description": "Where files may be read without prompting: agent scratch directories, which are correct to read whichever repository is in use. Reads inside the current repository are covered by the repository boundary; paths outside both prompt.",
       "kind": "tools-scoped",
       "tools": [
         "Read"
       ],
       "paths": [
-        "~/projects/**",
         "/tmp/**",
         "/private/tmp/**",
         "/private/var/folders/**"
@@ -45,14 +44,13 @@
     {
       "id": "write-scope",
       "label": "Write scope",
-      "description": "Where files may be written without prompting: the projects tree, plus the temp dirs agent scratch work lands in. Paths outside these prompt.",
+      "description": "Where files may be written without prompting regardless of which repository is in use: the temp dirs agent scratch work lands in. Writes inside the current repository are decided by the repository boundary, not by this list, so no personal directory layout belongs here.",
       "kind": "tools-scoped",
       "tools": [
         "Write",
         "Edit"
       ],
       "paths": [
-        "~/projects/**",
         "/tmp/**",
         "/private/tmp/**",
         "/private/var/folders/**"
@@ -61,11 +59,40 @@
       "category": "files"
     },
     {
+      "id": "read-secrets",
+      "label": "Read credential files",
+      "description": "Credential material that is never correct for an agent to read, denied everywhere including inside the current repository. This is the one layer the repository boundary cannot provide: a .env inside your checkout is in-bounds for repo-write-boundary, so only a deny rule stops it. Claude ranks deny above every allow, so these out-rank both the scope allows and the boundary hook. Deny is not a prompt — there is no in-session override; carve out a path here rather than working around it. The .env variants are enumerated rather than globbed as .env.* so that .env.example and .env.sample stay readable: they are committed template files carrying placeholder values, and are often the fastest way to learn what a project expects. Claude permission rules have no negation, so a readable exception must be expressed as a narrower deny, not an allow that would be out-ranked. A new secret-bearing variant therefore needs adding here explicitly.",
+      "kind": "tools-scoped",
+      "tools": [
+        "Read"
+      ],
+      "paths": [
+        "~/.ssh/**",
+        "~/.aws/**",
+        "~/.gnupg/**",
+        "~/.config/gcloud/**",
+        "~/Library/Keychains/**",
+        "//**/.env",
+        "//**/.env.local",
+        "//**/.env.*.local",
+        "//**/.env.development",
+        "//**/.env.production",
+        "//**/.env.staging",
+        "//**/.env.test",
+        "//**/*.pem",
+        "//**/id_rsa",
+        "//**/id_ed25519"
+      ],
+      "bucket": "deny",
+      "category": "files"
+    },
+    {
       "id": "repo-write-boundary",
-      "label": "Write outside the repo",
-      "description": "Writes inside the repository you are working in proceed; writes outside it follow this setting. Enforced at tool-call time, so the boundary is the current checkout rather than a fixed directory.",
+      "label": "Repository boundary",
+      "description": "Writes inside the repository you are working in proceed; writes outside it follow this setting. Reads are wider: the whole repository family (a worktree, its primary checkout, and its sibling worktrees) is readable, because comparing a branch against main is routine while writing across checkouts is how one session clobbers another's work. Enforced at tool-call time, so the boundary is the current checkout rather than a fixed directory. Claude enforces this with a PreToolUse hook; Codex with sandbox_mode workspace-write, which bounds writes to its workspace but does not restrict reads.",
       "kind": "repo-scope",
       "tools": [
+        "Read",
         "Write",
         "Edit"
       ],

@@ -1,15 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Read(//Users/kirinmurphy/projects/**)",
       "Read(//tmp/**)",
       "Read(//private/tmp/**)",
       "Read(//private/var/folders/**)",
-      "Write(//Users/kirinmurphy/projects/**)",
       "Write(//tmp/**)",
       "Write(//private/tmp/**)",
       "Write(//private/var/folders/**)",
-      "Edit(//Users/kirinmurphy/projects/**)",
       "Edit(//tmp/**)",
       "Edit(//private/tmp/**)",
       "Edit(//private/var/folders/**)",
@@ -50,6 +47,21 @@
       "Bash(git log:*)"
     ],
     "deny": [
+      "Read(//Users/kirinmurphy/.ssh/**)",
+      "Read(//Users/kirinmurphy/.aws/**)",
+      "Read(//Users/kirinmurphy/.gnupg/**)",
+      "Read(//Users/kirinmurphy/.config/gcloud/**)",
+      "Read(//Users/kirinmurphy/Library/Keychains/**)",
+      "Read(//**/.env)",
+      "Read(//**/.env.local)",
+      "Read(//**/.env.*.local)",
+      "Read(//**/.env.development)",
+      "Read(//**/.env.production)",
+      "Read(//**/.env.staging)",
+      "Read(//**/.env.test)",
+      "Read(//**/*.pem)",
+      "Read(//**/id_rsa)",
+      "Read(//**/id_ed25519)",
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git push --force-with-lease:*)",
@@ -105,12 +117,17 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Read|Write|Edit",
         "hooks": [
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/provider/repo-write-scope.mjs\""
-          },
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/roborepo-write-guard.mjs\""

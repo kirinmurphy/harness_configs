@@ -121,7 +121,7 @@ function packageTemplate(opts) {
     label: titleize(opts.id),
     description: opts.description,
     lifecycle: "optional",
-    presentation: { category: opts.kind.includes("command") ? "commands" : "code-conventions", order: 100 },
+    presentation: { category: opts.kind.includes("command") ? "skills-dev-lifecycle" : "code-conventions", order: 100 },
     resources: [],
   };
   if (opts.defaultEnabled) base.defaultEnabled = true;

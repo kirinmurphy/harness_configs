@@ -38,7 +38,7 @@ fs.writeFileSync(path.join(fixturePkgDir, "package.config.json"), JSON.stringify
   label: "Hook Composition Fixture",
   description: "Throwaway package proving cross-harness hook composition round-trips.",
   lifecycle: "optional",
-  presentation: { category: "commands", order: 100 },
+  presentation: { category: "integrations", order: 100 },
   resources: [
     { type: "hooks", harness: "claude", source: "hooks-claude.json" },
     { type: "hooks", harness: "codex", source: "hooks-codex.json" },

@@ -21,6 +21,7 @@ export function mergeHooksMap(hooksMap, hooksFragment) {
   const hooks = { ...hooksMap };
   let added = 0;
   for (const [event, entries] of Object.entries(hooksFragment)) {
+    if (event.startsWith("_") || !Array.isArray(entries)) continue;
     const existing = [...(hooks[event] || [])];
     // Prepend (not append): a package's own hooks may need to run before pre-existing entries for
     // the same event/matcher (e.g. a deny-decision hook must execute before an allow-decision one —
@@ -40,6 +41,7 @@ export function unmergeHooksMap(hooksMap, hooksFragment) {
   const hooks = { ...hooksMap };
   let removed = 0;
   for (const [event, entries] of Object.entries(hooksFragment)) {
+    if (event.startsWith("_") || !Array.isArray(entries)) continue;
     const cmds = new Set(entries.map((e) => e.hooks?.[0]?.command).filter(Boolean));
     const existing = hooks[event] || [];
     const next = existing.filter((e) => {

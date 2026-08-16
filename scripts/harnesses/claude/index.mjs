@@ -14,6 +14,7 @@ import { defineHarnessProvider } from "../contract.mjs";
 import { detectHarnessProvider } from "../discovery.mjs";
 import { stubAdapterGroups } from "../stub-adapter.mjs";
 import { mergeRootConfigHooks, unmergeRootConfigHooks } from "../root-config-hooks.mjs";
+import { mergeHooksMap } from "../hooks-merge.mjs";
 import { mergeClaudeSettings, normalizeRootConfigContent } from "../../cli/root-config-merge.mjs";
 import { renderClaudeSettings } from "../permissions-render.mjs";
 import { mcpRemove, mcpAddServer, mcpRemoveServer, mcpList } from "./mcp.mjs";
@@ -26,6 +27,17 @@ const PACKAGES_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const manifestPath = path.resolve(here, "..", "..", "..", "globals", "harnesses", "claude", "provider.json");
 const claudeManifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+const coreHooksPath = path.resolve(here, "..", "..", "..", "globals", "harnesses", "claude", "hooks-claude.json");
+
+function readCoreHooksFragment() {
+  return JSON.parse(fs.readFileSync(coreHooksPath, "utf8"));
+}
+
+function renderClaudeRootConfig(current, manifest, overrides) {
+  const rendered = JSON.parse(renderClaudeSettings(current, manifest, overrides));
+  rendered.hooks = mergeHooksMap(rendered.hooks || {}, readCoreHooksFragment()).hooks;
+  return `${JSON.stringify(rendered, null, 2)}\n`;
+}
 
 function statusLineMatches(existing, desired) {
   return JSON.stringify(existing || null) === JSON.stringify(desired || null);
@@ -146,7 +158,7 @@ export const claudeProvider = defineHarnessProvider({
     },
     // 4th param (target path) is Codex-only (used in an error message); Claude's render ignores it.
     permissions: {
-      render: (current, manifest, overrides) => renderClaudeSettings(current, manifest, overrides),
+      render: (current, manifest, overrides) => renderClaudeRootConfig(current, manifest, overrides),
     },
   },
 });

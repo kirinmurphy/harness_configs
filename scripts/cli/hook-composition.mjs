@@ -62,9 +62,18 @@ export function mergeHooksInto(harness, filePath, hooksFragment, { dryRun = fals
 // writing to the machine's real live directory. Shared with slash-commands.mjs's live command
 // install/removal, which writes into the same class of live harness directory (~/.claude/commands).
 export function resolvesIntoRepo(destDir, repoRoot) {
+  const resolvedRepoRoot = fs.realpathSync(repoRoot);
+  try {
+    const stat = fs.lstatSync(destDir);
+    if (stat.isSymbolicLink()) {
+      const target = path.resolve(path.dirname(destDir), fs.readlinkSync(destDir));
+      return target === resolvedRepoRoot || target.startsWith(`${resolvedRepoRoot}${path.sep}`);
+    }
+  } catch {
+    // Missing path: safe to create. Other unreadable states fall through to realpath's safe false.
+  }
   let real;
   try { real = fs.realpathSync(destDir); } catch { return false; } // doesn't exist yet: safe to create
-  const resolvedRepoRoot = fs.realpathSync(repoRoot);
   return real === resolvedRepoRoot || real.startsWith(`${resolvedRepoRoot}${path.sep}`);
 }
 

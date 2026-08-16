@@ -36,6 +36,12 @@ function makeHome() {
     const settings = JSON.parse(fs.readFileSync(path.join(home, ".claude", "settings.json"), "utf8"));
     assert.ok(settings.permissions, "permissions key rendered into Claude settings");
     assert.ok(Array.isArray(settings.permissions.allow), "Claude permissions.allow is an array");
+    assert.ok(
+      settings.hooks?.PreToolUse?.some((entry) =>
+        entry.matcher === "Read|Write|Edit"
+          && entry.hooks?.some((hook) => hook.command === 'node "$HOME/.claude/hooks/provider/repo-write-scope.mjs"')),
+      "core Claude repo-scope hook is rendered from globals/harnesses/claude/hooks-claude.json",
+    );
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

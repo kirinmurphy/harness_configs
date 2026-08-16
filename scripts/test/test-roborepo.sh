@@ -92,19 +92,19 @@ workspace_resource_root="${work}/workspace-resource"
 mkdir -p "${workspace_resource_home}" "${workspace_resource_root}/skills/custom-skill" "${workspace_resource_root}/commands" "${workspace_resource_root}/packages/workspace-pack"
 printf -- '---\nname: custom-skill\ndescription: custom\n---\n' > "${workspace_resource_root}/skills/custom-skill/SKILL.md"
 printf 'custom command\n' > "${workspace_resource_root}/commands/custom-command.md"
-printf '%s\n' '{"schemaVersion":1,"id":"workspace-pack","label":"Workspace Pack","description":"Workspace pack.","lifecycle":"optional","presentation":{"category":"commands","order":100},"resources":[{"type":"cli-command","name":"workspace index","commandOrUrl":"node","args":["--version"],"mode":"index"}]}' > "${workspace_resource_root}/packages/workspace-pack/package.config.json"
+printf '%s\n' '{"schemaVersion":1,"id":"workspace-pack","label":"Workspace Pack","description":"Workspace pack.","lifecycle":"optional","presentation":{"category":"integrations","order":100},"resources":[{"type":"cli-command","name":"workspace index","commandOrUrl":"node","args":["--version"],"mode":"index"}]}' > "${workspace_resource_root}/packages/workspace-pack/package.config.json"
 assert "workspace resources: validate accepts custom typed resources" \
   bash -c "HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node '${cli}' workspace validate >/dev/null"
 assert "workspace resources: package catalog includes workspace package" \
   bash -c "HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node -e \"import('${repo_root}/scripts/cli/package-catalog.mjs').then(m=>{process.exit(m.loadPackageCatalog({includeUnavailable:true}).some(p=>p.id==='workspace-pack')?0:1)})\""
 mkdir -p "${workspace_resource_root}/packages/jcodemunch"
-printf '%s\n' '{"schemaVersion":1,"id":"jcodemunch","label":"Bad Replace","description":"Bad replace.","lifecycle":"optional","presentation":{"category":"commands","order":100},"resources":[]}' > "${workspace_resource_root}/packages/jcodemunch/package.config.json"
+printf '%s\n' '{"schemaVersion":1,"id":"jcodemunch","label":"Bad Replace","description":"Bad replace.","lifecycle":"optional","presentation":{"category":"integrations","order":100},"resources":[]}' > "${workspace_resource_root}/packages/jcodemunch/package.config.json"
 assert "workspace resources: package collision requires typed override" \
   bash -c "! env HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node '${cli}' workspace validate >/dev/null 2>'${work}/workspace-package-collision.err' && grep -q 'conflicts with a built-in package' '${work}/workspace-package-collision.err'"
 workspace_shape_home="${work}/workspace-shape-home"
 workspace_shape_root="${work}/workspace-shape"
 mkdir -p "${workspace_shape_root}/packages/legacy-shape"
-printf '%s\n' '{"schemaVersion":1,"id":"legacy-shape","label":"Legacy Shape","description":"Legacy shape.","lifecycle":"optional","presentation":{"category":"commands","order":100},"components":[]}' > "${workspace_shape_root}/packages/legacy-shape/package.config.json"
+printf '%s\n' '{"schemaVersion":1,"id":"legacy-shape","label":"Legacy Shape","description":"Legacy shape.","lifecycle":"optional","presentation":{"category":"integrations","order":100},"components":[]}' > "${workspace_shape_root}/packages/legacy-shape/package.config.json"
 assert "workspace resources: package configs require resources field" \
   bash -c "! env HOME='${workspace_shape_home}' ROBOREPO_STATE_ROOT='${workspace_shape_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_shape_root}' node '${cli}' workspace validate >/dev/null 2>'${work}/workspace-package-shape.err' && grep -q 'needs resources array' '${work}/workspace-package-shape.err'"
 workspace_skill_collision_home="${work}/workspace-skill-collision-home"
@@ -138,8 +138,8 @@ mkdir -p \
 printf -- '---\nname: custom-import\ndescription: custom\n---\n' > "${workspace_import_source}/globals/agents/skills/custom-import/SKILL.md"
 printf -- '---\nname: case-study\ndescription: changed builtin\n---\n' > "${workspace_import_source}/globals/agents/skills/case-study/SKILL.md"
 printf 'custom import command\n' > "${workspace_import_source}/globals/commands/custom-import.md"
-printf '%s\n' '{"schemaVersion":1,"id":"workspace-import","label":"Workspace Import","description":"Workspace import.","lifecycle":"optional","presentation":{"category":"commands","order":100},"resources":[]}' > "${workspace_import_source}/globals/packages/workspace-import/package.config.json"
-printf '%s\n' '{"schemaVersion":1,"id":"jcodemunch","label":"Changed Builtin","description":"Changed builtin.","lifecycle":"optional","presentation":{"category":"commands","order":100},"resources":[]}' > "${workspace_import_source}/globals/packages/jcodemunch/package.config.json"
+printf '%s\n' '{"schemaVersion":1,"id":"workspace-import","label":"Workspace Import","description":"Workspace import.","lifecycle":"optional","presentation":{"category":"integrations","order":100},"resources":[]}' > "${workspace_import_source}/globals/packages/workspace-import/package.config.json"
+printf '%s\n' '{"schemaVersion":1,"id":"jcodemunch","label":"Changed Builtin","description":"Changed builtin.","lifecycle":"optional","presentation":{"category":"integrations","order":100},"resources":[]}' > "${workspace_import_source}/globals/packages/jcodemunch/package.config.json"
 printf '%s\n' '{"servers":[{"name":"custom-server","commandOrUrl":"node","args":["x"],"harnesses":["codex"]},{"name":"jcodemunch","commandOrUrl":"node","args":["changed"],"harnesses":["codex"]}]}' > "${workspace_import_source}/manifests/inventory/mcp-servers.json"
 assert "workspace import: copies package configs and reports changed built-ins" \
   bash -c "HOME='${workspace_import_home}' ROBOREPO_STATE_ROOT='${workspace_import_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_import_root}' node '${cli}' workspace import '${workspace_import_source}' >'${work}/workspace-import.out' && test -f '${workspace_import_root}/skills/custom-import/SKILL.md' && ! test -e '${workspace_import_root}/skills/case-study' && test -f '${workspace_import_root}/commands/custom-import.md' && test -f '${workspace_import_root}/packages/workspace-import/package.config.json' && grep -q 'custom-server' '${workspace_import_root}/mcp/servers.json' && grep -q 'changed built-ins left for review: skill:case-study' '${work}/workspace-import.out'"
@@ -156,7 +156,7 @@ assert "codex hooks: permission-check tolerates empty stdin" \
 assert "codex hooks: minimize-bash-output tolerates malformed stdin" \
   bash -c "printf 'not-json' | HOME='${codex_hook_home}' node '${repo_root}/globals/system/hooks/codex/minimize-bash-output.mjs' >/dev/null"
 assert "codex hooks: installed permission-check reads repo manifest from install state" \
-  bash -c "printf '%s\n' '{\"tool_name\":\"exec_command\",\"tool_input\":{\"command\":\"git push origin main\"}}' | HOME='${codex_hook_home}' node '${codex_hook_home}/.codex/hooks/permission-check.mjs' | grep -q '\"permissionDecision\":\"deny\"'"
+  bash -c "printf '%s\n' '{\"tool_name\":\"exec_command\",\"tool_input\":{\"command\":\"git push --force origin main\"}}' | HOME='${codex_hook_home}' node '${codex_hook_home}/.codex/hooks/permission-check.mjs' | grep -q '\"permissionDecision\":\"deny\"'"
 
 mk_skill() {
   local dir="$1" name="$2"
@@ -578,7 +578,7 @@ bash -c "${recon_env} node '${cli}' package reconcile >/dev/null 2>&1" || true
 assert "package reconcile restores enabled Claude plugin settings after root overwrite" \
   bash -c "node -e \"const s=require('${recon_home}/.claude/settings.json');process.exit(s.enabledPlugins?.['caveman@caveman']===true&&!!s.extraKnownMarketplaces?.caveman?0:1)\""
 assert "package reconcile restores enabled package hooks and permissions after root overwrite" \
-  bash -c "node -e \"const s=require('${recon_home}/.claude/settings.json');const allow=s.permissions?.allow||[];const hooks=JSON.stringify(s.hooks||{});process.exit(allow.includes('mcp__jcodemunch__resolve_repo')&&hooks.includes('jcmwatch')&&hooks.includes('Grep and Glob')?0:1)\""
+  bash -c "node -e \"const s=require('${recon_home}/.claude/settings.json');const allow=s.permissions?.allow||[];const hooks=JSON.stringify(s.hooks||{});process.exit(allow.includes('mcp__jcodemunch__resolve_repo')&&hooks.includes('session-health.mjs')&&hooks.includes('Grep and Glob')?0:1)\""
 assert "package reconcile restores package-owned Codex approvals after root overwrite" \
   bash -c "grep -A1 '^\\[mcp_servers\\.jcodemunch\\.tools\\.register_edit\\]' '${recon_home}/.codex/config.toml' | grep -q 'approval_mode = \"auto\"'"
 
@@ -748,7 +748,7 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
   assert "config: snapshot carries contextCost harness estimates" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/config' > '${cfg_home}/config-snapshot.json' && node -e \"const j=require('${cfg_home}/config-snapshot.json');const h=j.contextCost&&j.contextCost.harnesses;process.exit(h&&Number.isFinite(h.claude.startupTokens)&&Number.isFinite(h.codex.startupTokens)&&['low','medium','high'].includes(h.claude.level)&&j.contextCost.method==='estimated-v1'&&j.contextCost.packages?0:1)\""
   assert "config: behaviorView sections carry contextCost rollups" \
-    bash -c "node -e \"const j=require('${cfg_home}/config-snapshot.json');const secs=j.behaviorView.filter(s=>s.kind!=='permissions');const perms=j.behaviorView.find(s=>s.kind==='permissions');process.exit(secs.length&&secs.every(s=>s.contextCost&&Number.isFinite(s.contextCost.activeStartupTokens))&&perms.contextCost.label==='not-prompt-context'?0:1)\""
+    bash -c "node -e \"const j=require('${cfg_home}/config-snapshot.json');const secs=j.behaviorView.filter(s=>!s.kind);const perms=j.behaviorView.find(s=>s.kind==='permissions');const stores=j.behaviorView.find(s=>s.kind==='stores');process.exit(secs.length&&secs.every(s=>s.contextCost&&Number.isFinite(s.contextCost.activeStartupTokens))&&perms.contextCost.label==='not-prompt-context'&&stores.contextCost.label==='not-prompt-context'?0:1)\""
   assert "config: portal status identifies current app" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/portal/status' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.appRoot==='${repo_root}'&&String(j.portalDir).endsWith('/portal')&&Number.isInteger(j.pid)&&j.pages.some(p=>p.id==='localhoster'&&p.path==='/localhoster')?0:1)})\""
   assert "config: web reuses an existing current portal" \
@@ -821,7 +821,7 @@ assert "config: setCommandBucket tracks a new arbitrary command" \
 assert "config: setCommandBucket rejects empty tokens" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setCommandBucket([],'ask');process.exit(r.ok?1:0)})\""
 assert "config: snapshot reports behaviors + arbitrary commands" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const p=s.permissions;process.exit(Array.isArray(p.behaviors)&&p.behaviors.length===5&&Array.isArray(p.arbitrary)?0:1)})\""
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const p=s.permissions;process.exit(Array.isArray(p.behaviors)&&p.behaviors.some(b=>b.id==='read-secrets')&&Array.isArray(p.arbitrary)?0:1)})\""
 
 if [[ -n "${cfg_port:-}" ]]; then
   # Permission POST endpoint: named behavior (200), arbitrary command (200), invalid bucket (400),

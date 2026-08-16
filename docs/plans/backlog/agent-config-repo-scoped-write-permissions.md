@@ -1,7 +1,7 @@
 ---
 id: ia1q1z9
 priority: high
-next_action: Remove `~/projects/**` from read-scope and write-scope, regenerate the tracked harness artifacts, and add the test asserting no expanded home directory survives in a permission rule
+next_action: Smoke-test the hook live once `roborepo update` completes in a real terminal, then decide whether Codex should enforce the read family and give the hook matcher a generated source of truth
 blocked_by: []
 depends_on: []
 related:
@@ -21,6 +21,11 @@ Two separate problems sit behind this. The scope path is one machine's layout sh
 default, and even on that machine the scope is broader than intended — it spans every repository in
 the tree rather than the one in use.
 
+The plan has since grown a read half and a credential denylist. Removing the personal path took the
+quiet zone for *reads* with it, which forced a decision the original scope deliberately deferred;
+and neither the boundary nor the scope list can protect a `.env` sitting inside the checkout, which
+only a deny rule reaches.
+
 ## Context
 
 Permission scope lives in `manifests/inventory/agent-permissions.json` as two pairs of behaviors.
@@ -39,15 +44,20 @@ out-ranks every path-scoped rule and silently defeats the scoping it exists to e
 
 - A write scope that means the repository currently being worked in, on any contributor's machine.
 - Writes outside the current repository prompt rather than proceeding silently.
-- No contributor's absolute home path in any tracked file, including generated artifacts.
+- No contributor's absolute home path in any tracked **allow** rule, including generated artifacts.
+- Credential material unreadable everywhere, including inside the current repository.
+- Reads quiet across the repository family; writes still bounded to the checkout in use.
 - Explicit, verified behavior for each of the three harnesses rather than a Claude-only fix.
 
 ## Non-goals
 
 - Changing the gate/scope split. The two-behavior model stays *for this plan*; whether the pair
   should collapse into one user-facing row is [[permissions-ui-revamp]]'s decision, not this one's.
-- Changing read scope semantics. Reads outside the repository are not the problem this plan solves.
 - Per-project permission profiles. Permissions remain global machine state.
+
+Read scope **was** a non-goal and is no longer. Removing `~/projects/**` to satisfy the
+no-home-paths goal took the quiet zone for reads with it, so reads had to be re-answered rather
+than left to prompt on every file. See "Read scope decision" below.
 
 ## Current state
 
@@ -162,13 +172,70 @@ for it at all.
 The hook's own work is ~0.09ms — the in-process root walk, against ~155ms to spawn
 `git rev-parse --show-toplevel`. The walk is why its own share is negligible.
 
-The cost that matters is Node process startup, ~127-165ms measured bare, putting the hook around
-300ms per call. That is inherent to command hooks and shared with every other one; it is not
-specific to this hook's logic. `roborepo-write-guard.mjs` already runs on the same `Write`/`Edit`
-events, so merging the two would drop the added cost to roughly the walk itself.
+The cost that matters is Node process startup, inherent to command hooks and shared with every
+other one. End-to-end measurement of the real hook, 25 calls each:
+
+| Path | Per call |
+| --- | --- |
+| `Read`, inside the worktree | ~83ms |
+| `Read`, resolving the repository family | ~98ms |
+| `Write`, inside the worktree | ~89ms |
+
+Family resolution costs ~15ms, which is why it reads `.git` pointer files directly instead of
+spawning `git`. The earlier ~300ms figure came from a bare-Node startup measurement rather than the
+hook itself and overstated it by roughly 3x.
+
+### Path comparison is realpath-based
+
+Containment is a string comparison, so both sides must spell a path the same way — and they do not
+by default. On macOS `os.tmpdir()` yields `/var/folders/...` while git records the resolved
+`/private/var/folders/...` in its pointer files, because `/var` is a symlink. The same mismatch
+appears for any checkout under a symlinked parent, which is not exotic.
+
+Both sides are therefore resolved before comparison. Targets that do not exist yet — the normal case
+for a `Write` creating a file, sometimes several directories deep — resolve to their nearest
+existing ancestor with the missing segments re-appended.
 
 `scripts/test/repo-write-scope-check.mjs` covers the decision table in 10 cases plus manifest-driven
 bucket resolution, malformed-input safety, and a regression bound on the hook's own work.
+
+## Read scope decision
+
+Removing `~/projects/**` from `write-scope` lost nothing — the hook grants a strictly narrower
+zone (the checkout in use, not every sibling under one tree). Removing it from `read-scope` was
+different: nothing replaced it, because the hook matches `Write|Edit` only. Reads of ordinary
+project files fell through to a prompt.
+
+Three layers now answer file access, and they are independent — none substitutes for another:
+
+| Layer | Question | Mechanism |
+| --- | --- | --- |
+| `read-secrets` | *What is it?* Credential material, denied anywhere including in-repo | Static deny rules |
+| Repository boundary | *Where am I?* In the repo family, or outside it | `repo-scope`, per call |
+| Scratch allowlist | Fixed dirs correct regardless of repo | Static allow rules |
+
+An enumerated denylist catches known-sensitive files and cannot catch unknown ones — a tax
+document, a client repo under NDA. That is why "deny secrets, then allow reads everywhere" was
+rejected: it protects what was thought of and silently exposes the rest.
+
+### Decisions
+
+- **Reads span the repo family; writes do not.** Reading main from a worktree to compare against a
+  branch is routine and harmless. Writing from a worktree into main is how one session clobbers
+  another's work, and is rare precisely because isolation is the reason to branch. Reads resolve to
+  the family and stay quiet; writes keep today's per-worktree boundary and prompt.
+- **Deny, not ask, for credentials.** Prompting on `~/.ssh` trains approval reflex on the one
+  category that must never be approved.
+- **No read-scope mode setting.** A three-state control (`repo` / `everywhere` / `off`) was
+  designed and rejected as unnecessary abstraction: one rule per operation is easier to hold in the
+  head, and the second mode can be added if cross-tree reads become frequent.
+
+### Repo family resolution
+
+A linked worktree's `.git` is a file pointing at the primary checkout, so the family is readable
+without a process spawn — the same property that makes the existing root walk cheap. Today
+`repositoryRoot()` stops at the worktree, which stays correct for writes; reads need the walk to
+continue to the common directory.
 
 ## Implementation plan
 
@@ -176,30 +243,78 @@ bucket resolution, malformed-input safety, and a regression bound on the hook's 
       whether it already matches the intended boundary. Requires a real Codex session; the current
       mapping in `codexSandboxMode()` is documented as the intent's expression but unverified
       against actual sandbox behavior.
-- [ ] Give `scripts/harnesses/gemini/policy-toml.mjs` an explicit `repo-scope` case. It currently
-      falls through `if (b.kind !== "commands") continue` and is dropped with no comment, unlike the
-      `tools-scoped` skip immediately above it, which documents its reasoning. Whatever the decision,
-      record it in code the way the neighbouring skips are.
-- [ ] Remove `~/projects/**` from `write-scope` in `manifests/inventory/agent-permissions.json`.
-      Still present, and `read-scope` carries it too — decide whether reads keep it or lose it.
-- [ ] Regenerate `generated/claude/settings.json` and confirm no absolute home path remains. The
-      tracked artifact still contains three expanded rules under `/Users/<user>/projects/**`.
-- [ ] Add a test asserting no tracked file contains an expanded home directory in a permission rule.
-- [ ] Update the permission scope section of `docs/user/reference/config-control-panel.md`. It still
-      states that scope is resolved at render time into static config, which is no longer true for
-      writes — the repository boundary is now decided per call.
-- [ ] Merge the hook into `globals/system/hooks/claude/roborepo-write-guard.mjs` so `Write`/`Edit`
-      pays one process startup rather than two. Before doing so, verify that Claude Code accepts
-      both `permissionDecision` and `additionalContext` in a single `hookSpecificOutput` response —
-      the scope hook returns the former and the guard the latter. If it does not, decide which wins
-      and record why.
+- [ ] Decide whether Codex should enforce the **read** family at all. It ships a PreToolUse hook
+      (`globals/system/hooks/codex/permission-check.mjs`) whose header records that Codex's
+      `PreToolUsePermissionDecisionWire` is genuinely 3-valued — verified against the shipped 0.140
+      binary — so a hook *could* express the boundary. Two gaps stop it today: that hook handles
+      shell commands only (it exits unless `tool_name` is `exec_command`/`shell`/`local_shell`/
+      `bash`), and `sandbox_mode` bounds writes without restricting reads at all. Reaching read
+      parity means knowing Codex's file-read tool name and whether PreToolUse fires for it.
+- [x] Give `scripts/harnesses/gemini/policy-toml.mjs` an explicit `repo-scope` case.
+      Skipped deliberately and commented in the style of the neighbouring `tools-scoped` skip: the
+      Policy Engine has neither a path predicate nor a hook surface, so there is nothing to render.
+- [x] Remove `~/projects/**` from `write-scope` and `read-scope`.
+      Both lost it. Reads are re-answered by the repo-family work below rather than by a path.
+- [x] Regenerate `generated/claude/settings.json` and confirm no absolute home path remains.
+      Rendered by invoking `renderClaudeSettings` directly against worktree files — the `roborepo`
+      binary resolves to the primary checkout regardless of cwd, so the CLI cannot render a
+      worktree's manifest.
+- [x] Add a test asserting no permission **allow** rule contains a home directory.
+      `scripts/test/permission-rule-home-path-check.mjs`. It parses the settings JSON and checks
+      buckets structurally; deny rules are exempt by construction, since `read-secrets` is
+      home-relative on purpose. Verified to fail when a bad allow is reintroduced.
+- [x] Add the `read-secrets` credential denylist.
+      Needed no renderer change: `tools-scoped` already routes `deny` through the same
+      `~`-expanding path as `allow`. Confirmed by probe before the manifest was edited.
+- [x] Update the permission scope section of `docs/user/reference/config-control-panel.md`.
+      Render-time vs tool-call-time is now a table, and the denylist has its own section.
+- [x] Resolve a worktree to its repository family for **reads**, and extend the hook matcher to
+      `Read`. Writes keep the per-worktree boundary. The family is read from `.git`, `commondir`,
+      and `.git/worktrees/*/gitdir` — plain file reads, no `git` spawn. The relation is symmetric:
+      a worktree reaches its primary through the pointer, the primary reaches its worktrees through
+      the directory.
+- [x] Measure the added cost on the `Read` path. ~83ms in-worktree, ~98ms cross-family, against
+      ~89ms for a write — see "Measured latency". Family resolution costs ~15ms.
+- [x] Carve `.env.example` out of `read-secrets`. The `.env` variants are now enumerated rather than
+      globbed, because Claude rules have no negation: a readable exception has to be a narrower
+      deny, not an allow that a deny would out-rank.
+- [x] Give the `Read|Write|Edit` matcher a source of truth and a drift check. Core hook wiring now
+      lives in `globals/harnesses/claude/hooks-claude.json`, following the fragment pattern package
+      hooks already use, and `scripts/test/core-hook-wiring-check.mjs` asserts the tracked artifact
+      agrees with it. The fragment is inert to the package machinery — fragments are resolved from
+      an explicit `component.source` in the catalog, never by globbing.
+- [ ] Have the installer *apply* the core fragment rather than only checking it. Today the fragment
+      is the reviewable source and the test enforces agreement, but `generated/claude/settings.json`
+      is still the file the install reads, so the fragment cannot yet regenerate it. Wiring it into
+      the install path would make the artifact derived rather than merely verified.
+- [ ] **Deferred — do not merge the two hooks as originally specified.** Both blockers cleared, but
+      the justification did not survive them:
+      - *Mechanically possible.* Claude Code accepts both `permissionDecision` and
+        `additionalContext` in one `hookSpecificOutput` and honors both, so neither field loses.
+      - *Architecturally wrong in that direction.* `repo-write-scope.mjs` is provider code
+        (`globals/harnesses/claude/`, manifest row 39); `roborepo-write-guard.mjs` is platform
+        (`globals/system/hooks/claude/`, row 38). Merging provider into platform puts Claude's
+        permission enforcement in a platform directory, which the platform/provider seam forbids.
+        A merge would have to go provider-ward — but the guard's symlink concern is not
+        provider-specific, so that direction strands shared logic in a Claude-only file.
+      - *No longer worth it.* The cost was estimated at ~300ms/call from a bare-Node figure.
+        Measured on the real hook it is ~83-98ms, and the two hooks no longer share a matcher: the
+        guard stays on `Write|Edit` and says nothing about reads, so merging would put its work on
+        the `Read` path for no benefit.
+      Revisit only if per-call cost becomes a real complaint, and record which side wins first.
 
 ## Validation
 
 - [x] A write inside the current repository proceeds without a prompt.
 - [x] A write to a sibling repository under the same parent directory prompts.
 - [x] A write to an agent scratch directory proceeds without a prompt.
-- [ ] `rg` over tracked files finds no expanded home directory inside a permission rule.
+- [x] No permission allow rule contains a home directory, enforced by test rather than by `rg`.
+- [x] Credential paths are denied, and the deny survives the gate/scope resolution.
+- [x] A read of the primary checkout from a worktree proceeds without a prompt.
+- [x] A read of a sibling worktree proceeds without a prompt, in both directions.
+- [x] A read of an unrelated repository still prompts.
+- [x] A write into the primary checkout from a worktree still prompts.
+- [x] A payload with no `tool_name` falls back to the narrower write boundary.
 - [ ] `roborepo doctor --installed` passes, including the generated-permissions drift check.
 - [ ] The behavior above is confirmed on each harness that ships a write scope, not on Claude alone.
 
@@ -209,13 +324,52 @@ bucket resolution, malformed-input safety, and a regression bound on the hook's 
 disk — a repository, a sibling repository, and a linked worktree — and runs the hook as a
 subprocess, asserting the decision for each.
 
-The three checked validation criteria above are covered there directly. The unchecked ones are not
-satisfied: `~/projects/**` is still in the manifest and its expanded form is still in
-`generated/claude/settings.json`, so the `rg` criterion fails by inspection today.
+The three write-boundary validation criteria are covered there directly.
 
-Not verified: Codex and Gemini behavior. Codex's mapping is reasoned from its documented sandbox
-model rather than observed in a session, and Gemini has no `repo-scope` case at all. The claim that
-this plan's behavior holds on any harness other than Claude is currently unsupported.
+`~/projects/**` is gone from the manifest and from `generated/claude/settings.json`.
+`scripts/test/permission-rule-home-path-check.mjs` enforces it, and was checked in both directions —
+it passes on the current tree and fails when a home-anchored allow rule is reintroduced. A test that
+has only been seen to pass is not known to be able to fail.
+
+`scripts/test/repo-write-scope-check.mjs` now builds its worktree fixtures with **real `git`**
+rather than hand-written pointer files. That matters: the family resolution parses `.git`,
+`commondir`, and `.git/worktrees/*/gitdir` directly, so fabricated fixtures would have tested the
+parser against this test's own assumptions about the format instead of against git's actual output.
+Building them for real is what surfaced the `/var` vs `/private/var` symlink mismatch, which a
+hand-written fixture would have hidden.
+
+`scripts/test/core-hook-wiring-check.mjs` was checked against all four drifts it exists to catch,
+each producing a diagnostic naming the specific disagreement: the matcher silently reverted to
+`Write|Edit`, the scope hook entry deleted outright, the guard widened onto `Read`, and a wired hook
+script missing from both the provider and platform directories.
+
+That last pair matters because `repo-write-scope-check.mjs` invokes the hook **directly**, bypassing
+the matcher entirely — so every one of its cases would still pass with `Read` silently dropped from
+the wiring. The two tests cover different halves: one checks the hook decides correctly, the other
+that it is asked at all.
+
+These also passed against the change: `core-hook-wiring-check`, `repo-write-scope-check`,
+`permission-rule-home-path-check`, `package-catalog-check`, `cli-command-catalog-check`,
+`config-synthetic-provider-check`, `root-config-write-policy-check`,
+`gemini-adapter-characterization-check`, `plan-docs-check`.
+
+`hook-composition-check` fails, and did so identically on a clean checkout of `main` before this
+work — `hook-composition-fixture: unknown presentation category: commands`, a package-catalog
+fixture problem touching no hook or permission code. Not a regression from this plan.
+
+Not verified:
+
+- **Codex and Gemini behavior.** Codex's mapping is reasoned from its documented sandbox model
+  rather than observed in a session; Gemini's `repo-scope` case is now explicit but is a documented
+  skip, not parity. The claim that this plan's behavior holds on any harness other than Claude
+  remains unsupported.
+- **The hook live on this machine.** `roborepo update` aborts partway through the Claude harness
+  install on an interactive conflict prompt over `~/.claude/hooks`, so `~/.claude/hooks/provider/`
+  does not exist and `repo-write-scope.mjs` is not installed here. The subsequent "hooks provider
+  claude: unchanged" line in the update report is a downstream symptom of that abort, not a
+  drift-check bug. Smoke-testing needs a real terminal session.
+- **`read-secrets` against a live harness.** The rules render correctly and are ordered into the
+  `deny` bucket; that they actually block a read has not been observed in a session.
 
 ## Risks
 
@@ -247,6 +401,16 @@ this plan's behavior holds on any harness other than Claude is currently unsuppo
 ## Open questions
 
 - Is there a supported way to inspect a Codex workspace root, or must it be determined empirically?
-- Does `read-scope` keep `~/projects/**` once `write-scope` loses it? Reads outside the repository
-  were explicitly a non-goal, but leaving the personal path in the manifest keeps a contributor's
-  home directory in a tracked artifact, which is a goal.
+- Should `.env.example` be readable? `//**/.env.*` denies it today, and deny has no in-session
+  override. It carries no secrets by convention, but carving out a pattern near credential material
+  invites a near-miss (`.env.example.local`) that a looser glob would let through.
+- Does the repo family extend to submodules, or stop at the superproject? Not exercised by the
+  current tests either way.
+
+### Answered
+
+- **Does `read-scope` keep `~/projects/**`?** No — both scopes lost it. Reads are re-answered by the
+  repository family rather than by a path, so the no-home-paths goal and quiet reads are both met.
+  See "Read scope decision".
+- **Can one hook response carry both a permission decision and added context?** Yes. Both fields are
+  documented for `PreToolUse` and both are honored, which is what unblocks the hook merge.

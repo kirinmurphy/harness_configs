@@ -198,12 +198,58 @@ Policy Engine), and falls back to the whole-tool decision there. `write-files` d
 unscoped rule of its own: a bare `Write`/`Edit` entry out-ranks every path-scoped rule and would
 silently defeat the scoping.
 
+#### Credential denylist
+
+`read-secrets` denies reads of credential material — `~/.ssh`, `~/.aws`, `~/.gnupg`, cloud config,
+keychains, and `.env`/`*.pem`/private-key files anywhere on disk. It is the one layer the repository
+boundary cannot provide: a `.env` inside your checkout is *in*-bounds for the boundary, so only a
+deny rule stops it.
+
+Two properties make this the security floor rather than one more preference:
+
+- **Deny out-ranks everything.** Claude evaluates deny before ask before allow, so these beat both
+  the scope allowlists and any `allow` a hook returns.
+- **Deny is not a prompt.** There is no in-session override. If a denied path needs reading, carve
+  it out of the behavior rather than working around it.
+
+The denylist is home-relative by design (`~/.ssh/**`), which is correct on every machine — unlike a
+personal *project* layout, which is not. Both forms contain `~`; only the second is a portability
+bug, which is why `scripts/test/permission-rule-home-path-check.mjs` tests the bucket rather than
+the presence of a tilde.
+
+A denylist only catches what it names. It cannot cover unknown-sensitive files — a tax PDF, a
+client repo under NDA — which is why it complements the scope perimeter instead of replacing it.
+
 #### Changing path scopes
 
-Scope paths are expanded at **render** time into static harness config, not resolved per session.
-A scope change is therefore an install-time concern, and any mechanism that depends on a runtime
-value (a project-dir variable, for instance) has to be verified against each harness's own rule
-syntax before it is relied on.
+Scope paths are expanded at **render** time into static harness config — but this is no longer the
+whole story, and the distinction matters when changing one:
+
+| Question | Resolved | Mechanism |
+| --- | --- | --- |
+| Which fixed directories are quiet? | Render time | Path allowlist in the manifest |
+| Is this path in the current repository? | **Tool-call time** | `repo-scope` behavior, per provider |
+
+The repository zone is **wider for reads than for writes**, deliberately:
+
+| | Reads | Writes |
+| --- | --- | --- |
+| The checkout in use | quiet | quiet |
+| Its primary checkout and sibling worktrees | quiet | **prompt** |
+| Anywhere else | prompt | prompt |
+
+Comparing a branch against `main` from a worktree is routine and harmless, so reads span the whole
+repository family. Writing across checkouts is how one session clobbers another's in-flight work,
+and it is rare — isolation is the reason to create a worktree — so writes stay bounded to the
+checkout in use and prompt otherwise.
+
+On Claude the family is read straight from git's own pointer files (`.git`, `commondir`,
+`.git/worktrees/*/gitdir`), costing ~15ms rather than a `git` subprocess. Codex expresses the write
+half through `sandbox_mode: workspace-write` and does not restrict reads at all.
+
+The repository boundary cannot be a path, because no rule syntax can express "wherever the session
+happens to be" — see [[agent-config-repo-scoped-write-permissions]] for why each anchor form fails.
+So a scope change is an install-time concern, while a *boundary* change takes effect immediately.
 
 Path-scoping changes must be worked through **per provider** — Claude and Codex both, not Claude
 alone. The two render through different code paths in `scripts/harnesses/permissions-render.mjs`

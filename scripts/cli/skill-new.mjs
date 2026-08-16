@@ -231,7 +231,11 @@ function packageConfigBase(id, description, category) {
 }
 
 function packageConfigForSkill(opts) {
-  const config = packageConfigBase(opts.name, opts.description, opts.kind === "skill-command" ? "commands" : "code-conventions");
+  const config = packageConfigBase(
+    opts.name,
+    opts.description,
+    opts.kind === "skill-command" ? "skills-dev-lifecycle" : "code-conventions",
+  );
   const resource = {
     type: "skill",
     id: opts.name,
@@ -254,7 +258,7 @@ function packageConfigForSkill(opts) {
 }
 
 function packageConfigForStandalone(opts) {
-  const config = packageConfigBase(opts.command, opts.description, "commands");
+  const config = packageConfigBase(opts.command, opts.description, "skills-dev-lifecycle");
   config.resources.push({
     type: "slash-command",
     id: opts.command,

@@ -7,7 +7,7 @@ depends_on: []
 related:
   - ia1q1z9
   - permissions-ui-revamp
-reviewed_commit: fae604c4d3d294c795b3e5d2de83d0776c57bcef
+reviewed_commit: 875b6e5a7cf5c1608c10e57974d18b447591bdc3
 ---
 
 # Post-Merge Integration Review Before Package Publication
@@ -82,7 +82,6 @@ purity, and managed uninstall harness confidence.
 
 Known failures or gaps that must not be misreported as merge regressions:
 
-- `scripts/test/hook-composition-check.mjs` is known pre-existing.
 - `scripts/test/usage-statusline-check.mjs` is known pre-existing renderer/test format drift.
 - `scripts/test/cli-surface-integration-check.mjs` has a known load-sensitive remote-sync flake;
   rerun it in isolation before calling a failure a regression. It passed in isolation at
@@ -142,6 +141,13 @@ state with live discovery for display only, while preserving explicit user-disab
 the test expects `Context: 70% used`, while the renderer emits `Context: 70%`. The domain-level
 usage test passed, and the threshold separation fix is already committed in `45228e4` and
 `256dbc5`.
+
+Follow-up test hardening after the full suite exposed stale fixture assumptions: command-package
+scaffolds and test fixtures now use the current `skills-dev-lifecycle` package category instead of
+the removed `commands` category, hook-composition coverage passes again, package reconcile asserts
+the current jcodemunch hooks, config context-cost assertions distinguish package sections from
+non-package state sections, and lifecycle tests point Claude hook fixtures at
+`globals/harnesses/claude/hooks`.
 
 ## Validation
 

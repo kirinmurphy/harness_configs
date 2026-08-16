@@ -112,8 +112,10 @@ evidence:
 
 | Check | Current classification |
 | --- | --- |
-| `node scripts/test/hook-composition-check.mjs` | pre-existing failure |
 | `node scripts/test/usage-statusline-check.mjs` | pre-existing renderer/test text drift: test expects `Context: 70% used`; renderer emits `Context: 70%` |
+
+`node scripts/test/hook-composition-check.mjs` is part of the passing main suite and should not be
+classified as a known failure.
 
 `node scripts/test/usage-domain-check.mjs` covers the usage threshold/domain behavior and should
 still pass when statusline text formatting is not the subject under review.

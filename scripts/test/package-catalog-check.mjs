@@ -154,7 +154,7 @@ try {
     id: "legacy-shape",
     label: "Legacy Shape",
     description: "Legacy package shape.",
-    presentation: { category: "commands" },
+    presentation: { category: "skills-dev-lifecycle" },
     components: [],
   }));
   const result = spawnSync(process.execPath, [

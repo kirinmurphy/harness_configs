@@ -45,10 +45,9 @@
     {
       "id": "write-scope",
       "label": "Write scope",
-      "description": "Where files may be written without prompting: the projects tree, plus the temp dirs agent scratch work lands in. Paths outside these prompt.",
+      "description": "Where files may be written without prompting: the projects tree, plus the temp dirs agent scratch work lands in. Paths outside these prompt. Renders Edit rules only: Claude's file-permission check matches path-scoped rules under Edit(path), which covers every file-editing tool (Write included). A Write(path) rule is inert — Claude warns about it at session start — so emitting one would add a dead rule beside the Edit rule that does the work. The gate behavior write-files still names both tools, because turning writing off has to shut off both.",
       "kind": "tools-scoped",
       "tools": [
-        "Write",
         "Edit"
       ],
       "paths": [

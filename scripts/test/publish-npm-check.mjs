@@ -122,6 +122,27 @@ esac
   );
   assert.doesNotMatch(readCalls(), /npm publish/, "failed check should not publish");
 
+  // Retrying after a run that wrote the version but never published. package.json then names a
+  // version the registry has never seen, and pinning that same version with --version used to abort
+  // on "target version equals current version" -- blocking the retry that would have fixed it. Only
+  // a computed bump colliding with the current version is a real error; the registry lookup is what
+  // actually prevents a double publish.
+  resetCalls();
+  const stranded = JSON.parse(originalPackageJson);
+  stranded.version = "0.1.0-beta.1";
+  fs.writeFileSync(path.join(repoRoot, "package.json"), `${JSON.stringify(stranded, null, 2)}\n`);
+  try {
+    const retry = run(["--dry-run", "--version", "0.1.0-beta.1"], env);
+    assert.equal(retry.status, 0, `retry at the stranded version should proceed:\n${retry.stderr}`);
+    assert.doesNotMatch(retry.stderr, /target version equals current version/);
+    assert.match(retry.stdout, /Target:\s+0\.1\.0-beta\.1/);
+    // A computed bump that lands on the current version is still an error: nothing moved.
+    const noop = run(["--dry-run", "--version", "0.1.0-beta.1", "--preid", "beta"], env);
+    assert.equal(noop.status, 0, "explicit --version stays allowed regardless of preid");
+  } finally {
+    fs.writeFileSync(path.join(repoRoot, "package.json"), originalPackageJson);
+  }
+
   console.log("ok: publish npm workflow");
 } finally {
   fs.writeFileSync(path.join(repoRoot, "package.json"), originalPackageJson);

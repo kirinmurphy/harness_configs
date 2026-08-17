@@ -446,6 +446,20 @@ function sectionContextCost(items) {
   return totals;
 }
 
+// True when a package's prose label is just its command spelled as words ("Wrap Up" / `wrap-up`),
+// meaning the label adds nothing the command already says. Punctuation and case are stripped so
+// "Case study skill" still reads as a restatement of `case-study`; a label carrying extra words the
+// command lacks ("Token Telemetry" vs `telemetry-marker`) does not.
+function labelRestatesCommand(label, command) {
+  const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const labelWords = new Set(normalize(label).split(" ").filter(Boolean));
+  const commandWords = normalize(command).split(" ").filter(Boolean);
+  if (labelWords.size === 0 || commandWords.length === 0) return false;
+  // "skill"/"pack" are packaging nouns, not meaning: "Case study skill" is still just `/case-study`.
+  for (const filler of ["skill", "skills", "pack", "package"]) labelWords.delete(filler);
+  return [...labelWords].every((word) => commandWords.includes(word));
+}
+
 function packagePresentationItem(item, tool, contextCost = null) {
   const command = tool?.command || null;
   // Label a command-backed package by the command it exposes (`/wrap-up`) rather than its prose
@@ -453,7 +467,14 @@ function packagePresentationItem(item, tool, contextCost = null) {
   // compared the category against a now-deleted id, and when that category was removed the
   // condition silently became unreachable, so every such package quietly lost its `/command` label.
   // scripts/test/package-catalog-check.mjs now fails on any category literal the manifest lacks.
-  const showCommandLabel = Boolean(command);
+  //
+  // Having a command is necessary but not sufficient. A package whose prose label says something
+  // the command does not is a product that happens to ship a command, not a command: `telemetry`
+  // is "Token Telemetry" and exposes `/telemetry-marker`, and showing the command as its name hides
+  // what the package actually is. Command-first packages all label themselves after their command
+  // ("Wrap Up" for `/wrap-up`), so comparing the two normalized forms separates the cases without a
+  // hand-maintained list -- a new command-first package needs no entry anywhere.
+  const showCommandLabel = Boolean(command) && labelRestatesCommand(item.label, command);
   const resources = item.resources || item.components || [];
   const inspect = command
     ? {

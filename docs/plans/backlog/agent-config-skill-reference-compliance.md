@@ -1,11 +1,11 @@
 ---
 id: k7p3m2q
 priority: high
-next_action: Update technical-writing SKILL.md so write always loads review-loop.md and owns create/edit/revise workflows
+next_action: Add references/review-loop.md to the write mode reference list in technical-writing SKILL.md and add the completion gate
 blocked_by: []
 depends_on: []
 related: []
-reviewed_commit: 677371c6e95234caa69d532f799cfcb16f4c438e
+reviewed_commit: 28d64aa
 ---
 
 # Make Skill Reference Loading and Validation Reliable
@@ -32,6 +32,7 @@ The work applies first to `plan-docs` and `technical-writing`, then establishes 
 - [ ] Preserve focused references instead of flattening every detailed instruction into `SKILL.md`.
 - [ ] Establish a convention that can be applied to additional skills when similar failures are observed.
 - [ ] Add regression coverage proving that required references and validation gates cannot silently disappear from the workflow.
+- [ ] Report which references a session actually read, not merely which ones the skill declares, so a skipped reference is observable rather than assumed.
 
 ## Non-goals
 
@@ -42,6 +43,9 @@ The work applies first to `plan-docs` and `technical-writing`, then establishes 
 - Make qualitative technical-writing judgments fully deterministic.
 - Change the lifecycle semantics of plan documents.
 - Replace Markdown skill instructions with application code where model judgment is still required.
+- Broadly refactor the telemetry pipeline. Only the privacy hash is consolidated, and only because Phase 8 depends on matching it.
+- Consolidate helpers inside `scripts/cli/telemetry-capture.mjs` such as `toolMetadata`, `resolveCallId`, or session-activity tracking. That module's header documents a deliberate minimal-import constraint because it runs on every `PreToolUse`/`PostToolUse` hook; apparent duplication there is intentional, and widening its import graph regresses hook cost. The shared hash module is exempt because it depends only on `node:crypto`.
+- Restructure `scripts/cli/telemetry.mjs` (1873 lines). Its size is a separate concern with its own risk profile.
 
 ## Current State
 
@@ -80,6 +84,23 @@ The entry-point skill says to read the schema, but it does not restate the criti
 
 The plan-docs validator already handles frontmatter parsing, IDs, priorities, required sections, lifecycle readiness, dependencies, and blockers. Its finding catalog does not currently enforce filename/namespace correctness. A structurally valid plan can therefore use an invalid or inconsistent filename and still receive a finding-free validation result.
 
+`docs/plans/plans-config.json` is currently a prose-only contract. A repository-wide search finds it referenced from `plan-schema.md` and the `plan-start` skill, but no module under `modules/plan-docs/` reads it. Namespace correctness is therefore enforced today only by whether the authoring agent remembered to open the file — which is the failure mode this plan exists to close.
+
+### The naming convention already holds in every non-terminal lifecycle
+
+A filename inventory at `reviewed_commit`, matched against the universal namespaces in `plan-schema.md` plus the project namespaces in `plans-config.json`, shows where legacy names actually live:
+
+| Lifecycle | Plans with an unrecognized namespace prefix |
+| --- | --- |
+| `backlog` | 0 |
+| `active` | 0 |
+| `archived` | 0 |
+| `completed` | 28 |
+
+Every non-conforming filename sits in `completed/`. This makes the legacy-compatibility question a scoping decision rather than a migration project: naming findings scoped to non-terminal lifecycles cannot regress a single existing plan.
+
+`docs/plans/backlog/` also contains three non-plan entries — `.DS_Store`, `roborepo-repository-plans.zip`, and a `roborepo_lifecycle_epic/` directory. Filename validation must skip non-Markdown entries rather than report them as malformed plans.
+
 ### Technical-writing validation is procedural rather than enforced
 
 `globals/packages/technical-writing/skills/technical-writing/references/review-loop.md` defines two distinct roles:
@@ -93,7 +114,13 @@ The Validator must not rewrite the document, each pass must be surfaced in chat,
 
 There is also a concrete scope mismatch: `technical-writing write` requires `references/representation.md`, but `review-loop.md` does not include `representation.md` in its explicit Validator rule list. A document can therefore be authored under a representation rule that the Validator is not clearly required to check.
 
-`globals/packages/technical-writing/skills/technical-writing/agents/openai.yaml` currently contains only a description. It does not encode a separate executable Validator contract, so this plan must not assume the agent metadata already provides role separation.
+`globals/packages/technical-writing/skills/technical-writing/agents/openai.yaml` currently contains only a description. It does not encode a separate executable Validator contract, so this plan must not assume the agent metadata already provides role separation. Across every `agents/openai.yaml` in the repository only two keys appear at all — `description` and `interface` — so there is no existing role or policy field to extend. `skill-audit.mjs` documents the one behavioral key the Codex side recognizes, `policy.allow_implicit_invocation`, which governs invocation rather than Validator role separation.
+
+### A structural skill audit already exists
+
+`scripts/cli/skill-audit.mjs` (182 lines, invoked as `roborepo skill audit`) already walks every package-backed `SKILL.md`, parses frontmatter, emits per-skill structural findings, and renders `docs/internal/skill-invocation-audit.md` from a generated marker. Its current findings cover unsupported frontmatter keys, dynamic shell lines, side-effect keywords, and missing trigger descriptions.
+
+This is the existing home for Phase 7's structural check, and it removes the plan's earlier uncertainty about audit ownership. Related tooling already in place: `skill-trigger-check.mjs` validates skill descriptions against the fixtures in `manifests/inventory/skill-trigger-tests.json`, and the repository has an established `*-characterization-check.mjs` test convention that Phase 6 should follow rather than invent.
 
 ### Omitted references can materially change implementation plans
 
@@ -314,6 +341,11 @@ Verified current implementation surfaces at `reviewed_commit`:
 | lifecycle policy | `modules/plan-docs/lifecycle-policy.mjs` | consume naming findings where lifecycle readiness needs them |
 | repair prompt | `modules/plan-docs/repair-prompt.mjs` | receive the same structured findings rather than duplicate rule text |
 | plan tests | `scripts/test/plan-docs-check.mjs`, `scripts/test/plan-docs-findings-check.mjs`, `scripts/test/plan-docs-repair-check.mjs` | regression coverage for new plan rules |
+| skill structural audit | `scripts/cli/skill-audit.mjs` | add a reference-reachability finding to the existing audit rather than creating a new subsystem |
+| skill trigger fixtures | `scripts/cli/skill-trigger-check.mjs`, `manifests/inventory/skill-trigger-tests.json` | existing precedent for fixture-driven skill metadata checks |
+| namespace source | `docs/plans/plans-config.json` | becomes a code-read input instead of a prose-only contract |
+| telemetry capture | `scripts/cli/telemetry-capture.mjs` | source of observed read events; consume without widening its import graph |
+| shared privacy hash | `scripts/cli/telemetry-schemas/hash.mjs` (new) | one `privacyHash()` consumed by capture, seed-demo, classify, snapshot-schema, and `telemetry.mjs` |
 
 Prefer a focused new module such as `modules/plan-docs/naming.mjs` for deterministic filename/namespace logic rather than adding another responsibility to `modules/plan-docs/index.mjs`. Confirm the final module boundary against local conventions during implementation.
 
@@ -338,22 +370,23 @@ Prefer a focused new module such as `modules/plan-docs/naming.mjs` for determini
 
 ### Phase 3 — Add programmatic naming validation
 
-- [ ] Add a shared naming-validation unit in the plan-docs domain.
-- [ ] Load universal namespaces plus repository project namespaces.
-- [ ] Add structured finding definitions for invalid filename shape, unknown namespace, and prohibited suffixes.
-- [ ] Feed findings through existing validation, portal/API, and repair-prompt paths.
+- [ ] Add a shared naming-validation unit in the plan-docs domain (`modules/plan-docs/naming.mjs`).
+- [ ] Load the universal namespaces from `plan-schema.md` plus project namespaces read from `docs/plans/plans-config.json`; this is the first code path to read that file.
+- [ ] Add the three finding definitions to `modules/plan-docs/findings.mjs` using its documented "TO ADD A RULE" path, with `kind: "schema"` and `severity: "advisory"`.
+- [ ] Scope naming findings to non-terminal lifecycles (`backlog`, `active`); suppress them for `completed` and `archived`, where all 28 legacy names live.
+- [ ] Skip non-Markdown directory entries so `.DS_Store`, `.zip`, and nested directories are never reported as malformed plans.
+- [ ] Feed findings through existing validation, portal/API, and repair-prompt paths — the catalog comment confirms all three consume the same source.
 - [ ] Add deterministic fixtures for repositories with and without `plans-config.json`.
 
 ### Phase 4 — Tighten the technical-writing Validator contract
 
 - [ ] Update `review-loop.md` to enumerate the minimum applicable reference set rather than relying only on “read every rule.”
-- [ ] Fix the current Validator scope mismatch by explicitly adding `representation.md`.
-- [ ] Explicitly include `representation.md` in Validator coverage.
+- [ ] Fix the current Validator scope mismatch by adding `representation.md` to the Validator's explicit rule list (line 8-10 of `review-loop.md` names `SKILL.md`, `anti-patterns.md`, `doc-shapes.md`, `section-guidance.md`, and `doc-organization.md`, but omits it).
 - [ ] Define how paired implementation skills contribute constraints to validation.
 - [ ] Keep the Validator read-only.
 - [ ] Require each pass to identify reference/rule, document location, and violation.
 - [ ] Preserve the 10-pass cap.
-- [ ] Inspect `agents/openai.yaml` consumption before changing it; strengthen role metadata only if the existing schema supports that behavior.
+- [ ] Leave `agents/openai.yaml` unchanged. Repository-wide, those files carry only `description` and `interface` keys, and the only documented behavioral key is `policy.allow_implicit_invocation`, which governs invocation rather than Validator role separation. Role separation stays in `review-loop.md`.
 
 ### Phase 5 — Integrate plan creation with both validators
 
@@ -365,8 +398,8 @@ Prefer a focused new module such as `modules/plan-docs/naming.mjs` for determini
 
 ### Phase 6 — Add skill-routing regression coverage
 
-- [ ] Add characterization tests for the reference matrix declared by `technical-writing`.
-- [ ] Add characterization tests for the reference matrix declared by `plan-docs`.
+- [ ] Add characterization tests for the reference matrices declared by `technical-writing` and `plan-docs`, following the existing `scripts/test/*-characterization-check.mjs` convention and registering them as `test:*` scripts in `package.json`.
+- [ ] Parse the mode/reference matrix directly from `SKILL.md` prose; do not introduce a parallel manifest. Pair this with the Phase 7 audit finding so prose that no longer parses fails loudly rather than yielding an empty reference set that trivially passes.
 - [ ] Test that `technical-writing write` includes `review-loop.md`.
 - [ ] Test that create/edit/revise requests resolve to `write` rather than requiring separate modes.
 - [ ] Test that `technical-writing review` remains read-only and does not imply document mutation.
@@ -378,15 +411,23 @@ Prefer a focused new module such as `modules/plan-docs/naming.mjs` for determini
 ### Phase 7 — Add skill authoring guidance and structural audit support
 
 - [ ] Document the “references provide depth; `SKILL.md` provides gates” convention in maintainer guidance.
-- [ ] Inspect the current skill/package validation ownership before choosing where a new structural audit belongs.
-- [ ] Add a structural check that can detect problems such as a mandatory completion reference unreachable from an artifact-producing mode.
-- [ ] Do not assume a dedicated audit subsystem already exists; choose the ownership from verified current validation boundaries.
+- [ ] Extend `scripts/cli/skill-audit.mjs` with a reference-reachability finding: a reference required by a non-artifact-producing mode but unreachable from the artifact-producing mode. The audit already parses every package-backed `SKILL.md` and emits structural findings, so add a finding to its existing `findings()` function rather than creating a new module.
+- [ ] Add a companion finding for an unparseable mode/reference matrix, so reformatted prose surfaces as an audit failure instead of silently defeating the Phase 6 tests.
+- [ ] Regenerate `docs/internal/skill-invocation-audit.md` through the existing generated-marker path; do not hand-edit it.
 - [ ] Keep audit findings structural rather than attempting to judge arbitrary prose semantics mechanically.
 
 ### Phase 8 — Add lightweight runtime observability
 
-- [ ] Identify workflows where RoboRepo controls the prompt/reference set strongly enough to report expected resources accurately.
-- [ ] Surface selected skill, mode, required references, and validation result in an existing diagnostics/reporting surface where appropriate.
+Step one consolidates the privacy hash, because Phase 8 depends on hashing a reference path exactly the way capture already hashed it. Matching against a sixth ad-hoc copy of the algorithm is how the silent zero-match failure below actually happens.
+
+- [ ] Add a single `privacyHash(value)` to a dependency-free module (`scripts/cli/telemetry-schemas/hash.mjs`) and route all existing call sites through it.
+- [ ] Delete the sync-by-comment note at `scripts/cli/telemetry.mjs:1080` once both sides call the shared helper.
+- [ ] Add an assertion to the existing telemetry tests that pins the hash algorithm and width, so a change cannot silently desynchronize cross-file joins.
+- [ ] Build on existing telemetry capture; do not add a new diagnostics surface.
+- [ ] Resolve the live installed skill directory before hashing reference paths, so hashes match what the agent actually read. Verify against a real captured session before building any reporting on top — a wrong path root produces zero matches with no error.
+- [ ] Match required reference paths against captured `file_path_hash` values to report which references were actually read, not only which were required.
+- [ ] Preserve the existing privacy property: presence-test known reference paths; do not add plain-text path capture.
+- [ ] Keep reference-presence matching inline in Phase 8. The primitive — given known paths, which did this session read — would generalize to plan-doc reads and plan-touched-file checks, but extract it only when a second consumer exists rather than designing for a hypothetical one.
 - [ ] If this adds framework-less portal markup, follow the existing real-HTML `<template>` + slot-fill convention; do not build nested multi-element structures with JavaScript DOM-builder calls or runtime HTML strings.
 - [ ] Do not claim a model read a reference when the harness cannot prove it.
 - [ ] Do not capture or persist private model reasoning.
@@ -405,6 +446,10 @@ Prefer a focused new module such as `modules/plan-docs/naming.mjs` for determini
 - [ ] Legacy plan IDs remain untouched.
 - [ ] Plan lifecycle still derives only from the folder.
 - [ ] Repair prompts receive the same naming findings exposed by the domain.
+- [ ] All five former hash sites produce identical output for the same input after consolidation.
+- [ ] A test fails if the hash algorithm or truncation width changes.
+- [ ] `telemetry-capture.mjs` gains no imports beyond the `node:crypto`-only hash module.
+- [ ] Existing telemetry captures remain readable; consolidation changes no stored hash value.
 
 ### Test design
 
@@ -424,6 +469,15 @@ npm run test:plans-repair
 npm test
 ```
 
+Phase 8 hash consolidation touches shared telemetry surfaces, so run the telemetry checks that already cover those call sites:
+
+```bash
+npm run test:telemetry
+npm run test:telemetry-schemas
+npm run test:telemetry-classify
+npm run test:telemetry-capture-v3
+```
+
 Do not invent a new lint, formatter, or typecheck command solely for this work.
 
 ## Risks and Mitigations
@@ -438,22 +492,55 @@ Do not invent a new lint, formatter, or typecheck command solely for this work.
 | Agents claim references were read when that cannot be proven | Distinguish expected reference set from verified execution evidence |
 | Existing plans are broken by stricter naming checks | Characterize current inventory first and treat legacy exceptions deliberately |
 | Skill updates drift across harnesses | Keep source skill/reference content canonical and test rendered/routed outputs |
+| A hash-width change silently empties every cross-file join | Consolidate to one `privacyHash()` and pin algorithm and width with a test assertion |
+| Hashing the repository source path instead of the installed skill path yields zero matches with no error | Resolve the live installed skill directory first and verify against a real captured session before building reporting on top |
+| Consolidation creeps into the hot capture path and regresses hook cost | Extract only the `node:crypto`-only hash; the non-goals forbid touching capture's other helpers |
 
-## Open Questions
+## Resolved Decisions
 
-- Should new filename findings initially be advisory for legacy plans that predate the naming convention, or should compatibility be determined from repository inventory before implementation?
-- Should the reference matrix remain encoded only in Markdown instructions, or should RoboRepo eventually expose a small machine-readable skill workflow manifest that can be validated without parsing prose?
-- Should structural reference-reachability checks live with existing package/skill validation, or should implementation introduce a dedicated audit module after ownership is inspected?
-- Which existing diagnostics surface is the best home for expected skill/reference-set reporting?
+Every question carried by the previous revision has been resolved against the repository. They are recorded as decisions, not open items:
 
-None of these questions blocks Phase 1 or Phase 2.
+| Former question | Resolution |
+| --- | --- |
+| Should filename findings be advisory for legacy plans? | Resolved by inventory. All 28 legacy names are in `completed/`; none are in `backlog`, `active`, or `archived`. Scope findings to non-terminal lifecycles and no existing plan regresses. |
+| Where should structural reference-reachability checks live? | Resolved by inspection. `scripts/cli/skill-audit.mjs` already performs structural `SKILL.md` auditing; extend its `findings()` rather than adding a module. |
+| Should the reference matrix move to a machine-readable manifest? | No, not yet. Keep the matrix in `SKILL.md` prose as the single source of truth and have Phase 6 parse it. A manifest would create a second copy that can silently drift from the prose the agent actually reads — a green test while the real skip occurs. Revisit only when a second consumer needs it. |
+| Which surface hosts reference-loading observability? | Existing telemetry capture. No new diagnostics surface is required. |
+
+### Reference-loading observability is achievable from existing capture
+
+`scripts/cli/telemetry-capture.mjs` already records every read-shaped tool call — `READ_TOOL_NAMES` covers `Read`, `Grep`, `Glob`, `WebFetch`, and `WebSearch` — and stores the target path as `file_path_hash`, an unsalted SHA-256 truncated to 24 hex characters.
+
+Because the hash is unsalted and derived only from the path string, a consumer can hash a known reference path and test for its presence in a session's captured reads. This makes Phase 8 able to report **observed** reference loading rather than merely the expected reference set, which is the difference between catching a skipped reference and restating the rule.
+
+| Constraint | Consequence for Phase 8 |
+| --- | --- |
+| Hashes derive from the absolute path the agent actually used | Resolve the live installed skill path before hashing, not the repository source path; hashing the wrong root yields zero matches silently |
+| Paths are stored hashed, never in plain text | Matching is presence-testing against known references only; the pipeline cannot enumerate arbitrary read paths, and this privacy property must be preserved |
+| Capture observes tool calls, not model reasoning | Report which reference files were read; never infer or claim comprehension |
+
+### The privacy hash is duplicated across five sites
+
+Phase 8 must reproduce capture's hash exactly to match anything. That algorithm — `sha256`, hex, truncated to 24 characters — is currently written out independently in five places:
+
+| Site | Line | Form |
+| --- | --- | --- |
+| `scripts/cli/telemetry-capture.mjs` | 563 | `function hash(value)` |
+| `scripts/cli/telemetry.mjs` | 1084 | `function captureRepositoryHash(value)` |
+| `scripts/cli/telemetry-seed-demo.mjs` | 18 | `const hash = (value) => ...` |
+| `scripts/cli/telemetry-classify.mjs` | 130, 139 | `commandSignature`, `failureSignature` |
+| `scripts/cli/telemetry-schemas/snapshot-schema.mjs` | 25 | inline |
+
+Consistency is currently maintained by a comment at `telemetry.mjs:1080` explaining that the value must line up with `telemetry-capture.mjs`. That comment is the whole enforcement mechanism.
+
+**Changing the width in one file breaks cross-file joins without failing anything.** Hashes simply stop matching, and every join returns zero rows — indistinguishable from "the agent read nothing." Phase 8 would inherit that failure mode directly, which is why the consolidation is sequenced first rather than treated as unrelated cleanup.
 
 ## Repository Review
 
 Repository state for this revision was deliberately reviewed at:
 
 ```text
-677371c6e95234caa69d532f799cfcb16f4c438e
+28d64aa
 ```
 
 Verified facts used by this plan:
@@ -467,6 +554,15 @@ Verified facts used by this plan:
 | `agent-config` is the project namespace covering skills and harness configuration | `docs/plans/plans-config.json` |
 | structured findings feed validation/lifecycle errors/repair prompts from one catalog | `modules/plan-docs/findings.mjs` |
 | plan-focused and full-suite verification commands exist | `package.json` |
+| a structural skill audit already exists and renders a generated report | `scripts/cli/skill-audit.mjs`, `docs/internal/skill-invocation-audit.md` |
+| fixture-driven skill metadata checking has existing precedent | `scripts/cli/skill-trigger-check.mjs`, `manifests/inventory/skill-trigger-tests.json` |
+| no code reads `plans-config.json`; it is a prose-only contract today | repository-wide search: only `plan-schema.md` and the `plan-start` skill reference it |
+| all 28 legacy-named plans are in `completed/`; backlog, active, and archived are fully conforming | filename inventory against universal + project namespaces |
+| `agents/openai.yaml` files carry only `description` and `interface` keys | `globals/packages/*/skills/*/agents/openai.yaml` |
+| universal namespaces include `git`, `infra`, and `os` | `plan-schema.md` |
+| telemetry capture records read-shaped tool calls with an unsalted path hash | `scripts/cli/telemetry-capture.mjs` (`READ_TOOL_NAMES`, `file_path_hash`, `hash()`) |
+| the same sha256/24-character hash is reimplemented in five modules, kept aligned only by a comment | `telemetry-capture.mjs:563`, `telemetry.mjs:1080-1084`, `telemetry-seed-demo.mjs:18`, `telemetry-classify.mjs:130,139`, `telemetry-schemas/snapshot-schema.mjs:25` |
+| the capture module documents a deliberate minimal-import constraint for the hot hook path | `scripts/cli/telemetry-capture.mjs:18-23` |
 
 ## Success Criteria
 

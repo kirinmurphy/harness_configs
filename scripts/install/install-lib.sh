@@ -97,43 +97,82 @@ stdin_is_interactive() {
   [[ -t 0 || "${ROBOREPO_ASSUME_INTERACTIVE:-0}" == "1" ]]
 }
 
+# Subdirectories of ${dest} that roborepo itself installs from a DIFFERENT manifest row, and which
+# therefore have no counterpart under the repo source of THIS row. One manifest target may nest
+# inside another (claude: `hooks/provider` lands inside `hooks`), so a plain `diff -r` sees
+# roborepo's own second install as an extra directory and concludes the user modified the first.
+# Emitted as `diff` exclude patterns, matched by basename.
+_nested_manifest_excludes() {
+  local dest="$1" home_abs
+  declare -f manifest_rows >/dev/null 2>&1 || return 0
+  while IFS=$'\t' read -r _harness _kind _src_rel home_abs _flags; do
+    [[ -n "${home_abs}" ]] || continue
+    # Strictly BELOW dest, and only the immediate child dest/<name> — deeper paths are already
+    # inside a child this loop emits.
+    [[ "${home_abs}" == "${dest}/"* ]] || continue
+    local rel="${home_abs#"${dest}"/}"
+    [[ "${rel}" == */* ]] && continue
+    printf -- '--exclude=%s\n' "${rel}"
+  done < <(manifest_rows)
+}
+
+# THE content comparison. Both public predicates below delegate here; do not add a third copy.
+#
+# True when ${dest} is a REAL (non-symlink) path byte-for-byte identical to repo source ${src}:
+# files compared with cmp, directories with `diff -r`. Any divergence — an extra file, one edited
+# line — returns false, so callers never treat user content as a disposable repo copy.
+#
+# The one thing that does NOT count as divergence is another roborepo manifest target nested inside
+# this one: that content is roborepo's own, installed by a different row and reclaimed by that row's
+# own pass. Counting it would make two nested rows permanently unreclaimable (the outer dir looks
+# user-modified from the moment the inner row installs) AND non-idempotent to reinstall (the same
+# mismatch routes an already-current path to the collision prompt).
+_paths_have_identical_content() {
+  local src="$1"
+  local dest="$2"
+
+  if [[ -f "${src}" && -f "${dest}" ]]; then
+    cmp -s "${src}" "${dest}"
+    return $?
+  fi
+  if [[ -d "${src}" && -d "${dest}" ]]; then
+    # bash 3.2 (the macOS default) treats "${arr[@]}" on an empty array as an unbound variable under
+    # `set -u`, so the no-nested-rows case must not expand the array at all.
+    local -a excludes=()
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && excludes+=("${line}")
+    done < <(_nested_manifest_excludes "${dest}")
+    if [[ ${#excludes[@]} -eq 0 ]]; then
+      diff -r "${src}" "${dest}" >/dev/null 2>&1
+    else
+      diff -r "${excludes[@]}" "${src}" "${dest}" >/dev/null 2>&1
+    fi
+    return $?
+  fi
+  return 1
+}
+
+# Install-side: is ${dest} already exactly what this copy would write, so the copy is a no-op?
+# ${dest} must exist; a symlink is never "equivalent" (the copy replaces it with a real path).
 paths_equivalent_for_copy() {
   local src="$1"
   local dest="$2"
 
   [[ -e "${dest}" || -L "${dest}" ]] || return 1
   [[ -L "${dest}" ]] && return 1
-  if [[ -f "${src}" && -f "${dest}" ]]; then
-    cmp -s "${src}" "${dest}"
-    return $?
-  fi
-  if [[ -d "${src}" && -d "${dest}" ]]; then
-    diff -r "${src}" "${dest}" >/dev/null 2>&1
-    return $?
-  fi
-  return 1
+  _paths_have_identical_content "${src}" "${dest}"
 }
 
-# True when ${dest} is a REAL (non-symlink) file or dir whose content is byte-for-byte identical to
-# repo source ${src}: files compared with cmp, directories with `diff -r`. This is how we tell a
-# roborepo-authored copy (adopt-mode install, or a legacy materialized link) apart from genuine user
-# content. Any divergence — an extra file, one edited line — returns false, so callers never treat
-# user content as a disposable repo copy, and never capture a roborepo copy as a fake "original".
+# Uninstall/backup-side: is ${dest} a roborepo-authored copy (adopt-mode install, or a legacy
+# materialized link) rather than genuine user content? Additionally requires ${src} to exist —
+# with no repo source to compare against there is no basis to call ${dest} roborepo's.
 content_matches_repo_source() {
   local src="$1"
   local dest="$2"
 
   [[ -e "${src}" ]] || return 1
   [[ -e "${dest}" && ! -L "${dest}" ]] || return 1
-  if [[ -f "${src}" && -f "${dest}" ]]; then
-    cmp -s "${src}" "${dest}"
-    return $?
-  fi
-  if [[ -d "${src}" && -d "${dest}" ]]; then
-    diff -r "${src}" "${dest}" >/dev/null 2>&1
-    return $?
-  fi
-  return 1
+  _paths_have_identical_content "${src}" "${dest}"
 }
 
 path_has_meaningful_content() {

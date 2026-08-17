@@ -4,6 +4,7 @@
   "title": "Development",
   "description": "Development-checkout-only tooling (unavailable in npm installs)",
   "advanced": true,
+  "developmentOnly": true,
   "order": 900,
   "execution": {
     "adapter": "module",

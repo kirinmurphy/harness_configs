@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { loadCommandCatalog, listCommandNodes, promotedRootEntries } from "../cli/command-catalog.mjs";
 import { validateExecutions } from "../cli/command-executor.mjs";
 import { renderHelp } from "../cli/help-renderer.mjs";
@@ -100,6 +101,45 @@ const namespaceWithDefaultExecution = resolveCommand(catalog, ["config", "rules"
 assert.equal(namespaceWithDefaultExecution.kind, "command");
 assert.deepEqual(namespaceWithDefaultExecution.tokens, ["config", "rules"]);
 assert.deepEqual(resolveCommand(catalog, ["config", "rules"]).kind, "menu");
+
+// Availability gate: `dev` must be reachable here (a development checkout) and absent in package
+// mode. Package mode is asserted in a SUBPROCESS because developmentMode is a module-level const
+// evaluated at import — mutating process.env inside this already-loaded process would not change it,
+// so an in-process assertion would silently test nothing.
+assert.ok(catalog.nodes.dev, "top-level dev namespace composed in a development checkout");
+assert.equal(catalog.nodes.dev.developmentOnly, true, "dev namespace is marked developmentOnly");
+assert.equal(resolveCommand(catalog, ["dev"]).kind, "menu", "dev resolves in a development checkout");
+assert.ok(catalog.nodes.package.children.dev, "package dev is a separate namespace from top-level dev");
+
+{
+  const probe = `
+    import { loadCommandCatalog, childEntries } from ${JSON.stringify(path.join(repoRoot, "scripts/cli/command-catalog.mjs"))};
+    import { resolveCommand } from ${JSON.stringify(path.join(repoRoot, "scripts/cli/command-resolver.mjs"))};
+    import { developmentMode } from ${JSON.stringify(path.join(repoRoot, "scripts/cli/paths.mjs"))};
+    const catalog = loadCommandCatalog();
+    const listed = childEntries(catalog, { includeInternal: true }).map((entry) => entry.key);
+    console.log(JSON.stringify({
+      developmentMode,
+      listed: listed.includes("dev"),
+      resolved: resolveCommand(catalog, ["dev"]).kind,
+      help: resolveCommand(catalog, ["help", "dev"]).kind,
+      // Validation must still walk developmentOnly nodes on every machine, or a malformed dev
+      // definition that ships in the tarball would only ever fail on a maintainer's laptop.
+      validated: Object.keys(catalog.nodes).includes("dev"),
+    }));
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", probe], {
+    encoding: "utf8",
+    env: { ...process.env, ROBOREPO_MODE: "package" },
+  });
+  assert.equal(result.status, 0, `package-mode catalog probe failed: ${result.stderr}`);
+  const observed = JSON.parse(result.stdout);
+  assert.equal(observed.developmentMode, false, "probe did not actually enter package mode");
+  assert.equal(observed.listed, false, "dev must not be listed in package mode");
+  assert.equal(observed.resolved, "invalid", "dev must not resolve in package mode");
+  assert.equal(observed.help, "invalid", "help dev must not resolve in package mode");
+  assert.equal(observed.validated, true, "dev definitions must still be validated in package mode");
+}
 
 const activeDocPaths = [
   "README.md",

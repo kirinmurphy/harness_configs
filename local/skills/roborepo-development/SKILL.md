@@ -123,7 +123,17 @@ Everything else (the two symlink levels, the layer table) lives in
   | Axis | Mechanism | Means |
   |------|-----------|-------|
   | Visibility | `kind: "internal"` on a command definition | Hidden from menus and scoped help; **still runs fine on end-user machines** |
-  | Availability | Script under `local/` + `requiresDevelopmentCheckout` | Absent from npm installs; dev checkout only |
+  | Visibility | `advanced: true` | Kept out of the root menu; still listed under its own namespace's help |
+  | Availability | `developmentOnly: true` on a command definition | Not listed, not resolvable, and not helpable off a dev checkout — `roborepo <it>` reports "unknown command" |
+  | Availability | Script under `local/` + `requiresDevelopmentCheckout` | Runtime gate for a command that IS reachable but cannot work; prints why and exits 1 |
+
+  The two availability rows are complementary, not alternatives. `developmentOnly` is enforced in
+  `command-catalog.mjs` (listing, via `childEntries`) AND `command-resolver.mjs` (resolution, via
+  `matchPath` — which walks raw children and would otherwise still open the menu for a command
+  every listing hides). `requiresDevelopmentCheckout` is the last line of defence inside the
+  command itself. A `developmentOnly` namespace still gets validated on every machine, because
+  `validateCommandCatalog` passes `includeUnavailable: true` — a malformed definition that ships in
+  the tarball must not fail only on a maintainer's laptop.
 
   `internal` does NOT mean "not for users" — `setup`, `bundle`, `onboard-intro`, and `presets` are
   all `internal` *because* they are machine-invoked install-time commands that must run on every

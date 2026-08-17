@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { repoRoot } from "./paths.mjs";
+import { repoRoot, developmentMode } from "./paths.mjs";
 import { loadCommandDefinitions, readRemovedCommands } from "./command-definition-files.mjs";
 import { composeCommandNodes } from "./command-tree-compose.mjs";
 import { listHarnessProviders } from "../harnesses/registry.mjs";
@@ -31,7 +31,7 @@ export function validateCommandCatalog(catalog) {
 
   const paths = new Set();
   const handlers = [];
-  for (const { tokens, node } of listCommandNodes(catalog, { includeInternal: true })) {
+  for (const { tokens, node } of listCommandNodes(catalog, { includeInternal: true, includeUnavailable: true })) {
     const key = tokens.join(" ");
     if (paths.has(key)) throw new Error(`duplicate CLI path: ${key}`);
     paths.add(key);
@@ -44,18 +44,46 @@ export function validateCommandCatalog(catalog) {
   return { paths, handlers };
 }
 
-export function listCommandNodes(catalog, { includeInternal = false, includeAdvanced = true } = {}) {
+export function listCommandNodes(
+  catalog,
+  { includeInternal = false, includeAdvanced = true, includeUnavailable = false } = {},
+) {
   const out = [];
-  walkNodes(catalog.nodes, [], out, { includeInternal, includeAdvanced });
+  walkNodes(catalog.nodes, [], out, { includeInternal, includeAdvanced, includeUnavailable });
   return out;
 }
 
-export function childEntries(nodeOrCatalog, { includeInternal = false, includeAdvanced = true } = {}) {
+// AVAILABILITY, not visibility. `internal` and `advanced` hide a command that still WORKS on the
+// machine reading the catalog; `developmentOnly` marks one that cannot work at all off a dev
+// checkout, because the scripts it drives live under `local/` and package.json never publishes
+// them. manifests/ does ship, so without this filter an npm user reaches a menu whose only entry
+// fails. Filtered here rather than at each call site because childEntries is the single chokepoint
+// every consumer (help, menus, resolver) already routes through — and there is deliberately no
+// opt-in flag to include these: a command that cannot run should not be listed anywhere.
+// `includeUnavailable` exists for exactly one caller: validateCommandCatalog, which must check the
+// schema of EVERY node on every machine. Without it, a package-mode run would silently stop
+// validating the dev definitions that ship in the tarball, so a malformed one would only ever fail
+// on a maintainer's laptop. It is not a general "show hidden commands" switch.
+function availableHere(node, includeUnavailable) {
+  return includeUnavailable || !node.developmentOnly || developmentMode;
+}
+
+// Exported for command-resolver.mjs, which walks raw children and so has to apply the same rule
+// itself. Listing and resolution must agree, or a command disappears from help while still running.
+export function isAvailableHere(node) {
+  return availableHere(node, false);
+}
+
+export function childEntries(
+  nodeOrCatalog,
+  { includeInternal = false, includeAdvanced = true, includeUnavailable = false } = {},
+) {
   const children = nodeOrCatalog.children || nodeOrCatalog.nodes || {};
   return Object.entries(children)
     .map(([key, node]) => ({ key, node }))
     .filter(({ node }) => includeInternal || node.kind !== "internal")
     .filter(({ node }) => includeAdvanced || !node.advanced)
+    .filter(({ node }) => availableHere(node, includeUnavailable))
     .sort((a, b) => (a.node.order ?? 0) - (b.node.order ?? 0) || a.key.localeCompare(b.key));
 }
 

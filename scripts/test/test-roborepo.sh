@@ -2031,6 +2031,9 @@ assert "usage-statusline: domain, renderer, snapshot store" \
 assert "usage-statusline: process lifecycle and package ownership" \
   node "${repo_root}/scripts/test/usage-statusline-check.mjs"
 
+assert "portal: stale pid detection and reaping" \
+  node "${repo_root}/scripts/test/portal-pid-reaper-check.mjs"
+
 # ---------------------------------------------------------------------------
 clear_progress
 echo ""

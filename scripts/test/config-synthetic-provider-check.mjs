@@ -120,6 +120,16 @@ fs.writeFileSync(
   }, null, 2),
 );
 
+// Live-discovery evidence for claude must come from the fixture, never from the developer's real
+// home. Discovery expands manifest-declared home-relative candidates against os.homedir(), so the
+// probe below runs with HOME pointed at this fabricated tree: ~/.claude exists (a "home" evidence
+// kind) but no `claude` executable is on the probe's PATH, which normalizeConfidence scores as
+// "possible". That is exactly the live-present/stale-absent case assertion (5) is about, and it is
+// now stated by the fixture rather than inherited from the machine -- on a CI runner with no
+// ~/.claude the old inherited-HOME version dropped claude from the cohort and failed.
+const probeHome = path.join(tmp, "home");
+fs.mkdirSync(path.join(probeHome, ".claude"), { recursive: true });
+
 const probeScript = path.join(tmp, "probe.mjs");
 fs.writeFileSync(
   probeScript,
@@ -184,7 +194,10 @@ fs.writeFileSync(
     "  process.exit(1);",
     "}",
     "const claudeMachine = machine.find((h) => h.id === 'claude');",
-    "if (!claudeMachine || claudeMachine.enabled !== true) {",
+    "// confidence 'possible' pins the evidence to the fixture's ~/.claude home directory alone (no",
+    "// claude executable is on this probe's PATH) -- so this fails if live discovery stops consulting",
+    "// home candidates, rather than passing on some other accidental evidence.",
+    "if (!claudeMachine || claudeMachine.enabled !== true || claudeMachine.confidence !== 'possible') {",
     "  console.error('FAIL live-present stale-absent provider must appear enabled: ' + JSON.stringify(claudeMachine));",
     "  process.exit(1);",
     "}",
@@ -200,7 +213,13 @@ fs.writeFileSync(
 
 const result = spawnSync(process.execPath, [probeScript], {
   encoding: "utf8",
-  env: { ...process.env, PATH: ["/usr/bin", "/bin"].join(path.delimiter), ROBOREPO_STATE_DIR: stateDir },
+  env: {
+    ...process.env,
+    HOME: probeHome,
+    USERPROFILE: probeHome,
+    PATH: ["/usr/bin", "/bin"].join(path.delimiter),
+    ROBOREPO_STATE_DIR: stateDir,
+  },
 });
 assert.equal(result.status, 0, `synthetic third-provider probe failed:\n${result.stdout}\n${result.stderr}`);
 assert.match(result.stdout, /ok/);
@@ -223,6 +242,12 @@ const toolBin = path.join(tmp, "tools");
 fs.mkdirSync(toolBin, { recursive: true });
 fs.writeFileSync(path.join(toolBin, "acme"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
 
+// Deliberately an EMPTY home: this probe's whole point is that a fabricated `acme` executable on
+// PATH is enough on its own, so the cohort here must be exactly [acme] with no claude/codex leaking
+// in from the developer's real home directory.
+const liveProbeHome = path.join(tmp, "home-empty");
+fs.mkdirSync(liveProbeHome, { recursive: true });
+
 const liveProbeScript = path.join(tmp, "live-probe.mjs");
 fs.writeFileSync(
   liveProbeScript,
@@ -235,6 +260,12 @@ fs.writeFileSync(
     "  console.error('FAIL live-discovered acme: ' + JSON.stringify(machine));",
     "  process.exit(1);",
     "}",
+    "// Empty home + only the fabricated acme executable on PATH: nothing else may appear, which is",
+    "// what proves the cohort came from this fixture's evidence and not the ambient machine.",
+    "if (machine.length !== 1) {",
+    "  console.error('FAIL cohort must contain only fixture-backed providers: ' + JSON.stringify(machine));",
+    "  process.exit(1);",
+    "}",
     "console.log('ok');",
   ].join("\n"),
 );
@@ -242,6 +273,8 @@ const liveFallbackResult = spawnSync(process.execPath, [liveProbeScript], {
   encoding: "utf8",
   env: {
     ...process.env,
+    HOME: liveProbeHome,
+    USERPROFILE: liveProbeHome,
     PATH: [toolBin, "/usr/bin", "/bin"].join(path.delimiter),
     ROBOREPO_STATE_DIR: stateDir,
   },

@@ -1567,6 +1567,29 @@ assert "mcp: Codex active config add/remove records root-config writes" \
 assert "mcp: Codex MCP removal survives bracketed array values and is idempotent" \
   node "${repo_root}/scripts/test/mcp-codex-remove-check.mjs"
 
+# The seven below existed and passed but nothing invoked them, so they asserted nothing. Found by
+# orphan-test-check, which now runs last here to keep the same gap from reopening.
+assert "agent-run: every roborepo namespace is allowlisted or ask-bucketed" \
+  node "${repo_root}/scripts/test/agent-run-coverage-check.mjs"
+
+assert "agent-run: nested roborepo invocations are refused" \
+  node "${repo_root}/scripts/test/agent-run-policy-check.mjs"
+
+assert "cli: command catalog is internally consistent" \
+  node "${repo_root}/scripts/test/cli-command-catalog-check.mjs"
+
+assert "git-inventory: repository inventory derivation" \
+  node "${repo_root}/scripts/test/git-inventory-check.mjs"
+
+assert "package library: disabling a package updates persisted state" \
+  node "${repo_root}/scripts/test/package-library-disable-update-check.mjs"
+
+assert "permissions: writes stay scoped to the current repository" \
+  node "${repo_root}/scripts/test/repo-write-scope-check.mjs"
+
+assert "test suite: no test file under scripts/test/ is unreachable" \
+  node "${repo_root}/scripts/test/orphan-test-check.mjs"
+
 assert "mcp: Claude permission grant writes the active settings, never the repo baseline" \
   node "${repo_root}/scripts/test/mcp-claude-permission-check.mjs"
 

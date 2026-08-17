@@ -18,6 +18,7 @@ Use the smallest layer that proves the change. Before publishing, run the full p
 | Package artifact smoke | `npm run test:package-install` | real `npm pack`, isolated global install, package-mode lifecycle, appRoot immutability | Requires a clean worktree only when retaining an artifact with `--output-dir`. |
 | Release preflight | `npm run publish:npm -- --dry-run` | npm auth, registry availability, release checks | Does not write a version or publish. |
 | Targeted Node checks | `node scripts/test/<name>.mjs` | one behavior surface | Preferred while debugging a specific regression. |
+| Hermetic rerun | `bash scripts/test/hermetic-suite.sh --quiet` | the main suite under a temp `HOME` and a PATH with no harness executables | Reproduces CI-runner conditions locally. A test that fails only here is reading ambient machine state. |
 | Portal smoke | `roborepo web --no-open --port <port>` plus `curl`/browser checks | local portal routes and API snapshots | Start under direct control and stop with Ctrl-C. Do not use detached mode for test runs. |
 
 ## Publish Matrix
@@ -93,6 +94,17 @@ When browser automation is available, use it for DOM-level checks: page load, co
 network failures, and the visible Uninstall panel. Without browser automation, `/config`,
 `/api/config`, and the uninstall preview are acceptable browser-equivalent smoke checks, but record
 that no real browser was used.
+
+## Adding A Test
+
+Write the check, then wire it into a runner. `scripts/doctor.sh` fails when any file under
+`scripts/test/` is invoked by neither `test-roborepo.sh`, an `npm run test:*` script, nor a CI job —
+because a test nothing runs asserts nothing, which is exactly how an uninstall defect once survived
+a full review pass.
+
+When that check fails, add the file to a runner. Only if it is genuinely not a suite entry point —
+a child process, a benchmark, a manual smoke that binds a port — add it to `EXEMPT` in
+`scripts/test/orphan-test-check.mjs` along with the reason it is not automated.
 
 ## Sandbox Notes
 

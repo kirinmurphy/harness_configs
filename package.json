@@ -97,7 +97,7 @@
     "test:package-install": "node scripts/test/package-install-smoke.mjs",
     "prepare:new-mac-install": "node scripts/test/package-install-smoke.mjs",
     "publish:npm": "bash scripts/release/publish-npm.sh",
-    "publish:npm-latest": "npm run publish:npm --latest",
+    "publish:npm-latest": "npm run publish:npm -- --latest",
     "test:publish-npm": "node scripts/test/publish-npm-check.mjs"
   },
   "engines": {

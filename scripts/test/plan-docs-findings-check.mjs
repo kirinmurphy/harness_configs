@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { finding, messagesOf, sortBySeverity, FINDING_CODES } from "../../modules/plan-docs/findings.mjs";
 import { validateForLifecycle, lifecyclePolicies } from "../../modules/plan-docs/lifecycle-policy.mjs";
 import { SECTION_SYNONYMS, SECTION_FINDING_CODES } from "../../modules/plan-docs/section-synonyms.mjs";
 import { buildRepairPrompt } from "../../modules/plan-docs/repair-prompt.mjs";
 import { parsePlanMarkdown } from "../../modules/plan-docs/index.mjs";
 import { classifyPlanId, generatePlanId, isValidPlanId } from "../../modules/plan-docs/plan-id.mjs";
+import { validatePlanNaming, readProjectNamespaces, UNIVERSAL_NAMESPACES } from "../../modules/plan-docs/naming.mjs";
 
 // The validation layer is pure — it reads a parsed document and returns findings, touching no
 // filesystem — so these drive it directly with in-memory markdown, the same way
@@ -45,6 +48,16 @@ testRepairPromptListsAcceptedHeadings();
 testRepairPromptHandlesMissingPlanId();
 testPlanIdClassification();
 testGeneratedIdsAreShortFormat();
+testNamingIsInertWithoutDeclaredNamespaces();
+testNamingAppliesOnlyToNonTerminalLifecycles();
+testNamingSkipsNonMarkdownEntries();
+testNamingAcceptsUniversalAndProjectNamespaces();
+testNamingMatchesLongestHyphenatedNamespace();
+testMalformedFilenameReportsShapeOnly();
+testForbiddenSuffixesAreReported();
+testOrdinalSeriesIsNotMistakenForAVersion();
+testNamingFindingsCarryTheirFilename();
+testRepositoryPlansProduceNoNamingFindings();
 console.log("ok: plan docs findings and lifecycle policy checks passed");
 
 // The tiered id check. Short base36 is the current convention; hyphenated slugs are accepted but
@@ -407,4 +420,145 @@ function testRepairPromptHandlesMissingPlanId() {
   assert.ok(prompt.includes("Add a stable, lowercase-slug plan ID"),
     "asks for an id to be created rather than telling the agent to preserve one that doesn't exist");
   assert.ok(!prompt.includes("Preserve the stable plan ID ``"), "never emits an empty id placeholder");
+}
+
+// --- naming -----------------------------------------------------------------------------------
+
+// Naming is the one plan-docs rule that depends on repository configuration rather than on the
+// document alone, so these fix both halves of its scope: which repositories it speaks for, and
+// which lifecycles inside them.
+
+// A function, not a const, for the reason noted above the repair-prompt helpers: the test calls at
+// the top of this file run before module-scope const initializers would have evaluated.
+function projectNamespaces() {
+  return ["portal", "telemetry", "usage-statusline", "plan-lifecycle"];
+}
+
+function namingCodes(filename, lifecycle, namespaces = projectNamespaces()) {
+  return validatePlanNaming({ filename, lifecycle, projectNamespaces: namespaces }).map((item) => item.code);
+}
+
+// The convention is opt-in. A repository that never declared a vocabulary is not silently held to
+// the universal set — otherwise every plan in most repositories reports a finding on first scan.
+function testNamingIsInertWithoutDeclaredNamespaces() {
+  assert.deepEqual(namingCodes("whatever.md", "backlog", []), [],
+    "no declared namespaces means no naming findings at all, not a fallback to the universal set");
+  assert.deepEqual(namingCodes("ready-plan-v2.md", "active", []), [],
+    "even a filename breaking several rules is silent in an unconfigured repository");
+}
+
+// Every non-conforming name in this repository sits in a terminal lifecycle, where renaming would
+// break inbound links to settle a convention that no longer governs future work.
+function testNamingAppliesOnlyToNonTerminalLifecycles() {
+  assert.deepEqual(namingCodes("nonsense.md", "backlog"), ["INVALID_PLAN_FILENAME"]);
+  assert.deepEqual(namingCodes("nonsense.md", "active"), ["INVALID_PLAN_FILENAME"]);
+  assert.deepEqual(namingCodes("nonsense.md", "completed"), [], "completed names are historical records");
+  assert.deepEqual(namingCodes("nonsense.md", "archived"), [], "archived names are historical records");
+  assert.deepEqual(namingCodes("nonsense.md", "unclassified"), [],
+    "an unclassified file already reports UNCLASSIFIED_LOCATION; its name is not the problem to fix first");
+}
+
+// docs/plans legitimately holds .DS_Store, archives, and nested directories. Reporting those as
+// malformed plans would be noise the reader has to learn to ignore.
+function testNamingSkipsNonMarkdownEntries() {
+  for (const entry of [".DS_Store", "roborepo-repository-plans.zip", "roborepo_lifecycle_epic", "notes.txt"]) {
+    assert.deepEqual(namingCodes(entry, "backlog"), [], `${entry} is not a plan document and must not be reported as one`);
+  }
+}
+
+function testNamingAcceptsUniversalAndProjectNamespaces() {
+  for (const namespace of UNIVERSAL_NAMESPACES) {
+    assert.deepEqual(namingCodes(`${namespace}-some-specific-slug.md`, "backlog"), [],
+      `${namespace} is a universal namespace and needs no per-repository declaration`);
+  }
+  for (const namespace of projectNamespaces()) {
+    assert.deepEqual(namingCodes(`${namespace}-some-specific-slug.md`, "backlog"), [],
+      `${namespace} is declared by the repository and must be accepted`);
+  }
+  assert.deepEqual(namingCodes("nosuchdomain-slug.md", "backlog"), ["UNKNOWN_PLAN_NAMESPACE"],
+    "an undeclared prefix is how the vocabulary decays, so it is reported");
+}
+
+// The bug this pins: reading the prefix as "everything before the first hyphen" rejects every
+// hyphenated namespace, and both `usage-statusline` and `plan-lifecycle` are declared here.
+function testNamingMatchesLongestHyphenatedNamespace() {
+  assert.deepEqual(namingCodes("usage-statusline-codex-parity.md", "backlog"), [],
+    "a hyphenated namespace must match as a whole, not be truncated at its first hyphen");
+  assert.deepEqual(namingCodes("plan-lifecycle-transitions.md", "backlog"), [],
+    "the longer namespace wins over the shorter one it starts with");
+  assert.deepEqual(namingCodes("portalized-thing.md", "backlog"), ["UNKNOWN_PLAN_NAMESPACE"],
+    "a namespace must be followed by a hyphen; `portal` does not claim `portalized`");
+}
+
+// A name with no parseable namespace/slug split has no prefix to check, so reporting a second
+// finding about a prefix that was never extracted would describe a value the reader cannot see.
+function testMalformedFilenameReportsShapeOnly() {
+  assert.deepEqual(namingCodes("singleword.md", "backlog"), ["INVALID_PLAN_FILENAME"],
+    "one segment is no namespace at all");
+  assert.deepEqual(namingCodes("Portal-Thing.md", "backlog"), ["INVALID_PLAN_FILENAME"],
+    "uppercase breaks the lowercase-hyphenated shape");
+  assert.deepEqual(namingCodes("portal_thing.md", "backlog"), ["INVALID_PLAN_FILENAME"],
+    "underscores are not the separator");
+  assert.deepEqual(namingCodes("portal--thing.md", "backlog"), ["INVALID_PLAN_FILENAME"],
+    "an empty segment is malformed");
+}
+
+// Lifecycle is the folder and status is frontmatter. A filename gets linked to; all of these change.
+function testForbiddenSuffixesAreReported() {
+  for (const suffix of ["plan", "todo", "active", "completed", "draft", "wip", "final"]) {
+    assert.ok(namingCodes(`portal-thing-${suffix}.md`, "backlog").includes("FORBIDDEN_PLAN_FILENAME_SUFFIX"),
+      `-${suffix} duplicates something already tracked outside the filename`);
+  }
+  assert.ok(namingCodes("portal-thing-v2.md", "backlog").includes("FORBIDDEN_PLAN_FILENAME_SUFFIX"),
+    "a version suffix belongs in the body if it matters at all");
+  assert.ok(namingCodes("portal-thing-2024-01-15.md", "backlog").includes("FORBIDDEN_PLAN_FILENAME_SUFFIX"),
+    "a date suffix goes stale the moment the plan is touched");
+}
+
+// `<namespace>-<series>-<n>` is the documented shape for a milestone or suite series, so a small
+// trailing ordinal must not be read as a version or a year.
+function testOrdinalSeriesIsNotMistakenForAVersion() {
+  assert.deepEqual(namingCodes("portal-migration-2.md", "backlog"), [],
+    "a series ordinal is the documented convention, not a version suffix");
+  assert.deepEqual(namingCodes("telemetry-rollout-11.md", "backlog"), []);
+}
+
+// The repair prompt quotes findings back to an agent, so a finding that names no filename leaves
+// the agent guessing which file to rename.
+function testNamingFindingsCarryTheirFilename() {
+  const [malformed] = validatePlanNaming({ filename: "singleword.md", lifecycle: "backlog", projectNamespaces: projectNamespaces() });
+  assert.equal(malformed.meta.filename, "singleword.md", "the finding names the offending file");
+  assert.equal(malformed.kind, "schema");
+  assert.equal(malformed.severity, "advisory", "naming never blocks a lifecycle move");
+
+  const [unknown] = validatePlanNaming({ filename: "nosuchdomain-slug.md", lifecycle: "backlog", projectNamespaces: projectNamespaces() });
+  assert.equal(unknown.meta.namespace, "nosuchdomain", "the finding quotes the prefix it rejected");
+  assert.ok(unknown.meta.allowed.includes("portal"), "the finding lists what would have been accepted");
+  assert.ok(unknown.meta.allowed.includes("cli"), "universal namespaces are listed alongside project ones");
+
+  for (const code of ["INVALID_PLAN_FILENAME", "UNKNOWN_PLAN_NAMESPACE", "FORBIDDEN_PLAN_FILENAME_SUFFIX"]) {
+    assert.ok(FINDING_CODES.includes(code), `naming emits ${code}, so it must be in the catalog`);
+  }
+}
+
+// The regression that matters most: this repository declares eleven namespaces and has plans in
+// every lifecycle, so a rule that is subtly too strict shows up here as findings on plans that
+// were correct all along.
+function testRepositoryPlansProduceNoNamingFindings() {
+  const repoRoot = path.resolve(import.meta.dirname, "..", "..");
+  const { configured, namespaces } = readProjectNamespaces(repoRoot);
+  assert.equal(configured, true, "this repository declares plans-config.json; the fixture depends on it");
+  assert.ok(namespaces.length >= 10, `expected the declared vocabulary, got ${namespaces.length} namespaces`);
+
+  const offenders = [];
+  for (const lifecycle of ["backlog", "active"]) {
+    const dir = path.join(repoRoot, "docs", "plans", lifecycle);
+    if (!fs.existsSync(dir)) continue;
+    for (const entry of fs.readdirSync(dir)) {
+      const codes = namingCodes(entry, lifecycle, namespaces);
+      if (codes.length) offenders.push(`${lifecycle}/${entry}: ${codes.join(", ")}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    "no existing backlog or active plan may gain a naming finding; each line is a false positive to fix in naming.mjs, not a file to rename");
 }

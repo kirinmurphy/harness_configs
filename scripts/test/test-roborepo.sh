@@ -1874,6 +1874,18 @@ assert "plan-docs: frontmatter repair pass" \
 assert "plans: portal mutation-orchestration helpers" \
   node "${repo_root}/scripts/test/plans-portal-state-check.mjs"
 
+# The mode/reference matrices technical-writing and plan-docs declare in their own SKILL.md prose.
+# A required reference dropped from an artifact-producing mode is invisible at runtime — the work
+# still gets delivered, just without the rule that would have caught the defect.
+assert "skills: mode/reference matrices and completion gates" \
+  node "${repo_root}/scripts/test/skill-reference-matrix-characterization-check.mjs"
+
+# Reference-loading observability: hashing the harness-native skill path (not the roborepo cache it
+# symlinks to) is what makes a captured read matchable. The wrong root yields an empty report that
+# reads exactly like a compliant session.
+assert "telemetry: observed skill-reference reads" \
+  node "${repo_root}/scripts/test/telemetry-skill-references-check.mjs"
+
 # ---------------------------------------------------------------------------
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"

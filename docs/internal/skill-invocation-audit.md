@@ -47,6 +47,10 @@ The audit flags:
 - dynamic shell code-block hints
 - side-effect keywords that deserve manual review
 - missing trigger descriptions
+- completion references a mode requires but the artifact-producing mode cannot reach
+- mode/reference matrices that no longer parse
+- paired skills mentioned in prose but never declared, or declared without instructing the load
+- paired-skill triggers that are unresolvable ("when relevant") or gated on a user request
 
 ## Next Actions
 

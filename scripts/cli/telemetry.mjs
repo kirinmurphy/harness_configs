@@ -40,7 +40,7 @@ import {
 } from "./repositories.mjs";
 import { loadRegistry, updateRegistry, upsertRepository, recordDiscovery } from "../../modules/repositories/index.mjs";
 import { buildRepositoryHashIndex } from "./telemetry-repository.mjs";
-import { createHash } from "node:crypto";
+import { privacyHash } from "./telemetry-schemas/hash.mjs";
 import { buildAnalysisPrompt } from "../harnesses/transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
 import { hookFilePath, writeHooksFile } from "./hook-composition.mjs";
@@ -1076,13 +1076,12 @@ function analysisKey(window, harness, { model = null, repo = null, repository = 
 // Returns the cache entry { json } for the given view, computing (and caching) it on a miss.
 // Registry-derived hash index for read-time legacy telemetry association, cached by spool signature
 // so it is rebuilt only when the spool changes (the registry is small; loading it is cheap, and a
-// missing/corrupt registry degrades to an empty index rather than throwing). Uses the SAME hash as
-// telemetry-capture.mjs (sha256, first 24 hex) so normalized_remote_hash values line up.
+// missing/corrupt registry degrades to an empty index rather than throwing).
 let _repositoryHashIndex = null;
 let _repositoryHashIndexSig = null;
-function captureRepositoryHash(value) {
-  return createHash("sha256").update(String(value)).digest("hex").slice(0, 24);
-}
+// Matching capture's hash is what makes normalized_remote_hash values line up, and both sides now
+// call the same helper rather than keeping two copies aligned by hand.
+const captureRepositoryHash = privacyHash;
 // Reconcile telemetry-observed repositories into the registry so `capabilities.telemetry` can be
 // true. Runs at portal repo-list load (NOT on the capture hot path): scans the spool's distinct
 // repository_ids and records one `telemetry` discovery each, batched into a single registry write.

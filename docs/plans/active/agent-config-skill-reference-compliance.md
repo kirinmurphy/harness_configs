@@ -1,7 +1,7 @@
 ---
 id: k7p3m2q
 priority: high
-next_action: Add references/review-loop.md to the write mode reference list in technical-writing SKILL.md and add the completion gate
+next_action: Run roborepo update so the new skill gates reach live sessions, then re-check reference observability against a session that routed through them
 blocked_by: []
 depends_on: []
 related: []
@@ -24,15 +24,15 @@ The work applies first to `plan-docs` and `technical-writing`, then establishes 
 
 ## Goals
 
-- [ ] Make required reference loading explicit and difficult to bypass during skill execution.
-- [ ] Make `technical-writing write` include the Creator/Validator completion loop instead of requiring a separately inferred review step.
-- [ ] Make plan naming, frontmatter, lifecycle, and other deterministic plan rules mechanically enforceable where practical.
-- [ ] Ensure plan creation resolves the repository namespace and target filename before drafting begins.
-- [ ] Make validator output observable enough that users can tell whether validation actually ran and what it checked.
-- [ ] Preserve focused references instead of flattening every detailed instruction into `SKILL.md`.
-- [ ] Establish a convention that can be applied to additional skills when similar failures are observed.
-- [ ] Add regression coverage proving that required references and validation gates cannot silently disappear from the workflow.
-- [ ] Report which references a session actually read, not merely which ones the skill declares, so a skipped reference is observable rather than assumed.
+- [x] Make required reference loading explicit and difficult to bypass during skill execution.
+- [x] Make `technical-writing write` include the Creator/Validator completion loop instead of requiring a separately inferred review step.
+- [x] Make plan naming, frontmatter, lifecycle, and other deterministic plan rules mechanically enforceable where practical.
+- [x] Ensure plan creation resolves the repository namespace and target filename before drafting begins.
+- [x] Make validator output observable enough that users can tell whether validation actually ran and what it checked.
+- [x] Preserve focused references instead of flattening every detailed instruction into `SKILL.md`.
+- [x] Establish a convention that can be applied to additional skills when similar failures are observed.
+- [x] Add regression coverage proving that required references and validation gates cannot silently disappear from the workflow.
+- [x] Report which references a session actually read, not merely which ones the skill declares, so a skipped reference is observable rather than assumed.
 
 ## Non-goals
 
@@ -353,103 +353,103 @@ Prefer a focused new module such as `modules/plan-docs/naming.mjs` for determini
 
 ### Phase 1 — Fix technical-writing completion semantics
 
-- [ ] Define `technical-writing write` as the single artifact-producing mode for create, edit, revise, restructure, and update requests.
-- [ ] Do not add separate `edit` or `revise` entry points.
-- [ ] Add `references/review-loop.md` to the required reference set for `technical-writing write`.
-- [ ] Add an entry-point gate stating that durable write/revise work is not complete until the Creator/Validator loop passes or reaches its documented cap.
-- [ ] Define `technical-writing review` as read-only evaluation that reports violations without editing the document.
-- [ ] Make successful and failed Validator report behavior explicit in the top-level workflow.
+- [x] Define `technical-writing write` as the single artifact-producing mode for create, edit, revise, restructure, and update requests.
+- [x] Do not add separate `edit` or `revise` entry points.
+- [x] Add `references/review-loop.md` to the required reference set for `technical-writing write`.
+- [x] Add an entry-point gate stating that durable write/revise work is not complete until the Creator/Validator loop passes or reaches its documented cap.
+- [x] Define `technical-writing review` as read-only evaluation that reports violations without editing the document.
+- [x] Make successful and failed Validator report behavior explicit in the top-level workflow.
 
 ### Phase 2 — Strengthen plan-docs creation gates
 
-- [ ] Add an explicit pre-draft namespace/filename/H1 checkpoint to `plan-docs create`.
-- [ ] State at the entry point that `docs/plans/plans-config.json` must be read before creating or renaming a plan when present.
-- [ ] Keep detailed naming rules authoritative in `plan-schema.md`.
-- [ ] Keep `plan-docs create` backlog-only; when the user also requested start, validate the new backlog plan and then invoke the start workflow to move the same stable ID into `active`.
-- [ ] Ensure lifecycle remains folder-derived and is never duplicated into frontmatter.
+- [x] Add an explicit pre-draft namespace/filename/H1 checkpoint to `plan-docs create`.
+- [x] State at the entry point that `docs/plans/plans-config.json` must be read before creating or renaming a plan when present.
+- [x] Keep detailed naming rules authoritative in `plan-schema.md`.
+- [x] Keep `plan-docs create` backlog-only; when the user also requested start, validate the new backlog plan and then invoke the start workflow to move the same stable ID into `active`.
+- [x] Ensure lifecycle remains folder-derived and is never duplicated into frontmatter.
 
 ### Phase 3 — Add programmatic naming validation
 
-- [ ] Add a shared naming-validation unit in the plan-docs domain (`modules/plan-docs/naming.mjs`).
-- [ ] Load the universal namespaces from `plan-schema.md` plus project namespaces read from `docs/plans/plans-config.json`; this is the first code path to read that file.
-- [ ] Add the three finding definitions to `modules/plan-docs/findings.mjs` using its documented "TO ADD A RULE" path, with `kind: "schema"` and `severity: "advisory"`.
-- [ ] Scope naming findings to non-terminal lifecycles (`backlog`, `active`); suppress them for `completed` and `archived`, where all 28 legacy names live.
-- [ ] Skip non-Markdown directory entries so `.DS_Store`, `.zip`, and nested directories are never reported as malformed plans.
-- [ ] Feed findings through existing validation, portal/API, and repair-prompt paths — the catalog comment confirms all three consume the same source.
-- [ ] Add deterministic fixtures for repositories with and without `plans-config.json`.
+- [x] Add a shared naming-validation unit in the plan-docs domain (`modules/plan-docs/naming.mjs`).
+- [x] Load the universal namespaces from `plan-schema.md` plus project namespaces read from `docs/plans/plans-config.json`; this is the first code path to read that file.
+- [x] Add the three finding definitions to `modules/plan-docs/findings.mjs` using its documented "TO ADD A RULE" path, with `kind: "schema"` and `severity: "advisory"`.
+- [x] Scope naming findings to non-terminal lifecycles (`backlog`, `active`); suppress them for `completed` and `archived`, where all 28 legacy names live.
+- [x] Skip non-Markdown directory entries so `.DS_Store`, `.zip`, and nested directories are never reported as malformed plans.
+- [x] Feed findings through existing validation, portal/API, and repair-prompt paths — the catalog comment confirms all three consume the same source.
+- [x] Add deterministic fixtures for repositories with and without `plans-config.json`.
 
 ### Phase 4 — Tighten the technical-writing Validator contract
 
-- [ ] Update `review-loop.md` to enumerate the minimum applicable reference set rather than relying only on “read every rule.”
-- [ ] Fix the current Validator scope mismatch by adding `representation.md` to the Validator's explicit rule list (line 8-10 of `review-loop.md` names `SKILL.md`, `anti-patterns.md`, `doc-shapes.md`, `section-guidance.md`, and `doc-organization.md`, but omits it).
-- [ ] Define how paired implementation skills contribute constraints to validation.
-- [ ] Keep the Validator read-only.
-- [ ] Require each pass to identify reference/rule, document location, and violation.
-- [ ] Preserve the 10-pass cap.
-- [ ] Leave `agents/openai.yaml` unchanged. Repository-wide, those files carry only `description` and `interface` keys, and the only documented behavioral key is `policy.allow_implicit_invocation`, which governs invocation rather than Validator role separation. Role separation stays in `review-loop.md`.
+- [x] Update `review-loop.md` to enumerate the minimum applicable reference set rather than relying only on “read every rule.”
+- [x] Fix the current Validator scope mismatch by adding `representation.md` to the Validator's explicit rule list (line 8-10 of `review-loop.md` names `SKILL.md`, `anti-patterns.md`, `doc-shapes.md`, `section-guidance.md`, and `doc-organization.md`, but omits it).
+- [x] Define how paired implementation skills contribute constraints to validation.
+- [x] Keep the Validator read-only.
+- [x] Require each pass to identify reference/rule, document location, and violation.
+- [x] Preserve the 10-pass cap.
+- [x] Leave `agents/openai.yaml` unchanged. Repository-wide, those files carry only `description` and `interface` keys, and the only documented behavioral key is `policy.allow_implicit_invocation`, which governs invocation rather than Validator role separation. Role separation stays in `review-loop.md`.
 
 ### Phase 5 — Integrate plan creation with both validators
 
-- [ ] Update `plan-docs create` instructions so a durable plan runs plan-docs validation and the technical-writing Validator before delivery.
-- [ ] Define retry ordering: plan-docs findings or technical-writing violations return to the Creator; the revised draft is rechecked.
-- [ ] If the user requested the plan be started, run the start workflow only after the backlog artifact has passed the required creation checks.
-- [ ] Preserve the same stable `id` across the backlog-to-active move.
-- [ ] Surface the technical-writing Validator report on every pass as required by `review-loop.md`.
+- [x] Update `plan-docs create` instructions so a durable plan runs plan-docs validation and the technical-writing Validator before delivery.
+- [x] Define retry ordering: plan-docs findings or technical-writing violations return to the Creator; the revised draft is rechecked.
+- [x] If the user requested the plan be started, run the start workflow only after the backlog artifact has passed the required creation checks.
+- [x] Preserve the same stable `id` across the backlog-to-active move.
+- [x] Surface the technical-writing Validator report on every pass as required by `review-loop.md`.
 
 ### Phase 6 — Add skill-routing regression coverage
 
-- [ ] Add characterization tests for the reference matrices declared by `technical-writing` and `plan-docs`, following the existing `scripts/test/*-characterization-check.mjs` convention and registering them as `test:*` scripts in `package.json`.
-- [ ] Parse the mode/reference matrix directly from `SKILL.md` prose; do not introduce a parallel manifest. Pair this with the Phase 7 audit finding so prose that no longer parses fails loudly rather than yielding an empty reference set that trivially passes.
-- [ ] Test that `technical-writing write` includes `review-loop.md`.
-- [ ] Test that create/edit/revise requests resolve to `write` rather than requiring separate modes.
-- [ ] Test that `technical-writing review` remains read-only and does not imply document mutation.
-- [ ] Test that `plan-docs create` requires naming/schema references and repository namespace configuration.
-- [ ] Test that plan creation runs deterministic plan validation and the technical-writing Validator contract before an optional start transition.
-- [ ] Test naming findings through the plan-docs domain.
-- [ ] Prefer externally meaningful workflow/config output over internal helper-call assertions.
+- [x] Add characterization tests for the reference matrices declared by `technical-writing` and `plan-docs`, following the existing `scripts/test/*-characterization-check.mjs` convention and registering them as `test:*` scripts in `package.json`.
+- [x] Parse the mode/reference matrix directly from `SKILL.md` prose; do not introduce a parallel manifest. Pair this with the Phase 7 audit finding so prose that no longer parses fails loudly rather than yielding an empty reference set that trivially passes.
+- [x] Test that `technical-writing write` includes `review-loop.md`.
+- [x] Test that create/edit/revise requests resolve to `write` rather than requiring separate modes.
+- [x] Test that `technical-writing review` remains read-only and does not imply document mutation.
+- [x] Test that `plan-docs create` requires naming/schema references and repository namespace configuration.
+- [x] Test that plan creation runs deterministic plan validation and the technical-writing Validator contract before an optional start transition.
+- [x] Test naming findings through the plan-docs domain.
+- [x] Prefer externally meaningful workflow/config output over internal helper-call assertions.
 
 ### Phase 7 — Add skill authoring guidance and structural audit support
 
-- [ ] Document the “references provide depth; `SKILL.md` provides gates” convention in maintainer guidance.
-- [ ] Extend `scripts/cli/skill-audit.mjs` with a reference-reachability finding: a reference required by a non-artifact-producing mode but unreachable from the artifact-producing mode. The audit already parses every package-backed `SKILL.md` and emits structural findings, so add a finding to its existing `findings()` function rather than creating a new module.
-- [ ] Add a companion finding for an unparseable mode/reference matrix, so reformatted prose surfaces as an audit failure instead of silently defeating the Phase 6 tests.
-- [ ] Regenerate `docs/internal/skill-invocation-audit.md` through the existing generated-marker path; do not hand-edit it.
-- [ ] Keep audit findings structural rather than attempting to judge arbitrary prose semantics mechanically.
+- [x] Document the “references provide depth; `SKILL.md` provides gates” convention in maintainer guidance.
+- [x] Extend `scripts/cli/skill-audit.mjs` with a reference-reachability finding: a reference required by a non-artifact-producing mode but unreachable from the artifact-producing mode. The audit already parses every package-backed `SKILL.md` and emits structural findings, so add a finding to its existing `findings()` function rather than creating a new module.
+- [x] Add a companion finding for an unparseable mode/reference matrix, so reformatted prose surfaces as an audit failure instead of silently defeating the Phase 6 tests.
+- [x] Regenerate `docs/internal/skill-invocation-audit.md` through the existing generated-marker path; do not hand-edit it.
+- [x] Keep audit findings structural rather than attempting to judge arbitrary prose semantics mechanically.
 
 ### Phase 8 — Add lightweight runtime observability
 
 Step one consolidates the privacy hash, because Phase 8 depends on hashing a reference path exactly the way capture already hashed it. Matching against a sixth ad-hoc copy of the algorithm is how the silent zero-match failure below actually happens.
 
-- [ ] Add a single `privacyHash(value)` to a dependency-free module (`scripts/cli/telemetry-schemas/hash.mjs`) and route all existing call sites through it.
-- [ ] Delete the sync-by-comment note at `scripts/cli/telemetry.mjs:1080` once both sides call the shared helper.
-- [ ] Add an assertion to the existing telemetry tests that pins the hash algorithm and width, so a change cannot silently desynchronize cross-file joins.
-- [ ] Build on existing telemetry capture; do not add a new diagnostics surface.
-- [ ] Resolve the live installed skill directory before hashing reference paths, so hashes match what the agent actually read. Verify against a real captured session before building any reporting on top — a wrong path root produces zero matches with no error.
-- [ ] Match required reference paths against captured `file_path_hash` values to report which references were actually read, not only which were required.
-- [ ] Preserve the existing privacy property: presence-test known reference paths; do not add plain-text path capture.
-- [ ] Keep reference-presence matching inline in Phase 8. The primitive — given known paths, which did this session read — would generalize to plan-doc reads and plan-touched-file checks, but extract it only when a second consumer exists rather than designing for a hypothetical one.
-- [ ] If this adds framework-less portal markup, follow the existing real-HTML `<template>` + slot-fill convention; do not build nested multi-element structures with JavaScript DOM-builder calls or runtime HTML strings.
-- [ ] Do not claim a model read a reference when the harness cannot prove it.
-- [ ] Do not capture or persist private model reasoning.
+- [x] Add a single `privacyHash(value)` to a dependency-free module (`scripts/cli/telemetry-schemas/hash.mjs`) and route all existing call sites through it.
+- [x] Delete the sync-by-comment note at `scripts/cli/telemetry.mjs:1080` once both sides call the shared helper.
+- [x] Add an assertion to the existing telemetry tests that pins the hash algorithm and width, so a change cannot silently desynchronize cross-file joins.
+- [x] Build on existing telemetry capture; do not add a new diagnostics surface.
+- [x] Resolve the live installed skill directory before hashing reference paths, so hashes match what the agent actually read. Verify against a real captured session before building any reporting on top — a wrong path root produces zero matches with no error.
+- [x] Match required reference paths against captured `file_path_hash` values to report which references were actually read, not only which were required.
+- [x] Preserve the existing privacy property: presence-test known reference paths; do not add plain-text path capture.
+- [x] Keep reference-presence matching inline in Phase 8. The primitive — given known paths, which did this session read — would generalize to plan-doc reads and plan-touched-file checks, but extract it only when a second consumer exists rather than designing for a hypothetical one.
+- [x] If this adds framework-less portal markup, follow the existing real-HTML `<template>` + slot-fill convention; do not build nested multi-element structures with JavaScript DOM-builder calls or runtime HTML strings.
+- [x] Do not claim a model read a reference when the harness cannot prove it.
+- [x] Do not capture or persist private model reasoning.
 
 ## Validation
 
 ### Focused behavior
 
-- [ ] `technical-writing write` owns create/edit/revise/update behavior and requires `review-loop.md`.
-- [ ] No separate `edit` or `revise` mode is introduced.
-- [ ] `technical-writing review` continues to work independently as a read-only evaluation mode.
-- [ ] `plan-docs create` requires namespace resolution before target filename creation.
-- [ ] Invalid plan filenames emit structured findings.
-- [ ] Unknown project namespaces emit structured findings.
-- [ ] Valid existing plans do not gain false-positive naming findings.
-- [ ] Legacy plan IDs remain untouched.
-- [ ] Plan lifecycle still derives only from the folder.
-- [ ] Repair prompts receive the same naming findings exposed by the domain.
-- [ ] All five former hash sites produce identical output for the same input after consolidation.
-- [ ] A test fails if the hash algorithm or truncation width changes.
-- [ ] `telemetry-capture.mjs` gains no imports beyond the `node:crypto`-only hash module.
-- [ ] Existing telemetry captures remain readable; consolidation changes no stored hash value.
+- [x] `technical-writing write` owns create/edit/revise/update behavior and requires `review-loop.md`.
+- [x] No separate `edit` or `revise` mode is introduced.
+- [x] `technical-writing review` continues to work independently as a read-only evaluation mode.
+- [x] `plan-docs create` requires namespace resolution before target filename creation.
+- [x] Invalid plan filenames emit structured findings.
+- [x] Unknown project namespaces emit structured findings.
+- [x] Valid existing plans do not gain false-positive naming findings.
+- [x] Legacy plan IDs remain untouched.
+- [x] Plan lifecycle still derives only from the folder.
+- [x] Repair prompts receive the same naming findings exposed by the domain.
+- [x] All five former hash sites produce identical output for the same input after consolidation.
+- [x] A test fails if the hash algorithm or truncation width changes.
+- [x] `telemetry-capture.mjs` gains no imports beyond the `node:crypto`-only hash module.
+- [x] Existing telemetry captures remain readable; consolidation changes no stored hash value.
 
 ### Test design
 
@@ -576,3 +576,79 @@ The plan is successful when:
 - Applicable paired skills influence both authoring and review.
 - Tests protect the critical reference matrices and naming validators.
 - Maintainers have a reusable pattern for future skills: entry-point gates, detailed references, deterministic validators, and qualitative review.
+
+## Verification
+
+All eight phases are implemented. Evidence below is from the implementation branch, not from the plan's own claims.
+
+### Checks run
+
+```text
+node scripts/test/plan-docs-check.mjs                                ok
+node scripts/test/plan-docs-findings-check.mjs                       ok
+node scripts/test/plan-docs-repair-check.mjs                         ok
+node scripts/test/skill-reference-matrix-characterization-check.mjs  ok
+node scripts/test/telemetry-schemas-check.mjs                        ok
+node scripts/test/telemetry-classify-check.mjs                       ok
+node scripts/test/telemetry-capture-v3-check.mjs                     ok
+node scripts/test/telemetry-correctness-check.mjs                    ok
+node scripts/test/telemetry-time-axis-check.mjs                      ok
+node scripts/test/telemetry-skill-references-check.mjs               ok
+roborepo skill audit --check                                         ok
+bash scripts/test/test-roborepo.sh --quiet                           396 passed, 1 failed
+```
+
+### The new checks were shown to catch the old behavior
+
+A test that passes against the fixed code proves nothing on its own, so each new guard was run against a
+deliberately reverted implementation:
+
+| Guard | Reverted change | Result |
+| --- | --- | --- |
+| `skill-reference-matrix-characterization-check.mjs` | removed `review-loop.md` from the `write` reference list | failed with the intended message |
+| `roborepo skill audit` | same revert | reported `reference unreachable from \`write\`: references/review-loop.md` |
+| `plan-docs-findings-check.mjs` | namespace matcher no longer required a trailing hyphen | failed on `portalized-thing.md` |
+
+### Naming validation against the real repository
+
+The naming rules were run over all 99 entries in this repository's four lifecycle folders: **0 findings**. The
+first implementation produced 11 false positives — every hyphenated namespace (`agent-config`,
+`usage-statusline`) was rejected because the prefix was read as text up to the first hyphen. The rule now matches
+the longest declared namespace followed by a hyphen, and `testRepositoryPlansProduceNoNamingFindings` pins the
+result so a future tightening cannot silently start flagging correct plans.
+
+### Phase 8's path-root risk was real, and was measured
+
+The plan flagged that hashing the repository or cache path instead of the path the agent actually opens would
+yield zero matches with no error. Checked against the live spool (3,622 captured reads with a path hash):
+
+| Candidate root | Result |
+| --- | --- |
+| `~/.claude/skills/<skill>/references/<file>.md` | matched captured reads |
+| `~/.roborepo/skills/<skill>/references/<file>.md` | matched nothing |
+
+Agents open the harness-native path; the roborepo cache is only what it resolves to. `telemetry-skill-references.mjs`
+hashes the harness roots, and an end-to-end run against the real spool reported six of six declared references as
+observed. Had the cache root been used, the report would have been empty and indistinguishable from a session that
+read nothing.
+
+### Deviations from the plan as written
+
+| Plan text | What was implemented | Why |
+| --- | --- | --- |
+| Naming findings scoped to non-terminal lifecycles | Also scoped to repositories that declare namespaces in `plans-config.json` | `plan-schema.md` treats universal namespaces as a fallback rather than a default. Without this, every plan in an unconfigured repository reports a finding on first scan — `plan-docs-check.mjs`'s own fixtures did exactly that. |
+| Phase 2 lists `create` as requiring schema, lifecycle, writing-guidelines, and workflow-create | `references/workflow-validate.md` was added to `create`'s reference list | The Phase 7 audit reported it as unreachable from `create`. Creation now ends in validation, so the mode producing the plan must reach the reference describing the checks — the same rule Phase 1 applies to `write` and `review-loop.md`. |
+| Design §7 defines how paired skills contribute to validation | Both `plan-docs` and `technical-writing` now declare a **Paired Skills** table at the entry point, instructing the load rather than describing the relationship | The original text said "pair with `technical-writing`", which reads as background and does not get acted on — the user was naming the paired skills manually on every request. `technical-writing` is unconditional for plan work; `code-style`, `javascript-typescript`, and `test-harness` carry written load conditions. The Validator's trigger was also reworded so an explicit user request is one path to relevance rather than the leading condition. |
+| Phase 7 documents the reference convention in maintainer guidance | `roborepo-support` gained a "Pairing another skill" subsection, and `skill-audit.mjs` gained three paired-skill findings enforcing it | Pairing fails the same way references do — by being mentioned rather than required — so the convention and its enforcement belong beside the reference rules rather than in a separate authoring script. The lint immediately found one more instance: `javascript-typescript` said "Pair with `react`" as prose, which is now a declared table. |
+
+### Not verified
+
+- **The updated skills are not installed.** These edits are in repository source; `~/.claude/skills/` still carries
+  the previous copies. `roborepo update` has not been run, so no live session has yet routed through the new gates.
+- **One pre-existing suite failure, confirmed unrelated.** `test-roborepo.sh` reports `396 passed, 1 failed` while
+  exiting 0. The failing assertion is `lifecycle: CLI surface help/menu/removed routes work in sandbox`, which fails
+  inside `cli-surface-integration-check.mjs` on `telemetry package should show product label in Package Library`.
+  Running that check standalone reproduces the identical failure at the base commit `fcdd2b8` and on current `main`
+  (`dcf35e4`), both without any of this plan's changes — so it is a standing failure in the package-library label
+  path, not a regression from this work, and it is out of scope here. Nothing in this plan touches CLI surface,
+  menu rendering, or package-library labels.

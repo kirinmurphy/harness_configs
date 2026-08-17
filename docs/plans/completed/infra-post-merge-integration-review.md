@@ -1,13 +1,13 @@
 ---
 id: 48krno27
 priority: high
-next_action: Second pass fixed a publish blocker (placeholder home shipped into every live config) plus three other defects; commit the working tree, then carry the renderPermissionsTo data-loss finding to the permissions branch.
+next_action: ""
 blocked_by: []
 depends_on: []
 related:
   - ia1q1z9
   - permissions-ui-revamp
-reviewed_commit: 875b6e5a7cf5c1608c10e57974d18b447591bdc3
+reviewed_commit: fcdd2b8
 ---
 
 # Post-Merge Integration Review Before Package Publication
@@ -113,8 +113,9 @@ Known failures or gaps that must not be misreported as merge regressions:
 - [x] Check usage-statusline severity thresholds and fix any merge damage where context
   percentage thresholds were accidentally applied to weekly or monthly spend rates.
 - [x] Browser-smoke `/config` and the Uninstall panel, recording console/network errors and a
-  walkthrough artifact if browser automation is available. Browser automation was unavailable;
-  `/config`, `/api/config`, and uninstall preview were smoked through the local portal.
+  walkthrough artifact if browser automation is available. Completed with a real browser on the
+  second pass; see "Browser smoke" below. The first pass had no connector and used portal-API
+  equivalents.
 - [x] Update stale active and backlog plan docs, including `reviewed_commit` where verified.
 - [x] Produce the final report with verification commands, regressions, reviewed surfaces, plan
   updates, and work not completed.
@@ -192,6 +193,29 @@ permission paths resolve to this machine's home; a `package-catalog-check` asser
 file branches on a category id the manifest does not define; and `test-install-collisions.sh` added
 to the documented test matrix, which is why the uninstall defect survived the first pass at all.
 
+### Browser smoke
+
+A browser connector was available on the second pass, so the one gap the first pass documented as
+unclosable is now closed. `/config` was driven in a real Chrome tab against a portal started under
+direct control on port 58491 and stopped explicitly afterward. No real uninstall was executed.
+
+- The page rendered fully, with Claude Code, Codex, and Gemini CLI all present as machine harnesses
+  — `fae604c`'s live-discovery fix observed in the running UI rather than inferred from `/api/config`.
+- Console was empty after a full reload: zero errors, warnings, or failed requests.
+- The Maintenance section rendered with its "Uninstall RoboRepo" copy and the read-only
+  "Preview cleanup" affordance. `GET /api/maintenance/uninstall/preview` returned 200 with
+  `workspacePreserved: true` and an 80-entry removal plan.
+- Command-backed packages rendered under their slash-command labels (`/case-study`,
+  `/technical-writing`), which is the regression `a906990` fixed, confirmed in the UI it affected.
+
+One incidental finding: the preview's removal plan lists `~/.claude/hooks_original_*` backups. Those
+are artifacts of the collision-prompt defect `a83816e` fixed — each is a timestamped copy taken when
+a re-install wrongly treated the hooks directory as user-modified. They are correctly identified for
+cleanup; their existence is the historical footprint of the bug, not a live one.
+
+The page re-renders on a poll, which invalidates element references between reads. Anything driving
+this UI should re-query immediately before acting rather than reusing a ref across calls.
+
 ### Open, not fixed here
 
 `renderPermissionsTo` replaces `settings.permissions` wholesale, so any allow/deny entry not derived
@@ -203,6 +227,47 @@ defect above and belongs with the in-flight permissions work.
 Also still open and deliberately left: `roborepo init`, `library`, and `uninstall` are unclassified
 in the permission manifest. Nothing breaks — unclassified namespaces prompt, the safe default — but
 the bucket decision is owed on the permissions branch.
+
+## Completion
+
+Complete. Both merged workstreams were verified, four defects were found and fixed on main, and the
+publish question is answered: **main is safe to publish from `fcdd2b8`**, with Linux and Windows
+lifecycle validation remaining the only untested surface.
+
+The first pass's verdict was wrong on one point, which is the review's main return. `83c18ce`'s
+placeholder home shipped into every new install's live config — a rule naming a directory that does
+not exist on the user's machine, permanently, since the root-config merge is additive. That was a
+publish blocker and is fixed.
+
+| Commit | What it fixed |
+| --- | --- |
+| `204a0dc` | Placeholder home reaching live configs; `write-scope` renders inert `Write` rules |
+| `a83816e` | Uninstall leaving `~/.claude/hooks`; non-idempotent re-install (same nested-row cause) |
+| `a906990` | Command labels lost to a deleted category; symlink-unsafe main-module guard |
+| `fcdd2b8` | Guards for all three drift classes, plus the test-matrix and `generated/` documentation gaps |
+
+Verified at `fcdd2b8`:
+
+```text
+npm test                                       394 passed, 1 failed (known flake, see below)
+bash scripts/test/test-install-collisions.sh   159 ok, exit 0
+npm run test:package-install                   pass
+bash scripts/doctor.sh --quiet                 pass, 103 checks
+roborepo doctor --installed                    pass after live-config heal
+node scripts/build/render-agent-permissions.mjs --check   no drift
+browser smoke: /config + Uninstall panel       pass, zero console errors
+```
+
+`test-install-collisions.sh` had never run to completion before this pass — it aborted under `set -e`
+at the uninstall defect. Reaching the end unmasked two further failures that were simply unreachable
+before, both fixed in `a906990`.
+
+The single `npm test` failure is `cli-surface-integration-check.mjs`'s remote-sync PTY block, the
+known load-sensitive flake. Confirmed not a regression by stashing every code change from this pass
+and reproducing the identical failure.
+
+Not done, and deliberately so: Linux and Windows lifecycle validation (no hardware this pass), and
+the two items in "Open, not fixed here" above, which belong to the in-flight permissions work.
 
 ## Validation
 

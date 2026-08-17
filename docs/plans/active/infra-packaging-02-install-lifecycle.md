@@ -731,6 +731,20 @@ broken against a symlinked checkout before conversion — `path.resolve()` norma
 not resolve symlinks. A test assertion now fails the suite if any module reintroduces the pattern,
 so the helper holds by construction rather than by memory.
 
+The same abort-masking dynamic recurred after this branch merged, and is worth recording because the
+shape is identical rather than coincidental. `test-install-collisions.sh` began aborting under
+`set -e` at an uninstall defect ([[infra-post-merge-integration-review]], commit `a83816e`), which
+stopped the run at case 111 of 159 — so the guard assertion described above, which sits later in the
+file, never executed. A seventh hand-rolled guard had meanwhile appeared in
+`scripts/cli/maintenance-stores.mjs` and went unreported for exactly as long as the suite could not
+reach the assertion that would have caught it.
+
+The assertion was correct and did its job the moment the suite ran to completion. The lesson is
+about the gate, not the check: a `set -e` suite that aborts converts every later assertion into a
+silent pass, so an early failure must be treated as "coverage unknown from here down" rather than
+"one test failed." That suite is now in the documented test matrix (`docs/internal/testing.md`),
+which it was not when this phase ran.
+
 #### Phase 7 implementation notes (shell/PATH dedup and shim ownership)
 
 Deduplication and shim ownership were both already correct, and characterization confirmed it:

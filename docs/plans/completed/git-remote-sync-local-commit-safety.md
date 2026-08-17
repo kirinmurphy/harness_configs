@@ -1,12 +1,12 @@
 ---
 id: k9m4x2q
 priority: high
-next_action: Add shared branch-sync characterization tests for tracked branches, fetch freshness, and Localhoster current-branch compatibility before changing implementation
+next_action: ""
 blocked_by: []
 depends_on: []
 related:
   - git-exec-consolidation
-reviewed_commit: c17b3532340b4e6a52cf3241b8b64988ad4e94c9
+reviewed_commit: fcdd2b8
 ---
 
 # Verify Local Commits Against Fresh Remote State
@@ -464,6 +464,35 @@ Verification:
 - `node scripts/test/cli-surface-integration-check.mjs` passed.
 - `scripts/doctor.sh --quiet` passed.
 - `npm test` passed with Node 22 prepended to the normal PATH (`392 passed, 0 failed`).
+
+## Completion
+
+Complete. All three phases shipped and merged; every task above is done and the acceptance criteria
+are satisfied by the coverage listed under Verification.
+
+This plan stayed in `active` only because its `next_action` was never cleared — it still asked for
+the Phase 1 characterization tests that Phase 1 had already delivered. Re-verified against merged
+main during the post-merge integration review ([[infra-post-merge-integration-review]]):
+
+```text
+node --check modules/repositories/branch-sync.mjs            pass
+node --check modules/repositories/git-remote-operations.mjs  pass
+node --check modules/localhoster/git.mjs                     pass
+node --check scripts/maintenance/git-remote-sync.mjs         pass
+node scripts/cli/main.mjs git remote-sync-check --help       pass
+node scripts/test/repositories-check.mjs                     pass
+node scripts/test/repositories-service-check.mjs             pass
+node scripts/test/repositories-api-check.mjs                 pass
+node scripts/test/repositories-branch-sync-check.mjs         pass
+node scripts/test/localhoster-git-check.mjs                  pass
+node scripts/test/git-inventory-check.mjs                    pass
+node scripts/test/cli-command-catalog-check.mjs              pass
+```
+
+One caveat worth carrying forward: `cli-surface-integration-check.mjs` — which owns this feature's
+PTY coverage for the repository list, branch selection, and menu return flow — is a known
+load-sensitive flake. It passes in isolation and fails under concurrent load, so a failure there is
+not evidence of a regression in this workflow without an isolated rerun.
 
 ## Risks
 

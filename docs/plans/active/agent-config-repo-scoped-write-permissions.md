@@ -157,6 +157,27 @@ for it at all.
       `scripts/harnesses/permissions-render.mjs` skips the kind rather than flattening it into a
       path glob.
 
+### What the post-merge review changed here
+
+Two things moved under this plan without closing it (see [[infra-post-merge-integration-review]]).
+
+The tracked artifact no longer contains a *contributor's* home. `83c18ce` replaced it with a
+placeholder (`/Users/you`), which fixed the fake-`HOME` test drift but created a worse bug: that
+artifact is also the install baseline, and the root-config merge is additive, so every new install
+inherited a rule naming a directory that does not exist on that machine — permanently. Commit
+`204a0dc` stops that by dropping foreign-home rules during the merge.
+
+So the goal "no contributor's absolute home path in any tracked file" is now met only in the narrow
+sense that the committed string is a fake name rather than a real one. The underlying defect this
+plan targets is unchanged: `~/projects/**` is still in both scopes, still expands at render time,
+and the tracked artifact still carries an expanded absolute path. Removing the path from the
+manifest — this plan's actual fix — would make both the placeholder and the merge filter unnecessary.
+
+`write-scope` also now renders `Edit` rules only. Claude matches path-scoped rules under
+`Edit(path)`, which covers every file-editing tool including `Write`; the `Write(path)` rules this
+plan's "Current state" section quotes were inert and are gone. The gate/scope table above is still
+accurate; only the rendered verb changed.
+
 ### Measured latency
 
 The hook's own work is ~0.09ms — the in-process root walk, against ~155ms to spawn
@@ -185,6 +206,10 @@ bucket resolution, malformed-input safety, and a regression bound on the hook's 
 - [ ] Regenerate `generated/claude/settings.json` and confirm no absolute home path remains. The
       tracked artifact still contains three expanded rules under `/Users/<user>/projects/**`.
 - [ ] Add a test asserting no tracked file contains an expanded home directory in a permission rule.
+      Partially covered from the other direction: `scripts/cli/permission-home-check.mjs` (wired into
+      `roborepo doctor --installed`) fails when a LIVE config carries a path rule naming a home that
+      is not this machine's. That catches the symptom on a user's machine; it does not assert the
+      TRACKED artifact is home-free, which is what this item asks for and what still fails today.
 - [ ] Update the permission scope section of `docs/user/reference/config-control-panel.md`. It still
       states that scope is resolved at render time into static config, which is no longer true for
       writes — the repository boundary is now decided per call.

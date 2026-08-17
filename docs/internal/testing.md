@@ -14,6 +14,7 @@ Use the smallest layer that proves the change. Before publishing, run the full p
 | --- | --- | --- | --- |
 | Repo health | `bash scripts/doctor.sh --quiet` | generated-file drift, manifest data, links, script health | `roborepo doctor --installed` adds live installed-path checks. |
 | Main smoke suite | `npm test` | fast repository behavior and simulated package mode | Alias for `scripts/test/test-roborepo.sh --quiet`. |
+| Install/uninstall collisions | `bash scripts/test/test-install-collisions.sh` | conflict policy, managed-copy reclaim, uninstall cleanliness against real fixture homes | Not covered by `npm test`. The only layer that proves uninstall leaves no remnants. |
 | Package artifact smoke | `npm run test:package-install` | real `npm pack`, isolated global install, package-mode lifecycle, appRoot immutability | Requires a clean worktree only when retaining an artifact with `--output-dir`. |
 | Release preflight | `npm run publish:npm -- --dry-run` | npm auth, registry availability, release checks | Does not write a version or publish. |
 | Targeted Node checks | `node scripts/test/<name>.mjs` | one behavior surface | Preferred while debugging a specific regression. |
@@ -28,6 +29,7 @@ newer:
 node -v
 roborepo doctor --installed
 npm test
+bash scripts/test/test-install-collisions.sh
 npm run pack:dry-run
 npm run test:package-install
 npm run --silent test:publish-npm
@@ -113,6 +115,7 @@ evidence:
 | Check | Current classification |
 | --- | --- |
 | `node scripts/test/usage-statusline-check.mjs` | pre-existing renderer/test text drift: test expects `Context: 70% used`; renderer emits `Context: 70%` |
+| `node scripts/test/agent-run-coverage-check.mjs` | `roborepo init`, `library`, and `uninstall` are unclassified in the permission manifest. Nothing is broken — unclassified namespaces fall through to a prompt, the safe default — but the bucket decision is still owed. Being resolved on the in-flight permissions branch; do not classify them here in parallel. |
 
 `node scripts/test/hook-composition-check.mjs` is part of the passing main suite and should not be
 classified as a known failure.

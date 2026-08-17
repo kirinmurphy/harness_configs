@@ -87,6 +87,14 @@ Everything else (the two symlink levels, the layer table) lives in
   `scripts/build/render-rules.sh`. Agent permission outputs are rendered from
   `manifests/inventory/agent-permissions.json` by `scripts/build/render-agent-permissions.mjs`.
   Edit sources, re-render, then check. `doctor.sh` flags drift.
+- **`generated/` files are install baselines, not just fixtures.** `generated/<provider>/` is both the
+  tracked artifact tests diff against AND `rootConfigBaseline` (`scripts/cli/paths.mjs`), which
+  install/apply merges into the user's live `~/.claude`/`~/.codex` (`scripts/cli/presets.mjs`).
+  Claude's merge UNIONS permission arrays, so anything in the tracked file is additively copied into
+  every real home and cannot be removed by a later render. Never change a `generated/` file to make a
+  test deterministic: a placeholder that reads as obviously fake in the repo (`/Users/you`) ships
+  verbatim to users. Fix the test instead — point it at a temp render, or pass explicit render
+  options — and keep the tracked artifact equal to what a real install should produce.
 - **Adding global commands:** there is now ONE global command (`roborepo`); prefer adding a
   `roborepo` subcommand over a new `bin/` entry. If you ever DO add a `bin/` command, wire it in
   three places — `install-global-commands.sh` (preflight + `link_command`), `doctor.sh` (file +

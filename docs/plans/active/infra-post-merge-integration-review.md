@@ -1,7 +1,7 @@
 ---
 id: 48krno27
 priority: high
-next_action: Publish decision is ready: main is safe to publish after accepting the documented Linux/Windows and real-browser gaps.
+next_action: Second pass fixed a publish blocker (placeholder home shipped into every live config) plus three other defects; commit the working tree, then carry the renderPermissionsTo data-loss finding to the permissions branch.
 blocked_by: []
 depends_on: []
 related:
@@ -126,6 +126,9 @@ lifecycle validation were not run, and no real browser automation was available.
 started through `roborepo web`, `/config` HTML and `/api/config` loaded successfully, and the
 uninstall preview confirmed workspace-preserving behavior without executing cleanup.
 
+> Superseded on the point of publishability. A second pass found a publish blocker this section
+> missed — see "Second Review Pass" below. It is fixed; the rest of this section still stands.
+
 The only confirmed regression found during this pass was generated Claude permissions depending on
 the process `$HOME`, which made fake-home and package-installed doctor checks drift from the
 tracked generated fixture. Commit `83c18ce` fixes that by giving generated permission renders a
@@ -148,6 +151,58 @@ the removed `commands` category, hook-composition coverage passes again, package
 the current jcodemunch hooks, config context-cost assertions distinguish package sections from
 non-package state sections, and lifecycle tests point Claude hook fixtures at
 `globals/harnesses/claude/hooks`.
+
+## Second Review Pass
+
+An independent re-run of this document's scope found four defects the first pass missed, all now
+fixed on main, plus one open issue that is not this plan's to close.
+
+The first pass's publish verdict was wrong on one point. `83c18ce` gave the generated permission
+render a fixed placeholder home (`/Users/you`) to stop fake-`HOME` test runs rewriting the tracked
+file. That artifact is also `rootConfigBaseline`, which install merges into the user's live config,
+and Claude's merge unions permission arrays — so every new install wrote a rule naming a directory
+that does not exist on that machine, permanently, while the user's real projects tree got no
+baseline allow. That was a publish blocker.
+
+Fixed by dropping foreign-home rules in `mergeClaudeSettings`, applied to the merge RESULT rather
+than inside the union branch: a fresh home has no `permissions` of its own and skips that branch
+entirely, which is exactly the first-install case. The live render already self-healed, since it
+replaces `permissions` wholesale.
+
+The other three:
+
+- **Uninstall left `~/.claude/hooks` behind.** `5ffc38f` added a manifest row (`hooks/provider`)
+  nesting inside an existing row's target (`hooks`), so `diff -r` saw roborepo's own second install
+  as user modification and refused to reclaim the parent. The same mismatch also made a plain
+  re-install non-idempotent: it routed an already-current path to the collision prompt, which
+  aborts non-interactively. Both comparators now ignore nested manifest targets, and the two
+  near-duplicate directory comparators were collapsed onto one helper so a fix cannot again land in
+  one and miss the other.
+- **Dead package category.** `ac35c97` removed the `commands` category but left a consumer in
+  `scripts/cli/config.mjs` comparing against it, so the branch was permanently false and every
+  command-backed package silently lost its `/command` label. The condition now keys on the package
+  actually exposing a command.
+- **`Write(path)` permission rules are inert.** Claude matches path-scoped rules under `Edit(path)`,
+  which covers every file-editing tool; a `Write(path)` rule does nothing and is reported at session
+  start. `write-scope` now renders `Edit` only. The `write-files` gate still names both tools,
+  because turning writing off has to shut off both.
+
+Coverage added so these classes cannot recur silently: a `doctor --installed` check that live
+permission paths resolve to this machine's home; a `package-catalog-check` assertion that no source
+file branches on a category id the manifest does not define; and `test-install-collisions.sh` added
+to the documented test matrix, which is why the uninstall defect survived the first pass at all.
+
+### Open, not fixed here
+
+`renderPermissionsTo` replaces `settings.permissions` wholesale, so any allow/deny entry not derived
+from `manifests/inventory/agent-permissions.json` — MCP tool grants, personal denies — is destroyed
+on every `roborepo apply`/`update`. This was observed directly: healing a live config dropped eleven
+`mcp__jcodemunch`/`mcp__jdocmunch` grants and one personal deny. It is independent of the merge
+defect above and belongs with the in-flight permissions work.
+
+Also still open and deliberately left: `roborepo init`, `library`, and `uninstall` are unclassified
+in the permission manifest. Nothing breaks — unclassified namespaces prompt, the safe default — but
+the bucket decision is owed on the permissions branch.
 
 ## Validation
 

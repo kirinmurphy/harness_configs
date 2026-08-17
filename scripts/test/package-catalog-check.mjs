@@ -104,6 +104,42 @@ for (const consumer of consumers) {
   }
 }
 
+// No source file may branch on a package category id that the manifest does not define.
+//
+// validatePackageCatalog already rejects a PACKAGE naming an unknown category, but nothing checked
+// CODE that hardcodes one. config.mjs branched on `presentation?.category === "commands"` long after
+// commit ac35c97 deleted that category, so the condition was permanently false and every
+// command-backed package silently lost its `/command` label — no test failed, because the data was
+// valid and only the consumer was stale. This is the same failure shape as the kind check above: a
+// second declaration of a name that must agree with the manifest.
+//
+// Matched by source text rather than executed, for the same reason as the consumer scan: these are
+// literals inside branches, and reaching them all would need a DOM and a stdout capture. Only
+// category-shaped comparisons are inspected, so unrelated `category` fields (telemetry operation
+// categories, for instance) are not swept in.
+const packageCategoryIds = new Set(categories.map((category) => category.id));
+const categoryComparison = /\bcategory\s*(?:===|!==)\s*"([a-z][a-z0-9-]*)"/g;
+const categoryConsumers = [
+  "scripts/cli/config.mjs",
+  "scripts/cli/config-cli-print.mjs",
+  "scripts/cli/package-catalog.mjs",
+  "portal/config/templates.js",
+  "portal/config/state.js",
+];
+for (const relPath of categoryConsumers) {
+  const fullPath = path.join(import.meta.dirname, "../..", relPath);
+  if (!fs.existsSync(fullPath)) continue;
+  const source = fs.readFileSync(fullPath, "utf8");
+  for (const [, id] of source.matchAll(categoryComparison)) {
+    assert(
+      packageCategoryIds.has(id),
+      `${relPath} branches on package category "${id}", which manifests/inventory/`
+        + "package-categories.json does not define — that comparison can never be true, so the rows "
+        + "it governs silently render the wrong way",
+    );
+  }
+}
+
 // The Permissions section splits on authorship (customized vs shipped default), not on item kind.
 // customizedCount is the boundary both the portal and the CLI printer read, so it must agree with
 // the items themselves rather than being computed twice and drifting.

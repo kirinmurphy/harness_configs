@@ -358,6 +358,27 @@ check_store_bounds() {
   fi
 }
 
+# Path-scoped permission rules in a LIVE root config must name the real $HOME. The tracked
+# generated/<provider>/ artifact renders with a fixed placeholder home so fake-HOME test runs cannot
+# rewrite it, but that same artifact is rootConfigBaseline — install/apply merges it into the user's
+# real home, and Claude's merge UNIONS permission arrays. A placeholder that survives that merge is
+# a rule matching a directory that does not exist on this machine, and no render can remove it.
+check_live_permission_home() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped live permission home check"
+    return 0
+  fi
+  local output
+  if output="$(node "${repo_root}/scripts/cli/permission-home-check.mjs" 2>&1)"; then
+    ok "live permission paths use this machine's home"
+  else
+    failed=1
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && echo "${line}" >&2
+    done <<< "${output}"
+  fi
+}
+
 check_local_config_repair_candidates() {
   if ! command -v node >/dev/null 2>&1; then
     ok "node unavailable; skipped local config repair check"
@@ -520,6 +541,7 @@ if [[ "${check_installed}" -eq 1 ]]; then
   fi
   check_local_config_repair_candidates
   check_store_bounds
+  check_live_permission_home
   # Base install owns only roborepo-support. Optional skills are checked through their package/toggle
   # state, not as unconditional install payload. Provider iteration (docs/plans/active/
   # discoverable-harness-provider-architecture-plan.md Phase 4) instead of a fixed Claude/Codex pair.

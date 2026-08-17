@@ -448,7 +448,12 @@ function sectionContextCost(items) {
 
 function packagePresentationItem(item, tool, contextCost = null) {
   const command = tool?.command || null;
-  const showCommandLabel = command && item.presentation?.category === "commands";
+  // Label a command-backed package by the command it exposes (`/wrap-up`) rather than its prose
+  // label. Keyed on the package actually having a command, NOT on a category id: this previously
+  // compared the category against a now-deleted id, and when that category was removed the
+  // condition silently became unreachable, so every such package quietly lost its `/command` label.
+  // scripts/test/package-catalog-check.mjs now fails on any category literal the manifest lacks.
+  const showCommandLabel = Boolean(command);
   const resources = item.resources || item.components || [];
   const inspect = command
     ? {

@@ -74,7 +74,10 @@ esac
   assert.equal(releaseInfo.status, 0, releaseInfo.stderr);
   assert.match(releaseInfo.stdout, /Target:\s+0\.1\.0-beta\.1/);
   assert.match(releaseInfo.stdout, /Next release info only\. No git, npm, network, or package checks were run\./);
-  assert.match(releaseInfo.stdout, /npm install -g codethings-roborepo-alpha@0\.1\.0-beta\.1 --tag beta/);
+  // The install command pins an exact version, so --tag is inert on it (npm only honors --tag when
+  // resolving an unpinned spec). Printing it taught users a flag that does nothing; assert it stays gone.
+  assert.match(releaseInfo.stdout, /npm install -g codethings-roborepo-alpha@0\.1\.0-beta\.1$/m);
+  assert.doesNotMatch(releaseInfo.stdout, /npm install -g \S+ --tag/);
   assert.equal(readCalls(), "", "--next-release-info should not call git or npm");
 
   const latest = run(["--tag", "latest", "--next-release-info"], env);
@@ -91,7 +94,8 @@ esac
   assert.equal(dryRun.status, 0, dryRun.stderr);
   assert.match(dryRun.stdout, /Dry run complete/);
   assert.match(dryRun.stdout, /npm publish --access public --tag beta/);
-  assert.match(dryRun.stdout, /npm install -g codethings-roborepo-alpha@0\.1\.0-beta\.1 --tag beta/);
+  assert.match(dryRun.stdout, /npm install -g codethings-roborepo-alpha@0\.1\.0-beta\.1$/m);
+  assert.doesNotMatch(dryRun.stdout, /npm install -g \S+ --tag/);
   const calls = readCalls();
   assert.match(calls, /git status --porcelain/);
   assert.match(calls, /npm whoami/);

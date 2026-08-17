@@ -183,7 +183,7 @@ if [[ "${next_release_info}" -eq 1 ]]; then
   echo "Publish command:"
   echo "npm publish --access public --tag ${tag}"
   echo "Install after publish:"
-  echo "npm install -g ${package_name}@${target_version} --tag ${tag}"
+  echo "npm install -g ${package_name}@${target_version}"
   exit 0
 fi
 
@@ -216,7 +216,7 @@ if [[ "${dry_run}" -eq 1 ]]; then
   echo "Dry run complete. Publish command would be:"
   echo "npm publish --access public --tag ${tag}"
   echo "Install after publish:"
-  echo "npm install -g ${package_name}@${target_version} --tag ${tag}"
+  echo "npm install -g ${package_name}@${target_version}"
   exit 0
 fi
 
@@ -234,4 +234,4 @@ run_check npm publish --access public --tag "${tag}"
 
 echo "Published ${package_name}@${target_version} with dist-tag ${tag}"
 echo "Install on another machine:"
-echo "npm install -g ${package_name}@${target_version} --tag ${tag}"
+echo "npm install -g ${package_name}@${target_version}"

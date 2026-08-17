@@ -75,7 +75,10 @@
       "Bash(roborepo presets:*)",
       "Bash(roborepo bundle:*)",
       "Bash(roborepo experimental:*)",
-      "Bash(roborepo onboard-intro:*)"
+      "Bash(roborepo onboard-intro:*)",
+      "Bash(roborepo init:*)",
+      "Bash(roborepo library:*)",
+      "Bash(roborepo uninstall:*)"
     ]
   },
   "hooks": {

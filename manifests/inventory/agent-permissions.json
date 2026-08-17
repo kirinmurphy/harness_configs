@@ -323,6 +323,18 @@
         [
           "roborepo",
           "onboard-intro"
+        ],
+        [
+          "roborepo",
+          "init"
+        ],
+        [
+          "roborepo",
+          "library"
+        ],
+        [
+          "roborepo",
+          "uninstall"
         ]
       ],
       "bucket": "ask",

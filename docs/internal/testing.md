@@ -114,8 +114,18 @@ evidence:
 
 | Check | Current classification |
 | --- | --- |
-| `node scripts/test/usage-statusline-check.mjs` | pre-existing renderer/test text drift: test expects `Context: 70% used`; renderer emits `Context: 70%` |
-| `node scripts/test/agent-run-coverage-check.mjs` | `roborepo init`, `library`, and `uninstall` are unclassified in the permission manifest. Nothing is broken — unclassified namespaces fall through to a prompt, the safe default — but the bucket decision is still owed. Being resolved on the in-flight permissions branch; do not classify them here in parallel. |
+| `node scripts/test/cli-surface-integration-check.mjs` | Load-sensitive flake in its `expect`-driven remote-sync PTY block, which uses fixed timeouts. Passes in isolation and fails under concurrent load, so rerun it alone before calling a failure a regression. Also surfaces through `npm test` as `lifecycle: CLI surface help/menu/removed routes work in sandbox`. |
+
+Both previously listed entries are fixed and no longer expected to fail:
+
+- `usage-statusline-check.mjs` asserted `Context: 70% used`. The renderer has emitted a bare
+  percentage since the feature's first commit, and the implementation plan's own format table
+  specifies `Context: 42% · 5h: — · Weekly: —`, so the assertion was wrong when written rather than
+  drifting later. The test now matches the specified format.
+- `agent-run-coverage-check.mjs` reported `roborepo init`, `library`, and `uninstall` unclassified.
+  All three mutate state — `init` sets up the installation, `library` writes preset state through
+  `markOnboarded()`, `uninstall` removes managed config — so all three are now in the
+  `mutate-harness-config` (`ask`) behavior.
 
 `node scripts/test/hook-composition-check.mjs` is part of the passing main suite and should not be
 classified as a known failure.

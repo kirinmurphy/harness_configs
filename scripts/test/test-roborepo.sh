@@ -38,15 +38,35 @@ cleanup() {
 trap cleanup EXIT
 export ROBOREPO_PRESETS_ONBOARD=skip
 
+# --quiet hides every per-test line, so a run that takes minutes looks hung -- which matters most
+# during `npm run publish:npm`, where the suite is one of four sequential checks. Overwrite a single
+# progress line instead: proof of life without the several-hundred-line scroll that dropping
+# --quiet would produce. Only when stderr is a terminal, so CI logs and piped output stay clean.
+progress_start="${SECONDS}"
+show_progress() {
+  [[ "${quiet}" -eq 1 && -t 2 ]] || return 0
+  local elapsed=$((SECONDS - progress_start))
+  printf '\r  running tests: %d passed, %d failed  [%dm%02ds]\033[K' \
+    "${pass}" "${fail}" "$((elapsed / 60))" "$((elapsed % 60))" >&2
+}
+
+# Clear the progress line before any real output, so a FAIL or the summary never lands on top of it.
+clear_progress() {
+  [[ "${quiet}" -eq 1 && -t 2 ]] || return 0
+  printf '\r\033[K' >&2
+}
+
 assert() {
   local label="$1"; shift
   if "$@"; then
     [[ "${quiet}" -eq 0 ]] && echo "ok: ${label}"
     pass=$((pass + 1))
   else
+    clear_progress
     echo "FAIL: ${label}" >&2
     fail=$((fail + 1))
   fi
+  show_progress
 }
 
 assert "source layout: globals system skills exist" test -d "${repo_root}/globals/system/skills"
@@ -1898,6 +1918,7 @@ assert "plans: portal mutation-orchestration helpers" \
   node "${repo_root}/scripts/test/plans-portal-state-check.mjs"
 
 # ---------------------------------------------------------------------------
+clear_progress
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"
 [[ "${fail}" -eq 0 ]]

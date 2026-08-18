@@ -127,19 +127,17 @@ Rules for writing them:
 
 ### Pairing another skill
 
-The same rule applies one level up. A reference is loaded from within a skill; a paired skill is
-loaded from beside it. Both fail the same way — by being mentioned rather than required.
+The same rule applies one level up. A reference loads from within a skill; a paired skill loads
+from beside it. Both fail the same way — by being mentioned rather than required. Prose that names
+a related skill without instructing the load reads as background, and the observed consequence is
+that the user names the paired skill by hand on every request.
 
-Prose that names a related skill without instructing the load reads as background, and background
-does not get acted on. The observed failure mode is that the user ends up naming the paired skill
-by hand on every single request, which is the work the pairing was supposed to remove.
-
-| Written as | How it reads | What happens |
-| --- | --- | --- |
-| "For plans, pair with `technical-writing`." | a fact about two skills | never loads |
-| "Load `technical-writing`; do not wait to be asked for it by name." | an instruction | loads |
-| "Load `code-style` when relevant." | defers the judgment to the reader | never loads — the reader is the one who did not already know |
-| "Load `code-style` when the document specifies module boundaries, orchestration vs. execution, or reuse." | a condition checkable against the task | loads when it applies |
+| Written as | What happens |
+| --- | --- |
+| "For plans, pair with `technical-writing`." | never loads — a fact about two skills, not a step |
+| "Load `technical-writing`; do not wait to be asked for it by name." | loads |
+| "Load `code-style` when relevant." | never loads — defers the judgment to the reader, who is the one who did not already know |
+| "Load `code-style` when the document specifies module boundaries, orchestration vs. execution, or reuse." | loads when it applies |
 
 Rules:
 

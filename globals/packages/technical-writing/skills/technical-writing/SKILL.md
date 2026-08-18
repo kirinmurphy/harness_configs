@@ -19,13 +19,10 @@ system, plan, migration, or operational workflow.
 | `javascript-typescript` | The document covers JS/TS — ESM, exports, types, framework-less DOM structure | Language and markup conventions the guidance must not contradict |
 | `test-harness` | The document proposes tests, verification commands, or a regression strategy | Test selection and observable-behavior assertions |
 
-This skill covers prose quality — what to say and how to order it once the shape is known. A
-paired skill governs whether what the document *says to build* is right, which is a separate
-question from whether it reads well, and both are in scope.
-
-Whatever loaded here also joins the Validator's rule set in `references/review-loop.md`. Say which
-paired skills applied and which did not; a skipped skill and a forgotten one look identical
-otherwise.
+This skill covers prose quality; a paired skill governs whether what the document *says to build*
+is right. Both are in scope, and whatever loaded here joins the Validator's rule set in
+`references/review-loop.md`. State which paired skills applied and which did not — a skipped skill
+and a forgotten one look identical otherwise.
 
 ## Mode Selection
 
@@ -36,8 +33,8 @@ If invoked as `/technical-writing` with no mode, return this compact help and st
 /technical-writing review   read-only Creator/Validator pass over an existing doc
 ```
 
-`write` is the only artifact-producing mode. Creating, editing, revising, restructuring, and
-updating a durable document are all `write` — there is no separate `edit` or `revise` mode.
+`write` is the only artifact-producing mode: creating, editing, revising, restructuring, and
+updating a durable document are all `write`, and there is no separate `edit` or `revise` mode.
 `review` evaluates an existing document and reports violations without changing it.
 
 For a named mode, read only the needed references:
@@ -53,9 +50,8 @@ For a named mode, read only the needed references:
 ## Completion Gate
 
 **Do not present a durable document as finished until the Creator/Validator loop in
-`references/review-loop.md` has run.** This applies to every `write` invocation, new document or
-edit alike. The full procedure lives in the reference; the parts that decide whether the work is
-done are:
+`references/review-loop.md` has run** — every `write` invocation, new document or edit alike. The
+procedure lives in the reference; what decides whether the work is done:
 
 - The Creator owns edits. The Validator only reports violations and never rewrites.
 - Every Validator pass is surfaced to the user in chat, including a pass that finds nothing.

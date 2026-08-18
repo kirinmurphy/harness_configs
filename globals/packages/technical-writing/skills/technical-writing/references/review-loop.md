@@ -11,8 +11,8 @@ the roles separate; do not let the writer grade its own work in the same pass.
 ## Applicable rule set
 
 The Validator resolves this table before its first pass and states which rows it applied. "Read
-every rule in the skill" is not resolvable on its own — a silently omitted reference is the exact
-failure this loop exists to catch.
+every rule in the skill" is not resolvable on its own, and a silently omitted reference is the
+exact failure this loop exists to catch.
 
 | Rule source | When required |
 | --- | --- |
@@ -25,12 +25,10 @@ failure this loop exists to catch.
 | `doc-organization.md` | Only when revising a documentation set rather than a single document |
 | Applicable paired skills | Whenever they materially constrain the guidance the document gives — an explicit request is one trigger, not the only one |
 
-A paired skill contributes constraints to validation, not only to drafting. When a document tells a
-reader how to build something, the rules governing that construction are in scope: `code-style` for
-module ownership and orchestration boundaries, `javascript-typescript` for ESM and framework-less
-markup conventions, `test-harness` for test selection. Only the references that actually apply are
-required — `javascript-typescript/references/framework-less-markup.md` matters when the document
-covers DOM structure, and not otherwise.
+A paired skill constrains validation, not only drafting: when a document tells a reader how to
+build something, the rules governing that construction are in scope. Within a paired skill, only
+the references that actually apply are required — `javascript-typescript/references/framework-less-markup.md` matters when the
+document covers DOM structure, and not otherwise.
 
 The loop:
 

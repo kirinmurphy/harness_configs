@@ -117,7 +117,7 @@ function testWriteIsTheOnlyArtifactProducingMode() {
     assert.ok(!matrix[absent], `technical-writing must not declare a separate \`${absent}\` mode; those are forms of \`write\``);
   }
   const content = flat(`${TECHNICAL_WRITING}/SKILL.md`);
-  assert.match(content, /Creating, editing, revising, restructuring, and updating a durable document are all `write`/,
+  assert.match(content, /creating, editing, revising, restructuring, and updating a durable document are all `write`/i,
     "SKILL.md must state that edit/revise-shaped requests resolve to `write`");
 }
 
@@ -251,9 +251,9 @@ function testPlanDocsNamesConditionalPairedSkillsAndTheirTriggers() {
     assert.ok(skill.includes(`\`${paired}\``), `plan-docs must name ${paired} as a paired skill`);
     assert.match(skill, trigger, `${paired} must carry a concrete load condition, not "when relevant"`);
   }
-  assert.match(skill, /conditional on subject matter, not on how large the plan is/,
+  assert.match(skill, /subject matter, never plan size|not on how large the plan is/,
     "plan size is not the trigger; a short plan that specifies module placement still needs code-style");
-  assert.match(skill, /State which paired skills you loaded/,
+  assert.match(skill, /State which paired skills/,
     "loaded skills must be reported, or a skipped one is indistinguishable from one that did not apply");
 }
 

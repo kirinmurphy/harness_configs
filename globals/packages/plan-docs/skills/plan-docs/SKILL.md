@@ -8,36 +8,24 @@ description: Use when creating, validating, prioritizing, starting, syncing, rev
 Use this skill for managed repository plans stored as Markdown under `docs/plans`.
 
 This skill owns frontmatter, lifecycle folders, and the required-section schema for plan
-documents. It does not own prose quality or implementation correctness — those come from the
-paired skills below.
+documents. Prose quality and implementation correctness come from the paired skills below.
 
 ## Paired Skills
 
-**Load these as part of the mode; do not wait to be asked for them by name.** A plan document is a
-durable technical document that gives implementation guidance, so the rules governing both are in
-scope whether or not the request lists them.
+**Load these as part of the mode; do not wait to be asked for them by name.** Their rules constrain
+the plan's content, not just its wording, and they join the validation scope — the
+`technical-writing` Validator checks the plan against every paired skill that was loaded.
 
 | Skill | Load when | Contributes |
 | --- | --- | --- |
-| `technical-writing` | **Always**, for any mode that writes or revises a plan (`create`, `sync`, `handoff`) — and for `review` when judging document quality | Section ordering, representation choices, anti-patterns, reader clarity, and the Creator/Validator loop that decides when the document is finished |
-| `code-style` | The plan specifies where code goes: module boundaries, orchestration vs. execution, helper placement, reuse | Ownership and layering constraints that change what the plan should instruct |
-| `javascript-typescript` | The plan touches JS/TS implementation — ESM, exports, types, framework-less DOM structure | Language and markup conventions the plan must not contradict |
-| `test-harness` | The plan proposes tests, verification commands, or a regression strategy | Test selection, observable-behavior assertions, and which checks to name |
+| `technical-writing` | **Always** for `create`, `sync`, and `handoff`; for `review` when judging document quality | Section ordering, representation, anti-patterns, reader clarity, and the Creator/Validator loop. Knows nothing about lifecycle or frontmatter, so it never overrides a rule from this skill |
+| `code-style` | The plan specifies where code goes: module boundaries, orchestration vs. execution, reuse | Ownership and layering constraints |
+| `javascript-typescript` | The plan touches JS/TS — ESM, exports, types, framework-less DOM | Language and markup conventions the plan must not contradict |
+| `test-harness` | The plan proposes tests, verification commands, or a regression strategy | Test selection and observable-behavior assertions |
 
-`technical-writing` is unconditional because every plan is prose someone has to read later. The
-other three are conditional on subject matter, not on how large the plan is: a one-phase plan that
-specifies module placement still needs `code-style`.
-
-Two things follow from loading a paired skill:
-
-- Its rules constrain the plan's **content**, not only its wording. A plan that tells an
-  implementer to build something the paired skill forbids is wrong on the merits.
-- Its rules join the validation scope. The `technical-writing` Validator checks the plan against
-  every paired skill that was loaded — see the applicable rule set in that skill's
-  `references/review-loop.md`.
-
-State which paired skills you loaded and why the conditional ones did or did not apply. Silence
-about a skipped skill is indistinguishable from having forgotten it.
+Conditional triggers are subject matter, never plan size: a one-phase plan that specifies module
+placement still needs `code-style`. State which paired skills applied and which did not — a skipped
+skill and a forgotten one look identical otherwise.
 
 ## Mode Selection
 
@@ -77,16 +65,15 @@ These conditions must hold before a new plan can be called created. The full rul
   whenever it is the more specific fit. Form `<namespace>-<slug>.md` from that namespace, and pair
   it with a reader-facing H1 that names the outcome rather than restating the filename. When no
   config exists, say so and propose a vocabulary from the repository instead of inventing a prefix.
-- **Generate an opaque `id`** of 6-8 lowercase base36 characters, never derived from the title or
-  filename. It survives every rename and lifecycle move.
+- **Generate an opaque `id`** of 6-8 lowercase base36 characters. Never derive it from the title,
+  filename, or slug; it survives every rename and lifecycle move.
 - **Frontmatter carries only** `id`, `priority`, `next_action`, `blocked_by`, `depends_on`,
   `related`, and `reviewed_commit`. Do not add `status`, `validated`, `created_at`, `updated_at`,
   `owner`, `percent_complete`, `estimated_hours`, or `tags` — changing the schema is its own
   decision, made first.
 - **Lifecycle is the folder, never a field.** New plans are written to `docs/plans/backlog/`.
 - **Never encode lifecycle, status, dates, or versions in the filename.**
-- **Load `technical-writing` before drafting, without being asked.** It is required for every plan,
-  and the conditional paired skills load on subject matter — see "Paired Skills" above.
+- **Load `technical-writing` before drafting, without being asked.**
 - **Run both validation layers before delivering.** `plan-docs` validation covers schema,
   lifecycle, naming, and repository consistency; the `technical-writing` Validator covers prose
   quality and every paired skill that applied. A clean report from one does not excuse the other.

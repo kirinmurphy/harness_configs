@@ -15,14 +15,14 @@ If the work is too vague to be implementation-ready, create a draft backlog plan
 
 ## Identity checkpoint
 
-Resolve all four of these and state them before writing prose. Drafting first and naming afterward
-is how a plan ends up with a namespace that was never checked against the repository's vocabulary.
+Resolve all four and state them before writing prose. Drafting first and naming afterward is how a
+plan ends up with a namespace nobody checked against the repository's vocabulary.
 
 | Decision | How to resolve it |
 | --- | --- |
 | Namespace | Read `docs/plans/plans-config.json`. Its keys are the project namespaces; `plan-schema.md` lists the universal ones. The project namespace wins whenever it is the more specific fit. If no key fits, propose adding one rather than inventing an unlisted prefix. |
 | Filename | `<namespace>-<specific-slug>.md`, lowercase and hyphenated, with no lifecycle, status, date, or version suffix. |
-| `id` | A fresh opaque 6-8 character lowercase base36 string, unrelated to the filename or title — see "Plan ids" in `plan-schema.md`. |
+| `id` | Generate a fresh opaque 6-8 character lowercase base36 string. **Do not derive it from the title, the filename, or the slug** — see "Plan ids" in `plan-schema.md`. |
 | H1 | Reader-facing prose naming the outcome. Not the filename with the hyphens removed, and it does not restate the namespace. |
 
 When `plans-config.json` does not exist, say so explicitly and propose an initial vocabulary drawn
@@ -31,9 +31,9 @@ silently fall back to universal namespaces.
 
 ## Validation before delivery
 
-A plan is both a managed lifecycle artifact and a durable technical document, so it passes two
-independent checks. Neither substitutes for the other: a mechanically valid plan can still be
-unreadable, and clean prose does not make an invalid namespace valid.
+A plan is both a lifecycle artifact and a durable document, so it passes two independent checks.
+Neither substitutes for the other: a mechanically valid plan can still be unreadable, and clean
+prose does not make an invalid namespace valid.
 
 | Layer | Owns |
 | --- | --- |

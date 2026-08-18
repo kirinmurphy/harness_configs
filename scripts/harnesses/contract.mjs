@@ -83,6 +83,35 @@ function validateDetection(detection, label, errors) {
       }
     }
   }
+  if (detection.executableValidation !== undefined) {
+    const validation = detection.executableValidation;
+    if (typeof validation !== "object" || validation === null || Array.isArray(validation)) {
+      fail(errors, `${label} detection.executableValidation must be an object`);
+    } else {
+      for (const key of Object.keys(validation)) {
+        if (key !== "args" && key !== "timeoutMs") {
+          fail(errors, `${label} detection.executableValidation has unknown key: ${key}`);
+        }
+      }
+      if (validation.args !== undefined) {
+        if (!Array.isArray(validation.args)) {
+          fail(errors, `${label} detection.executableValidation.args must be an array`);
+        } else {
+          for (const entry of validation.args) {
+            if (typeof entry !== "string") {
+              fail(errors, `${label} detection.executableValidation.args entries must be strings`);
+            }
+          }
+        }
+      }
+      if (
+        validation.timeoutMs !== undefined
+        && (!Number.isInteger(validation.timeoutMs) || validation.timeoutMs < 1)
+      ) {
+        fail(errors, `${label} detection.executableValidation.timeoutMs must be a positive integer`);
+      }
+    }
+  }
 }
 
 function validatePathMap(paths, label, errors) {

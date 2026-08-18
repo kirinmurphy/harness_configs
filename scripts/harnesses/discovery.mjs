@@ -6,6 +6,10 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import { expandHome } from "./paths.mjs";
 
+const DEFAULT_EXECUTABLE_VALIDATION_ARGS = Object.freeze(["--version"]);
+const DEFAULT_EXECUTABLE_VALIDATION_TIMEOUT_MS = 2000;
+const CONFIDENCE_RANK = Object.freeze({ absent: 0, possible: 1, probable: 2, confirmed: 3 });
+
 function resolveExecutable(name) {
   const command = process.platform === "win32" ? "where" : "which";
   try {
@@ -17,13 +21,37 @@ function resolveExecutable(name) {
   }
 }
 
+function executableValidation(detection) {
+  return {
+    args: detection.executableValidation?.args ?? DEFAULT_EXECUTABLE_VALIDATION_ARGS,
+    timeoutMs: detection.executableValidation?.timeoutMs ?? DEFAULT_EXECUTABLE_VALIDATION_TIMEOUT_MS,
+  };
+}
+
+function validatesExecutable(resolvedPath, validation) {
+  try {
+    execFileSync(resolvedPath, validation.args, {
+      encoding: "utf8",
+      stdio: ["ignore", "ignore", "ignore"],
+      timeout: validation.timeoutMs,
+      windowsHide: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function collectEvidence(manifest) {
   const detection = manifest.detection;
+  const validation = executableValidation(detection);
   const evidence = [];
 
   for (const executable of detection.executables ?? []) {
     const resolvedPath = resolveExecutable(executable);
-    if (resolvedPath) evidence.push({ kind: "executable", value: executable, resolvedPath });
+    if (resolvedPath && validatesExecutable(resolvedPath, validation)) {
+      evidence.push({ kind: "executable", value: executable, resolvedPath });
+    }
   }
   for (const homeCandidate of detection.homeCandidates ?? []) {
     if (fs.existsSync(expandHome(homeCandidate))) evidence.push({ kind: "home", value: homeCandidate });
@@ -48,12 +76,17 @@ function normalizeConfidence(evidence) {
   return "absent";
 }
 
+export function confidenceMeetsMinimum(confidence, minimumConfidence) {
+  return (CONFIDENCE_RANK[confidence] ?? 0) >= (CONFIDENCE_RANK[minimumConfidence] ?? Infinity);
+}
+
 export function detectHarnessProvider(manifest) {
   const evidence = collectEvidence(manifest);
   const confidence = normalizeConfidence(evidence);
+  const detected = confidenceMeetsMinimum(confidence, manifest.detection.minimumConfidence);
   return {
     providerId: manifest.id,
-    status: confidence === "absent" ? "absent" : "detected",
+    status: detected ? "detected" : "absent",
     confidence,
     evidence,
     warnings: [],

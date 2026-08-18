@@ -53,7 +53,7 @@ import {
 import { renderCommandSourceHtml } from "./config-source-render.mjs";
 import { buildContextCost } from "./context-cost.mjs";
 import { hasHarnessProvider, listHarnessProviders, getHarnessProvider } from "../harnesses/registry.mjs";
-import { discoverHarnessProviders } from "../harnesses/discovery.mjs";
+import { confidenceMeetsMinimum, discoverHarnessProviders } from "../harnesses/discovery.mjs";
 import { readHarnessState } from "../harnesses/state.mjs";
 import { resolveHarnessPath } from "../harnesses/paths.mjs";
 
@@ -95,7 +95,7 @@ export function configSnapshotHarnesses() {
 // different things to a user: rendering the registered catalog as the primary Agents view tells
 // someone with no harnesses installed that they have three, which is the defect this fixes.
 //
-// A provider appears here when discovery has any evidence for it (confidence !== "absent"), and
+// A provider appears here when discovery reaches the provider's declared minimum confidence, and
 // carries its enabled flag so the UI can distinguish "installed but turned off" from "not here".
 // Providers the user explicitly disabled still appear — they exist on the machine; they are just
 // not managed. An empty array is a legitimate, common state (fresh install, no harnesses yet).
@@ -103,7 +103,7 @@ export function configSnapshotMachineHarnesses() {
   const state = readHarnessState();
   const discoveries = new Map(
     discoverHarnessProviders(listHarnessProviders())
-      .filter((entry) => entry.confidence !== "absent")
+      .filter((entry) => entry.status === "detected")
       .map((entry) => [entry.providerId, entry]),
   );
 
@@ -112,7 +112,7 @@ export function configSnapshotMachineHarnesses() {
       const entry = state.providers[provider.id];
       const discovered = discoveries.get(provider.id);
       if (!entry && !discovered) return null;
-      if (!discovered && entry?.confidence === "absent") return null;
+      if (!discovered && !confidenceMeetsMinimum(entry?.confidence, provider.manifest.detection.minimumConfidence)) return null;
       const userDisabled = entry?.selectionSource === "user" && entry.enabled === false;
       const confidence = discovered?.confidence ?? entry.confidence;
       const enabled = userDisabled

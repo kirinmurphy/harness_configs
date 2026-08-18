@@ -7,6 +7,7 @@
   "adapter": "codex",
   "detection": {
     "executables": ["codex"],
+    "executableValidation": { "args": ["--version"] },
     "homeCandidates": ["~/.codex"],
     "configCandidates": ["~/.codex/config.toml"],
     "minimumConfidence": "probable"

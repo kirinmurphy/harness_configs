@@ -28,12 +28,13 @@ import {
 // right output for `roborepo harness refresh` and the wrong output mid-wizard, so init shares the
 // state-writing path and formats its own one-line summary.
 function refreshAndSummarizeHarnesses() {
-  const next = applyDiscoveryToState(readHarnessState(), discoverHarnessProviders(listHarnessProviders()));
+  const results = discoverHarnessProviders(listHarnessProviders());
+  const next = applyDiscoveryToState(readHarnessState(), results);
   writeHarnessState(next);
 
-  const detected = Object.entries(next.providers)
-    .filter(([, entry]) => entry.confidence !== "absent")
-    .map(([id]) => id);
+  const detected = results
+    .filter((entry) => entry.status === "detected")
+    .map((entry) => entry.providerId);
 
   return { state: next, detected };
 }

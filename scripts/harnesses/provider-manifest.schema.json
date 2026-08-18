@@ -79,6 +79,23 @@
           "items": { "type": "string", "minLength": 1 },
           "description": "Bounded executable names to look up on PATH. Never a full filesystem scan."
         },
+        "executableValidation": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Inexpensive command invocation used to prove a resolved executable is a working harness, not a shell/proxy shim.",
+          "properties": {
+            "args": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Arguments passed to the resolved executable. Defaults to [\"--version\"]."
+            },
+            "timeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Validation timeout in milliseconds. Defaults to 2000."
+            }
+          }
+        },
         "homeCandidates": {
           "type": "array",
           "items": { "type": "string", "pattern": "^~/" }

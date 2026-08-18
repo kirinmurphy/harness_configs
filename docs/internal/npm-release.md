@@ -36,6 +36,7 @@ tooling should expose one current interface and remove stale command paths when 
 | `npm run publish:npm -- --next-release-info` | You want quick facts about the next publish target. | Computes next version, npm tag, publish command, and install command. | No clean-tree check, npm auth, registry lookup, tests, version write, or publish. |
 | `npm run publish:npm -- --dry-run` | You want to know whether publishing is safe right now. | Requires clean tree, checks npm auth and registry state, runs release checks, prints publish/install commands. | No version write and no publish. |
 | `npm run publish:npm` | You are ready to publish. | Requires clean tree, checks npm auth and registry state, writes next version, runs release checks, publishes with explicit dist-tag, prints install command. | Refuses duplicate versions and refuses `latest` unless explicitly requested. |
+| `npm run publish:npm -- --confirm` | You want a manual final gate after release checks pass. | Runs the same publish flow, then prompts before `npm publish`. | Noninteractive terminals will abort at the prompt. |
 
 ## Default Version And Tag
 
@@ -54,6 +55,7 @@ Use an explicit version or preid only when the release intent differs from the d
 npm run publish:npm -- --version 0.1.0-beta.2
 npm run publish:npm -- --preid rc
 npm run publish:npm -- --latest
+npm run publish:npm -- --confirm
 ```
 
 ## Checks

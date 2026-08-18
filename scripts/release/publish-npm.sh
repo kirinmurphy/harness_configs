@@ -9,7 +9,7 @@ preid="beta"
 explicit_version=""
 dry_run=0
 next_release_info=0
-yes=0
+yes=1
 allow_latest=0
 backup_dir=""
 version_written=0
@@ -59,7 +59,8 @@ Options:
   --latest                Allow publishing with --tag latest.
   --dry-run               Run preflight/checks and print publish command, but do not bump or publish.
   --next-release-info     Show next version/install command without git, npm, or network checks.
-  --yes                   Do not prompt before publish.
+  --yes                   Do not prompt before publish (default).
+  --confirm               Prompt before publish after checks pass.
   -h, --help              Show this help.
 
 Default target is the next prerelease for package.json's current version.
@@ -98,6 +99,10 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --yes|-y)
       yes=1
+      shift
+      ;;
+    --confirm)
+      yes=0
       shift
       ;;
     -h|--help)

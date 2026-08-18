@@ -55,8 +55,10 @@ echo "npm $*" >> "${tempRoot}/calls.log"
     fi
     ;;
   publish)
-    echo "publish should not run in this test" >&2
-    exit 20
+    if [ "\${PUBLISH_TEST_ALLOW_PUBLISH:-0}" != "1" ]; then
+      echo "publish should not run in this test" >&2
+      exit 20
+    fi
     ;;
   *)
     echo "unexpected npm command: $*" >&2
@@ -121,6 +123,11 @@ esac
     "package.json should be restored after failed pre-publish check",
   );
   assert.doesNotMatch(readCalls(), /npm publish/, "failed check should not publish");
+
+  resetCalls();
+  const published = run([], { ...env, PUBLISH_TEST_ALLOW_PUBLISH: "1" });
+  assert.equal(published.status, 0, `publish should run without a prompt by default:\n${published.stderr}`);
+  assert.match(readCalls(), /npm publish --access public --tag beta/);
 
   // Retrying after a run that wrote the version but never published. package.json then names a
   // version the registry has never seen, and pinning that same version with --version used to abort

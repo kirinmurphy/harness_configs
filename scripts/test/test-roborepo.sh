@@ -37,6 +37,9 @@ cleanup() {
 }
 trap cleanup EXIT
 export ROBOREPO_PRESETS_ONBOARD=skip
+# The suite is release-gating, so no test may wait on the publisher's terminal. Individual tests
+# that exercise interaction provide their own pipe or PTY.
+exec </dev/null
 
 # --quiet hides every per-test line, so a run that takes minutes looks hung -- which matters most
 # during `npm run publish:npm`, where the suite is one of four sequential checks. Overwrite a single

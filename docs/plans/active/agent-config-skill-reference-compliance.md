@@ -1,7 +1,7 @@
 ---
 id: k7p3m2q
 priority: high
-next_action: Determine whether an agent can read its own current-turn capture mid-response or whether a Stop hook must append the annotation, then build the Phase 9 skill-visibility consumer
+next_action: Build the Phase 9 PostToolUse hook in skill-visibility that injects observed reference reads, then confirm injected context survives a long turn
 blocked_by: []
 depends_on: []
 related: []
@@ -332,17 +332,17 @@ skipped a required reference is precisely the agent that will not report having 
 | | `skill-visibility` today | Captured reads | Unified |
 | --- | --- | --- | --- |
 | Question answered | which skills shaped this turn | which reference files were opened | both |
-| Basis | agent introspection | `file_path_hash` on captured read events | measurement annotating the self-report |
+| Basis | agent introspection | the read path in a `PostToolUse` hook payload | observation annotating the self-report |
 | Granularity | skill names | individual references | skills, each with its reference tally |
 | Reaches the user | in the response | nowhere | in the response |
 | Fails when | the agent forgets | telemetry is disabled | degrades to the self-report alone |
 
 ```mermaid
 flowchart LR
-    A[Agent completes a turn] -->|self-reports| S[Skills it applied]
-    C[Captured read events] -->|hashed paths matched against| R[Required references]
-    S -->|names the skills for| L[Reported line]
-    R -->|annotates with read counts| L
+    A[Agent reads a skill reference] -->|fires| H[PostToolUse hook]
+    H -->|injects observed path into| C[Agent context]
+    C -->|annotates| L[Reported line]
+    S[Skills the agent self-reports] -->|names the skills for| L
     L -->|surfaces to| U[User, in the response]
 ```
 
@@ -355,9 +355,8 @@ Required behavior:
 - A disagreement between the two halves is the most valuable output the system produces. Render it
   rather than reconciling it silently.
 - With telemetry disabled, the line renders exactly as it does today.
-- Persist nothing new. `file_path_hash` is already written on every read for unrelated reasons;
-  this consumes it. Do not add a second store, and do not retain a per-turn record after the line
-  is rendered.
+- Persist nothing. The observation is turn-scoped context injected by a hook and consumed in the
+  same response. No store, no log, no retained per-turn record.
 
 Rendered forms, in order of how much the pipeline can prove:
 
@@ -502,39 +501,49 @@ Phase 8 produced `scripts/cli/telemetry-skill-references.mjs` and its coverage. 
 
 `skill-visibility` already owns the surface where this information is useful and already declares the weakness — its rule text says "self-reported, not harness-verified." Phase 9 keeps that line and hardens what fills it, rather than adding a second reporting surface. See Design §9.
 
-- [ ] Extend the `skill-visibility` package so its reported line can carry a per-skill reference tally alongside the skills the agent names.
-- [ ] Resolve the current turn's captured reads. `UserPromptSubmit` events plus record timestamps bound a turn within a session; confirm this against a real spool before relying on it.
-- [ ] Keep the agent's self-report authoritative for *which skills applied*. Measurement annotates that list and never replaces it, because a skill can shape a turn through rules already in context with no file read to observe.
-- [ ] Render an unmatched reference as "not seen", never as "not read". State that limit where a reader of the line will encounter it.
-- [ ] Surface a disagreement between the self-report and the measurement rather than reconciling it silently — that discrepancy is the output with the most value.
-- [ ] Persist nothing new. Consume the `file_path_hash` values capture already writes, add no second store, and retain no per-turn record after the line is rendered.
+The delivery mechanism is to inform the agent *during* the turn rather than append to the response after it. A `PostToolUse` hook that sees a reference read emits `hookSpecificOutput.additionalContext`, which lands in the agent's context; the agent then writes the line it already writes, from observation instead of memory. `globals/system/hooks/claude/roborepo-write-guard.mjs` uses this exact mechanism today.
+
+```mermaid
+flowchart LR
+    A[Agent reads a skill reference] -->|fires| H[PostToolUse hook]
+    H -->|injects additionalContext| C[Agent context]
+    C -->|informs| L[Skills loaded line]
+    L -->|surfaces to| U[User, in the response]
+```
+
+A prototype was run against real hook payloads before this phase was written. Findings:
+
+| Question | Answer |
+| --- | --- |
+| Does the hook need telemetry? | No. The read path arrives in the hook payload as `tool_input.file_path`; no capture, hashing, or spool lookup is involved |
+| Which path does the payload carry? | The harness-native path the agent used, e.g. `~/.claude/skills/<skill>/references/<file>.md` |
+| Does `realpath` help? | No — it resolves to `~/.roborepo/skills/...`, the wrong root. Match the literal path as given |
+| Does an unrelated read stay silent? | Yes, exit 0 with no output |
+
+**This removes the degraded-mode problem entirely.** The earlier design matched hashed paths from the telemetry spool, so the line's accuracy depended on the telemetry package being enabled and the two halves could disagree silently. Reading the path from the hook payload has no such dependency: `skill-visibility` gains verification on its own, and the annotation is present whenever the package is.
+
+- [ ] Add a `PostToolUse` hook to `skill-visibility` that recognizes a read under a harness skill root and emits the observed `<skill>/<reference>` as `additionalContext`.
+- [ ] Match the literal payload path. Do not resolve symlinks: the managed cache root is not what the agent read.
+- [ ] Stay silent for any read outside a skill reference directory, and exit 0 without output.
+- [ ] Extend `skill-visibility`'s rule text so the reported line carries a per-skill reference tally when observations were injected, and reads as it does today when none were.
+- [ ] Keep the agent's self-report authoritative for *which skills applied*. Observation annotates that list and never replaces it, because a skill can shape a turn through rules already in context with no file read to observe.
+- [ ] Render an unobserved reference as "not seen", never as "not read". A reference read in an earlier turn is real but uninjected.
+- [ ] Surface a disagreement between the self-report and the observations rather than reconciling it silently — that discrepancy is the output with the most value.
+- [ ] Persist nothing. The injection is turn-scoped context; no store, no log, no retained per-turn record.
 - [ ] Respect the `chat-time-output` category contract: no files written, no workflow started.
-- [ ] Give `telemetry-skill-references.mjs` this consumer, or delete the module. A measurement nothing renders is not observability.
-- [ ] Add coverage for the degraded path, the annotated path, and the disagreement path.
+- [ ] Confirm injected context survives to the end of a long turn. This is the one remaining unknown and the only thing that can invalidate the approach.
+- [ ] Mirror the hook for Codex, matching the parity principle in `roborepo-support`.
+- [ ] Add coverage for a reference read, an unrelated read, a symlinked path, and a turn with no observations.
 
-#### Step 1 — Prove the mechanism before designing around it
+#### Decide the fate of the Phase 8 module
 
-Whether an agent can read its own current-turn capture while composing a response is unverified, and everything below assumes it can. If it cannot, the annotation must come from a `Stop` hook, which may not be able to modify a response that has already streamed.
+`scripts/cli/telemetry-skill-references.mjs` matches hashed reference paths against the telemetry spool. The hook path above obsoletes it for this use: it needs no telemetry, no hashing, and no turn-boundary reconstruction.
 
-
-- [ ] Determine whether an agent can read its own current-turn capture mid-response, or whether a `Stop` hook must append the annotation. Test this first; the remaining design depends on the answer.
-- [ ] If only the `Stop` path works, confirm whether a hook can modify an already-streamed response. If it cannot, this phase needs a different delivery surface and the packaging question below is moot.
-
-#### Step 2 — Make the line honest about its own basis
-
-With telemetry disabled there is no capture to match against, and an annotated line and a plain self-report would otherwise look identical — the reader could not tell a verified claim from an unverified one. That is worse than today's line, which is at least consistently understood as self-reported.
-
-The resolution is for the line to describe its own basis: a reference tally appears only when it was measured, and its absence means the claim is the agent's alone.
-
-- [ ] Render the tally only when captured reads were actually matched. Never render a count derived from the declared reference set.
-- [ ] State the convention in `skill-visibility`'s rule text so the absence of a tally is readable rather than ambiguous.
-- [ ] Note in the package description that enabling the telemetry package upgrades this line from self-reported to measured.
+- [ ] Delete the module and its check, or state a second consumer that justifies keeping it. A measurement nothing renders is not observability. The privacy-hash consolidation it depended on stays regardless — that fixed a real latent bug and has five live callers.
 
 #### Rejected: a package dependency system
 
-Making `skill-visibility` formally depend on `telemetry` would remove the ambiguity by construction. It is rejected on cost: no package in this repository declares a relationship to any other — the config schema carries `schemaVersion`, `id`, `label`, `description`, `lifecycle`, `presentation`, and `resources`, none of them relational. Supporting this would mean inventing dependency declaration, resolution, enable/disable cascade, and cycle handling so that one line can render a reference count.
-
-A lighter variant was considered: prompt the user at enable time, offering to turn on telemetry for verified tracking. It needs no resolver and no schema change, so it is cheaper — but it addresses only "the user did not realize telemetry improves this line", which a sentence in the package description also addresses. Revisit if that sentence proves insufficient in practice.
+Making `skill-visibility` formally depend on `telemetry` was considered while the design still read hashed paths from the spool. The hook path removes the dependency altogether, so this is moot — but the cost reasoning is recorded because it applies to any future cross-package requirement: no package in this repository declares a relationship to any other. The config schema carries `schemaVersion`, `id`, `label`, `description`, `lifecycle`, `presentation`, and `resources`, none of them relational. Supporting one would mean inventing dependency declaration, resolution, enable/disable cascade, and cycle handling.
 
 Worth recording for whoever picks this up: capture is a single pipeline, not separable per field. `file_path_hash` and token counts are fields on the same record written by the same hook, so there is no "skills-only" capture mode to enable independently of the telemetry package.
 

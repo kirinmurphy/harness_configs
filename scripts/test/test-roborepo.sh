@@ -1869,6 +1869,9 @@ assert "telemetry: /api/session rejects missing/unknown harness ids" \
 assert "telemetry: synthetic third-provider analysis and rate-limit capability" \
   node "${repo_root}/scripts/test/telemetry-synthetic-provider-check.mjs"
 
+assert "config: onboarding notices match harness/package state" \
+  node "${repo_root}/scripts/test/config-onboarding-state-check.mjs"
+
 # Phase 7 of discoverable-harness-provider-architecture-plan.md: /api/config/source rejects a
 # missing/unrecognized harness id for harness-scoped kinds instead of silently defaulting to
 # Claude, and the Config snapshot's harnesses list stays registry-driven.

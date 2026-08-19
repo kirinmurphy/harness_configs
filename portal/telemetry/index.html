@@ -4,7 +4,7 @@
   <body>
     {{CHROME}}
     {{WIDGET_TEMPLATES}}
-    <div class="control-panel">
+    <div class="control-panel" id="telemetrycontrols">
       <div class="inner filterbar-rows">
         <div class="control-panel-row filter-row" id="ranges">
           <span class="flabel">range</span>
@@ -50,67 +50,68 @@
     <!-- Frame-of-reference count line (left) + the "I changed something, mark it" data-entry action
          (right), on one flex-row. Stacks on mobile. The counts stay deliberately low-prominence —
          the action-items panel and the chart carry the actionable load. -->
-    <div class="page-frame inner">
+    <div class="page-frame inner" id="telemetryframe">
       <div class="frame-counts" id="meta"></div>
       <button data-btn="cta" id="openmarkermodal" type="button">+ mark change</button>
     </div>
     <main class="inner">
       {{LOADING}}
-      <!-- TIER 1 — conclusions & action items (the headline; always first) -->
-      <section class="panel" id="insightspanel">
-        <h2>Action Items <portal-info-icon data-doc-anchor="panel-map" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
-        <div id="insights"></div>
-        <div class="modalactions">
-          <button class="linkbtn" id="deepread">deeper read ›</button>
-          <button class="linkbtn" id="openanalysis">open analysis explorer ›</button>
-        </div>
-        <div class="modalextra" id="deepreadout"></div>
-        <div id="deepreadcopy" style="display: none; margin-top: 6px">
-          <button class="copybtn" id="copydeepread">copy response</button>
-        </div>
-      </section>
-
-      <!-- Telemetry-off prompt: shown above the chart when capture is disabled. Enabling it here is the
-       same action as toggling telemetry in onboarding / the config page. -->
+      <!-- Setup prompt: shown by itself when capture is disabled or no active harness is detected.
+       Enabling telemetry here is the same action as toggling it in onboarding / the config page. -->
       <section
         class="panel telemetry-off"
         id="telemetryoff"
         style="display: none"
       >
-        <h2>telemetry is off</h2>
-        <div class="legend">
-          Token usage is not being captured. Turn telemetry on to start
-          collecting data across your harnesses.
-        </div>
+        <h2 data-slot="title">telemetry is off</h2>
+        <div class="legend" data-slot="body"></div>
         <div class="modalactions">
           <button data-btn="cta" id="enabletelemetry">
             turn on telemetry
           </button>
+          <a data-btn="cta" id="addharness" href="/config">
+            add a harness
+          </a>
         </div>
         <div class="item-err" id="enableerr"></div>
       </section>
 
-      <!-- TIER 2 — visualize (the chart) -->
-      <section class="panel">
-        <h2>token usage over time</h2>
-        <div class="ranges" id="chartmodes">
-          <span class="flabel">view</span>
-          <button data-mode="cumulative" class="active">
-            cumulative per session
-          </button>
-          <button data-mode="bygroup">cumulative by tool group</button>
-          <button data-mode="deltas">per-turn deltas</button>
-        </div>
-        <div class="chartwrap">
-          <canvas id="timeline"></canvas>
-          <div class="tooltip" id="tooltip"></div>
-          <div class="markertip" id="markertip"></div>
-          <div class="loadoverlay" id="loadoverlay">
-            <span class="spinner"></span> computing…
+      <div id="telemetrycontent">
+        <!-- TIER 1 — conclusions & action items (the headline; always first) -->
+        <section class="panel" id="insightspanel">
+          <h2>Action Items <portal-info-icon data-doc-anchor="panel-map" aria-haspopup="dialog" aria-expanded="false" aria-label="what this panel means" title="what this panel means"></portal-info-icon></h2>
+          <div id="insights"></div>
+          <div class="modalactions">
+            <button class="linkbtn" id="deepread">deeper read ›</button>
+            <button class="linkbtn" id="openanalysis">open analysis explorer ›</button>
           </div>
-        </div>
-        <div class="legend" id="chartlegend"></div>
-      </section>
+          <div class="modalextra" id="deepreadout"></div>
+          <div id="deepreadcopy" style="display: none; margin-top: 6px">
+            <button class="copybtn" id="copydeepread">copy response</button>
+          </div>
+        </section>
+
+        <!-- TIER 2 — visualize (the chart) -->
+        <section class="panel">
+          <h2>token usage over time</h2>
+          <div class="ranges" id="chartmodes">
+            <span class="flabel">view</span>
+            <button data-mode="cumulative" class="active">
+              cumulative per session
+            </button>
+            <button data-mode="bygroup">cumulative by tool group</button>
+            <button data-mode="deltas">per-turn deltas</button>
+          </div>
+          <div class="chartwrap">
+            <canvas id="timeline"></canvas>
+            <div class="tooltip" id="tooltip"></div>
+            <div class="markertip" id="markertip"></div>
+            <div class="loadoverlay" id="loadoverlay">
+              <span class="spinner"></span> computing…
+            </div>
+          </div>
+          <div class="legend" id="chartlegend"></div>
+        </section>
 
       <!-- Lives right after the chart, not buried in TIER 4's collapsed "cost analysis" — this is
            a direct result of the marker filter in the bar above (not a raw cost breakdown), so it
@@ -286,6 +287,7 @@
           <div id="explorer-result"></div>
         </section>
       </details>
+      </div>
     </main>
     <!-- Data table (tmpl.table): panel body shared by causes/sessions/spikes/cost/etc -->
     <template id="tpl-datatable">

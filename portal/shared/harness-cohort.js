@@ -28,6 +28,10 @@ export function presentedHarnesses(snap) {
     .filter(Boolean);
 }
 
+export function activePresentedHarnesses(snap) {
+  return presentedHarnesses(snap).filter((harness) => harness.enabled !== false);
+}
+
 // "Claude Code", "Claude Code and Codex", "Claude Code, Codex, and Gemini CLI".
 export function formatHarnessList(names) {
   if (names.length === 0) return "";

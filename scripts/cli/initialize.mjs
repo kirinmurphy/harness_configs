@@ -19,7 +19,6 @@ import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 import { presetsOnboard } from "./presets.mjs";
 import { setupCommand } from "./workspace.mjs";
-import { selectMenu } from "./skill-lib.mjs";
 import {
   beginInitialization,
   completeInitialization,
@@ -66,13 +65,14 @@ function printNextActions() {
 
 function printWelcome() {
   console.log("Welcome to RoboRepo.");
-  console.log("Choose how you want to configure this install.");
+  console.log("Opening the browser setup. If that is not available, use the CLI setup instead:");
+  console.log("  roborepo library");
   console.log("");
 }
 
 async function runFirstRunConfiguration({ dryRun = false } = {}) {
   if (dryRun) {
-    console.log("  - choose browser or CLI configuration");
+    console.log("  - open browser setup, with CLI fallback for non-interactive shells");
     return;
   }
 
@@ -82,29 +82,17 @@ async function runFirstRunConfiguration({ dryRun = false } = {}) {
   }
 
   printWelcome();
-  const choice = await selectMenu("Configure settings:", [
-    {
-      label: "Browser",
-      value: "web",
-      desc: "open roborepo web",
-    },
-    {
-      label: "CLI",
-      value: "cli",
-      desc: "continue to Package Library",
-    },
-  ]);
-
-  if (choice === "web") {
-    const result = spawnSync(
-      process.execPath,
-      [path.join(repoRoot, "scripts", "cli", "main.mjs"), "web", "--detach"],
-      { stdio: "inherit" },
-    );
-    if (result.status !== 0) process.exit(result.status ?? 1);
+  const result = spawnSync(
+    process.execPath,
+    [path.join(repoRoot, "scripts", "cli", "main.mjs"), "web", "--detach"],
+    { stdio: "inherit" },
+  );
+  if (result.status === 0) {
     return;
   }
 
+  console.log("");
+  console.log("Browser setup did not start; continuing in the CLI.");
   await presetsOnboard([]);
 }
 

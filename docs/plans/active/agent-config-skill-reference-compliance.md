@@ -1,7 +1,7 @@
 ---
 id: k7p3m2q
 priority: high
-next_action: Run roborepo update so the new skill gates reach live sessions, then re-check reference observability against a session that routed through them
+next_action: Determine whether an agent can read its own current-turn capture mid-response or whether a Stop hook must append the annotation, then build the Phase 9 skill-visibility consumer
 blocked_by: []
 depends_on: []
 related: []
@@ -33,6 +33,7 @@ The work applies first to `plan-docs` and `technical-writing`, then establishes 
 - [x] Establish a convention that can be applied to additional skills when similar failures are observed.
 - [x] Add regression coverage proving that required references and validation gates cannot silently disappear from the workflow.
 - [x] Report which references a session actually read, not merely which ones the skill declares, so a skipped reference is observable rather than assumed.
+- [ ] Deliver that report where it is useful — the chat-time line at the end of a response — rather than as a durable record nobody reads back.
 
 ## Non-goals
 
@@ -46,6 +47,8 @@ The work applies first to `plan-docs` and `technical-writing`, then establishes 
 - Broadly refactor the telemetry pipeline. Only the privacy hash is consolidated, and only because Phase 8 depends on matching it.
 - Consolidate helpers inside `scripts/cli/telemetry-capture.mjs` such as `toolMetadata`, `resolveCallId`, or session-activity tracking. That module's header documents a deliberate minimal-import constraint because it runs on every `PreToolUse`/`PostToolUse` hook; apparent duplication there is intentional, and widening its import graph regresses hook cost. The shared hash module is exempt because it depends only on `node:crypto`.
 - Restructure `scripts/cli/telemetry.mjs` (1873 lines). Its size is a separate concern with its own risk profile.
+- Build a queryable history of skill and reference use. Which skills shaped a turn matters while the response is on screen and is not consulted afterward, so the deliverable is the reported line, not a log. This plan adds no store and consumes only capture data already written for other reasons.
+- Replace the agent's self-report with measurement. Reading a file is not the same as applying its rules, and a skill can shape a turn with no file read at all.
 
 ## Current State
 
@@ -121,6 +124,14 @@ There is also a concrete scope mismatch: `technical-writing write` requires `ref
 `scripts/cli/skill-audit.mjs` (182 lines, invoked as `roborepo skill audit`) already walks every package-backed `SKILL.md`, parses frontmatter, emits per-skill structural findings, and renders `docs/internal/skill-invocation-audit.md` from a generated marker. Its current findings cover unsupported frontmatter keys, dynamic shell lines, side-effect keywords, and missing trigger descriptions.
 
 This is the existing home for Phase 7's structural check, and it removes the plan's earlier uncertainty about audit ownership. Related tooling already in place: `skill-trigger-check.mjs` validates skill descriptions against the fixtures in `manifests/inventory/skill-trigger-tests.json`, and the repository has an established `*-characterization-check.mjs` test convention that Phase 6 should follow rather than invent.
+
+### Skill reporting already exists and is self-reported
+
+The `skill-visibility` package renders one line at the end of a response naming the skills that shaped it. Its entire rule set is that line plus a caveat: "This is self-reported, not harness-verified." It is enabled through the `chat-time-output` category, whose contract is inline notes only — no files written, no workflow started.
+
+This is the surface where skill and reference information is useful, and its stated weakness is the failure this plan closes. An agent that skipped a required reference is the same agent that will not report the skip.
+
+Separately, `scripts/cli/telemetry-capture.mjs` already records a `file_path_hash` on every read-shaped tool call, for reasons unrelated to skills. Nothing consumes it for reference checking today.
 
 ### Omitted references can materially change implementation plans
 
@@ -301,11 +312,64 @@ The two validators have different ownership:
 
 A clean technical-writing report must not override a plan-docs finding, and a mechanically valid plan must not bypass the qualitative Validator.
 
-### 9. Add reference-loading observability
+### 9. Deliver reference loading as chat-time output, not as a queryable log
 
-For workflows RoboRepo itself generates or launches, record or surface selected skill, selected mode, required reference paths, applicable paired skills, and validation result.
+Which skills shaped a turn is information with a short shelf life. A user reads it while the
+response is in front of them and does not return to it afterward, so a durable record answers a
+question nobody asks later. The delivery surface is the reported line at the end of a response; the
+capture spool is evidence feeding that line, never the deliverable.
 
-Do not capture private model reasoning. If a harness cannot prove a reference was actually read, report the expected reference set rather than falsely claiming execution evidence.
+The `skill-visibility` package already owns that line and already carries the weakness this plan
+exists to close:
+
+```text
+> 🧩 **Skills loaded:** [comma-separated skill names, or "none"]
+```
+
+Its own rule text states the limit — "This is self-reported, not harness-verified." An agent that
+skipped a required reference is precisely the agent that will not report having skipped it.
+
+| | `skill-visibility` today | Captured reads | Unified |
+| --- | --- | --- | --- |
+| Question answered | which skills shaped this turn | which reference files were opened | both |
+| Basis | agent introspection | `file_path_hash` on captured read events | measurement annotating the self-report |
+| Granularity | skill names | individual references | skills, each with its reference tally |
+| Reaches the user | in the response | nowhere | in the response |
+| Fails when | the agent forgets | telemetry is disabled | degrades to the self-report alone |
+
+```mermaid
+flowchart LR
+    A[Agent completes a turn] -->|self-reports| S[Skills it applied]
+    C[Captured read events] -->|hashed paths matched against| R[Required references]
+    S -->|names the skills for| L[Reported line]
+    R -->|annotates with read counts| L
+    L -->|surfaces to| U[User, in the response]
+```
+
+Required behavior:
+
+- The agent's self-report names the skills. Measurement annotates it and never replaces it — a
+  skill can shape a turn through rules already in context, with no file read to observe.
+- A reference that no captured read matches is reported as **not seen**, never as *not read*.
+  Capture can begin mid-session, and a reference read in an earlier turn is real but unmatched.
+- A disagreement between the two halves is the most valuable output the system produces. Render it
+  rather than reconciling it silently.
+- With telemetry disabled, the line renders exactly as it does today.
+- Persist nothing new. `file_path_hash` is already written on every read for unrelated reasons;
+  this consumes it. Do not add a second store, and do not retain a per-turn record after the line
+  is rendered.
+
+Rendered forms, in order of how much the pipeline can prove:
+
+```text
+> 🧩 **Skills loaded:** plan-docs, technical-writing
+> 🧩 **Skills loaded:** plan-docs (5 refs), technical-writing (5 refs)
+> 🧩 **Skills loaded:** technical-writing — 4 of 5 refs read, review-loop.md not seen
+```
+
+The third line is the one this plan exists to produce. Every gate in the preceding phases assumes
+an agent that follows instructions; that line is what appears when one did not, while the user
+still cares.
 
 ### 10. Strengthen skill authoring conventions
 
@@ -346,6 +410,8 @@ Verified current implementation surfaces at `reviewed_commit`:
 | namespace source | `docs/plans/plans-config.json` | becomes a code-read input instead of a prose-only contract |
 | telemetry capture | `scripts/cli/telemetry-capture.mjs` | source of observed read events; consume without widening its import graph |
 | shared privacy hash | `scripts/cli/telemetry-schemas/hash.mjs` (new) | one `privacyHash()` consumed by capture, seed-demo, classify, snapshot-schema, and `telemetry.mjs` |
+| reference-read measurement | `scripts/cli/telemetry-skill-references.mjs` (new) | matches required reference paths against captured reads; needs the Phase 9 consumer or removal |
+| chat-time reporting line | `globals/packages/skill-visibility/rules.md`, `globals/packages/skill-visibility/package.config.json` | the delivery surface; gains the reference tally and an optional relationship to the telemetry package |
 
 Prefer a focused new module such as `modules/plan-docs/naming.mjs` for deterministic filename/namespace logic rather than adding another responsibility to `modules/plan-docs/index.mjs`. Confirm the final module boundary against local conventions during implementation.
 
@@ -416,9 +482,9 @@ Prefer a focused new module such as `modules/plan-docs/naming.mjs` for determini
 - [x] Regenerate `docs/internal/skill-invocation-audit.md` through the existing generated-marker path; do not hand-edit it.
 - [x] Keep audit findings structural rather than attempting to judge arbitrary prose semantics mechanically.
 
-### Phase 8 — Add lightweight runtime observability
+### Phase 8 — Consolidate the privacy hash and measure reference reads
 
-Step one consolidates the privacy hash, because Phase 8 depends on hashing a reference path exactly the way capture already hashed it. Matching against a sixth ad-hoc copy of the algorithm is how the silent zero-match failure below actually happens.
+Step one consolidates the privacy hash, because measuring a reference read depends on hashing its path exactly the way capture already hashed it. Matching against a sixth ad-hoc copy of the algorithm is how the silent zero-match failure below actually happens.
 
 - [x] Add a single `privacyHash(value)` to a dependency-free module (`scripts/cli/telemetry-schemas/hash.mjs`) and route all existing call sites through it.
 - [x] Delete the sync-by-comment note at `scripts/cli/telemetry.mjs:1080` once both sides call the shared helper.
@@ -427,10 +493,50 @@ Step one consolidates the privacy hash, because Phase 8 depends on hashing a ref
 - [x] Resolve the live installed skill directory before hashing reference paths, so hashes match what the agent actually read. Verify against a real captured session before building any reporting on top — a wrong path root produces zero matches with no error.
 - [x] Match required reference paths against captured `file_path_hash` values to report which references were actually read, not only which were required.
 - [x] Preserve the existing privacy property: presence-test known reference paths; do not add plain-text path capture.
-- [x] Keep reference-presence matching inline in Phase 8. The primitive — given known paths, which did this session read — would generalize to plan-doc reads and plan-touched-file checks, but extract it only when a second consumer exists rather than designing for a hypothetical one.
-- [x] If this adds framework-less portal markup, follow the existing real-HTML `<template>` + slot-fill convention; do not build nested multi-element structures with JavaScript DOM-builder calls or runtime HTML strings.
 - [x] Do not claim a model read a reference when the harness cannot prove it.
 - [x] Do not capture or persist private model reasoning.
+
+Phase 8 produced `scripts/cli/telemetry-skill-references.mjs` and its coverage. That module has no consumer: nothing renders its output, so the measurement currently reaches no one. Phase 9 supplies the consumer.
+
+### Phase 9 — Deliver the measurement through the existing chat-time line
+
+`skill-visibility` already owns the surface where this information is useful and already declares the weakness — its rule text says "self-reported, not harness-verified." Phase 9 keeps that line and hardens what fills it, rather than adding a second reporting surface. See Design §9.
+
+- [ ] Extend the `skill-visibility` package so its reported line can carry a per-skill reference tally alongside the skills the agent names.
+- [ ] Resolve the current turn's captured reads. `UserPromptSubmit` events plus record timestamps bound a turn within a session; confirm this against a real spool before relying on it.
+- [ ] Keep the agent's self-report authoritative for *which skills applied*. Measurement annotates that list and never replaces it, because a skill can shape a turn through rules already in context with no file read to observe.
+- [ ] Render an unmatched reference as "not seen", never as "not read". State that limit where a reader of the line will encounter it.
+- [ ] Surface a disagreement between the self-report and the measurement rather than reconciling it silently — that discrepancy is the output with the most value.
+- [ ] Persist nothing new. Consume the `file_path_hash` values capture already writes, add no second store, and retain no per-turn record after the line is rendered.
+- [ ] Respect the `chat-time-output` category contract: no files written, no workflow started.
+- [ ] Give `telemetry-skill-references.mjs` this consumer, or delete the module. A measurement nothing renders is not observability.
+- [ ] Add coverage for the degraded path, the annotated path, and the disagreement path.
+
+#### Step 1 — Prove the mechanism before designing around it
+
+Whether an agent can read its own current-turn capture while composing a response is unverified, and everything below assumes it can. If it cannot, the annotation must come from a `Stop` hook, which may not be able to modify a response that has already streamed.
+
+
+- [ ] Determine whether an agent can read its own current-turn capture mid-response, or whether a `Stop` hook must append the annotation. Test this first; the remaining design depends on the answer.
+- [ ] If only the `Stop` path works, confirm whether a hook can modify an already-streamed response. If it cannot, this phase needs a different delivery surface and the packaging question below is moot.
+
+#### Step 2 — Make the line honest about its own basis
+
+With telemetry disabled there is no capture to match against, and an annotated line and a plain self-report would otherwise look identical — the reader could not tell a verified claim from an unverified one. That is worse than today's line, which is at least consistently understood as self-reported.
+
+The resolution is for the line to describe its own basis: a reference tally appears only when it was measured, and its absence means the claim is the agent's alone.
+
+- [ ] Render the tally only when captured reads were actually matched. Never render a count derived from the declared reference set.
+- [ ] State the convention in `skill-visibility`'s rule text so the absence of a tally is readable rather than ambiguous.
+- [ ] Note in the package description that enabling the telemetry package upgrades this line from self-reported to measured.
+
+#### Rejected: a package dependency system
+
+Making `skill-visibility` formally depend on `telemetry` would remove the ambiguity by construction. It is rejected on cost: no package in this repository declares a relationship to any other — the config schema carries `schemaVersion`, `id`, `label`, `description`, `lifecycle`, `presentation`, and `resources`, none of them relational. Supporting this would mean inventing dependency declaration, resolution, enable/disable cascade, and cycle handling so that one line can render a reference count.
+
+A lighter variant was considered: prompt the user at enable time, offering to turn on telemetry for verified tracking. It needs no resolver and no schema change, so it is cheaper — but it addresses only "the user did not realize telemetry improves this line", which a sentence in the package description also addresses. Revisit if that sentence proves insufficient in practice.
+
+Worth recording for whoever picks this up: capture is a single pipeline, not separable per field. `file_path_hash` and token counts are fields on the same record written by the same hook, so there is no "skills-only" capture mode to enable independently of the telemetry package.
 
 ## Validation
 
@@ -575,6 +681,8 @@ The plan is successful when:
 - The technical-writing Validator has an explicit applicable rule set and surfaces every pass.
 - Applicable paired skills influence both authoring and review.
 - Tests protect the critical reference matrices and naming validators.
+- A skipped reference is visible to the user in the response that skipped it, not only discoverable afterward.
+- The reported line still works, unchanged, when telemetry is disabled.
 - Maintainers have a reusable pattern for future skills: entry-point gates, detailed references, deterministic validators, and qualitative review.
 
 ## Verification
@@ -645,6 +753,9 @@ read nothing.
 
 - **The updated skills are not installed.** These edits are in repository source; `~/.claude/skills/` still carries
   the previous copies. `roborepo update` has not been run, so no live session has yet routed through the new gates.
+- **Phase 9 is not started.** `telemetry-skill-references.mjs` measures reference reads correctly and is covered by
+  tests, but nothing renders its output, so no user sees a skipped reference today. Until the `skill-visibility`
+  consumer exists, the measurement half of this plan delivers nothing.
 - **One pre-existing suite failure, confirmed unrelated.** `test-roborepo.sh` reports `396 passed, 1 failed` while
   exiting 0. The failing assertion is `lifecycle: CLI surface help/menu/removed routes work in sandbox`, which fails
   inside `cli-surface-integration-check.mjs` on `telemetry package should show product label in Package Library`.

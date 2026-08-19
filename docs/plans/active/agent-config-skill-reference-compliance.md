@@ -728,7 +728,13 @@ node scripts/test/skill-reference-observer-check.mjs                  ok
 node scripts/test/package-catalog-check.mjs                          ok
 roborepo skill audit --check                                         ok
 bash scripts/test/test-roborepo.sh --quiet                           396 passed, 1 failed
+bash scripts/test/test-install-collisions.sh                         all passed
 ```
+
+`test-install-collisions.sh` is a second suite, separate from `test-roborepo.sh` and absent from
+`package.json`. Phase 9 ships this package's first hook *scripts*, which the apply engine copies into
+`~/.claude/hooks/` and `~/.codex/hooks/` at install time — the surface that suite exists to cover. It was
+initially missed for that reason and run afterwards; a change touching installable assets should run it.
 
 The suite count is unchanged across Phase 9: `telemetry-skill-references-check.mjs` was removed and
 `skill-reference-observer-check.mjs` took its slot in `test-roborepo.sh`. The single failure is the

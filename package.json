@@ -71,7 +71,7 @@
     "test:plans-repair": "node scripts/test/plan-docs-repair-check.mjs",
     "test:plans-portal-state": "node scripts/test/plans-portal-state-check.mjs",
     "test:skill-reference-matrix-characterization": "node scripts/test/skill-reference-matrix-characterization-check.mjs",
-    "test:telemetry-skill-references": "node scripts/test/telemetry-skill-references-check.mjs",
+    "test:skill-reference-observer": "node scripts/test/skill-reference-observer-check.mjs",
     "test:telemetry": "node scripts/test/telemetry-correctness-check.mjs && node scripts/test/telemetry-time-axis-check.mjs",
     "test:telemetry-schemas": "node scripts/test/telemetry-schemas-check.mjs",
     "test:telemetry-marker-cli": "node scripts/test/telemetry-marker-cli-check.mjs",

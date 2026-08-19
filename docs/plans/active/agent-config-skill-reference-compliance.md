@@ -1,7 +1,7 @@
 ---
 id: k7p3m2q
 priority: high
-next_action: Build the Phase 9 PostToolUse hook in skill-visibility that injects observed reference reads, then confirm injected context survives a long turn
+next_action: Run roborepo update to install the new skills and the skill-reference observer hook, then confirm a live session renders the annotated Skills loaded line
 blocked_by: []
 depends_on: []
 related: []
@@ -495,7 +495,7 @@ Step one consolidates the privacy hash, because measuring a reference read depen
 - [x] Do not claim a model read a reference when the harness cannot prove it.
 - [x] Do not capture or persist private model reasoning.
 
-Phase 8 produced `scripts/cli/telemetry-skill-references.mjs` and its coverage. That module has no consumer: nothing renders its output, so the measurement currently reaches no one. Phase 9 supplies the consumer.
+Phase 8 produced `scripts/cli/telemetry-skill-references.mjs` and its coverage. That module had no consumer: nothing rendered its output, so the measurement reached no one. **Phase 9 replaced rather than consumed it** — reading the path from the hook payload needs no telemetry, no hashing, and no spool, so the module was deleted. What survives from Phase 8 is the privacy-hash consolidation, which fixed a real latent bug and has five live callers.
 
 ### Phase 9 — Deliver the measurement through the existing chat-time line
 
@@ -522,24 +522,38 @@ A prototype was run against real hook payloads before this phase was written. Fi
 
 **This removes the degraded-mode problem entirely.** The earlier design matched hashed paths from the telemetry spool, so the line's accuracy depended on the telemetry package being enabled and the two halves could disagree silently. Reading the path from the hook payload has no such dependency: `skill-visibility` gains verification on its own, and the annotation is present whenever the package is.
 
-- [ ] Add a `PostToolUse` hook to `skill-visibility` that recognizes a read under a harness skill root and emits the observed `<skill>/<reference>` as `additionalContext`.
-- [ ] Match the literal payload path. Do not resolve symlinks: the managed cache root is not what the agent read.
-- [ ] Stay silent for any read outside a skill reference directory, and exit 0 without output.
-- [ ] Extend `skill-visibility`'s rule text so the reported line carries a per-skill reference tally when observations were injected, and reads as it does today when none were.
-- [ ] Keep the agent's self-report authoritative for *which skills applied*. Observation annotates that list and never replaces it, because a skill can shape a turn through rules already in context with no file read to observe.
-- [ ] Render an unobserved reference as "not seen", never as "not read". A reference read in an earlier turn is real but uninjected.
-- [ ] Surface a disagreement between the self-report and the observations rather than reconciling it silently — that discrepancy is the output with the most value.
-- [ ] Persist nothing. The injection is turn-scoped context; no store, no log, no retained per-turn record.
-- [ ] Respect the `chat-time-output` category contract: no files written, no workflow started.
-- [ ] Confirm injected context survives to the end of a long turn. This is the one remaining unknown and the only thing that can invalidate the approach.
-- [ ] Mirror the hook for Codex, matching the parity principle in `roborepo-support`.
-- [ ] Add coverage for a reference read, an unrelated read, a symlinked path, and a turn with no observations.
+- [x] Add a `PostToolUse` hook to `skill-visibility` that recognizes a read under a harness skill root and emits the observed `<skill>/<reference>` as `additionalContext`.
+- [x] Match the literal payload path. Do not resolve symlinks: the managed cache root is not what the agent read.
+- [x] Stay silent for any read outside a skill reference directory, and exit 0 without output.
+- [x] Extend `skill-visibility`'s rule text so the reported line carries a per-skill reference tally when observations were injected, and reads as it does today when none were.
+- [x] Keep the agent's self-report authoritative for *which skills applied*. Observation annotates that list and never replaces it, because a skill can shape a turn through rules already in context with no file read to observe.
+- [x] Render an unobserved reference as "not seen", never as "not read". A reference read in an earlier turn is real but uninjected.
+- [x] Surface a disagreement between the self-report and the observations rather than reconciling it silently — that discrepancy is the output with the most value.
+- [x] ~~Persist nothing.~~ **Amended during implementation:** persist exactly one integer per session and nothing else. See "Deviation: the session observation counter" below.
+- [x] Respect the `chat-time-output` category contract: no files written, no workflow started.
+- [x] Confirm injected context survives to the end of a long turn. This is the one remaining unknown and the only thing that can invalidate the approach. **Confirmed 2026-08-19**; see Verification.
+- [x] Mirror the hook for Codex, matching the parity principle in `roborepo-support`.
+- [x] Add coverage for a reference read, an unrelated read, a symlinked path, and a turn with no observations.
+
+#### Deviation: the session observation counter
+
+The plan required persisting nothing. Implementation showed that constraint makes the feature's own main failure mode undetectable, so it was relaxed by exactly one integer per session.
+
+The problem: injected context is ordinary context, and compaction can summarize it away. An agent that has lost its injections cannot tell that apart from a reference it never read — both are simply absent — so it would compute a tally that silently undercounts real reads. That is the exact failure this line exists to prevent, reintroduced one level down.
+
+The fix: each injection carries a per-session sequence number, so a gap is positive evidence that observations were dropped. The agent then reports observation as unavailable instead of guessing:
+
+```text
+> 🧩 **Skills loaded:** plan-docs, technical-writing — reference observation unavailable (context compacted)
+```
+
+What is stored is one integer at `<stateRoot>/skill-visibility/<session>.count`. No reference name or path ever reaches disk, and `skill-reference-observer-check.mjs` asserts the counter files contain digits and nothing else. The spirit of the original constraint — never build a queryable log of what an agent read — holds; the letter of it was too strict to detect its own failure.
 
 #### Decide the fate of the Phase 8 module
 
 `scripts/cli/telemetry-skill-references.mjs` matches hashed reference paths against the telemetry spool. The hook path above obsoletes it for this use: it needs no telemetry, no hashing, and no turn-boundary reconstruction.
 
-- [ ] Delete the module and its check, or state a second consumer that justifies keeping it. A measurement nothing renders is not observability. The privacy-hash consolidation it depended on stays regardless — that fixed a real latent bug and has five live callers.
+- [x] **Deleted.** A repository-wide search found exactly one consumer: its own check. Both files and the `test:telemetry-skill-references` script are removed, and `test-roborepo.sh` now runs `skill-reference-observer-check.mjs` in that slot. The privacy-hash consolidation stays — `privacyHash` was verified to have five live production callers (`telemetry-classify`, `telemetry-seed-demo`, `telemetry-capture`, `snapshot-schema`, `telemetry.mjs`) plus the test that pins its algorithm and width.
 
 #### Rejected: a package dependency system
 
@@ -710,10 +724,15 @@ node scripts/test/telemetry-classify-check.mjs                       ok
 node scripts/test/telemetry-capture-v3-check.mjs                     ok
 node scripts/test/telemetry-correctness-check.mjs                    ok
 node scripts/test/telemetry-time-axis-check.mjs                      ok
-node scripts/test/telemetry-skill-references-check.mjs               ok
+node scripts/test/skill-reference-observer-check.mjs                  ok
+node scripts/test/package-catalog-check.mjs                          ok
 roborepo skill audit --check                                         ok
 bash scripts/test/test-roborepo.sh --quiet                           396 passed, 1 failed
 ```
+
+The suite count is unchanged across Phase 9: `telemetry-skill-references-check.mjs` was removed and
+`skill-reference-observer-check.mjs` took its slot in `test-roborepo.sh`. The single failure is the
+pre-existing CLI-surface one recorded below.
 
 ### The new checks were shown to catch the old behavior
 
@@ -758,13 +777,57 @@ read nothing.
 | Design §7 defines how paired skills contribute to validation | Both `plan-docs` and `technical-writing` now declare a **Paired Skills** table at the entry point, instructing the load rather than describing the relationship | The original text said "pair with `technical-writing`", which reads as background and does not get acted on — the user was naming the paired skills manually on every request. `technical-writing` is unconditional for plan work; `code-style`, `javascript-typescript`, and `test-harness` carry written load conditions. The Validator's trigger was also reworded so an explicit user request is one path to relevance rather than the leading condition. |
 | Phase 7 documents the reference convention in maintainer guidance | `roborepo-support` gained a "Pairing another skill" subsection, and `skill-audit.mjs` gained three paired-skill findings enforcing it | Pairing fails the same way references do — by being mentioned rather than required — so the convention and its enforcement belong beside the reference rules rather than in a separate authoring script. The lint immediately found one more instance: `javascript-typescript` said "Pair with `react`" as prose, which is now a declared table. |
 
+### Phase 9: injected context survives a long turn
+
+The approach rested on one untested assumption — that `additionalContext` injected mid-turn is still present when
+the agent writes its final message. It was tested directly, because no automated check can observe it.
+
+Method: the shipped hook plus a unique token was installed into live `~/.claude/settings.json`, two skill
+references were read at the start of a turn, and the turn continued through eleven further tool calls and roughly
+6k tokens of unrelated output before the injections were checked.
+
+| Checked | Harness | Result |
+| --- | --- | --- |
+| 2026-08-19 | Claude Code, Opus 5 | **Survived.** Both injections readable verbatim at the end of the turn, skill and reference names intact |
+
+The injection surfaced as a `PostToolUse:Read hook additional context` system message, so the `[skill-visibility]`
+tag inside the text is what distinguishes it from other hooks' injections — worth keeping for that reason.
+
+The probe is committed at `scripts/dev/skill-observation-probe/` with install/restore scripts, and the procedure
+plus this dated finding live in `docs/user/reference/skill-reference-observation.md`. It is deliberately not wired
+into CI: the assertion needs a live model in a real session, and a CI version would be either flaky or hollow.
+
+**Not tested: survival across compaction.** Injected lines are ordinary context and are expected to be
+summarizable away. That is what the session observation counter detects rather than prevents.
+
+### Phase 9: the Codex mirror was verified, not assumed
+
+The parity task assumed Codex supports the same `hookSpecificOutput` contract. `docs/user/reference/codex-hooks.md`
+only established that for `PreToolUse` + `permissionDecision`, which is a different event and a different field, so
+the shipped Codex 0.140 binary was checked the same way that earlier finding was — `strings` over the compiled CLI.
+
+`PostToolUseHookSpecificOutputWire` exists as its own struct, and the serialization block containing the
+`PostToolUse` event enum lists `hookEventName`, `additionalContext`, `permissionDecision`, and `updatedInput`. The
+Codex hook is therefore shipped, not deferred as a recorded gap.
+
+Like the `permissionDecision` finding before it, this is reverse-engineered from the binary rather than published
+documentation, so it is worth re-checking across Codex versions.
+
+### The new Phase 9 check was shown to catch the old behavior
+
+`skill-reference-observer-check.mjs` was run against a hook deliberately reverted to call
+`fs.realpathSync` — the one mistake the design exists to avoid. It failed, and surfaced a second failure mode the
+plan had not anticipated: `realpathSync` throws on a nonexistent path, so a realpath-based hook would crash on any
+read of a missing file rather than merely reporting the wrong root.
+
 ### Not verified
 
-- **The updated skills are not installed.** These edits are in repository source; `~/.claude/skills/` still carries
-  the previous copies. `roborepo update` has not been run, so no live session has yet routed through the new gates.
-- **Phase 9 is not started.** `telemetry-skill-references.mjs` measures reference reads correctly and is covered by
-  tests, but nothing renders its output, so no user sees a skipped reference today. Until the `skill-visibility`
-  consumer exists, the measurement half of this plan delivers nothing.
+- **The updated skills and hooks are not installed.** These edits are in repository source; `~/.claude/skills/` and
+  `~/.claude/hooks/` still carry the previous state. `roborepo update` has not been run, so no live session routes
+  through the new gates or the new hook yet.
+- **The rendered line has not been observed end to end.** The hook injects correctly and the rules text describes
+  what to do with the injection, but no session has yet run with the package installed to confirm an agent actually
+  renders a per-skill tally or the compaction-unavailable form. That needs `roborepo update` first.
 - **One pre-existing suite failure, confirmed unrelated.** `test-roborepo.sh` reports `396 passed, 1 failed` while
   exiting 0. The failing assertion is `lifecycle: CLI surface help/menu/removed routes work in sandbox`, which fails
   inside `cli-surface-integration-check.mjs` on `telemetry package should show product label in Package Library`.

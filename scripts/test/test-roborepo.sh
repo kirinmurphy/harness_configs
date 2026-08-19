@@ -1880,11 +1880,11 @@ assert "plans: portal mutation-orchestration helpers" \
 assert "skills: mode/reference matrices and completion gates" \
   node "${repo_root}/scripts/test/skill-reference-matrix-characterization-check.mjs"
 
-# Reference-loading observability: hashing the harness-native skill path (not the roborepo cache it
-# symlinks to) is what makes a captured read matchable. The wrong root yields an empty report that
-# reads exactly like a compliant session.
-assert "telemetry: observed skill-reference reads" \
-  node "${repo_root}/scripts/test/telemetry-skill-references-check.mjs"
+# Reference-loading observability: the hook matches the harness-native skill path (not the roborepo
+# cache it symlinks to), because that is the path the agent actually read. Resolving the symlink
+# yields an empty report that reads exactly like a compliant session.
+assert "skill-visibility: observed skill-reference reads" \
+  node "${repo_root}/scripts/test/skill-reference-observer-check.mjs"
 
 # ---------------------------------------------------------------------------
 echo ""

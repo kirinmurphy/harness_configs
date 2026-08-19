@@ -48,6 +48,7 @@ try {
   testNoninteractiveRefusesWithoutYes();
   testDryRunMutatesNothing();
   testRepeatedUninstallIsSafe();
+  testPackageModeRunsNpmUninstall();
   testCheckCleanToleratesPreservedWorkspace();
   testStateRootOwnershipInventory();
   testEveryDeclaredStatePathIsClassified();
@@ -89,6 +90,22 @@ function runCli(f, args, extra) {
   });
 }
 
+function npmStubEnv(f) {
+  const bin = path.join(f.home, "fake-bin");
+  const log = path.join(f.home, "npm-args.txt");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(
+    path.join(bin, "npm"),
+    `#!/bin/sh\nprintf '%s\\n' "$*" > "${log}"\n`,
+    { mode: 0o755 },
+  );
+  return {
+    PATH: `${bin}${path.delimiter}${process.env.PATH || ""}`,
+    ROBOREPO_MODE: "package",
+    npmLog: log,
+  };
+}
+
 function testNestedWorkspacePreservedByDefault() {
   const f = fixture();
   const result = runCli(f, ["uninstall", "--yes"]);
@@ -97,7 +114,7 @@ function testNestedWorkspacePreservedByDefault() {
   assert.ok(!fs.existsSync(path.join(f.stateDir, "telemetry")), "disposable state must be removed");
   assert.ok(!fs.existsSync(path.join(f.stateDir, "enabled-packages.json")), "package registry must be removed");
   assert.match(result.stdout, /preserved/i, "result must tell the user the workspace was kept");
-  assert.match(result.stdout, /npm uninstall -g codethings-roborepo-alpha/, "must print the npm removal command");
+  assert.match(result.stdout, /Development checkout application files were not removed/, "dev checkout must not claim npm removal");
 }
 
 function testRelocatedWorkspaceUntouched() {
@@ -165,6 +182,19 @@ function testRepeatedUninstallIsSafe() {
   const second = runCli(f, ["uninstall", "--yes"]);
   assert.equal(second.status, 0, `repeated uninstall must be safe:\n${second.stdout}\n${second.stderr}`);
   assert.equal(fs.readFileSync(f.skill, "utf8"), "USER AUTHORED\n", "workspace still intact after two runs");
+}
+
+function testPackageModeRunsNpmUninstall() {
+  const f = fixture();
+  const stub = npmStubEnv(f);
+  const result = runCli(f, ["uninstall", "--yes"], stub);
+  assert.equal(result.status, 0, `package-mode uninstall failed:\n${result.stdout}\n${result.stderr}`);
+  assert.equal(
+    fs.readFileSync(stub.npmLog, "utf8").trim(),
+    "uninstall -g codethings-roborepo-alpha",
+    "package-mode uninstall must remove the globally installed npm package",
+  );
+  assert.match(result.stdout, /npm package has been uninstalled/i, "result must report npm package removal");
 }
 
 // A preserved workspace legitimately keeps the state root alive, so --check-clean must not report

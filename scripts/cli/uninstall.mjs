@@ -1,11 +1,10 @@
 // `roborepo uninstall` — the public managed-cleanup workflow.
 //
-// Ownership boundary this command exists to express: npm owns the application files it installed;
+// Ownership boundary this command exists to express: npm owns package-mode application files;
 // roborepo owns the configuration it projected into harnesses plus its own machine-local state.
-// This command removes the second and tells the user how to remove the first. It deliberately does
-// not invoke npm on the user's behalf — self-removal while running from the package being removed
-// is ambiguous under version managers, and shelling out to a package manager hides which tool owns
-// what.
+// Package-mode uninstall removes both: first the managed config/state, then the npm package that
+// provides the `roborepo` command. Development checkout uninstall only removes the local managed
+// projections/link, because npm does not own the checkout.
 //
 // The actual removal is the existing shell implementation (scripts/install/uninstall.sh), whose
 // ownership and drift checks are mature. This module owns argument parsing, confirmation, and
@@ -14,7 +13,7 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
-import { repoRoot } from "./paths.mjs";
+import { packageMode, repoRoot } from "./paths.mjs";
 import { stateRoot, workspaceRoot } from "./roots.mjs";
 import { confirmYesNo, makePrompter } from "./skill-lib.mjs";
 
@@ -27,7 +26,9 @@ function workspaceIsNested() {
 
 function printBoundary({ deleteWorkspace }) {
   console.log("Managed cleanup removes RoboRepo-owned harness projections, generated rules,");
-  console.log("and machine-local state. It does not remove the npm package.");
+  console.log("and machine-local state.");
+  if (packageMode) console.log("It will also uninstall the npm package that provides `roborepo`.");
+  else console.log("Development checkout mode: npm package removal is skipped.");
   console.log("");
 
   if (!fs.existsSync(workspaceRoot)) return;
@@ -45,15 +46,20 @@ function printBoundary({ deleteWorkspace }) {
   console.log("");
 }
 
-function printResult({ deleted }) {
+function printResult({ deleted, npmRemoved }) {
   console.log("");
   console.log("RoboRepo-managed configuration has been removed.");
   if (!deleted && fs.existsSync(workspaceRoot)) {
     console.log(`Your workspace was preserved: ${workspaceRoot}`);
   }
   console.log("");
-  console.log("Remove the application with:");
-  console.log(`  npm uninstall -g ${NPM_PACKAGE}`);
+  if (packageMode) {
+    console.log(npmRemoved
+      ? "The npm package has been uninstalled."
+      : "The npm package was not uninstalled.");
+  } else {
+    console.log("Development checkout application files were not removed.");
+  }
 }
 
 export async function uninstallCommand(args = []) {
@@ -74,6 +80,7 @@ export async function uninstallCommand(args = []) {
 
   if (dryRun) {
     console.log("Dry run — nothing will be removed.");
+    if (packageMode) console.log(`Would run: npm uninstall -g ${NPM_PACKAGE}`);
     console.log("");
     return runScript({ dryRun: true, deleteWorkspace });
   }
@@ -106,7 +113,11 @@ export async function uninstallCommand(args = []) {
   }
 
   const status = runScript({ dryRun: false, deleteWorkspace });
-  if (status === 0) printResult({ deleted: deleteWorkspace && workspaceIsNested() });
+  let npmRemoved = false;
+  if (status === 0 && packageMode) {
+    npmRemoved = uninstallNpmPackage();
+  }
+  if (status === 0) printResult({ deleted: deleteWorkspace && workspaceIsNested(), npmRemoved });
   return status;
 }
 
@@ -126,7 +137,7 @@ export function uninstallPreview() {
     workspacePreserved: true,
     removals: lines.filter((line) => line.startsWith("remove")),
     preserved: lines.filter((line) => line.startsWith("preserve")),
-    npmCommand: `npm uninstall -g ${NPM_PACKAGE}`,
+    npmCommand: packageMode ? `npm uninstall -g ${NPM_PACKAGE}` : null,
     stderr: result.stderr || "",
   };
 }
@@ -136,14 +147,41 @@ export function uninstallExecute() {
     encoding: "utf8",
     env: { ...process.env, ROBOREPO_UNINSTALL_DELETE_WORKSPACE: "0" },
   });
+  const npmResult = result.status === 0 && packageMode
+    ? runNpmUninstall({ stdio: "pipe" })
+    : null;
   return {
-    ok: result.status === 0,
+    ok: result.status === 0 && (!npmResult || npmResult.status === 0),
     workspace: fs.existsSync(workspaceRoot) ? workspaceRoot : null,
     workspacePreserved: true,
     output: (result.stdout || "").split("\n").filter(Boolean),
-    npmCommand: `npm uninstall -g ${NPM_PACKAGE}`,
-    stderr: result.stderr || "",
+    npmCommand: packageMode ? `npm uninstall -g ${NPM_PACKAGE}` : null,
+    npmRemoved: npmResult ? npmResult.status === 0 : false,
+    stderr: [result.stderr || "", npmResult?.stderr || ""].filter(Boolean).join("\n"),
   };
+}
+
+function uninstallNpmPackage() {
+  console.log("");
+  console.log(`Uninstalling npm package: ${NPM_PACKAGE}`);
+  const result = runNpmUninstall({ stdio: "inherit" });
+  if (result.error) {
+    console.error(`npm uninstall failed: ${result.error.message}`);
+    process.exitCode = 1;
+    return false;
+  }
+  if (result.status !== 0) {
+    process.exitCode = result.status ?? 1;
+    return false;
+  }
+  return true;
+}
+
+function runNpmUninstall({ stdio }) {
+  return spawnSync("npm", ["uninstall", "-g", NPM_PACKAGE], {
+    stdio,
+    encoding: stdio === "pipe" ? "utf8" : undefined,
+  });
 }
 
 function runScript({ dryRun, deleteWorkspace }) {

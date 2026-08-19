@@ -419,6 +419,10 @@ remove_empty_dir() {
 roborepo_workspace_dir() {
   local state_dir override
   state_dir="$(roborepo_state_dir)"
+  if [[ -n "${ROBOREPO_WORKSPACE_ROOT:-}" ]]; then
+    echo "${ROBOREPO_WORKSPACE_ROOT/#\~/${HOME}}"
+    return 0
+  fi
   override="${state_dir}/workspace-root.json"
   if [[ -f "${override}" ]]; then
     local resolved

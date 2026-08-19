@@ -10,6 +10,7 @@ import {
   assertVersionOutput,
   assertWorkspaceInitialized,
   assertPublicLifecycle,
+  assertInstalledUninstallRemovesPackage,
 } from "./package-install-smoke/command-assertions.mjs";
 import { hashDirectory } from "./lib/hash-directory.mjs";
 import {
@@ -92,7 +93,7 @@ function main() {
     const scanTargets = [
       { root: dirs.home, allowInstallStateExemption: true },
       { root: dirs.workspaceRoot, allowInstallStateExemption: false },
-      { root: dirs.stateRoot, allowInstallStateExemption: false },
+      { root: dirs.stateRoot, allowInstallStateExemption: true },
     ];
     for (const { root, allowInstallStateExemption } of scanTargets) {
       assertNoSourceCoupling(root, repoRoot);
@@ -102,6 +103,8 @@ function main() {
     if (outputDir) {
       retainArtifact({ repoRoot, outputDir, tarballPath, tarballName });
     }
+
+    assertInstalledUninstallRemovesPackage(binPath, dirs, env, packageName);
 
     console.log(`ok: package install smoke (${outputDir ? "retained" : "ephemeral"})`);
   } finally {

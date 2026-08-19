@@ -62,6 +62,20 @@ function printResult({ deleted, npmRemoved }) {
   }
 }
 
+function npmPrefixForPackageRoot(root = repoRoot) {
+  const parts = path.resolve(root).split(path.sep);
+  const packageName = parts.at(-1);
+  const nodeModulesIndex = parts.lastIndexOf("node_modules");
+  if (packageName !== NPM_PACKAGE || nodeModulesIndex < 0) return null;
+
+  const beforeNodeModules = parts[nodeModulesIndex - 1];
+  const prefixParts = beforeNodeModules === "lib"
+    ? parts.slice(0, nodeModulesIndex - 1)
+    : parts.slice(0, nodeModulesIndex);
+  const prefix = prefixParts.join(path.sep) || path.sep;
+  return prefix;
+}
+
 export async function uninstallCommand(args = []) {
   const known = new Set(["--dry-run", "--yes", "--delete-workspace"]);
   const invalid = args.filter((arg) => !known.has(arg));
@@ -80,7 +94,7 @@ export async function uninstallCommand(args = []) {
 
   if (dryRun) {
     console.log("Dry run — nothing will be removed.");
-    if (packageMode) console.log(`Would run: npm uninstall -g ${NPM_PACKAGE}`);
+    if (packageMode) console.log(`Would run: ${npmUninstallCommandLabel()}`);
     console.log("");
     return runScript({ dryRun: true, deleteWorkspace });
   }
@@ -137,7 +151,7 @@ export function uninstallPreview() {
     workspacePreserved: true,
     removals: lines.filter((line) => line.startsWith("remove")),
     preserved: lines.filter((line) => line.startsWith("preserve")),
-    npmCommand: packageMode ? `npm uninstall -g ${NPM_PACKAGE}` : null,
+    npmCommand: packageMode ? npmUninstallCommandLabel() : null,
     stderr: result.stderr || "",
   };
 }
@@ -155,7 +169,7 @@ export function uninstallExecute() {
     workspace: fs.existsSync(workspaceRoot) ? workspaceRoot : null,
     workspacePreserved: true,
     output: (result.stdout || "").split("\n").filter(Boolean),
-    npmCommand: packageMode ? `npm uninstall -g ${NPM_PACKAGE}` : null,
+    npmCommand: packageMode ? npmUninstallCommandLabel() : null,
     npmRemoved: npmResult ? npmResult.status === 0 : false,
     stderr: [result.stderr || "", npmResult?.stderr || ""].filter(Boolean).join("\n"),
   };
@@ -163,7 +177,7 @@ export function uninstallExecute() {
 
 function uninstallNpmPackage() {
   console.log("");
-  console.log(`Uninstalling npm package: ${NPM_PACKAGE}`);
+  console.log(`Running: ${npmUninstallCommandLabel()}`);
   const result = runNpmUninstall({ stdio: "inherit" });
   if (result.error) {
     console.error(`npm uninstall failed: ${result.error.message}`);
@@ -177,8 +191,17 @@ function uninstallNpmPackage() {
   return true;
 }
 
+function npmUninstallArgs() {
+  const prefix = npmPrefixForPackageRoot();
+  return ["uninstall", "-g", ...(prefix ? ["--prefix", prefix] : []), NPM_PACKAGE];
+}
+
+function npmUninstallCommandLabel() {
+  return `npm ${npmUninstallArgs().join(" ")}`;
+}
+
 function runNpmUninstall({ stdio }) {
-  return spawnSync("npm", ["uninstall", "-g", NPM_PACKAGE], {
+  return spawnSync("npm", npmUninstallArgs(), {
     stdio,
     encoding: stdio === "pipe" ? "utf8" : undefined,
   });

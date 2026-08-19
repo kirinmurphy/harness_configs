@@ -98,24 +98,23 @@ unchanged: package registry
 
 ## Uninstall
 
-Removal is **two operations with two owners**, and doing only one leaves the other behind:
+Removal has **two owners**:
 
 | Step | Removes | Owned by |
 | --- | --- | --- |
-| `roborepo uninstall` | RoboRepo-managed harness configuration and machine-local state | RoboRepo |
+| `roborepo uninstall` | RoboRepo-managed harness configuration and machine-local state, then the npm application in package mode | RoboRepo, then npm |
 | `npm uninstall -g codethings-roborepo-alpha` | the application files npm installed | npm |
 
-Run them in that order:
+On current package installs, run:
 
 ```sh
 roborepo uninstall
-npm uninstall -g codethings-roborepo-alpha
 ```
 
 **Removing the npm package alone does not remove your RoboRepo configuration, workspace, or the
 files RoboRepo projected into your harnesses.** Those live outside the package directory, so npm
-does not know about them. Likewise `roborepo uninstall` never removes the npm package — RoboRepo
-does not invoke your package manager on your behalf.
+does not know about them. Development-checkout mode still skips npm removal because npm does not own
+the checkout.
 
 Managed cleanup removes roborepo-owned copied files, rendered rules, managed skill copies, shell
 wiring, package projections, and machine-local state. If a genuine pre-install backup exists under

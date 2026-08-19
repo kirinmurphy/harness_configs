@@ -32,10 +32,11 @@ roborepo init
 ```
 
 `roborepo init` is the first-run workflow either way. It creates the workspace and state
-directories, detects which agent harnesses are on this machine, opens the Package Library so you
-choose which behaviors to enable, and applies the result. The chooser walks the same sections the
-`/config` display shows — Token Optimization, Commands, Code Conventions, Chat-Time Output, and a
-read-only Permissions panel — one section per step:
+directories, detects which agent harnesses are on this machine, then asks whether to configure
+settings in the browser or in the CLI. Browser opens `roborepo web --detach`; CLI opens the Package
+Library so you choose which behaviors to enable, and applies the result. The CLI chooser walks the
+same sections the `/config` display shows — Token Optimization, Commands, Code Conventions,
+Chat-Time Output, and a read-only Permissions panel — one section per step:
 
 - `←` / `→` move between sections
 - `↑` / `↓` move within a section

@@ -189,9 +189,9 @@ function testPackageModeRunsNpmUninstall() {
   const stub = npmStubEnv(f);
   const result = runCli(f, ["uninstall", "--yes"], stub);
   assert.equal(result.status, 0, `package-mode uninstall failed:\n${result.stdout}\n${result.stderr}`);
-  assert.equal(
+  assert.match(
     fs.readFileSync(stub.npmLog, "utf8").trim(),
-    "uninstall -g codethings-roborepo-alpha",
+    /^uninstall -g(?: --prefix .+)? codethings-roborepo-alpha$/,
     "package-mode uninstall must remove the globally installed npm package",
   );
   assert.match(result.stdout, /npm package has been uninstalled/i, "result must report npm package removal");

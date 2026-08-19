@@ -828,10 +828,26 @@ read of a missing file rather than merely reporting the wrong root.
 - **The rendered line has not been observed end to end.** The hook injects correctly and the rules text describes
   what to do with the injection, but no session has yet run with the package installed to confirm an agent actually
   renders a per-skill tally or the compaction-unavailable form. That needs `roborepo update` first.
-- **One pre-existing suite failure, confirmed unrelated.** `test-roborepo.sh` reports `396 passed, 1 failed` while
-  exiting 0. The failing assertion is `lifecycle: CLI surface help/menu/removed routes work in sandbox`, which fails
-  inside `cli-surface-integration-check.mjs` on `telemetry package should show product label in Package Library`.
-  Running that check standalone reproduces the identical failure at the base commit `fcdd2b8` and on current `main`
-  (`dcf35e4`), both without any of this plan's changes — so it is a standing failure in the package-library label
-  path, not a regression from this work, and it is out of scope here. Nothing in this plan touches CLI surface,
-  menu rendering, or package-library labels.
+- **One pre-existing suite failure, unrelated to this work.** `test-roborepo.sh` reports `396 passed, 1 failed`
+  while exiting 0, under `lifecycle: CLI surface help/menu/removed routes work in sandbox`.
+
+  **Corrected during Phase 9.** This entry previously named the failing assertion as `telemetry package should show
+  product label in Package Library`. Running `cli-surface-integration-check.mjs` standalone on this branch shows a
+  different one:
+
+  ```text
+  AssertionError: root menu missing Agent Config section
+    expected: /^  Agent Config$/m
+    actual:   "=========== ROBOREPO - Main Menu ===========
+               > Initialize   Set up this RoboRepo installation for first use"
+  ```
+
+  The sandboxed CLI renders an uninitialized main menu — only `Initialize`, no section headings — so the assertion
+  looking for a section never matches. Whether the label assertion also fails behind this one is unknown, because
+  the check aborts at the first failure.
+
+  It remains out of scope and is not a Phase 9 regression: the full-suite count is identical to the count recorded
+  before these changes, and nothing here touches CLI surface, menu rendering, or package registration. What is no
+  longer claimed is the earlier note's assertion identity, and its claim of having reproduced *that* assertion at
+  base commit `fcdd2b8` and on `main` (`dcf35e4`) — that reproduction was not re-run during Phase 9, so the
+  sandbox-initialization cause above is the only part supported by evidence gathered here.

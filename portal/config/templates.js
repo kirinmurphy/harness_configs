@@ -3,7 +3,8 @@
 // writes app state directly, and nothing here imports the modal — app.js wires callbacks in.
 
 import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
-import { presentedHarnesses, supportedHarnessNames } from "/portal/shared/harness-cohort.js";
+import { presentedHarnesses } from "/portal/shared/harness-cohort.js";
+import { configOnboardingNotice } from "./onboarding-state.js";
 import {
   resolveDriftChip,
   harnessChipSpec,
@@ -324,6 +325,16 @@ export function contextWarnings(snap) {
   return panel;
 }
 
+export function onboardingNotice(snap) {
+  const notice = configOnboardingNotice(snap);
+  if (!notice) return null;
+  const panel = tpl("tpl-config-onboarding-notice");
+  panel.setAttribute("variant", notice.variant);
+  panel.querySelector("[data-slot=title]").textContent = notice.title;
+  panel.querySelector("[data-slot=body]").textContent = notice.body;
+  return panel;
+}
+
 function wireInspectButton(btn, kind, id, harness, label, onInspectClick) {
   btn.textContent = label;
   btn.addEventListener("click", () => onInspectClick({ kind, id, harness, label }));
@@ -362,18 +373,9 @@ function configHooksCell(harness, onInspectClick) {
   return cell;
 }
 
-// Names the supported providers from the registered catalog rather than a hardcoded list, so a
-// newly registered provider appears here without a markup edit.
-function configFilesEmpty(snap) {
-  const panel = tpl("tpl-config-files-empty");
-  const slot = panel.querySelector("[data-slot=supported]");
-  if (slot) slot.textContent = supportedHarnessNames(snap);
-  return panel;
-}
-
 export function configFiles(snap, { onInspectClick }) {
-  const harnesses = presentedHarnesses(snap);
-  if (harnesses.length === 0) return configFilesEmpty(snap);
+  const harnesses = presentedHarnesses(snap).filter((harness) => harness.enabled !== false);
+  if (harnesses.length === 0) return null;
   const panel = tpl("tpl-config-files");
   panel.querySelector(".config-grid").style.setProperty("--provider-count", harnesses.length);
   const head = panel.querySelector("[data-slot=head]");

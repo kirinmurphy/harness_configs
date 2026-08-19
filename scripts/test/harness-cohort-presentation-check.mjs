@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 // are named; it does not assert DOM structure (no jsdom in this zero-dependency repo).
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const { presentedHarnesses, formatHarnessList, supportedHarnessNames } = await import(
+const { presentedHarnesses, activePresentedHarnesses, formatHarnessList, supportedHarnessNames } = await import(
   path.join(repoRoot, "portal/shared/harness-cohort.js")
 );
 
@@ -61,6 +61,7 @@ const catalog = [
   const presented = presentedHarnesses(snap);
   assert.deepEqual(presented.map((h) => h.id), ["claude", "codex"]);
   assert.deepEqual(presented.map((h) => h.enabled), [true, false]);
+  assert.deepEqual(activePresentedHarnesses(snap).map((h) => h.id), ["claude"], "warning/report cohorts only include active harnesses");
 }
 
 // --- N, including a provider the catalog has never heard of. Order follows machineHarnesses. ---

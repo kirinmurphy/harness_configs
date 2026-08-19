@@ -66,7 +66,7 @@ Examples:
 - `plan-docs`: managed plan-document workflow behind `/plan-docs`.
 - `tighten`: explicit-only review/fix workflow behind `/tighten`.
 - `wrap-up`: explicit-only session close-out workflow (review, docs, commit, handoff
-  prompt) behind `/wrap-up`.
+  note) behind `/wrap-up`.
 
 ## Skill-Backed Slash Commands
 

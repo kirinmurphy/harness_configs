@@ -203,6 +203,7 @@ test_onboarding_wizard_toggles_and_applies() {
 set timeout 90
 spawn env HOME=$env(HC_HOME) ROBOREPO_STATE_DIR=$env(HC_HOME)/.roborepo node $env(HC_REPO)/scripts/cli/main.mjs package manage
 expect "Step 1"
+send "\033\[B"
 send " "
 send "\r"
 expect eof

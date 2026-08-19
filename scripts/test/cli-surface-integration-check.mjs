@@ -109,10 +109,30 @@ function assertTelemetryMenuSections() {
 // and renamed its label to "Token Telemetry". Both are asserted here so a future move breaks this
 // check rather than silently showing the package under a stale heading.
 function assertPackageLibraryLabels() {
-  const section = readConfigSnapshot().behaviorView.find((s) => s.category === "Monitoring");
+  const behaviorView = readConfigSnapshot().behaviorView;
+  const section = behaviorView.find((s) => s.category === "Monitoring");
   const labels = section?.items.map((item) => item.label) || [];
   assert(labels.includes("Token Telemetry"), "telemetry package should show product label in Package Library");
   assert(!labels.includes("/telemetry-marker"), "Monitoring should not show telemetry slash-command label");
+
+  // The rule behind the two assertions above, stated so it holds for packages that do not exist yet:
+  // a `/command` label is only correct when the command restates the package's own name. Telemetry
+  // broke this by exposing /telemetry-marker while being called "Token Telemetry", and the breakage
+  // was invisible because every other command-backed package happened to satisfy the rule.
+  const commandLabeled = behaviorView
+    .filter((s) => s.category !== "Permissions")
+    .flatMap((s) => s.items)
+    .filter((item) => typeof item.label === "string" && item.label.startsWith("/"));
+  assert(commandLabeled.length > 0, "expected at least one command-labeled package");
+  for (const item of commandLabeled) {
+    const words = item.label.slice(1).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    const idWords = String(item.id).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    assert(
+      words.every((word) => idWords.includes(word)),
+      `package ${item.id} is labeled ${item.label} but the command does not restate its name; `
+        + "a product that merely ships a command must keep its prose label",
+    );
+  }
 }
 
 function assertRootAgentConfigOrder() {

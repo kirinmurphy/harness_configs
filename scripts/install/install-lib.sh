@@ -210,14 +210,14 @@ prompt_conflict_choice() {
     if [[ -n "${header_lines}" ]]; then
       # header_lines usually arrives via $(...) capture, which trims trailing newlines regardless
       # of how many the caller printf'd — force exactly one blank line before the menu ourselves.
-      printf '%s\n\n' "${header_lines}" > "${prompt_out}"
+      prompt_write "${prompt_out}" '%s\n\n' "${header_lines}"
     fi
-    printf 'Choose:\n' > "${prompt_out}"
-    printf '  1) overwrite     backup local as *_original_TIMESTAMP; install repo item\n' > "${prompt_out}"
-    printf '  2) keep originals leave local active; stage repo item as *_update_TIMESTAMP\n' > "${prompt_out}"
-    printf '  q) quit\n' > "${prompt_out}"
-    printf 'Selection [1/2/q]: ' > "${prompt_out}"
-    if ! read -r choice < "${prompt_in}"; then
+    prompt_write "${prompt_out}" 'Choose:\n'
+    prompt_write "${prompt_out}" '  1) overwrite     backup local as *_original_TIMESTAMP; install repo item\n'
+    prompt_write "${prompt_out}" '  2) keep originals leave local active; stage repo item as *_update_TIMESTAMP\n'
+    prompt_write "${prompt_out}" '  q) quit\n'
+    prompt_write "${prompt_out}" 'Selection [1/2/q]: '
+    if ! prompt_read "${prompt_in}" choice; then
       echo "abort"
       return 0
     fi
@@ -226,9 +226,29 @@ prompt_conflict_choice() {
       1|overwrite) echo "overwrite"; return 0 ;;
       2|keep|original|originals) echo "keep"; return 0 ;;
       q|Q|quit|exit) echo "abort"; return 0 ;;
-      *) echo "Invalid selection." > "${prompt_out}" ;;
+      *) prompt_write "${prompt_out}" 'Invalid selection.\n' ;;
     esac
   done
+}
+
+prompt_write() {
+  local prompt_out="$1"
+  shift
+  if [[ "${prompt_out}" == "/dev/stderr" ]]; then
+    printf "$@" >&2
+  else
+    printf "$@" > "${prompt_out}"
+  fi
+}
+
+prompt_read() {
+  local prompt_in="$1"
+  local __var="$2"
+  if [[ "${prompt_in}" == "/dev/stdin" ]]; then
+    read -r "${__var}"
+  else
+    read -r "${__var}" < "${prompt_in}"
+  fi
 }
 
 choose_path_conflict_action() {

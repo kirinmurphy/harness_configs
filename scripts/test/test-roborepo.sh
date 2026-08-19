@@ -37,6 +37,27 @@ cleanup() {
 }
 trap cleanup EXIT
 export ROBOREPO_PRESETS_ONBOARD=skip
+# The suite is release-gating, so no test may wait on the publisher's terminal. Individual tests
+# that exercise interaction provide their own pipe or PTY.
+exec </dev/null
+
+# --quiet hides every per-test line, so a run that takes minutes looks hung -- which matters most
+# during `npm run publish:npm`, where the suite is one of four sequential checks. Overwrite a single
+# progress line instead: proof of life without the several-hundred-line scroll that dropping
+# --quiet would produce. Only when stderr is a terminal, so CI logs and piped output stay clean.
+progress_start="${SECONDS}"
+show_progress() {
+  [[ "${quiet}" -eq 1 && -t 2 ]] || return 0
+  local elapsed=$((SECONDS - progress_start))
+  printf '\r  running tests: %d passed, %d failed  [%dm%02ds]\033[K' \
+    "${pass}" "${fail}" "$((elapsed / 60))" "$((elapsed % 60))" >&2
+}
+
+# Clear the progress line before any real output, so a FAIL or the summary never lands on top of it.
+clear_progress() {
+  [[ "${quiet}" -eq 1 && -t 2 ]] || return 0
+  printf '\r\033[K' >&2
+}
 
 assert() {
   local label="$1"; shift
@@ -44,9 +65,11 @@ assert() {
     [[ "${quiet}" -eq 0 ]] && echo "ok: ${label}"
     pass=$((pass + 1))
   else
+    clear_progress
     echo "FAIL: ${label}" >&2
     fail=$((fail + 1))
   fi
+  show_progress
 }
 
 assert "source layout: globals system skills exist" test -d "${repo_root}/globals/system/skills"
@@ -1567,6 +1590,29 @@ assert "mcp: Codex active config add/remove records root-config writes" \
 assert "mcp: Codex MCP removal survives bracketed array values and is idempotent" \
   node "${repo_root}/scripts/test/mcp-codex-remove-check.mjs"
 
+# The seven below existed and passed but nothing invoked them, so they asserted nothing. Found by
+# orphan-test-check, which now runs last here to keep the same gap from reopening.
+assert "agent-run: every roborepo namespace is allowlisted or ask-bucketed" \
+  node "${repo_root}/scripts/test/agent-run-coverage-check.mjs"
+
+assert "agent-run: nested roborepo invocations are refused" \
+  node "${repo_root}/scripts/test/agent-run-policy-check.mjs"
+
+assert "cli: command catalog is internally consistent" \
+  node "${repo_root}/scripts/test/cli-command-catalog-check.mjs"
+
+assert "git-inventory: repository inventory derivation" \
+  node "${repo_root}/scripts/test/git-inventory-check.mjs"
+
+assert "package library: disabling a package updates persisted state" \
+  node "${repo_root}/scripts/test/package-library-disable-update-check.mjs"
+
+assert "permissions: writes stay scoped to the current repository" \
+  node "${repo_root}/scripts/test/repo-write-scope-check.mjs"
+
+assert "test suite: no test file under scripts/test/ is unreachable" \
+  node "${repo_root}/scripts/test/orphan-test-check.mjs"
+
 assert "mcp: Claude permission grant writes the active settings, never the repo baseline" \
   node "${repo_root}/scripts/test/mcp-claude-permission-check.mjs"
 
@@ -1835,6 +1881,11 @@ assert "config: /api/config/source rejects missing/unknown harness ids" \
 assert "config: synthetic third-provider harnesses list and root-config paths" \
   node "${repo_root}/scripts/test/config-synthetic-provider-check.mjs"
 
+# The first-run onboarding notice and its optional-package selection state. Added with the
+# onboarding surfaces but reachable from no runner, which orphan-test-check reports.
+assert "config: onboarding notice and optional-package selection state" \
+  node "${repo_root}/scripts/test/config-onboarding-state-check.mjs"
+
 # The install-side counterpart to the above: proves artifact DELIVERY (live permission rendering,
 # capability/path coherence, the shared harness-id helper) reaches a provider that is not in any
 # hardcoded id list. Guards the bug class that let Gemini pass 108 doctor checks while missing two
@@ -1887,6 +1938,7 @@ assert "skill-visibility: observed skill-reference reads" \
   node "${repo_root}/scripts/test/skill-reference-observer-check.mjs"
 
 # ---------------------------------------------------------------------------
+clear_progress
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"
 [[ "${fail}" -eq 0 ]]

@@ -11,6 +11,9 @@ import {
 } from "../harnesses/state.mjs";
 import { listHarnessProviders, getHarnessProvider, hasHarnessProvider } from "../harnesses/registry.mjs";
 import { createHarnessRuntime, requireHarnessCapability } from "../harnesses/runtime.mjs";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -59,6 +62,68 @@ function fakeManifest(id, overrides = {}) {
   const result = detectHarnessProvider(fakeManifest("nope-nowhere"));
   assert(result.status === "absent", "no evidence must be absent status");
   assert(result.confidence === "absent", "no evidence must be absent confidence");
+}
+
+if (process.platform !== "win32") {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-discovery-"));
+  const bin = path.join(tmp, "bin");
+  const home = path.join(tmp, "home");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.mkdirSync(home, { recursive: true });
+
+  try {
+    withDiscoveryEnv({ home, pathPrefix: bin }, () => {
+      writeExecutable(path.join(bin, "working-harness"), "echo working-harness 1.0\n");
+      const result = detectHarnessProvider(fakeManifest("working-harness", { executables: ["working-harness"] }));
+      assert(result.status === "detected", "validated executable must be detected");
+      assert(result.confidence === "probable", "validated executable-only evidence must be probable");
+      assert(result.evidence.some((item) => item.kind === "executable"), "validated executable must produce executable evidence");
+    });
+
+    withDiscoveryEnv({ home, pathPrefix: bin }, () => {
+      writeExecutable(path.join(bin, "broken-harness"), "echo real harness unavailable >&2\nexit 127\n");
+      const result = detectHarnessProvider(fakeManifest("broken-harness", { executables: ["broken-harness"] }));
+      assert(result.status === "absent", "resolved executable that fails validation must be absent with no other evidence");
+      assert(result.confidence === "absent", "failed executable validation must not create probable confidence");
+      assert(!result.evidence.some((item) => item.kind === "executable"), "failed executable validation must not produce executable evidence");
+    });
+
+    withDiscoveryEnv({ home, pathPrefix: bin }, () => {
+      const homeDir = path.join(home, ".home-only");
+      fs.mkdirSync(homeDir, { recursive: true });
+      const homeResult = detectHarnessProvider(fakeManifest("home-only", { homeCandidates: ["~/.home-only"] }));
+      assert(homeResult.status === "absent", "home-only evidence below the default probable threshold must not be detected");
+      assert(homeResult.confidence === "possible", "home-only evidence must remain possible");
+
+      const configDir = path.join(home, ".config-only");
+      fs.mkdirSync(configDir, { recursive: true });
+      fs.writeFileSync(path.join(configDir, "settings.json"), "{}\n");
+      const configResult = detectHarnessProvider(fakeManifest("config-only", { configCandidates: ["~/.config-only/settings.json"] }));
+      assert(configResult.status === "detected", "existing config file behavior must remain detected");
+      assert(configResult.confidence === "probable", "config-only evidence must remain probable");
+    });
+
+    withDiscoveryEnv({ home, pathPrefix: bin }, () => {
+      const homeDir = path.join(home, ".home-possible");
+      fs.mkdirSync(homeDir, { recursive: true });
+      const result = detectHarnessProvider(fakeManifest("home-possible", {
+        homeCandidates: ["~/.home-possible"],
+        minimumConfidence: "possible",
+      }));
+      assert(result.status === "detected", "home-only evidence must be detected when the provider minimum is possible");
+      assert(result.confidence === "possible", "home-only evidence must keep possible confidence");
+    });
+
+    withDiscoveryEnv({ home, pathPrefix: path.join(tmp, "cmux-cli-shims", "session") }, () => {
+      fs.mkdirSync(process.env.PATH.split(path.delimiter)[0], { recursive: true });
+      writeExecutable(path.join(process.env.PATH.split(path.delimiter)[0], "claude"), "echo 'Error: claude not found in PATH' >&2\nexit 127\n");
+      const result = detectHarnessProvider(fakeManifest("claude", { executables: ["claude"] }));
+      assert(result.status === "absent", "cmux-style shim alone must not detect Claude");
+      assert(result.evidence.length === 0, "cmux-style shim alone must not produce executable evidence");
+    });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 // --- Synthetic third provider: proves the registry/runtime/discovery pipeline carries no
@@ -126,3 +191,22 @@ assertThrows(
 );
 
 console.log("harness registry/discovery/state/runtime: all checks passed");
+
+function withDiscoveryEnv({ home, pathPrefix }, fn) {
+  const previousHome = process.env.HOME;
+  const previousPath = process.env.PATH;
+  process.env.HOME = home;
+  process.env.PATH = [pathPrefix, previousPath].filter(Boolean).join(path.delimiter);
+  try {
+    return fn();
+  } finally {
+    process.env.HOME = previousHome;
+    process.env.PATH = previousPath;
+  }
+}
+
+function writeExecutable(filePath, body) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `#!/bin/sh\n${body}`);
+  fs.chmodSync(filePath, 0o755);
+}

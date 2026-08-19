@@ -53,7 +53,7 @@ import {
 import { renderCommandSourceHtml } from "./config-source-render.mjs";
 import { buildContextCost } from "./context-cost.mjs";
 import { hasHarnessProvider, listHarnessProviders, getHarnessProvider } from "../harnesses/registry.mjs";
-import { discoverHarnessProviders } from "../harnesses/discovery.mjs";
+import { confidenceMeetsMinimum, discoverHarnessProviders } from "../harnesses/discovery.mjs";
 import { readHarnessState } from "../harnesses/state.mjs";
 import { resolveHarnessPath } from "../harnesses/paths.mjs";
 
@@ -95,7 +95,7 @@ export function configSnapshotHarnesses() {
 // different things to a user: rendering the registered catalog as the primary Agents view tells
 // someone with no harnesses installed that they have three, which is the defect this fixes.
 //
-// A provider appears here when discovery has any evidence for it (confidence !== "absent"), and
+// A provider appears here when discovery reaches the provider's declared minimum confidence, and
 // carries its enabled flag so the UI can distinguish "installed but turned off" from "not here".
 // Providers the user explicitly disabled still appear — they exist on the machine; they are just
 // not managed. An empty array is a legitimate, common state (fresh install, no harnesses yet).
@@ -103,7 +103,7 @@ export function configSnapshotMachineHarnesses() {
   const state = readHarnessState();
   const discoveries = new Map(
     discoverHarnessProviders(listHarnessProviders())
-      .filter((entry) => entry.confidence !== "absent")
+      .filter((entry) => entry.status === "detected")
       .map((entry) => [entry.providerId, entry]),
   );
 
@@ -112,7 +112,7 @@ export function configSnapshotMachineHarnesses() {
       const entry = state.providers[provider.id];
       const discovered = discoveries.get(provider.id);
       if (!entry && !discovered) return null;
-      if (!discovered && entry?.confidence === "absent") return null;
+      if (!discovered && !confidenceMeetsMinimum(entry?.confidence, provider.manifest.detection.minimumConfidence)) return null;
       const userDisabled = entry?.selectionSource === "user" && entry.enabled === false;
       const confidence = discovered?.confidence ?? entry.confidence;
       const enabled = userDisabled
@@ -155,6 +155,7 @@ export function readConfigSnapshot() {
     description: pkg.description || null,
     status: packageLiveState.get(pkg.id)?.status || "disabled",
     catalogStatus: pkg.status || "available",
+    defaultEnabled: pkg.defaultEnabled === true,
     desired: packageLiveState.get(pkg.id)?.desired || false,
     cliCommands: [...new Set([...(pkg.cliCommands || []), ...pkg.components.filter((c) => c.type === "command").map((c) => c.name)])],
     enabled: packageLiveState.get(pkg.id)?.desired || false,
@@ -248,6 +249,9 @@ export function readConfigSnapshot() {
     telemetry: telemetryState
       ? { enabled: !!telemetryState.enabled }
       : { enabled: false },
+    onboarding: {
+      libraryCompleted: !!presetState.onboardedAt,
+    },
     settings: {
       hooks,
       permissions: {
@@ -446,6 +450,20 @@ function sectionContextCost(items) {
   return totals;
 }
 
+// True when a package's prose label is just its command spelled as words ("Wrap Up" / `wrap-up`),
+// meaning the label adds nothing the command already says. Punctuation and case are stripped so
+// "Case study skill" still reads as a restatement of `case-study`; a label carrying extra words the
+// command lacks ("Token Telemetry" vs `telemetry-marker`) does not.
+function labelRestatesCommand(label, command) {
+  const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const labelWords = new Set(normalize(label).split(" ").filter(Boolean));
+  const commandWords = normalize(command).split(" ").filter(Boolean);
+  if (labelWords.size === 0 || commandWords.length === 0) return false;
+  // "skill"/"pack" are packaging nouns, not meaning: "Case study skill" is still just `/case-study`.
+  for (const filler of ["skill", "skills", "pack", "package"]) labelWords.delete(filler);
+  return [...labelWords].every((word) => commandWords.includes(word));
+}
+
 function packagePresentationItem(item, tool, contextCost = null) {
   const command = tool?.command || null;
   // Label a command-backed package by the command it exposes (`/wrap-up`) rather than its prose
@@ -453,7 +471,14 @@ function packagePresentationItem(item, tool, contextCost = null) {
   // compared the category against a now-deleted id, and when that category was removed the
   // condition silently became unreachable, so every such package quietly lost its `/command` label.
   // scripts/test/package-catalog-check.mjs now fails on any category literal the manifest lacks.
-  const showCommandLabel = Boolean(command);
+  //
+  // Having a command is necessary but not sufficient. A package whose prose label says something
+  // the command does not is a product that happens to ship a command, not a command: `telemetry`
+  // is "Token Telemetry" and exposes `/telemetry-marker`, and showing the command as its name hides
+  // what the package actually is. Command-first packages all label themselves after their command
+  // ("Wrap Up" for `/wrap-up`), so comparing the two normalized forms separates the cases without a
+  // hand-maintained list -- a new command-first package needs no entry anywhere.
+  const showCommandLabel = Boolean(command) && labelRestatesCommand(item.label, command);
   const resources = item.resources || item.components || [];
   const inspect = command
     ? {

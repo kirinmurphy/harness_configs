@@ -46,6 +46,7 @@ try {
   testExplicitCommandsBypassInit();
   testAliasReachesSameImplementation();
   testNewerRecordIsNeverOverwritten();
+  testInitDryRunShowsConfigurationChoice();
   console.log("initialization lifecycle checks passed");
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -222,4 +223,13 @@ function testAliasReachesSameImplementation() {
   assert.equal(library.status, 0, `library --help failed:\n${library.stderr}`);
   assert.equal(manage.status, 0, `package manage --help failed:\n${manage.stderr}`);
   assert.match(library.stdout, /packages/i, "library help should describe the package workflow");
+}
+
+function testInitDryRunShowsConfigurationChoice() {
+  resetState();
+  const env = { ...process.env, HOME: tmp, ROBOREPO_STATE_DIR: stateDir, ROBOREPO_PRESETS_ONBOARD: "skip" };
+  const result = spawnSync(process.execPath, [cli, "init", "--dry-run"], { cwd: repoRoot, env, encoding: "utf8", input: "" });
+  assert.equal(result.status, 0, `init --dry-run failed:\n${result.stdout}${result.stderr}`);
+  assert.match(result.stdout, /open browser setup/i, "init must make browser setup the first-run entrypoint");
+  assert.match(result.stdout, /CLI fallback/i, "init must still expose the terminal fallback");
 }

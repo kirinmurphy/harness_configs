@@ -255,10 +255,12 @@ documented maintainer workflows.
 ## First Run and the Package Library
 
 `roborepo init` is the first-run workflow: it runs the internal `setup` primitive, refreshes harness
-discovery, opens the Package Library, and applies the resulting configuration, then records that
-initialization completed. That record lives at `<stateRoot>/initialization.json` and is the only
-thing that distinguishes a never-initialized install from a finished one — directory existence is
-not evidence, since `setup` can create the workspace on its own.
+discovery, then asks whether to configure settings in the browser or in the CLI. Browser opens
+`roborepo web --detach`; CLI continues into the Package Library and applies the resulting
+configuration. After the selected path starts or finishes, `init` records that initialization
+completed. That record lives at `<stateRoot>/initialization.json` and is the only thing that
+distinguishes a never-initialized install from a finished one — directory existence is not evidence,
+since `setup` can create the workspace on its own.
 
 A bare, interactive `roborepo` on an uninitialized install routes into `init`. This is not the old
 forced-onboarding gate, which blocked arbitrary commands and has been removed: explicit commands

@@ -2,7 +2,7 @@
 # Shared install-state helpers. Source this file, do not execute directly.
 
 roborepo_state_dir() {
-  echo "${ROBOREPO_STATE_DIR:-${HOME}/.roborepo}"
+  echo "${ROBOREPO_STATE_ROOT:-${ROBOREPO_STATE_DIR:-${HOME}/.roborepo}}"
 }
 
 roborepo_state_file() {

@@ -7,6 +7,7 @@
   "adapter": "claude",
   "detection": {
     "executables": ["claude"],
+    "executableValidation": { "args": ["--version"] },
     "homeCandidates": ["~/.claude"],
     "configCandidates": ["~/.claude/settings.json"],
     "minimumConfidence": "probable"

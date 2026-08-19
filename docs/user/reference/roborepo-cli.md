@@ -10,7 +10,7 @@ After [installing roborepo](../guides/first-time-setup.md), install puts it on y
 
 |                            |                                                                                                                                                                  |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `roborepo init [--dry-run] [--force]` | Sets up a new installation: creates workspace/state directories, refreshes harness discovery, opens the Package Library, applies the result, and records that initialization completed. Safe to re-run — a completed install reports and exits instead of replaying the wizard. `--dry-run` previews without mutating; `--force` re-runs the full workflow on an already-initialized install. |
+| `roborepo init [--dry-run] [--force]` | Sets up a new installation: creates workspace/state directories, refreshes harness discovery, asks whether to configure in the browser or CLI, then records that initialization completed. The browser path opens `roborepo web --detach`; the CLI path opens the Package Library and applies the result. Safe to re-run — a completed install reports and exits instead of replaying the wizard. `--dry-run` previews without mutating; `--force` re-runs the full workflow on an already-initialized install. |
 | `roborepo library`         | Opens the Package Library to change which behaviors are enabled. Identical to `roborepo package manage`. |
 
 A bare, interactive `roborepo` on an uninitialized install goes into `init` automatically. Explicit
@@ -26,9 +26,9 @@ run `roborepo harness refresh`.
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `roborepo uninstall [--dry-run] [--yes] [--delete-workspace]` | Removes RoboRepo-managed harness configuration and machine-local state. Your workspace is preserved by default. `--dry-run` previews without changing anything; `--yes` is required to run destructively without a TTY; `--delete-workspace` additionally removes a workspace stored inside the RoboRepo state directory. |
 
-Removal has two owners. `roborepo uninstall` removes what RoboRepo created;
-`npm uninstall -g codethings-roborepo-alpha` removes the application. Neither does the other's job,
-so removing the npm package alone leaves your RoboRepo configuration and workspace in place.
+Removal has two owners. In package mode, `roborepo uninstall` removes what RoboRepo created and then
+runs npm against the prefix that contains the current `roborepo` binary. Removing the npm package
+alone leaves your RoboRepo configuration and workspace in place.
 
 A workspace relocated outside the state directory is never deleted by RoboRepo, including with
 `--delete-workspace`. See

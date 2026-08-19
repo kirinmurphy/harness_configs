@@ -411,6 +411,23 @@ check_manifest_sources() {
   [[ "${bad}" -eq 0 ]] && ok "manifests/platform/manifest.tsv sources all exist"
 }
 
+# A test file that no runner invokes reports nothing and fails nothing. This is how a real uninstall
+# defect survived a full review pass (fcdd2b8): the check that would have caught it was in no test
+# list. Development-mode only — scripts/test/ is excluded from the published package.
+check_orphan_tests() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped orphan-test check"
+    return 0
+  fi
+  local out
+  if out="$(node "${repo_root}/scripts/test/orphan-test-check.mjs" 2>&1)"; then
+    ok "${out#ok: }"
+  else
+    printf '%s\n' "${out}" >&2
+    fail "scripts/test/ contains test files no runner invokes"
+  fi
+}
+
 # Helper-only shared skills must be documented in the README's Automatic Helpers table(s).
 # Skills with explicit slash commands are documented through the Commands table and
 # package-backed slash command rendering validates them.
@@ -522,6 +539,7 @@ fi
 # ships a subset of globals/packages/, so running it against an installed tree reports a staleness
 # the user cannot act on and has no reason to care about.
 if [[ "${package_mode}" -ne 1 ]]; then
+  check_orphan_tests
   if [[ "${quiet}" -eq 1 ]]; then
     node "${repo_root}/scripts/cli/main.mjs" skill audit --check >/dev/null || failed=1
   else

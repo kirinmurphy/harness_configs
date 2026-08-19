@@ -10,6 +10,7 @@ import { loadPackageCatalog, validatePackageCatalog } from "../cli/package-catal
 import { listPackageCommands } from "../cli/package-commands.mjs";
 import { loadSlashCommandPlan } from "../cli/slash-commands.mjs";
 import { readConfigSnapshot } from "../cli/config.mjs";
+import { buildOnboardSteps } from "../cli/presets.mjs";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -71,6 +72,17 @@ for (const label of ["Permissions", "Local Stores"]) {
 
 assert(sections.get("Token Optimization").items.some((item) => item.id === "jcodemunch"), "jcodemunch not visible in Token Optimization");
 assert(sections.get("Skills - Development Life Cycle").items.some((item) => item.id === "tighten"), "tighten not visible in Skills - Development Life Cycle");
+
+const libraryStepTitles = new Set(buildOnboardSteps().map((step) => step.title));
+for (const section of snapshot.behaviorView) {
+  const packageItems = (section.items || []).filter((item) => item.toggle === "package");
+  if (packageItems.length === 0) continue;
+  assert(
+    libraryStepTitles.has(section.category),
+    `CLI Package Library omits package section "${section.category}" — `
+      + "terminal and portal package management must render from behaviorView, not a hard-coded category list",
+  );
+}
 
 // Every item `kind` buildBehaviorView emits must be handled by every consumer that branches on it.
 //

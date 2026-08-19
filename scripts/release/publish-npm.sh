@@ -9,14 +9,16 @@ preid="beta"
 explicit_version=""
 dry_run=0
 next_release_info=0
-yes=0
+yes=1
 allow_latest=0
 backup_dir=""
 version_written=0
 publish_started=0
 
 cleanup() {
-  local status=$?
+  # Caller-supplied status wins so the signal traps can force the restore path: inside a signal
+  # handler $? is the status of whatever the trap interrupted, which is not a reliable failure flag.
+  local status="${1:-$?}"
   if [[ "${status}" -ne 0 && "${version_written}" -eq 1 && "${publish_started}" -eq 0 ]]; then
     if [[ -n "${backup_dir}" && -f "${backup_dir}/package.json" ]]; then
       cp "${backup_dir}/package.json" package.json
@@ -27,7 +29,24 @@ cleanup() {
     rm -rf "${backup_dir}"
   fi
 }
+
+# INT/TERM as well as EXIT: the version write lands before `npm test`, which runs for minutes, so
+# interrupting there is the most likely way this script ever stops. Bash does not run an EXIT trap
+# for an untrapped SIGINT, and without these the run left package.json bumped to a version that was
+# never published -- which then blocked the next attempt, because the version guard compares the
+# target against package.json rather than against the registry.
+#
+# Re-raise with the default handler after cleaning up, so the caller still sees a real signal death
+# rather than a plain non-zero exit.
+on_signal() {
+  local signal="$1"
+  cleanup 130
+  trap - EXIT "${signal}"
+  kill "-${signal}" "$$"
+}
 trap cleanup EXIT
+trap 'on_signal INT' INT
+trap 'on_signal TERM' TERM
 
 usage() {
   cat <<'EOF'
@@ -40,7 +59,8 @@ Options:
   --latest                Allow publishing with --tag latest.
   --dry-run               Run preflight/checks and print publish command, but do not bump or publish.
   --next-release-info     Show next version/install command without git, npm, or network checks.
-  --yes                   Do not prompt before publish.
+  --yes                   Do not prompt before publish (default).
+  --confirm               Prompt before publish after checks pass.
   -h, --help              Show this help.
 
 Default target is the next prerelease for package.json's current version.
@@ -79,6 +99,10 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --yes|-y)
       yes=1
+      shift
+      ;;
+    --confirm)
+      yes=0
       shift
       ;;
     -h|--help)
@@ -168,7 +192,12 @@ if [[ -z "${target_version}" ]]; then
   target_version="$(next_prerelease "${current_version}" "${preid}")"
 fi
 
-if [[ "${target_version}" == "${current_version}" ]]; then
+# Only a computed bump can collide with the current version, and that always means the bump did
+# nothing. An explicit --version matching package.json is a different situation: it happens when a
+# previous run wrote the version and then stopped before publishing, so the file names a version the
+# registry has never seen. Refusing there blocks the retry that would fix it. The authoritative
+# duplicate check is the registry lookup below, which runs for both paths.
+if [[ "${target_version}" == "${current_version}" && -z "${explicit_version}" ]]; then
   echo "error: target version equals current version (${current_version})" >&2
   exit 1
 fi
@@ -203,7 +232,13 @@ if [[ "${dry_run}" -eq 1 ]]; then
 else
   backup_dir="$(mktemp -d "${TMPDIR:-/tmp}/roborepo-publish-npm.XXXXXX")"
   cp package.json "${backup_dir}/package.json"
-  run_check npm version "${target_version}" --no-git-tag-version
+  # Already correct when retrying after an interrupted run wrote the version but never published.
+  # `npm version` errors on a no-op write, so skip it rather than fail the retry.
+  if [[ "${target_version}" == "${current_version}" ]]; then
+    echo "==> package.json already at ${target_version}; skipping version write"
+  else
+    run_check npm version "${target_version}" --no-git-tag-version
+  fi
   version_written=1
 fi
 

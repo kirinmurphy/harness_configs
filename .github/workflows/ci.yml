@@ -37,6 +37,13 @@ jobs:
       - name: test suite
         run: bash scripts/test/test-roborepo.sh --quiet
 
+      # A second suite covering the install surface: symlink vs copy, collision handling, migration
+      # from older layouts, and the pty/keypress paths test-roborepo.sh explicitly defers to it. It
+      # is not part of `npm test`, so before this step nothing in CI ran it and that deferred
+      # coverage held only when someone remembered to run the file by hand.
+      - name: install collision suite
+        run: bash scripts/test/test-install-collisions.sh
+
       - name: package catalog + lifecycle checks
         run: |
           npm run --silent test:packages

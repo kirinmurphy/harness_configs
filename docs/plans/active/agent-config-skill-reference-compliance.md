@@ -731,10 +731,20 @@ bash scripts/test/test-roborepo.sh --quiet                           396 passed,
 bash scripts/test/test-install-collisions.sh                         all passed
 ```
 
-`test-install-collisions.sh` is a second suite, separate from `test-roborepo.sh` and absent from
-`package.json`. Phase 9 ships this package's first hook *scripts*, which the apply engine copies into
-`~/.claude/hooks/` and `~/.codex/hooks/` at install time — the surface that suite exists to cover. It was
-initially missed for that reason and run afterwards; a change touching installable assets should run it.
+`test-install-collisions.sh` is a second suite, separate from `test-roborepo.sh`. Phase 9 ships this
+package's first hook *scripts*, which the apply engine copies into `~/.claude/hooks/` and
+`~/.codex/hooks/` at install time — the surface that suite exists to cover. It was initially missed and
+run afterwards.
+
+**It was missed because nothing ran it.** The suite had no `package.json` script, `npm test` is only
+`test-roborepo.sh --quiet`, and `ci.yml` ran only that same file — so a 60KB suite covering symlink-vs-copy
+behavior, collision handling, and layout migration executed exactly when a person remembered it existed.
+`test-roborepo.sh` even defers coverage to it in a comment ("the pty/keypress path is covered by
+test-install-collisions.sh"), meaning that deferred coverage ran nowhere in CI.
+
+Phase 9 closes that: `npm run test:install-collisions` now exists, and `ci.yml` runs the suite as its own
+step. Kept separate from `npm test` rather than folded in, because it is slow and a distinct step keeps a
+failure legible.
 
 The suite count is unchanged across Phase 9: `telemetry-skill-references-check.mjs` was removed and
 `skill-reference-observer-check.mjs` took its slot in `test-roborepo.sh`. The single failure is the

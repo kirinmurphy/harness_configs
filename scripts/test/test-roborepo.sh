@@ -1540,7 +1540,7 @@ assert "package manage: non-TTY records onboardedAt in preset state" \
 
 # The wizard flips item.active in memory during the keypress loop, then applies only the changed rows
 # on exit. Unit-test that deferred-apply selection directly (pure, fast); the pty/keypress path is
-# covered by test-install-collisions.sh.
+# covered by test-install-collisions.sh, which CI runs as its own step (npm run test:install-collisions).
 assert "onboard: wizard diff selects only changed toggleable items" \
   node "${repo_root}/scripts/test/wizard-diff-check.mjs"
 

@@ -18,6 +18,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { repoRoot } from "./paths.mjs";
 import { presetsOnboard } from "./presets.mjs";
+import { confirmYesNo, makePrompter } from "./skill-lib.mjs";
 import { setupCommand } from "./workspace.mjs";
 import {
   beginInitialization,
@@ -25,6 +26,9 @@ import {
   initializationPhase,
   readFutureInitializationState,
 } from "./initialization-state.mjs";
+
+const DEFAULT_PORTAL_URL = "http://127.0.0.1:4317";
+const LOCAL_PORTAL_URL_RE = /http:\/\/127\.0\.0\.1:\d+/;
 
 // Refresh discovery and return the machine cohort rather than printing the provider table.
 // harnessRefresh() writes state and then dumps a tab-separated row per provider, which is the
@@ -65,35 +69,84 @@ function printNextActions() {
 
 function printWelcome() {
   console.log("Welcome to RoboRepo.");
-  console.log("Opening the browser setup. If that is not available, use the CLI setup instead:");
-  console.log("  roborepo library");
+  console.log("Opening the browser setup.");
   console.log("");
+}
+
+export function extractPortalUrl(output) {
+  return output.match(LOCAL_PORTAL_URL_RE)?.[0] ?? null;
+}
+
+export function browserRedirectMessage(url, { bold = false } = {}) {
+  const heading = bold ? "\x1b[1mWelcome to roborepo\x1b[0m" : "Welcome to roborepo";
+  return [
+    "------------------------------------------------------",
+    heading,
+    "The admin dashboard for your dev environment",
+    "------------------------------------------------------",
+    "",
+    "You are being redirected to a browser window to continue your setup.",
+    "",
+    `If the browser window did not open, go to \`${url}\``,
+    "",
+    "-------------------------------",
+    "",
+    "Explore the CLI at `roborepo` for further functionality and agent commands.",
+    "",
+  ].join("\n");
+}
+
+function clearInteractiveScreen() {
+  if (process.stdout.isTTY) process.stdout.write("\x1b[H\x1b[J");
+}
+
+async function offerCliMenuAfterBrowserSetup(url) {
+  if (!(process.stdin.isTTY && process.stdout.isTTY)) return;
+
+  clearInteractiveScreen();
+  console.log(browserRedirectMessage(url, { bold: true }));
+
+  const prompter = makePrompter();
+  try {
+    const loadCli = await confirmYesNo(prompter, "Would you like to load the CLI now?", false);
+    if (!loadCli) return;
+  } finally {
+    prompter.close();
+  }
+
+  spawnSync(process.execPath, [path.join(repoRoot, "scripts", "cli", "main.mjs")], { stdio: "inherit" });
 }
 
 async function runFirstRunConfiguration({ dryRun = false } = {}) {
   if (dryRun) {
     console.log("  - open browser setup, with CLI fallback for non-interactive shells");
-    return;
+    return null;
   }
 
   if (!(process.stdin.isTTY && process.stdout.isTTY)) {
     await presetsOnboard([]);
-    return;
+    return { mode: "cli" };
   }
 
   printWelcome();
   const result = spawnSync(
     process.execPath,
     [path.join(repoRoot, "scripts", "cli", "main.mjs"), "web", "--detach"],
-    { stdio: "inherit" },
+    { encoding: "utf8" },
   );
   if (result.status === 0) {
-    return;
+    return {
+      mode: "browser",
+      url: extractPortalUrl(`${result.stdout ?? ""}\n${result.stderr ?? ""}`) ?? DEFAULT_PORTAL_URL,
+    };
   }
 
   console.log("");
   console.log("Browser setup did not start; continuing in the CLI.");
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
   await presetsOnboard([]);
+  return { mode: "cli" };
 }
 
 // Re-running a finished init must not replay the wizard: that would re-prompt for package
@@ -159,9 +212,13 @@ export async function initCommand(args = []) {
   for (const line of describeHarnesses(detected)) console.log(line);
   console.log("");
 
-  await runFirstRunConfiguration();
+  const firstRunConfiguration = await runFirstRunConfiguration();
 
   completeInitialization();
+
+  if (firstRunConfiguration?.mode === "browser") {
+    await offerCliMenuAfterBrowserSetup(firstRunConfiguration.url);
+  }
 
   console.log("");
   console.log("RoboRepo is initialized.");

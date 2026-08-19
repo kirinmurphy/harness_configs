@@ -33,6 +33,7 @@ const {
   WORKFLOW_VERSION,
 } = await import("../cli/initialization-state.mjs");
 const { initializationStatePath } = await import("../cli/state-paths.mjs");
+const { browserRedirectMessage, extractPortalUrl } = await import("../cli/initialize.mjs");
 
 try {
   testMissingState();
@@ -46,6 +47,7 @@ try {
   testExplicitCommandsBypassInit();
   testAliasReachesSameImplementation();
   testNewerRecordIsNeverOverwritten();
+  testBrowserRedirectMessage();
   testInitDryRunShowsConfigurationChoice();
   console.log("initialization lifecycle checks passed");
 } finally {
@@ -210,6 +212,22 @@ function testNewerRecordIsNeverOverwritten() {
     );
   }
   resetState();
+}
+
+function testBrowserRedirectMessage() {
+  const url = "http://127.0.0.1:9876";
+  const message = browserRedirectMessage(url);
+  assert.match(message, /Welcome to roborepo/, "handoff screen must introduce roborepo");
+  assert.match(message, /admin dashboard/i, "handoff screen must describe the browser dashboard");
+  assert.match(message, /browser window/i, "handoff screen must explain the redirect");
+  assert.match(message, new RegExp(url.replaceAll(".", "\\.")), "handoff screen must include the portal URL");
+  assert.match(message, /Explore the CLI at `roborepo`/, "handoff screen must point at the CLI");
+
+  assert.equal(
+    extractPortalUrl("roborepo portal: http://127.0.0.1:4319  (detached)"),
+    "http://127.0.0.1:4319",
+    "init must reuse the actual portal URL reported by roborepo web",
+  );
 }
 
 // --- `roborepo library` and `roborepo package manage` must reach one implementation. Asserted

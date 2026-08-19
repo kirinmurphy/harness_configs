@@ -2,6 +2,9 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+// package.json declares node >=20 and import.meta.dirname only landed in 20.11, so it is undefined
+// on a supported floor version. The other 48 modules in this repo derive the directory this way.
+import { fileURLToPath } from "node:url";
 import { finding, messagesOf, sortBySeverity, FINDING_CODES } from "../../modules/plan-docs/findings.mjs";
 import { validateForLifecycle, lifecyclePolicies } from "../../modules/plan-docs/lifecycle-policy.mjs";
 import { SECTION_SYNONYMS, SECTION_FINDING_CODES } from "../../modules/plan-docs/section-synonyms.mjs";
@@ -545,7 +548,7 @@ function testNamingFindingsCarryTheirFilename() {
 // every lifecycle, so a rule that is subtly too strict shows up here as findings on plans that
 // were correct all along.
 function testRepositoryPlansProduceNoNamingFindings() {
-  const repoRoot = path.resolve(import.meta.dirname, "..", "..");
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
   const { configured, namespaces } = readProjectNamespaces(repoRoot);
   assert.equal(configured, true, "this repository declares plans-config.json; the fixture depends on it");
   assert.ok(namespaces.length >= 10, `expected the declared vocabulary, got ${namespaces.length} namespaces`);

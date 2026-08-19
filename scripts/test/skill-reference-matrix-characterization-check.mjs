@@ -44,8 +44,10 @@ console.log("ok: skill reference matrix characterization passed");
 // Reads the "For a named mode, read only the needed references" list and returns
 // { mode: [reference paths] }. Modes are the leading `` `name` `` of each top-level bullet;
 // references are every `references/<file>.md` mentioned on that bullet, including its continuation
-// lines. Bullets that do not open with a backticked mode name (the "Always read" line, the
-// documentation-set line) are folded into every mode, since that is what they mean.
+// lines. Only the explicit "Always read" bullet folds into every mode. Other non-mode bullets are
+// conditional — "Portal-generated prompts: read `references/prompt-contracts.md` when prompt shape
+// matters" applies to a situation, not to every mode — so treating them as universal would assert a
+// requirement the SKILL.md never states, and a later edit narrowing one could not be detected.
 function parseReferenceMatrix(skillRelativePath) {
   const content = read(path.join(skillRelativePath, "SKILL.md"));
   const section = /For a named mode, read only the needed references:\n([\s\S]*?)\n\n/.exec(content);
@@ -60,7 +62,7 @@ function parseReferenceMatrix(skillRelativePath) {
     const references = [...bullet.matchAll(/references\/[a-z0-9-]+\.md/g)].map((match) => match[0]);
     const mode = /^- `([a-z-]+)`[:,]/.exec(bullet);
     if (mode) matrix[mode[1]] = references;
-    else universal.push(...references);
+    else if (/^- Always read\b/i.test(bullet)) universal.push(...references);
   }
 
   assert.ok(Object.keys(matrix).length >= 2,

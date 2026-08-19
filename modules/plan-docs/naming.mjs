@@ -148,6 +148,9 @@ function forbiddenSuffix(stem) {
   const last = stem.slice(stem.lastIndexOf("-") + 1);
   if (FORBIDDEN_SUFFIXES.includes(last)) return last;
   if (VERSION_SUFFIX.test(stem)) return `v${last.replace(/^v/, "")}`;
-  if (DATE_SUFFIX.test(stem)) return last;
+  // Quote the whole date rather than the segment after the final hyphen: `-2024-01-15` must report
+  // "2024-01-15", not the bare "15" a reader cannot act on.
+  const date = DATE_SUFFIX.exec(stem);
+  if (date) return date[0].slice(1);
   return "";
 }

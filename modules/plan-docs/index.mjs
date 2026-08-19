@@ -722,7 +722,9 @@ export function movePlanLifecycle(snapshot, { id, key, lifecycle, expectedLifecy
     // moment the same file lands in completed or archived.
     const destinationValidation = validateParsedPlan(parsed, {
       lifecycle,
-      filename: path.basename(record.plan.relativePath),
+      // The same `filename` the destination path was built from, taken from disk rather than the
+      // snapshot record, so validation cannot grade a name different from the one the move creates.
+      filename,
       projectNamespaces: readProjectNamespaces(record.repository.root).namespaces,
     });
     if (!destinationValidation.ready) {

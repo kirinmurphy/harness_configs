@@ -62,7 +62,7 @@ function packageSkillEntries() {
   );
 }
 
-function findings(skill) {
+function findings(skill, knownSkillNames = []) {
   const out = [];
   const frontmatter = skill.content.startsWith("---\n")
     ? skill.content.slice(4, skill.content.indexOf("\n---\n", 4))
@@ -76,7 +76,7 @@ function findings(skill) {
   if (/\b(git push|deploy|release|publish|rm -rf|curl\s|wget\s)\b/i.test(skill.body)) out.push("side-effect keyword");
   if (!String(skill.meta.description || "").trim()) out.push("missing trigger description");
   out.push(...referenceReachability(skill));
-  out.push(...pairedSkillShape(skill));
+  out.push(...pairedSkillShape(skill, knownSkillNames));
   return out;
 }
 
@@ -99,12 +99,21 @@ const VAGUE_TRIGGERS = /\b(when relevant|if relevant|as needed|when appropriate|
 //
 // What is NOT judged: whether a given pairing is the right one. That is a claim about the skills'
 // subject matter, not about the shape of the declaration.
-function pairedSkillShape(skill) {
+function pairedSkillShape(skill, knownSkillNames = []) {
   const table = /## Paired Skills\n([\s\S]*?)(?=\n## |\n$)/.exec(skill.body);
   if (!table) {
     // Only flag skills that already tell the reader to pair with something; a skill with no
     // cross-skill relationship is not missing a table.
-    return /\bpair with `[a-z-]+`/i.test(skill.body)
+    //
+    // "pair with" was the only phrasing caught originally, which let the same instruction slip
+    // through as "Use `code-style`" or "load `plan-docs`". The verb list is broader now, but the
+    // target must be a *known skill name*: backticks around an ordinary value ("Use `data-testid`",
+    // "Use `blocked`") is not a pairing, and matching any backticked token flagged both of those.
+    const others = knownSkillNames.filter((name) => name !== skill.name);
+    const prosePairing = others.length
+      ? new RegExp(`\\b(?:pair(?: it)? with|load|use|read) \`(?:${others.join("|")})\``, "i")
+      : /\bpair with `[a-z-]+`/i;
+    return prosePairing.test(skill.body)
       ? ["names a paired skill in prose but declares no Paired Skills table"]
       : [];
   }
@@ -198,9 +207,12 @@ function escapeCell(value) {
 export function renderSkillAudit() {
   const policies = manifestPolicies();
   const skills = packageSkillEntries().map(readSkill);
+  // Prose-pairing detection matches against real skill names, so an ordinary backticked value is
+  // never mistaken for a cross-skill instruction.
+  const knownSkillNames = skills.map((entry) => entry.name).filter(Boolean);
   const rows = skills.map((skill) => {
     const policy = policies.get(skill.name);
-    const skillFindings = findings(skill);
+    const skillFindings = findings(skill, knownSkillNames);
     return {
       skill: skill.name,
       invocation: policy?.invocation || "missing",

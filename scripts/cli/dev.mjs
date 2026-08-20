@@ -51,13 +51,19 @@ export function devFixtureCommand(args) {
 // would — the fixture script and `web`/`web stop`. There is deliberately no `dev portal` wrapper:
 // `web --detach` now adopts a healthy portal instead of killing it, so a wrapper would add nothing
 // but a second place for port logic to drift out of sync.
+// Every branch propagates the fixture's exit status. Dropping it made a failed teardown invisible
+// to scripts: `dev stop` printed "could not stop the stack" and still exited 0, so a
+// stop-then-start loop would rebuild against a stack still holding its port.
 export async function devCommand(args) {
   requireDevelopmentCheckout("roborepo dev");
   const action = args[0] || "status";
   const rest = args.slice(1);
 
   if (action === "start") {
-    runFixture("start");
+    // Bail before the portal when the fixture fails: `dev start` promises a working environment,
+    // and a portal rendering a stack that never came up is worse than a clear failure.
+    const status = runFixture("start");
+    if (status !== 0) process.exit(status);
     await serveCommand([...rest, "--detach", "--no-open"]);
     return;
   }
@@ -65,12 +71,12 @@ export async function devCommand(args) {
     // Portal first: it is the process that holds a port, so stopping it before tearing down the
     // fixture avoids a window where the portal renders a stack that is already gone.
     webStopCommand(rest);
-    runFixture("stop");
-    return;
+    // Unlike start, the fixture still runs even if the portal stop reported trouble — a teardown
+    // should tear down as much as it can rather than stopping at the first failure.
+    process.exit(runFixture("stop"));
   }
   if (action === "status") {
-    runFixture("status");
-    return;
+    process.exit(runFixture("status"));
   }
   console.error("usage: roborepo dev <start|stop|status>");
   process.exit(2);

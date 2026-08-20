@@ -3,11 +3,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+// package.json declares node >=20 and moduleDir only landed in 20.11, so it is undefined
+// on a supported floor version. The rest of this repo derives the directory this way.
+import { fileURLToPath } from "node:url";
 import { loadPackageCatalog, validatePackageCatalog } from "../cli/package-catalog.mjs";
 import { listPackageCommands } from "../cli/package-commands.mjs";
 import { loadSlashCommandPlan } from "../cli/slash-commands.mjs";
 import { readConfigSnapshot } from "../cli/config.mjs";
 import { buildOnboardSteps } from "../cli/presets.mjs";
+
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -47,7 +52,7 @@ const sections = new Map(snapshot.behaviorView.map((section) => [section.categor
 // Categories with no packages are skipped: buildBehaviorView filters empty sections deliberately,
 // so an unused category is absent by design, not by failure.
 const categories = JSON.parse(
-  fs.readFileSync(path.join(import.meta.dirname, "../../manifests/inventory/package-categories.json"), "utf8"),
+  fs.readFileSync(path.join(moduleDir, "../../manifests/inventory/package-categories.json"), "utf8"),
 ).categories;
 const populated = new Set(catalog.map((pkg) => pkg.presentation?.category).filter(Boolean));
 for (const category of categories) {
@@ -105,7 +110,7 @@ const emittedKinds = new Set(
     .filter(Boolean),
 );
 for (const consumer of consumers) {
-  const source = fs.readFileSync(path.join(import.meta.dirname, "../..", consumer.path), "utf8");
+  const source = fs.readFileSync(path.join(moduleDir, "../..", consumer.path), "utf8");
   for (const kind of emittedKinds) {
     if (sectionRenderedKinds.has(kind)) continue;
     assert(
@@ -139,7 +144,7 @@ const categoryConsumers = [
   "portal/config/state.js",
 ];
 for (const relPath of categoryConsumers) {
-  const fullPath = path.join(import.meta.dirname, "../..", relPath);
+  const fullPath = path.join(moduleDir, "../..", relPath);
   if (!fs.existsSync(fullPath)) continue;
   const source = fs.readFileSync(fullPath, "utf8");
   for (const [, id] of source.matchAll(categoryComparison)) {

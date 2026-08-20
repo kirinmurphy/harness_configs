@@ -30,6 +30,7 @@
   "scripts": {
     "build": "npm run --silent pack:dry-run",
     "test": "scripts/test/test-roborepo.sh --quiet",
+    "test:install-collisions": "scripts/test/test-install-collisions.sh",
     "test:context-cost": "node scripts/test/context-cost-check.mjs",
     "test:localhoster": "node scripts/test/localhoster-check.mjs",
     "test:localhoster-git": "node scripts/test/localhoster-git-check.mjs",
@@ -70,6 +71,8 @@
     "test:plans-findings": "node scripts/test/plan-docs-findings-check.mjs",
     "test:plans-repair": "node scripts/test/plan-docs-repair-check.mjs",
     "test:plans-portal-state": "node scripts/test/plans-portal-state-check.mjs",
+    "test:skill-reference-matrix-characterization": "node scripts/test/skill-reference-matrix-characterization-check.mjs",
+    "test:skill-reference-observer": "node scripts/test/skill-reference-observer-check.mjs",
     "test:telemetry": "node scripts/test/telemetry-correctness-check.mjs && node scripts/test/telemetry-time-axis-check.mjs",
     "test:telemetry-schemas": "node scripts/test/telemetry-schemas-check.mjs",
     "test:telemetry-marker-cli": "node scripts/test/telemetry-marker-cli-check.mjs",

@@ -1563,7 +1563,7 @@ assert "package manage: non-TTY records onboardedAt in preset state" \
 
 # The wizard flips item.active in memory during the keypress loop, then applies only the changed rows
 # on exit. Unit-test that deferred-apply selection directly (pure, fast); the pty/keypress path is
-# covered by test-install-collisions.sh.
+# covered by test-install-collisions.sh, which CI runs as its own step (npm run test:install-collisions).
 assert "onboard: wizard diff selects only changed toggleable items" \
   node "${repo_root}/scripts/test/wizard-diff-check.mjs"
 
@@ -1884,6 +1884,11 @@ assert "config: /api/config/source rejects missing/unknown harness ids" \
 assert "config: synthetic third-provider harnesses list and root-config paths" \
   node "${repo_root}/scripts/test/config-synthetic-provider-check.mjs"
 
+# The first-run onboarding notice and its optional-package selection state. Added with the
+# onboarding surfaces but reachable from no runner, which orphan-test-check reports.
+assert "config: onboarding notice and optional-package selection state" \
+  node "${repo_root}/scripts/test/config-onboarding-state-check.mjs"
+
 # The install-side counterpart to the above: proves artifact DELIVERY (live permission rendering,
 # capability/path coherence, the shared harness-id helper) reaches a provider that is not in any
 # hardcoded id list. Guards the bug class that let Gemini pass 108 doctor checks while missing two
@@ -1922,6 +1927,18 @@ assert "plan-docs: frontmatter repair pass" \
 
 assert "plans: portal mutation-orchestration helpers" \
   node "${repo_root}/scripts/test/plans-portal-state-check.mjs"
+
+# The mode/reference matrices technical-writing and plan-docs declare in their own SKILL.md prose.
+# A required reference dropped from an artifact-producing mode is invisible at runtime — the work
+# still gets delivered, just without the rule that would have caught the defect.
+assert "skills: mode/reference matrices and completion gates" \
+  node "${repo_root}/scripts/test/skill-reference-matrix-characterization-check.mjs"
+
+# Reference-loading observability: the hook matches the harness-native skill path (not the roborepo
+# cache it symlinks to), because that is the path the agent actually read. Resolving the symlink
+# yields an empty report that reads exactly like a compliant session.
+assert "skill-visibility: observed skill-reference reads" \
+  node "${repo_root}/scripts/test/skill-reference-observer-check.mjs"
 
 # ---------------------------------------------------------------------------
 clear_progress

@@ -1,0 +1,4 @@
+# Runtime artifacts of a probe run: a copy of the user's live settings, and the fire log.
+# Both are machine-local evidence, never repository content.
+settings.json.bak
+fired.log

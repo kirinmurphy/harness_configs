@@ -24,6 +24,19 @@ assert_file_contains() {
   grep -qE "$pattern" "$file" && pass "$label" || fail "$label" "$file"
 }
 
+# Modification time in epoch seconds, portable across BSD and GNU stat.
+#
+# `stat -f` means two different things: BSD reads it as a format string (%m is mtime), GNU reads it
+# as --file-system and prints a block/inode report. So the common
+# `stat -f %m "$f" 2>/dev/null || stat -c %Y "$f"` idiom does not fall through on Linux — the GNU
+# call SUCCEEDS with filesystem statistics, and the caller silently compares those instead of a
+# timestamp. Two calls moments apart then differ by a block count, which reads as a changed file.
+# GNU is tried first here precisely because it is the ambiguous side.
+file_mtime() {
+  local file="$1"
+  stat -c %Y "$file" 2>/dev/null || stat -f %m "$file" 2>/dev/null
+}
+
 assert_file_not_contains() {
   local file="$1"
   local pattern="$2"
@@ -804,14 +817,32 @@ test_install_writes_durable_original_snapshot() {
   assert_file_contains "$home_dir/extract/.claude/CLAUDE.md" "my own claude rules" "snapshot preserves the user's original CLAUDE.md"
 
   # Once-only: a second install must not rewrite the pristine image.
-  local before after
-  before="$(stat -f %m "$archive" 2>/dev/null || stat -c %Y "$archive")"
+  #
+  # Compare content as well as mtime, and report the installer's own snapshot lines on failure. The
+  # way this property breaks is indirect: if tar fails the archive is deleted, the next install then
+  # finds nothing to guard against, and a second snapshot is taken — so the installer's
+  # "snapshot skipped" line names the cause, while the checksum says whether the image was rewritten
+  # or genuinely re-derived.
+  local before after before_sum after_sum
+  before="$(file_mtime "$archive")"
+  before_sum="$(shasum "$archive" 2>/dev/null | cut -d' ' -f1)"
   printf 'roborepo changed this later\n' > "$home_dir/.zshrc"
   run_harness_install_args "$home_dir" "$home_dir/install2.out" --on-conflict keep
-  after="$(stat -f %m "$archive" 2>/dev/null || stat -c %Y "$archive")"
-  [[ "$before" == "$after" ]] \
-    && pass "durable snapshot is written once and never overwritten" \
-    || fail "durable snapshot is written once and never overwritten"
+  after="$(file_mtime "$archive")"
+  after_sum="$(shasum "$archive" 2>/dev/null | cut -d' ' -f1)"
+  if [[ "$before" == "$after" ]]; then
+    pass "durable snapshot is written once and never overwritten"
+  else
+    {
+      echo "archive mtime changed: ${before} -> ${after}"
+      [[ "$before_sum" == "$after_sum" ]] \
+        && echo "contents identical (${before_sum:0:12}) — the image was rewritten, not re-derived" \
+        || echo "contents differ (${before_sum:0:12} -> ${after_sum:0:12}) — a second snapshot was taken"
+      echo "--- installer snapshot lines ---"
+      grep -h "pre-install backup" "$home_dir/install.out" "$home_dir/install2.out" 2>/dev/null || echo "(none)"
+    } >&2
+    fail "durable snapshot is written once and never overwritten"
+  fi
 }
 
 test_idempotency_no_extra_backups() {

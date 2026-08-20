@@ -47,6 +47,27 @@ const DEFS = {
     message: "Priority must be high, medium, low, or none.",
     resolution: "Replace the `priority` value with one of the four allowed values.",
   },
+  // The three naming rules below are emitted by naming.mjs, which scopes them to backlog and
+  // active. They stay advisory: a filename is safe to change while a plan is still being worked,
+  // but once it is completed or archived, inbound links outweigh the convention.
+  INVALID_PLAN_FILENAME: {
+    kind: "schema",
+    severity: "advisory",
+    message: ({ meta }) => `Filename is not \`<namespace>-<slug>.md\`: ${meta.filename}.`,
+    resolution: "Rename the file to lowercase-hyphenated `<namespace>-<slug>.md`. The `id` never changes with it.",
+  },
+  UNKNOWN_PLAN_NAMESPACE: {
+    kind: "schema",
+    severity: "advisory",
+    message: ({ meta }) => `Unknown plan namespace: ${meta.namespace}.`,
+    resolution: "Use a universal namespace or one declared in `docs/plans/plans-config.json`, or add the namespace to that config first.",
+  },
+  FORBIDDEN_PLAN_FILENAME_SUFFIX: {
+    kind: "schema",
+    severity: "advisory",
+    message: ({ meta }) => `Filename encodes a lifecycle, status, date, or version: -${meta.suffix}.`,
+    resolution: "Drop the suffix. Lifecycle is the folder and status is frontmatter; filenames get linked to and these change.",
+  },
 
   // --- structure ------------------------------------------------------------------------------
   MISSING_SUMMARY: {

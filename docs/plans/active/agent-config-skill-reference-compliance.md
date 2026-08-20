@@ -727,9 +727,16 @@ node scripts/test/telemetry-time-axis-check.mjs                      ok
 node scripts/test/skill-reference-observer-check.mjs                  ok
 node scripts/test/package-catalog-check.mjs                          ok
 roborepo skill audit --check                                         ok
-bash scripts/test/test-roborepo.sh --quiet                           396 passed, 1 failed
+node scripts/test/orphan-test-check.mjs                              ok (98 reachable, 5 exempt)
+bash scripts/test/test-roborepo.sh --quiet (pre-merge)               396 passed, 1 failed
+bash scripts/test/test-roborepo.sh --quiet (post-merge)              403 passed, 2 failed
 bash scripts/test/test-install-collisions.sh                         all passed
+npm run test:install-collisions                                      all passed
 ```
+
+Both post-merge failures reproduce in the `main` checkout and are environmental; the pre-merge
+single failure was the flaky `cli-surface` check. Neither is a Phase 9 regression — see "Not
+verified" below for the evidence behind both claims.
 
 `test-install-collisions.sh` is a second suite, separate from `test-roborepo.sh`. Phase 9 ships this
 package's first hook *scripts*, which the apply engine copies into `~/.claude/hooks/` and
@@ -844,26 +851,36 @@ read of a missing file rather than merely reporting the wrong root.
 - **The rendered line has not been observed end to end.** The hook injects correctly and the rules text describes
   what to do with the injection, but no session has yet run with the package installed to confirm an agent actually
   renders a per-skill tally or the compaction-unavailable form. That needs `roborepo update` first.
-- **One pre-existing suite failure, unrelated to this work.** `test-roborepo.sh` reports `396 passed, 1 failed`
-  while exiting 0, under `lifecycle: CLI surface help/menu/removed routes work in sandbox`.
+- **The `cli-surface` failure this plan recorded as standing was flaky, not standing.** Earlier revisions of this
+  note described `lifecycle: CLI surface help/menu/removed routes work in sandbox` as a durable failure and named an
+  assertion for it — first `telemetry package should show product label in Package Library`, then
+  `root menu missing Agent Config section`. Neither identification survives.
 
-  **Corrected during Phase 9.** This entry previously named the failing assertion as `telemetry package should show
-  product label in Package Library`. Running `cli-surface-integration-check.mjs` standalone on this branch shows a
-  different one:
+  What the check actually does: `cli-surface-integration-check.mjs` drives five PTY flows through `expect`, with
+  per-flow budgets of 5–20 seconds. The remote-sync flow alone runs roughly thirty interactive steps that spawn real
+  git commands across a multi-repository fixture. Under load those steps stretch past the budget, and `expect`
+  abandons the flow partway — which surfaces as whichever assertion happened to be next, or as a result file that
+  was never written. That is why the "failing assertion" kept changing.
+
+  Measured directly: four concurrent runs of the check failed two and passed two. Run alone on this branch it
+  passes; run alone on `main` it passes. The suite invokes it serially, so a normal `test-roborepo.sh` run is
+  unaffected — every failing observation recorded in this plan came from a run made while something else was
+  running.
+
+  A fix was attempted and reverted. Raising the budgets to 20/40/90 seconds made it worse: the same four concurrent
+  runs then hung past ten minutes instead of failing in about two, because these timeouts bound a *stuck* flow
+  rather than a slow one. The right fix is exclusive execution — a lock, or excluding the check from parallel runs —
+  not a larger ceiling. Left undone deliberately rather than guessed at.
+
+- **Two failures remain in the post-merge suite, both pre-existing on `main`.** After merging `main` into this
+  branch, `test-roborepo.sh` reports `403 passed, 2 failed`:
 
   ```text
-  AssertionError: root menu missing Agent Config section
-    expected: /^  Agent Config$/m
-    actual:   "=========== ROBOREPO - Main Menu ===========
-               > Initialize   Set up this RoboRepo installation for first use"
+  FAIL: harness: registry, discovery, state, and runtime
+  FAIL: config: synthetic third-provider harnesses list and root-config paths
   ```
 
-  The sandboxed CLI renders an uninitialized main menu — only `Initialize`, no section headings — so the assertion
-  looking for a section never matches. Whether the label assertion also fails behind this one is unknown, because
-  the check aborts at the first failure.
-
-  It remains out of scope and is not a Phase 9 regression: the full-suite count is identical to the count recorded
-  before these changes, and nothing here touches CLI surface, menu rendering, or package registration. What is no
-  longer claimed is the earlier note's assertion identity, and its claim of having reproduced *that* assertion at
-  base commit `fcdd2b8` and on `main` (`dcf35e4`) — that reproduction was not re-run during Phase 9, so the
-  sandbox-initialization cause above is the only part supported by evidence gathered here.
+  Both fail on `Error: validated executable must be detected`. Running `harness-registry-check.mjs` in the `main`
+  checkout — which carries none of this plan's changes — reproduces the identical error, so both are environmental
+  (a harness-discovery check depending on an executable absent from this machine) rather than anything this work
+  introduced. The count rose from 396 to 403 because `main` added checks and this plan added two.

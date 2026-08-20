@@ -403,10 +403,19 @@ snapshot_pre_roborepo_original() {
   local c
   for c in "${candidates[@]}"; do rel+=("${c#"${HOME}/"}"); done
   mkdir -p "$(dirname "${archive}")"
-  if tar czf "${archive}" -C "${HOME}" "${rel[@]}" 2>/dev/null; then
+  # tar's stderr is captured rather than discarded. A failure here deletes the archive, and the next
+  # install then finds no archive, so the once-only guard above does not fire and a second snapshot
+  # is taken — the "written once" property silently stops holding. Discarding the error made that
+  # indistinguishable from a machine with nothing to capture. The reason is now reported.
+  local tar_err="${archive}.err"
+  if tar czf "${archive}" -C "${HOME}" "${rel[@]}" 2>"${tar_err}"; then
+    rm -f "${tar_err}"
     say "pre-install backup" "snapshot of ${#candidates[@]} original config path(s) -> ${archive}"
   else
-    rm -f "${archive}"   # never leave a partial/corrupt image behind
+    local reason
+    reason="$(head -n 1 "${tar_err}" 2>/dev/null)"
+    say "pre-install backup" "snapshot skipped: ${reason:-tar failed with no message}"
+    rm -f "${archive}" "${tar_err}"   # never leave a partial/corrupt image behind
   fi
 }
 

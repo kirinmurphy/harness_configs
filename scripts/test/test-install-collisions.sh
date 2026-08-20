@@ -804,14 +804,31 @@ test_install_writes_durable_original_snapshot() {
   assert_file_contains "$home_dir/extract/.claude/CLAUDE.md" "my own claude rules" "snapshot preserves the user's original CLAUDE.md"
 
   # Once-only: a second install must not rewrite the pristine image.
-  local before after
+  #
+  # Compare content as well as mtime. A rewrite is the failure this asserts, but the way it happens
+  # is that the first tar failed, the archive was deleted, and the second install found nothing to
+  # guard against — so the useful diagnostic is the installer's own "snapshot skipped" line, which
+  # names the tar error. Reporting both distinguishes a genuine re-snapshot from a resurrected one.
+  local before after before_sum after_sum
   before="$(stat -f %m "$archive" 2>/dev/null || stat -c %Y "$archive")"
+  before_sum="$(shasum "$archive" 2>/dev/null | cut -d' ' -f1)"
   printf 'roborepo changed this later\n' > "$home_dir/.zshrc"
   run_harness_install_args "$home_dir" "$home_dir/install2.out" --on-conflict keep
   after="$(stat -f %m "$archive" 2>/dev/null || stat -c %Y "$archive")"
-  [[ "$before" == "$after" ]] \
-    && pass "durable snapshot is written once and never overwritten" \
-    || fail "durable snapshot is written once and never overwritten"
+  after_sum="$(shasum "$archive" 2>/dev/null | cut -d' ' -f1)"
+  if [[ "$before" == "$after" ]]; then
+    pass "durable snapshot is written once and never overwritten"
+  else
+    {
+      echo "archive mtime changed: ${before} -> ${after}"
+      [[ "$before_sum" == "$after_sum" ]] \
+        && echo "contents identical (${before_sum:0:12}) — the image was rewritten, not re-derived" \
+        || echo "contents differ (${before_sum:0:12} -> ${after_sum:0:12}) — a second snapshot was taken"
+      echo "--- installer snapshot lines ---"
+      grep -h "pre-install backup" "$home_dir/install.out" "$home_dir/install2.out" 2>/dev/null || echo "(none)"
+    } >&2
+    fail "durable snapshot is written once and never overwritten"
+  fi
 }
 
 test_idempotency_no_extra_backups() {

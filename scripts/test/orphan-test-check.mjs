@@ -37,22 +37,6 @@ const EXEMPT = new Map([
   ["install-smoke.mjs", "post-install probe against a LIVE installation; run by hand after `roborepo update`, not in CI"],
   ["promote-npm-latest-check.mjs", "touches the real npm registry; release-only, never run in CI"],
   ["publish-npm-check.mjs", "touches the real npm registry; release-only, never run in CI"],
-  // The following have a registered package.json test:* script but nothing calls that script by
-  // name from test-roborepo.sh or ci.yml. Found by tightening this checker's reachability rule
-  // (package.json registration alone no longer counts). Pre-existing gap, not a decision made here
-  // -- each needs its own review to decide whether it gets wired into CI or stays intentionally
-  // manual and moves into one of the reasoned exemptions above.
-  ["capture-dense-bash-check.mjs", "pre-existing gap: test:capture-dense-bash exists but nothing calls it"],
-  ["context-cost-check.mjs", "pre-existing gap: test:context-cost exists but nothing calls it"],
-  ["localhoster-docker-check.mjs", "pre-existing gap: test:localhoster-docker exists but nothing calls it"],
-  ["localhoster-process-check.mjs", "pre-existing gap: test:localhoster-process exists but nothing calls it"],
-  ["maintenance-stores-check.mjs", "pre-existing gap: test:maintenance-stores exists but nothing calls it"],
-  ["repositories-branch-sync-check.mjs", "pre-existing gap: test:repositories-branch-sync exists but nothing calls it"],
-  ["retention-policy-check.mjs", "pre-existing gap: test:retention exists but nothing calls it"],
-  ["telemetry-store-bounds-check.mjs", "pre-existing gap: test:telemetry-store-bounds exists but nothing calls it"],
-  ["telemetry-time-axis-check.mjs", "pre-existing gap: chained via test:telemetry (node a.mjs && node b.mjs), but test:telemetry itself is never called by ci.yml"],
-  ["usage-domain-check.mjs", "pre-existing gap: test:usage-domain exists but nothing calls it"],
-  ["usage-statusline-check.mjs", "pre-existing gap: test:usage-statusline exists but nothing calls it"],
 ]);
 
 // Direct runners: substring matching on filename is deliberate. These files call their children in

@@ -1748,6 +1748,11 @@ assert "repositories: discovery recording + Plans enrollment" \
 assert "repositories: browser-safe API contracts" \
   node "${repo_root}/scripts/test/repositories-api-check.mjs"
 
+# Per-branch ahead/behind/tracking-state facts against a real git fixture in a temp dir, plus
+# refreshRemote and pushBranchToUpstream. Had a package.json test:* script but nothing called it.
+assert "repositories: branch sync facts" \
+  node "${repo_root}/scripts/test/repositories-branch-sync-check.mjs"
+
 # Localhoster module suite. Note: localhoster-check.mjs existed as an npm script but was never wired
 # into this file, so it had not been running in CI at all — added here alongside the new checks.
 assert "localhoster: discovery, settings schema, snapshot shaping" \
@@ -1788,6 +1793,15 @@ assert "localhoster: compose project identity resolution" \
 # members stay secondary and out of the aggregate CPU, and a Compose stack stays a sub-group.
 assert "localhoster: repository card merge" \
   node "${repo_root}/scripts/test/localhoster-repository-merge-check.mjs"
+
+# Compose-container provider parsing: fixture docker-ps lines, docker-not-found and daemon-down
+# distinguished from a permission failure. No real docker CLI or daemon is invoked.
+assert "localhoster: docker provider parsing" \
+  node "${repo_root}/scripts/test/localhoster-docker-check.mjs"
+
+# Etime parsing for `ps`-style output: short-form, long-form, and day-qualified durations to seconds.
+assert "localhoster: process etime parsing" \
+  node "${repo_root}/scripts/test/localhoster-process-check.mjs"
 
 # Root config drift VIEW (buildRootConfigView in root-config-view.mjs): the per-harness state the terminal
 # `config root inspect` report and the web /config drift chip both render from — not-installed /
@@ -1869,6 +1883,17 @@ assert "telemetry: /api/session rejects missing/unknown harness ids" \
 assert "telemetry: synthetic third-provider analysis and rate-limit capability" \
   node "${repo_root}/scripts/test/telemetry-synthetic-provider-check.mjs"
 
+# Bounds on the three telemetry stores that had none: the markers JSONL, the snapshots directory,
+# and the experiments directory. Fixture writer runs in a child process against a sandboxed
+# ROBOREPO_STATE_ROOT.
+assert "telemetry: store bounds on markers/snapshots/experiments" \
+  node "${repo_root}/scripts/test/telemetry-store-bounds-check.mjs"
+
+# Pure function tests for the portal's time-axis helpers: clock labels, scale selection, tick
+# bounding, day labels. No fs or process dependency.
+assert "telemetry: portal time-axis label/scale/tick helpers" \
+  node "${repo_root}/scripts/test/telemetry-time-axis-check.mjs"
+
 assert "config: onboarding notices match harness/package state" \
   node "${repo_root}/scripts/test/config-onboarding-state-check.mjs"
 
@@ -1946,6 +1971,39 @@ assert "skill-visibility: observed skill-reference reads" \
 # never shared across sessions.
 assert "skill-visibility: count-file tracks reference reads" \
   node "${repo_root}/scripts/test/skill-visibility-count-file-check.mjs"
+
+# The following had package.json test:* scripts but nothing called them, surfaced by tightening
+# orphan-test-check.mjs to require an actual caller rather than mere package.json registration.
+
+# The capture-dense-bash hook: drives the real hook as a subprocess under a sandboxed
+# ROBOREPO_STATE_ROOT, asserting its write path agrees with the CLI's own path constant.
+assert "capture-dense-bash: hook write path agreement" \
+  node "${repo_root}/scripts/test/capture-dense-bash-check.mjs"
+
+# Unit checks for scripts/cli/context-cost.mjs: estimator determinism, level thresholds,
+# active/potential separation, cache behavior. Runs against injected in-memory deps only.
+assert "context-cost: estimator determinism and load classes" \
+  node "${repo_root}/scripts/test/context-cost-check.mjs"
+
+# `roborepo maintenance stores` — listing, policy-driven reset, --all, and --check mode. Driven as a
+# subprocess under a sandboxed ROBOREPO_STATE_ROOT.
+assert "maintenance: stores listing, reset, and doctor --check" \
+  node "${repo_root}/scripts/test/maintenance-stores-check.mjs"
+
+# The shared retention engine: policy validation, append-log/file-set measurement, bounded-store
+# guarantee. Measurement only — no store writes here.
+assert "retention: shared engine measurement and policy validation" \
+  node "${repo_root}/scripts/test/retention-policy-check.mjs"
+
+# Pure-layer tests for usage-statusline: adapters, domain calculations, renderer fragments, snapshot
+# store, portal API view. No harness or CLI process spawning.
+assert "usage-statusline: domain, renderer, snapshot store" \
+  node "${repo_root}/scripts/test/usage-domain-check.mjs"
+
+# Process-level + lifecycle tests for usage-statusline: installed Claude command's stdin/stdout
+# behavior, package enable/disable ownership across Claude and Codex.
+assert "usage-statusline: process lifecycle and package ownership" \
+  node "${repo_root}/scripts/test/usage-statusline-check.mjs"
 
 # ---------------------------------------------------------------------------
 clear_progress

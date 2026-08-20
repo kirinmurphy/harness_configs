@@ -1940,6 +1940,13 @@ assert "skills: mode/reference matrices and completion gates" \
 assert "skill-visibility: observed skill-reference reads" \
   node "${repo_root}/scripts/test/skill-reference-observer-check.mjs"
 
+# The count file is the only part of the hook's contract that survives to disk -- injected
+# additionalContext never reaches the session transcript, so this is the durable half a post-hoc
+# check can actually verify: one increment per reference read, skipped on non-reference reads,
+# never shared across sessions.
+assert "skill-visibility: count-file tracks reference reads" \
+  node "${repo_root}/scripts/test/skill-visibility-count-file-check.mjs"
+
 # ---------------------------------------------------------------------------
 clear_progress
 echo ""

@@ -1,6 +1,6 @@
 {
   "name": "codethings-roborepo-alpha",
-  "version": "0.1.0-beta.5",
+  "version": "0.1.0-beta.6",
   "description": "Portable Claude/Codex harness configuration manager.",
   "type": "module",
   "bin": {
@@ -101,6 +101,8 @@
     "prepare:new-mac-install": "node scripts/test/package-install-smoke.mjs",
     "publish:npm": "bash scripts/release/publish-npm.sh",
     "publish:npm-latest": "npm run publish:npm -- --latest",
+    "promote:npm-latest": "bash scripts/release/promote-npm-latest.sh",
+    "test:promote-npm-latest": "node scripts/test/promote-npm-latest-check.mjs",
     "test:publish-npm": "node scripts/test/publish-npm-check.mjs"
   },
   "engines": {

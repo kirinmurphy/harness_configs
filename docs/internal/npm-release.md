@@ -37,6 +37,7 @@ tooling should expose one current interface and remove stale command paths when 
 | `npm run publish:npm -- --dry-run` | You want to know whether publishing is safe right now. | Requires clean tree, checks npm auth and registry state, runs release checks, prints publish/install commands. | No version write and no publish. |
 | `npm run publish:npm` | You are ready to publish. | Requires clean tree, checks npm auth and registry state, writes next version, runs release checks, publishes with explicit dist-tag, prints install command. | Refuses duplicate versions and refuses `latest` unless explicitly requested. |
 | `npm run publish:npm -- --confirm` | You want a manual final gate after release checks pass. | Runs the same publish flow, then prompts before `npm publish`. | Noninteractive terminals will abort at the prompt. |
+| `npm run promote:npm-latest` | You already published and want unpinned installs to resolve to the newest published version. | Queries npm for all published versions and moves the `latest` dist-tag to the highest semver version. | No package version write and no tarball publish. |
 
 ## Default Version And Tag
 

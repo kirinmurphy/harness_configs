@@ -9,6 +9,9 @@ const repoRoot = path.resolve(".");
 const script = path.join(repoRoot, "scripts", "release", "publish-npm.sh");
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-publish-npm-"));
 const originalPackageJson = fs.readFileSync(path.join(repoRoot, "package.json"), "utf8");
+const originalPackage = JSON.parse(originalPackageJson);
+const expectedNextVersion = nextPrerelease(originalPackage.version, "beta");
+const expectedNextVersionRe = escapeRegExp(expectedNextVersion);
 
 try {
   const bin = path.join(tempRoot, "bin");
@@ -74,11 +77,11 @@ esac
 
   const releaseInfo = run(["--next-release-info"], env);
   assert.equal(releaseInfo.status, 0, releaseInfo.stderr);
-  assert.match(releaseInfo.stdout, /Target:\s+0\.1\.0-beta\.1/);
+  assert.match(releaseInfo.stdout, new RegExp(`Target:\\s+${expectedNextVersionRe}`));
   assert.match(releaseInfo.stdout, /Next release info only\. No git, npm, network, or package checks were run\./);
   // The install command pins an exact version, so --tag is inert on it (npm only honors --tag when
   // resolving an unpinned spec). Printing it taught users a flag that does nothing; assert it stays gone.
-  assert.match(releaseInfo.stdout, /npm install -g codethings-roborepo-alpha@0\.1\.0-beta\.1$/m);
+  assert.match(releaseInfo.stdout, new RegExp(`npm install -g codethings-roborepo-alpha@${expectedNextVersionRe}$`, "m"));
   assert.doesNotMatch(releaseInfo.stdout, /npm install -g \S+ --tag/);
   assert.equal(readCalls(), "", "--next-release-info should not call git or npm");
 
@@ -96,12 +99,12 @@ esac
   assert.equal(dryRun.status, 0, dryRun.stderr);
   assert.match(dryRun.stdout, /Dry run complete/);
   assert.match(dryRun.stdout, /npm publish --access public --tag beta/);
-  assert.match(dryRun.stdout, /npm install -g codethings-roborepo-alpha@0\.1\.0-beta\.1$/m);
+  assert.match(dryRun.stdout, new RegExp(`npm install -g codethings-roborepo-alpha@${expectedNextVersionRe}$`, "m"));
   assert.doesNotMatch(dryRun.stdout, /npm install -g \S+ --tag/);
   const calls = readCalls();
   assert.match(calls, /git status --porcelain/);
   assert.match(calls, /npm whoami/);
-  assert.match(calls, /npm view codethings-roborepo-alpha@0\.1\.0-beta\.1 version/);
+  assert.match(calls, new RegExp(`npm view codethings-roborepo-alpha@${expectedNextVersionRe} version`));
   assert.match(calls, /npm test/);
   assert.match(calls, /npm run pack:dry-run/);
   assert.match(calls, /npm run test:package-install/);
@@ -136,15 +139,15 @@ esac
   // actually prevents a double publish.
   resetCalls();
   const stranded = JSON.parse(originalPackageJson);
-  stranded.version = "0.1.0-beta.1";
+  stranded.version = expectedNextVersion;
   fs.writeFileSync(path.join(repoRoot, "package.json"), `${JSON.stringify(stranded, null, 2)}\n`);
   try {
-    const retry = run(["--dry-run", "--version", "0.1.0-beta.1"], env);
+    const retry = run(["--dry-run", "--version", expectedNextVersion], env);
     assert.equal(retry.status, 0, `retry at the stranded version should proceed:\n${retry.stderr}`);
     assert.doesNotMatch(retry.stderr, /target version equals current version/);
-    assert.match(retry.stdout, /Target:\s+0\.1\.0-beta\.1/);
+    assert.match(retry.stdout, new RegExp(`Target:\\s+${expectedNextVersionRe}`));
     // A computed bump that lands on the current version is still an error: nothing moved.
-    const noop = run(["--dry-run", "--version", "0.1.0-beta.1", "--preid", "beta"], env);
+    const noop = run(["--dry-run", "--version", expectedNextVersion, "--preid", "beta"], env);
     assert.equal(noop.status, 0, "explicit --version stays allowed regardless of preid");
   } finally {
     fs.writeFileSync(path.join(repoRoot, "package.json"), originalPackageJson);
@@ -179,4 +182,23 @@ function readCalls() {
 
 function resetCalls() {
   fs.rmSync(path.join(tempRoot, "calls.log"), { force: true });
+}
+
+function nextPrerelease(current, preid) {
+  const match = current.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
+  if (!match) throw new Error(`unsupported semver: ${current}`);
+  const prerelease = match[4] || "";
+  const parts = prerelease ? prerelease.split(".") : [];
+  let patch = match[3];
+  let n = 0;
+  if (parts[0] === preid && /^\d+$/.test(parts[1] || "")) {
+    n = Number(parts[1]) + 1;
+  } else if (!prerelease) {
+    patch = String(Number(patch) + 1);
+  }
+  return `${match[1]}.${match[2]}.${patch}-${preid}.${n}`;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

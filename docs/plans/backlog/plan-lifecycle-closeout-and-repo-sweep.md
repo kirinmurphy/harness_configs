@@ -41,6 +41,11 @@ The two halves are one plan because the sweep needs the closeout: a tool that mo
 - Automate the manual checks themselves. The point of the new section is that some things cannot be tested.
 - Prune remote branches by default, or touch any branch that is not merged.
 - Replace `/wrap-up`. That is session closeout; this is post-merge teardown.
+- **Require the `gh` CLI.** It is not installed on every machine that runs this repository — including
+  the one this plan was written on — and a sweep that cannot answer "did this land?" without it is a
+  sweep that fails exactly where it is needed. `git ls-remote origin 'refs/pull/*'` supplies the same
+  answer over plain git. `gh` may be used opportunistically for richer detail when present, but its
+  absence must never change which candidates are eligible.
 
 ## Current State
 
@@ -232,6 +237,7 @@ guessed.
 
 - [ ] Create the `tear-down` skill per `roborepo-support`, invoked only as `/tear-down`.
 - [ ] Implement the survey: worktrees, merged branches, completable plans, stale plan state.
+- [ ] Determine "landed" from `refs/pull/*` as well as merge-base, since squash merges defeat merge-base alone. Do not shell out to `gh`; it is absent on machines this must work on.
 - [ ] Implement the safety checks, skipping and reporting rather than forcing.
 - [ ] Delegate plan closeout to the `complete` mode.
 - [ ] Confirm remote deletion separately from the local sweep.
@@ -253,6 +259,8 @@ guessed.
 - [ ] A dirty worktree, an unmerged branch, and a branch ahead of its remote are each skipped with a stated reason.
 - [ ] `/tear-down` is registered for Claude and Codex and does not fire without the slash command.
 - [ ] `roborepo skill audit --check` passes with both skill changes.
+- [ ] A squash-merged branch is offered as a candidate. Merge-base alone reports it as unmerged, so this is the case a naive implementation misses.
+- [ ] The sweep produces the same candidate list with `gh` absent from `PATH` as with it present.
 
 Verification commands:
 

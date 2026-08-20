@@ -15,6 +15,7 @@ Use the smallest layer that proves the change. Before publishing, run the full p
 | Repo health | `bash scripts/doctor.sh --quiet` | generated-file drift, manifest data, links, script health | `roborepo doctor --installed` adds live installed-path checks. |
 | Main smoke suite | `npm test` | fast repository behavior and simulated package mode | Alias for `scripts/test/test-roborepo.sh --quiet`. |
 | Install/uninstall collisions | `bash scripts/test/test-install-collisions.sh` | conflict policy, managed-copy reclaim, uninstall cleanliness against real fixture homes | Not covered by `npm test`. The only layer that proves uninstall leaves no remnants. |
+| Live install smoke | `npm run test:install-smoke` | whether *this machine's* install matches the repo: hook scripts byte-current and registered, package rules rendered, enabled ids real, skill links resolve | Read-only, and deliberately not in `npm test` or CI — there is no live install to inspect there. Run it after `roborepo update`. Complements `doctor --installed`, which does not check installed hook scripts at all. |
 | Package artifact smoke | `npm run test:package-install` | real `npm pack`, isolated global install, package-mode lifecycle, appRoot immutability | Requires a clean worktree only when retaining an artifact with `--output-dir`. |
 | Release preflight | `npm run publish:npm -- --dry-run` | npm auth, registry availability, release checks | Does not write a version or publish. |
 | Targeted Node checks | `node scripts/test/<name>.mjs` | one behavior surface | Preferred while debugging a specific regression. |
@@ -29,6 +30,7 @@ newer:
 ```sh
 node -v
 roborepo doctor --installed
+npm run test:install-smoke
 npm test
 bash scripts/test/test-install-collisions.sh
 npm run pack:dry-run

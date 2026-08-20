@@ -277,3 +277,25 @@ roborepo skill audit --check
 
 - Should the completion gate **block** on unchecked `Not tested` entries, or warn and allow an explicit override? Blocking is the safer default and matches the plan's purpose, but a plan whose remaining check needs hardware or another person would be unclosable without an override.
 - Should `/tear-down` offer to prune worktrees whose branch is *gone* from the remote but never merged locally? That is a real leftover, but "never merged" is also what an abandoned experiment looks like.
+
+### Squash merges break the obvious eligibility test
+
+This repository merges pull requests by squashing, which creates a new commit on `main` rather than
+replaying the branch's commits. `git branch --merged main` therefore reports a landed branch as
+unmerged, and the design in §4 uses exactly that test.
+
+Measured while removing the branch for the plan that prompted this one: 15 commits showed as absent
+from `main`, while every file they touched was already there. A sweep trusting merge-base would have
+refused to clean up the common case in this repository.
+
+`refs/pull/<n>/head` settles it without heuristics and without the `gh` CLI, which is not installed
+here:
+
+```bash
+git ls-remote origin 'refs/pull/8/head'
+# aaa7ac00dbb7f95a0d5502f57cde55bbe0804e18  refs/pull/8/head  — the deleted branch's tip
+```
+
+A branch whose tip matches a merged PR's head has landed, whatever merge-base reports. Open
+question: is matching against `refs/pull/*` sufficient on its own, or should it be one signal
+alongside a content diff for repositories with no pull-request workflow at all?

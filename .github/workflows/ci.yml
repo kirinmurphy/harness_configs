@@ -30,7 +30,16 @@ jobs:
         with:
           node-version: "22"
 
-      # The repo is zero-dependency (pure node + bash + curl); nothing to install.
+      # The repo itself is zero-dependency (pure node + bash + curl). `expect` is a test-only
+      # dependency: the install-collision suite drives the interactive installer through a pty and
+      # hard-fails without it, unlike test-roborepo.sh, whose pty checks skip when it is absent.
+      # macOS runners ship expect; Ubuntu runners do not. Installing it means those interactive
+      # tests actually run on both, rather than the suite going quietly green with its pty coverage
+      # skipped — which is the failure mode adding it to CI was meant to close.
+      - name: install test dependencies (expect)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y expect
+
       - name: doctor (repo health + generated-file drift)
         run: bash scripts/doctor.sh --quiet
 

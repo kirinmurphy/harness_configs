@@ -23,6 +23,10 @@ for arg in "$@"; do
 done
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/roborepo-test.XXXXXX")"
+# Baseline for the generated/ guard below. Captured BEFORE any test runs so the guard reports what
+# THIS run changed: a developer who is mid-edit on generated/ would otherwise see their own
+# uncommitted work reported as a suite defect on every invocation.
+generated_baseline="$(git -C "${repo_root}" status --porcelain -- generated 2>/dev/null || true)"
 # Cleanup must never change the suite's exit status: some tests chmod dirs to 000 (permission
 # checks), so `rm -rf` can hit "Directory not empty". Restore write perms, ignore rm errors, and
 # preserve the real exit code (the pass/fail tally) so CI reflects the tests, not the cleanup.
@@ -39,7 +43,10 @@ cleanup() {
   # the trap, so a mid-suite failure still surfaces it) and fail even if every assertion passed.
   local dirty
   dirty="$(git -C "${repo_root}" status --porcelain -- generated 2>/dev/null || true)"
-  if [[ -n "${dirty}" ]]; then
+  # Compared against the pre-run baseline, not against "clean": pre-existing local edits to
+  # generated/ are the developer's business, and blaming the suite for them would train everyone to
+  # ignore this guard. Only a CHANGE across the run means a test wrote into the checkout.
+  if [[ "${dirty}" != "${generated_baseline}" ]]; then
     echo ""
     echo "FAIL: the suite modified tracked generated/ files; tests must not write into this checkout:"
     echo "${dirty}"

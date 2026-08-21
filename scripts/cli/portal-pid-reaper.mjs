@@ -17,7 +17,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { isMainModule } from "./roots.mjs";
 import { portalStateDir } from "./state-paths.mjs";
 
 const PID_FILE = /^server-(\d+)\.pid$/;
@@ -163,6 +163,12 @@ export function portalPidsCommand(args = []) {
 
 // Direct-invocation entry so scripts/doctor.sh can run `node portal-pid-reaper.mjs --check`
 // without going through the CLI dispatcher — matching maintenance-stores.mjs.
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+//
+// isMainModule() from roots.mjs, never a hand-rolled invoked-path/module-URL comparison: that form
+// comes apart when the script is reached through a symlink, because path.resolve() normalizes a
+// path but does not resolve symlinks. An installed roborepo runs through symlinked paths, so the
+// hand-rolled version would leave this block silently unexecuted — exiting 0 having done nothing,
+// which reads exactly like a clean run. test-install-collisions.sh greps for that pattern.
+if (isMainModule(import.meta.url)) {
   process.exit(portalPidsCommand(process.argv.slice(2)));
 }

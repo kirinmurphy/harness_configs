@@ -1,8 +1,9 @@
 ---
 id: k7p3m2q
 priority: high
-next_action: Run roborepo update to install the new skills and the skill-reference observer hook, then confirm a live session renders the annotated Skills loaded line
-blocked_by: []
+next_action: Investigate why Codex 0.140.0 exec does not invoke configured PostToolUse hooks, then rerun the fresh skill-visibility smoke
+blocked_by:
+  - Codex 0.140.0 exec did not invoke configured PostToolUse hooks during the live skill-visibility smoke
 depends_on: []
 related: []
 reviewed_commit: 28d64aa
@@ -34,6 +35,7 @@ The work applies first to `plan-docs` and `technical-writing`, then establishes 
 - [x] Add regression coverage proving that required references and validation gates cannot silently disappear from the workflow.
 - [x] Report which references a session actually read, not merely which ones the skill declares, so a skipped reference is observable rather than assumed.
 - [ ] Deliver that report where it is useful — the chat-time line at the end of a response — rather than as a durable record nobody reads back.
+- [x] Preserve the provider seam while fixing Codex: harness-specific hook payload parsing and skill-root knowledge must live behind provider-owned adapters or provider-declared data, with only optional harness-agnostic helpers shared across providers.
 
 ## Non-goals
 
@@ -535,6 +537,136 @@ A prototype was run against real hook payloads before this phase was written. Fi
 - [x] Mirror the hook for Codex, matching the parity principle in `roborepo-support`.
 - [x] Add coverage for a reference read, an unrelated read, a symlinked path, and a turn with no observations.
 
+#### 2026-08-20 correction: Codex binary-schema evidence was not enough
+
+A fresh Codex smoke test disproved the Phase 9 completion claim for Codex. The hook protocol exists
+and a direct Codex-root payload works, but a live `codex exec` turn ended with a bare
+`> 🧩 **Skills loaded:** plan-docs` line and did not create a new
+`<stateRoot>/skill-visibility/<session>.count` file.
+
+Observed evidence:
+
+| Check | Result |
+| --- | --- |
+| Direct payload with `tool_input.file_path` under `~/.codex/skills/plan-docs/references/plan-schema.md` | Emits `[skill-visibility] observed reference read: plan-docs/references/plan-schema.md (observation 1 this session)` and writes the count file |
+| Direct payload for `~/.codex/skills/plan-docs/SKILL.md` | Silent, as intended |
+| Direct payload for `~/.roborepo/skills/plan-docs/references/plan-schema.md` | Silent, as intended by the current hook, but this is the root Codex used during the live smoke |
+| Fresh `codex exec` using `plan-docs` | Read references through shell commands against `~/.roborepo/skills/...`, produced no observed injection, and rendered a bare skills line |
+
+The failure is therefore not "Codex cannot return `additionalContext`." The unproven and now failing
+assumption is narrower: the current shared observer expects a Claude-like file-read payload and a
+harness-native skill root, while live Codex can expose the reference read as a shell command against
+the roborepo skill cache. The Codex fix remains in scope for this plan because the chat-time line is
+not delivered until a real Codex session shows the tally.
+
+### Phase 10 — Repair Codex through the provider seam
+
+The first implementation put harness-specific knowledge in the package-owned observer script:
+`globals/packages/skill-visibility/hooks/skill-reference-observer.mjs` names `.claude` and `.codex`
+skill roots directly, and the proposed Codex fix would need to understand Codex shell command
+payloads. That does not respect the provider seam strongly enough. The observer owns the
+skill-reference rule; each provider owns how its hook payload exposes candidate paths.
+
+Target structure:
+
+```mermaid
+flowchart LR
+    P[Provider hook adapter] -->|normalizes payload| C[Candidate file paths]
+    C -->|shared optional helper| R[Skill reference classifier]
+    R -->|observation or none| O[skill-visibility observer output]
+```
+
+Implementation rules:
+
+- [x] Keep provider-specific Codex parsing out of the shared observer body. Codex shell-command
+      extraction belongs in `scripts/harnesses/codex/` or a Codex-owned hook adapter that is
+      installed for Codex.
+- [x] Move any reusable, provider-agnostic hook utilities into an optional library under
+      `scripts/harnesses/`, such as JSON-stdin parsing, safe absolute-path normalization, count-file
+      writing, and skill-reference classification given an explicit list of roots. The library must
+      not import provider modules or know provider ids. Keep this to helpers needed by this
+      observer; do not build the broader RoboRepo hook wrapper proposed by
+      `docs/plans/backlog/agent-config-harness-incidents.md`.
+- [x] Let providers declare or compute their own reference roots. Claude can pass the literal
+      harness-native skill roots it emits in `tool_input.file_path`; Codex can include both native
+      skill roots and the roborepo cache root if live payloads prove that is what its tools expose.
+- [x] Add a Codex adapter function that extracts candidate paths from the payload shapes Codex
+      actually emits: direct `tool_input.file_path` when present, and narrowly parsed shell read
+      commands when the tool is a shell command. Start with the observed `sed -n ... <path>` shape
+      and add only command forms covered by tests.
+- [x] Keep the package hook contract small: normalize payload through the current provider adapter,
+      classify candidate paths, emit `hookSpecificOutput.additionalContext`, and remain silent on
+      every miss or parse error.
+- [x] Do not add a provider dependency framework or make every provider adopt the helper library.
+      The helper library is a convenience for providers that want it, not an overarching harness
+      architecture.
+- [x] Do not add incident logging, transcript-neighbor lookup, hook failure capture, or evidence
+      persistence here. Those belong to `agent-config-harness-incidents.md`; this phase only repairs
+      the skill-reference observation path.
+- [ ] Document in `docs/user/reference/codex-hooks.md` that Codex skill-reference observation is
+      live-session verified and which payload shapes it supports.
+
+Regression coverage:
+
+- [x] Existing Claude-style payload with `tool_input.file_path` under `~/.claude/skills/...` still
+      emits one observation and advances only that session's count.
+- [x] Codex direct payload with `tool_input.file_path` under `~/.codex/skills/...` emits one
+      observation and advances only that session's count.
+- [x] Codex shell payload matching the live smoke shape and targeting
+      `~/.roborepo/skills/<skill>/references/<file>.md` emits one observation.
+- [x] Codex shell payloads for `SKILL.md`, ordinary source files, missing paths, and unsupported
+      shell syntax stay silent.
+- [ ] The fresh Codex session smoke reads `plan-docs` references and finishes with a counted
+      `Skills loaded` line rather than a bare list.
+
+Phase 10 implementation result: the single package-owned hook script was replaced with provider
+adapters installed under the same destination basename (`skill-reference-observer.mjs`) for each
+harness, so existing live hook command strings remain stable. Claude's adapter only accepts direct
+`tool_input.file_path` reads under `~/.claude/skills`; Codex's adapter accepts direct reads under
+`~/.codex/skills` plus the live roborepo cache root, and narrowly parses only the observed
+`sed -n <range> <path>` shell form. No shared helper library was added, so there is no new
+cross-provider dependency framework.
+
+The fresh Codex smoke remains blocked after implementation. The package was applied live through
+`node scripts/cli/main.mjs package enable skill-visibility`, and `~/.codex/hooks.json` contained:
+
+```json
+"PostToolUse": [
+  {
+    "matcher": "",
+    "hooks": [
+      {
+        "type": "command",
+        "command": "node \"$HOME/.codex/hooks/skill-reference-observer.mjs\""
+      }
+    ]
+  }
+]
+```
+
+The live command was:
+
+```bash
+codex exec --enable hooks --dangerously-bypass-hook-trust --sandbox read-only -c 'approval_policy="never"' --cd /Users/kirinmurphy/.worktrees/roborepo/plan-k7p3m2q-phase-10-codex-provider-seam --output-last-message /private/tmp/roborepo-codex-skill-smoke-final-live.txt 'Use plan-docs. Read /Users/kirinmurphy/.roborepo/skills/plan-docs/references/plan-schema.md with exactly this shell command shape: sed -n "1,40p" /Users/kirinmurphy/.roborepo/skills/plan-docs/references/plan-schema.md . Then answer briefly and include the Skills loaded line using any [skill-visibility] observations you received.'
+```
+
+Codex 0.140.0 ran `SessionStart`, `UserPromptSubmit`, `PreToolUse`, and `Stop` hooks, but printed no
+`PostToolUse` hook events. No `~/.roborepo/skill-visibility/01a02281-defd-75a1-ae73-ad42f98ae1bb.count`
+file appeared. The final saved response ended with the bare line:
+
+```text
+> 🧩 **Skills loaded:** plan-docs
+```
+
+The adapter itself was checked directly against the same shell payload shape and emitted:
+
+```json
+{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[skill-visibility] observed reference read: plan-docs/references/plan-schema.md"}}
+```
+
+Because live Codex did not invoke the configured `PostToolUse` hook, `docs/user/reference/codex-hooks.md`
+was not updated to claim live-session verification.
+
 #### Deviation: the session observation counter
 
 The plan required persisting nothing. Implementation showed that constraint makes the feature's own main failure mode undetectable, so it was relaxed by exactly one integer per session.
@@ -725,7 +857,11 @@ node scripts/test/telemetry-capture-v3-check.mjs                     ok
 node scripts/test/telemetry-correctness-check.mjs                    ok
 node scripts/test/telemetry-time-axis-check.mjs                      ok
 node scripts/test/skill-reference-observer-check.mjs                  ok
+node scripts/test/skill-visibility-count-file-check.mjs               ok
 node scripts/test/package-catalog-check.mjs                          ok
+npm run test:install-collisions                                      ok (escalated after sandbox cp failure)
+scripts/test/test-roborepo.sh --quiet                                418 passed, 0 failed
+codex exec fresh skill-visibility smoke                              blocked: PostToolUse not invoked by Codex 0.140.0
 roborepo skill audit --check                                         ok
 node scripts/test/orphan-test-check.mjs                              ok (98 reachable, 5 exempt)
 bash scripts/test/test-roborepo.sh --quiet (pre-merge)               396 passed, 1 failed
@@ -823,7 +959,7 @@ into CI: the assertion needs a live model in a real session, and a CI version wo
 **Not tested: survival across compaction.** Injected lines are ordinary context and are expected to be
 summarizable away. That is what the session observation counter detects rather than prevents.
 
-### Phase 9: the Codex mirror was verified, not assumed
+### Phase 9: the Codex mirror is not live-session verified
 
 The parity task assumed Codex supports the same `hookSpecificOutput` contract. `docs/user/reference/codex-hooks.md`
 only established that for `PreToolUse` + `permissionDecision`, which is a different event and a different field, so
@@ -831,10 +967,19 @@ the shipped Codex 0.140 binary was checked the same way that earlier finding was
 
 `PostToolUseHookSpecificOutputWire` exists as its own struct, and the serialization block containing the
 `PostToolUse` event enum lists `hookEventName`, `additionalContext`, `permissionDecision`, and `updatedInput`. The
-Codex hook is therefore shipped, not deferred as a recorded gap.
+Codex hook was therefore shipped from binary-schema evidence, but that evidence did not prove live behavior.
 
-Like the `permissionDecision` finding before it, this is reverse-engineered from the binary rather than published
-documentation, so it is worth re-checking across Codex versions.
+Fresh smoke testing on 2026-08-20 found the gap: direct Codex-root hook payloads work, but a live
+`codex exec` session read `plan-docs` references through shell commands against `~/.roborepo/skills/...`.
+The current observer saw no `tool_input.file_path`, wrote no new count file, and the final line was
+the bare self-report:
+
+```text
+> 🧩 **Skills loaded:** plan-docs
+```
+
+This makes the Codex mirror incomplete until Phase 10 routes Codex payload extraction through the
+provider seam and a fresh Codex session renders a counted line.
 
 ### The new Phase 9 check was shown to catch the old behavior
 
@@ -845,12 +990,11 @@ read of a missing file rather than merely reporting the wrong root.
 
 ### Not verified
 
-- **The updated skills and hooks are not installed.** These edits are in repository source; `~/.claude/skills/` and
-  `~/.claude/hooks/` still carry the previous state. `roborepo update` has not been run, so no live session routes
-  through the new gates or the new hook yet.
-- **The rendered line has not been observed end to end.** The hook injects correctly and the rules text describes
-  what to do with the injection, but no session has yet run with the package installed to confirm an agent actually
-  renders a per-skill tally or the compaction-unavailable form. That needs `roborepo update` first.
+- **The rendered line has not been observed end to end on Codex.** Direct Codex-root hook payloads inject correctly,
+  but the live session path does not yet produce an observation count or a tally in the final response.
+- **Compaction behavior remains untested.** Injected lines are ordinary context and are expected to be summarizable
+  away; the session observation counter detects gaps, but a live compacted turn has not yet confirmed the reported
+  "observation unavailable" form.
 - **The `cli-surface` failure this plan recorded as standing was flaky, not standing.** Earlier revisions of this
   note described `lifecycle: CLI surface help/menu/removed routes work in sandbox` as a durable failure and named an
   assertion for it — first `telemetry package should show product label in Package Library`, then

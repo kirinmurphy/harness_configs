@@ -1,7 +1,7 @@
 ---
 id: localhoster-metadata-suggestions
 priority: high
-next_action: Manually verify the repository card in a real browser — worktree rows, the copy control's four states, the Pages/API Routes dropdown, and the API contract modal. No Chrome automation has been available, so every UI change this plan has shipped remains screenshot-verified only.
+next_action: Manually verify the repository card in a real browser — worktree rows, the copy control's four states, the Pages/API Routes dropdown, and the API contract modal. No Chrome automation has been available, so every UI change this plan has shipped remains unverified in a browser. This is the plan's only remaining work; main is merged in as of 0b48780.
 blocked_by: []
 depends_on:
   - localhoster-final
@@ -9,7 +9,7 @@ related:
   - localhoster-docker-process-providers
   - localhoster-git-health-history
   - canonical-repository-identity-plan-v2
-reviewed_commit:
+reviewed_commit: 0b48780
 ---
 
 # Localhoster Metadata Suggestions
@@ -232,7 +232,7 @@ contribution is definitionally the same paths sitemap already found.
         `/manifest.json` path is checked; `<link rel=manifest>` HTML scanning was dropped as
         redundant with the conventional-path fallback for this iteration (most dev servers serve
         `/manifest.json` regardless of whether the page also links it). Documented as a known limit
-        in `docs/reference/services/localhoster.md`.
+        in `docs/user/reference/localhoster.md`.
   - [x] Parse `robots.txt` for `Sitemap:` declarations; fetch and parse discovered sitemap URLs and
         the conventional `/sitemap.xml` fallback for `<loc>` paths.
   - [x] Discover an OpenAPI/Swagger document by trying a short list of conventional paths in order
@@ -268,7 +268,7 @@ contribution is definitionally the same paths sitemap already found.
   denser template with its own bare "History" button, no action menu) was left without a matching
   suggestions entry — adding a second bare button there risked clutter and the main card surface
   already covers every app that also appears as a compose member.
-- [x] Documented privacy/behavior in `docs/reference/services/localhoster.md` under a new "Metadata
+- [x] Documented privacy/behavior in `docs/user/reference/localhoster.md` under a new "Metadata
   suggestions" section (what is fetched, source-priority dedup, auth-path filtering and its
   evidence-based override) plus entries under "Current Limits" for known gaps.
 - [x] Simplify the "Add as quick link" flow. Was: click a suggestion → dialog closes →
@@ -357,6 +357,23 @@ both fixed in a follow-up commit:
   running worktree portal instance (a separate instance on port 4417, started and torn down without
   touching the user's already-running portal on port 4317).
 - [ ] **Not exercised:** HTTPS/self-signed origins, an authenticated-page scenario, and the browser
-  UI (dialog rendering, "Suggested routes" menu entry, "Add as quick link" prefill flow) — the Chrome
-  browser automation extension was not connected this session. Explicitly flagged as unverified; see
-  "Current Limits" in the localhoster reference doc.
+  UI (the routes dropdown's rendering, the `<portal-menu-button>` mount/toggle, the saved-route
+  checkmark, and the click-to-capture flow) — the Chrome browser automation extension was not
+  connected in any session this plan ran. Explicitly flagged as unverified; see "Current Limits" in
+  the localhoster reference doc. This is the only remaining work in the plan.
+
+## Merge with main (2026-08-22)
+
+`main` was merged in at `5c76ef9` (merge commit `0b48780`). Four files conflicted; the resolutions
+worth recording are the two that changed code rather than concatenating both sides:
+
+| Conflict | Resolution |
+| --- | --- |
+| `scripts/cli/portal-server.mjs` | This branch converted every `portal-routes-*.mjs` domain to declarative route tables; `main` added `portal-routes-maintenance.mjs` in the older `handleXApi` style. Maintenance was converted to a route table and registered in `API_ROUTE_TABLES`, so one dispatch path survives instead of a table plus a leftover if-chain. `managed-uninstall-check.mjs` follows, driving the route through `dispatchRoutes` with its two assertions unchanged. |
+| `portal/localhoster/styles.css` | `main`'s `.repository-card > .card-git-row` band and its `.repository-disclosure`/`.repository-drilldown` hover rules target markup this branch removed — `tpl-repository-card` has no outer `<details>`, and git rows now live per checkout inside `.repository-root`. Dropped as dead selectors. |
+
+`package.json` and `test-roborepo.sh` were both-sides additions at the same spot; both kept.
+
+The merge also surfaced a real gap: `localhoster-metadata-check.mjs` had a `package.json` `test:*`
+script but no `test-roborepo.sh` entry, so it had never run in CI. `main`'s new `orphan-test-check`
+caught it on contact. Now wired in beside the other localhoster checks — 102 test files reachable.

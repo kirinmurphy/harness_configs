@@ -18,13 +18,13 @@
       "type": "hooks",
       "source": "hooks-claude.json",
       "harness": "claude",
-      "scripts": ["hooks/skill-reference-observer.mjs"]
+      "scripts": ["hooks/claude/skill-reference-observer.mjs"]
     },
     {
       "type": "hooks",
       "source": "hooks-codex.json",
       "harness": "codex",
-      "scripts": ["hooks/skill-reference-observer.mjs"]
+      "scripts": ["hooks/codex/skill-reference-observer.mjs"]
     }
   ]
 }

@@ -13,7 +13,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const hook = path.join(repoRoot, "globals/packages/skill-visibility/hooks/skill-reference-observer.mjs");
+const hook = path.join(repoRoot, "globals/packages/skill-visibility/hooks/claude/skill-reference-observer.mjs");
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-skill-visibility-count-home-"));
 const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-skill-visibility-count-state-"));
@@ -21,6 +21,8 @@ const claudeSkills = path.join(home, ".claude", "skills");
 
 function readReference(sessionId, skill, reference) {
   const filePath = path.join(claudeSkills, skill, "references", reference);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, "# reference\n");
   const result = spawnSync(process.execPath, [hook], {
     input: JSON.stringify({ session_id: sessionId, tool_input: { file_path: filePath } }),
     encoding: "utf8",

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Phase 9 of docs/plans/active/agent-config-skill-reference-compliance.md: pins the behavior of
-// the skill-visibility PostToolUse hook that injects observed reference reads into a turn.
+// Phase 9/10 of docs/plans/active/agent-config-skill-reference-compliance.md: pins the behavior
+// of the skill-visibility PostToolUse hooks that inject observed reference reads into a turn.
 //
 // The hook is a pure stdin -> stdout function, so every case here is deterministic and needs no
 // harness. What it cannot cover is whether injected context survives to the end of a long turn —
@@ -19,14 +19,15 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const hook = path.join(repoRoot, "globals/packages/skill-visibility/hooks/skill-reference-observer.mjs");
+const claudeHook = path.join(repoRoot, "globals/packages/skill-visibility/hooks/claude/skill-reference-observer.mjs");
+const codexHook = path.join(repoRoot, "globals/packages/skill-visibility/hooks/codex/skill-reference-observer.mjs");
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-skill-observer-home-"));
 const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-skill-observer-state-"));
 
 // Runs the hook with an isolated HOME and state root so the check never reads the developer's real
 // skills directory and never writes a counter into their real state.
-function runHook(payload, { sessionId = "test-session" } = {}) {
+function runHook(hook, payload, { sessionId = "test-session" } = {}) {
   const input = { session_id: sessionId, ...payload };
   const result = spawnSync(process.execPath, [hook], {
     input: JSON.stringify(input),
@@ -46,27 +47,52 @@ function observedReference(stdout) {
 
 const claudeSkills = path.join(home, ".claude", "skills");
 const codexSkills = path.join(home, ".codex", "skills");
+const cacheSkills = path.join(stateRoot, "skills");
+
+function writeReference(root, skill, reference) {
+  const filePath = path.join(root, skill, "references", reference);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, "# reference\n");
+  return filePath;
+}
+
+const claudePlanSchema = writeReference(claudeSkills, "plan-docs", "plan-schema.md");
+const claudeLifecycle = writeReference(claudeSkills, "plan-docs", "lifecycle.md");
+const claudeWorkflowCreate = writeReference(claudeSkills, "plan-docs", "workflow-create.md");
+const claudeNested = writeReference(claudeSkills, "plan-docs", path.join("nested", "deep.md"));
+const codexReviewLoop = writeReference(codexSkills, "technical-writing", "review-loop.md");
+const cachePlanSchema = writeReference(cacheSkills, "plan-docs", "plan-schema.md");
 
 // --- a reference read under either harness root is observed --------------------------------
 {
-  const context = observedReference(runHook({
-    tool_input: { file_path: path.join(claudeSkills, "plan-docs", "references", "plan-schema.md") },
+  const context = observedReference(runHook(claudeHook, {
+    tool_input: { file_path: claudePlanSchema },
   }));
   assert.match(context, /^\[skill-visibility\] observed reference read: plan-docs\/references\/plan-schema\.md/,
     "a Claude skill reference read is reported as <skill>/<reference> under the [skill-visibility] tag");
 }
 {
-  const context = observedReference(runHook({
-    tool_input: { file_path: path.join(codexSkills, "technical-writing", "references", "review-loop.md") },
+  const context = observedReference(runHook(codexHook, {
+    tool_input: { file_path: codexReviewLoop },
   }));
   assert.match(context, /observed reference read: technical-writing\/references\/review-loop\.md/,
     "Codex reads are observed too — either harness may have opened the reference");
 }
 
+// --- Codex observes the roborepo cache root when live shell payloads expose that path ----------
+{
+  const context = observedReference(runHook(codexHook, {
+    tool_name: "exec_command",
+    tool_input: { cmd: `sed -n '1,220p' ${cachePlanSchema}` },
+  }));
+  assert.match(context, /observed reference read: plan-docs\/references\/plan-schema\.md/,
+    "Codex sed payloads against the roborepo cache root are observed");
+}
+
 // --- nested references keep their full path --------------------------------------------------
 {
-  const context = observedReference(runHook({
-    tool_input: { file_path: path.join(claudeSkills, "plan-docs", "references", "nested", "deep.md") },
+  const context = observedReference(runHook(claudeHook, {
+    tool_input: { file_path: claudeNested },
   }));
   assert.match(context, /plan-docs\/references\/nested\/deep\.md/,
     "a reference in a subdirectory reports its path relative to the skill, not just its basename");
@@ -79,15 +105,26 @@ for (const [label, payload] of [
   // SKILL.md is the skill loading normally; only references/ answers "was the deep guidance opened".
   ["a skill entry point", { tool_input: { file_path: path.join(claudeSkills, "plan-docs", "SKILL.md") } }],
   ["a skill file outside references/", { tool_input: { file_path: path.join(claudeSkills, "plan-docs", "agents", "openai.yaml") } }],
+  ["a missing reference path", { tool_input: { file_path: path.join(claudeSkills, "plan-docs", "references", "missing.md") } }],
   ["a payload with no file_path", { tool_input: { command: "ls" } }],
   ["a payload with no tool_input", {}],
 ]) {
-  assert.equal(runHook(payload), "", `${label} produces no output`);
+  assert.equal(runHook(claudeHook, payload), "", `${label} produces no output`);
+}
+
+for (const [label, payload] of [
+  ["Codex source file shell read", { tool_name: "exec_command", tool_input: { cmd: `sed -n '1,20p' ${path.join(repoRoot, "scripts/cli/main.mjs")}` } }],
+  ["Codex SKILL.md shell read", { tool_name: "exec_command", tool_input: { cmd: `sed -n '1,20p' ${path.join(cacheSkills, "plan-docs", "SKILL.md")}` } }],
+  ["Codex missing shell path", { tool_name: "exec_command", tool_input: { cmd: `sed -n '1,20p' ${path.join(cacheSkills, "plan-docs", "references", "missing.md")}` } }],
+  ["Codex unsupported cat syntax", { tool_name: "exec_command", tool_input: { cmd: `cat ${cachePlanSchema}` } }],
+  ["Codex unsupported sed pipe", { tool_name: "exec_command", tool_input: { cmd: `sed -n '1,20p' ${cachePlanSchema} | head` } }],
+]) {
+  assert.equal(runHook(codexHook, payload), "", `${label} produces no output`);
 }
 
 // --- malformed stdin never disturbs the tool call ---------------------------------------------
 {
-  const result = spawnSync(process.execPath, [hook], {
+  const result = spawnSync(process.execPath, [claudeHook], {
     input: "not json at all",
     encoding: "utf8",
     env: { ...process.env, HOME: home, ROBOREPO_STATE_ROOT: stateRoot },
@@ -96,14 +133,16 @@ for (const [label, payload] of [
   assert.equal(result.stdout.trim(), "", "unparseable input produces no output");
 }
 
-// --- the managed cache root is NOT a skill root -----------------------------------------------
+// --- the managed cache root is provider-owned --------------------------------------------------
 //
-// This is the constraint the whole design rests on. ~/.roborepo/skills is where the files live;
-// ~/.claude/skills is how they are opened. Only the latter is what the agent read.
+// Claude still matches only the path it receives from its direct file-read payloads. Codex includes
+// the cache root because live shell payloads expose that path.
 {
-  const cachePath = path.join(home, ".roborepo", "skills", "plan-docs", "references", "plan-schema.md");
-  assert.equal(runHook({ tool_input: { file_path: cachePath } }), "",
-    "a read through the roborepo cache root is not an observation — the agent reads through the harness root");
+  assert.equal(runHook(claudeHook, { tool_input: { file_path: cachePlanSchema } }), "",
+    "Claude does not treat the roborepo cache root as one of its direct read roots");
+  const context = observedReference(runHook(codexHook, { tool_input: { file_path: cachePlanSchema } }));
+  assert.match(context, /observed reference read: plan-docs\/references\/plan-schema\.md/,
+    "Codex treats the roborepo cache root as a declared root");
 }
 
 // --- symlinked paths are matched literally, never resolved -------------------------------------
@@ -118,7 +157,7 @@ for (const [label, payload] of [
   const linkPath = path.join(claudeSkills, "linked-skill");
   if (!fs.existsSync(linkPath)) fs.symlinkSync(cacheSkill, linkPath);
 
-  const context = observedReference(runHook({
+  const context = observedReference(runHook(claudeHook, {
     tool_input: { file_path: path.join(linkPath, "references", "guide.md") },
   }));
   assert.match(context, /observed reference read: linked-skill\/references\/guide\.md/,
@@ -130,7 +169,7 @@ for (const [label, payload] of [
 // --- relative and traversal paths normalize without resolving symlinks -------------------------
 {
   const traversal = path.join(claudeSkills, "plan-docs", "workflows", "..", "references", "plan-schema.md");
-  const context = observedReference(runHook({ tool_input: { file_path: traversal } }));
+  const context = observedReference(runHook(claudeHook, { tool_input: { file_path: traversal } }));
   assert.match(context, /observed reference read: plan-docs\/references\/plan-schema\.md/,
     "`..` segments normalize away, since path.resolve normalizes without touching symlinks");
 }
@@ -142,18 +181,18 @@ for (const [label, payload] of [
 // evidence, which is what lets the rendered line say "unavailable" instead of guessing a tally.
 {
   const session = "counter-session";
-  const first = observedReference(runHook({
-    tool_input: { file_path: path.join(claudeSkills, "plan-docs", "references", "lifecycle.md") },
+  const first = observedReference(runHook(claudeHook, {
+    tool_input: { file_path: claudeLifecycle },
   }, { sessionId: session }));
   assert.match(first, /\(observation 1 this session\)$/, "the first observation of a session is numbered 1");
 
-  const second = observedReference(runHook({
-    tool_input: { file_path: path.join(claudeSkills, "plan-docs", "references", "workflow-create.md") },
+  const second = observedReference(runHook(claudeHook, {
+    tool_input: { file_path: claudeWorkflowCreate },
   }, { sessionId: session }));
   assert.match(second, /\(observation 2 this session\)$/, "the counter increments within a session");
 
-  const other = observedReference(runHook({
-    tool_input: { file_path: path.join(claudeSkills, "plan-docs", "references", "lifecycle.md") },
+  const other = observedReference(runHook(claudeHook, {
+    tool_input: { file_path: claudeLifecycle },
   }, { sessionId: "a-different-session" }));
   assert.match(other, /\(observation 1 this session\)$/, "a separate session starts its own count");
 }
@@ -179,10 +218,10 @@ for (const [label, payload] of [
 {
   const blocked = path.join(stateRoot, "blocked-file");
   fs.writeFileSync(blocked, "not a directory");
-  const result = spawnSync(process.execPath, [hook], {
+  const result = spawnSync(process.execPath, [claudeHook], {
     input: JSON.stringify({
       session_id: "blocked-session",
-      tool_input: { file_path: path.join(claudeSkills, "plan-docs", "references", "plan-schema.md") },
+      tool_input: { file_path: claudePlanSchema },
     }),
     encoding: "utf8",
     // Pointing the state root at a regular file makes mkdirSync fail the way an unwritable root would.

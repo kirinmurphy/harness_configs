@@ -43,6 +43,7 @@ A workspace relocated outside the state directory is never deleted by RoboRepo, 
 | `roborepo maintenance repair local-config [--dry-run or --apply]` | Recovers safe local Claude/Codex settings from recent backups when `update` or `doctor --installed` reports local config repair candidates. |
 | `roborepo maintenance stores [list]` | Lists the local stores roborepo keeps on disk — telemetry spools, localhoster history, capture logs — with each one's size against its bound. |
 | `roborepo maintenance stores reset <id> [--all]` | Reclaims space in one store. Applies that store's own retention policy, or with `--all` clears it outright. Store ids come from `stores list`. |
+| `roborepo maintenance portal-pids [--reap]` | Lists `~/.roborepo/portal/server-<port>.pid` files and whether each one's process is still alive. A portal killed by a reboot or `SIGKILL` leaves its pid file behind. Reports by default; `--reap` deletes only the entries whose process is definitively gone, never a running portal or one owned by another user. |
 | `roborepo doctor`          | Runs harness health checks for config files, links, helper commands, dependencies, and generated outputs.                                                        |
 | `roborepo doctor --installed [--verbose]` | Runs post-install verification that the installed harness paths resolve correctly; default output is concise.                                      |
 | `roborepo rules [--check]` | Renders generated Claude/Codex global instruction files, or verifies them with `--check`.                                                                        |
@@ -69,7 +70,8 @@ Package development is a maintainer workflow; package users usually only need `p
 | | |
 | --- | --- |
 | `roborepo web` | Starts the local portal. `/config` manages packages/permissions, `/plans` browses plan docs, `/localhoster` lists local web apps, and `/telemetry` shows token usage when telemetry has data. |
-| `roborepo web` | Starts the same portal detached and opens it in the browser. |
+| `roborepo web --detach [--no-open] [--port <n>]` | Starts the same portal detached and opens it in the browser. A cold start warms its views before binding and can take ~30s. |
+| `roborepo web stop [--port <n>]` | Stops the detached portal. PID files are tracked per port, so pass the same `--port` used to start it. |
 | `roborepo localhoster [--json] [--open]` | Lists active localhost HTTP apps, prints the portal snapshot as JSON, or opens `/localhoster`. |
 
 The `/plans` page scans configured roots for `docs/plans/**/*.md`. See
@@ -78,6 +80,10 @@ The `/plans` page scans configured roots for `docs/plans/**/*.md`. See
 
 The `/localhoster` page discovers local HTTP apps on macOS, keeps machine-local saved links under
 the RoboRepo state root, and reports per-provider capability limits. See [Localhoster](localhoster.md).
+
+> `roborepo dev …` exists only in a Git checkout of roborepo itself; the scripts it drives are not
+> published to npm, so an installed copy reports that it requires a development checkout. Nothing
+> in this reference depends on it.
 
 ## Indexing
 

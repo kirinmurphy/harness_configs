@@ -77,6 +77,7 @@
       "Bash(roborepo experimental:*)",
       "Bash(roborepo onboard-intro:*)",
       "Bash(roborepo init:*)",
+      "Bash(roborepo dev:*)",
       "Bash(roborepo library:*)",
       "Bash(roborepo uninstall:*)"
     ]

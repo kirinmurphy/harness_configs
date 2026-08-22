@@ -1658,16 +1658,22 @@ function stopServer(port) {
 }
 
 async function startDetachedPortal(port, { allowPortFallback = false, portExplicit = false } = {}) {
-  // Only kill whatever was previously tracked on THIS port (skip when port is 0/auto-assign — there
-  // is no specific port's prior server to reconcile with yet). A stale/dead process recorded here
-  // never touches any other port's own PID record.
-  if (port !== 0) await killExistingServer(port);
+  // Resolve BEFORE killing, matching the foreground path below. Killing first made the reuse branch
+  // unreachable: a healthy portal on this port was SIGTERMed and respawned on every `web --detach`,
+  // so running the command twice needlessly destroyed a working server (and, with the ready-wait,
+  // could leave you with none). resolvePortalPort already handles the case a kill was meant to
+  // cover — it SIGTERMs a STALE portal (one running code that changed since it started) and waits
+  // for the port to free, so only a current, healthy portal survives to the reuse branch.
   const resolved = await resolvePortalPort(port, { allowPortFallback, portExplicit, warn: true });
   if (resolved.reuse) {
     writePid(resolved.port, resolved.pid);
     return resolved.port;
   }
   const selectedPort = resolved.port;
+  // Reap whatever this port's PID file still tracks (a dead process, or one that is alive but not
+  // answering as a healthy portal) before binding. Skipped for 0/auto-assign: there is no specific
+  // port's prior server to reconcile with. A stale record here never touches another port's.
+  if (selectedPort !== 0) await killExistingServer(selectedPort);
   const { child, readyFile } = spawnDetachedServer(selectedPort);
   const ready = await waitForPortalReady(selectedPort, child, readyFile);
   if (!ready.ok) {
@@ -1797,7 +1803,13 @@ function spawnDetachedServer(port) {
 }
 
 function waitForPortalReady(port, child, readyFile) {
-  const deadline = Date.now() + 3000;
+  // A COLD start is far slower than it looks: the server warms telemetry/localhoster views before
+  // it binds, which measured ~29s on a normal dev checkout — an order of magnitude past the 3s this
+  // used to allow. That made `web --detach` fail on every cold start while leaving the child alive
+  // and binding moments later, so the CLI reported failure for a portal that was about to work.
+  // The child exiting is still detected immediately below, so a genuinely broken start fails fast
+  // rather than sitting out this whole window.
+  const deadline = Date.now() + 60000;
   return new Promise((resolve) => {
     let settled = false;
     let exitCode = null;

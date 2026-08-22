@@ -71,6 +71,30 @@ try {
   console.log("cli surface integration checks passed");
 } finally {
   fs.rmSync(workDir, { recursive: true, force: true });
+  // Reported from `finally` so a mid-suite failure still surfaces a write into this checkout — but
+  // printed rather than thrown, because throwing here would replace the real assertion error with
+  // this one and hide why the suite actually failed. The exit code is set instead.
+  reportRepoGeneratedUnchanged();
+}
+
+// The suite runs the real CLI against a temp HOME/state dir, but appRoot still points at this
+// checkout — so anything that renders into generated/ writes to tracked files, stamping a temp path
+// like /T/roborepo-cli-surface-XXXX into generated/claude/settings.json. That lands in the working
+// tree, gets committed by accident, and ships a permission rule scoped to a directory that no
+// longer exists. Fail loudly here instead: a test may read this checkout, never write to it.
+function reportRepoGeneratedUnchanged() {
+  const result = spawnSync("git", ["status", "--porcelain", "--", "generated"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  // No git (or not a checkout) means nothing to protect — skip rather than fail the whole suite.
+  if (result.status !== 0) return;
+  const dirty = result.stdout.trim();
+  if (!dirty) return;
+  console.error(
+    `\nthe suite modified tracked generated/ files; tests must not write into this checkout:\n${dirty}`,
+  );
+  process.exitCode = 1;
 }
 
 function assertCli(args, { env, input = "", status = 0, stdout, stderr } = {}) {

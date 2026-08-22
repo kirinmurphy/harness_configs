@@ -379,6 +379,23 @@ check_live_permission_home() {
   fi
 }
 
+# Stale portal PID files are hygiene, not breakage: a portal killed by a reboot or SIGKILL leaves a
+# file behind, and that is a normal machine state rather than a broken install. Reported through ok()
+# with the leftover names so doctor stays green while still telling the user what to clear.
+check_portal_pids() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped portal pid check"
+    return 0
+  fi
+  local output
+  output="$(node "${repo_root}/scripts/cli/portal-pid-reaper.mjs" --check 2>&1)"
+  if [[ -z "${output}" ]]; then
+    ok "no stale portal pid files"
+  else
+    ok "${output}"
+  fi
+}
+
 check_local_config_repair_candidates() {
   if ! command -v node >/dev/null 2>&1; then
     ok "node unavailable; skipped local config repair check"
@@ -560,6 +577,7 @@ if [[ "${check_installed}" -eq 1 ]]; then
   check_local_config_repair_candidates
   check_store_bounds
   check_live_permission_home
+  check_portal_pids
   # Base install owns only roborepo-support. Optional skills are checked through their package/toggle
   # state, not as unconditional install payload. Provider iteration (docs/plans/active/
   # discoverable-harness-provider-architecture-plan.md Phase 4) instead of a fixed Claude/Codex pair.

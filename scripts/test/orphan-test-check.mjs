@@ -37,6 +37,7 @@ const EXEMPT = new Map([
   ["install-smoke.mjs", "post-install probe against a LIVE installation; run by hand after `roborepo update`, not in CI"],
   ["promote-npm-latest-check.mjs", "touches the real npm registry; release-only, never run in CI"],
   ["publish-npm-check.mjs", "touches the real npm registry; release-only, never run in CI"],
+  ["app-root-fixture.mjs", "shared helper imported by other checks to build an isolated app root; exports no assertions of its own"],
 ]);
 
 // Direct runners: substring matching on filename is deliberate. These files call their children in

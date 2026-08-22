@@ -330,6 +330,10 @@
         ],
         [
           "roborepo",
+          "dev"
+        ],
+        [
+          "roborepo",
           "library"
         ],
         [

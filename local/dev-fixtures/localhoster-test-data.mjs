@@ -20,7 +20,10 @@
 // tree that may have been edited, and deleting one to turn a fixture off is a destructive default.
 // Removal is deliberate and manual; the path is printed so it is easy to do by hand.
 //
-// Usage (from the dev checkout):
+// Usage (from the dev checkout) — prefer the CLI, which is the same script underneath:
+//   roborepo dev fixture start|stop|status   (or `roborepo dev start` for fixture + portal)
+//
+// Direct invocation still works and is what the CLI shells out to:
 //   node local/dev-fixtures/localhoster-test-data.mjs start
 //   node local/dev-fixtures/localhoster-test-data.mjs stop
 //   node local/dev-fixtures/localhoster-test-data.mjs status
@@ -142,14 +145,14 @@ function provision() {
 }
 
 function start() {
-  if (run("docker", ["info"]).status !== 0) return "Docker is not running — start it and retry";
-  if (run("git", ["--version"]).status !== 0) return "git is unavailable";
+  if (run("docker", ["info"]).status !== 0) return { ok: false, message: "Docker is not running — start it and retry" };
+  if (run("git", ["--version"]).status !== 0) return { ok: false, message: "git is unavailable" };
 
   provision();
 
   const up = compose(["up", "-d"]);
   if (up.status !== 0) {
-    return `provisioned ${FIXTURE_ROOT}, but the stack failed to start (${lastLine(up.stderr)})`;
+    return { ok: false, message: `provisioned ${FIXTURE_ROOT}, but the stack failed to start (${lastLine(up.stderr)})` };
   }
   return `fixture running on http://127.0.0.1:${HOST_PORT} (${FIXTURE_ROOT} + -wt)`;
 }
@@ -157,7 +160,10 @@ function start() {
 function stop() {
   if (!fs.existsSync(path.join(FIXTURE_ROOT, "docker-compose.yml"))) return "nothing provisioned";
   const down = compose(["down"]);
-  if (down.status !== 0) return `could not stop the stack (${lastLine(down.stderr)})`;
+  // A wedged container (Docker holding state for namespaces that no longer exist) fails here, and
+  // the only remedy is restarting the daemon. Reported as a failure rather than a message so a
+  // script that tears down and then rebuilds does not proceed against a stack still holding its port.
+  if (down.status !== 0) return { ok: false, message: `could not stop the stack (${lastLine(down.stderr)})` };
   return `stack stopped; checkouts kept at ${FIXTURE_ROOT}`;
 }
 
@@ -177,4 +183,18 @@ if (!ACTIONS[action]) {
   console.error("usage: node local/dev-fixtures/localhoster-test-data.mjs <start|stop|status>");
   process.exit(2);
 }
-console.log(`localhoster test data: ${ACTIONS[action]()}`);
+
+// An action returns either a plain string (success) or { ok: false, message } for a failure that
+// must reach the caller's exit code. Everything used to return a string and fall off the end at
+// exit 0, so `dev stop` reported "could not stop the stack" and still looked successful to any
+// script that checked $? — the failure was visible to a human reading output and to nothing else.
+const result = ACTIONS[action]();
+const ok = typeof result === "string" || result.ok !== false;
+const message = typeof result === "string" ? result : result.message;
+
+if (ok) {
+  console.log(`localhoster test data: ${message}`);
+} else {
+  console.error(`localhoster test data: ${message}`);
+  process.exit(1);
+}

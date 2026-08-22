@@ -4,6 +4,7 @@ import { harnessHome, repoRoot } from "./paths.mjs";
 import { loadPackageCatalog } from "./package-catalog.mjs";
 import { effectiveEnabledIds, knownHarnessIds } from "./rules-render.mjs";
 import { roborepoSkillsDir, roborepoStateDir } from "./state-paths.mjs";
+import { isMainModule } from "./roots.mjs";
 import { slashCommandLiveDir } from "./skill-command-config.mjs";
 import { runtimeAssetDestination } from "./package-harness-config.mjs";
 import { listSourceSkills } from "./skill-files.mjs";
@@ -194,7 +195,7 @@ export function cleanupPackageProjections({ removeAll = false, dryRun = false } 
   return { removed };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule(import.meta.url)) {
   cleanupPackageProjections({
     removeAll: process.argv.includes("--all"),
     dryRun: process.argv.includes("--dry-run"),

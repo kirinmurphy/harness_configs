@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { repoRoot, harnessHome, rootConfigActive, rootConfigBaseline } from "./paths.mjs";
 import { presetsStatePath, telemetryDir } from "./state-paths.mjs";
-import { effectivePermissions } from "./config-mutate.mjs";
+import { effectivePermissions, permissionCategories } from "./config-mutate.mjs";
+import { storeHealth } from "./maintenance-stores.mjs";
 import { renderMarkdown } from "./markdown-render.mjs";
 import {
   renderRulesPreview,
@@ -19,6 +20,28 @@ import { buildPackageLiveState } from "./package-probes.mjs";
 import { inspectSkill, skillInventorySource } from "./skill-inventory.mjs";
 import { readLiveRulesFile } from "./config-live-rules.mjs";
 import { buildRootConfigView } from "./root-config-view.mjs";
+
+// Harnesses whose permission model has no per-item "ask" tier, and which are actually present on
+// this machine. The fact and its wording both come from the provider manifest
+// (extensions.roborepo.perCommandAsk / perCommandAskNote) — platform code must not hardcode which
+// harness has the limitation, so a new provider declares it without editing this file. Returned as
+// one section-level notice rather than a per-item flag: the caveat is a property of the harness,
+// not of any individual permission.
+function askTierNotices() {
+  const notices = [];
+  for (const provider of listHarnessProviders()) {
+    const ext = provider.manifest.extensions?.roborepo ?? {};
+    if (ext.perCommandAsk !== false) continue;
+    const home = harnessHome[provider.manifest.id];
+    if (!home || !fs.existsSync(home)) continue;
+    notices.push({
+      harness: provider.manifest.id,
+      displayName: provider.manifest.displayName,
+      note: ext.perCommandAskNote || `${provider.manifest.displayName} has no per-command ask tier.`,
+    });
+  }
+  return notices;
+}
 import { configRootInspect, printConfigStatus } from "./config-cli-print.mjs";
 import {
   packageSkillIds,
@@ -30,6 +53,8 @@ import {
 import { renderCommandSourceHtml } from "./config-source-render.mjs";
 import { buildContextCost } from "./context-cost.mjs";
 import { hasHarnessProvider, listHarnessProviders, getHarnessProvider } from "../harnesses/registry.mjs";
+import { confidenceMeetsMinimum, discoverHarnessProviders } from "../harnesses/discovery.mjs";
+import { readHarnessState } from "../harnesses/state.mjs";
 import { resolveHarnessPath } from "../harnesses/paths.mjs";
 
 const PRESETS_PATH = path.join(repoRoot, "manifests", "platform", "presets.json");
@@ -64,6 +89,47 @@ export function configSnapshotHarnesses() {
   });
 }
 
+// The *machine* cohort: which providers this machine actually has, per persisted discovery state.
+// Deliberately different from configSnapshotHarnesses() above, which is the *registered* catalog —
+// every provider roborepo supports, installed or not. The two are easy to conflate and mean very
+// different things to a user: rendering the registered catalog as the primary Agents view tells
+// someone with no harnesses installed that they have three, which is the defect this fixes.
+//
+// A provider appears here when discovery reaches the provider's declared minimum confidence, and
+// carries its enabled flag so the UI can distinguish "installed but turned off" from "not here".
+// Providers the user explicitly disabled still appear — they exist on the machine; they are just
+// not managed. An empty array is a legitimate, common state (fresh install, no harnesses yet).
+export function configSnapshotMachineHarnesses() {
+  const state = readHarnessState();
+  const discoveries = new Map(
+    discoverHarnessProviders(listHarnessProviders())
+      .filter((entry) => entry.status === "detected")
+      .map((entry) => [entry.providerId, entry]),
+  );
+
+  return listHarnessProviders()
+    .map((provider) => {
+      const entry = state.providers[provider.id];
+      const discovered = discoveries.get(provider.id);
+      if (!entry && !discovered) return null;
+      if (!discovered && !confidenceMeetsMinimum(entry?.confidence, provider.manifest.detection.minimumConfidence)) return null;
+      const userDisabled = entry?.selectionSource === "user" && entry.enabled === false;
+      const confidence = discovered?.confidence ?? entry.confidence;
+      const enabled = userDisabled
+        ? false
+        : discovered
+          ? entry?.confidence === "absent" ? true : entry?.enabled ?? true
+          : entry.enabled === true;
+      return {
+        id: provider.id,
+        displayName: provider.manifest.displayName,
+        enabled,
+        confidence,
+      };
+    })
+    .filter(Boolean);
+}
+
 export function readConfigSnapshot() {
   const allPackages = loadPackageCatalog({ includeUnavailable: true });
   const availablePackages = allPackages.filter((pkg) => isPackageAvailable(pkg));
@@ -89,6 +155,7 @@ export function readConfigSnapshot() {
     description: pkg.description || null,
     status: packageLiveState.get(pkg.id)?.status || "disabled",
     catalogStatus: pkg.status || "available",
+    defaultEnabled: pkg.defaultEnabled === true,
     desired: packageLiveState.get(pkg.id)?.desired || false,
     cliCommands: [...new Set([...(pkg.cliCommands || []), ...pkg.components.filter((c) => c.type === "command").map((c) => c.name)])],
     enabled: packageLiveState.get(pkg.id)?.desired || false,
@@ -139,7 +206,11 @@ export function readConfigSnapshot() {
   const snapshot = {
     // Ordered list of registered providers, for the Config grid's per-harness columns and any
     // other client rendering that needs one row/column per harness rather than a lookup-by-id.
+    // Two cohorts, deliberately both present: `harnesses` is every registered provider (the
+    // catalog the config UI needs for per-provider file metadata), `machineHarnesses` is what this
+    // machine actually has. Primary user-facing presentation must use the latter.
     harnesses: configSnapshotHarnesses(),
+    machineHarnesses: configSnapshotMachineHarnesses(),
     packages,
     bundles,
     tools,
@@ -178,6 +249,9 @@ export function readConfigSnapshot() {
     telemetry: telemetryState
       ? { enabled: !!telemetryState.enabled }
       : { enabled: false },
+    onboarding: {
+      libraryCompleted: !!presetState.onboardedAt,
+    },
     settings: {
       hooks,
       permissions: {
@@ -222,57 +296,138 @@ export function buildBehaviorView(snap) {
     .map((section) => ({
       category: section.label,
       categoryId: section.id,
+      // Section prose lives in the category manifest, not in each consumer's markup, so adding a
+      // category needs no template edit in the portal or the CLI printer.
+      description: section.description,
+      footnote: section.footnote,
       items: section.items.sort((a, b) => a.order - b.order || a.label.localeCompare(b.label)),
       contextCost: sectionContextCost(section.items),
     }));
 
+  const permItems = permissionItems(perms);
   return [
     ...sections,
     {
       category: "Permissions",
       kind: "permissions",
+      // Group boundary for consumers: the first `customizedCount` items are the user's, the rest
+      // are shipped defaults. Derived here so the portal and the CLI printer never re-derive
+      // (and never disagree about) where the split falls.
+      customizedCount: permItems.filter((it) => it.overridden).length,
+      // Category taxonomy for the defaults list, manifest-ordered safest-to-riskiest. Only the
+      // defaults are grouped: YOURS is usually one to three rows, where headings cost more than
+      // they organize. Shipped as data so consumers render whatever the manifest defines rather
+      // than carrying their own copy of the list.
+      categories: permissionCategories(),
       // Permission entries are config syntax, not prompt text — never given a token number.
       contextCost: { label: "not-prompt-context" },
-      // Flat model: every behavior (named — pinned, shown first — or arbitrary, user-added) is
-      // independently deny/ask/allow. No separate profile bundle or project scope; global only.
+      // Section-level caveats about harnesses present on this machine (e.g. one with no
+      // per-command ask tier). Empty when every installed harness supports the full model.
+      notices: askTierNotices(),
+      // Flat model: every permission entry — whether a named behavior (semantic, e.g. "git push")
+      // or an arbitrary command (a literal token array, e.g. "npm test") — is independently
+      // deny/ask/allow. No profile bundle, no project scope; global only.
+      //
+      // The list is NOT split by that semantic-vs-literal distinction: which kind an entry is, is
+      // an implementation detail the person setting a permission does not care about. It is split
+      // by whether THEY changed it — `yours` (customized, with a delete affordance) above
+      // `defaults` (as shipped, collapsed behind a count). `kind` survives on each row because
+      // consumers dispatch the right control off it (and presets.mjs's onboarding wizard selects
+      // named behaviors by it), but it no longer decides grouping or order.
+      //
       // `perms` (snap.permissions, from config-mutate.mjs effectivePermissions()) already merges
       // manifest defaults with personal overrides — this just reshapes it for display.
-      items: [
-        ...(perms?.behaviors || []).map((b) => ({
-          id: b.id,
-          label: b.label,
-          description: b.description,
-          active: true,
-          kind: "behavior",
-          bucket: b.bucket,
-          overridden: b.overridden,
-          defaultBucket: b.defaultBucket,
-          // "go-online" has no Claude equivalent (Claude doesn't sandbox network); surfaced so the
-          // UI can note it rather than silently implying parity across harnesses.
-          codexOnly: !!b.codexOnly,
-          // Codex has no per-command ask tier — an ask-bucket behavior/command falls through to
-          // Codex's approval_policy fallback instead of a real per-item prompt. Flagged here so
-          // the UI can show the caveat next to any behavior currently set to ask.
-          noCodexAsk: b.bucket === "ask",
-        })),
-        {
-          id: "arbitrary-commands",
-          label: "Other commands",
-          description: "Commands not covered by the behaviors above — added and edited here.",
-          active: true,
-          kind: "arbitrary-list",
-          items: (perms?.arbitrary || []).map((c) => ({
-            id: c.id,
-            label: c.label,
-            bucket: c.bucket,
-            overridden: c.overridden,
-            defaultBucket: c.defaultBucket,
-            noCodexAsk: c.bucket === "ask",
-          })),
-        },
-      ],
+      items: permItems,
     },
+    storesSection(),
   ];
+}
+
+// One merged permission list, ordered by whether the user customized the entry rather than by
+// which internal kind it is. Named behaviors and arbitrary commands interleave freely.
+//
+// Within each group, rows keep the existing loosest-to-strictest bucket order (allow, ask, deny)
+// and then sort by label, so a given entry sits in a stable place across renders.
+//
+// `deletable` is what the delete affordance means for a row, and it is NOT the same question as
+// `overridden`:
+//   - a customized named behavior reverts to its manifest default    -> "revert"
+//   - an arbitrary command with defaultBucket "allow" is a manifest   -> "revert"
+//     default the user re-bucketed, so it reverts too
+//   - an arbitrary command with defaultBucket null was ADDED by the   -> "remove"
+//     user; there is no default to fall back to, so delete drops it
+// Every arbitrary command currently shipped is a manifest default, so the "remove" case has no
+// live example — it is still reachable the moment someone adds a command, and must not regress.
+const BUCKET_ORDER = { allow: 0, ask: 1, deny: 2 };
+
+function permissionRowSort(a, b) {
+  return (BUCKET_ORDER[a.bucket] ?? 99) - (BUCKET_ORDER[b.bucket] ?? 99)
+    || a.label.localeCompare(b.label);
+}
+
+function permissionItems(perms) {
+  const rows = [
+    ...(perms?.behaviors || []).map((b) => ({
+      id: b.id,
+      label: b.label,
+      description: b.description,
+      active: true,
+      kind: "behavior",
+      bucket: b.bucket,
+      overridden: b.overridden,
+      defaultBucket: b.defaultBucket,
+      // A named behavior always has a manifest default to fall back to, so its delete is a revert.
+      deletable: b.overridden ? "revert" : null,
+      category: b.category ?? null,
+      // "go-online" has no Claude equivalent (Claude doesn't sandbox network); surfaced so the
+      // UI can note it rather than silently implying parity across harnesses.
+      codexOnly: !!b.codexOnly,
+    })),
+    ...(perms?.arbitrary || []).map((c) => ({
+      id: c.id,
+      label: c.label,
+      active: true,
+      kind: "arbitrary-item",
+      // The mutate endpoint addresses arbitrary commands by token array, not by id.
+      tokens: c.label.split(" "),
+      bucket: c.bucket,
+      overridden: c.overridden,
+      defaultBucket: c.defaultBucket,
+      deletable: c.overridden ? (c.defaultBucket ? "revert" : "remove") : null,
+      category: c.category ?? null,
+      noCodexAsk: c.bucket === "ask",
+    })),
+  ];
+
+  return [
+    ...rows.filter((r) => r.overridden).sort(permissionRowSort),
+    ...rows.filter((r) => !r.overridden).sort(permissionRowSort),
+  ];
+}
+
+// What roborepo is keeping on disk, and how close each store is to its bound. Read-only here:
+// resetting is `roborepo maintenance stores reset <id>`, a destructive action that belongs behind
+// an explicit command rather than a click in a config dashboard.
+//
+// Sizes are measured on read, so this is a live view rather than a cached one. Stores that do not
+// exist yet report zero instead of being hidden — "nothing captured yet" is information.
+function storesSection() {
+  return {
+    category: "Local Stores",
+    kind: "stores",
+    description: "Observability data roborepo keeps on disk. Each store trims itself on write.",
+    // On-disk bytes, not prompt tokens — the same distinction the Permissions section draws.
+    contextCost: { label: "not-prompt-context" },
+    items: storeHealth().map((store) => ({
+      id: store.id,
+      label: store.id,
+      kind: "store",
+      path: store.path,
+      bytes: store.bytes,
+      maxBytes: store.maxBytes,
+      over: store.over,
+    })),
+  };
 }
 
 // Active rollups only count enabled items; potential totals let the UI show what enabling the
@@ -295,9 +450,35 @@ function sectionContextCost(items) {
   return totals;
 }
 
+// True when a package's prose label is just its command spelled as words ("Wrap Up" / `wrap-up`),
+// meaning the label adds nothing the command already says. Punctuation and case are stripped so
+// "Case study skill" still reads as a restatement of `case-study`; a label carrying extra words the
+// command lacks ("Token Telemetry" vs `telemetry-marker`) does not.
+function labelRestatesCommand(label, command) {
+  const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const labelWords = new Set(normalize(label).split(" ").filter(Boolean));
+  const commandWords = normalize(command).split(" ").filter(Boolean);
+  if (labelWords.size === 0 || commandWords.length === 0) return false;
+  // "skill"/"pack" are packaging nouns, not meaning: "Case study skill" is still just `/case-study`.
+  for (const filler of ["skill", "skills", "pack", "package"]) labelWords.delete(filler);
+  return [...labelWords].every((word) => commandWords.includes(word));
+}
+
 function packagePresentationItem(item, tool, contextCost = null) {
   const command = tool?.command || null;
-  const showCommandLabel = command && item.presentation?.category === "commands";
+  // Label a command-backed package by the command it exposes (`/wrap-up`) rather than its prose
+  // label. Keyed on the package actually having a command, NOT on a category id: this previously
+  // compared the category against a now-deleted id, and when that category was removed the
+  // condition silently became unreachable, so every such package quietly lost its `/command` label.
+  // scripts/test/package-catalog-check.mjs now fails on any category literal the manifest lacks.
+  //
+  // Having a command is necessary but not sufficient. A package whose prose label says something
+  // the command does not is a product that happens to ship a command, not a command: `telemetry`
+  // is "Token Telemetry" and exposes `/telemetry-marker`, and showing the command as its name hides
+  // what the package actually is. Command-first packages all label themselves after their command
+  // ("Wrap Up" for `/wrap-up`), so comparing the two normalized forms separates the cases without a
+  // hand-maintained list -- a new command-first package needs no entry anywhere.
+  const showCommandLabel = Boolean(command) && labelRestatesCommand(item.label, command);
   const resources = item.resources || item.components || [];
   const inspect = command
     ? {

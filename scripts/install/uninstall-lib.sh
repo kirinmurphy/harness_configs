@@ -413,16 +413,86 @@ remove_empty_dir() {
   fi
 }
 
-remove_runtime_state() {
-  local state_dir
+# Resolves the effective workspace root the same way scripts/cli/roots.mjs does: an explicit
+# workspace-root.json override wins, otherwise the nested <stateRoot>/workspace default. Cleanup
+# must not assume the nested placement — a relocated workspace lives at a path the user chose.
+roborepo_workspace_dir() {
+  local state_dir override
   state_dir="$(roborepo_state_dir)"
+  if [[ -n "${ROBOREPO_WORKSPACE_ROOT:-}" ]]; then
+    echo "${ROBOREPO_WORKSPACE_ROOT/#\~/${HOME}}"
+    return 0
+  fi
+  override="${state_dir}/workspace-root.json"
+  if [[ -f "${override}" ]]; then
+    local resolved
+    # Deliberately tolerant: a malformed override must not make uninstall fall back to the nested
+    # default and then delete a directory the user never pointed at.
+    resolved="$(sed -n 's/.*"workspaceRoot"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${override}" 2>/dev/null | head -1)"
+    if [[ -n "${resolved}" ]]; then
+      echo "${resolved/#\~/${HOME}}"
+      return 0
+    fi
+  fi
+  echo "${state_dir}/workspace"
+}
+
+# True when the workspace sits inside the state root (the default placement). Only a nested
+# workspace is ever eligible for deletion; a relocated one is left alone unconditionally.
+workspace_is_nested() {
+  local state_dir workspace
+  state_dir="$(roborepo_state_dir)"
+  workspace="$(roborepo_workspace_dir)"
+  [[ "${workspace}" == "${state_dir}/"* ]]
+}
+
+# Selectively removes roborepo-owned machine state. Deliberately enumerates what it deletes instead
+# of removing the state root wholesale: the default workspace lives at <stateRoot>/workspace, so a
+# recursive delete of the root destroys user-authored content no matter how the UI copy reads.
+#
+# ROBOREPO_UNINSTALL_DELETE_WORKSPACE=1 opts into removing a NESTED workspace as well. A relocated
+# workspace is never removed, even with the flag: roborepo did not create that location and must
+# not take responsibility for it.
+remove_runtime_state() {
+  local state_dir workspace
+  state_dir="$(roborepo_state_dir)"
+  workspace="$(roborepo_workspace_dir)"
 
   remove_path "${state_dir}/command-overrides.json" "remove"
   remove_path "${state_dir}/enabled-packages.json" "remove"
   remove_path "${state_dir}/telemetry" "remove"
   remove_path "${state_dir}/telemetry-backups" "remove"
   remove_path "${state_dir}/backups" "remove"
-  remove_path "${state_dir}" "remove"
+  remove_path "${state_dir}/presets" "remove"
+  remove_path "${state_dir}/rules" "remove"
+  remove_path "${state_dir}/config-state" "remove"
+  remove_path "${state_dir}/harnesses" "remove"
+  remove_path "${state_dir}/repositories" "remove"
+  remove_path "${state_dir}/usage" "remove"
+  # Observation logs written by capture packages (see state-paths.mjs captureDir). Agent-generated
+  # records of what ran, not user content, so uninstall owns them exactly as it owns telemetry.
+  remove_path "${state_dir}/capture" "remove"
+  remove_path "${state_dir}/portal" "remove"
+  remove_path "${state_dir}/skills" "remove"
+  # Package runtime assets (see scripts/cli/package-harness-config.mjs runtimeAssetDestination).
+  # The CLI's projection cleanup prunes individual files it can attribute to a package, but it runs
+  # on package disable and leaves the runtime/ directory itself; uninstall owns the whole tree.
+  remove_path "${state_dir}/runtime" "remove"
+  remove_path "${state_dir}/install-state.json" "remove"
+  remove_path "${state_dir}/initialization.json" "remove"
+  remove_path "${state_dir}/experimental.json" "remove"
+
+  if [[ "${ROBOREPO_UNINSTALL_DELETE_WORKSPACE:-0}" -eq 1 ]] && workspace_is_nested; then
+    remove_path "${workspace}" "remove (workspace, explicitly requested)"
+    # The pointer describes a path that no longer exists, so it goes with the tree it named.
+    remove_path "${state_dir}/workspace-root.json" "remove"
+  elif [[ -e "${workspace}" ]]; then
+    echo "preserve: ${workspace} (workspace)"
+  fi
+
+  # Only succeeds when nothing is left — preserves the state root whenever the workspace (or any
+  # unrecognized user content) still lives inside it.
+  remove_empty_dir "${state_dir}"
 
   local pid_path="${ROBOREPO_PORTAL_PID_PATH:-${ROBOREPO_TELEMETRY_PID_PATH:-${HOME}/.local/state/roborepo/portal-server.pid}}"
   local legacy_pid_path="${ROBOREPO_TELEMETRY_PID_PATH:-${HOME}/.local/state/roborepo/telemetry-server.pid}"
@@ -494,8 +564,8 @@ check_no_active_remnants() {
     "${state_dir}/telemetry" \
     "${state_dir}/telemetry-backups" \
     "${state_dir}/backups" \
-    "${state_dir}" \
     "${HOME}/.roborepo-backups" \
+    "${state_dir}/initialization.json" \
     "${ROBOREPO_PORTAL_PID_PATH:-${ROBOREPO_TELEMETRY_PID_PATH:-${HOME}/.local/state/roborepo/portal-server.pid}}" \
     "${ROBOREPO_TELEMETRY_PID_PATH:-${HOME}/.local/state/roborepo/telemetry-server.pid}"; do
     if [[ -e "${path}" || -L "${path}" ]]; then
@@ -503,6 +573,27 @@ check_no_active_remnants() {
       failed=1
     fi
   done
+
+  # The state root is only a remnant when something OTHER than the preserved workspace is left in
+  # it. Managed uninstall deliberately keeps the workspace, so the root legitimately survives; a
+  # blanket "state dir exists" check would report every correct preserve-by-default run as unclean.
+  if [[ -d "${state_dir}" ]]; then
+    local workspace leftover
+    workspace="$(roborepo_workspace_dir)"
+    while IFS= read -r leftover; do
+      [[ -n "${leftover}" ]] || continue
+      # A nested workspace we deliberately preserved.
+      [[ "${leftover}" == "${workspace}" ]] && continue
+      # The pointer to a preserved relocated workspace. It is kept on purpose so a reinstall can
+      # still find that workspace, so it is not a remnant either — but only while the workspace it
+      # names actually exists; a dangling pointer IS leftover state.
+      if [[ "${leftover}" == "${state_dir}/workspace-root.json" && -e "${workspace}" ]]; then
+        continue
+      fi
+      echo "remnant: ${leftover}" >&2
+      failed=1
+    done < <(find "${state_dir}" -mindepth 1 -maxdepth 1 2>/dev/null)
+  fi
 
   while IFS= read -r pid; do
     [[ -n "${pid}" && "${pid}" != "$$" ]] || continue
@@ -664,7 +755,10 @@ remove_shell_wiring() {
 
   for profile in "${HOME}/.zshrc" "${HOME}/.bashrc" "${HOME}/.bash_profile" "${HOME}/.profile"; do
     [[ -f "${profile}" ]] || continue
-    if grep -Fq "${repo_root}/shell/" "${profile}" || grep -Fqx "${line}" "${profile}"; then
+    if grep -Fq "${repo_root}/shell/" "${profile}" \
+      || { [[ -n "${recorded_repo}" ]] && grep -Fq "${recorded_repo}/shell/" "${profile}"; } \
+      || grep -Fqx "${line}" "${profile}" \
+      || grep -Fqx "# Harness config shell helpers" "${profile}"; then
       if [[ "${dry_run}" -eq 1 ]]; then
         echo "prune: would remove roborepo shell wiring from ${profile}"
         continue
@@ -677,9 +771,31 @@ remove_shell_wiring() {
       # authored these exact strings. Dropping the marker regardless of what follows also cleans
       # up comments orphaned by earlier uninstall runs that pruned the wiring line but not the
       # marker. Blank lines elsewhere in the profile are left untouched.
-      awk -v repo_root="${repo_root}" -v path_line="${line}" '
+      #
+      # Wiring lines are matched against the current checkout, the recorded prior checkout, and
+      # any `source ".../shell/..."` line whose target no longer exists. Keying only on repo_root
+      # left a dangling `source` behind whenever the checkout had moved (or was already deleted)
+      # since the wiring was written — uninstall reported success and "no active remnants" while
+      # every new shell errored on the missing file. The dangling-target test is what makes this
+      # safe to generalize: a user's own `source` line points at a file that exists, so it is
+      # never touched; only a path roborepo can no longer account for is pruned.
+      awk -v repo_root="${repo_root}" -v recorded_repo="${recorded_repo}" -v path_line="${line}" '
+        # `close` is a reserved word in the awk shipped with macOS, so the end index is named
+        # quote_end here rather than the more obvious close.
+        function wiring_target(l,   rest, quote_end) {
+          if (index(l, "source \"") != 1) return ""
+          rest = substr(l, 9)
+          quote_end = index(rest, "\"")
+          if (quote_end == 0) return ""
+          return substr(rest, 1, quote_end - 1)
+        }
         $0 == path_line { next }
         index($0, "source \"" repo_root "/shell/") == 1 { next }
+        recorded_repo != "" && index($0, "source \"" recorded_repo "/shell/") == 1 { next }
+        {
+          target = wiring_target($0)
+          if (target != "" && target ~ /\/shell\// && system("test -e \"" target "\"") != 0) next
+        }
         $0 == "# Harness config shell helpers" { next }
         $0 == "# Harness config global commands" { next }
         { print }

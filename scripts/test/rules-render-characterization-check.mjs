@@ -9,18 +9,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-
-function makeAppRoot() {
-  const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-rules-render-app-"));
-  fs.mkdirSync(path.join(appRoot, ".git"), { recursive: true });
-  fs.cpSync(path.resolve("manifests"), path.join(appRoot, "manifests"), { recursive: true });
-  fs.cpSync(path.resolve("globals"), path.join(appRoot, "globals"), { recursive: true });
-  fs.cpSync(path.resolve("scripts"), path.join(appRoot, "scripts"), { recursive: true });
-  return appRoot;
-}
+import { makeAppRoot } from "./app-root-fixture.mjs";
 
 function makeHome() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-rules-render-home-"));

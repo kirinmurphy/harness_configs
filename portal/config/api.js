@@ -21,3 +21,13 @@ export function toggleItem(kind, id, enabled) {
 export function applyPermission(payload) {
   return portalPostJson("/api/config/permissions", payload);
 }
+
+// Managed cleanup. Preview is a GET (mutates nothing); execute requires an explicit confirm flag
+// server-side in addition to the portal's origin+token mutation guard.
+export function fetchUninstallPreview() {
+  return portalGetJson("/api/maintenance/uninstall/preview");
+}
+
+export function executeUninstall() {
+  return portalPostJson("/api/maintenance/uninstall", { confirm: true });
+}

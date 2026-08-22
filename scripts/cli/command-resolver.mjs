@@ -1,4 +1,4 @@
-import { childEntries, displayTokens } from "./command-catalog.mjs";
+import { childEntries, displayTokens, isAvailableHere } from "./command-catalog.mjs";
 
 export function resolveCommand(catalog, args) {
   const normalized = normalizeHelpArgs(args);
@@ -39,6 +39,10 @@ export function matchPath(catalog, args) {
   while (consumed < args.length) {
     const next = children[args[consumed]];
     if (!next) break;
+    // Resolution walks raw children rather than childEntries, so an unavailable node would still
+    // resolve and open its menu even though every listing hides it. Stopping here makes
+    // `roborepo dev` on an npm install take the ordinary unknown-command path instead.
+    if (!isAvailableHere(next)) break;
     node = next;
     tokens = displayTokens(args[consumed], next, tokens);
     consumed += 1;

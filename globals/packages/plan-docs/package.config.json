@@ -5,8 +5,8 @@
   "description": "Create, manage, prioritize, review, and continue repository planning documents.",
   "lifecycle": "optional",
   "presentation": {
-    "category": "commands",
-    "order": 30
+    "category": "skills-dev-lifecycle",
+    "order": 10
   },
   "urls": [
     {

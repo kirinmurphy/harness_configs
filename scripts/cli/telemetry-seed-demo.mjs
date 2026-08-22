@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createHash } from "node:crypto";
+import { privacyHash } from "./telemetry-schemas/hash.mjs";
 import { telemetrySpoolDir } from "./state-paths.mjs";
 
 // Seeds the telemetry spool with synthetic demo sessions so `roborepo web` shows the
@@ -15,7 +15,9 @@ import { telemetrySpoolDir } from "./state-paths.mjs";
 const SCHEMA_VERSION = 2;
 const DEMO_FILE = "demo.jsonl";
 
-const hash = (value) => createHash("sha256").update(String(value)).digest("hex").slice(0, 24);
+// Demo records must hash identically to real captures, or the dashboard treats them as a separate
+// repository — hence the shared helper rather than a local copy.
+const hash = privacyHash;
 
 // Base timestamp the demo sessions are spread back from, so the timeline has spacing and ordering.
 const BASE = Date.parse("2026-06-15T18:00:00.000Z");

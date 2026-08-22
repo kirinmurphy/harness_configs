@@ -9,6 +9,8 @@ import {
   runCommand,
   assertVersionOutput,
   assertWorkspaceInitialized,
+  assertPublicLifecycle,
+  assertInstalledUninstallRemovesPackage,
 } from "./package-install-smoke/command-assertions.mjs";
 import { hashDirectory } from "./lib/hash-directory.mjs";
 import {
@@ -79,13 +81,19 @@ function main() {
     const doctorOut = runCommand(binPath, ["doctor"], dirs.cwd, env);
     assert.match(doctorOut.stdout, /doctor passed \(\d+ checks\)/, `expected doctor to pass\n${doctorOut.stdout}${doctorOut.stderr}`);
 
+    // The public lifecycle surface this plan added (init / library / uninstall), exercised in
+    // package mode. The sequence above is the lower-level primitive path and proved only that;
+    // a user installing from npm types these instead, so package mode has to cover them too or
+    // "runs in development mode" is the only thing actually verified.
+    assertPublicLifecycle(binPath, dirs, env);
+
     const hashAfter = hashDirectory(appRoot);
     assert.equal(hashAfter, hashBefore, "appRoot must be byte-identical before and after runtime commands");
 
     const scanTargets = [
       { root: dirs.home, allowInstallStateExemption: true },
       { root: dirs.workspaceRoot, allowInstallStateExemption: false },
-      { root: dirs.stateRoot, allowInstallStateExemption: false },
+      { root: dirs.stateRoot, allowInstallStateExemption: true },
     ];
     for (const { root, allowInstallStateExemption } of scanTargets) {
       assertNoSourceCoupling(root, repoRoot);
@@ -95,6 +103,8 @@ function main() {
     if (outputDir) {
       retainArtifact({ repoRoot, outputDir, tarballPath, tarballName });
     }
+
+    assertInstalledUninstallRemovesPackage(binPath, dirs, env, packageName);
 
     console.log(`ok: package install smoke (${outputDir ? "retained" : "ephemeral"})`);
   } finally {

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { privacyHash } from "./telemetry-schemas/hash.mjs";
 
 // Pure semantic classification of a tool command into an operation category (test/lint/build/...)
 // plus, for tests specifically, a runner and scope (targeted vs full). Deliberately has zero
@@ -127,7 +127,7 @@ function classifyNormalized(normalized, { scriptName } = {}) {
 }
 
 function commandSignature(normalized) {
-  return createHash("sha256").update(normalized).digest("hex").slice(0, 24);
+  return privacyHash(normalized);
 }
 
 // Failure-signature hashing for redundant-rerun detection (plan: "failure signature", "unchanged
@@ -136,5 +136,5 @@ function commandSignature(normalized) {
 export function failureSignature(text) {
   if (typeof text !== "string" || !text.trim()) return null;
   const normalized = text.replace(/\s+/g, " ").trim().slice(0, 2000);
-  return createHash("sha256").update(normalized).digest("hex").slice(0, 24);
+  return privacyHash(normalized);
 }

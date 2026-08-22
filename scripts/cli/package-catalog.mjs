@@ -86,6 +86,10 @@ export function readPackageCategories() {
     return {
       id: category.id,
       label: category.label,
+      // Optional section prose, rendered by whichever consumer displays the category. Kept in the
+      // manifest so adding a category never requires a template or printer edit.
+      description: typeof category.description === "string" ? category.description : undefined,
+      footnote: typeof category.footnote === "string" ? category.footnote : undefined,
       order: Number.isFinite(category.order) ? category.order : 0,
     };
   });

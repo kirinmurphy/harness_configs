@@ -1,0 +1,16 @@
+{
+  "path": ["init"],
+  "kind": "command",
+  "title": "Initialize",
+  "description": "Set up this RoboRepo installation for first use",
+  "order": 5,
+  "usage": "roborepo init [--dry-run] [--force]",
+  "interactiveStdio": true,
+  "onComplete": "returnToSubmenu",
+  "noticeOnComplete": false,
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/initialize.mjs",
+    "export": "initCommand"
+  }
+}

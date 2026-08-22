@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { loadCommandCatalog, listCommandNodes, promotedRootEntries } from "../cli/command-catalog.mjs";
 import { validateExecutions } from "../cli/command-executor.mjs";
 import { renderHelp } from "../cli/help-renderer.mjs";
@@ -25,15 +26,37 @@ for (const { tokens, node } of executableNodes) {
 
 const rootHelp = renderHelp(catalog);
 assert.match(rootHelp, /Primary commands:/);
-assert.match(rootHelp, /package manage/);
 assert.doesNotMatch(rootHelp, /skill render-commands/);
 assert.doesNotMatch(rootHelp, /roborepo onboard/);
-assert.equal(rootHelp.match(/package manage/g).length, 1);
-assert.ok(rootHelp.indexOf("web") < rootHelp.indexOf("package manage"));
-assert.ok(rootHelp.indexOf("package manage") < rootHelp.indexOf("update"));
-assert.equal(promotedRootEntries(catalog).length, 1);
+// `library` is the root-level front door for package management; `package manage` stays
+// discoverable under the package namespace but is no longer promoted to root, so root help
+// teaches one name for the workflow rather than two.
+assert.match(rootHelp, /library/);
+assert.doesNotMatch(rootHelp, /package manage/);
+assert.equal(promotedRootEntries(catalog).length, 0);
+// init leads the lifecycle vocabulary a new user reads first.
+assert.match(rootHelp, /init/);
+assert.ok(rootHelp.indexOf("init") < rootHelp.indexOf("web"));
+assert.ok(rootHelp.indexOf("web") < rootHelp.indexOf("library"));
+assert.ok(rootHelp.indexOf("library") < rootHelp.indexOf("update"));
 assert.equal(catalog.nodes.web.execution.prependArgs, undefined);
 assert.deepEqual(catalog.nodes.web.interactiveArgs, ["--detach"]);
+
+// --- `library` and `package manage` are two entry points to one implementation. Sharing the
+// packageLibrary execution preset makes divergence structurally impossible rather than a thing a
+// future edit has to remember to keep in sync. ---
+assert.deepEqual(
+  catalog.nodes.library.execution,
+  catalog.nodes.package.children.manage.execution,
+  "library and package manage must resolve to identical execution",
+);
+assert.equal(catalog.nodes.library.execution.export, "presetsCommand");
+assert.deepEqual(catalog.nodes.library.execution.prependArgs, ["onboard"]);
+
+// --- init is a public root command; setup stays internal so it is never taught as a first-run step. ---
+assert.equal(catalog.nodes.init.kind, "command");
+assert.equal(catalog.nodes.init.execution.module, "scripts/cli/initialize.mjs");
+assert.equal(catalog.nodes.setup.kind, "internal");
 
 const packageHelp = renderHelp(catalog, catalog.nodes.package, ["package"]);
 assert.match(packageHelp, /roborepo package - Manage and develop RoboRepo packages/);
@@ -78,6 +101,62 @@ const namespaceWithDefaultExecution = resolveCommand(catalog, ["config", "rules"
 assert.equal(namespaceWithDefaultExecution.kind, "command");
 assert.deepEqual(namespaceWithDefaultExecution.tokens, ["config", "rules"]);
 assert.deepEqual(resolveCommand(catalog, ["config", "rules"]).kind, "menu");
+
+// Availability gate: `dev` must be reachable here (a development checkout) and absent in package
+// mode. Package mode is asserted in a SUBPROCESS because developmentMode is a module-level const
+// evaluated at import — mutating process.env inside this already-loaded process would not change it,
+// so an in-process assertion would silently test nothing.
+assert.ok(catalog.nodes.dev, "top-level dev namespace composed in a development checkout");
+assert.equal(catalog.nodes.dev.developmentOnly, true, "dev namespace is marked developmentOnly");
+assert.equal(resolveCommand(catalog, ["dev"]).kind, "menu", "dev resolves in a development checkout");
+assert.ok(catalog.nodes.package.children.dev, "package dev is a separate namespace from top-level dev");
+
+{
+  const probe = `
+    import { loadCommandCatalog, childEntries, validateCommandCatalog } from ${JSON.stringify(path.join(repoRoot, "scripts/cli/command-catalog.mjs"))};
+    import { resolveCommand } from ${JSON.stringify(path.join(repoRoot, "scripts/cli/command-resolver.mjs"))};
+    import { developmentMode } from ${JSON.stringify(path.join(repoRoot, "scripts/cli/paths.mjs"))};
+    const catalog = loadCommandCatalog();
+    const listed = childEntries(catalog, { includeInternal: true }).map((entry) => entry.key);
+    console.log(JSON.stringify({
+      developmentMode,
+      listed: listed.includes("dev"),
+      resolved: resolveCommand(catalog, ["dev"]).kind,
+      help: resolveCommand(catalog, ["help", "dev"]).kind,
+      // Validation must still WALK developmentOnly nodes on every machine, or a malformed dev
+      // definition that ships in the tarball would only ever fail on a maintainer's laptop.
+      //
+      // Proven by corrupting the dev node and requiring validation to reject it. Asserting the node
+      // merely EXISTS would pass either way — it reads the raw tree rather than exercising the
+      // traversal — so that version of this check stayed green with includeUnavailable removed.
+      validationWalksDev: (() => {
+        const corrupted = structuredClone(catalog);
+        corrupted.nodes.dev.kind = "not-a-real-kind";
+        try {
+          validateCommandCatalog(corrupted);
+          return false;
+        } catch (error) {
+          return /invalid node kind at dev/.test(error.message);
+        }
+      })(),
+    }));
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", probe], {
+    encoding: "utf8",
+    env: { ...process.env, ROBOREPO_MODE: "package" },
+  });
+  assert.equal(result.status, 0, `package-mode catalog probe failed: ${result.stderr}`);
+  const observed = JSON.parse(result.stdout);
+  assert.equal(observed.developmentMode, false, "probe did not actually enter package mode");
+  assert.equal(observed.listed, false, "dev must not be listed in package mode");
+  assert.equal(observed.resolved, "invalid", "dev must not resolve in package mode");
+  assert.equal(observed.help, "invalid", "help dev must not resolve in package mode");
+  assert.equal(
+    observed.validationWalksDev,
+    true,
+    "validateCommandCatalog must traverse developmentOnly nodes in package mode (includeUnavailable)",
+  );
+}
 
 const activeDocPaths = [
   "README.md",

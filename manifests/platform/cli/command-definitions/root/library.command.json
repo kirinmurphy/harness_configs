@@ -1,0 +1,13 @@
+{
+  "path": ["library"],
+  "kind": "command",
+  "title": "Package Library",
+  "description": "Browse and manage RoboRepo packages",
+  "order": 20,
+  "usage": "roborepo library",
+  "interactiveArgs": ["--menu"],
+  "onComplete": "returnToSubmenu",
+  "interactiveStdio": true,
+  "noticeOnComplete": false,
+  "execution": { "preset": "packageLibrary" }
+}

@@ -27,7 +27,7 @@ fs.writeFileSync(
     label: "Built In",
     description: "Built in package.",
     lifecycle: "optional",
-    presentation: { category: "commands", order: 1 },
+    presentation: { category: "skills-dev-lifecycle", order: 1 },
     resources: [],
   }, null, 2),
 );

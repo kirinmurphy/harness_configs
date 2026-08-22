@@ -18,7 +18,7 @@ const workspace = path.join(tmp, "workspace");
 fs.mkdirSync(path.join(appRoot, "manifests", "inventory"), { recursive: true });
 fs.writeFileSync(
   path.join(appRoot, "manifests", "inventory", "package-categories.json"),
-  JSON.stringify({ schemaVersion: 1, categories: [{ id: "commands", label: "Commands", order: 1 }] }, null, 2),
+  JSON.stringify({ schemaVersion: 1, categories: [{ id: "skills-dev-lifecycle", label: "Skills - Development Life Cycle", order: 1 }] }, null, 2),
 );
 fs.writeFileSync(path.join(appRoot, "package.json"), JSON.stringify({ version: "9.9.9" }, null, 2));
 
@@ -33,7 +33,7 @@ function writePackage(id, resource) {
       label: id,
       description: `${id} package.`,
       lifecycle: "optional",
-      presentation: { category: "commands", order: 1 },
+      presentation: { category: "skills-dev-lifecycle", order: 1 },
       resources: resource ? [resource] : [],
     }, null, 2),
   );
@@ -95,7 +95,7 @@ const capWorkspace = path.join(capTmp, "workspace");
 fs.mkdirSync(path.join(capAppRoot, "manifests", "inventory"), { recursive: true });
 fs.writeFileSync(
   path.join(capAppRoot, "manifests", "inventory", "package-categories.json"),
-  JSON.stringify({ schemaVersion: 1, categories: [{ id: "commands", label: "Commands", order: 1 }] }, null, 2),
+  JSON.stringify({ schemaVersion: 1, categories: [{ id: "skills-dev-lifecycle", label: "Skills - Development Life Cycle", order: 1 }] }, null, 2),
 );
 fs.writeFileSync(path.join(capAppRoot, "package.json"), JSON.stringify({ version: "9.9.9" }, null, 2));
 
@@ -121,7 +121,7 @@ function capWritePackage(id, resource) {
       label: id,
       description: `${id} package.`,
       lifecycle: "optional",
-      presentation: { category: "commands", order: 1 },
+      presentation: { category: "skills-dev-lifecycle", order: 1 },
       resources: [resource],
     }, null, 2),
   );

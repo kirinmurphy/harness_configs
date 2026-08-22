@@ -97,43 +97,82 @@ stdin_is_interactive() {
   [[ -t 0 || "${ROBOREPO_ASSUME_INTERACTIVE:-0}" == "1" ]]
 }
 
+# Subdirectories of ${dest} that roborepo itself installs from a DIFFERENT manifest row, and which
+# therefore have no counterpart under the repo source of THIS row. One manifest target may nest
+# inside another (claude: `hooks/provider` lands inside `hooks`), so a plain `diff -r` sees
+# roborepo's own second install as an extra directory and concludes the user modified the first.
+# Emitted as `diff` exclude patterns, matched by basename.
+_nested_manifest_excludes() {
+  local dest="$1" home_abs
+  declare -f manifest_rows >/dev/null 2>&1 || return 0
+  while IFS=$'\t' read -r _harness _kind _src_rel home_abs _flags; do
+    [[ -n "${home_abs}" ]] || continue
+    # Strictly BELOW dest, and only the immediate child dest/<name> — deeper paths are already
+    # inside a child this loop emits.
+    [[ "${home_abs}" == "${dest}/"* ]] || continue
+    local rel="${home_abs#"${dest}"/}"
+    [[ "${rel}" == */* ]] && continue
+    printf -- '--exclude=%s\n' "${rel}"
+  done < <(manifest_rows)
+}
+
+# THE content comparison. Both public predicates below delegate here; do not add a third copy.
+#
+# True when ${dest} is a REAL (non-symlink) path byte-for-byte identical to repo source ${src}:
+# files compared with cmp, directories with `diff -r`. Any divergence — an extra file, one edited
+# line — returns false, so callers never treat user content as a disposable repo copy.
+#
+# The one thing that does NOT count as divergence is another roborepo manifest target nested inside
+# this one: that content is roborepo's own, installed by a different row and reclaimed by that row's
+# own pass. Counting it would make two nested rows permanently unreclaimable (the outer dir looks
+# user-modified from the moment the inner row installs) AND non-idempotent to reinstall (the same
+# mismatch routes an already-current path to the collision prompt).
+_paths_have_identical_content() {
+  local src="$1"
+  local dest="$2"
+
+  if [[ -f "${src}" && -f "${dest}" ]]; then
+    cmp -s "${src}" "${dest}"
+    return $?
+  fi
+  if [[ -d "${src}" && -d "${dest}" ]]; then
+    # bash 3.2 (the macOS default) treats "${arr[@]}" on an empty array as an unbound variable under
+    # `set -u`, so the no-nested-rows case must not expand the array at all.
+    local -a excludes=()
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && excludes+=("${line}")
+    done < <(_nested_manifest_excludes "${dest}")
+    if [[ ${#excludes[@]} -eq 0 ]]; then
+      diff -r "${src}" "${dest}" >/dev/null 2>&1
+    else
+      diff -r "${excludes[@]}" "${src}" "${dest}" >/dev/null 2>&1
+    fi
+    return $?
+  fi
+  return 1
+}
+
+# Install-side: is ${dest} already exactly what this copy would write, so the copy is a no-op?
+# ${dest} must exist; a symlink is never "equivalent" (the copy replaces it with a real path).
 paths_equivalent_for_copy() {
   local src="$1"
   local dest="$2"
 
   [[ -e "${dest}" || -L "${dest}" ]] || return 1
   [[ -L "${dest}" ]] && return 1
-  if [[ -f "${src}" && -f "${dest}" ]]; then
-    cmp -s "${src}" "${dest}"
-    return $?
-  fi
-  if [[ -d "${src}" && -d "${dest}" ]]; then
-    diff -r "${src}" "${dest}" >/dev/null 2>&1
-    return $?
-  fi
-  return 1
+  _paths_have_identical_content "${src}" "${dest}"
 }
 
-# True when ${dest} is a REAL (non-symlink) file or dir whose content is byte-for-byte identical to
-# repo source ${src}: files compared with cmp, directories with `diff -r`. This is how we tell a
-# roborepo-authored copy (adopt-mode install, or a legacy materialized link) apart from genuine user
-# content. Any divergence — an extra file, one edited line — returns false, so callers never treat
-# user content as a disposable repo copy, and never capture a roborepo copy as a fake "original".
+# Uninstall/backup-side: is ${dest} a roborepo-authored copy (adopt-mode install, or a legacy
+# materialized link) rather than genuine user content? Additionally requires ${src} to exist —
+# with no repo source to compare against there is no basis to call ${dest} roborepo's.
 content_matches_repo_source() {
   local src="$1"
   local dest="$2"
 
   [[ -e "${src}" ]] || return 1
   [[ -e "${dest}" && ! -L "${dest}" ]] || return 1
-  if [[ -f "${src}" && -f "${dest}" ]]; then
-    cmp -s "${src}" "${dest}"
-    return $?
-  fi
-  if [[ -d "${src}" && -d "${dest}" ]]; then
-    diff -r "${src}" "${dest}" >/dev/null 2>&1
-    return $?
-  fi
-  return 1
+  _paths_have_identical_content "${src}" "${dest}"
 }
 
 path_has_meaningful_content() {
@@ -171,14 +210,14 @@ prompt_conflict_choice() {
     if [[ -n "${header_lines}" ]]; then
       # header_lines usually arrives via $(...) capture, which trims trailing newlines regardless
       # of how many the caller printf'd — force exactly one blank line before the menu ourselves.
-      printf '%s\n\n' "${header_lines}" > "${prompt_out}"
+      prompt_write "${prompt_out}" '%s\n\n' "${header_lines}"
     fi
-    printf 'Choose:\n' > "${prompt_out}"
-    printf '  1) overwrite     backup local as *_original_TIMESTAMP; install repo item\n' > "${prompt_out}"
-    printf '  2) keep originals leave local active; stage repo item as *_update_TIMESTAMP\n' > "${prompt_out}"
-    printf '  q) quit\n' > "${prompt_out}"
-    printf 'Selection [1/2/q]: ' > "${prompt_out}"
-    if ! read -r choice < "${prompt_in}"; then
+    prompt_write "${prompt_out}" 'Choose:\n'
+    prompt_write "${prompt_out}" '  1) overwrite     backup local as *_original_TIMESTAMP; install repo item\n'
+    prompt_write "${prompt_out}" '  2) keep originals leave local active; stage repo item as *_update_TIMESTAMP\n'
+    prompt_write "${prompt_out}" '  q) quit\n'
+    prompt_write "${prompt_out}" 'Selection [1/2/q]: '
+    if ! prompt_read "${prompt_in}" choice; then
       echo "abort"
       return 0
     fi
@@ -187,9 +226,29 @@ prompt_conflict_choice() {
       1|overwrite) echo "overwrite"; return 0 ;;
       2|keep|original|originals) echo "keep"; return 0 ;;
       q|Q|quit|exit) echo "abort"; return 0 ;;
-      *) echo "Invalid selection." > "${prompt_out}" ;;
+      *) prompt_write "${prompt_out}" 'Invalid selection.\n' ;;
     esac
   done
+}
+
+prompt_write() {
+  local prompt_out="$1"
+  shift
+  if [[ "${prompt_out}" == "/dev/stderr" ]]; then
+    printf "$@" >&2
+  else
+    printf "$@" > "${prompt_out}"
+  fi
+}
+
+prompt_read() {
+  local prompt_in="$1"
+  local __var="$2"
+  if [[ "${prompt_in}" == "/dev/stdin" ]]; then
+    read -r "${__var}"
+  else
+    read -r "${__var}" < "${prompt_in}"
+  fi
 }
 
 choose_path_conflict_action() {
@@ -200,6 +259,17 @@ choose_path_conflict_action() {
   local prompt_out="/dev/stderr"
 
   if [[ -n "${ROBOREPO_ON_CONFLICT:-}" ]]; then
+    # Entry points validate their own flag, but ROBOREPO_ON_CONFLICT can also be set directly in the
+    # environment. Re-check here because the dispatch below has no catch-all case: an unrecognized
+    # value would match nothing and silently skip the collision, leaving the path unconfigured while
+    # the install still exits 0.
+    case "${ROBOREPO_ON_CONFLICT}" in
+      overwrite|keep|abort) ;;
+      *)
+        echo "error: invalid ROBOREPO_ON_CONFLICT '${ROBOREPO_ON_CONFLICT}' (expected overwrite|keep|abort)" >&2
+        return 1
+        ;;
+    esac
     CONFIG_COLLISION_ACTION="${ROBOREPO_ON_CONFLICT}"
     return 0
   fi
@@ -333,10 +403,19 @@ snapshot_pre_roborepo_original() {
   local c
   for c in "${candidates[@]}"; do rel+=("${c#"${HOME}/"}"); done
   mkdir -p "$(dirname "${archive}")"
-  if tar czf "${archive}" -C "${HOME}" "${rel[@]}" 2>/dev/null; then
+  # tar's stderr is captured rather than discarded. A failure here deletes the archive, and the next
+  # install then finds no archive, so the once-only guard above does not fire and a second snapshot
+  # is taken — the "written once" property silently stops holding. Discarding the error made that
+  # indistinguishable from a machine with nothing to capture. The reason is now reported.
+  local tar_err="${archive}.err"
+  if tar czf "${archive}" -C "${HOME}" "${rel[@]}" 2>"${tar_err}"; then
+    rm -f "${tar_err}"
     say "pre-install backup" "snapshot of ${#candidates[@]} original config path(s) -> ${archive}"
   else
-    rm -f "${archive}"   # never leave a partial/corrupt image behind
+    local reason
+    reason="$(head -n 1 "${tar_err}" 2>/dev/null)"
+    say "pre-install backup" "snapshot skipped: ${reason:-tar failed with no message}"
+    rm -f "${archive}" "${tar_err}"   # never leave a partial/corrupt image behind
   fi
 }
 

@@ -14,19 +14,6 @@
       "skipPhrases": ["PR descriptions", "implementation notes"]
     },
     {
-      "skill": "frontend-design",
-      "match": [
-        "building a polished interactive UI",
-        "substantially redesigning this settings page"
-      ],
-      "nearMiss": [
-        "fix this TypeScript helper",
-        "make a small copy tweak in the button label"
-      ],
-      "triggerPhrases": ["frontend interfaces", "web components", "interactive UI", "substantially redesigning"],
-      "skipPhrases": ["backend-only", "small copy/style tweaks", "ordinary React/TypeScript fixes"]
-    },
-    {
       "skill": "plan-docs",
       "match": [
         "create an implementation plan for package reconciliation",

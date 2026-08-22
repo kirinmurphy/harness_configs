@@ -1,6 +1,7 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { isMainModule } from "./roots.mjs";
 
 function isPlainObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -47,6 +48,40 @@ function mergeObjects(repo, local, path = []) {
   return out;
 }
 
+// Path-scoped Claude rules render as `Tool(//absolute/glob)`, so the repo baseline
+// (generated/claude/settings.json) has to bake in SOME home — and it deliberately bakes in a
+// placeholder (`/Users/you`) so a fake-HOME test run cannot rewrite the tracked file. This merge is
+// a union, which is right for rules a user added themselves but wrong for that placeholder: it
+// would copy a rule naming someone else's home into every real machine, permanently, since no later
+// union can remove it.
+//
+// A rule naming a home directory that is not this machine's home can never match anything here, so
+// dropping it is always safe and never discards a user's own working rule. Scratch scopes (/tmp,
+// /private/var/folders) name no home and are untouched, as is every non-path rule (Bash(...), mcp__*).
+//
+// This is the counterpart to the live render, which replaces `permissions` wholesale and so already
+// self-heals; without this, install/apply would re-inject the placeholder right after.
+const HOME_SCOPED_RULE = /^\w+\(\/\/(.+)\)$/;
+
+function homePrefixOf(absPath) {
+  const normalized = absPath.startsWith("/") ? absPath : `/${absPath}`;
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+  const root = `/${parts[0]}`;
+  if (root !== "/Users" && root !== "/home") return null;
+  return `/${parts[0]}/${parts[1]}`;
+}
+
+function dropForeignHomeRules(rules, home = os.homedir()) {
+  return rules.filter((rule) => {
+    if (typeof rule !== "string") return true;
+    const match = HOME_SCOPED_RULE.exec(rule);
+    if (!match) return true;
+    const prefix = homePrefixOf(match[1]);
+    return prefix === null || prefix === home;
+  });
+}
+
 export function mergeClaudeSettings(repoText, localText) {
   let repo = {};
   let local = {};
@@ -62,6 +97,16 @@ export function mergeClaudeSettings(repoText, localText) {
     for (const key of ["allow", "deny"]) {
       if (Array.isArray(repo.permissions[key]) || Array.isArray(local.permissions[key])) {
         merged.permissions[key] = uniqueByJson([...(repo.permissions[key] || []), ...(local.permissions[key] || [])]);
+      }
+    }
+  }
+  // Applied to the RESULT, not inside the union branch above: a fresh home has no `permissions` of
+  // its own, so it skips that branch entirely and takes the baseline verbatim — which is precisely
+  // the first-install case that must not inherit the placeholder home.
+  if (isPlainObject(merged.permissions)) {
+    for (const key of ["allow", "deny", "ask"]) {
+      if (Array.isArray(merged.permissions[key])) {
+        merged.permissions[key] = dropForeignHomeRules(merged.permissions[key]);
       }
     }
   }
@@ -228,7 +273,7 @@ export function normalizeRootConfigContent(harness, content) {
 // works here with no further changes. Wrapped in an async IIFE (not a bare top-level await) since
 // Node's top-level-await support inside a conditional block left an unsettled-promise warning and
 // a hung process in practice.
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   const [harness, repoPath, localPath, outPath] = process.argv.slice(2);
   if (!harness || !repoPath || !localPath || !outPath) {
     console.error("usage: root-config-merge.mjs <harness> <repoPath> <localPath> <outPath>");

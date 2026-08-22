@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { repoRoot, harnessHome } from "./paths.mjs";
+import { isMainModule } from "./roots.mjs";
 import { installStatePath, presetsStatePath } from "./state-paths.mjs";
 import { readConfigSnapshot, buildBehaviorView } from "./config.mjs";
 import { mutatePackage, setBehaviorBucket } from "./config-mutate.mjs";
@@ -20,13 +20,9 @@ const ANSI = process.stdout.isTTY && !process.env.ROBOREPO_NO_COLOR
   ? { reset: "\x1b[0m", bold: "\x1b[1m", magenta: "\x1b[35m" }
   : { reset: "", bold: "", magenta: "" };
 
-// Onboarding wizard disabled: install auto-applies all default bundles, so nothing is gated on an
-// onboarding step. The forced-gate body is recorded in docs/plans/completed/onboarding-reinstatement.md.
-// Kept as a pass-through (still called from main.mjs) so the gate can be reinstated in one place.
-export async function maybeRunPresetOnboarding(args) {
-  const filtered = args.filter((arg) => arg !== "--no-presets-onboard");
-  return filtered.length !== args.length ? filtered : args;
-}
+// The forced onboarding gate that used to live here (maybeRunPresetOnboarding) is gone: first-run
+// behavior is now `roborepo init`, routed from main.mjs via scripts/cli/first-run-routing.mjs.
+// The old gate's body is recorded in docs/plans/completed/onboarding-reinstatement.md.
 
 export async function presetsCommand(rest) {
   const [sub, ...args] = rest;
@@ -129,32 +125,24 @@ async function applyBehaviorBucket(behaviorId, bucket) {
   return setBehaviorBucket(behaviorId, bucket);
 }
 
-// Is this view item user-toggleable in the wizard? Mirrors applyItemToggle's coverage: the four
-// Token-Optimization packages, all Chat-Time Output rules, every Commands / Code Conventions
-// skill, and the named Permissions behaviors (3-state, not boolean — see buildOnboardSteps).
+// Is this view item user-toggleable in the wizard? Package items carry their own toggle contract
+// from buildBehaviorView; named Permissions behaviors are the one non-package toggle here
+// (3-state, not boolean — see buildOnboardSteps).
 function isToggleableItem(section, item) {
-  if (section.category === "Token Optimization") {
-    return ["jcodemunch", "jdocmunch", "telemetry", "caveman"].includes(item.id);
-  }
+  if (item.toggle === "package") return true;
   if (section.category === "Permissions") {
     return item.kind === "behavior";
   }
-  return section.category === "Chat-Time Output"
-    || section.category === "Commands"
-    || section.category === "Code Conventions";
+  return false;
 }
 
-// Translate the live /config behavior view into wizard steps, in the user-facing order: token
-// optimization first, then commands, code conventions, chat-time output, and finally a read-only
+// Translate the live /config behavior view into wizard steps, in manifest order, then add the
 // Permissions panel. The wizard re-reads state after each toggle, so marks always reflect truth.
-function buildOnboardSteps({ showWebNotice = false } = {}) {
+export function buildOnboardSteps({ showWebNotice = false } = {}) {
   const view = buildBehaviorView(readConfigSnapshot());
-  const byCategory = (name) => view.find((s) => s.category === name);
   const steps = [];
 
-  for (const name of ["Token Optimization", "Commands", "Code Conventions", "Chat-Time Output"]) {
-    const section = byCategory(name);
-    if (!section) continue;
+  for (const section of view.filter((entry) => entry.items?.some((item) => item.toggle === "package"))) {
     const items = section.items
       .filter((item) => isToggleableItem(section, item))
       .map((item) => ({
@@ -169,9 +157,9 @@ function buildOnboardSteps({ showWebNotice = false } = {}) {
       }));
     if (items.length === 0) continue;
     steps.push({
-      title: name,
+      title: section.category,
       description: section.description,
-      itemHeader: name === "Commands" ? "Commands" : "",
+      itemHeader: "",
       footnote: section.footnote,
       items,
     });
@@ -184,16 +172,18 @@ function buildOnboardSteps({ showWebNotice = false } = {}) {
   // Permissions: the 5 named behaviors are directly toggleable here (deny/ask/allow cycle via
   // Space). Arbitrary commands are NOT editable in onboarding — a growable add/remove/move list
   // is a poor fit for a terminal wizard; the description below points to the portal for those.
-  const perms = byCategory("Permissions");
+  const perms = view.find((s) => s.category === "Permissions");
   if (perms) {
     const behaviorItems = perms.items
       .filter((it) => it.kind === "behavior")
       .map((it) => {
-        const codexNote = it.codexOnly ? " (Codex only)" : it.bucket === "ask" ? " (no per-command ask on Codex)" : "";
+        // Harness-level caveats (e.g. a harness with no per-command ask tier) are surfaced once
+        // as a section notice from the provider manifest, not repeated per item.
+        const codexNote = it.codexOnly ? " (Codex only)" : "";
         return {
           label: it.label,
           description: `${it.description || ""}${codexNote}`.trim(),
-          states: ["deny", "ask", "allow"],
+          states: ["allow", "ask", "deny"],
           state: it.bucket,
           wasState: it.bucket, // original state; diffed against `state` on finish to batch the work
           toggleable: true,
@@ -970,7 +960,7 @@ function rejectUnknownFlags(args, allowed) {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   presetsCommand(process.argv.slice(2)).catch((err) => {
     console.error(err?.stack || String(err));
     process.exit(1);

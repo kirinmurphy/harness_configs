@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { telemetryCollectorDir, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
+import { measureLog } from "../../modules/retention/index.mjs";
 // Direct leaf-module import, not getHarnessProvider(...).adapters.transcripts.parse: this hot
 // PreToolUse/PostToolUse path must not pay to load either provider's full adapter module (root
 // config, permissions, MCP, etc.) just to append one JSONL line. The registry dispatch is for
@@ -10,6 +10,7 @@ import { telemetryCollectorDir, telemetryDir, telemetrySpoolDir } from "./state-
 import { mcpServerOf, transcriptStats } from "../harnesses/transcript-parse.mjs";
 import { classifyCommand, failureSignature } from "./telemetry-classify.mjs";
 import { generateCaptureId } from "./telemetry-schemas/capture-schema-v3.mjs";
+import { privacyHash } from "./telemetry-schemas/hash.mjs";
 import { inferPhase } from "./telemetry-phase-infer.mjs";
 import { categorizeFile } from "./telemetry-task-infer.mjs";
 import { normalizeGitRemote, localRepositoryIdForRoot } from "../../modules/repositories/index.mjs";
@@ -113,21 +114,31 @@ export async function telemetryCaptureCommand(args) {
 
 // Spool files are append-only and grow forever otherwise. Cap each harness file so an enabled,
 // long-lived install can't fill the disk: when it exceeds SPOOL_MAX_BYTES, drop the oldest lines and
-// keep the newest tail (records are chronological). Cheap — only reads/rewrites when over the cap,
-// which is rare relative to per-event appends.
+// keep the newest tail (records are chronological).
+//
+// No age dimension: nothing drains the spool (both readers in scripts/cli/telemetry.mjs are
+// read-only, and only `telemetry purge --all` deletes), so it is the durable store rather than a
+// buffer, and an old record is not stale. Bytes are the only meaningful bound.
+//
+// Measurement comes from modules/retention, shared with localhoster history. The commit stays here
+// and stays in-place: jsonl-tail.mjs holds a byte offset between calls and detects this shrink to
+// rebuild. An atomic rename — correct for history, whose reader reads whole files — would break
+// that cursor.
 const SPOOL_MAX_BYTES = 25 * 1024 * 1024; // ~25 MB per harness (tens of thousands of records)
 const SPOOL_KEEP_FRACTION = 0.7; // on trim, keep the newest ~70% so trims are infrequent
+const SPOOL_POLICY = {
+  maxAgeDays: null,
+  maxBytes: SPOOL_MAX_BYTES,
+  floorBytes: 0,
+  keepFraction: SPOOL_KEEP_FRACTION,
+};
+
 function capSpool(spoolFile) {
-  let size;
-  try {
-    size = fs.statSync(spoolFile).size;
-  } catch {
-    return;
-  }
-  if (size <= SPOOL_MAX_BYTES) return;
+  const verdict = measureLog({ filePath: spoolFile, policy: SPOOL_POLICY });
+  if (!verdict.act) return;
   try {
     const lines = fs.readFileSync(spoolFile, "utf8").split("\n").filter((l) => l.trim());
-    const keep = lines.slice(Math.floor(lines.length * (1 - SPOOL_KEEP_FRACTION)));
+    const keep = lines.slice(Math.min(verdict.dropCount, lines.length - 1));
     fs.writeFileSync(spoolFile, keep.join("\n") + "\n");
   } catch {
     // Best-effort: a failed trim just means the file stays large until the next successful capture.
@@ -548,6 +559,9 @@ function git(cwd, args) {
   return result.status === 0 ? result.stdout.trim() : "";
 }
 
+// The algorithm now lives in telemetry-schemas/hash.mjs, shared with every module that has to
+// produce a matching value; the local name is kept so the call sites below read unchanged. That
+// module imports node:crypto and nothing else, so this file's minimal-import constraint holds.
 function hash(value) {
-  return createHash("sha256").update(String(value)).digest("hex").slice(0, 24);
+  return privacyHash(value);
 }

@@ -1,0 +1,16 @@
+{
+  "path": ["uninstall"],
+  "kind": "command",
+  "title": "Uninstall",
+  "description": "Remove RoboRepo-managed configuration and machine state",
+  "order": 90,
+  "usage": "roborepo uninstall [--dry-run] [--yes] [--delete-workspace]",
+  "interactiveStdio": true,
+  "onComplete": "returnToSubmenu",
+  "noticeOnComplete": false,
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/uninstall.mjs",
+    "export": "uninstallCommand"
+  }
+}

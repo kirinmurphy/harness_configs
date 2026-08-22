@@ -5,17 +5,26 @@
 import { loadCommandCatalog } from "./command-catalog.mjs";
 import { executeCommand, validateExecutions } from "./command-executor.mjs";
 import { resolveCommand } from "./command-resolver.mjs";
+import { shouldRouteToInit } from "./first-run-routing.mjs";
 import { renderHelp } from "./help-renderer.mjs";
 import { runInteractiveMenu } from "./interactive-menu.mjs";
-import { maybeRunPresetOnboarding } from "./presets.mjs";
 
-const argv = await maybeRunPresetOnboarding(process.argv.slice(2));
+// --no-presets-onboard used to opt out of a forced onboarding pass that ran before dispatch. That
+// gate is gone (first-run routing below replaces it), but the flag stays accepted-and-ignored so
+// existing scripts and shell aliases carrying it keep working instead of failing on an unknown flag.
+const argv = process.argv.slice(2).filter((arg) => arg !== "--no-presets-onboard");
 const catalog = loadCommandCatalog();
 validateExecutions({ catalog });
 
 async function dispatch(args) {
   const resolved = resolveCommand(catalog, args);
   if (resolved.kind === "root-menu") {
+    // Only a bare interactive invocation on an uninitialized install reroutes; every explicit
+    // command stays reachable. See first-run-routing.mjs for the full policy.
+    if (shouldRouteToInit({ args })) {
+      const { initCommand } = await import("./initialize.mjs");
+      return initCommand([]);
+    }
     return runInteractiveMenu({ catalog, dispatchCommand });
   }
   if (resolved.kind === "menu") {

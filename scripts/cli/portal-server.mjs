@@ -7,6 +7,7 @@ import { computePortalSourceHash } from "./portal-source-hash.mjs";
 import { send } from "./portal-routes-http.mjs";
 import { dispatchRoutes, validateRouteTables } from "./portal-router.mjs";
 import { configRoutes } from "./portal-routes-config.mjs";
+import { maintenanceRoutes } from "./portal-routes-maintenance.mjs";
 import { plansRoutes } from "./portal-routes-plans.mjs";
 import { localhosterRoutes } from "./portal-routes-localhoster.mjs";
 import { telemetryRoutes } from "./portal-routes-telemetry.mjs";
@@ -19,6 +20,7 @@ import { handleMetadataAsset } from "./portal-routes-metadata.mjs";
 // this array instead of hand-maintained, since nothing routes outside it.
 const API_ROUTE_TABLES = [
   configRoutes,
+  maintenanceRoutes,
   plansRoutes,
   localhosterRoutes,
   repositoriesRoutes,

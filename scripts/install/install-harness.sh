@@ -34,6 +34,15 @@ while [[ $# -gt 0 ]]; do
     *) echo "usage: $0 <harness-id> [--dry-run] [--on-conflict overwrite|keep|abort]" >&2; exit 2 ;;
   esac
 done
+
+# Validate here the same way main.sh does. An unrecognized policy used to reach the collision
+# dispatch in install-lib.sh and match none of its cases, so a colliding path was silently skipped
+# and the install still exited 0 — a typo'd --on-conflict reported success while configuring nothing.
+case "${on_conflict}" in
+  "" ) ;;
+  overwrite|keep|abort) ;;
+  *) echo "error: invalid --on-conflict '${on_conflict}' (expected overwrite|keep|abort)" >&2; exit 2 ;;
+esac
 export ROBOREPO_ON_CONFLICT="${on_conflict}"
 
 # shellcheck source=scripts/install/install-lib.sh

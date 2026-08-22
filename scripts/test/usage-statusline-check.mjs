@@ -35,7 +35,11 @@ function runFormatter(input, env = {}) {
       { NO_COLOR: "", ROBOREPO_STATE_DIR: path.join(home, ".roborepo") },
     );
     assert.equal(run.status, 0, "formatter succeeds with NO_COLOR");
-    assert.equal(run.stdout.trim(), "Context: 70% used · 5h: — · Weekly: —", "NO_COLOR emits plain used-direction text");
+    // Matches the format the implementation plan specifies ("Context: 42% · 5h: — · Weekly: —").
+    // This assertion originally expected "70% used"; the renderer has emitted a bare percentage
+    // since the feature's first commit, so the expectation was wrong when written rather than
+    // drifting later. Corrected to the specified format, not to whatever the renderer happens to do.
+    assert.equal(run.stdout.trim(), "Context: 70% · 5h: — · Weekly: —", "NO_COLOR emits the plain one-line format");
     assert.equal(run.stdout.split("\n").filter(Boolean).length, 1, "exactly one output line");
     // Best-effort snapshot persistence happened as a side effect.
     assert.ok(fs.existsSync(path.join(home, ".roborepo", "usage", "latest", "claude.json")), "entrypoint persists a snapshot");

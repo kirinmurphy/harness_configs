@@ -339,6 +339,63 @@ check_harness_registry() {
   fi
 }
 
+# Bounded local stores (telemetry spools, localhoster history, capture logs) must stay under their
+# byte caps. Each store trims itself on write, so an over-cap store means its write path has not run
+# since the data accumulated — visible here rather than only when the disk fills.
+check_store_bounds() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped local store bounds check"
+    return 0
+  fi
+  local output
+  if output="$(node "${repo_root}/scripts/cli/maintenance-stores.mjs" --check 2>&1)"; then
+    ok "local stores within their bounds"
+  else
+    failed=1
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && echo "${line}" >&2
+    done <<< "${output}"
+  fi
+}
+
+# Path-scoped permission rules in a LIVE root config must name the real $HOME. The tracked
+# generated/<provider>/ artifact renders with a fixed placeholder home so fake-HOME test runs cannot
+# rewrite it, but that same artifact is rootConfigBaseline — install/apply merges it into the user's
+# real home, and Claude's merge UNIONS permission arrays. A placeholder that survives that merge is
+# a rule matching a directory that does not exist on this machine, and no render can remove it.
+check_live_permission_home() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped live permission home check"
+    return 0
+  fi
+  local output
+  if output="$(node "${repo_root}/scripts/cli/permission-home-check.mjs" 2>&1)"; then
+    ok "live permission paths use this machine's home"
+  else
+    failed=1
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && echo "${line}" >&2
+    done <<< "${output}"
+  fi
+}
+
+# Stale portal PID files are hygiene, not breakage: a portal killed by a reboot or SIGKILL leaves a
+# file behind, and that is a normal machine state rather than a broken install. Reported through ok()
+# with the leftover names so doctor stays green while still telling the user what to clear.
+check_portal_pids() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped portal pid check"
+    return 0
+  fi
+  local output
+  output="$(node "${repo_root}/scripts/cli/portal-pid-reaper.mjs" --check 2>&1)"
+  if [[ -z "${output}" ]]; then
+    ok "no stale portal pid files"
+  else
+    ok "${output}"
+  fi
+}
+
 check_local_config_repair_candidates() {
   if ! command -v node >/dev/null 2>&1; then
     ok "node unavailable; skipped local config repair check"
@@ -369,6 +426,23 @@ check_manifest_sources() {
     fi
   done < <(manifest_rows)
   [[ "${bad}" -eq 0 ]] && ok "manifests/platform/manifest.tsv sources all exist"
+}
+
+# A test file that no runner invokes reports nothing and fails nothing. This is how a real uninstall
+# defect survived a full review pass (fcdd2b8): the check that would have caught it was in no test
+# list. Development-mode only — scripts/test/ is excluded from the published package.
+check_orphan_tests() {
+  if ! command -v node >/dev/null 2>&1; then
+    ok "node unavailable; skipped orphan-test check"
+    return 0
+  fi
+  local out
+  if out="$(node "${repo_root}/scripts/test/orphan-test-check.mjs" 2>&1)"; then
+    ok "${out#ok: }"
+  else
+    printf '%s\n' "${out}" >&2
+    fail "scripts/test/ contains test files no runner invokes"
+  fi
 }
 
 # Helper-only shared skills must be documented in the README's Automatic Helpers table(s).
@@ -482,6 +556,7 @@ fi
 # ships a subset of globals/packages/, so running it against an installed tree reports a staleness
 # the user cannot act on and has no reason to care about.
 if [[ "${package_mode}" -ne 1 ]]; then
+  check_orphan_tests
   if [[ "${quiet}" -eq 1 ]]; then
     node "${repo_root}/scripts/cli/main.mjs" skill audit --check >/dev/null || failed=1
   else
@@ -500,6 +575,9 @@ if [[ "${check_installed}" -eq 1 ]]; then
     node "${repo_root}/scripts/cli/rules-render.mjs" --check || failed=1
   fi
   check_local_config_repair_candidates
+  check_store_bounds
+  check_live_permission_home
+  check_portal_pids
   # Base install owns only roborepo-support. Optional skills are checked through their package/toggle
   # state, not as unconditional install payload. Provider iteration (docs/plans/active/
   # discoverable-harness-provider-architecture-plan.md Phase 4) instead of a fixed Claude/Codex pair.

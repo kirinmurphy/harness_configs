@@ -26,6 +26,12 @@
       "module": "scripts/cli/packages.mjs",
       "export": "packageCommand"
     },
+    "packageLibrary": {
+      "adapter": "module",
+      "module": "scripts/cli/presets.mjs",
+      "export": "presetsCommand",
+      "prependArgs": ["onboard"]
+    },
     "telemetryCommand": {
       "adapter": "module",
       "module": "scripts/cli/telemetry.mjs",

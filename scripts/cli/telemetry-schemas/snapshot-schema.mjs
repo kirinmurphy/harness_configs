@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { privacyHash } from "./hash.mjs";
 import { validateObjectKeys, validateStringArray } from "./validators.mjs";
 import { hasHarnessProvider } from "../../harnesses/registry.mjs";
 
@@ -22,8 +22,7 @@ export function computeSnapshotId(snapshot) {
     commands: snapshot.commands || {},
     feature_flags: snapshot.feature_flags || {},
   });
-  const hash = createHash("sha256").update(material).digest("hex").slice(0, 24);
-  return `cfg_${hash}`;
+  return `cfg_${privacyHash(material)}`;
 }
 
 export function validateSnapshot(snapshot) {

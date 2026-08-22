@@ -12,6 +12,7 @@ import {
   workspaceRoot,
   workspaceSkillsDir,
 } from "./paths.mjs";
+import { isMainModule } from "./roots.mjs";
 import { hasHarnessProvider, listHarnessProviders } from "../harnesses/registry.mjs";
 import { resolveHarnessPath } from "../harnesses/paths.mjs";
 
@@ -110,11 +111,15 @@ export function loadWorkspaceMcpServers({ builtInNames = new Set(), overrides = 
   return servers;
 }
 
+// `dryRun` only reaches the scaffold step: validation itself reads. It defaults to false so the
+// setup path (workspace.mjs) keeps creating the workspace as before — the flag exists so a caller
+// previewing changes does not materialize a workspace as a side effect of validating one.
 export function validateWorkspace({
   builtInPackageIds = new Set(readBuiltInPackages().map((pkg) => pkg.id)),
   builtInMcpNames = new Set(readBuiltInMcpServers().map((server) => server.name)),
+  dryRun = false,
 } = {}) {
-  initializeWorkspace();
+  initializeWorkspace({ dryRun });
   const overrides = readWorkspaceOverrides();
   validateWorkspaceSkills();
   validateWorkspaceCommands();
@@ -124,7 +129,7 @@ export function validateWorkspace({
 }
 
 export function applyWorkspaceAssets({ dryRun = false } = {}) {
-  validateWorkspace();
+  validateWorkspace({ dryRun });
   const applied = {
     skills: applyWorkspaceSkills({ dryRun }),
     commands: applyWorkspaceCommands({ dryRun }),
@@ -491,7 +496,7 @@ function isSlug(value) {
   return /^[a-z0-9][a-z0-9-]*$/.test(String(value || ""));
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (isMainModule(import.meta.url)) {
   const dryRun = process.argv.includes("--dry-run");
   try {
     applyWorkspaceAssets({ dryRun });

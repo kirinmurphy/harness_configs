@@ -5,16 +5,18 @@
 
 export const ANSI = {
   normalPercent: "[0m", // explicit bright white — normal percentages are never left muted (plan decision 10)
+  caution: "[38;5;220m", // yellow
   warning: "[38;5;208m", // orange
   critical: "[91m", // bright red
   reset: "[0m",
 };
 
 // Tones that receive an ANSI color. label/unavailable stay terminal-default (no escape).
-const TONED = new Set(["normalPercent", "warning", "critical"]);
+const TONED = new Set(["normalPercent", "caution", "warning", "critical"]);
 
 const SEVERITY_TONE = {
   normal: "normalPercent",
+  caution: "caution",
   warning: "warning",
   critical: "critical",
 };
@@ -27,9 +29,9 @@ function usedFragment(usedPercent, usedSeverity) {
   return { text: `${usedPercent}%`, tone: severityTone(usedSeverity) };
 }
 
-// Weekly fragments. With elapsed known we emit the pacing form (debt/surplus/balanced) plus the
-// used/elapsed detail; elapsed is always normalPercent white regardless of used severity. Without
-// elapsed we fall back to the compact used-only form. Neither available -> em dash.
+// Weekly fragments. With elapsed known we emit used percent plus compact pacing
+// (debt/surplus/balanced). Without elapsed we fall back to the compact used-only form.
+// Neither available -> em dash.
 function weeklyFragments(weekly) {
   if (!weekly.available) return [{ text: "Weekly: —", tone: "unavailable" }];
   if (weekly.elapsedPercent === undefined) {

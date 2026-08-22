@@ -4,9 +4,9 @@
 
 ## Summary
 
-- Shared skills: 15
-- Package skill resources: 15
-- Static findings: 2
+- Shared skills: 14
+- Package skill resources: 14
+- Static findings: 4
 - Unknown manifest entries: none
 
 ## Compatibility Result
@@ -28,16 +28,15 @@ Keep shared `SKILL.md` frontmatter portable; use package-backed checks before ad
 | `react` | auto | low | false | none | Keep auto if trigger remains narrow. |
 | `supabase-integration-testing` | auto | medium | false | none | Keep trigger narrow; add near-miss tests. |
 | `test-harness` | auto | low | false | none | Keep auto if trigger remains narrow. |
-| `case-study` | auto | medium | true | side-effect keyword | Keep trigger narrow; add near-miss tests. |
-| `frontend-design` | auto | medium | true | none | Keep trigger narrow; add near-miss tests. |
+| `telemetry-marker` | manual | low | true | none | Keep manual-only or command-gated. |
 | `plan-docs` | manual | medium | true | none | Keep manual-only or command-gated. |
-| `tighten` | auto | medium | true | none | Keep trigger narrow; add near-miss tests. |
-| `wrap-up` | manual | medium | true | none | Keep manual-only or command-gated. |
-| `integration-check` | manual | high | true | none | Keep manual-only or command-gated. |
 | `plan-promote` | manual | medium | true | side-effect keyword | Keep manual-only or command-gated. |
 | `plan-start` | manual | high | true | none | Keep manual-only or command-gated. |
+| `wrap-up` | manual | medium | true | names a paired skill in prose but declares no Paired Skills table | Keep manual-only or command-gated. |
+| `tighten` | auto | medium | true | names a paired skill in prose but declares no Paired Skills table | Keep trigger narrow; add near-miss tests. |
+| `integration-check` | manual | high | true | none | Keep manual-only or command-gated. |
+| `case-study` | auto | medium | true | side-effect keyword | Keep trigger narrow; add near-miss tests. |
 | `technical-writing` | manual | low | true | none | Keep manual-only or command-gated. |
-| `telemetry-marker` | manual | low | true | none | Keep manual-only or command-gated. |
 
 ## Static Checks
 
@@ -48,6 +47,10 @@ The audit flags:
 - dynamic shell code-block hints
 - side-effect keywords that deserve manual review
 - missing trigger descriptions
+- completion references a mode requires but the artifact-producing mode cannot reach
+- mode/reference matrices that no longer parse
+- paired skills mentioned in prose but never declared, or declared without instructing the load
+- paired-skill triggers that are unresolvable ("when relevant") or gated on a user request
 
 ## Next Actions
 

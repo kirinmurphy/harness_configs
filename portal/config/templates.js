@@ -3,8 +3,9 @@
 // writes app state directly, and nothing here imports the modal — app.js wires callbacks in.
 
 import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
+import { presentedHarnesses } from "/portal/shared/harness-cohort.js";
+import { configOnboardingNotice } from "./onboarding-state.js";
 import {
-  SECTION_TEMPLATE_ID,
   resolveDriftChip,
   harnessChipSpec,
   rulesChipSpec,
@@ -95,10 +96,9 @@ export function modalDefaults(rules, harnesses, onDefaultClick) {
   return defaults;
 }
 
-function bucketControl({ current, compact, onSelect }) {
+function bucketControl({ current, onSelect }) {
   const node = document.createElement("bucket-control");
   node.current = current;
-  node.compact = !!compact;
   node.onSelect = onSelect;
   return node;
 }
@@ -114,24 +114,49 @@ function toggleSlot(node, name, show, text) {
   return slot;
 }
 
-// One named behavior: label, a deny/ask/allow segmented control, and — only when the live value
-// differs from the manifest default — a "custom" badge with a one-click revert. Confirms before
-// moving OUT of deny (the "loosening" action), same reasoning the old profile selector used for
-// switching to a looser profile.
+// One row shape for every permission entry, named behavior or arbitrary command alike: label, a
+// deny/ask/allow segmented control, and — only on a row the user customized — a delete affordance.
+// The two kinds differ only in how the mutate endpoint addresses them (behaviorId vs a token
+// array), so that is the only branch; everything the user sees is identical.
+//
+// Confirms before moving OUT of deny, since that is the loosening direction.
 export function behaviorRow(item, { onApplyBucket }) {
   const row = tpl("tpl-permission-row");
   const wrap = tpl("tpl-behavior-row");
   const err = wrap.querySelector('[data-slot="err"]');
+  const target = item.kind === "behavior"
+    ? { behaviorId: item.id }
+    : { tokens: item.tokens || item.label.split(" ") };
 
   fill(wrap, { label: item.label });
   toggleSlot(wrap, "codex-only", item.codexOnly);
   toggleSlot(wrap, "description", item.description, item.description);
-  toggleSlot(wrap, "no-codex-ask", item.noCodexAsk && !item.codexOnly);
-  toggleSlot(wrap, "default-bucket", item.overridden, "default: " + item.defaultBucket);
-  toggleSlot(wrap, "override-badge", item.overridden);
-  const reset = toggleSlot(wrap, "reset", item.overridden);
-  if (item.overridden) {
-    reset.addEventListener("click", () => onApplyBucket({ behaviorId: item.id, bucket: "default" }, err));
+  // A default row states no default — it IS the default; saying so twice is noise.
+  toggleSlot(wrap, "default-bucket", item.overridden && item.defaultBucket,
+    "default: " + item.defaultBucket);
+
+  // Delete shows only on a row the user actually customized. "revert" restores the shipped
+  // default; "remove" drops a user-added command that has no default to fall back to. Both are
+  // the same request — bucket "default" — the labels differ because the outcomes differ.
+  //
+  // A row without a delete swaps the button for an inert placeholder of the same width instead of
+  // hiding it, so the bucket controls stay in one column across both groups.
+  const del = wrap.querySelector('[data-slot="reset"]');
+  if (item.deletable) {
+    del.hidden = false;
+    del.textContent = item.deletable === "remove" ? "remove" : "revert";
+    del.addEventListener("click", async () => {
+      if (item.deletable === "remove") {
+        const ok = window.confirm("Remove \"" + item.label + "\" from your permissions?");
+        if (!ok) return;
+      }
+      await onApplyBucket({ ...target, bucket: "default" }, err);
+    });
+  } else {
+    const placeholder = document.createElement("span");
+    placeholder.className = "reset-placeholder";
+    placeholder.setAttribute("aria-hidden", "true");
+    del.replaceWith(placeholder);
   }
 
   wrap.querySelector('[data-slot="bucket-control"]').replaceWith(bucketControl({
@@ -143,7 +168,7 @@ export function behaviorRow(item, { onApplyBucket }) {
         );
         if (!ok) return;
       }
-      await onApplyBucket({ behaviorId: item.id, bucket: b }, err);
+      await onApplyBucket({ ...target, bucket: b }, err);
     },
   }));
 
@@ -151,70 +176,112 @@ export function behaviorRow(item, { onApplyBucket }) {
   return row;
 }
 
-// Arbitrary (non-named) commands: an editable list plus an "add command" input. Each row is the
-// same bucket control as behaviorRow; "remove" reverts to default, which for a manifest-default
-// command means falling back to its allow-by-default state, and for a purely personal addition
-// means it stops being tracked at all.
-function arbitraryItemRow(c, { onApplyBucket }) {
-  const line = tpl("tpl-arbitrary-item");
-  const err = line.querySelector('[data-slot="err"]');
-  fill(line, { label: c.label });
-  toggleSlot(line, "no-codex-ask", c.noCodexAsk);
+// Whether the defaults list is expanded, kept outside the panel because a permission change
+// rebuilds the whole section from the new snapshot. Without this, changing a bucket on a default
+// row collapses the list out from under the click that caused it — the exact moment the user is
+// most likely to have it open. Module-level rather than per-panel since only one renders.
+let defaultsExpanded = false;
 
-  line.querySelector('[data-slot="bucket-control"]').replaceWith(bucketControl({
-    current: c.bucket,
-    compact: true,
-    onSelect: async (b) => {
-      if (c.bucket === "deny" && b !== "deny") {
-        const ok = window.confirm("Moving \"" + c.label + "\" out of deny loosens safety. Apply anyway?");
-        if (!ok) return;
-      }
-      await onApplyBucket({ tokens: c.label.split(" "), bucket: b }, err);
-    },
-  }));
+// Permissions renders as one list split by authorship, not by entry kind: the user's own settings
+// first, then the shipped defaults collapsed behind a count. Someone who has changed three things
+// sees three rows, not 39 — but every default stays one click away rather than hidden.
+export function permissionsSection(section, callbacks) {
+  const panel = tpl("tpl-permissions-section");
+  const items = section.items || [];
+  const yours = items.filter((it) => it.overridden);
+  const defaults = items.filter((it) => !it.overridden);
 
-  const reset = toggleSlot(line, "reset", c.overridden, c.defaultBucket ? "reset" : "remove");
-  if (c.overridden) {
-    reset.addEventListener("click", () => onApplyBucket({ tokens: c.label.split(" "), bucket: "default" }, err));
+  const yoursSlot = panel.querySelector('[data-slot="yours"]');
+  const emptySlot = panel.querySelector('[data-slot="yours-empty"]');
+  yoursSlot.replaceChildren(...yours.map((it) => permissionRow(it, callbacks)));
+  // With nothing customized, a bare "Yours" heading over empty space reads as broken.
+  emptySlot.hidden = yours.length > 0;
+  panel.querySelector('[data-slot="yours-head"]').hidden = yours.length === 0;
+
+  // Defaults are grouped by category, in manifest order (safest first), so 38 rows read as seven
+  // short lists instead of one wall. A category with no entries is skipped rather than shown
+  // empty. Anything whose category is missing from the taxonomy lands in a trailing "Other" group
+  // rather than vanishing — a row the user cannot see is worse than an imperfectly filed one.
+  const defaultsSlot = panel.querySelector('[data-slot="defaults"]');
+  const categories = section.categories || [];
+  const remaining = new Set(defaults);
+  const groups = [];
+  for (const category of categories) {
+    const rows = defaults.filter((it) => it.category === category.id);
+    for (const row of rows) remaining.delete(row);
+    if (rows.length > 0) groups.push({ label: category.label, description: category.description, rows });
   }
-  return line;
-}
+  if (remaining.size > 0) groups.push({ label: "Other", description: "", rows: [...remaining] });
 
-export function arbitraryListRow(item, { onApplyBucket }) {
-  const row = tpl("tpl-permission-row");
-  const wrap = tpl("tpl-arbitrary-list-row");
-  fill(wrap, { label: item.label });
-  toggleSlot(wrap, "description", item.description, item.description);
+  defaultsSlot.replaceChildren(...groups.flatMap((group) => {
+    const head = tpl("tpl-perm-category");
+    fill(head, { label: group.label, count: String(group.rows.length) });
+    toggleSlot(head, "description", group.description, group.description);
+    return [head, ...group.rows.map((it) => permissionRow(it, callbacks))];
+  }));
+  const toggle = panel.querySelector('[data-slot="defaults-toggle"]');
+  const setOpen = (open) => {
+    defaultsExpanded = open;
+    defaultsSlot.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.textContent = open
+      ? `Hide defaults (${defaults.length})`
+      : `Show defaults (${defaults.length})`;
+  };
+  setOpen(defaultsExpanded);
+  toggle.addEventListener("click", () => setOpen(defaultsSlot.hidden));
+  panel.querySelector('[data-slot="defaults-head"]').hidden = defaults.length === 0;
 
-  const list = wrap.querySelector('[data-slot="items"]');
-  list.replaceChildren(
-    ...(item.items || []).map((c) => arbitraryItemRow(c, { onApplyBucket })),
-  );
-
-  const input = wrap.querySelector('[data-slot="input"]');
-  const addErr = wrap.querySelector('[data-slot="add-err"]');
-  wrap.querySelector('[data-slot="add-btn"]').addEventListener("click", async () => {
+  // Adding a command is a section-level action now that there is no separate arbitrary list to
+  // hang it off. New commands land in `ask`, the conservative choice for something unreviewed.
+  const input = panel.querySelector('[data-slot="input"]');
+  const addErr = panel.querySelector('[data-slot="add-err"]');
+  panel.querySelector('[data-slot="add-btn"]').addEventListener("click", async () => {
     const tokens = input.value.trim().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) return;
-    const ok = await onApplyBucket({ tokens, bucket: "ask" }, addErr);
+    const ok = await callbacks.onApplyBucket({ tokens, bucket: "ask" }, addErr);
     if (ok) input.value = "";
   });
 
-  fill(row, { content: wrap });
-  return row;
-}
-
-export function permissionsSection(section, callbacks) {
-  const panel = tpl("tpl-permissions-section");
-  panel.querySelector('[data-slot="rows"]').replaceChildren(
-    ...section.items.map((item) => permissionRow(item, callbacks)),
-  );
   return panel;
 }
 
+// Read-only view of what roborepo keeps on disk. No reset control here on purpose — clearing a
+// store is destructive and belongs behind `roborepo maintenance stores reset <id>`.
+export function storesSection(section) {
+  const panel = tpl("tpl-stores-section");
+  panel.querySelector('[data-slot="description"]').textContent = section.description || "";
+  panel.querySelector('[data-slot="rows"]').replaceChildren(...section.items.map(storeRow));
+  return panel;
+}
+
+function storeRow(item) {
+  const row = tpl("tpl-store-row");
+  row.querySelector('[data-slot="label"]').textContent = item.label;
+  row.querySelector('[data-slot="path"]').textContent = item.path;
+  const size = item.maxBytes
+    ? `${formatBytes(item.bytes)} of ${formatBytes(item.maxBytes)}`
+    : formatBytes(item.bytes);
+  row.querySelector('[data-slot="size"]').textContent = item.over ? `${size} — over cap` : size;
+  // Only an over-cap store is worth colouring; a store at 3% and one at 80% are both fine, and
+  // shading the difference would imply an action the user does not need to take.
+  row.querySelector('[data-slot="dot"]').classList.add(item.over ? "off" : "on");
+  return row;
+}
+
+// Duplicated from modules/retention/policy.mjs rather than imported: this file is served to the
+// browser, which cannot resolve a repo-relative Node module path. Keep the two in step — a store
+// shown as "18.8MB" in the portal and something else in the CLI reads as two different numbers.
+function formatBytes(bytes) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)}KB`;
+  return `${bytes}B`;
+}
+
 function permissionRow(item, callbacks) {
-  if (item.kind === "behavior") return behaviorRow(item, callbacks);
-  if (item.kind === "arbitrary-list") return arbitraryListRow(item, callbacks);
+  // Both permission kinds render through the same row; behaviorRow branches internally only on
+  // how the entry is addressed when mutating it.
+  if (item.kind === "behavior" || item.kind === "arbitrary-item") return behaviorRow(item, callbacks);
   const row = tpl("tpl-permission-row");
   row.querySelector('[data-slot="content"]').remove();
   return row;
@@ -227,11 +294,15 @@ function configItemElement(item, actions) {
   return node;
 }
 
+// Every package category renders through one template, driven by the section data the server
+// already sends. No per-category branch: a category added to the manifest appears here without a
+// portal edit, and none can be silently dropped for lacking a template.
 export function standardSection(section, { onInspectClick, onToggle, contextCost }) {
-  const templateId = SECTION_TEMPLATE_ID[section.category];
-  if (!templateId) return null;
-  const panel = tpl(templateId);
+  const panel = tpl("tpl-section-packages");
   panel.classList.toggle("wide", !!section.wide);
+  toggleSlot(panel, "heading", true, section.category);
+  toggleSlot(panel, "description", !!section.description, section.description);
+  toggleSlot(panel, "footnote", !!section.footnote, section.footnote);
 
   panel.querySelector('[data-slot="items"]').replaceChildren(
     ...section.items.map((item) => configItemElement(item, { onInspect: onInspectClick, onToggle, contextCost })),
@@ -251,6 +322,16 @@ export function contextWarnings(snap) {
     ? "The following elements have a high token use:"
     : "The following elements have elevated token use:";
   panel.querySelector('[data-slot="items"]').replaceChildren(...entries.map(tokenWarningItem));
+  return panel;
+}
+
+export function onboardingNotice(snap) {
+  const notice = configOnboardingNotice(snap);
+  if (!notice) return null;
+  const panel = tpl("tpl-config-onboarding-notice");
+  panel.setAttribute("variant", notice.variant);
+  panel.querySelector("[data-slot=title]").textContent = notice.title;
+  panel.querySelector("[data-slot=body]").textContent = notice.body;
   return panel;
 }
 
@@ -293,8 +374,9 @@ function configHooksCell(harness, onInspectClick) {
 }
 
 export function configFiles(snap, { onInspectClick }) {
+  const harnesses = presentedHarnesses(snap).filter((harness) => harness.enabled !== false);
+  if (harnesses.length === 0) return null;
   const panel = tpl("tpl-config-files");
-  const harnesses = snap.harnesses || [];
   panel.querySelector(".config-grid").style.setProperty("--provider-count", harnesses.length);
   const head = panel.querySelector("[data-slot=head]");
   const rows = {
@@ -311,4 +393,89 @@ export function configFiles(snap, { onInspectClick }) {
     rows.hooks.append(configHooksCell(harness, onInspectClick));
   }
   return panel;
+}
+
+// --------------------------------------------------------------------------- maintenance
+
+// Managed cleanup panel. Preview -> explicit confirm -> result, all server-driven: the browser
+// never decides what gets removed, it only renders the plan the server produced and posts back a
+// confirmation. Workspace deletion is deliberately not offered here (see index.html).
+export function maintenancePanel({ onPreview, onExecute }) {
+  const panel = tpl("tpl-maintenance");
+  const detail = panel.querySelector("[data-slot=detail]");
+  const previewBtn = panel.querySelector("[data-slot=preview]");
+
+  previewBtn.addEventListener("click", async () => {
+    previewBtn.disabled = true;
+    try {
+      const preview = await onPreview();
+      detail.replaceChildren(renderPreview(preview, { onExecute, detail, previewBtn }));
+      detail.hidden = false;
+    } catch (err) {
+      detail.replaceChildren(errorText(err));
+      detail.hidden = false;
+    } finally {
+      previewBtn.disabled = false;
+    }
+  });
+
+  return panel;
+}
+
+function renderPreview(preview, { onExecute, detail, previewBtn }) {
+  const node = tpl("tpl-maintenance-preview");
+  const preserved = node.querySelector("[data-slot=preserved]");
+  preserved.textContent = preview.workspace
+    ? `Your workspace will be preserved: ${preview.workspace}`
+    : "No workspace found.";
+
+  const list = node.querySelector("[data-slot=removals]");
+  for (const line of preview.removals || []) {
+    const li = document.createElement("li");
+    li.textContent = line;
+    list.append(li);
+  }
+  if (!(preview.removals || []).length) {
+    const li = document.createElement("li");
+    li.textContent = "Nothing managed left to remove.";
+    list.append(li);
+  }
+
+  const errorEl = node.querySelector("[data-slot=error]");
+  node.querySelector("[data-slot=cancel]").addEventListener("click", () => {
+    detail.hidden = true;
+    detail.replaceChildren();
+  });
+
+  const confirmBtn = node.querySelector("[data-slot=confirm]");
+  confirmBtn.addEventListener("click", async () => {
+    confirmBtn.disabled = true;
+    errorEl.textContent = "";
+    try {
+      const result = await onExecute();
+      detail.replaceChildren(renderResult(result));
+      previewBtn.disabled = true;
+    } catch (err) {
+      errorEl.textContent = (err && err.message) || String(err);
+      confirmBtn.disabled = false;
+    }
+  });
+
+  return node;
+}
+
+function renderResult(result) {
+  const node = tpl("tpl-maintenance-result");
+  node.querySelector("[data-slot=preserved]").textContent = result.workspace
+    ? `Your workspace was preserved: ${result.workspace}`
+    : "";
+  node.querySelector("[data-slot=npm]").textContent = result.npmCommand || "";
+  return node;
+}
+
+function errorText(err) {
+  const div = document.createElement("div");
+  div.className = "maintenance-error";
+  div.textContent = (err && err.message) || String(err);
+  return div;
 }

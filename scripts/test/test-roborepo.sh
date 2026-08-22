@@ -23,6 +23,10 @@ for arg in "$@"; do
 done
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/roborepo-test.XXXXXX")"
+# Baseline for the generated/ guard below. Captured BEFORE any test runs so the guard reports what
+# THIS run changed: a developer who is mid-edit on generated/ would otherwise see their own
+# uncommitted work reported as a suite defect on every invocation.
+generated_baseline="$(git -C "${repo_root}" status --porcelain -- generated 2>/dev/null || true)"
 # Cleanup must never change the suite's exit status: some tests chmod dirs to 000 (permission
 # checks), so `rm -rf` can hit "Directory not empty". Restore write perms, ignore rm errors, and
 # preserve the real exit code (the pass/fail tally) so CI reflects the tests, not the cleanup.
@@ -33,10 +37,46 @@ cleanup() {
   fi
   chmod -R u+rwx "${work}" 2>/dev/null || true
   rm -rf "${work}" 2>/dev/null || true
+  # Tests run the real CLI against a temp HOME, but appRoot still points at this checkout, so
+  # anything rendering root config writes to TRACKED files under generated/ — stamping a temp path
+  # into generated/claude/settings.json, which then gets committed by accident. Report it here (in
+  # the trap, so a mid-suite failure still surfaces it) and fail even if every assertion passed.
+  local dirty
+  dirty="$(git -C "${repo_root}" status --porcelain -- generated 2>/dev/null || true)"
+  # Compared against the pre-run baseline, not against "clean": pre-existing local edits to
+  # generated/ are the developer's business, and blaming the suite for them would train everyone to
+  # ignore this guard. Only a CHANGE across the run means a test wrote into the checkout.
+  if [[ "${dirty}" != "${generated_baseline}" ]]; then
+    echo ""
+    echo "FAIL: the suite modified tracked generated/ files; tests must not write into this checkout:"
+    echo "${dirty}"
+    status=1
+  fi
   exit "${status}"
 }
 trap cleanup EXIT
 export ROBOREPO_PRESETS_ONBOARD=skip
+# The suite is release-gating, so no test may wait on the publisher's terminal. Individual tests
+# that exercise interaction provide their own pipe or PTY.
+exec </dev/null
+
+# --quiet hides every per-test line, so a run that takes minutes looks hung -- which matters most
+# during `npm run publish:npm`, where the suite is one of four sequential checks. Overwrite a single
+# progress line instead: proof of life without the several-hundred-line scroll that dropping
+# --quiet would produce. Only when stderr is a terminal, so CI logs and piped output stay clean.
+progress_start="${SECONDS}"
+show_progress() {
+  [[ "${quiet}" -eq 1 && -t 2 ]] || return 0
+  local elapsed=$((SECONDS - progress_start))
+  printf '\r  running tests: %d passed, %d failed  [%dm%02ds]\033[K' \
+    "${pass}" "${fail}" "$((elapsed / 60))" "$((elapsed % 60))" >&2
+}
+
+# Clear the progress line before any real output, so a FAIL or the summary never lands on top of it.
+clear_progress() {
+  [[ "${quiet}" -eq 1 && -t 2 ]] || return 0
+  printf '\r\033[K' >&2
+}
 
 assert() {
   local label="$1"; shift
@@ -44,9 +84,11 @@ assert() {
     [[ "${quiet}" -eq 0 ]] && echo "ok: ${label}"
     pass=$((pass + 1))
   else
+    clear_progress
     echo "FAIL: ${label}" >&2
     fail=$((fail + 1))
   fi
+  show_progress
 }
 
 assert "source layout: globals system skills exist" test -d "${repo_root}/globals/system/skills"
@@ -92,19 +134,19 @@ workspace_resource_root="${work}/workspace-resource"
 mkdir -p "${workspace_resource_home}" "${workspace_resource_root}/skills/custom-skill" "${workspace_resource_root}/commands" "${workspace_resource_root}/packages/workspace-pack"
 printf -- '---\nname: custom-skill\ndescription: custom\n---\n' > "${workspace_resource_root}/skills/custom-skill/SKILL.md"
 printf 'custom command\n' > "${workspace_resource_root}/commands/custom-command.md"
-printf '%s\n' '{"schemaVersion":1,"id":"workspace-pack","label":"Workspace Pack","description":"Workspace pack.","lifecycle":"optional","presentation":{"category":"commands","order":100},"resources":[{"type":"cli-command","name":"workspace index","commandOrUrl":"node","args":["--version"],"mode":"index"}]}' > "${workspace_resource_root}/packages/workspace-pack/package.config.json"
+printf '%s\n' '{"schemaVersion":1,"id":"workspace-pack","label":"Workspace Pack","description":"Workspace pack.","lifecycle":"optional","presentation":{"category":"skills-dev-lifecycle","order":100},"resources":[{"type":"cli-command","name":"workspace index","commandOrUrl":"node","args":["--version"],"mode":"index"}]}' > "${workspace_resource_root}/packages/workspace-pack/package.config.json"
 assert "workspace resources: validate accepts custom typed resources" \
   bash -c "HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node '${cli}' workspace validate >/dev/null"
 assert "workspace resources: package catalog includes workspace package" \
   bash -c "HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node -e \"import('${repo_root}/scripts/cli/package-catalog.mjs').then(m=>{process.exit(m.loadPackageCatalog({includeUnavailable:true}).some(p=>p.id==='workspace-pack')?0:1)})\""
 mkdir -p "${workspace_resource_root}/packages/jcodemunch"
-printf '%s\n' '{"schemaVersion":1,"id":"jcodemunch","label":"Bad Replace","description":"Bad replace.","lifecycle":"optional","presentation":{"category":"commands","order":100},"resources":[]}' > "${workspace_resource_root}/packages/jcodemunch/package.config.json"
+printf '%s\n' '{"schemaVersion":1,"id":"jcodemunch","label":"Bad Replace","description":"Bad replace.","lifecycle":"optional","presentation":{"category":"skills-dev-lifecycle","order":100},"resources":[]}' > "${workspace_resource_root}/packages/jcodemunch/package.config.json"
 assert "workspace resources: package collision requires typed override" \
   bash -c "! env HOME='${workspace_resource_home}' ROBOREPO_STATE_ROOT='${workspace_resource_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_resource_root}' node '${cli}' workspace validate >/dev/null 2>'${work}/workspace-package-collision.err' && grep -q 'conflicts with a built-in package' '${work}/workspace-package-collision.err'"
 workspace_shape_home="${work}/workspace-shape-home"
 workspace_shape_root="${work}/workspace-shape"
 mkdir -p "${workspace_shape_root}/packages/legacy-shape"
-printf '%s\n' '{"schemaVersion":1,"id":"legacy-shape","label":"Legacy Shape","description":"Legacy shape.","lifecycle":"optional","presentation":{"category":"commands","order":100},"components":[]}' > "${workspace_shape_root}/packages/legacy-shape/package.config.json"
+printf '%s\n' '{"schemaVersion":1,"id":"legacy-shape","label":"Legacy Shape","description":"Legacy shape.","lifecycle":"optional","presentation":{"category":"skills-dev-lifecycle","order":100},"components":[]}' > "${workspace_shape_root}/packages/legacy-shape/package.config.json"
 assert "workspace resources: package configs require resources field" \
   bash -c "! env HOME='${workspace_shape_home}' ROBOREPO_STATE_ROOT='${workspace_shape_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_shape_root}' node '${cli}' workspace validate >/dev/null 2>'${work}/workspace-package-shape.err' && grep -q 'needs resources array' '${work}/workspace-package-shape.err'"
 workspace_skill_collision_home="${work}/workspace-skill-collision-home"
@@ -138,8 +180,8 @@ mkdir -p \
 printf -- '---\nname: custom-import\ndescription: custom\n---\n' > "${workspace_import_source}/globals/agents/skills/custom-import/SKILL.md"
 printf -- '---\nname: case-study\ndescription: changed builtin\n---\n' > "${workspace_import_source}/globals/agents/skills/case-study/SKILL.md"
 printf 'custom import command\n' > "${workspace_import_source}/globals/commands/custom-import.md"
-printf '%s\n' '{"schemaVersion":1,"id":"workspace-import","label":"Workspace Import","description":"Workspace import.","lifecycle":"optional","presentation":{"category":"commands","order":100},"resources":[]}' > "${workspace_import_source}/globals/packages/workspace-import/package.config.json"
-printf '%s\n' '{"schemaVersion":1,"id":"jcodemunch","label":"Changed Builtin","description":"Changed builtin.","lifecycle":"optional","presentation":{"category":"commands","order":100},"resources":[]}' > "${workspace_import_source}/globals/packages/jcodemunch/package.config.json"
+printf '%s\n' '{"schemaVersion":1,"id":"workspace-import","label":"Workspace Import","description":"Workspace import.","lifecycle":"optional","presentation":{"category":"skills-dev-lifecycle","order":100},"resources":[]}' > "${workspace_import_source}/globals/packages/workspace-import/package.config.json"
+printf '%s\n' '{"schemaVersion":1,"id":"jcodemunch","label":"Changed Builtin","description":"Changed builtin.","lifecycle":"optional","presentation":{"category":"skills-dev-lifecycle","order":100},"resources":[]}' > "${workspace_import_source}/globals/packages/jcodemunch/package.config.json"
 printf '%s\n' '{"servers":[{"name":"custom-server","commandOrUrl":"node","args":["x"],"harnesses":["codex"]},{"name":"jcodemunch","commandOrUrl":"node","args":["changed"],"harnesses":["codex"]}]}' > "${workspace_import_source}/manifests/inventory/mcp-servers.json"
 assert "workspace import: copies package configs and reports changed built-ins" \
   bash -c "HOME='${workspace_import_home}' ROBOREPO_STATE_ROOT='${workspace_import_home}/.roborepo' ROBOREPO_WORKSPACE_ROOT='${workspace_import_root}' node '${cli}' workspace import '${workspace_import_source}' >'${work}/workspace-import.out' && test -f '${workspace_import_root}/skills/custom-import/SKILL.md' && ! test -e '${workspace_import_root}/skills/case-study' && test -f '${workspace_import_root}/commands/custom-import.md' && test -f '${workspace_import_root}/packages/workspace-import/package.config.json' && grep -q 'custom-server' '${workspace_import_root}/mcp/servers.json' && grep -q 'changed built-ins left for review: skill:case-study' '${work}/workspace-import.out'"
@@ -156,7 +198,7 @@ assert "codex hooks: permission-check tolerates empty stdin" \
 assert "codex hooks: minimize-bash-output tolerates malformed stdin" \
   bash -c "printf 'not-json' | HOME='${codex_hook_home}' node '${repo_root}/globals/system/hooks/codex/minimize-bash-output.mjs' >/dev/null"
 assert "codex hooks: installed permission-check reads repo manifest from install state" \
-  bash -c "printf '%s\n' '{\"tool_name\":\"exec_command\",\"tool_input\":{\"command\":\"git push origin main\"}}' | HOME='${codex_hook_home}' node '${codex_hook_home}/.codex/hooks/permission-check.mjs' | grep -q '\"permissionDecision\":\"deny\"'"
+  bash -c "printf '%s\n' '{\"tool_name\":\"exec_command\",\"tool_input\":{\"command\":\"git push --force origin main\"}}' | HOME='${codex_hook_home}' node '${codex_hook_home}/.codex/hooks/permission-check.mjs' | grep -q '\"permissionDecision\":\"deny\"'"
 
 mk_skill() {
   local dir="$1" name="$2"
@@ -335,7 +377,7 @@ assert "skill audit: generated audit is current" \
 assert "skill triggers: medium-risk trigger fixtures pass" \
   bash -c "cd '${repo_root}' && node '${cli}' skill triggers --check >/dev/null"
 assert "package validation: manual-only skill requires an entrypoint" \
-  bash -c "d=\$(mktemp -d); trap 'rm -rf \"\$d\"' EXIT; mkdir -p \"\$d/globals/packages/manual-only/skills/manual-only\" \"\$d/manifests/inventory\"; cp '${repo_root}/manifests/inventory/package-categories.json' \"\$d/manifests/inventory/package-categories.json\"; printf '%s\n' '{\"schemaVersion\":1,\"id\":\"manual-only\",\"label\":\"Manual Only\",\"description\":\"Manual only.\",\"lifecycle\":\"optional\",\"presentation\":{\"category\":\"commands\",\"order\":1},\"resources\":[{\"type\":\"skill\",\"id\":\"manual-only\",\"source\":\"skills/manual-only\",\"invocation\":\"manual\",\"risk\":\"medium\"}]}' > \"\$d/globals/packages/manual-only/package.config.json\"; printf -- '---\nname: manual-only\ndescription: Manual only.\n---\n' > \"\$d/globals/packages/manual-only/skills/manual-only/SKILL.md\"; ROBOREPO_APP_ROOT=\"\$d\" node -e \"import('${repo_root}/scripts/cli/package-catalog.mjs').then(m=>{try{m.loadPackageCatalog({includeUnavailable:true});process.exit(1)}catch(e){process.exit(String(e.message).includes('manual-only')?0:1)}})\""
+  bash -c "d=\$(mktemp -d); trap 'rm -rf \"\$d\"' EXIT; mkdir -p \"\$d/globals/packages/manual-only/skills/manual-only\" \"\$d/manifests/inventory\"; cp '${repo_root}/manifests/inventory/package-categories.json' \"\$d/manifests/inventory/package-categories.json\"; printf '%s\n' '{\"schemaVersion\":1,\"id\":\"manual-only\",\"label\":\"Manual Only\",\"description\":\"Manual only.\",\"lifecycle\":\"optional\",\"presentation\":{\"category\":\"skills-dev-lifecycle\",\"order\":1},\"resources\":[{\"type\":\"skill\",\"id\":\"manual-only\",\"source\":\"skills/manual-only\",\"invocation\":\"manual\",\"risk\":\"medium\"}]}' > \"\$d/globals/packages/manual-only/package.config.json\"; printf -- '---\nname: manual-only\ndescription: Manual only.\n---\n' > \"\$d/globals/packages/manual-only/skills/manual-only/SKILL.md\"; ROBOREPO_APP_ROOT=\"\$d\" node -e \"import('${repo_root}/scripts/cli/package-catalog.mjs').then(m=>{try{m.loadPackageCatalog({includeUnavailable:true});process.exit(1)}catch(e){process.exit(String(e.message).includes('manual-only')?0:1)}})\""
 
 # skill new: scaffold shared skills/commands against a throwaway harness root, never this repo.
 new_harness="${work}/new-harness"
@@ -350,6 +392,10 @@ mkdir -p \
   "${new_harness}/globals/harnesses" \
   "${new_harness}/local/skills"
 cp -R "${repo_root}/scripts/cli/." "${new_harness}/scripts/cli/"
+# modules/ travels with scripts/cli/: maintenance-stores.mjs imports modules/localhoster/settings.mjs
+# and modules/retention/, so a fixture without it dies at import time before any assertion runs.
+mkdir -p "${new_harness}/modules"
+cp -R "${repo_root}/modules/." "${new_harness}/modules/"
 # See the mcp_harness copy below for why scripts/harnesses/ and globals/harnesses/ must travel
 # with scripts/cli/ now that paths.mjs (Phase 3) derives harness paths from the provider registry.
 cp -R "${repo_root}/scripts/harnesses/." "${new_harness}/scripts/harnesses/"
@@ -578,7 +624,7 @@ bash -c "${recon_env} node '${cli}' package reconcile >/dev/null 2>&1" || true
 assert "package reconcile restores enabled Claude plugin settings after root overwrite" \
   bash -c "node -e \"const s=require('${recon_home}/.claude/settings.json');process.exit(s.enabledPlugins?.['caveman@caveman']===true&&!!s.extraKnownMarketplaces?.caveman?0:1)\""
 assert "package reconcile restores enabled package hooks and permissions after root overwrite" \
-  bash -c "node -e \"const s=require('${recon_home}/.claude/settings.json');const allow=s.permissions?.allow||[];const hooks=JSON.stringify(s.hooks||{});process.exit(allow.includes('mcp__jcodemunch__resolve_repo')&&hooks.includes('jcmwatch')&&hooks.includes('Grep and Glob')?0:1)\""
+  bash -c "node -e \"const s=require('${recon_home}/.claude/settings.json');const allow=s.permissions?.allow||[];const hooks=JSON.stringify(s.hooks||{});process.exit(allow.includes('mcp__jcodemunch__resolve_repo')&&hooks.includes('Grep and Glob')&&hooks.includes('block-source-exploration.mjs')?0:1)\""
 assert "package reconcile restores package-owned Codex approvals after root overwrite" \
   bash -c "grep -A1 '^\\[mcp_servers\\.jcodemunch\\.tools\\.register_edit\\]' '${recon_home}/.codex/config.toml' | grep -q 'approval_mode = \"auto\"'"
 
@@ -748,11 +794,18 @@ if node -e 'const s=require("node:net").createServer();s.once("error",()=>proces
   assert "config: snapshot carries contextCost harness estimates" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/config' > '${cfg_home}/config-snapshot.json' && node -e \"const j=require('${cfg_home}/config-snapshot.json');const h=j.contextCost&&j.contextCost.harnesses;process.exit(h&&Number.isFinite(h.claude.startupTokens)&&Number.isFinite(h.codex.startupTokens)&&['low','medium','high'].includes(h.claude.level)&&j.contextCost.method==='estimated-v1'&&j.contextCost.packages?0:1)\""
   assert "config: behaviorView sections carry contextCost rollups" \
-    bash -c "node -e \"const j=require('${cfg_home}/config-snapshot.json');const secs=j.behaviorView.filter(s=>s.kind!=='permissions');const perms=j.behaviorView.find(s=>s.kind==='permissions');process.exit(secs.length&&secs.every(s=>s.contextCost&&Number.isFinite(s.contextCost.activeStartupTokens))&&perms.contextCost.label==='not-prompt-context'?0:1)\""
+    bash -c "node -e \"const j=require('${cfg_home}/config-snapshot.json');const secs=j.behaviorView.filter(s=>s.categoryId);const perms=j.behaviorView.find(s=>s.kind==='permissions');const stores=j.behaviorView.find(s=>s.kind==='stores');process.exit(secs.length&&secs.every(s=>s.contextCost&&Number.isFinite(s.contextCost.activeStartupTokens))&&perms.contextCost.label==='not-prompt-context'&&stores.contextCost.label==='not-prompt-context'?0:1)\""
   assert "config: portal status identifies current app" \
     bash -c "curl -s 'http://127.0.0.1:${cfg_port}/api/portal/status' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);process.exit(j.ok&&j.appRoot==='${repo_root}'&&String(j.portalDir).endsWith('/portal')&&Number.isInteger(j.pid)&&j.pages.some(p=>p.id==='localhoster'&&p.path==='/localhoster')?0:1)})\""
   assert "config: web reuses an existing current portal" \
     bash -c "${cfg_env} node '${cli}' web --no-open --port '${cfg_port}' >'${cfg_home}/portal-reuse.log' 2>&1 && grep -q 'already running' '${cfg_home}/portal-reuse.log'"
+  # `web --detach` must ADOPT a healthy portal, not replace it. startDetachedPortal used to call
+  # killExistingServer BEFORE its reuse check, which made that branch dead code: every detached
+  # start SIGTERMed a working server and respawned it (~30s, and it left you with none if the
+  # respawn failed). Asserting the PID is unchanged is what catches a regression to kill-first —
+  # a plain "does it serve afterwards" check passes either way, which is why the bug went unseen.
+  assert "config: web --detach adopts a healthy portal instead of restarting it" \
+    bash -c "${cfg_env} node '${cli}' web --detach --no-open --port '${cfg_port}' >'${cfg_home}/portal-detach.log' 2>&1 && test \"\$(curl -s 'http://127.0.0.1:${cfg_port}/api/portal/status' | node -e \"let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{process.stdout.write(String(JSON.parse(s).pid))})\")\" = '${cfg_srv}'"
   cfg_token="$(curl -s "http://127.0.0.1:${cfg_port}/config" | sed -n 's/.*name="roborepo-portal-token" content="\([^"]*\)".*/\1/p' | head -1)"
   assert "config: portal exposes mutation token only in served HTML" \
     bash -c "test -n '${cfg_token}'"
@@ -821,7 +874,7 @@ assert "config: setCommandBucket tracks a new arbitrary command" \
 assert "config: setCommandBucket rejects empty tokens" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setCommandBucket([],'ask');process.exit(r.ok?1:0)})\""
 assert "config: snapshot reports behaviors + arbitrary commands" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const p=s.permissions;process.exit(Array.isArray(p.behaviors)&&p.behaviors.length===5&&Array.isArray(p.arbitrary)?0:1)})\""
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const p=s.permissions;process.exit(Array.isArray(p.behaviors)&&p.behaviors.some(b=>b.id==='repo-write-boundary')&&p.behaviors.some(b=>b.id==='go-online')&&Array.isArray(p.arbitrary)?0:1)})\""
 
 if [[ -n "${cfg_port:-}" ]]; then
   # Permission POST endpoint: named behavior (200), arbitrary command (200), invalid bucket (400),
@@ -1094,6 +1147,9 @@ mcp_home="${work}/mcp-home"
 mkdir -p "${mcp_harness}/scripts/cli" "${mcp_harness}/scripts/harnesses" "${mcp_harness}/generated/codex" "${mcp_harness}/generated/claude" "${mcp_harness}/globals/harnesses" "${mcp_harness}/manifests/inventory" "${mcp_harness}/manifests/platform"
 mkdir -p "${mcp_home}/.codex" "${mcp_home}/.claude"
 cp -R "${repo_root}/scripts/cli/." "${mcp_harness}/scripts/cli/"
+# Same reason as new-harness above: scripts/cli/ imports modules/, so it has to travel along.
+mkdir -p "${mcp_harness}/modules"
+cp -R "${repo_root}/modules/." "${mcp_harness}/modules/"
 cp -R "${repo_root}/scripts/harnesses/." "${mcp_harness}/scripts/harnesses/"
 cp -R "${repo_root}/globals/harnesses/." "${mcp_harness}/globals/harnesses/"
 cp "${repo_root}/manifests/inventory/mcp-presets.json" "${mcp_harness}/manifests/inventory/mcp-presets.json"
@@ -1167,7 +1223,7 @@ node -e "const fs=require('fs');const p='${update_home}/.claude/settings.json';c
 printf '\n[projects.\"/Users/kirinmurphy/projects/activedev/roborepo\"]\ntrust_level = \"trusted\"\n' >> "${update_home}/.codex/config.toml"
 ln -s "${repo_root}/generated/claude/CLAUDE.md" "${update_home}/.claude/CLAUDE.md"
 ln -s "${repo_root}/globals/harnesses/claude/MANAGED_BY_ROBOREPO.md" "${update_home}/.claude/MANAGED_BY_ROBOREPO.md"
-ln -s "${repo_root}/globals/claude/hooks" "${update_home}/.claude/hooks"
+ln -s "${repo_root}/globals/harnesses/claude/hooks" "${update_home}/.claude/hooks"
 ln -s "${repo_root}/generated/codex/AGENTS.md" "${update_home}/.codex/AGENTS.md"
 ln -s "${repo_root}/generated/codex/hooks.json" "${update_home}/.codex/hooks.json"
 ln -s "${repo_root}/globals/harnesses/codex/MANAGED_BY_ROBOREPO.md" "${update_home}/.codex/MANAGED_BY_ROBOREPO.md"
@@ -1256,7 +1312,11 @@ assert "menu: shows indexing namespace" grep -q "Indexing" "${menu_out}"
 assert "menu: shows skills namespace" grep -q "Skills" "${menu_out}"
 assert "menu: shows telemetry namespace" grep -q "Telemetry" "${menu_out}"
 assert "menu: shows maintenance namespace" grep -q "Maintenance" "${menu_out}"
-assert "menu: numbers root actions (web is 1)" grep -qE "1\) Open web portal" "${menu_out}"
+assert "menu: shows initialize action" grep -q "Initialize" "${menu_out}"
+# init leads the numbered root actions: it is the first thing a new install needs, ahead of the
+# portal and the package library.
+assert "menu: numbers root actions (init is 1)" grep -qE "1\) Initialize" "${menu_out}"
+assert "menu: numbers root actions (web is 2)" grep -qE "2\) Open web portal" "${menu_out}"
 assert "menu: items have descriptions" grep -q "Diagnose installation" "${menu_out}"
 assert "menu: numbered fallback exits cleanly on out-of-range/blank" \
   bash -c "printf '99\n' | node '${cli}' >'${work}/menu-invalid.out' 2>&1 && grep -q 'Select a number' '${work}/menu-invalid.out'"
@@ -1536,7 +1596,7 @@ assert "package manage: non-TTY records onboardedAt in preset state" \
 
 # The wizard flips item.active in memory during the keypress loop, then applies only the changed rows
 # on exit. Unit-test that deferred-apply selection directly (pure, fast); the pty/keypress path is
-# covered by test-install-collisions.sh.
+# covered by test-install-collisions.sh, which CI runs as its own step (npm run test:install-collisions).
 assert "onboard: wizard diff selects only changed toggleable items" \
   node "${repo_root}/scripts/test/wizard-diff-check.mjs"
 
@@ -1548,6 +1608,12 @@ assert "root-config-state: drift detection distinguishes baseline changes from u
 assert "root-config-merge: Codex merge preserves local keys and tables" \
   node "${repo_root}/scripts/test/root-config-merge-check.mjs"
 
+# Sweeps every --dry-run command in the catalog rather than trusting each command's own test to have
+# snapshotted the right roots. The command list is derived from the catalog, so a newly added
+# --dry-run command is covered as soon as it is registered.
+assert "dry-run purity: no --dry-run command mutates state" \
+  node "${repo_root}/scripts/test/dry-run-purity-check.mjs"
+
 assert "root-config-write-policy: Claude global model is stripped from root config writes" \
   node "${repo_root}/scripts/test/root-config-write-policy-check.mjs"
 
@@ -1556,6 +1622,29 @@ assert "mcp: Codex active config add/remove records root-config writes" \
 
 assert "mcp: Codex MCP removal survives bracketed array values and is idempotent" \
   node "${repo_root}/scripts/test/mcp-codex-remove-check.mjs"
+
+# The seven below existed and passed but nothing invoked them, so they asserted nothing. Found by
+# orphan-test-check, which now runs last here to keep the same gap from reopening.
+assert "agent-run: every roborepo namespace is allowlisted or ask-bucketed" \
+  node "${repo_root}/scripts/test/agent-run-coverage-check.mjs"
+
+assert "agent-run: nested roborepo invocations are refused" \
+  node "${repo_root}/scripts/test/agent-run-policy-check.mjs"
+
+assert "cli: command catalog is internally consistent" \
+  node "${repo_root}/scripts/test/cli-command-catalog-check.mjs"
+
+assert "git-inventory: repository inventory derivation" \
+  node "${repo_root}/scripts/test/git-inventory-check.mjs"
+
+assert "package library: disabling a package updates persisted state" \
+  node "${repo_root}/scripts/test/package-library-disable-update-check.mjs"
+
+assert "permissions: writes stay scoped to the current repository" \
+  node "${repo_root}/scripts/test/repo-write-scope-check.mjs"
+
+assert "test suite: no test file under scripts/test/ is unreachable" \
+  node "${repo_root}/scripts/test/orphan-test-check.mjs"
 
 assert "mcp: Claude permission grant writes the active settings, never the repo baseline" \
   node "${repo_root}/scripts/test/mcp-claude-permission-check.mjs"
@@ -1701,6 +1790,10 @@ assert "repositories: lifecycle states, ageing, reused directories" \
 # unchanged, so a long-lived portal cannot pin one branch reading forever.
 assert "repositories: idle git cache invalidates on checkout change" \
   node "${repo_root}/scripts/test/repositories-idle-git-cache-check.mjs"
+# Per-branch ahead/behind/tracking-state facts against a real git fixture in a temp dir, plus
+# refreshRemote and pushBranchToUpstream. Had a package.json test:* script but nothing called it.
+assert "repositories: branch sync facts" \
+  node "${repo_root}/scripts/test/repositories-branch-sync-check.mjs"
 
 # Localhoster module suite. Note: localhoster-check.mjs existed as an npm script but was never wired
 # into this file, so it had not been running in CI at all — added here alongside the new checks.
@@ -1742,6 +1835,20 @@ assert "localhoster: compose project identity resolution" \
 # members stay secondary and out of the aggregate CPU, and a Compose stack stays a sub-group.
 assert "localhoster: repository card merge" \
   node "${repo_root}/scripts/test/localhoster-repository-merge-check.mjs"
+
+# Compose-container provider parsing: fixture docker-ps lines, docker-not-found and daemon-down
+# distinguished from a permission failure. No real docker CLI or daemon is invoked.
+assert "localhoster: docker provider parsing" \
+  node "${repo_root}/scripts/test/localhoster-docker-check.mjs"
+
+# Etime parsing for `ps`-style output: short-form, long-form, and day-qualified durations to seconds.
+assert "localhoster: process etime parsing" \
+  node "${repo_root}/scripts/test/localhoster-process-check.mjs"
+
+# Same-origin metadata discovery: manifest/robots/sitemap/OpenAPI sources, the loopback fetch guards
+# (external redirect, body cap, timeout), auth-looking path exclusion, and source-priority dedupe.
+assert "localhoster: metadata suggestion discovery" \
+  node "${repo_root}/scripts/test/localhoster-metadata-check.mjs"
 
 # Root config drift VIEW (buildRootConfigView in root-config-view.mjs): the per-harness state the terminal
 # `config root inspect` report and the web /config drift chip both render from — not-installed /
@@ -1823,6 +1930,20 @@ assert "telemetry: /api/session rejects missing/unknown harness ids" \
 assert "telemetry: synthetic third-provider analysis and rate-limit capability" \
   node "${repo_root}/scripts/test/telemetry-synthetic-provider-check.mjs"
 
+# Bounds on the three telemetry stores that had none: the markers JSONL, the snapshots directory,
+# and the experiments directory. Fixture writer runs in a child process against a sandboxed
+# ROBOREPO_STATE_ROOT.
+assert "telemetry: store bounds on markers/snapshots/experiments" \
+  node "${repo_root}/scripts/test/telemetry-store-bounds-check.mjs"
+
+# Pure function tests for the portal's time-axis helpers: clock labels, scale selection, tick
+# bounding, day labels. No fs or process dependency.
+assert "telemetry: portal time-axis label/scale/tick helpers" \
+  node "${repo_root}/scripts/test/telemetry-time-axis-check.mjs"
+
+assert "config: onboarding notices match harness/package state" \
+  node "${repo_root}/scripts/test/config-onboarding-state-check.mjs"
+
 # Phase 7 of discoverable-harness-provider-architecture-plan.md: /api/config/source rejects a
 # missing/unrecognized harness id for harness-scoped kinds instead of silently defaulting to
 # Claude, and the Config snapshot's harnesses list stays registry-driven.
@@ -1834,6 +1955,11 @@ assert "config: /api/config/source rejects missing/unknown harness ids" \
 # rootConfigBaseline/Active path maps do not encode a two-provider assumption.
 assert "config: synthetic third-provider harnesses list and root-config paths" \
   node "${repo_root}/scripts/test/config-synthetic-provider-check.mjs"
+
+# The first-run onboarding notice and its optional-package selection state. Added with the
+# onboarding surfaces but reachable from no runner, which orphan-test-check reports.
+assert "config: onboarding notice and optional-package selection state" \
+  node "${repo_root}/scripts/test/config-onboarding-state-check.mjs"
 
 # The install-side counterpart to the above: proves artifact DELIVERY (live permission rendering,
 # capability/path coherence, the shared harness-id helper) reaches a provider that is not in any
@@ -1874,7 +2000,63 @@ assert "plan-docs: frontmatter repair pass" \
 assert "plans: portal mutation-orchestration helpers" \
   node "${repo_root}/scripts/test/plans-portal-state-check.mjs"
 
+# The mode/reference matrices technical-writing and plan-docs declare in their own SKILL.md prose.
+# A required reference dropped from an artifact-producing mode is invisible at runtime — the work
+# still gets delivered, just without the rule that would have caught the defect.
+assert "skills: mode/reference matrices and completion gates" \
+  node "${repo_root}/scripts/test/skill-reference-matrix-characterization-check.mjs"
+
+# Reference-loading observability: the hook matches the harness-native skill path (not the roborepo
+# cache it symlinks to), because that is the path the agent actually read. Resolving the symlink
+# yields an empty report that reads exactly like a compliant session.
+assert "skill-visibility: observed skill-reference reads" \
+  node "${repo_root}/scripts/test/skill-reference-observer-check.mjs"
+
+# The count file is the only part of the hook's contract that survives to disk -- injected
+# additionalContext never reaches the session transcript, so this is the durable half a post-hoc
+# check can actually verify: one increment per reference read, skipped on non-reference reads,
+# never shared across sessions.
+assert "skill-visibility: count-file tracks reference reads" \
+  node "${repo_root}/scripts/test/skill-visibility-count-file-check.mjs"
+
+# The following had package.json test:* scripts but nothing called them, surfaced by tightening
+# orphan-test-check.mjs to require an actual caller rather than mere package.json registration.
+
+# The capture-dense-bash hook: drives the real hook as a subprocess under a sandboxed
+# ROBOREPO_STATE_ROOT, asserting its write path agrees with the CLI's own path constant.
+assert "capture-dense-bash: hook write path agreement" \
+  node "${repo_root}/scripts/test/capture-dense-bash-check.mjs"
+
+# Unit checks for scripts/cli/context-cost.mjs: estimator determinism, level thresholds,
+# active/potential separation, cache behavior. Runs against injected in-memory deps only.
+assert "context-cost: estimator determinism and load classes" \
+  node "${repo_root}/scripts/test/context-cost-check.mjs"
+
+# `roborepo maintenance stores` — listing, policy-driven reset, --all, and --check mode. Driven as a
+# subprocess under a sandboxed ROBOREPO_STATE_ROOT.
+assert "maintenance: stores listing, reset, and doctor --check" \
+  node "${repo_root}/scripts/test/maintenance-stores-check.mjs"
+
+# The shared retention engine: policy validation, append-log/file-set measurement, bounded-store
+# guarantee. Measurement only — no store writes here.
+assert "retention: shared engine measurement and policy validation" \
+  node "${repo_root}/scripts/test/retention-policy-check.mjs"
+
+# Pure-layer tests for usage-statusline: adapters, domain calculations, renderer fragments, snapshot
+# store, portal API view. No harness or CLI process spawning.
+assert "usage-statusline: domain, renderer, snapshot store" \
+  node "${repo_root}/scripts/test/usage-domain-check.mjs"
+
+# Process-level + lifecycle tests for usage-statusline: installed Claude command's stdin/stdout
+# behavior, package enable/disable ownership across Claude and Codex.
+assert "usage-statusline: process lifecycle and package ownership" \
+  node "${repo_root}/scripts/test/usage-statusline-check.mjs"
+
+assert "portal: stale pid detection and reaping" \
+  node "${repo_root}/scripts/test/portal-pid-reaper-check.mjs"
+
 # ---------------------------------------------------------------------------
+clear_progress
 echo ""
 echo "roborepo tests: ${pass} passed, ${fail} failed"
 [[ "${fail}" -eq 0 ]]

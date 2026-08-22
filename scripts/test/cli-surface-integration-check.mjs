@@ -12,16 +12,28 @@ import { repoRoot } from "../cli/paths.mjs";
 const cliPath = path.join(repoRoot, "scripts", "cli", "main.mjs");
 const catalog = loadCommandCatalog();
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-cli-surface-"));
+const generatedPermissionFiles = [
+  path.join(repoRoot, "generated", "claude", "settings.json"),
+  path.join(repoRoot, "generated", "codex", "config.toml"),
+  path.join(repoRoot, "generated", "codex", "rules", "default.rules"),
+  path.join(repoRoot, "generated", "gemini", "policies", "roborepo-permissions.toml"),
+];
 
 try {
   const env = {
     ...process.env,
     HOME: path.join(workDir, "home"),
+    ROBOREPO_GENERATED_HOME: generatedHomeForRepo(repoRoot),
     ROBOREPO_STATE_DIR: path.join(workDir, "state"),
     ROBOREPO_SKIP_MCP: "1",
   };
   fs.mkdirSync(env.HOME, { recursive: true });
   fs.mkdirSync(env.ROBOREPO_STATE_DIR, { recursive: true });
+  // This suite exercises the command surface and the root menu, not the first-run workflow. A bare
+  // `roborepo` on an uninitialized install now routes to `init` (see cli/first-run-routing.mjs), so
+  // the sandbox is seeded as already-initialized to reach the menu under test. First-run routing
+  // itself is covered by scripts/test/initialization-lifecycle-check.mjs.
+  markInitialized(env.ROBOREPO_STATE_DIR);
 
   assertCli(["help"], { env, stdout: /Primary commands:/ });
 
@@ -59,6 +71,30 @@ try {
   console.log("cli surface integration checks passed");
 } finally {
   fs.rmSync(workDir, { recursive: true, force: true });
+  // Reported from `finally` so a mid-suite failure still surfaces a write into this checkout — but
+  // printed rather than thrown, because throwing here would replace the real assertion error with
+  // this one and hide why the suite actually failed. The exit code is set instead.
+  reportRepoGeneratedUnchanged();
+}
+
+// The suite runs the real CLI against a temp HOME/state dir, but appRoot still points at this
+// checkout — so anything that renders into generated/ writes to tracked files, stamping a temp path
+// like /T/roborepo-cli-surface-XXXX into generated/claude/settings.json. That lands in the working
+// tree, gets committed by accident, and ships a permission rule scoped to a directory that no
+// longer exists. Fail loudly here instead: a test may read this checkout, never write to it.
+function reportRepoGeneratedUnchanged() {
+  const result = spawnSync("git", ["status", "--porcelain", "--", "generated"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  // No git (or not a checkout) means nothing to protect — skip rather than fail the whole suite.
+  if (result.status !== 0) return;
+  const dirty = result.stdout.trim();
+  if (!dirty) return;
+  console.error(
+    `\nthe suite modified tracked generated/ files; tests must not write into this checkout:\n${dirty}`,
+  );
+  process.exitCode = 1;
 }
 
 function assertCli(args, { env, input = "", status = 0, stdout, stderr } = {}) {
@@ -92,11 +128,35 @@ function assertTelemetryMenuSections() {
   assert(!labels.includes("Stop"), "portal stop should not appear in normal telemetry menu");
 }
 
+// The telemetry package presents under Monitoring, not Token Optimization: the catalog
+// reorganization that split rules from diagnostics moved it there alongside Capture Dense Bash,
+// and renamed its label to "Token Telemetry". Both are asserted here so a future move breaks this
+// check rather than silently showing the package under a stale heading.
 function assertPackageLibraryLabels() {
-  const tokenSection = readConfigSnapshot().behaviorView.find((section) => section.category === "Token Optimization");
-  const labels = tokenSection?.items.map((item) => item.label) || [];
-  assert(labels.includes("Token Monitoring"), "telemetry package should show product label in Package Library");
-  assert(!labels.includes("/telemetry-marker"), "Token Optimization should not show telemetry slash-command label");
+  const behaviorView = readConfigSnapshot().behaviorView;
+  const section = behaviorView.find((s) => s.category === "Monitoring");
+  const labels = section?.items.map((item) => item.label) || [];
+  assert(labels.includes("Token Telemetry"), "telemetry package should show product label in Package Library");
+  assert(!labels.includes("/telemetry-marker"), "Monitoring should not show telemetry slash-command label");
+
+  // The rule behind the two assertions above, stated so it holds for packages that do not exist yet:
+  // a `/command` label is only correct when the command restates the package's own name. Telemetry
+  // broke this by exposing /telemetry-marker while being called "Token Telemetry", and the breakage
+  // was invisible because every other command-backed package happened to satisfy the rule.
+  const commandLabeled = behaviorView
+    .filter((s) => s.category !== "Permissions")
+    .flatMap((s) => s.items)
+    .filter((item) => typeof item.label === "string" && item.label.startsWith("/"));
+  assert(commandLabeled.length > 0, "expected at least one command-labeled package");
+  for (const item of commandLabeled) {
+    const words = item.label.slice(1).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    const idWords = String(item.id).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    assert(
+      words.every((word) => idWords.includes(word)),
+      `package ${item.id} is labeled ${item.label} but the command does not restate its name; `
+        + "a product that merely ships a command must keep its prose label",
+    );
+  }
 }
 
 function assertRootAgentConfigOrder() {
@@ -167,6 +227,7 @@ function assertInteractiveHelpPause({ env }) {
 }
 
 function assertSilentCommandReturnsToMenu({ env }) {
+  const before = readGeneratedPermissionFiles();
   const script = `
     set timeout 10
     spawn -noecho ${process.execPath} ${cliPath}
@@ -190,6 +251,11 @@ function assertSilentCommandReturnsToMenu({ env }) {
   }
 
   assert.equal(result.status, 0, `silent command PTY exit\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  assert.deepEqual(
+    readGeneratedPermissionFiles(),
+    before,
+    "fake HOME menu command should not rewrite tracked generated permission files",
+  );
 }
 
 function assertRemoteSyncMenuFlow({ env }) {
@@ -357,6 +423,30 @@ function runGit(args, options = {}) {
   return result;
 }
 
+function markInitialized(stateDir) {
+  const timestamp = new Date().toISOString();
+  fs.writeFileSync(
+    path.join(stateDir, "initialization.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      workflowVersion: 1,
+      status: "complete",
+      startedAt: timestamp,
+      completedAt: timestamp,
+    }, null, 2) + "\n",
+  );
+}
+
+function generatedHomeForRepo(root) {
+  return path.join(path.sep, "Users", "you");
+}
+
+function readGeneratedPermissionFiles() {
+  return Object.fromEntries(
+    generatedPermissionFiles.map((file) => [path.relative(repoRoot, file), fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null]),
+  );
+}
+
 function assertInteractiveMenuRedraw({ env }) {
   const script = `
     set timeout 5
@@ -380,21 +470,40 @@ function assertInteractiveMenuRedraw({ env }) {
   assert.equal((screen.match(/ROBOREPO - Main Menu/g) || []).length, 1, `menu title duplicated after redraw\n${screen}`);
   assert.equal((screen.match(/^> /gm) || []).length, 1, `menu selection duplicated after redraw\n${screen}`);
   assert.match(screen, /^  Agent Config$/m, `root menu missing Agent Config section\n${screen}`);
-  assert.match(screen, /^  Open web portal\b/m, `primary action should keep selector gutter\n${screen}`);
+  // Primary actions sit at the two-column selector gutter ("  " when unselected, "> " when
+  // selected) rather than the four-space child indent used for namespace members. Matching either
+  // gutter keeps this about indentation, which is what it tests, instead of about which row the
+  // keypress sequence happens to land on — that shifts whenever a primary command is added.
+  assert.match(screen, /^(?:> |  )Open web portal\b/m, `primary action should keep selector gutter\n${screen}`);
   assert.doesNotMatch(screen, /^    Open web portal\b/m, `primary action should not get child indent\n${screen}`);
+  // `init` leads the primary actions: it is the first thing a new install needs.
+  assert.match(screen, /^(?:> |  )Initialize\b/m, `root menu missing Initialize primary action\n${screen}`);
+  assert.match(screen, /^(?:> |  )Package Library\b/m, `root menu missing Package Library primary action\n${screen}`);
   assert.match(screen, /^  Support$/m, `root menu missing Support section\n${screen}`);
   assert.match(screen, /^  Navigation$/m, `root menu missing Navigation section\n${screen}`);
   assert.match(screen, /^    Agent Files\b/m, `root menu missing renamed Agent Files item\n${screen}`);
   assert.match(screen, /^    Doctor\b/m, `root menu missing Support Doctor item\n${screen}`);
   assert.match(screen, /^    Maintenance\b/m, `root menu missing Support Maintenance item\n${screen}`);
-  assert.match(screen, /^> Package Library\b/m, `menu did not land on expected row\n${screen}`);
+  // down, down, up leaves the selector one row below the top item. Asserted by offset rather than
+  // by label so adding a primary command (init) does not require re-deriving the expected name;
+  // what matters is that the arrow keys moved the selector and left exactly one of it.
+  const primaryRows = screen.split("\n").filter((line) => /^(?:> |  )\S/.test(line) && !/^  (?:Agent Config|Support|Navigation)$/.test(line));
+  assert.equal(primaryRows[1], screen.split("\n").find((line) => line.startsWith("> ")), `menu did not land on expected row\n${screen}`);
 }
 
 function assertIndentedSelectionMarker({ env }) {
+  // One down per primary action lands on the first child item under the Agent Config section,
+  // which is the indented row this check is about. Derived from the catalog rather than hardcoded
+  // so adding a primary command does not silently retarget the assertion at a different row.
+  // Primary actions are the leading rows before the first section header.
+  const rootItems = menuItems(catalog, null, []);
+  const primaryCount = rootItems.findIndex((item) => item.header);
+  assert.ok(primaryCount > 0, "root menu should list primary actions before the first section");
+  const downs = "\\033\\[B".repeat(primaryCount);
   const script = `
     set timeout 5
     spawn -noecho ${process.execPath} ${cliPath}
-    send "\\033\\[B\\033\\[B\\033\\[Bq"
+    send "${downs}q"
     expect eof
   `;
   const result = spawnSync("expect", ["-c", script], {

@@ -35,7 +35,7 @@ The installer writes:
 - `~/.local/bin/roborepo`
 - install state at `~/.roborepo/install-state.json`
 
-Then it applies the default `base` bundle and starts `roborepo package manage` unless onboarding was already completed or explicitly skipped. On update, that base bundle still re-applies so rendered rules stay fresh even on an already-onboarded machine.
+Then it applies the default `base` bundle. Choosing the optional behaviors is `roborepo init`'s job, not the installer's. On update, that base bundle still re-applies so rendered rules stay fresh even on an already-initialized machine.
 
 ## Collision Policy
 
@@ -98,11 +98,62 @@ unchanged: package registry
 
 ## Uninstall
 
+Removal has **two owners**:
+
+| Step | Removes | Owned by |
+| --- | --- | --- |
+| `roborepo uninstall` | RoboRepo-managed harness configuration and machine-local state, then the npm application in package mode | RoboRepo, then npm |
+| `npm uninstall -g codethings-roborepo-alpha` | the application files npm installed | npm |
+
+On current package installs, run:
+
 ```sh
 roborepo uninstall
 ```
 
-Uninstall removes roborepo-owned copied files, rendered rules, managed skill copies, shell wiring, and install state. If a genuine pre-install backup exists under `~/.roborepo/backups/pre-install/`, uninstall restores it.
+**Removing the npm package alone does not remove your RoboRepo configuration, workspace, or the
+files RoboRepo projected into your harnesses.** Those live outside the package directory, so npm
+does not know about them. Development-checkout mode still skips npm removal because npm does not own
+the checkout.
+
+Managed cleanup removes roborepo-owned copied files, rendered rules, managed skill copies, shell
+wiring, package projections, and machine-local state. If a genuine pre-install backup exists under
+`~/.roborepo/backups/pre-install/`, it is restored. Content that has drifted from what RoboRepo
+wrote, and harness files RoboRepo does not own, are left alone and reported.
+
+### Your workspace is preserved
+
+By default your workspace survives, including the common case where it sits at
+`~/.roborepo/workspace` inside the state directory:
+
+```sh
+roborepo uninstall            # workspace preserved
+roborepo uninstall --dry-run  # preview; changes nothing
+```
+
+To remove it as well, ask explicitly:
+
+```sh
+roborepo uninstall --delete-workspace
+```
+
+Two limits on that flag, both deliberate:
+
+- It applies only to a workspace **inside** the RoboRepo state directory. A workspace you relocated
+  with `roborepo workspace use <path>` is never deleted by RoboRepo, even with the flag — RoboRepo
+  did not create that location, so removing it is yours to do.
+- Combined with `--dry-run` it still previews rather than deletes.
+
+Noninteractive runs refuse to remove anything unless you pass `--yes`, so a script cannot delete
+your configuration by accident:
+
+```sh
+roborepo uninstall --yes
+```
+
+The portal exposes the same managed cleanup at `/config` → **Maintenance**, with a preview and an
+explicit confirmation. The browser action is preserve-only: there is no workspace-deletion control
+there, because that is a deliberate typed choice rather than a button.
 
 ## Verification
 
@@ -159,20 +210,27 @@ The checksum check confirms the transfer didn't corrupt the file. `npm install -
 globally, the same way a published package would install — `roborepo` is now on your `PATH`
 without a repo checkout anywhere on this machine.
 
-Confirm it worked:
+Then set it up for first use:
+
+```sh
+roborepo init
+```
+
+`init` creates the workspace and state directories, detects installed harnesses, opens the Package
+Library, and applies your selection. It should succeed with no harness binaries installed and no
+native harness home/config created yet — zero detected harnesses is a valid outcome.
+
+Confirm the result:
 
 ```sh
 roborepo version
-roborepo setup
 roborepo workspace status
-roborepo harness refresh
 roborepo harness list
-roborepo config apply
 roborepo doctor
 ```
 
-The first pass should work with no harness binaries installed and no native harness home/config
-created yet.
+The lower-level primitives (`setup`, `harness refresh`, `config apply`) still exist and are what
+the automated package smoke test drives, but a person setting up a machine only needs `init`.
 
 ### 4. Roll back if needed
 

@@ -80,5 +80,12 @@ remove_install_backups
 remove_runtime_state
 remove_durable_install_backups
 
+# A dry run removed nothing, so the remnant check would always report the state it just previewed
+# and exit nonzero. Verifying cleanliness is only meaningful after a real run.
+if [[ "${dry_run}" -eq 1 ]]; then
+  echo "Dry run complete. Nothing was removed."
+  exit 0
+fi
+
 check_no_active_remnants
 echo "Uninstall complete."

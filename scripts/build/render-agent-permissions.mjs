@@ -23,6 +23,13 @@ import { GENERATED_POLICY_FILENAME } from "../harnesses/gemini/policy-toml.mjs";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 
+function generatedHomeForRepo(root) {
+  if (process.env.ROBOREPO_GENERATED_HOME) return process.env.ROBOREPO_GENERATED_HOME;
+  return path.join(path.sep, "Users", "you");
+}
+
+const generatedRenderOptions = { home: generatedHomeForRepo(repoRoot) };
+
 // Provider manifest paths are home-relative (e.g. "~/.claude/settings.json"); the generated
 // candidate mirrors just the basename under generated/<provider-id>/. Most providers render
 // permissions into their rootConfig file (Claude's settings.json, Codex's config.toml) — but
@@ -72,7 +79,7 @@ try {
     if (!provider.manifest.capabilities.includes("permissions")) continue;
     const target = generatedPermissionsPath(provider);
     const current = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
-    const rendered = provider.adapters.permissions.render(current, manifest, {}, target);
+    const rendered = provider.adapters.permissions.render(current, manifest, {}, target, generatedRenderOptions);
     ok = checkOrWrite(target, rendered, path.relative(repoRoot, target)) && ok;
   }
 

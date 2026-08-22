@@ -117,3 +117,24 @@ export function initializeWorkspace({ root = workspaceRoot, dryRun = false } = {
   }
   return { root, manifestPath, created: true };
 }
+
+// True when `moduleUrl` is the module node was invoked with, i.e. the script is running as a CLI
+// rather than being imported. Compares real paths on both sides deliberately: on macOS a script run
+// from a temp dir arrives as `/var/...` in process.argv[1] while import.meta.url resolves through
+// the /var -> /private/var symlink, so a direct string comparison is false and the entry-point block
+// silently never runs — the CLI exits 0 having done nothing. Any symlinked checkout has the same
+// shape. Falls back to the unresolved value when realpath fails (path missing), which keeps this
+// usable as a plain guard rather than throwing at module load.
+export function isMainModule(moduleUrl) {
+  const invoked = process.argv[1];
+  if (!invoked) return false;
+  return realPathOrSelf(invoked) === realPathOrSelf(fileURLToPath(moduleUrl));
+}
+
+function realPathOrSelf(target) {
+  try {
+    return fs.realpathSync(target);
+  } catch {
+    return target;
+  }
+}

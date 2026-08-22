@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { fileURLToPath } from "node:url";
 import { rootConfigStatePath, readJsonState, writeJsonState } from "./state-paths.mjs";
+import { isMainModule } from "./roots.mjs";
 
 // Tracks a content hash of root config files (Claude settings.json, Codex config.toml) as of the
 // last time roborepo itself wrote them. This is a drift check, not a merge: it answers "has
@@ -78,8 +78,7 @@ export function checkDrift(harness, filePath) {
 //
 //   node root-config-state.mjs check  <harness> <path>   -> prints: unwritten|missing|clean|drifted
 //   node root-config-state.mjs record <harness> <path>   -> records the hash, prints nothing
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
-if (isMain) {
+if (isMainModule(import.meta.url)) {
   const [cmd, harness, filePath] = process.argv.slice(2);
   if (cmd === "check" && harness && filePath) {
     console.log(checkDrift(harness, filePath).status);

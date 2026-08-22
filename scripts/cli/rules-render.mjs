@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { repoRoot } from "./paths.mjs";
+import { isMainModule } from "./roots.mjs";
 import { enabledPackagesPath, roborepoStateDir } from "./state-paths.mjs";
 import { loadPackageCatalog } from "./package-catalog.mjs";
 import { listHarnessProviders, getHarnessProvider } from "../harnesses/registry.mjs";
@@ -463,7 +463,7 @@ export function renderedRulesMatches(harness, filePath) {
 
 // --------------------------------------------------------------------------- CLI entry
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   const args = process.argv.slice(2);
   if (args.includes("--help") || args.includes("-h")) {
     console.log(`usage: rules-render.mjs [<${knownHarnessIds().join("|")}>] [--dry-run]

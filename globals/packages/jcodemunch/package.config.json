@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "id": "jcodemunch",
-  "label": "JCodeMunch code intelligence",
+  "label": "Code Indexing (with JCodeMunch)",
   "description": "Local code index with symbol search, outline, references, and context bundling. Blocks Grep/Glob and routes code exploration through jcodemunch tools.",
   "lifecycle": "optional",
   "presentation": {
     "category": "token-optimization",
-    "order": 10
+    "order": 20
   },
   "urls": [
     {
@@ -46,7 +46,7 @@
       "type": "hooks",
       "source": "hooks-claude.json",
       "harness": "claude",
-      "scripts": ["hooks/block-source-exploration.mjs"]
+      "scripts": ["hooks/block-source-exploration.mjs", "hooks/session-health.mjs"]
     },
     {
       "type": "hooks",

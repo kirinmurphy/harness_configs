@@ -16,7 +16,10 @@ subcommand implementations live under `scripts/cli/`, one module per category:
 | `scripts/cli/skill-inventory.mjs` | read-only skill inventory used by `skill inspect` and `/config` source popups |
 | `scripts/cli/index.mjs` | `index code\|docs`, `index code --watch`, `run` |
 | `scripts/cli/mcp.mjs` | `mcp add` (Claude + Codex registration) |
-| `scripts/cli/presets.mjs` | `package manage`, `bundle status\|apply\|check\|remove` |
+| `scripts/cli/presets.mjs` | `library` / `package manage` (one shared `packageLibrary` execution preset), `bundle status\|apply\|check\|remove` |
+| `scripts/cli/initialize.mjs` | `init` — orchestrates setup, harness discovery, the Package Library handoff, and apply |
+| `scripts/cli/initialization-state.mjs` | reads/writes `<stateRoot>/initialization.json`; owns the missing / in-progress / complete distinction |
+| `scripts/cli/first-run-routing.mjs` | decides whether a bare `roborepo` enters `init`; pure function of (argv, phase, tty) |
 | `scripts/cli/telemetry.mjs` | `web`, `telemetry install\|start\|stop\|enable\|disable\|status\|report\|export\|backup\|purge\|capture` |
 | `scripts/cli/telemetry-transcript.mjs` | parse harness transcript -> token/tool/MCP session stats + tool-result sizes |
 | `scripts/cli/telemetry-analyze.mjs` | sessions, spikes, spike causes, token contributors, usage windows, spike-vs-normal |
@@ -129,6 +132,7 @@ roborepo index code  [path]
 roborepo index docs  [path]
 roborepo mcp add <name-or-url> [--scope=user|local|project] [--name=<name>] [--dry-run] [--harness <id>] [--skip-claude-permission]
 roborepo index code [path] --watch
+roborepo init [--dry-run] [--force]
 roborepo setup [--dry-run]
 roborepo apply [--dry-run]
 roborepo version
@@ -136,6 +140,7 @@ roborepo workspace status
 roborepo workspace use <path>
 roborepo workspace validate
 roborepo workspace import <path> [--dry-run]
+roborepo library
 roborepo package manage
 roborepo web [--detach] [--no-open] [--port <n>]
 roborepo telemetry install|start|stop|enable|disable|status|report|export|backup|purge
@@ -144,7 +149,7 @@ roborepo run <cmd> [args...]
 
 roborepo update  [--dry-run] [--verbose]
 roborepo repair  [--dry-run] [--on-conflict overwrite|keep|abort]
-roborepo repair local-config [--dry-run|--apply]
+roborepo maintenance repair local-config [--dry-run|--apply]
 roborepo doctor  [--installed] [--verbose]
 roborepo doctor --installed [--verbose]
 roborepo rules   [--check]
@@ -165,8 +170,8 @@ relative or absolute — roborepo resolves it to an absolute path before use.
   rendered rules, root config export, command install, and shell install to pick up new config).
   The *first* install is the shell bootstrap `scripts/install/main.sh` — that is what puts
   `roborepo` on `PATH` — so the CLI has no separate `install` verb; once `roborepo` exists you only
-  ever `update`. After that, `package manage` runs the wizard to choose the optional behaviors for this
-  machine.
+  ever `update`. After that, `init` runs the first-run workflow, and `library` reopens the chooser
+  to change the optional behaviors for this machine later.
 - `version` prints the package version plus resolved `appRoot`, `workspaceRoot`, and `stateRoot`.
   `workspace status` prints the same roots plus workspace manifest state. `workspace use <path>`
   selects a Git-portable workspace. `workspace validate` checks typed workspace resources. `workspace
@@ -236,7 +241,7 @@ Lifecycle behavior:
 - `roborepo doctor` validates command resource shape and duplicate ownership inside package
   dependency closures; `roborepo doctor --installed` checks live install links too.
 - `roborepo repair` relinks moved install paths and preserves package command state because the
-  command registry is path-independent runtime state. `roborepo repair local-config --dry-run`
+  command registry is path-independent runtime state. `roborepo maintenance repair local-config --dry-run`
   handles the separate case where local Claude/Codex settings can be safely recovered from backup.
 - `roborepo uninstall` removes `~/.roborepo/enabled-packages.json`, so no package command ownership
   survives uninstall.
@@ -247,12 +252,26 @@ Most maintainer-only scripts (`test-*.sh`) are intentionally not exposed through
 `skill sync-global` and `rules` are exposed because shared-skill and generated-rule editing are
 documented maintainer workflows.
 
-## Preset Onboarding
+## First Run and the Package Library
 
-`roborepo package manage` is the machine-level chooser for global harness behaviors. Interactive install
-starts it after the core install completes; the CLI also gates normal commands until onboarding has
-completed at least once, unless you bypass the gate for automation. Re-running it shows enabled
-options checked and disabled options unchecked so you can turn a behavior on or off later.
+`roborepo init` is the first-run workflow: it runs the internal `setup` primitive, refreshes harness
+discovery, then asks whether to configure settings in the browser or in the CLI. Browser opens
+`roborepo web --detach`; CLI continues into the Package Library and applies the resulting
+configuration. After the selected path starts or finishes, `init` records that initialization
+completed. That record lives at `<stateRoot>/initialization.json` and is the only thing that
+distinguishes a never-initialized install from a finished one — directory existence is not evidence,
+since `setup` can create the workspace on its own.
+
+A bare, interactive `roborepo` on an uninitialized install routes into `init`. This is not the old
+forced-onboarding gate, which blocked arbitrary commands and has been removed: explicit commands
+always run regardless of initialization state, including `doctor`, `version`, and `--help`, and a
+bare non-interactive invocation goes to the normal menu so automation is never dropped into a
+wizard it cannot answer. An interrupted `init` is resumable; a completed `init` re-runs as a no-op
+report rather than replaying the wizard.
+
+`roborepo library` (equivalently `roborepo package manage`) is the machine-level chooser for global
+harness behaviors. Both names dispatch to one implementation. Re-running it shows enabled options
+checked and disabled options unchecked so you can turn a behavior on or off later.
 
 The platform's install-time file operations (root config baselines, command links, hook links, Codex
 rules) are applied internally by the install pipeline. There is no user-facing verb for them:

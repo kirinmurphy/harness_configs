@@ -1,6 +1,6 @@
 # Setup and Daily Use
 
-This repo owns your agent harness config (Claude Code, Codex) and exposes it at the paths agents already read. Setup installs the core once, then starts the onboarding wizard so you can choose which behaviors you want on that machine.
+This repo owns your agent harness config (Claude Code, Codex) and exposes it at the paths agents already read. Setup installs the core once, then `roborepo init` walks you through choosing which behaviors you want on that machine.
 
 For install workflow tradeoffs, see [install-workflows.md](install-workflows.md). For system details, see [../reference/architecture.md](../reference/architecture.md).
 
@@ -26,13 +26,13 @@ For install workflow tradeoffs, see [install-workflows.md](install-workflows.md)
 
 This installs the core CLI plus the shared baseline. It detects which harnesses are installed (Claude Code, Codex, or both), copies owned files, renders rules, exports mutable root config as local files, installs global commands, and adds shell snippets to your profile.
 
-Interactive install starts onboarding after the core install completes. If you skip it, or if install ran noninteractively, run:
+Set up the installation for first use:
 
 ```sh
-roborepo package manage
+roborepo init
 ```
 
-That workflow turns on or skips optional behavior packages such as skills, hooks, commands, rules, MCP defaults, permissions, and telemetry. Re-running `roborepo package manage` later shows selected options checked and unselected options unchecked.
+That workflow turns on or skips optional behavior packages such as skills, hooks, commands, rules, MCP defaults, permissions, and telemetry. To change those choices later, reopen the chooser with `roborepo library` — it shows selected options checked and unselected options unchecked.
 
 The installer has one materialization model: copy owned files, render generated rules, and preserve
 user-authored root config unless the selected collision policy says otherwise. See
@@ -40,7 +40,7 @@ user-authored root config unless the selected collision policy says otherwise. S
 
 Root config export merges the repo baseline with the active local file when a root-config row collides, preserving the local content and cleaning up redundant backup originals after a no-op resolution. The installer does not auto-merge user config for other managed paths, or silently replace non-root conflicts. If another harness file or global command target already exists and is not managed by this repo, install stops before changing files and prints a merge prompt after the blocking action. See [Config Collision Handling](../reference/config-collision-handling.md) for exact behavior.
 
-**The script is safe to re-run** — owned copies and rendered rules are refreshed, and local Claude/Codex settings are merged with the repo baseline instead of replaced. If a past update left recoverable local settings in a backup, `roborepo update` or `roborepo doctor --installed` will point you at `roborepo repair local-config --dry-run`.
+**The script is safe to re-run** — owned copies and rendered rules are refreshed, and local Claude/Codex settings are merged with the repo baseline instead of replaced. If a past update left recoverable local settings in a backup, `roborepo update` or `roborepo doctor --installed` will point you at `roborepo maintenance repair local-config --dry-run`.
 
 If onboarding has not been completed yet, `roborepo` runs that workflow before most normal commands. `--no-presets-onboard` or `ROBOREPO_PRESETS_ONBOARD=skip` bypasses install-time onboarding and the later command gate for automation.
 
@@ -74,10 +74,10 @@ Agent permission defaults start in `manifests/inventory/agent-permissions.json` 
 command buckets. Each entry resolves to `allow`, `ask`, or `deny`; there is no longer a profile
 bundle such as `readonly`, `interactive`, or `workspace`.
 
-Use the onboarding flow or config portal for normal machine-level changes:
+Use the Package Library or config portal for normal machine-level changes:
 
 ```sh
-roborepo package manage
+roborepo library
 roborepo web
 ```
 
@@ -169,8 +169,8 @@ It leaves copied config files and directories alone; use `--on-conflict` only fo
 noninteractive recovery.
 
 If local Claude/Codex settings were damaged by an older update, use
-`roborepo repair local-config --dry-run` to inspect recoverable settings, then
-`roborepo repair local-config --apply` to restore them after repair backups are written.
+`roborepo maintenance repair local-config --dry-run` to inspect recoverable settings, then
+`roborepo maintenance repair local-config --apply` to restore them after repair backups are written.
 
 ### Edit global rules
 

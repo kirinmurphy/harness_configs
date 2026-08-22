@@ -5,8 +5,8 @@
   "description": "Use when beginning implementation from an existing prepared repository plan. Inspect the current plan and repository, create or safely reuse an isolated worktree, implement every in-scope unblocked objective, make clear or reversible decisions autonomously, continue around blockers, verify the work, synchronize the plan, and report the result. Do not use for initial plan preparation, lifecycle orchestration, portal actions, integration-branch closeout, or implementation without an existing plan.",
   "lifecycle": "optional",
   "presentation": {
-    "category": "commands",
-    "order": 80
+    "category": "skills-dev-lifecycle",
+    "order": 30
   },
   "resources": [
     {

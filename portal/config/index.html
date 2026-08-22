@@ -57,6 +57,14 @@
       <div class="modal-footer" id="modal-footer" hidden></div>
     </dialog>
     <!-- Agent files summary: token warnings + per-harness file grid + defaults popover -->
+    <template id="tpl-config-onboarding-notice">
+      <portal-notice aria-live="polite">
+        <div class="config-empty">
+          <strong data-slot="title"></strong>
+          <span data-slot="body"></span>
+        </div>
+      </portal-notice>
+    </template>
     <template id="tpl-context-warnings">
       <portal-notice class="token-warnings" variant="warning" aria-live="polite">
         <div class="token-warnings-body">
@@ -101,6 +109,47 @@
           </div>
         </div>
       </section>
+    </template>
+    <!-- Managed cleanup. Preserve-only by construction: there is no workspace-deletion control
+         here, because irreversibly removing a user's authored content should be a deliberate typed
+         CLI opt-in (roborepo uninstall --delete-workspace), not a button. -->
+    <template id="tpl-maintenance">
+      <section class="panel wide">
+        <h2>Maintenance</h2>
+        <div class="maintenance-row">
+          <div class="maintenance-copy">
+            <strong>Uninstall RoboRepo</strong>
+            <span>
+              Removes RoboRepo-managed harness configuration and machine-local state. Your workspace
+              is preserved. This does not remove the npm package.
+            </span>
+          </div>
+          <button type="button" class="danger" data-slot="preview">Preview cleanup</button>
+        </div>
+        <div class="maintenance-detail" data-slot="detail" hidden></div>
+      </section>
+    </template>
+    <template id="tpl-maintenance-preview">
+      <div class="maintenance-preview">
+        <div data-slot="preserved" class="maintenance-preserve"></div>
+        <div class="maintenance-removals">
+          <strong>Will be removed</strong>
+          <ul data-slot="removals"></ul>
+        </div>
+        <div class="maintenance-actions">
+          <button type="button" class="danger" data-slot="confirm">Remove managed configuration</button>
+          <button type="button" data-slot="cancel">Cancel</button>
+        </div>
+        <div class="maintenance-error" data-slot="error"></div>
+      </div>
+    </template>
+    <template id="tpl-maintenance-result">
+      <div class="maintenance-result">
+        <strong>RoboRepo-managed configuration has been removed.</strong>
+        <div data-slot="preserved"></div>
+        <div>Remove the application with:</div>
+        <code data-slot="npm"></code>
+      </div>
     </template>
     <template id="tpl-config-header-cell">
       <div role="columnheader" data-slot="label"></div>
@@ -157,49 +206,69 @@
       <button class="globals-default" type="button" data-slot="button"></button>
     </template>
     <!-- Skill category sections + shared item/badge primitives -->
-    <template id="tpl-section-token-optimization">
+    <!-- One generic package section. Heading, description, and footnote all come from
+         manifests/inventory/package-categories.json, so a new category renders with no edit
+         here. Previously this was four near-identical templates keyed by category label, and a
+         category without a template was silently dropped from the page. -->
+    <template id="tpl-section-packages">
       <section class="panel">
-        <div class="panel-head"><h2>Token Optimization</h2></div>
+        <div class="panel-head"><h2 data-slot="heading"></h2></div>
+        <p class="panel-desc" data-slot="description" hidden></p>
         <div data-slot="items"></div>
-      </section>
-    </template>
-    <template id="tpl-section-commands">
-      <section class="panel">
-        <div class="panel-head"><h2>Skills - Workflows</h2></div>
-        <p class="panel-desc">
-          Named slash-command workflows you start intentionally.
-        </p>
-        <div data-slot="items"></div>
-      </section>
-    </template>
-    <template id="tpl-section-code-conventions">
-      <section class="panel">
-        <div class="panel-head"><h2>Skills - Code Conventions</h2></div>
-        <p class="panel-desc">
-          Skills auto-loaded when relevant — shape output without an explicit
-          command.
-        </p>
-        <div data-slot="items"></div>
-        <p class="panel-footnote">
-          * roborepo-support — help skill for this repo, always loaded.
-        </p>
-      </section>
-    </template>
-    <template id="tpl-section-chat-time-output">
-      <section class="panel">
-        <div class="panel-head"><h2>Chat-Time Output</h2></div>
-        <p class="panel-desc">
-          Inline chat notes the agent adds while responding — no files written,
-          no workflow started.
-        </p>
-        <div data-slot="items"></div>
+        <p class="panel-footnote" data-slot="footnote" hidden></p>
       </section>
     </template>
     <template id="tpl-permissions-section">
       <section class="panel">
         <div class="panel-head"><h2>Permissions</h2></div>
+        <div class="perm-group-head" data-slot="yours-head">Yours</div>
+        <div data-slot="yours"></div>
+        <div class="perm-empty" data-slot="yours-empty" hidden>
+          Nothing customized yet — every permission below is the shipped default.
+        </div>
+        <div class="perm-group-head" data-slot="defaults-head">
+          <button
+            type="button"
+            class="perm-defaults-toggle"
+            data-slot="defaults-toggle"
+            aria-expanded="false"
+          ></button>
+        </div>
+        <div data-slot="defaults" hidden></div>
+        <div class="arbitrary-add">
+          <input
+            type="text"
+            class="arbitrary-input"
+            placeholder="add a command, e.g. docker run"
+            data-slot="input"
+          />
+          <button type="button" class="arbitrary-add-btn" data-slot="add-btn">
+            add as ask
+          </button>
+          <span class="item-err" data-slot="add-err"></span>
+        </div>
+      </section>
+    </template>
+    <template id="tpl-stores-section">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Local Stores</h2>
+          <span class="muted" data-slot="description"></span>
+        </div>
         <div data-slot="rows"></div>
       </section>
+    </template>
+    <template id="tpl-store-row">
+      <div class="item">
+        <span class="dot" data-slot="dot"></span>
+        <div class="item-body">
+          <div class="item-row">
+            <span class="item-label" data-slot="label"></span>
+            <span class="muted" data-slot="size"></span>
+          </div>
+          <div class="muted" data-slot="path"></div>
+        </div>
+      </div>
     </template>
     <template id="tpl-config-item">
       <div class="item">
@@ -272,46 +341,14 @@
         </div>
         <div class="behavior-desc" data-slot="description" hidden></div>
         <div class="behavior-default" data-slot="default-bucket" hidden></div>
-        <div class="codex-note" data-slot="no-codex-ask" hidden>
-          Codex has no per-command ask — runs without a prompt there unless
-          another setting forces approval.
-        </div>
         <div class="item-err" data-slot="err"></div>
       </div>
     </template>
-    <template id="tpl-arbitrary-list-row">
-      <div class="arbitrary-list">
-        <div class="arbitrary-head" data-slot="label"></div>
-        <div class="arbitrary-desc" data-slot="description" hidden></div>
-        <div class="arbitrary-items" data-slot="items"></div>
-        <div class="arbitrary-add">
-          <input
-            type="text"
-            class="arbitrary-input"
-            placeholder="add a command, e.g. docker run"
-            data-slot="input"
-          />
-          <button type="button" class="arbitrary-add-btn" data-slot="add-btn">
-            add as ask
-          </button>
-          <span class="item-err" data-slot="add-err"></span>
-        </div>
-      </div>
-    </template>
-    <template id="tpl-arbitrary-item">
-      <div class="arbitrary-item">
-        <span class="arbitrary-label" data-slot="label"></span>
-        <span data-slot="bucket-control"></span>
-        <button
-          type="button"
-          class="reset-link"
-          data-slot="reset"
-          hidden
-        ></button>
-        <span class="codex-note" data-slot="no-codex-ask" hidden
-          >no per-command ask on Codex</span
-        >
-        <span class="item-err" data-slot="err"></span>
+    <template id="tpl-perm-category">
+      <div class="perm-category">
+        <span class="perm-category-label" data-slot="label"></span>
+        <span class="perm-category-count" data-slot="count"></span>
+        <span class="perm-category-desc" data-slot="description" hidden></span>
       </div>
     </template>
     <!-- Raw permission list row -->

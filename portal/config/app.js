@@ -60,6 +60,7 @@ function renderStandardSection(section, contextCost) {
 
 function renderSection(section, contextCost) {
   if (section.kind === "permissions") return renderPermissionsSection(section);
+  if (section.kind === "stores") return tmpl.storesSection(section);
   return renderStandardSection(section, contextCost);
 }
 
@@ -68,9 +69,17 @@ function render(snap) {
   // Section model comes straight from the server snapshot (buildBehaviorView), no client fork.
   const view = snap.behaviorView || [];
   main.replaceChildren(
-    ...[tmpl.contextWarnings(snap)].filter(Boolean),
-    tmpl.configFiles(snap, { onInspectClick: openSourceModal }),
+    ...[
+      tmpl.onboardingNotice(snap),
+      tmpl.contextWarnings(snap),
+      tmpl.configFiles(snap, { onInspectClick: openSourceModal }),
+    ].filter(Boolean),
     ...view.map((section) => renderSection(section, snap.contextCost)).filter(Boolean),
+    // Last panel on the page: app-level lifecycle, well below the day-to-day controls.
+    tmpl.maintenancePanel({
+      onPreview: api.fetchUninstallPreview,
+      onExecute: api.executeUninstall,
+    }),
   );
 }
 

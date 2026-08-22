@@ -2,6 +2,7 @@
 // module's functions; templates.js owns turning its output into markup.
 
 import { formatTokens } from "/portal/shared/token-chip.js";
+import { activePresentedHarnesses } from "/portal/shared/harness-cohort.js";
 export { formatTokens };
 
 export const TOGGLE_ENDPOINT = {
@@ -9,14 +10,9 @@ export const TOGGLE_ENDPOINT = {
   skill: "/api/config/skills",
 };
 
-export const SECTION_TEMPLATE_ID = {
-  "Token Optimization": "tpl-section-token-optimization",
-  Commands: "tpl-section-commands",
-  "Code Conventions": "tpl-section-code-conventions",
-  "Chat-Time Output": "tpl-section-chat-time-output",
-};
-
-export const BUCKETS = ["deny", "ask", "allow"];
+// Display order, loosest to strictest. Order-independent everywhere it is used as a membership
+// check; only affects how bucket options are presented.
+export const BUCKETS = ["allow", "ask", "deny"];
 
 // Root-config drift chip shown beside settings.json / config.toml. Driven by snap.rootConfig, which
 // the server computes once (buildRootConfigView in config.mjs) so terminal and web agree. "in-sync"
@@ -102,10 +98,14 @@ function splitWarningLabel(label) {
 function discoveryWarning(contextCost, harnesses) {
   const legend = contextCost?.skillDiscoveryThresholds || contextCost?.thresholds;
   const displayNameOf = new Map((harnesses || []).map((h) => [h.id, h.displayName]));
-  const rows = Object.entries(contextCost?.harnesses || {}).map(([harness, cost]) => ({
-    harness,
-    tokens: cost.breakdown?.skillDiscoveryTokens || 0,
-  }));
+  const activeHarnessIds = new Set((harnesses || []).map((harness) => harness.id));
+  const rows = Object.entries(contextCost?.harnesses || {})
+    .filter(([harness]) => activeHarnessIds.has(harness))
+    .map(([harness, cost]) => ({
+      harness,
+      tokens: cost.breakdown?.skillDiscoveryTokens || 0,
+    }));
+  if (rows.length === 0) return null;
   const max = rows.reduce((best, row) => (row.tokens > best.tokens ? row : best), { harness: "", tokens: 0 });
   const spec = {
     tokens: max.tokens,
@@ -186,12 +186,13 @@ function compareWarningEntries(a, b) {
 export function tokenWarningEntries(snap) {
   const contextCost = snap?.contextCost;
   if (!contextCost) return [];
-  const harnesses = snap.harnesses || [];
+  const harnesses = activePresentedHarnesses(snap);
   const entries = [
     ...harnesses.map((h) => warningEntry(h.rulesFile, rulesChipSpec(contextCost, h.id))),
     discoveryWarning(contextCost, harnesses),
     ...(snap.behaviorView || [])
       .flatMap((section) => section.items || [])
+      .filter((item) => item.active !== false)
       .map((item) => itemWarningEntry(item, contextCost)),
   ].filter(Boolean);
   return entries.map((entry) => ({ ...entry, ...splitWarningLabel(entry.label) })).sort(compareWarningEntries);

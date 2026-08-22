@@ -21,6 +21,11 @@ export function writeJsonState(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n");
 }
 export const installStatePath = path.join(roborepoStateDir, "install-state.json");
+// First-run lifecycle record: has `roborepo init` ever started, and did it finish. Deliberately
+// separate from installStatePath (which the shell installer owns) and from directory existence —
+// a workspace dir can exist because `setup` ran as an internal primitive without the user ever
+// completing initialization. See scripts/cli/initialization-state.mjs for the schema and policy.
+export const initializationStatePath = path.join(roborepoStateDir, "initialization.json");
 export const presetsStatePath = path.join(roborepoStateDir, "presets", "state.json");
 export const roborepoSkillsDir = path.join(roborepoStateDir, "skills");
 // Personal deny/ask/allow overrides layered on top of manifests/inventory/agent-permissions.json's
@@ -39,8 +44,20 @@ export const repositoriesRegistryPath = path.join(roborepoStateDir, "repositorie
 // which resolves this same path independently because it also runs as a copied runtime asset.
 export const usageDir = path.join(roborepoStateDir, "usage");
 export const usageLatestDir = path.join(usageDir, "latest");
+// Observation logs written by capture packages — shell commands, and whatever later packages
+// record. Segmented by harness because each record already carries a harness dimension and one
+// harness's corpus should be resettable on its own.
+//
+// Machine-local, and classified Sensitive machine history / Exclude by
+// docs/plans/backlog/infra-portable-user-profile-backup.md: these logs hold real paths, hostnames,
+// and arguments, so they sit under stateRoot rather than the portable profile boundary. They are
+// deliberately NOT under a harness's own directory (~/.claude/logs and the like) — that is a
+// container the user may disable or remove, and it cannot be sandboxed by ROBOREPO_STATE_ROOT.
+export const captureDir = path.join(roborepoStateDir, "capture");
+export function denseBashLogPath(harness) {
+  return path.join(captureDir, harness, "dense-bash.jsonl");
+}
 export const telemetryDir = path.join(roborepoStateDir, "telemetry");
-export const telemetryDbPath = path.join(telemetryDir, "telemetry.sqlite");
 export const telemetrySpoolDir = path.join(telemetryDir, "spool");
 export const telemetryCollectorDir = path.join(telemetryDir, "collector");
 export const telemetryEventsDir = path.join(telemetryDir, "events");
@@ -62,6 +79,12 @@ export const legacyTelemetryPidPath = process.env.ROBOREPO_TELEMETRY_PID_PATH
 // even though it wasn't actually occupying the port being started on. ROBOREPO_PORTAL_PID_PATH
 // (set by test-telemetry-pid.sh to sandbox a temp dir) is an explicit override and wins outright,
 // regardless of port — a caller setting it has already opted out of the per-port default scheme.
+// The directory portalPidPathForPort() writes into. Exported so the stale-PID reaper can enumerate
+// every server-<port>.pid without duplicating the "portal" path segment. Note this deliberately
+// ignores the PID_PATH env overrides above: those point at a single sandboxed FILE, not a directory
+// of them, so a sweep must not follow them.
+export const portalStateDir = path.join(roborepoStateDir, "portal");
+
 export function portalPidPathForPort(port) {
   if (process.env.ROBOREPO_PORTAL_PID_PATH) return process.env.ROBOREPO_PORTAL_PID_PATH;
   if (process.env.ROBOREPO_TELEMETRY_PID_PATH) return process.env.ROBOREPO_TELEMETRY_PID_PATH;

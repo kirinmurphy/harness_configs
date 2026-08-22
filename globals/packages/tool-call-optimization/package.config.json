@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "tool-call-optimization",
+  "label": "Tool call optimization",
+  "description": "Rules that keep agent shell commands small, stable, and allowlistable: one command per call, stable command heads, no cd/echo/&& composition, scratchpad scripts instead of inline one-liners. Also carries the verification-scoping, context-cost, and temp-file cleanup rules. Pairs with the Capture Dense Bash package, which measures whether these rules are actually holding.",
+  "lifecycle": "optional",
+  "presentation": {
+    "category": "token-optimization",
+    "order": 40
+  },
+  "resources": [
+    {
+      "type": "rules",
+      "source": "rules.md",
+      "harness": "both"
+    }
+  ]
+}

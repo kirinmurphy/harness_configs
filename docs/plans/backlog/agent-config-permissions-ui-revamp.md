@@ -1,14 +1,15 @@
 ---
 id: permissions-ui-revamp
 priority: medium
-next_action: Decide the intent-vs-mechanism display model — whether the UI shows one intent per behavior with per-harness fidelity indicators, or separate per-harness views
+next_action: Collapse the gate/scope pairs to one row per operation, after confirming codexSandboxMode() and presets.mjs survive the gate becoming non-settable
 blocked_by: []
 depends_on: []
 related:
   - harness-capability-derived-resource-targeting
   - harness-parity-todo
   - codex-cmux-hook-trust-review
-reviewed_commit:
+  - ia1q1z9
+reviewed_commit: 1d4cb64
 ---
 
 # Permissions UI Revamp
@@ -73,6 +74,51 @@ to make impossible.
       provider manifest, not from a claude/codex special case.
 - [ ] **No silent uniformity.** Any behavior whose rendered result differs across harnesses is
       marked; a test asserts the marker appears for at least the known-divergent case.
+
+## Landed since this plan was written
+
+None of this closes the fidelity work above — the motivating defect is untouched — but it changes
+the surface the remaining work builds on.
+
+The permissions list was restructured around authorship rather than mechanism. Semantic behaviors
+and arbitrary commands now render as one merged list split into YOURS (customized, carrying a delete
+affordance) above DEFAULTS (shipped, collapsed behind a count), grouped by a seven-category taxonomy.
+`scripts/cli/config.mjs` builds the rows for both the CLI and the portal, so the two surfaces cannot
+drift. `scripts/test/package-catalog-check.mjs` guards kind coverage across consumers, and caught a
+real regression on its first run.
+
+A new behavior kind, `repo-scope`, was introduced by [[ia1q1z9]]. It has no path list and renders
+nothing in the shared renderer — the boundary is enforced per provider at tool-call time. It is the
+first behavior whose enforcement mechanism differs per harness *by construction*, which is a small
+instance of exactly what this plan is about.
+
+## Collapse the gate/scope rows
+
+Investigation during the above work found the gate/scope split has no user-facing use case, and this
+plan owns the display decision.
+
+The Files category shows four rows — "Read files", "Read scope", "Write files", "Write scope". The
+gate answers *whether* a tool may be used; the scope answers *where*. Both must pass. Nothing in the
+labels conveys that, and the reachable states collapse:
+
+| Gate | Scope | Rendered result |
+| --- | --- | --- |
+| `deny` | any | no rules at all |
+| `ask` | any | no rules at all — identical to `deny` |
+| `allow` | `ask` | everything prompts |
+| `allow` | `allow` | scoped allows render |
+
+Three of four states produce the same outcome, and `deny` does not block writes — it removes the
+allow rules and falls through to the default prompt. The gate exists because Gemini's Policy Engine
+matches tool names with no path predicate, and the user has since declared Gemini deprecated.
+
+- [ ] Collapse each operation to one row ("File writes: allow / ask / deny"), making the gate an
+      internal rendering detail rather than a user-facing control.
+- [ ] Before building, confirm `codexSandboxMode()` in `scripts/harnesses/permissions-render.mjs`
+      still renders correctly if the `write-files` gate stops being independently settable — it
+      reads that gate specifically.
+- [ ] Before building, confirm `scripts/cli/presets.mjs` loses no rows: it filters onboarding steps
+      by `kind === "behavior"`.
 
 ## Open questions
 

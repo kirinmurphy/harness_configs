@@ -93,6 +93,75 @@ defaults should be merged back into the repo baseline. It is a reminder, not a b
   thing the agent sees when deciding to load the skill — make it discriminating, not
   generic. Body holds the actual instructions, loaded only on invocation.
 
+## References provide depth; SKILL.md provides gates
+
+A skill with named modes routes an agent by prose: the agent reads the mode/reference list, loads
+what it names, and does the work. Anything that decides whether the work is *valid* has to survive
+that routing, because a rule the agent never loads is a rule that never runs — and the failure is
+silent, since the artifact still gets delivered.
+
+Three levels, and each rule belongs to exactly one:
+
+| Level | Holds | Example |
+| --- | --- | --- |
+| Entry-point gate in `SKILL.md` | The conditions that make completion invalid | "Do not deliver a durable document until the Validator loop passes." |
+| Reference | The full procedure, examples, and edge cases | `references/review-loop.md` |
+| Deterministic validator in code | Machine-checkable invariants | `modules/plan-docs/naming.mjs` |
+
+Rules for writing them:
+
+- Repeat only enough of an invariant in `SKILL.md` to make skipping the reference visibly
+  noncompliant. Do not copy a whole reference into the entry point; the duplicate goes stale.
+- List every required reference for each named mode. Reference routing should never be inferred.
+- **Load mandatory completion references from the artifact-producing mode.** A finishing step
+  reachable only from a mode the user never selects is unreachable in practice. This is the failure
+  `roborepo skill audit` reports as `reference unreachable from ...`.
+- Do not require a second inferred mode to finish the first. Keep the invocation contract to what
+  the user actually types.
+- Move any invariant a script can prove into code. Filenames, frontmatter shape, and schema
+  correctness do not belong in model memory.
+- Keep qualitative review in a read-only pass. The role that writes must not be the role that grades.
+- Add regression coverage for routing itself:
+  `scripts/test/skill-reference-matrix-characterization-check.mjs` parses these matrices out of the
+  prose, and `roborepo skill audit` reports a matrix that no longer parses.
+
+### Pairing another skill
+
+The same rule applies one level up. A reference loads from within a skill; a paired skill loads
+from beside it. Both fail the same way — by being mentioned rather than required. Prose that names
+a related skill without instructing the load reads as background, and the observed consequence is
+that the user names the paired skill by hand on every request.
+
+| Written as | What happens |
+| --- | --- |
+| "For plans, pair with `technical-writing`." | never loads — a fact about two skills, not a step |
+| "Load `technical-writing`; do not wait to be asked for it by name." | loads |
+| "Load `code-style` when relevant." | never loads — defers the judgment to the reader, who is the one who did not already know |
+| "Load `code-style` when the document specifies module boundaries, orchestration vs. execution, or reuse." | loads when it applies |
+
+Rules:
+
+- **Declare paired skills in a table at the entry point**, with a `Load when` column. One row per
+  skill; no prose-only mentions elsewhere that a reader has to reconstruct into a rule.
+- **Write the unconditional ones as always.** If a skill is required for every invocation of a
+  mode, say "Always" and put the requirement in the completion gates too, so skipping it is
+  visibly noncompliant before any reference is opened.
+- **Give every conditional skill a subject-matter trigger.** "When relevant", "if useful", and
+  "for larger work" are not triggers. Size is never the trigger — a one-phase plan that specifies
+  module placement needs `code-style` exactly as much as a ten-phase one.
+- **Never make the trigger an explicit user request.** "When the user asks for them" restores the
+  manual step the pairing exists to remove. A request is one way to reach relevance, not the
+  condition itself.
+- **Require the load to be reported**, including which conditional skills did not apply. A skipped
+  skill and a forgotten one are indistinguishable otherwise.
+- **A paired skill constrains content, not just wording.** If a document tells a reader to build
+  something the paired skill forbids, the document is wrong on the merits — so whatever was paired
+  in also joins the review scope (see `technical-writing`'s `references/review-loop.md`).
+
+`plan-docs` and `technical-writing` both carry a `## Paired Skills` table in this shape; copy it
+rather than inventing a second format. Coverage lives in
+`scripts/test/skill-reference-matrix-characterization-check.mjs`.
+
 ## Editing global rules / behavior
 
 - Generated global rules: edit fragments under `globals/rules/shared/`,

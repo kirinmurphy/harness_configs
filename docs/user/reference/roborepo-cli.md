@@ -6,13 +6,44 @@ After [installing roborepo](../guides/first-time-setup.md), install puts it on y
 > If `roborepo` is not found, run `roborepo doctor` (or `./bin/roborepo doctor` before the first
 > install) — it reports whether the command is installed and on `PATH`, with the exact fix.
 
+## First Run
+
+|                            |                                                                                                                                                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `roborepo init [--dry-run] [--force]` | Sets up a new installation: creates workspace/state directories, refreshes harness discovery, asks whether to configure in the browser or CLI, then records that initialization completed. The browser path opens `roborepo web --detach`; the CLI path opens the Package Library and applies the result. Safe to re-run — a completed install reports and exits instead of replaying the wizard. `--dry-run` previews without mutating; `--force` re-runs the full workflow on an already-initialized install. |
+| `roborepo library`         | Opens the Package Library to change which behaviors are enabled. Identical to `roborepo package manage`. |
+
+A bare, interactive `roborepo` on an uninitialized install goes into `init` automatically. Explicit
+commands are never gated on initialization — `doctor`, `version`, and `--help` work before it, and
+bare non-interactive invocations open the normal menu rather than a wizard, so scripts are safe.
+
+Zero detected harnesses is a valid initialization: install or launch a supported harness later and
+run `roborepo harness refresh`.
+
+## Uninstall
+
+|                            |                                                                                                                                                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `roborepo uninstall [--dry-run] [--yes] [--delete-workspace]` | Removes RoboRepo-managed harness configuration and machine-local state. Your workspace is preserved by default. `--dry-run` previews without changing anything; `--yes` is required to run destructively without a TTY; `--delete-workspace` additionally removes a workspace stored inside the RoboRepo state directory. |
+
+Removal has two owners. In package mode, `roborepo uninstall` removes what RoboRepo created and then
+runs npm against the prefix that contains the current `roborepo` binary. Removing the npm package
+alone leaves your RoboRepo configuration and workspace in place.
+
+A workspace relocated outside the state directory is never deleted by RoboRepo, including with
+`--delete-workspace`. See
+[install-workflows.md](../guides/install-workflows.md#uninstall) for the full ownership model.
+
 ## Setup and Maintenance
 
 |                            |                                                                                                                                                                  |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `roborepo update [--verbose]` | Applies this repo's harness config to this machine: copied files, rendered rules, root config export, global command install, and shell wiring. Use after pulling repo changes; `--verbose` includes unchanged items in the report. |
 | `roborepo repair [--dry-run] [--on-conflict ...]` | Repairs a moved or renamed checkout by relinking stale symlinks against the current path; it leaves copied config content alone. |
-| `roborepo repair local-config [--dry-run or --apply]` | Recovers safe local Claude/Codex settings from recent backups when `update` or `doctor --installed` reports local config repair candidates. |
+| `roborepo maintenance repair local-config [--dry-run or --apply]` | Recovers safe local Claude/Codex settings from recent backups when `update` or `doctor --installed` reports local config repair candidates. |
+| `roborepo maintenance stores [list]` | Lists the local stores roborepo keeps on disk — telemetry spools, localhoster history, capture logs — with each one's size against its bound. |
+| `roborepo maintenance stores reset <id> [--all]` | Reclaims space in one store. Applies that store's own retention policy, or with `--all` clears it outright. Store ids come from `stores list`. |
+| `roborepo maintenance portal-pids [--reap]` | Lists `~/.roborepo/portal/server-<port>.pid` files and whether each one's process is still alive. A portal killed by a reboot or `SIGKILL` leaves its pid file behind. Reports by default; `--reap` deletes only the entries whose process is definitively gone, never a running portal or one owned by another user. |
 | `roborepo doctor`          | Runs harness health checks for config files, links, helper commands, dependencies, and generated outputs.                                                        |
 | `roborepo doctor --installed [--verbose]` | Runs post-install verification that the installed harness paths resolve correctly; default output is concise.                                      |
 | `roborepo rules [--check]` | Renders generated Claude/Codex global instruction files, or verifies them with `--check`.                                                                        |
@@ -39,7 +70,8 @@ Package development is a maintainer workflow; package users usually only need `p
 | | |
 | --- | --- |
 | `roborepo web` | Starts the local portal. `/config` manages packages/permissions, `/plans` browses plan docs, `/localhoster` lists local web apps, and `/telemetry` shows token usage when telemetry has data. |
-| `roborepo web` | Starts the same portal detached and opens it in the browser. |
+| `roborepo web --detach [--no-open] [--port <n>]` | Starts the same portal detached and opens it in the browser. A cold start warms its views before binding and can take ~30s. |
+| `roborepo web stop [--port <n>]` | Stops the detached portal. PID files are tracked per port, so pass the same `--port` used to start it. |
 | `roborepo localhoster [--json] [--open]` | Lists active localhost HTTP apps, prints the portal snapshot as JSON, or opens `/localhoster`. |
 
 The `/plans` page scans configured roots for `docs/plans/**/*.md`. See
@@ -48,6 +80,10 @@ The `/plans` page scans configured roots for `docs/plans/**/*.md`. See
 
 The `/localhoster` page discovers local HTTP apps on macOS, keeps machine-local saved links under
 the RoboRepo state root, and reports per-provider capability limits. See [Localhoster](localhoster.md).
+
+> `roborepo dev …` exists only in a Git checkout of roborepo itself; the scripts it drives are not
+> published to npm, so an installed copy reports that it requires a development checkout. Nothing
+> in this reference depends on it.
 
 ## Indexing
 

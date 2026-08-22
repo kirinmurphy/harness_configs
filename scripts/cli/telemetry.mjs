@@ -6,7 +6,7 @@ import net from "node:net";
 import { spawnSync, spawn } from "node:child_process";
 import { markTelemetrySelected } from "./presets.mjs";
 import { repoRoot, stateRoot, harnessHome, rootConfigActive } from "./paths.mjs";
-import { portalPidPathForPort, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDbPath, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir, repositoriesRegistryPath } from "./state-paths.mjs";
+import { portalPidPathForPort, legacyTelemetryPidPath, telemetryBackupDir, telemetryCollectorDir, telemetryDir, telemetrySpoolDir, telemetryMarkersPath, telemetryExperimentsDir, repositoriesRegistryPath } from "./state-paths.mjs";
 import { analyzeTelemetry } from "./telemetry-analyze.mjs";
 import { readMarkers, readSnapshot, readSnapshots, readExperiments } from "./telemetry-schemas/persistence.mjs";
 import { readSourceFile } from "./config-source-lookup.mjs";
@@ -42,7 +42,7 @@ import {
 } from "./repositories.mjs";
 import { loadRegistry, updateRegistry, upsertRepository, recordDiscovery } from "../../modules/repositories/index.mjs";
 import { buildRepositoryHashIndex } from "./telemetry-repository.mjs";
-import { createHash } from "node:crypto";
+import { privacyHash } from "./telemetry-schemas/hash.mjs";
 import { buildAnalysisPrompt } from "../harnesses/transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
 import { hookFilePath, writeHooksFile } from "./hook-composition.mjs";
@@ -409,7 +409,6 @@ function telemetryStatus(args) {
   rejectArgs(args);
   const state = readTelemetryState();
   console.log(`enabled: ${state.enabled === true ? "yes" : "no"}`);
-  console.log(`database: ${telemetryDbPath}`);
   console.log(`spool:    ${telemetrySpoolDir}`);
   console.log(`collector:${telemetryCollectorDir}`);
 }
@@ -774,6 +773,11 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     mutateSkill: (id, enabled) => setSkillInstalled(id, enabled),
     mutateBehavior: (behaviorId, bucket) => setBehaviorBucket(behaviorId, bucket),
     mutateCommand: (tokens, bucket) => setCommandBucket(tokens, bucket),
+    // Managed cleanup, shared with `roborepo uninstall` so both consume one implementation of what
+    // is safe to remove. Imported lazily: the portal starts on every `roborepo web` and has no
+    // reason to load the uninstall path unless someone opens the Maintenance panel.
+    uninstallPreview: async () => (await import("./uninstall.mjs")).uninstallPreview(),
+    uninstallExecute: async () => (await import("./uninstall.mjs")).uninstallExecute(),
     onListening: (actualPort) => {
       setLocalhosterPortalInfo({ port: actualPort });
       if (options.open) openLocalUrl(`${portalUrl(actualPort)}${openPath}`);
@@ -1084,13 +1088,12 @@ function analysisKey(window, harness, { model = null, repo = null, repository = 
 // Returns the cache entry { json } for the given view, computing (and caching) it on a miss.
 // Registry-derived hash index for read-time legacy telemetry association, cached by spool signature
 // so it is rebuilt only when the spool changes (the registry is small; loading it is cheap, and a
-// missing/corrupt registry degrades to an empty index rather than throwing). Uses the SAME hash as
-// telemetry-capture.mjs (sha256, first 24 hex) so normalized_remote_hash values line up.
+// missing/corrupt registry degrades to an empty index rather than throwing).
 let _repositoryHashIndex = null;
 let _repositoryHashIndexSig = null;
-function captureRepositoryHash(value) {
-  return createHash("sha256").update(String(value)).digest("hex").slice(0, 24);
-}
+// Matching capture's hash is what makes normalized_remote_hash values line up, and both sides now
+// call the same helper rather than keeping two copies aligned by hand.
+const captureRepositoryHash = privacyHash;
 // Reconcile telemetry-observed repositories into the registry so `capabilities.telemetry` can be
 // true. Runs at portal repo-list load (NOT on the capture hot path): scans the spool's distinct
 // repository_ids and records one `telemetry` discovery each, batched into a single registry write.
@@ -1667,16 +1670,22 @@ function stopServer(port) {
 }
 
 async function startDetachedPortal(port, { allowPortFallback = false, portExplicit = false } = {}) {
-  // Only kill whatever was previously tracked on THIS port (skip when port is 0/auto-assign — there
-  // is no specific port's prior server to reconcile with yet). A stale/dead process recorded here
-  // never touches any other port's own PID record.
-  if (port !== 0) await killExistingServer(port);
+  // Resolve BEFORE killing, matching the foreground path below. Killing first made the reuse branch
+  // unreachable: a healthy portal on this port was SIGTERMed and respawned on every `web --detach`,
+  // so running the command twice needlessly destroyed a working server (and, with the ready-wait,
+  // could leave you with none). resolvePortalPort already handles the case a kill was meant to
+  // cover — it SIGTERMs a STALE portal (one running code that changed since it started) and waits
+  // for the port to free, so only a current, healthy portal survives to the reuse branch.
   const resolved = await resolvePortalPort(port, { allowPortFallback, portExplicit, warn: true });
   if (resolved.reuse) {
     writePid(resolved.port, resolved.pid);
     return resolved.port;
   }
   const selectedPort = resolved.port;
+  // Reap whatever this port's PID file still tracks (a dead process, or one that is alive but not
+  // answering as a healthy portal) before binding. Skipped for 0/auto-assign: there is no specific
+  // port's prior server to reconcile with. A stale record here never touches another port's.
+  if (selectedPort !== 0) await killExistingServer(selectedPort);
   const { child, readyFile } = spawnDetachedServer(selectedPort);
   const ready = await waitForPortalReady(selectedPort, child, readyFile);
   if (!ready.ok) {
@@ -1806,7 +1815,13 @@ function spawnDetachedServer(port) {
 }
 
 function waitForPortalReady(port, child, readyFile) {
-  const deadline = Date.now() + 3000;
+  // A COLD start is far slower than it looks: the server warms telemetry/localhoster views before
+  // it binds, which measured ~29s on a normal dev checkout — an order of magnitude past the 3s this
+  // used to allow. That made `web --detach` fail on every cold start while leaving the child alive
+  // and binding moments later, so the CLI reported failure for a portal that was about to work.
+  // The child exiting is still detected immediately below, so a genuinely broken start fails fast
+  // rather than sitting out this whole window.
+  const deadline = Date.now() + 60000;
   return new Promise((resolve) => {
     let settled = false;
     let exitCode = null;

@@ -77,7 +77,10 @@ panel renders:
   awareness, skill visibility), each a `rules` package merged into every managed harness. On by
   default; toggling adds/removes the behavior's rules block.
 - **Permissions** — flat behavior and command buckets. Named behaviors and arbitrary commands can
-  be set to `allow`, `ask`, `deny`, or reset to the manifest default.
+  be set to `allow`, `ask`, `deny`, or reset to the manifest default. They render as one merged
+  list split by authorship rather than by kind: entries the user customized appear first, each
+  with a delete control, above the shipped defaults collapsed behind a count. Delete reverts to
+  the manifest default, or removes the entry outright when it was user-added and has no default.
 
 ## Current Behavior
 
@@ -177,6 +180,35 @@ Personal changes are stored in `~/.roborepo/command-overrides.json` and layered 
 `manifests/inventory/agent-permissions.json` before rendering live Claude/Codex config. Resetting a
 row to `default` removes the personal override and returns to the repo manifest default for that
 behavior or command.
+
+#### Gates and scopes
+
+File access is two behaviors, not one, and they answer different questions:
+
+| Behavior | Question |
+| --- | --- |
+| `read-files` / `write-files` | **Whether** the tool may be used at all — a master switch across every path |
+| `read-scope` / `write-scope` | **Where** it may be used without prompting — a path allowlist |
+
+Both must pass. Setting `write-files` to `deny` shuts writing off everywhere regardless of scope;
+leaving it `allow` lets `write-scope` decide which paths are silent and which prompt.
+
+The gate exists separately because some harnesses cannot express path scoping at all (Gemini's
+Policy Engine), and falls back to the whole-tool decision there. `write-files` deliberately emits no
+unscoped rule of its own: a bare `Write`/`Edit` entry out-ranks every path-scoped rule and would
+silently defeat the scoping.
+
+#### Changing path scopes
+
+Scope paths are expanded at **render** time into static harness config, not resolved per session.
+A scope change is therefore an install-time concern, and any mechanism that depends on a runtime
+value (a project-dir variable, for instance) has to be verified against each harness's own rule
+syntax before it is relied on.
+
+Path-scoping changes must be worked through **per provider** — Claude and Codex both, not Claude
+alone. The two render through different code paths in `scripts/harnesses/permissions-render.mjs`
+and support different permission primitives; a scope that works in one is not evidence it works in
+the other.
 
 ## Happy Path
 

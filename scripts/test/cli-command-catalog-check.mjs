@@ -113,7 +113,7 @@ assert.ok(catalog.nodes.package.children.dev, "package dev is a separate namespa
 
 {
   const probe = `
-    import { loadCommandCatalog, childEntries } from ${JSON.stringify(path.join(repoRoot, "scripts/cli/command-catalog.mjs"))};
+    import { loadCommandCatalog, childEntries, validateCommandCatalog } from ${JSON.stringify(path.join(repoRoot, "scripts/cli/command-catalog.mjs"))};
     import { resolveCommand } from ${JSON.stringify(path.join(repoRoot, "scripts/cli/command-resolver.mjs"))};
     import { developmentMode } from ${JSON.stringify(path.join(repoRoot, "scripts/cli/paths.mjs"))};
     const catalog = loadCommandCatalog();
@@ -123,9 +123,22 @@ assert.ok(catalog.nodes.package.children.dev, "package dev is a separate namespa
       listed: listed.includes("dev"),
       resolved: resolveCommand(catalog, ["dev"]).kind,
       help: resolveCommand(catalog, ["help", "dev"]).kind,
-      // Validation must still walk developmentOnly nodes on every machine, or a malformed dev
+      // Validation must still WALK developmentOnly nodes on every machine, or a malformed dev
       // definition that ships in the tarball would only ever fail on a maintainer's laptop.
-      validated: Object.keys(catalog.nodes).includes("dev"),
+      //
+      // Proven by corrupting the dev node and requiring validation to reject it. Asserting the node
+      // merely EXISTS would pass either way — it reads the raw tree rather than exercising the
+      // traversal — so that version of this check stayed green with includeUnavailable removed.
+      validationWalksDev: (() => {
+        const corrupted = structuredClone(catalog);
+        corrupted.nodes.dev.kind = "not-a-real-kind";
+        try {
+          validateCommandCatalog(corrupted);
+          return false;
+        } catch (error) {
+          return /invalid node kind at dev/.test(error.message);
+        }
+      })(),
     }));
   `;
   const result = spawnSync(process.execPath, ["--input-type=module", "-e", probe], {
@@ -138,7 +151,11 @@ assert.ok(catalog.nodes.package.children.dev, "package dev is a separate namespa
   assert.equal(observed.listed, false, "dev must not be listed in package mode");
   assert.equal(observed.resolved, "invalid", "dev must not resolve in package mode");
   assert.equal(observed.help, "invalid", "help dev must not resolve in package mode");
-  assert.equal(observed.validated, true, "dev definitions must still be validated in package mode");
+  assert.equal(
+    observed.validationWalksDev,
+    true,
+    "validateCommandCatalog must traverse developmentOnly nodes in package mode (includeUnavailable)",
+  );
 }
 
 const activeDocPaths = [

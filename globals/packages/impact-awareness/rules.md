@@ -13,3 +13,5 @@ Flag when the change:
 - **Forces a tradeoff** — `this changes current behavior XX; let's evaluate options before building`.
 
 Flag only real collisions with existing functionality. Do not flag for net-new behavior that touches nothing, and do not block product work — make the impact visible so the user can choose knowingly.
+
+An impact note is for a consequence the user has to weigh. A collision you have already resolved correctly is a line in the summary, not a flag — see Decide, Don't Ask. Reserve the marker for the case where knowing the consequence could change what they ask for.

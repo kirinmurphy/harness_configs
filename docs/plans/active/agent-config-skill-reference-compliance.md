@@ -34,7 +34,7 @@ The work applies first to `plan-docs` and `technical-writing`, then establishes 
 - [x] Establish a convention that can be applied to additional skills when similar failures are observed.
 - [x] Add regression coverage proving that required references and validation gates cannot silently disappear from the workflow.
 - [x] Report which references a session actually read, not merely which ones the skill declares, so a skipped reference is observable rather than assumed.
-- [ ] Deliver that report where it is useful — the chat-time line at the end of a response — rather than as a durable record nobody reads back.
+- [x] Deliver that report where it is useful — the chat-time line at the end of a response — rather than as a durable record nobody reads back. **Shipped.** `globals/packages/skill-visibility/rules.md` defines the `> 🧩 **Skills loaded:**` line, its per-skill reference tally, and the "observation unavailable" form for a compacted context; the package renders into the live harness rules.
 - [x] Preserve the provider seam while fixing Codex: harness-specific hook payload parsing and skill-root knowledge must live behind provider-owned adapters or provider-declared data, with only optional harness-agnostic helpers shared across providers.
 
 ## Non-goals

@@ -596,9 +596,20 @@ document described. The remaining Phase 6b items genuinely depend on later phase
       tarball on every run.
 - [ ] Run the real-new-Mac harness-count matrix below. **Stage 0 is confirmed on real hardware
       (2026-08-22):** the machine had no harness installed, `init` succeeded, and `roborepo doctor`
-      passed. Stages 1–N remain unobserved. They no longer need hardware — `test-clean-machine-install-sandbox.md`
-      (`qk4mz7t2`) drives all five stages with stub executables in a container, so hardware
-      confirms rather than discovers.
+      passed.
+
+      **Stages 1–N: lifecycle half now covered automatically (2026-08-24).**
+      `scripts/test/clean-machine-container-check.mjs` (commit `6197756`) drives all four stages
+      with stub executables in a container, asserting `init`, `doctor`, and a clean uninstall at
+      each harness count. Verified green.
+
+      **Still open — the presentation half.** The `Verify` column below asks for more than that
+      suite asserts: the discovery contract as reflected by `refresh`/`list`/Agents (stage 1),
+      package configuration applying safely (stage 2), two-harness presentation and filters
+      (stage 3), and generated N-provider presentation free of Claude/Codex-only assumptions
+      (stage N). None of that is asserted today. It does not need a new Mac — it needs either
+      assertions layered onto the container stages or a manual pass — but until one exists this
+      item stays open.
 - [ ] Record any presence-signal observations in `harness-presence-signal-expansion` rather than broadening this plan mid-test.
 
 #### Phases 3-6 implementation notes

@@ -1,10 +1,10 @@
 ## Impact Awareness
 
-When the user proposes a new idea, feature, or change, before building it, surface how it interacts with existing functionality. Flag the interaction prominently on its own line:
+When the user proposes a new idea, feature, or change, before building it, surface how it interacts with existing functionality. Flag the interaction:
 
 `> 🧭 **Impact:** [one-line description]`
 
-Use that exact format. Never embed it in a paragraph. Base the assessment on the actual code, and on Project Context inventory docs when they exist; do not guess.
+Exact format. Placement: see `response-shape`. Base the assessment on the actual code, and on Project Context inventory docs when they exist; do not guess.
 
 Flag when the change:
 

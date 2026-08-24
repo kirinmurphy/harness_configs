@@ -73,9 +73,11 @@ panel renders:
 - **Commands** — skills that pair with a slash command, labelled by their `/command`.
   Toggle installs/removes the skill link.
 - **Code Conventions** — auto-loaded skills (no command). Same skill-link toggle.
-- **Chat-Time Output** — the inline chat-note behaviors (convention capture, impact
-  awareness, skill visibility), each a `rules` package merged into every managed harness. On by
-  default; toggling adds/removes the behavior's rules block.
+- **Chat-Time Output** — response shape (the shared formatting/closing-structure rules) plus the
+  inline chat-note behaviors (convention capture, impact awareness, skill visibility), each a
+  `rules` package merged into every managed harness. The three note behaviors `requires` response
+  shape, so enabling one auto-enables it. On by default; toggling adds/removes the behavior's rules
+  block.
 - **Permissions** — flat behavior and command buckets. Named behaviors and arbitrary commands can
   be set to `allow`, `ask`, `deny`, or reset to the manifest default. They render as one merged
   list split by authorship rather than by kind: entries the user customized appear first, each

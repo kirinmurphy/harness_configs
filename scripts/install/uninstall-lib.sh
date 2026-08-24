@@ -549,13 +549,40 @@ stop_roborepo_processes() {
   echo "stop processes: ${pids[*]}"
 }
 
+# True if the CLI entry at ${path} belongs to the npm package rather than to the shell installer.
+#
+# WHY THIS EXISTS: npm's global bin can be any prefix, and on a machine whose npm prefix is
+# ~/.local (nvm, Homebrew, or an explicit `npm config set prefix`) it is the SAME path the shell
+# installer uses. Those two owners need different treatment: the shell installer's link is ours to
+# delete, while npm's belongs to `npm uninstall -g` and deleting it by hand would leave npm's
+# metadata claiming a package whose binary is gone.
+#
+# Reporting an npm-owned binary as a remnant is worse than cosmetic. The remnant check's nonzero
+# exit is what `uninstallExecute` (scripts/cli/uninstall.mjs) gates the npm handoff on, so flagging
+# it here suppressed the very `npm uninstall` that removes it — the binary survived every run.
+is_npm_owned_cli() {
+  local path="$1"
+  [[ -L "${path}" ]] || return 1
+  case "$(readlink "${path}")" in
+    */node_modules/*) return 0 ;;
+  esac
+  return 1
+}
+
 check_no_active_remnants() {
   local failed=0 path pid
   local state_dir
   state_dir="$(roborepo_state_dir)"
 
+  # Not in the loop below: an npm-owned binary here is expected mid-uninstall and is removed by the
+  # npm handoff, not by us. A shell-installer-owned one at the same path is still a real remnant.
+  local cli_entry="${HOME}/.local/bin/roborepo"
+  if [[ -e "${cli_entry}" || -L "${cli_entry}" ]] && ! is_npm_owned_cli "${cli_entry}"; then
+    echo "remnant: ${cli_entry}" >&2
+    failed=1
+  fi
+
   for path in \
-    "${HOME}/.local/bin/roborepo" \
     "${state_dir}/install-state.json" \
     "${state_dir}/presets" \
     "${state_dir}/rules" \

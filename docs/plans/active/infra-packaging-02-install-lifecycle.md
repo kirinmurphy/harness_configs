@@ -1,7 +1,7 @@
 ---
 id: 46up8y7a
 priority: high
-next_action: Phases 1-7 are implemented on branch plan-46up8y7a-install-lifecycle. All six Phase 7 hardening items are done, each fixing a real defect found by characterization. The only remaining work is the three Phase 6b items that need physical hardware: a fresh transfer artifact from the final tested commit, the new-Mac harness-count matrix, and recording presence-signal observations in harness-presence-signal-expansion
+next_action: Phases 1-7 are implemented on branch plan-46up8y7a-install-lifecycle. Two Phase 6b items remain: harness-count matrix stages 1-N (stage 0 confirmed on hardware 2026-08-22; the rest move to the container harness in qk4mz7t2), and presence-signal observations. The transfer-artifact item was dropped as superseded by the npm registry path
 blocked_by: []
 depends_on: []
 related:
@@ -590,8 +590,15 @@ document described. The remaining Phase 6b items genuinely depend on later phase
 
 - [x] Document the two-part uninstall ownership model, including that managed uninstall preserves the workspace by default and that `--delete-workspace` is the explicit nested-only opt-in.
 - [x] State that npm removal alone leaves separately stored RoboRepo state/configuration.
-- [ ] Generate a fresh Packaging 01 transfer artifact from the final tested commit.
-- [ ] Run the real-new-Mac harness-count matrix below before restoring old workspace content or cloning the development repository.
+- [x] ~~Generate a fresh Packaging 01 transfer artifact from the final tested commit.~~
+      **Dropped 2026-08-22**, with the same step in `infra-packaging-01`: the real transition
+      installed from the npm registry, and `npm run test:package-install` already packs a fresh
+      tarball on every run.
+- [ ] Run the real-new-Mac harness-count matrix below. **Stage 0 is confirmed on real hardware
+      (2026-08-22):** the machine had no harness installed, `init` succeeded, and `roborepo doctor`
+      passed. Stages 1–N remain unobserved. They no longer need hardware — `test-clean-machine-install-sandbox.md`
+      (`qk4mz7t2`) drives all five stages with stub executables in a container, so hardware
+      confirms rather than discovers.
 - [ ] Record any presence-signal observations in `harness-presence-signal-expansion` rather than broadening this plan mid-test.
 
 #### Phases 3-6 implementation notes
@@ -609,8 +616,21 @@ remnant check after a dry run (which removes nothing, so `--dry-run` always exit
 that check listed the state root itself, which reports every correct preserve-by-default run as
 unclean.
 
-Still open in 6b: generating a fresh transfer artifact and running the new-Mac harness-count matrix
-both need the physical machine, so neither can be closed from this branch.
+Still open in 6b: stages 1–N of the harness-count matrix, and presence-signal observations.
+
+Updated 2026-08-22. The transfer-artifact item is dropped — the real transition used the npm
+registry, so a carried tarball tests a path nobody takes. Stage 0 of the matrix is confirmed on
+hardware: a machine with no harness installed ran `init` and `doctor` successfully. That was the
+one stage no development machine can produce, and it is the stage that is now done.
+
+The remaining stages no longer need hardware. `test-clean-machine-install-sandbox.md` (`qk4mz7t2`)
+drives 0 through N with stub executables in a container, which changes hardware's role from
+discovering these behaviors to confirming them.
+
+That same session found a real defect this matrix would not have caught: `roborepo uninstall` left
+its own binary behind on a machine whose npm prefix collided with the shell installer's bin
+directory, and the surviving binary re-ran onboarding. Fixed, with regression coverage, under
+Milestone A of that plan.
 
 ### Phase 7 — Continue broader lifecycle hardening
 

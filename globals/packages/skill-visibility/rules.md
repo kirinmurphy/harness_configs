@@ -1,10 +1,11 @@
 ## Skill Visibility
 
-At the end of any response where a skill shaped the work, list the skills you used on their own line:
+At the end of any response where a skill shaped the work, list the skills you used:
 
 `> 🧩 **Skills loaded:** [comma-separated skill names, or "none"]`
 
-Report the skills you knowingly applied this turn. When no skill influenced the response, write "none". Keep it to one line and do not embed it in a paragraph.
+Exact format. Placement: see `response-shape`. Report the skills you knowingly applied this turn;
+write "none" if no skill influenced the response.
 
 ### Reference observations
 

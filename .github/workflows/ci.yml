@@ -66,6 +66,17 @@ jobs:
       - name: package install smoke (real tarball, isolated prefix)
         run: npm run --silent test:package-install
 
+      # Install and uninstall against a machine that has never seen RoboRepo: no prior state, no
+      # harness on PATH, and a real npm prefix. The step above sandboxes a prefix but cannot produce
+      # that machine, which is how an uninstall that left its own binary behind reached a user.
+      #
+      # Linux only: GitHub's macOS runners have no Docker daemon. The runner skips cleanly when
+      # Docker is absent, so this would pass vacuously there rather than fail — a green step
+      # asserting nothing is worse than an absent one.
+      - name: clean-machine container suite
+        if: runner.os == 'Linux'
+        run: npm run --silent test:clean-machine
+
   # The Windows installer is PowerShell and is never exercised by the bash suite above. This job
   # does not install anything -- it parses install-windows.ps1 through PowerShell's own parser and
   # asserts the script's harness list is derived from the provider manifests rather than hardcoded,

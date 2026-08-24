@@ -127,10 +127,11 @@ export async function uninstallCommand(args = []) {
   }
 
   const status = runScript({ dryRun: false, deleteWorkspace });
-  let npmRemoved = false;
-  if (status === 0 && packageMode) {
-    npmRemoved = uninstallNpmPackage();
-  }
+  // Deliberately NOT gated on `status === 0`. The shell script's last act is a remnant check, and a
+  // leftover it reports is a reason to still remove the npm package, not a reason to keep it: the
+  // binary that runs this command is the package's own. Gating here is what stranded an installed
+  // package on a machine whose npm prefix collided with the shell installer's bin directory.
+  const npmRemoved = packageMode ? uninstallNpmPackage() : false;
   if (status === 0) printResult({ deleted: deleteWorkspace && workspaceIsNested(), npmRemoved });
   return status;
 }
@@ -161,9 +162,8 @@ export function uninstallExecute() {
     encoding: "utf8",
     env: { ...process.env, ROBOREPO_UNINSTALL_DELETE_WORKSPACE: "0" },
   });
-  const npmResult = result.status === 0 && packageMode
-    ? runNpmUninstall({ stdio: "pipe" })
-    : null;
+  // Same reasoning as the CLI path above: a reported remnant must not strand the npm package.
+  const npmResult = packageMode ? runNpmUninstall({ stdio: "pipe" }) : null;
   return {
     ok: result.status === 0 && (!npmResult || npmResult.status === 0),
     workspace: fs.existsSync(workspaceRoot) ? workspaceRoot : null,

@@ -1,9 +1,9 @@
 ---
 id: k7p3m2q
 priority: high
-next_action: Investigate why Codex 0.140.0 exec does not invoke configured PostToolUse hooks, then rerun the fresh skill-visibility smoke
+next_action: Re-check Codex PostToolUse dispatch after a Codex upgrade or upstream hook-runtime fix before documenting Codex live-session support
 blocked_by:
-  - Codex 0.140.0 exec did not invoke configured PostToolUse hooks during the live skill-visibility smoke
+  - Codex 0.140.0 exec and interactive TUI runtimes do not dispatch configured PostToolUse hooks after shell tool calls, even though the event and output schema exist
 depends_on: []
 related: []
 reviewed_commit: 28d64aa
@@ -616,8 +616,9 @@ Regression coverage:
       `~/.roborepo/skills/<skill>/references/<file>.md` emits one observation.
 - [x] Codex shell payloads for `SKILL.md`, ordinary source files, missing paths, and unsupported
       shell syntax stay silent.
-- [ ] The fresh Codex session smoke reads `plan-docs` references and finishes with a counted
-      `Skills loaded` line rather than a bare list.
+- [x] The fresh Codex session smoke was run in both `codex exec` and interactive TUI; both read
+      `plan-docs` references but finished with a bare `Skills loaded` line because `PostToolUse`
+      did not dispatch.
 
 Phase 10 implementation result: the single package-owned hook script was replaced with provider
 adapters installed under the same destination basename (`skill-reference-observer.mjs`) for each
@@ -627,7 +628,7 @@ harness, so existing live hook command strings remain stable. Claude's adapter o
 `sed -n <range> <path>` shell form. No shared helper library was added, so there is no new
 cross-provider dependency framework.
 
-The fresh Codex smoke remains blocked after implementation. The package was applied live through
+The fresh Codex smoke remained blocked after implementation. The package was applied live through
 `node scripts/cli/main.mjs package enable skill-visibility`, and `~/.codex/hooks.json` contained:
 
 ```json
@@ -666,6 +667,56 @@ The adapter itself was checked directly against the same shell payload shape and
 
 Because live Codex did not invoke the configured `PostToolUse` hook, `docs/user/reference/codex-hooks.md`
 was not updated to claim live-session verification.
+
+2026-08-22 follow-up narrowed the blocker further. A fresh smoke with the same live configuration
+used session `01a0277b-a50b-78e2-98b7-99958364cc5f` and wrote its final answer to
+`/private/tmp/roborepo-codex-skill-smoke-final-live-2.txt`. Codex printed `SessionStart`,
+`UserPromptSubmit`, `PreToolUse`, and `Stop` hook events, ran the exact requested command:
+
+```bash
+sed -n "1,40p" /Users/kirinmurphy/.roborepo/skills/plan-docs/references/plan-schema.md
+```
+
+It still printed no `PostToolUse` hook event, created no
+`~/.roborepo/skill-visibility/01a0277b-a50b-78e2-98b7-99958364cc5f.count` file, and the saved final
+response ended with:
+
+```text
+> 🧩 **Skills loaded:** plan-docs
+```
+
+The same installed adapter was then run directly against the same shell payload shape and emitted:
+
+```json
+{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[skill-visibility] observed reference read: plan-docs/references/plan-schema.md"}}
+```
+
+The Codex 0.140.0 binary also still contains `PostToolUse`, `post_tool_use`,
+`PostToolUseHookSpecificOutputWire`, and `additionalContext`, so this is not an absent wire schema.
+The narrowed root cause is the `codex exec` runtime path: it does not dispatch configured
+`PostToolUse` hooks after shell tool calls in this build. A JSON-mode check also showed the shell
+tool item completing successfully with no `PostToolUse` hook output in the event stream.
+
+The interactive Codex TUI was then checked with the same live `~/.codex/hooks.json` path. The user
+ran:
+
+```bash
+codex --enable hooks --sandbox read-only -c 'approval_policy="never"'
+```
+
+and prompted it to read the same reference with the same shell command shape. The TUI printed
+`SessionStart` hooks, ran the reference read, showed repeated `PreToolUse hook (failed)` messages
+for another configured hook, printed no `PostToolUse` observation, reported that `ls -lt
+~/.roborepo/skill-visibility | head` still showed only the old Aug 20 count file, and ended with
+the bare line:
+
+```text
+> 🧩 Skills loaded: plan-docs
+```
+
+The broader Codex result is now blocked rather than merely unproven: both `codex exec` and the
+interactive TUI fail to produce a `PostToolUse` observation in Codex 0.140.0. The next useful check
+is the same smoke after upgrading Codex or after an upstream hook-runtime fix.
 
 #### Deviation: the session observation counter
 
@@ -842,7 +893,10 @@ The plan is successful when:
 
 ## Verification
 
-All eight phases are implemented. Evidence below is from the implementation branch, not from the plan's own claims.
+Phases 1-9 are implemented. Phase 10's source changes and direct adapter behavior are implemented,
+but the required Codex end-to-end behavior remains blocked by Codex 0.140.0 not dispatching
+`PostToolUse` after shell tool calls in either `codex exec` or interactive TUI. Evidence below is
+from the implementation branch, not from the plan's own claims.
 
 ### Checks run
 
@@ -859,9 +913,14 @@ node scripts/test/telemetry-time-axis-check.mjs                      ok
 node scripts/test/skill-reference-observer-check.mjs                  ok
 node scripts/test/skill-visibility-count-file-check.mjs               ok
 node scripts/test/package-catalog-check.mjs                          ok
+node scripts/test/skill-reference-observer-check.mjs                  ok (2026-08-22)
+node scripts/test/skill-visibility-count-file-check.mjs               ok (2026-08-22)
+node scripts/test/package-catalog-check.mjs                          ok (2026-08-22)
 npm run test:install-collisions                                      ok (escalated after sandbox cp failure)
 scripts/test/test-roborepo.sh --quiet                                418 passed, 0 failed
 codex exec fresh skill-visibility smoke                              blocked: PostToolUse not invoked by Codex 0.140.0
+codex exec fresh skill-visibility smoke                              blocked again (2026-08-22): session 01a0277b-a50b-78e2-98b7-99958364cc5f had SessionStart/UserPromptSubmit/PreToolUse/Stop hooks, no PostToolUse, no count file, bare Skills loaded line
+codex interactive TUI skill-visibility smoke                         blocked (2026-08-22): SessionStart ran, reference read ran, no PostToolUse observation, no new count file, bare Skills loaded line
 roborepo skill audit --check                                         ok
 node scripts/test/orphan-test-check.mjs                              ok (98 reachable, 5 exempt)
 bash scripts/test/test-roborepo.sh --quiet (pre-merge)               396 passed, 1 failed

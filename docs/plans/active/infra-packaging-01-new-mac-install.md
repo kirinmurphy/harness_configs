@@ -510,8 +510,12 @@ uninstall must not be treated as permission to delete personal workspace content
       puts a development checkout on a package-installed machine, and answering it now would mean
       creating the very state the clean baseline exists to avoid. `docs/user/guides/infra/root-domains.md`
       documents the intended contract; verifying it moves to that future work.
-- [ ] Record actual results, known provider-specific findings, and anything not verified in this
-      plan's final `Verification` section before completion.
+- [x] Record actual results, known provider-specific findings, and anything not verified in this
+      plan's final `Verification` section before completion. **Done 2026-08-24.** The Phase 4 table
+      below records the real-hardware run, including the uninstall failure it found; the section
+      after it records the container suite that now pins that machine shape. Both name what remains
+      unverified rather than only what passed — the two open items are the workspace-import
+      checklist line above and the CI step, which still has not run in GitHub Actions.
 
 ## Validation
 
@@ -581,6 +585,31 @@ machine cannot reach, and it is now confirmed rather than assumed.
 Old-Mac gates were re-run on this checkout the same day: `pack:dry-run`, `test:package-install`, and
 `doctor.sh --quiet` all pass; `test-roborepo.sh` reports 418 passed with 2 failures traced to an
 unrelated in-flight edit to `portal/config/onboarding-state.js`, not to packaging.
+
+### Verification (clean-machine container suite, 2026-08-24)
+
+`roborepo uninstall` failing on real hardware is the finding above that had no automated guard.
+`scripts/test/clean-machine-container-check.mjs` (commit `6197756`) now supplies one, and the
+Phase 4 machine shape is continuously testable rather than reachable only by owning a fresh Mac.
+
+- `npm run test:clean-machine` → all six scenarios pass: default prefix with zero harnesses,
+  colliding npm prefix, and harness-count matrix stages 1, 2, 3, and N.
+- **Sabotage-verified, not assumed.** Reverting both halves of `778ac00` fails the colliding-prefix
+  scenario with the original symptom, `FAIL: binary survived at the colliding prefix`. The fix was
+  restored and the suite re-run green afterward.
+- **A known blind spot, recorded deliberately.** Reverting *only* the shell half
+  (`is_npm_owned_cli`) does **not** fail this suite. `check_no_active_remnants` is the last
+  statement in `uninstall.sh`, so it only sets the exit status; with the CLI half intact the npm
+  handoff is ungated and removes the binary regardless, and the scenario asserts the binary is
+  absent. The shell half's own regression is `testNpmOwnedCliIsNotARemnant` in
+  `managed-uninstall-check.mjs`, confirmed to fail with `an npm-owned binary must not be reported
+  as a remnant` when that half is reverted. Each test covers one half; neither covers both.
+- Not verified: the CI step added in the same commit is Linux-gated and **has not run in GitHub
+  Actions** — nothing on this branch has been pushed. Same standing caveat as the Phases 1-3 CI
+  line above.
+- Not closed by this: `infra-packaging-02`'s matrix items are written as real-hardware acceptance.
+  The stub-executable stages make those states continuously testable so hardware confirms rather
+  than discovers; they do not substitute for it.
 
 Manual transition acceptance requires:
 

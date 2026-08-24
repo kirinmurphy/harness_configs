@@ -1,4 +1,7 @@
-import { activePresentedHarnesses, supportedHarnessNames } from "../shared/harness-cohort.js";
+import {
+  activePresentedHarnesses,
+  supportedHarnessNames,
+} from "../shared/harness-cohort.js";
 
 export function configOnboardingNotice(snap) {
   const activeHarnesses = activePresentedHarnesses(snap);
@@ -8,8 +11,8 @@ export function configOnboardingNotice(snap) {
       variant: "warning",
       title: "No active agent harness detected.",
       body: supported
-        ? `Package selections are saved, but no harness config is updated until you install or launch ${supported} and run roborepo harness refresh.`
-        : "Package selections are saved, but no harness config is updated until you install or launch a supported harness and run roborepo harness refresh.",
+        ? `Install a harness (${supported}) and run ${"`roborepo harness refresh`"} to get started.  Package selections will be saved until then.`
+        : `Install a harness and run ${"`roborepo harness refresh`"} to get started.  Package selections will be saved until then.`,
     };
   }
 
@@ -17,7 +20,9 @@ export function configOnboardingNotice(snap) {
     const incomplete = snap?.onboarding?.libraryCompleted !== true;
     return {
       variant: "info",
-      title: incomplete ? "Finish choosing optional packages." : "Add optional packages when ready.",
+      title: incomplete
+        ? "Finish choosing optional packages."
+        : "Add optional packages when ready.",
       body: incomplete
         ? "Choose optional packages below to extend your active harness config beyond the base setup."
         : "Your active harness has the base setup. Optional packages below can add telemetry, commands, workflow rules, and MCP-backed tools.",
@@ -28,5 +33,7 @@ export function configOnboardingNotice(snap) {
 }
 
 export function hasOptionalPackageSelected(snap) {
-  return (snap?.packages || []).some((pkg) => pkg.enabled === true && pkg.defaultEnabled !== true);
+  return (snap?.packages || []).some(
+    (pkg) => pkg.enabled === true && pkg.defaultEnabled !== true,
+  );
 }

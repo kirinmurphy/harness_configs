@@ -94,6 +94,7 @@
     "pack:dry-run": "npm pack --dry-run",
     "pack:smoke": "npm pack",
     "test:package-install": "node scripts/test/package-install-smoke.mjs",
+    "test:clean-machine-install-sandbox": "node scripts/test/clean-machine-install-sandbox.mjs",
     "prepare:new-mac-install": "node scripts/test/package-install-smoke.mjs",
     "publish:npm": "bash scripts/release/publish-npm.sh",
     "test:publish-npm": "node scripts/test/publish-npm-check.mjs"

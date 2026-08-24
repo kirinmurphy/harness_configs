@@ -1,7 +1,7 @@
 ---
 id: ia1q1z9
 priority: high
-next_action: Smoke-test the hook live once `roborepo update` completes in a real terminal, then decide whether Codex should enforce the read family and give the hook matcher a generated source of truth
+next_action: Smoke-test the hook live once `roborepo update` completes in a real terminal, then decide whether Codex should enforce the read family
 blocked_by: []
 depends_on: []
 related:
@@ -44,7 +44,8 @@ out-ranks every path-scoped rule and silently defeats the scoping it exists to e
 
 - A write scope that means the repository currently being worked in, on any contributor's machine.
 - Writes outside the current repository prompt rather than proceeding silently.
-- No contributor's absolute home path in any tracked **allow** rule, including generated artifacts.
+- No contributor's absolute home path in any tracked permission rule, including generated artifacts.
+  Secret denies stay home-relative with Claude's `~/...` anchor.
 - Credential material unreadable everywhere, including inside the current repository.
 - Reads quiet across the repository family; writes still bounded to the checkout in use.
 - Explicit, verified behavior for each of the three harnesses rather than a Claude-only fix.
@@ -59,7 +60,7 @@ Read scope **was** a non-goal and is no longer. Removing `~/projects/**` to sati
 no-home-paths goal took the quiet zone for reads with it, so reads had to be re-answered rather
 than left to prompt on every file. See "Read scope decision" below.
 
-## Current state
+## Original state
 
 `write-scope` and `read-scope` both carry `~/projects/**` as their first path. That value is a
 personal directory layout committed to the repository.
@@ -94,6 +95,25 @@ The three harnesses express scope differently, and only one of them consumes the
 `workspace-write` or `read-only` — a single coarse mode with no path list. `policy-toml.mjs` skips
 `tools-scoped` behaviors entirely, on the stated grounds that rendering a path-scoped allow as an
 unscoped allow would be strictly more permissive than intended.
+
+## Current state
+
+The repo-scoped Claude implementation and deterministic checks are now in the working tree.
+`~/projects/**` is gone from read/write scope, the repository boundary is represented as
+`repo-scope`, and the generated Claude artifact no longer embeds the packer's home directory in
+either allow or deny rules. Credential denies render as `Read(~/.ssh/**)` and related home-relative
+anchors.
+
+The deterministic pre-browser chain now catches three failure classes:
+
+| Check | Failure caught |
+| --- | --- |
+| `repo-write-scope-check` | Hook decision table, worktree family reads, outside-repo prompts |
+| `core-hook-wiring-check` | Hook matcher or generated settings drift |
+| `test:package-install` | Packed-package drift under an isolated `HOME` |
+
+The clean-machine Docker runner has been added as the next layer. It skips locally when Docker is
+unavailable, and CI runs it strictly on Ubuntu.
 
 ## Proposed design
 
@@ -278,15 +298,21 @@ continue to the common directory.
 - [x] Carve `.env.example` out of `read-secrets`. The `.env` variants are now enumerated rather than
       globbed, because Claude rules have no negation: a readable exception has to be a narrower
       deny, not an allow that a deny would out-rank.
+- [x] Keep generated credential denies machine-portable.
+      Claude accepts `~/path` permission anchors directly, so generated source artifacts now keep
+      `Read(~/.ssh/**)` and related deny rules home-relative rather than expanding them to the home
+      directory of whoever packed the npm tarball. This fixed `test:package-install`, whose sandbox
+      changes `HOME` and caught the drift before any browser or live-harness testing.
 - [x] Give the `Read|Write|Edit` matcher a source of truth and a drift check. Core hook wiring now
       lives in `globals/harnesses/claude/hooks-claude.json`, following the fragment pattern package
       hooks already use, and `scripts/test/core-hook-wiring-check.mjs` asserts the tracked artifact
       agrees with it. The fragment is inert to the package machinery — fragments are resolved from
       an explicit `component.source` in the catalog, never by globbing.
-- [ ] Have the installer *apply* the core fragment rather than only checking it. Today the fragment
-      is the reviewable source and the test enforces agreement, but `generated/claude/settings.json`
-      is still the file the install reads, so the fragment cannot yet regenerate it. Wiring it into
-      the install path would make the artifact derived rather than merely verified.
+- [x] Have the install/render path apply the core fragment rather than only checking it.
+      `scripts/harnesses/claude/index.mjs` now merges `globals/harnesses/claude/hooks-claude.json`
+      inside the provider permission renderer, and `scripts/build/render-agent-permissions.mjs`
+      renders generated candidates through provider adapters. `generated/claude/settings.json` is
+      still what install exports, but it is now derived from the core fragment.
 - [ ] **Deferred — do not merge the two hooks as originally specified.** Both blockers cleared, but
       the justification did not survive them:
       - *Mechanically possible.* Claude Code accepts both `permissionDecision` and
@@ -351,11 +377,16 @@ that it is asked at all.
 These also passed against the change: `core-hook-wiring-check`, `repo-write-scope-check`,
 `permission-rule-home-path-check`, `package-catalog-check`, `cli-command-catalog-check`,
 `config-synthetic-provider-check`, `root-config-write-policy-check`,
-`gemini-adapter-characterization-check`, `plan-docs-check`.
+`gemini-adapter-characterization-check`, `hook-composition-check`, `plan-docs-check`, and
+`test:package-install`.
 
-`hook-composition-check` fails, and did so identically on a clean checkout of `main` before this
-work — `hook-composition-fixture: unknown presentation category: commands`, a package-catalog
-fixture problem touching no hook or permission code. Not a regression from this plan.
+`test:package-install` is now a required guard for this plan class. It installs a packed tarball
+under an isolated `HOME`, runs package-mode `doctor`, and caught the expanded-home deny drift that
+local repo `doctor` could not see.
+
+The clean-machine sandbox opportunity is now installed as
+`scripts/test/clean-machine-install-sandbox.mjs` and `npm run test:clean-machine-install-sandbox`.
+It skips locally when Docker is unavailable, but CI runs it strictly on the Ubuntu leg.
 
 Not verified:
 

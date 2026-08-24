@@ -154,23 +154,18 @@ function commandToClaude(pattern) {
   return `Bash(${joined}:*)`;
 }
 
-// Claude path-scoped tool rules are `Tool(//absolute/glob)` — a leading `//` after the tool name,
-// so a `~` in the manifest has to be expanded to a real home path at render time. The manifest
-// stays machine-portable (it ships `~/projects/**`); only the rendered output is absolute.
-function expandHome(p, home) {
-  if (p === "~") return home;
-  if (p.startsWith("~/")) return `${home}/${p.slice(2)}`;
-  return p;
-}
-
-function scopedToolToClaude(tool, scopePath, home) {
-  const abs = expandHome(scopePath, home).replace(/^\/+/, "");
+// Claude accepts home-relative permission anchors (`~/path`) directly. Keep them home-relative in
+// generated source artifacts so package-mode doctor is not tied to the machine that packed the npm
+// tarball. Absolute paths still render with Claude's `//absolute/path` spelling.
+function scopedToolToClaude(tool, scopePath) {
+  if (scopePath === "~" || scopePath.startsWith("~/")) return `${tool}(${scopePath})`;
+  const abs = scopePath.replace(/^\/+/, "");
   return `${tool}(//${abs})`;
 }
 
 // Claude has a real 3-state permissions model (allow/deny/ask), so every resolved behavior and
 // arbitrary command maps directly with no fallback/approximation needed — unlike the Codex side.
-export function claudePermissions(manifest, overrides = {}, { home = os.homedir() } = {}) {
+export function claudePermissions(manifest, overrides = {}, { home: _home = os.homedir() } = {}) {
   const behaviors = resolveBehaviors(manifest, overrides.behaviors);
   const arbitraryCommands = resolveArbitraryCommands(manifest, overrides.commands);
   const allow = [...(manifest.tools?.read ?? [])];
@@ -198,7 +193,7 @@ export function claudePermissions(manifest, overrides = {}, { home = os.homedir(
       if (gate !== undefined && gate !== "allow") continue;
       const bucket = b.bucket === "deny" ? deny : b.bucket === "ask" ? ask : allow;
       for (const tool of b.tools ?? []) {
-        for (const scopePath of b.paths ?? []) bucket.push(scopedToolToClaude(tool, scopePath, home));
+        for (const scopePath of b.paths ?? []) bucket.push(scopedToolToClaude(tool, scopePath));
       }
       continue;
     }

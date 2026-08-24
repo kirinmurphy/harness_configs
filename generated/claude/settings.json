@@ -47,11 +47,11 @@
       "Bash(git log:*)"
     ],
     "deny": [
-      "Read(//Users/kirinmurphy/.ssh/**)",
-      "Read(//Users/kirinmurphy/.aws/**)",
-      "Read(//Users/kirinmurphy/.gnupg/**)",
-      "Read(//Users/kirinmurphy/.config/gcloud/**)",
-      "Read(//Users/kirinmurphy/Library/Keychains/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.gnupg/**)",
+      "Read(~/.config/gcloud/**)",
+      "Read(~/Library/Keychains/**)",
       "Read(//**/.env)",
       "Read(//**/.env.local)",
       "Read(//**/.env.*.local)",

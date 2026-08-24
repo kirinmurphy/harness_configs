@@ -50,6 +50,12 @@ jobs:
       - name: package install smoke (real tarball, isolated prefix)
         run: npm run --silent test:package-install
 
+      - name: clean-machine install sandbox
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run --silent test:clean-machine-install-sandbox
+        env:
+          ROBOREPO_CLEAN_MACHINE_STRICT: "1"
+
   # The Windows installer is PowerShell and is never exercised by the bash suite above. This job
   # does not install anything -- it parses install-windows.ps1 through PowerShell's own parser and
   # asserts the script's harness list is derived from the provider manifests rather than hardcoded,

@@ -1,26 +1,25 @@
 #!/usr/bin/env node
 // No ALLOW permission rule may be anchored to a contributor's home directory.
 //
-// Permission rules are generated from manifests/inventory/agent-permissions.json and committed, so
-// a scope path anchored to a personal directory layout (`~/projects/**`) gets expanded to an
-// absolute home path at render time and lands in the tracked artifact. That is machine-specific
-// state in a shared file: it is wrong for every other contributor, and it leaks a username.
+// Permission rules are generated from manifests/inventory/agent-permissions.json and committed.
+// A scope path anchored to a personal directory layout (`~/projects/**`) must never land in the
+// checked-in artifact as one contributor's absolute home. That is machine-specific state in a
+// shared file: it is wrong for every other contributor, and it leaks a username.
 //
 // WHERE a write is allowed inside the current checkout is decided at tool-call time by the
 // `repo-write-boundary` behavior, not by a path glob, so no personal directory needs to appear in
 // an allow rule at all. The allow scopes carry only the scratch directories that are correct
 // regardless of which repository is in use.
 //
-// DENY rules are deliberately exempt. `read-secrets` denies `~/.ssh/**`, `~/.aws/**` and friends —
-// home-relative by nature, correct on every machine, and a security floor rather than one person's
-// directory layout. The `~` there is the point, not a leak: it resolves per-machine at render time.
-// The failure this guards against is a personal path silently GRANTING access, which a deny cannot
-// do. So the test is the bucket, not the presence of `~`.
+// DENY rules are allowed to use Claude's `~/...` anchor. `read-secrets` denies `~/.ssh/**`,
+// `~/.aws/**` and friends — home-relative by nature, correct on every machine, and a security floor
+// rather than one person's directory layout. The `~` there is the point, not a leak: it resolves
+// per machine at harness runtime. The failure this guards against is a personal path silently
+// GRANTING access, which a deny cannot do.
 //
 // Test fixtures elsewhere legitimately contain absolute home paths (a Docker label, a Codex
 // trust-level entry); those are not permission rules and are not what this guards.
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -65,12 +64,16 @@ assert.ok(HOME_TILDE.test("~/projects/**"), "must match an un-expanded manifest 
 assert.ok(!HOME_PATH.test("Read(//Users/<user>/projects/**)"), "must ignore anonymized placeholders");
 assert.ok(!HOME_TILDE.test("/tmp/**"), "must ignore scratch scope paths");
 
-// The deny bucket is exempt by construction: prove the secrets denylist is present and home-anchored
-// rather than merely absent from the offender list.
+// The deny bucket is exempt by construction: prove the secrets denylist is present, home-relative,
+// and not tied to the machine that rendered the generated artifact.
 const denies = settings.permissions?.deny ?? [];
 assert.ok(
-  denies.some((r) => /^Read\(.*\.ssh/.test(r)),
-  "read-secrets must still deny ~/.ssh — an exempt bucket is only safe if it is actually populated",
+  denies.includes("Read(~/.ssh/**)"),
+  "read-secrets must still deny ~/.ssh with Claude's home-relative anchor",
+);
+assert.ok(
+  denies.every((r) => !HOME_PATH.test(r)),
+  "generated deny rules must not contain a contributor's expanded home directory",
 );
 
 console.log(`permission-rule-home-path ok (${denies.length} deny rules exempt by design)`);

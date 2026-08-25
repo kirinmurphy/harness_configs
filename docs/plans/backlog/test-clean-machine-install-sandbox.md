@@ -1,7 +1,7 @@
 ---
 id: qk4mz7t2
 priority: high
-next_action: Run the clean-machine sandbox in CI, then extend it with harness-count stubs if the first strict run is stable
+next_action: Watch the first strict CI run, then extend the sandbox with harness-count stubs if it stays stable
 blocked_by: []
 depends_on: []
 related:
@@ -64,9 +64,15 @@ Local behavior is intentionally non-blocking: when the Docker daemon is unavaila
 a skip message and exits 0. CI sets `ROBOREPO_CLEAN_MACHINE_STRICT=1` on the Ubuntu leg, so Docker
 or sandbox failures are hard failures there.
 
-The first local run in this workspace skipped because the Docker daemon was unavailable. That means
-the script parsed and skip path were checked locally, but the container body still needs CI or a
-working Docker daemon.
+The container body has now passed locally against Docker Desktop. That run caught two practical
+issues before CI:
+
+- Docker Desktop can hang before container creation when a bind mount points at macOS'
+  per-user `/var/folders/...` temp directory. The runner now places pack artifacts under `/tmp` by
+  default, with `ROBOREPO_CLEAN_MACHINE_TMPDIR` as an override.
+- `roborepo uninstall --yes` reported the npm-owned `~/.local/bin/roborepo` symlink as a managed
+  remnant when the npm prefix intentionally collided with clean `HOME/.local`. The remnant check now
+  exempts the package-managed binary; `npm uninstall` remains the owner of application removal.
 
 ## Implementation Plan
 
@@ -87,11 +93,10 @@ Already verified locally:
 
 ```text
 node --check scripts/test/clean-machine-install-sandbox.mjs -> pass
-npm run test:clean-machine-install-sandbox -> skipped locally, Docker daemon unavailable
+npm run test:clean-machine-install-sandbox -> pass with Docker Desktop
 ```
 
-The sandbox is not complete until a strict run executes the container body. CI now provides that
-strict path:
+CI still needs to prove the same container body in the Ubuntu runner:
 
 ```text
 ROBOREPO_CLEAN_MACHINE_STRICT=1 npm run test:clean-machine-install-sandbox
@@ -100,7 +105,5 @@ ROBOREPO_CLEAN_MACHINE_STRICT=1 npm run test:clean-machine-install-sandbox
 ## Remaining Work
 
 - Watch the Ubuntu CI result for the first strict run.
-- If the container image is missing or Docker cannot run in CI, either add an explicit pull/setup
-  step or choose a preinstalled image path.
 - Add harness stubs only after the basic clean install/uninstall path is reliable; otherwise stub
   failures will obscure package install failures.

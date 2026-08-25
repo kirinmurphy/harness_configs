@@ -113,7 +113,9 @@ The deterministic pre-browser chain now catches three failure classes:
 | `test:package-install` | Packed-package drift under an isolated `HOME` |
 
 The clean-machine Docker runner has been added as the next layer. It skips locally when Docker is
-unavailable, and CI runs it strictly on Ubuntu.
+unavailable, runs strictly in CI on Ubuntu, and has passed locally against Docker Desktop. Its
+colliding-prefix case caught an uninstall false positive where the npm-owned
+`$HOME/.local/bin/roborepo` symlink was reported as managed state before npm removed it.
 
 ## Proposed design
 

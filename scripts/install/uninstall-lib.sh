@@ -13,6 +13,17 @@
 # reclaim links left by that prior path. Empty if no state file.
 recorded_repo="$(read_install_repo 2>/dev/null || true)"
 
+package_managed_bin_path() {
+  case "${repo_root}" in
+    */lib/node_modules/codethings-roborepo-alpha)
+      echo "${repo_root%/lib/node_modules/codethings-roborepo-alpha}/bin/roborepo"
+      ;;
+    */node_modules/codethings-roborepo-alpha)
+      echo "${repo_root%/node_modules/codethings-roborepo-alpha}/bin/roborepo"
+      ;;
+  esac
+}
+
 # True if a symlink at ${path} is one this repo manages: it targets the current repo_root,
 # the recorded prior checkout, or the machine-local skill cache. Dangling links into a prior
 # checkout or cache are also managed.
@@ -547,8 +558,9 @@ stop_roborepo_processes() {
 
 check_no_active_remnants() {
   local failed=0 path pid
-  local state_dir
+  local state_dir package_bin
   state_dir="$(roborepo_state_dir)"
+  package_bin="$(package_managed_bin_path)"
 
   for path in \
     "${HOME}/.local/bin/roborepo" \
@@ -564,6 +576,9 @@ check_no_active_remnants() {
     "${state_dir}/initialization.json" \
     "${ROBOREPO_PORTAL_PID_PATH:-${ROBOREPO_TELEMETRY_PID_PATH:-${HOME}/.local/state/roborepo/portal-server.pid}}" \
     "${ROBOREPO_TELEMETRY_PID_PATH:-${HOME}/.local/state/roborepo/telemetry-server.pid}"; do
+    if [[ -n "${package_bin}" && "${path}" == "${package_bin}" ]]; then
+      continue
+    fi
     if [[ -e "${path}" || -L "${path}" ]]; then
       echo "remnant: ${path}" >&2
       failed=1

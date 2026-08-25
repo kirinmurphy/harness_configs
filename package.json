@@ -29,6 +29,7 @@
   ],
   "scripts": {
     "build": "npm run --silent pack:dry-run",
+    "check": "bash scripts/test/local-ci.sh",
     "test": "scripts/test/test-roborepo.sh --quiet",
     "test:install-collisions": "scripts/test/test-install-collisions.sh",
     "test:install-smoke": "node scripts/test/install-smoke.mjs",

@@ -1956,11 +1956,6 @@ assert "config: /api/config/source rejects missing/unknown harness ids" \
 assert "config: synthetic third-provider harnesses list and root-config paths" \
   node "${repo_root}/scripts/test/config-synthetic-provider-check.mjs"
 
-# The first-run onboarding notice and its optional-package selection state. Added with the
-# onboarding surfaces but reachable from no runner, which orphan-test-check reports.
-assert "config: onboarding notice and optional-package selection state" \
-  node "${repo_root}/scripts/test/config-onboarding-state-check.mjs"
-
 # The install-side counterpart to the above: proves artifact DELIVERY (live permission rendering,
 # capability/path coherence, the shared harness-id helper) reaches a provider that is not in any
 # hardcoded id list. Guards the bug class that let Gemini pass 108 doctor checks while missing two

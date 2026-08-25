@@ -3,28 +3,9 @@
 // filtering, and the safety guards (loopback-only, no redirects followed, body cap). fetchText is
 // stubbed per test so nothing here opens a real socket.
 import assert from "node:assert/strict";
-import fs from "node:fs/promises";
 import http from "node:http";
 import { discoverMetadataSuggestions, fetchLoopbackText, findCurrentInstanceByOpaqueKey, probeHttpCandidates } from "../../modules/localhoster/index.mjs";
-// mergeSavedLinks is pure and DOM-free, but it lives in a portal module whose sibling imports use
-// browser-absolute paths ("/portal/shared/api.js") that node cannot resolve. Rather than move
-// rendering logic out of the view or stand up a DOM, read the source and evaluate just that one
-// exported function. It is self-contained — no imports, no globals — so this stays honest: the
-// assertions below run the same code the browser does, byte for byte.
-const mergeSavedLinks = await loadMergeSavedLinks();
-
-async function loadMergeSavedLinks() {
-  const source = await fs.readFile(
-    new URL("../../portal/localhoster/suggestions-view.js", import.meta.url),
-    "utf8",
-  );
-  const start = source.indexOf("export function mergeSavedLinks");
-  assert.ok(start !== -1, "mergeSavedLinks not found in suggestions-view.js");
-  // Ends at the next top-level declaration; the function body's own closing brace is indented.
-  const end = source.indexOf("\n}\n", start) + 3;
-  const body = source.slice(start, end).replace("export function", "function");
-  return (0, eval)(`${body}; mergeSavedLinks`);
-}
+import { mergeSavedLinks } from "../../portal/localhoster/routes-model.js";
 
 function stubFetch(byUrl) {
   return async (url) => byUrl[url] || { ok: false, status: 404, body: null, contentType: null };

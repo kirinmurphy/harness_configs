@@ -1,7 +1,7 @@
 ---
 id: localhoster-metadata-suggestions
 priority: high
-next_action: Manually verify the repository card in a real browser — worktree rows, the copy control's four states, the Pages/API Routes dropdown, and the API contract modal. No Chrome automation has been available, so every UI change this plan has shipped remains unverified in a browser. This is the plan's only remaining work; main is merged in as of 0b48780.
+next_action:
 blocked_by: []
 depends_on:
   - localhoster-final
@@ -9,7 +9,7 @@ related:
   - localhoster-docker-process-providers
   - localhoster-git-health-history
   - canonical-repository-identity-plan-v2
-reviewed_commit: 0b48780
+reviewed_commit: e07f832
 ---
 
 # Localhoster Metadata Suggestions
@@ -356,11 +356,13 @@ both fixed in a follow-up commit:
   `/api/localhoster/metadata?key=...` route returns `{ ok: true, suggestions: [...] }` against a real
   running worktree portal instance (a separate instance on port 4417, started and torn down without
   touching the user's already-running portal on port 4317).
-- [ ] **Not exercised:** HTTPS/self-signed origins, an authenticated-page scenario, and the browser
-  UI (the routes dropdown's rendering, the `<portal-menu-button>` mount/toggle, the saved-route
-  checkmark, and the click-to-capture flow) — the Chrome browser automation extension was not
-  connected in any session this plan ran. Explicitly flagged as unverified; see "Current Limits" in
-  the localhoster reference doc. This is the only remaining work in the plan.
+- [x] Browser UI verification completed on 2026-08-24 with headless Google Chrome driven through
+  the Chrome DevTools Protocol. The repository/worktree card rendered without visible overlap, the
+  copy menu opened with branch/path actions and showed copied feedback, the Pages/API Routes
+  dropdown rendered 4 page rows and 42 API rows for the portal, the API contract modal opened with a
+  curl command, and click-to-capture saved `/plans` in an isolated temp-state portal.
+- [ ] **Not exercised:** HTTPS/self-signed origins and an authenticated-page scenario. These remain
+  documented limits, not release blockers for this metadata-suggestions pass.
 
 ## Merge with main (2026-08-22)
 
@@ -377,3 +379,57 @@ worth recording are the two that changed code rather than concatenating both sid
 The merge also surfaced a real gap: `localhoster-metadata-check.mjs` had a `package.json` `test:*`
 script but no `test-roborepo.sh` entry, so it had never run in CI. `main`'s new `orphan-test-check`
 caught it on contact. Now wired in beside the other localhoster checks — 102 test files reachable.
+
+## Review and main merge (2026-08-24)
+
+Local `main` was merged again at `e07f832` with no conflicts. The branch is now 126 commits ahead of
+`origin/localhoster-metadata-suggestions` after the merge.
+
+Review found one small route-panel bug and one file-structure cleanup worth doing before browser
+verification:
+
+- [x] Route saved-state lookup now uses the same effective project identity as the saved-link
+      mutation. Before this, aliased or repository-member cards could check `instance.project.identity`
+      while `captureRouteLink` wrote to `project.identity`, leaving saved-route checkmarks stale even
+      though capture itself wrote to the correct app.
+- [x] API contract modal and curl rendering moved from `portal/localhoster/suggestions-view.js` into
+      `portal/localhoster/api-route-dialog.js`. Saved/discovered-link merge moved into
+      `portal/localhoster/routes-model.js`, so `suggestions-view.js` now owns dropdown rendering
+      only.
+
+Verification after this review:
+
+- [x] `node --check portal/localhoster/app.js`
+- [x] `node --check portal/localhoster/suggestions-view.js`
+- [x] `node --check portal/localhoster/api-route-dialog.js`
+- [x] `npm run test:localhoster-metadata` (first sandbox run failed on `listen EPERM 127.0.0.1`;
+      rerun with local-bind approval passed)
+- [x] `npm run test:localhoster`
+- [x] `npm run build`
+
+## Completion Summary
+
+Localhoster metadata suggestions now ship end to end:
+
+- same-origin metadata discovery from manifest, sitemap/robots, and OpenAPI;
+- safe route classification and deduplication;
+- portal Pages/API Routes dropdown with saved-link merge behavior;
+- API contract modal with generated curl command;
+- click-to-capture for discovered page routes;
+- repository/worktree grouping and copy controls verified in a real browser.
+
+## Verification
+
+- `node --check portal/localhoster/app.js`
+- `node --check portal/localhoster/suggestions-view.js`
+- `node --check portal/localhoster/api-route-dialog.js`
+- `npm run test:localhoster-metadata`
+- `npm run test:localhoster`
+- `npm run build`
+- `npm run test:plans`
+- Headless Google Chrome CDP verification against `http://127.0.0.1:3060/localhoster`: 19 cards,
+  7 Pages/Routes triggers, copy menu open/copy/flash states, 4 page suggestions, 42 API suggestions,
+  API modal open, no page errors.
+- Headless Google Chrome CDP verification against isolated temp-state
+  `http://127.0.0.1:3061/localhoster`: click-to-capture changed `/plans` from unsaved to saved and
+  wrote `/plans` to the isolated Localhoster settings.

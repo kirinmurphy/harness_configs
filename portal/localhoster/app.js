@@ -586,9 +586,9 @@ function openApiRouteDialog(instance, suggestion) {
   refs.apiRouteDialog.showModal();
 }
 
-function isRouteSaved(instance, path) {
+function isRouteSaved(project, instance, path) {
   const appId = instance.app?.id || "web";
-  const projectIdentity = instance.project?.identity;
+  const projectIdentity = project.identity || instance.project?.identity;
   const links = state.currentLinks(lastSnapshot, projectIdentity, appId);
   return links.some((link) => link.path === path);
 }

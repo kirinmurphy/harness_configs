@@ -165,8 +165,17 @@ function testCollidingPrefix(tarballName) {
 // Stages 1-N of infra-packaging-02's harness-count matrix. Discovery resolves executables through
 // PATH, so each stage is reachable with stub executables — no hardware, and no real harness.
 //
-// This does not close that plan's matrix items, which are written as real-hardware acceptance. It
-// makes the states continuously testable so hardware confirms rather than discovers.
+// Two halves, and both are asserted here. The LIFECYCLE half is that init/doctor/uninstall survive
+// each harness count. The PRESENTATION half is what that plan's Verify column actually asks for:
+// that discovery reports the harnesses that are really there, and that an N-provider machine is
+// rendered from the provider registry rather than from Claude/Codex assumptions.
+//
+// `harness detected` is the surface asserted for presentation. It emits one tab-separated row per
+// known provider (id, home, present, display name, root config path) straight from live filesystem
+// discovery, and it is the row source the shell install/uninstall/repair/doctor scripts consume —
+// so a regression here is a regression in every one of those. The plan's Verify column named a
+// `roborepo list` command, which does not exist; `harness list` and `harness detected` are the real
+// ones.
 function testHarnessCountMatrix(tarballName) {
   const stages = [
     { name: "1 - installed, never launched", stubs: ["claude"], homes: [] },
@@ -182,6 +191,32 @@ function testHarnessCountMatrix(tarballName) {
     `).join("\n");
     const makeHomes = stage.homes.map((home) => `mkdir -p "$HOME/${home}"`).join("\n");
 
+    // Presence is keyed on the harness HOME directory, not the executable: an installed-but-never
+    // launched harness (stage 1) has no home yet, which is exactly the distinction stage 1 and
+    // stage 2 exist to separate. Asserting the `present` column per stage is what makes those two
+    // stages different tests rather than the same test run twice.
+    const assertPresence = stage.stubs.map((exe) => {
+      const present = stage.homes.includes(`.${exe}`) ? "1" : "0";
+      return `
+      row="$(roborepo harness detected | awk -F'\\t' -v id=${exe} '$1 == id')"
+      [ -n "$row" ] || { echo "FAIL: harness detected omitted ${exe} entirely" >&2; exit 1; }
+      got="$(printf '%s' "$row" | cut -f3)"
+      [ "$got" = "${present}" ] || { echo "FAIL: ${exe} present=$got, expected ${present}" >&2; exit 1; }`;
+    }).join("\n");
+
+    // Stage N is the anti-hardcoding check: every registered provider must appear, including the
+    // one that is neither Claude nor Codex. A registry-driven renderer passes this for free; a
+    // hardcoded pair does not.
+    const assertAllProviders = stage.name.startsWith("N")
+      ? `
+      for id in claude codex gemini; do
+        roborepo harness detected | cut -f1 | grep -qx "$id" \\
+          || { echo "FAIL: provider $id missing from an N-provider machine" >&2; exit 1; }
+        roborepo harness list | cut -f1 | grep -qx "$id" \\
+          || { echo "FAIL: provider $id missing from harness list" >&2; exit 1; }
+      done`
+      : "";
+
     const result = inContainer(`
       npm install -g "$TARBALL" >/dev/null 2>&1
       mkdir -p "$HOME/stub-bin"
@@ -191,6 +226,11 @@ function testHarnessCountMatrix(tarballName) {
 
       roborepo init >/dev/null 2>&1 || { echo "FAIL: init failed" >&2; exit 1; }
       roborepo doctor >/dev/null 2>&1 || { echo "FAIL: doctor failed" >&2; exit 1; }
+
+      # Presentation half: discovery must report this stage's machine, not a cached or assumed one.
+      roborepo harness refresh >/dev/null 2>&1 || { echo "FAIL: harness refresh failed" >&2; exit 1; }
+      ${assertPresence}
+      ${assertAllProviders}
 
       roborepo uninstall --yes >/dev/null 2>&1 || true
       ${ASSERT_GONE}

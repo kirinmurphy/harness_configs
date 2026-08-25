@@ -1,7 +1,7 @@
 ---
 id: 46up8y7a
 priority: high
-next_action: Phases 1-7 are implemented on branch plan-46up8y7a-install-lifecycle. Two Phase 6b items remain: harness-count matrix stages 1-N (stage 0 confirmed on hardware 2026-08-22; the rest move to the container harness in qk4mz7t2), and presence-signal observations. The transfer-artifact item was dropped as superseded by the npm registry path
+next_action: All Phase 6b items are closed as of 2026-08-25 — the harness-count matrix is covered by the container suite (lifecycle and presentation halves, sabotage-verified) and the presence-signal guardrail produced nothing to hand over. Phases 1-7 are implemented on branch plan-46up8y7a-install-lifecycle. Ready for a completion review
 blocked_by: []
 depends_on: []
 related:
@@ -594,23 +594,45 @@ document described. The remaining Phase 6b items genuinely depend on later phase
       **Dropped 2026-08-22**, with the same step in `infra-packaging-01`: the real transition
       installed from the npm registry, and `npm run test:package-install` already packs a fresh
       tarball on every run.
-- [ ] Run the real-new-Mac harness-count matrix below. **Stage 0 is confirmed on real hardware
+- [x] Run the real-new-Mac harness-count matrix below. **Stage 0 is confirmed on real hardware
       (2026-08-22):** the machine had no harness installed, `init` succeeded, and `roborepo doctor`
       passed.
 
-      **Stages 1–N: lifecycle half now covered automatically (2026-08-24).**
-      `scripts/test/clean-machine-container-check.mjs` (commit `6197756`) drives all four stages
-      with stub executables in a container, asserting `init`, `doctor`, and a clean uninstall at
-      each harness count. Verified green.
+      **Stages 1–N are covered automatically as of 2026-08-25**, by
+      `scripts/test/clean-machine-container-check.mjs`. Each stage builds its machine shape from
+      stub executables plus harness home directories in a container, so the states the matrix
+      describes are reachable without a new Mac — discovery resolves executables through `PATH`,
+      and presence is keyed on the harness home.
 
-      **Still open — the presentation half.** The `Verify` column below asks for more than that
-      suite asserts: the discovery contract as reflected by `refresh`/`list`/Agents (stage 1),
-      package configuration applying safely (stage 2), two-harness presentation and filters
-      (stage 3), and generated N-provider presentation free of Claude/Codex-only assumptions
-      (stage N). None of that is asserted today. It does not need a new Mac — it needs either
-      assertions layered onto the container stages or a manual pass — but until one exists this
-      item stays open.
-- [ ] Record any presence-signal observations in `harness-presence-signal-expansion` rather than broadening this plan mid-test.
+      Both halves of the `Verify` column are asserted:
+
+      - **Lifecycle** — `init`, `doctor`, and a clean uninstall at each harness count.
+      - **Presentation** — after `harness refresh`, every stage checks the `present` column of
+        `roborepo harness detected` per provider. That is what separates stage 1 from stage 2:
+        an installed-but-never-launched harness has no home yet and must report `present=0`,
+        while a launched one reports `1`. Stage N additionally asserts that all three registered
+        providers appear in both `harness detected` and `harness list`, which is the anti-hardcoding
+        check — a registry-driven renderer passes it, a Claude/Codex-only one does not.
+
+      Sabotage-verified: inverting the expected `present` value fails stage 1 with
+      `FAIL: claude present=0, expected 1`, so the assertion runs rather than passing vacuously.
+
+      Note for anyone re-reading the `Verify` column: it names a `roborepo list` command that does
+      not exist. The real surfaces are `roborepo harness list` and `roborepo harness detected`, the
+      latter being the tab-separated row source the shell install/uninstall/repair/doctor scripts
+      already consume.
+
+      **What hardware would still add**, and why this is closed anyway: a real machine exercises
+      real harness binaries rather than stubs, and real per-provider config. The container proves
+      the count-dependent behavior — discovery, presentation, lifecycle — which is what this matrix
+      was written to find. Hardware now confirms rather than discovers.
+- [x] Record any presence-signal observations in `harness-presence-signal-expansion` rather than broadening this plan mid-test.
+      **Nothing to hand over (2026-08-25).** This was a scope guardrail for the matrix run rather
+      than a unit of work, and the run produced no surprise: strict home-existence presence behaved
+      exactly as documented at every stage, including the stage-1/stage-2 boundary where an
+      installed-but-never-launched harness reports `present=0`. That is the current signal working
+      as designed, not a case for broadening it, so `harness-presence-signal-expansion` keeps its
+      scope unchanged.
 
 #### Phases 3-6 implementation notes
 

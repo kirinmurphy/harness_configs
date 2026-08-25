@@ -25,6 +25,24 @@ Keep verification small, native to the repo, and explicit.
 - For existing behavior covered by E2E tests, add regression tests that prove the old breakage path fails before the fix and passes after it.
 - Assertions on mock calls are acceptable only when the call is the observable contract, such as an outbound API call with no user-visible effect.
 
+## Docker Sandboxes
+
+Use Docker when behavior depends on machine shape: clean `HOME`, clean `PATH`, package-manager
+prefixes, harness discovery, generated config projection, uninstall ownership, Linux filesystem
+semantics, or absence/presence of agent CLIs. Do not use Docker for behavior that a focused
+Node/shell test can prove directly.
+
+Prefer one reusable image as a disposable machine template, with a fresh container per scenario or
+case. Reset state by deleting the container, not by trying to clean a long-lived container back to a
+baseline. Pack or prepare artifacts once on the host, then give each case isolated `HOME`, state
+root, workspace root, npm prefix, npm cache, and `PATH`.
+
+Keep Docker scenarios separated by failure meaning. A clean-install sandbox should prove package
+install/init/doctor/uninstall only; permissions projection, fake harnesses, lifecycle ownership, and
+platform-portability checks belong in separate sandbox scripts.
+
+For this repo, maintain the detailed pattern in `docs/internal/docker-test-sandboxes.md`.
+
 ## Blocked Verification
 
 Use `blocked` only when the command cannot run because of missing dependencies, network/sandbox restrictions, unavailable services, or unclear repo setup. Include the exact command attempted.

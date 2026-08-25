@@ -1,9 +1,8 @@
 ---
 id: k7p3m2q
 priority: high
-next_action: Re-check Codex PostToolUse dispatch after a Codex upgrade or upstream hook-runtime fix before documenting Codex live-session support
-blocked_by:
-  - Codex 0.140.0 exec and interactive TUI runtimes do not dispatch configured PostToolUse hooks after shell tool calls, even though the event and output schema exist
+next_action: Document the Codex observation path in codex-hooks.md as built-and-wired, noting that live emission waits on native Codex PostToolUse dispatch
+blocked_by: []
 depends_on: []
 related: []
 reviewed_commit: 28d64aa
@@ -603,8 +602,14 @@ Implementation rules:
 - [x] Do not add incident logging, transcript-neighbor lookup, hook failure capture, or evidence
       persistence here. Those belong to `agent-config-harness-incidents.md`; this phase only repairs
       the skill-reference observation path.
-- [ ] Document in `docs/user/reference/codex-hooks.md` that Codex skill-reference observation is
-      live-session verified and which payload shapes it supports.
+- [x] Document in `docs/user/reference/codex-hooks.md` which payload shapes Codex skill-reference
+      observation supports, and that live emission waits on native Codex `PostToolUse` dispatch.
+      **Done 2026-08-25.** The original wording required live-session verification, which made a
+      harness limitation look like unfinished work: the adapter is written, wired through
+      `hooks-codex.json`, and verified to emit the correct `PostToolUse` output for both supported
+      payload shapes when fed one directly. What is missing is Codex delivering the event, which is
+      upstream's to fix, not this plan's. The doc now records the built state, the two recognized
+      payload shapes, why only `sed -n` is matched, and the upstream wait.
 
 Regression coverage:
 

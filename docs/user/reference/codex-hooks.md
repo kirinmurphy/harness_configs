@@ -140,6 +140,38 @@ documented event payloads do not expose a stable list of skills implicitly loade
 for a turn. Use hooks for prompt/tool/stop guardrails, not as the source of truth
 for "which skills auto-loaded" until Codex exposes explicit skill-load metadata.
 
+**Skill-reference observation is a narrower claim, and it is built.** It reports
+which reference *files* a session read — not which skills auto-loaded — by
+watching `PostToolUse` for reads under a skill root. The Codex adapter lives at
+`globals/packages/skill-visibility/hooks/codex/skill-reference-observer.mjs` and
+is wired through that package's `hooks-codex.json`.
+
+It recognizes two payload shapes, both found by live smoke testing:
+
+| Shape | Recognized when | Example |
+| --- | --- | --- |
+| Direct file read | `tool_input.file_path` names a file under a skill root | `{"tool_input":{"file_path":"~/.codex/skills/<skill>/references/<ref>.md"}}` |
+| Shell read | `tool_name` is `exec_command`/`shell`/`local_shell` and `tool_input.cmd`/`.command` is a **string** matching `sed -n <range> <file>` | `sed -n 1,40p ~/.codex/skills/<skill>/references/<ref>.md` |
+
+Skill roots searched: `~/.codex/skills` and `<state root>/skills`.
+
+Only `sed -n` is treated as a reference read. `cat`, `head`, and friends are
+deliberately not matched — the narrow allowlist is what keeps an arbitrary shell
+command containing a skill path from being counted as a read. A matched read
+emits one `additionalContext` line:
+
+```text
+[skill-visibility] observed reference read: <skill>/<reference>
+```
+
+**Live emission waits on Codex.** As of Codex 0.140.0, neither the exec nor the
+interactive TUI runtime dispatches configured `PostToolUse` hooks after shell
+tool calls, even though the event and its output schema are documented. The
+adapter emits correctly when a payload is fed to it directly, so nothing on the
+RoboRepo side is outstanding; the gap is upstream dispatch. Claude's equivalent
+adapter runs live today, so a session's reported reference tally reflects Claude
+reads and will silently under-report Codex ones until Codex delivers the event.
+
 ### Session permissions
 
 Agent permission policy is authored in `manifests/inventory/agent-permissions.json` as a

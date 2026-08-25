@@ -35,10 +35,38 @@ position, rules, and emphasis instead.
 - **Bold the load-bearing claim** in a paragraph the reader must not miss: a regression, a
   destructive consequence, a blocked step. Do not bold for emphasis generally; it stops working.
 
+### Separators
+
+Two weights, and they are load-bearing at different scales. Use the box-drawing characters, not
+`===` or `---`: a line of `=` or `-` directly under text is markdown's setext heading syntax and
+silently converts that text into a heading. `━` and `┈` have no markdown meaning and cannot.
+
+- **Sections — `━`.** A solid rule between major parts of a long response (what changed, what
+  broke, what remains). Pairs with the header, above it; the rule and the header are one unit, not
+  two separate decorations.
+- **Lists — `┈`.** A dotted rule above a list that needs separating from the prose introducing it,
+  or between two consecutive lists of different kinds. Lighter than `━` on purpose: it marks a
+  boundary within a section, never between sections.
+
+Both are for responses long enough to scroll. **A rule in a short reply is noise** — if the whole
+response fits on one screen, the header and the bullets already separate it. Never stack the two
+weights adjacently, and never border a section on both sides; a rule marks a transition, so one per
+transition.
+
+```text
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+## What changed
+
+Three files, one behavior.
+┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+- `a.mjs` — the fix
+- `b.mjs` — its regression
+```
+
 ### Close
 
-- **Separate the close from the work** with a horizontal rule (a line of repeated `━` or `---`)
-  before any summary, findings, or fixed-format lines. One rule, not a border around every section.
+- **Separate the close from the work** with a section rule (`━`, per Separators above) before any
+  summary, findings, or fixed-format lines. One rule, not a border around every section.
 - **Put verification results in a fenced block**, one line per command, so pass/fail is scannable
   rather than embedded in prose.
 - **Close with DONE / DEFERRED / NEXT STEPS** when the response reports on completed or in-progress

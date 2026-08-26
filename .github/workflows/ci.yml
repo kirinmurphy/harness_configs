@@ -62,6 +62,8 @@ jobs:
           npm run --silent test:harness-cohort
           npm run --silent test:managed-uninstall
           npm run --silent test:plan-promote-start
+          npm run --silent test:core-hook-wiring
+          npm run --silent test:permission-rule-home-path
 
       - name: package install smoke (real tarball, isolated prefix)
         run: npm run --silent test:package-install
@@ -75,7 +77,11 @@ jobs:
       # asserting nothing is worse than an absent one.
       - name: clean-machine container suite
         if: runner.os == 'Linux'
-        run: npm run --silent test:clean-machine
+        run: |
+          npm run --silent test:clean-machine
+          npm run --silent test:clean-machine-install-sandbox
+        env:
+          ROBOREPO_CLEAN_MACHINE_STRICT: "1"
 
       - name: clean-machine permissions sandbox
         if: matrix.os == 'ubuntu-latest'

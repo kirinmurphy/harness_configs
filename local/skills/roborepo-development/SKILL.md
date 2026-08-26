@@ -112,6 +112,11 @@ Everything else (the two symlink levels, the layer table) lives in
   verifier through `grep`/`head` to trim output. `doctor.sh` also folds `link-skills.sh --check`,
   so it is the single repo-health entrypoint (`--installed` adds global ~/.claude·~/.codex live
   link checks including per-skill skill links); `test-roborepo.sh` stays the separate test suite.
+- **Health gate before handoff.** After a merge from main, generated-file change,
+  provider/adapter change, CI/workflow change, or `scripts/test/` addition/removal, run
+  `bash scripts/doctor.sh --quiet` and `git diff --check` before final/push. `doctor.sh` is the
+  provider-registry health gate; do not substitute narrower render/catalog checks when the change
+  touches harness, provider, test, or CI plumbing.
 - **Docker test sandboxes:** use them for machine-shape behavior: clean `HOME`, clean `PATH`,
   package-mode install/uninstall, fake harness discovery, and generated config projection. Use one
   disposable image, one fresh container per scenario, one package install per scenario, and many

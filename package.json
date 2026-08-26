@@ -59,6 +59,8 @@
     "test:slash-commands-characterization": "node scripts/test/slash-commands-characterization-check.mjs",
     "test:config-mutate-skill-characterization": "node scripts/test/config-mutate-skill-characterization-check.mjs",
     "test:permissions-render-live-characterization": "node scripts/test/permissions-render-live-characterization-check.mjs",
+    "test:core-hook-wiring": "node scripts/test/core-hook-wiring-check.mjs",
+    "test:permission-rule-home-path": "node scripts/test/permission-rule-home-path-check.mjs",
     "test:mcp-add-characterization": "node scripts/test/mcp-add-characterization-check.mjs",
     "test:mcp-package-lifecycle-characterization": "node scripts/test/mcp-package-lifecycle-characterization-check.mjs",
     "test:package-lifecycle": "node scripts/test/package-lifecycle-check.mjs",

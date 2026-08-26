@@ -111,7 +111,7 @@ export async function discoverInstances(options = {}) {
   const collectMounts = collectDockerMountRecords
     ? (ids) => collectDockerMountRecords(ids, { platform, runCommand: runDockerMountsCommand })
     : null;
-  const composeProjectGit = collectGit
+  const composeResolution = collectGit
     ? await collectGitForComposeProjects(dockerResult.containers, settings, {
       collectGit,
       scanCache,
@@ -120,7 +120,8 @@ export async function discoverInstances(options = {}) {
       collectMounts,
       checkoutRootsByRepository,
     })
-    : new Map();
+    : { byProjectName: new Map(), mountsByContainerId: new Map() };
+  const composeProjectGit = composeResolution.byProjectName;
   // Placement runs as its own pass: it needs "which repository" answered before it can ask "which
   // of that repository's checkouts", and it inspects every stack rather than only the ones
   // repository resolution could not handle.
@@ -128,6 +129,7 @@ export async function discoverInstances(options = {}) {
     await classifyComposeProjects(dockerResult.containers, composeProjectGit, {
       collectMounts,
       checkoutRootsByRepository,
+      mountsByContainerId: composeResolution.mountsByContainerId,
     });
   }
 
@@ -324,7 +326,9 @@ async function collectGitForComposeProjects(containers, settings, {
   const needMounts = new Set();
   await Promise.all(
     Array.from(composeProjectNames, async (name) => {
-      const repoPath = settings?.composeProjects?.[name]?.repoPath;
+      const configured = settings?.composeProjects?.[name] || {};
+      const configuredOwnership = configured.ownership || null;
+      const repoPath = configured.repoPath || (configuredOwnership && configuredOwnership !== "shared" ? configuredOwnership : null);
       if (repoPath) {
         const identity = resolveIdentity(repoPath, "docker-compose");
         byProjectName.set(name, {
@@ -341,6 +345,7 @@ async function collectGitForComposeProjects(containers, settings, {
           // be tested against.
           projectRoot: identity.projectRoot || null,
           resolvedFrom: "manual",
+          configuredOwnership,
         });
         return;
       }
@@ -360,15 +365,16 @@ async function collectGitForComposeProjects(containers, settings, {
         rootId: identity.projectRoot ? computeRootId(identity.projectRoot) : null,
         projectRoot: identity.projectRoot || null,
         resolvedFrom: "auto",
+        configuredOwnership,
       });
     }),
   );
 
   // Only projects the first two tiers could not resolve are inspected, so the common case adds no
   // subprocess at all — and the ones that do are batched into a single `docker inspect`.
-  if (!collectMounts || needMounts.size === 0) return byProjectName;
+  if (!collectMounts || needMounts.size === 0) return { byProjectName, mountsByContainerId: new Map() };
   const candidates = containers.filter((c) => needMounts.has(c.composeProject) && c.containerId);
-  if (!candidates.length) return byProjectName;
+  if (!candidates.length) return { byProjectName, mountsByContainerId: new Map() };
   const mountsByContainerId = await collectMounts(candidates.map((c) => c.containerId));
 
   await Promise.all(
@@ -396,10 +402,11 @@ async function collectGitForComposeProjects(containers, settings, {
         rootId: computeRootId(projectRoot),
         projectRoot,
         resolvedFrom: "auto-bind",
+        configuredOwnership: settings?.composeProjects?.[name]?.ownership || null,
       });
     }),
   );
-  return byProjectName;
+  return { byProjectName, mountsByContainerId };
 }
 
 // Second pass: decide WHICH CHECKOUT each resolved stack belongs to.
@@ -440,11 +447,21 @@ async function classifyComposeProjects(containers, byProjectName, {
   }
 
   for (const [name, resolved] of byProjectName) {
-    // A manual repoPath is an explicit statement of where the stack belongs and outranks every
-    // inferred signal, including bind mounts.
+    // Manual ownership is an explicit placement statement and outranks every inferred signal,
+    // including bind mounts. A manual repoPath remains owned by its configured checkout.
+    if (resolved.configuredOwnership === "shared") {
+      resolved.ownership = "shared";
+      resolved.ownershipEvidence = { kind: "manual", checkoutPaths: [] };
+      resolved.rootId = null;
+      if (resolved.git) {
+        const { root, provider } = resolved.git;
+        resolved.git = { root, provider };
+      }
+      continue;
+    }
     if (resolved.resolvedFrom === "manual") {
       resolved.ownership = "owned";
-      resolved.ownershipEvidence = { kind: "manual", checkoutPaths: [] };
+      resolved.ownershipEvidence = { kind: "manual", checkoutPaths: [resolved.projectRoot].filter(Boolean) };
       continue;
     }
     const mountPaths = [];

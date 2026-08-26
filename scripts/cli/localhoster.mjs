@@ -67,6 +67,7 @@ export async function refreshLocalhosterSnapshot() {
     try {
       const settings = loadSettings({ stateRoot });
       const previous = lastSnapshot;
+      const registryBeforeDiscovery = loadRegistrySafe();
       // Independent of discovery, so pay for one round of latency rather than two. Both must settle
       // before portalInstance() runs below, since it reads the collected git context synchronously.
       const [discovery] = await Promise.all([
@@ -77,7 +78,7 @@ export async function refreshLocalhosterSnapshot() {
           previousHealth: healthIndexFromSnapshot(previous),
           // Every checkout the registry knows, so a Compose stack is placed by the checkout its bind
           // mounts actually depend on rather than by the directory it was started from.
-          checkoutRootsByRepository: registryCheckoutRoots(),
+          checkoutRootsByRepository: registryCheckoutRoots(registryBeforeDiscovery),
         }),
         refreshPortalGit(),
       ]);
@@ -90,12 +91,13 @@ export async function refreshLocalhosterSnapshot() {
       recordDiscoveredRepositories(discovery.instances, discovery.composeProjectGit);
       // After recording, so a repository discovered on THIS scan is already in the registry and is
       // counted as running rather than appearing as idle on the poll that first found it.
-      const persistedRepositories = await collectPersistedRepositories(runningRepositoryIds(discovery));
+      const { persistedRepositories, registry } = await collectPersistedRepositories(runningRepositoryIds(discovery), { registry: loadRegistrySafe() });
       lastSnapshot = buildSnapshot({
         discovery,
         settings,
         refresh: { state: "idle", startedAt: null, error: null, generation },
         persistedRepositories,
+        registry,
       });
       // Only refreshes produce events. updateLocalhosterSettings also rebuilds a snapshot, but from
       // cached discovery with no fresh probe, so any diff there would be a settings artifact rather
@@ -404,16 +406,16 @@ function scheduleRefresh() {
   if (!inFlightRefresh) refreshLocalhosterSnapshot().catch(() => {});
 }
 
-function buildSnapshot({ discovery, settings = loadSettings({ stateRoot }), refresh = { state: "idle", startedAt: null, error: null }, now = new Date(), persistedRepositories = [] }) {
+function buildSnapshot({ discovery, settings = loadSettings({ stateRoot }), refresh = { state: "idle", startedAt: null, error: null }, now = new Date(), persistedRepositories = [], registry = loadRegistrySafe() }) {
   return buildLocalhosterSnapshot({
     discovery,
     settings,
     refresh,
     now,
-    repositoryNames: registryDisplayNames(),
+    repositoryNames: registryDisplayNames(registry),
     persistedRepositories,
-    hiddenRepositories: collectHiddenRepositories(),
-    pinnedRepositoryIds: registryPinnedIds(),
+    hiddenRepositories: collectHiddenRepositories(registry),
+    pinnedRepositoryIds: registryPinnedIds(registry),
   });
 }
 
@@ -432,13 +434,8 @@ const idleGitCache = createIdleGitCache();
 //
 // Best-effort in the same spirit as registryDisplayNames: an unreadable registry costs the idle
 // repositories and nothing else — the running ones come from discovery and are unaffected.
-async function collectPersistedRepositories(runningRepositoryIds) {
-  let registry;
-  try {
-    registry = loadRegistry({ stateRoot });
-  } catch {
-    return [];
-  }
+async function collectPersistedRepositories(runningRepositoryIds, { registry = loadRegistrySafe() } = {}) {
+  if (!registry) return { persistedRepositories: [], registry: null };
   registry = applyRenameAliases(registry);
   registry = applyAgeOut(registry);
   const out = [];
@@ -487,7 +484,7 @@ async function collectPersistedRepositories(runningRepositoryIds) {
   // Bound the cache to checkouts still in play, so a long portal session does not accumulate entries
   // for repositories that have since been removed.
   idleGitCache.retain(liveRoots);
-  return out;
+  return { persistedRepositories: out, registry };
 }
 
 // Alias a record onto the repository that a remote rename moved it into, and return the registry as
@@ -592,20 +589,16 @@ function applyAgeOut(registry) {
 // Records the ageing sweep has hidden, for the "Show hidden" affordance. Name and last-seen only —
 // enough to decide whether to bring one back, without paying to derive lifecycle or read git for
 // repositories that are, by construction, not on the page.
-function collectHiddenRepositories() {
-  try {
-    const registry = loadRegistry({ stateRoot });
-    return Object.entries(registry.repositories || {})
-      .filter(([, record]) => record?.visibility === "hidden")
-      .map(([repositoryId, record]) => ({
-        repositoryId,
-        name: record.displayName || repositoryId,
-        lastSeenAt: lastSeenAtFor(record),
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  } catch {
-    return [];
-  }
+function collectHiddenRepositories(registry = loadRegistrySafe()) {
+  if (!registry) return [];
+  return Object.entries(registry.repositories || {})
+    .filter(([, record]) => record?.visibility === "hidden")
+    .map(([repositoryId, record]) => ({
+      repositoryId,
+      name: record.displayName || repositoryId,
+      lastSeenAt: lastSeenAtFor(record),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // Every repository with something live on this scan. Both sources count: a repository whose only
@@ -659,45 +652,41 @@ async function readIdleGit(projectRoot, repositoryId) {
 // repositoryId -> [{ rootId, path }] for every checkout with a recorded path. Best-effort for the
 // same reason as registryDisplayNames: without it, stacks classify as shared/unverified rather than
 // being placed under a wrong checkout.
-function registryCheckoutRoots() {
-  try {
-    const registry = loadRegistry({ stateRoot });
-    const byRepository = new Map();
-    for (const id of Object.keys(registry.repositories || {})) {
-      const roots = checkoutRootsFor(registry, id);
-      if (roots.length) byRepository.set(id, roots);
-    }
-    return byRepository;
-  } catch {
-    return new Map();
+function registryCheckoutRoots(registry = loadRegistrySafe()) {
+  if (!registry) return new Map();
+  const byRepository = new Map();
+  for (const id of Object.keys(registry.repositories || {})) {
+    const roots = checkoutRootsFor(registry, id);
+    if (roots.length) byRepository.set(id, roots);
   }
+  return byRepository;
 }
 
-function registryDisplayNames() {
-  try {
-    const registry = loadRegistry({ stateRoot });
-    const names = new Map();
-    for (const [id, record] of Object.entries(registry.repositories || {})) {
-      if (record.displayName) names.set(id, record.displayName);
-    }
-    return names;
-  } catch {
-    return new Map();
+function registryDisplayNames(registry = loadRegistrySafe()) {
+  if (!registry) return new Map();
+  const names = new Map();
+  for (const [id, record] of Object.entries(registry.repositories || {})) {
+    if (record.displayName) names.set(id, record.displayName);
   }
+  return names;
 }
 
 // Same read-and-degrade shape as registryDisplayNames: an unreadable registry costs the pins, not
 // the page.
-function registryPinnedIds() {
+function registryPinnedIds(registry = loadRegistrySafe()) {
+  if (!registry) return new Set();
+  const pinned = new Set();
+  for (const [id, record] of Object.entries(registry.repositories || {})) {
+    if (record.pinned === true) pinned.add(id);
+  }
+  return pinned;
+}
+
+function loadRegistrySafe() {
   try {
-    const registry = loadRegistry({ stateRoot });
-    const pinned = new Set();
-    for (const [id, record] of Object.entries(registry.repositories || {})) {
-      if (record.pinned === true) pinned.add(id);
-    }
-    return pinned;
+    return loadRegistry({ stateRoot });
   } catch {
-    return new Set();
+    return null;
   }
 }
 

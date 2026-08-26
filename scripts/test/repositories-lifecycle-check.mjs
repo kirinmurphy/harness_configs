@@ -202,7 +202,6 @@ check("the record that took the root is not superseded", supersededBy(reg, RENAM
   // This is the comparison readIdleGit makes before trusting the path. It has to be the SAME
   // derivation discovery uses for a running checkout, or the two would disagree about identity.
   check("a stale record does not match the directory", actual === "git:github.com/k/app", false);
-  check("the current owner does match", actual === actual, true);
 }
 
 // --- an alias is the user overruling the refusal to guess ---

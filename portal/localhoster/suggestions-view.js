@@ -156,7 +156,7 @@ function routeLinkRow(project, instance, suggestion, { captureLink, isSaved, onE
       // Fire-and-forget: the link opens via the anchor's own default behavior regardless of
       // whether the capture succeeds, since a failed save should never block navigation to a route
       // the user already confirmed they want by clicking it.
-      captureLink?.(project, instance, suggestion).then(() => {
+      Promise.resolve(captureLink?.(project, instance, suggestion)).then(() => {
         if (check) check.hidden = false;
       }).catch(() => {});
     });

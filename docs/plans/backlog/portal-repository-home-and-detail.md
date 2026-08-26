@@ -101,7 +101,7 @@ Before this story:
 - There is no `portal/home/` page.
 - The canonical repository registry and browser-safe repository list/detail APIs already exist, with `pljvmyh` extending them with `urlKey`, global sources, private local-root resolution, and shared scope.
 - Repository summaries already distinguish capabilities from enrollments and intentionally strip filesystem paths.
-- Localhost already groups running instances by canonical repository and remains the operational runtime page. `h4tqm2wz` makes those repositories persist beyond their processes and adds a lifecycle (`active`/`idle`/`stale`/`deleted`), so the repository directory here can list a repository that is not currently running and show why.
+- Localhost already groups running instances by canonical repository and remains the operational runtime page. `h4tqm2wz` makes those repositories persist beyond their processes and adds a lifecycle (`active`/`idle`/`stale`) plus visibility-based hiding, so the repository directory here can list a repository that is not currently running and show why.
 - Plans and Tokens provide deeper domain views.
 - Config/Agents provides global agent resource/configuration data; repository-level config remains future work.
 - Telemetry already computes anomaly/session data and a cumulative concern threshold.
@@ -135,7 +135,7 @@ Recommended summary fields:
 | Summary | Meaning |
 | --- | --- |
 | Display name | Canonical registry display name |
-| Activity | Repository lifecycle state from `h4tqm2wz` — `active`, `idle`, or `stale`. Soft-deleted repositories are excluded from the directory. |
+| Activity | Repository lifecycle state from `h4tqm2wz` — `active`, `idle`, or `stale`. Hidden repositories are excluded from the default directory. |
 | Runtime | Active Localhost app/group count or concise status |
 | Plans | Active plan count and total plan count |
 | Tokens / sessions | Recent associated session/activity summary when available |

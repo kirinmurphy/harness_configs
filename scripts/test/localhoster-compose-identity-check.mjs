@@ -94,6 +94,28 @@ async function runCommand(command, args) {
   assert.equal(entry?.repositoryId, "git:github.com/x/myapp-manual");
 }
 
+// Case 2b: manual ownership can mark a stack shared even when working_dir points at a checkout.
+{
+  const result = await discoverInstances({
+    ...baseOptions,
+    runCommand,
+    discoverDocker: async () => ({ warnings: [], containers: [composeContainer({ workingDir: "/repo/myapp" })] }),
+    collectDockerMountRecords: async () => new Map([["abc123", ["/repo/myapp/data"]]]),
+    resolveIdentity: (cwd) => {
+      if (cwd === "/repo/myapp") {
+        return { identity: "git:github.com/x/myapp", identityKind: "git", confidence: "high", projectRoot: "/repo/myapp", evidence: "Git remote" };
+      }
+      return { identity: `process:${cwd}:unknown`, identityKind: "process", confidence: "low", projectRoot: null, evidence: "process working directory" };
+    },
+    checkoutRootsByRepository: new Map([["git:github.com/x/myapp", [{ rootId: "root-main", path: "/repo/myapp" }]]]),
+    settings: { composeProjects: { myapp: { ownership: "shared" } } },
+  });
+  const entry = result.composeProjectGit.get("myapp");
+  assert.equal(entry?.ownership, "shared");
+  assert.equal(entry?.ownershipEvidence.kind, "manual");
+  assert.equal(entry?.rootId, null);
+}
+
 // Case 3: working_dir resolves to identityKind "process" (no .git found anywhere in its
 // ancestry) -> composeProjectGit has no entry for this project at all, since resolveProjectIdentity
 // never fails outright and "process" is its safe no-repo-found fallback, not a real resolution.
@@ -113,11 +135,13 @@ async function runCommand(command, args) {
 // path inside the repo — the walk-up from that path finds the same `.git`.
 {
   let inspected = null;
+  let inspectCalls = 0;
   const result = await discoverInstances({
     ...baseOptions,
     runCommand,
     discoverDocker: async () => ({ warnings: [], containers: [composeContainer({ workingDir: null })] }),
     collectDockerMountRecords: async (ids) => {
+      inspectCalls += 1;
       inspected = ids;
       return new Map([["abc123", ["/repo/myapp/supabase/snippets"]]]);
     },
@@ -135,6 +159,7 @@ async function runCommand(command, args) {
   // git context is collected against the repo ROOT, not the mounted subdirectory.
   assert.equal(entry?.git?.root, "/repo/myapp");
   assert.deepEqual(inspected, ["abc123"]);
+  assert.equal(inspectCalls, 1, "placement reuses mounts fetched during repository resolution");
 }
 
 // Agreement guard: two containers in one project whose bind mounts resolve to DIFFERENT

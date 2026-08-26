@@ -74,7 +74,7 @@
          rather than replacing its contents: the trigger keeps its own width, so a dense row does
          not reflow at the moment of copying. Shared with portal-copy-button so both controls
          confirm identically. -->
-    <span class="copy-flash" data-slot="flash" aria-hidden="true" hidden
+    <span class="copy-flash" data-slot="flash" role="status" aria-live="polite" hidden
       >Copied<portal-icon name="check" size="sm"></portal-icon
     ></span>
   </button>
@@ -96,7 +96,7 @@
     <!-- Same floating confirmation as the copy-menu trigger (.copy-flash). An icon-only copy button
          is narrower than the word "Copied", so stacking the two in one grid cell — as this did —
          sized every such button to the confirmation it shows for five seconds out of every use. -->
-    <span class="copy-flash" data-slot="flash" aria-hidden="true" hidden
+    <span class="copy-flash" data-slot="flash" role="status" aria-live="polite" hidden
       >Copied<portal-icon name="check" size="sm"></portal-icon
     ></span>
   </button>

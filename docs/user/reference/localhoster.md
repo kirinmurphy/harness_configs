@@ -62,8 +62,8 @@ Discovery is split across provider boundaries:
 - `docker.mjs` collects running-container/Compose data; `process-metrics.mjs` collects live
   CPU/memory/elapsed for discovered PIDs. See [Docker and process metrics](#docker-and-process-metrics).
 
-Metadata suggestions remain listed as a provider capability but marked unsupported until its
-smaller follow-up plan implements it.
+Metadata suggestions are available through the same-origin metadata endpoint and can propose
+manifest, sitemap, robots, and OpenAPI routes without promoting them to saved quick links.
 
 ## Git context
 
@@ -270,6 +270,8 @@ check:
 - `POST /api/localhoster/repository-visibility` — hides or restores a whole repository. Unlike the
   routes above it writes the repository registry, not Localhoster's settings, so it carries no
   settings revision: visibility is one boolean per record with no cross-field invariant to protect.
+- `POST /api/localhoster/repository-pinned` — pins or unpins a whole repository in the repository
+  registry so its order is stable across running and idle snapshots.
 
 Revision conflicts return `409` with the current snapshot.
 

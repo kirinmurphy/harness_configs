@@ -161,7 +161,7 @@ hand-maintained. Each domain's table:
 | --- | --- | --- |
 | `portal-routes-config.mjs` | `configRoutes` | `/api/config`, `/api/config/source`, `/api/config/packages`, `/api/config/skills`, `/api/config/permissions` |
 | `portal-routes-plans.mjs` | `plansRoutes` | `/api/plans`, `/api/plans/document`, `/api/plans/prompt`, `/api/plans/settings`, `/api/plans/priority`, `/api/plans/lifecycle`, `/api/plans/refresh` |
-| `portal-routes-localhoster.mjs` | `localhosterRoutes` | `/api/localhoster`, `/api/localhoster/refresh`, `/api/localhoster/history`, `/api/localhoster/metadata`, `/api/localhoster/links`, `/api/localhoster/association`, `/api/localhoster/project`, `/api/localhoster/alias`, `/api/localhoster/compose-project` |
+| `portal-routes-localhoster.mjs` | `localhosterRoutes` | `/api/localhoster`, `/api/localhoster/refresh`, `/api/localhoster/history`, `/api/localhoster/metadata`, `/api/localhoster/links`, `/api/localhoster/association`, `/api/localhoster/project`, `/api/localhoster/alias`, `/api/localhoster/compose-project`, `/api/localhoster/repository-visibility`, `/api/localhoster/repository-pinned` |
 | `portal-routes-repositories.mjs` | `repositoriesRoutes` | `/api/repositories`, `/api/repositories/:id`, `/api/repositories/:id/associations`, `/api/repositories/:id/plans-enrollment` — path-param routes; a method with no matching route on a path that does match returns `405`, matching the old handler's explicit `methodNotAllowed` |
 | `portal-routes-usage.mjs` | `usageRoutes` | `/api/usage`, `/api/usage/refresh` |
 | `portal-routes-telemetry.mjs` | `telemetryRoutes` | `/api/data`, `/api/session`, `/api/insights-llm`, `/api/telemetry/markers` (GET/POST), `/api/telemetry/experiments` (GET/POST), `/api/telemetry/experiments/:id/end` (POST), `/api/telemetry/analysis` (POST) — see `docs/reference/services/telemetry.md` for the marker/experiment/analysis domain |
@@ -186,7 +186,7 @@ silently shadowing another route at request time.
 
 ## Self-Describing Metadata
 
-The portal serves `/manifest.json`, `/sitemap.xml`, and `/robots.txt` at their conventional root
+The portal serves `/manifest.json`, `/sitemap.xml`, `/robots.txt`, and `/openapi.json` at their conventional root
 paths (`portal-routes-metadata.mjs`), so `roborepo:portal` is itself a live, correct example of the
 same same-origin conventions `modules/localhoster/metadata.mjs` discovers on other apps (see
 `docs/reference/services/localhoster.md`'s "Metadata suggestions" section).
@@ -196,7 +196,7 @@ same same-origin conventions `modules/localhoster/metadata.mjs` discovers on oth
 | `manifest.json` | Generated from `PAGES` at request time | Can never drift from the real page list — adding or removing a page changes it on the next request, nothing to hand-sync. |
 | `sitemap.xml` | Generated from `PAGES` at request time | Same guarantee as `manifest.json`. |
 | `robots.txt` | Static: `Disallow: /` for every agent, plus a `Sitemap:` declaration | Deliberate, not a placeholder — the portal only ever binds to loopback (`LOOPBACK` in `portal-server.mjs`) and will never actually be crawled, so the file's job is to be an honest, safe example of the convention rather than to invite indexing. |
-| OpenAPI document for `/api/*` | Not built yet | Generating one from `API_ROUTE_TABLES` (see "Server Route Dispatch") is a natural follow-up now that the route surface is a single enumerable array. |
+| `openapi.json` | Generated from `API_ROUTE_TABLES` at request time | Documents the live `/api/*` route table exposed by the portal server. |
 
 ## Telemetry Analysis Performance Model
 

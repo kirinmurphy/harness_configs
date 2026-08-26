@@ -82,22 +82,26 @@ function buildCurl(instance, suggestion) {
     .join("&");
 
   const url = `${origin}${path}${query ? `?${query}` : ""}`;
-  const parts = [`curl -s${method === "GET" ? "" : ` -X ${method}`} '${url}'`];
+  const parts = [`curl -s${method === "GET" ? "" : ` -X ${method}`} ${shellQuote(url)}`];
 
   const body = suggestion.requestBody;
   if (body?.fields?.length) {
-    parts.push(`  -H 'Content-Type: ${body.mediaType}'`);
+    parts.push(`  -H ${shellQuote(`Content-Type: ${body.mediaType}`)}`);
     const fields = body.fields.filter((f) => f.required || f.example != null);
     const stub = (fields.length ? fields : body.fields).reduce((acc, field) => {
       acc[field.name] = field.example == null ? mint(field.name) : bodyFieldValue(field);
       return acc;
     }, {});
-    parts.push(`  -d '${JSON.stringify(stub)}'`);
+    parts.push(`  -d ${shellQuote(JSON.stringify(stub))}`);
   } else if (body) {
-    parts.push(`  -H 'Content-Type: ${body.mediaType}'`);
-    parts.push(`  -d '${mint("request body")}'`);
+    parts.push(`  -H ${shellQuote(`Content-Type: ${body.mediaType}`)}`);
+    parts.push(`  -d ${shellQuote(mint("request body"))}`);
   }
   return { command: parts.join(" \\\n"), placeholders };
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
 function bodyFieldValue(field) {

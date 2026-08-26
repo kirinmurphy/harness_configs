@@ -41,6 +41,28 @@ try {
   }
   console.log("ok  robots Sitemap: parsing");
 
+  // ---- Robots sitemap declarations stay on the app's own origin ----
+  {
+    const fetched = [];
+    const suggestions = await discoverMetadataSuggestions("http://localhost:5173", {
+      fetchText: async (url) => {
+        fetched.push(url);
+        return stubFetch({
+          "http://localhost:5173/robots.txt": { ok: true, status: 200, body: "Sitemap: /relative-sitemap.xml\nSitemap: http://localhost:9999/admin/purge\n" },
+          "http://localhost:5173/relative-sitemap.xml": {
+            ok: true,
+            status: 200,
+            body: "<urlset><url><loc>http://localhost:5173/local</loc></url></urlset>",
+          },
+          "http://localhost:5173/sitemap.xml": { ok: false, status: 404, body: null },
+        })(url);
+      },
+    });
+    assert.deepEqual(suggestions, [{ path: "/local", label: null, source: "robots", kind: "page" }]);
+    assert.equal(fetched.includes("http://localhost:9999/admin/purge"), false, "cross-origin sitemap URL is never fetched");
+  }
+  console.log("ok  robots Sitemap: stays same-origin before fetch");
+
   // ---- Conventional /sitemap.xml fallback ----
   {
     const suggestions = await discoverMetadataSuggestions("http://localhost:5173", {
@@ -186,7 +208,7 @@ try {
   {
     const suggestions = await discoverMetadataSuggestions("http://localhost:5173", {
       fetchText: stubFetch({
-        // openapi.json and openapi.yaml (tried first) are absent; swagger.json is the first hit.
+        // openapi.json (tried first) is absent; swagger.json is the first hit.
         "http://localhost:5173/swagger.json": { ok: true, status: 200, body: JSON.stringify({ paths: { "/api/orders": { get: {} } } }) },
       }),
     });
@@ -201,7 +223,6 @@ try {
     const suggestions = await discoverMetadataSuggestions("http://localhost:5173", {
       fetchText: stubFetch({
         "http://localhost:5173/openapi.json": { ok: true, status: 200, body: "<!doctype html><title>App</title>" },
-        "http://localhost:5173/openapi.yaml": { ok: true, status: 200, body: "<!doctype html><title>App</title>" },
         "http://localhost:5173/swagger.json": { ok: true, status: 200, body: "<!doctype html><title>App</title>" },
         "http://localhost:5173/v3/api-docs": { ok: true, status: 200, body: JSON.stringify({ paths: { "/real": { get: {} } } }) },
       }),

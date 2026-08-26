@@ -144,7 +144,7 @@ export function buildLocalhosterSnapshot({
         // renders repositories from the registry instead, so a slot that HAS a repository is
         // already represented by that repository's card and must not also appear as a loose saved
         // app; only the never-resolved ones are still listed on their own.
-        repositoryId: canonicalRepositoryId(identity),
+        repositoryId: canonicalRepositoryId(savedIdentityFor(identity)),
         name: project.name || inferredName(identity),
         favorite: project.favorite === true || app.favorite === true,
         hidden: false,
@@ -416,6 +416,7 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances, repo
     // members stays empty by construction: an idle repository has no instances, and that absence is
     // the entire difference between the two states.
     for (const checkout of persisted.checkouts || []) {
+      if (!checkout?.rootId) continue;
       const root = ensureRoot(entry, checkout.rootId, checkout.git, checkout.projectRoot);
       root.checkoutState = checkout.state;
       root.checkoutReason = checkout.reason || null;
@@ -750,6 +751,13 @@ function inferredName(identity, projectRoot = null) {
   if (identity.startsWith("path:")) return path.basename(identity.slice("path:".length));
   if (projectRoot) return path.basename(projectRoot);
   return identity.split(":").at(-1) || identity;
+}
+
+function savedIdentityFor(identity) {
+  if (typeof identity !== "string") return null;
+  if (identity.startsWith("git:")) return { identityKind: "git", identity, projectRoot: null };
+  if (identity.startsWith("path:")) return { identityKind: "path", identity, projectRoot: identity.slice("path:".length) };
+  return null;
 }
 
 function labelFromId(value) {

@@ -28,7 +28,7 @@ The current `/` Agents route remains in place during this story. Scoped Agents l
 `h4tqm2wz` (Localhost Workspace Model) implements the Localhost half of this story's Phase 1 —
 persisting repositories and their checkout roots from runtime discovery, plus the private
 `rootId -> path` index in §2 — so the workspace model can be settled on the page where it is
-visible. It also adds a repository lifecycle (`active`/`idle`/`stale`/`deleted`) and soft delete,
+visible. It also adds a repository lifecycle (`active`/`idle`/`stale`) and visibility-based hiding,
 which this story specified only as "report stale without deleting canonical history".
 
 Treat those as delivered prerequisites rather than work to redo. What remains here is unchanged:
@@ -510,7 +510,7 @@ reimplementing:
 | Private `rootId -> absolute path` local-root index | `h4tqm2wz` Phase 1 |
 | Localhost discovery persists resolved checkout roots | `h4tqm2wz` Phase 1 |
 | Normal browser repository payloads stay path-free | `h4tqm2wz` Phase 1 |
-| Stale/missing-root detection without deleting canonical history | `h4tqm2wz` Phase 2, extended there into an explicit lifecycle with user-driven soft delete |
+| Stale/missing-root detection without deleting canonical history | `h4tqm2wz` Phase 2, extended there into an explicit lifecycle with user-driven visibility |
 
 ### Phase 2 — Migrate Plans repository discovery
 

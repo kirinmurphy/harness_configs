@@ -40,6 +40,26 @@ STATE_FILE="${TMPDIR:-/tmp}/roborepo-shared-stack-fixture.path"
 # failure rather than an obvious one.
 PORT="${FIXTURE_PORT:-39117}"
 
+write_state_file() {
+  local dir="$1"
+  if [ -e "$STATE_FILE" ] || [ -L "$STATE_FILE" ]; then
+    echo "state file already exists; run '$0 down' before starting a new fixture" >&2
+    exit 1
+  fi
+  if ! (umask 077; set -o noclobber; printf '%s\n' "$dir" > "$STATE_FILE") 2>/dev/null; then
+    echo "could not create trusted state file: $STATE_FILE" >&2
+    exit 1
+  fi
+}
+
+read_state_file() {
+  if [ -L "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ] || [ ! -O "$STATE_FILE" ]; then
+    echo "refusing untrusted state file: $STATE_FILE" >&2
+    exit 1
+  fi
+  cat "$STATE_FILE"
+}
+
 up() {
   # Fail loudly and early rather than letting `docker compose up` report a port clash halfway
   # through, having already created the repo, the worktree and the network.
@@ -50,7 +70,7 @@ up() {
 
   local dir
   dir="$(mktemp -d "${TMPDIR:-/tmp}/shared-stack-fixture.XXXXXX")"
-  echo "$dir" > "$STATE_FILE"
+  write_state_file "$dir"
 
   git init -q "$dir"
   git -C "$dir" config user.email fixture@example.invalid
@@ -97,9 +117,9 @@ down() {
   # has to be cleaned up by hand. Removing the container first (above) keeps this from failing on an
   # in-use network, and the `|| true` covers the case where compose already took it down.
   docker network rm "${PROJECT}_default" >/dev/null 2>&1 || true
-  if [ -f "$STATE_FILE" ]; then
+  if [ -e "$STATE_FILE" ] || [ -L "$STATE_FILE" ]; then
     local dir
-    dir="$(cat "$STATE_FILE")"
+    dir="$(read_state_file)"
     if [ -n "$dir" ] && [ -d "$dir" ]; then
       git -C "$dir" worktree remove --force "${dir}-wt" >/dev/null 2>&1 || rm -rf "${dir}-wt"
       rm -rf "$dir"

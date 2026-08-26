@@ -53,8 +53,11 @@ async function discoverManifestPaths(origin, fetchText) {
 async function discoverRobotsSitemapPaths(origin, fetchText) {
   const result = await fetchText(`${origin}/robots.txt`, { accept: "text/plain" });
   if (!result.ok || !result.body) return [];
-  const sitemapUrls = [...result.body.matchAll(/^\s*Sitemap:\s*(\S+)/gim)].map((match) => match[1]);
-  const perSitemap = await Promise.all(sitemapUrls.map((url) => discoverSitemapPaths(resolveAgainst(origin, url), fetchText)));
+  const sitemapUrls = [...result.body.matchAll(/^\s*Sitemap:\s*(\S+)/gim)]
+    .map((match) => match[1])
+    .map((url) => resolveAgainst(origin, url))
+    .filter((url) => url && isSameOrigin(url, origin));
+  const perSitemap = await Promise.all(sitemapUrls.map((url) => discoverSitemapPaths(url, fetchText)));
   return perSitemap.flat();
 }
 

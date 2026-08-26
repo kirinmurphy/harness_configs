@@ -23,8 +23,8 @@ Three changes, in dependency order:
 
 1. **Persistence.** The first time Localhost resolves a running app to a repository, record that
    repository and the checkout it ran from. The record survives every process stopping.
-2. **Lifecycle.** A repository whose checkouts have gone stale stays listed and marked; one whose
-   repository identity is gone is soft-deleted and can be permanently removed.
+2. **Lifecycle.** A repository whose checkouts have gone stale stays listed and marked; one the
+   ageing sweep retires is hidden from the default list and can be restored from hidden records.
 3. **Container placement.** With every checkout of a repository known, a Docker Compose stack can be
    placed by what it depends on rather than by which directory `docker compose up` ran from.
 
@@ -64,7 +64,7 @@ The division:
 | Concern | Owner |
 | --- | --- |
 | Localhost discovery persists repository + checkout roots | This plan |
-| Stale/damaged checkout lifecycle and soft delete | This plan |
+| Stale/damaged checkout lifecycle and visibility-based hiding | This plan |
 | Container placement across checkouts | This plan |
 | User-configured repository/folder sources | `pljvmyh` |
 | `urlKey`, shared `?repository=` scope, selector | `pljvmyh` |

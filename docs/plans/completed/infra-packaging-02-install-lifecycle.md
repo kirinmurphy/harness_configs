@@ -1,7 +1,7 @@
 ---
 id: 46up8y7a
 priority: high
-next_action: All Phase 6b items are closed as of 2026-08-25 — the harness-count matrix is covered by the container suite (lifecycle and presentation halves, sabotage-verified) and the presence-signal guardrail produced nothing to hand over. Phases 1-7 are implemented on branch plan-46up8y7a-install-lifecycle. Ready for a completion review
+next_action: ""
 blocked_by: []
 depends_on: []
 related:
@@ -10,7 +10,7 @@ related:
   - qjsbhel5
   - v6lvuu2
   - harness-presence-signal-expansion
-reviewed_commit: 677371c6e95234caa69d532f799cfcb16f4c438e
+reviewed_commit: 1a2f5fc
 ---
 
 # Make npm Installation Lead Into a Coherent RoboRepo Lifecycle
@@ -1100,6 +1100,61 @@ Confirm the application command disappears while the preserved workspace remains
 - successful managed uninstall tells the user to remove the package with npm.
 - docs clearly state that npm package removal and RoboRepo-managed state cleanup are separate lifecycle operations.
 - the existing package-install smoke and relevant lifecycle/harness/portal tests remain green.
+
+## Completion summary
+
+**Completed 2026-08-26** against `1a2f5fc`. Every acceptance criterion above is met and no tasks
+remain.
+
+Phases 1-7 delivered the lifecycle surface: `roborepo init` as the single first-run workflow,
+explicit versioned initialization state, `library` and `package manage` as two entry points to one
+implementation, cohort-driven zero/one/N provider rendering, and a managed `uninstall` that
+preserves user-authored workspace content by default with nested-only deletion as an explicit
+opt-in.
+
+Phase 6b's harness-count matrix was the last open item, and it closed without hardware.
+`scripts/test/clean-machine-container-check.mjs` builds each stage from stub executables plus
+harness home directories in a container, asserting both halves the `Verify` column asks for: the
+lifecycle half (`init`, `doctor`, clean uninstall at each count) and the presentation half (the
+`present` column of `harness detected` per provider, plus stage N requiring every registered
+provider in both `harness detected` and `harness list`). Hardware now confirms rather than
+discovers.
+
+The presence-signal item was a scope guardrail rather than work, and produced nothing to hand to
+`harness-presence-signal-expansion`: strict home-existence presence behaved as documented at every
+stage, including the stage-1/stage-2 boundary where an installed-but-never-launched harness reports
+`present=0`.
+
+## Verification
+
+Every command below was run against this repository at the commit named, not quoted from an earlier
+session. Where a criterion could be checked directly on the CLI rather than inferred from the plan
+text, it was.
+
+### Completion review (2026-08-26, against `1a2f5fc`)
+
+```text
+npm run test:package-install                              ok: package install smoke (ephemeral)
+node scripts/test/clean-machine-container-check.mjs       6/6 scenarios, exit 0
+node scripts/test/managed-uninstall-check.mjs             ok
+node scripts/test/harness-registry-check.mjs              ok
+node scripts/test/plans-portal-state-check.mjs            ok
+bash scripts/doctor.sh --quiet                            104 checks passed
+```
+
+CLI surface checked directly rather than inferred from the plan text:
+
+- `roborepo onboard` is gone from the public CLI and redirects to `roborepo package manage`.
+- `roborepo uninstall --dry-run` reports `preserve: <workspace> (workspace)` and, in checkout mode,
+  states that npm package removal is skipped.
+
+**Known-red elsewhere, and deliberately not treated as blocking.** The full suite reports 418
+passed / 2 failed. Both failures are `config: onboarding notice…` cases asserting the copy
+`Package selections are saved` while `portal/config/onboarding-state.js` now reads
+`Package selections will be saved`. That surface is staged first-run package selection, which this
+plan lists as an explicit non-goal owned by `v6lvuu2` (`package-first-run-onboarding`). It is a
+one-word copy/test mismatch in another plan's scope, not a regression in this one — recorded here so
+a future reader does not mistake a red suite for unfinished lifecycle work.
 
 ## Risks
 

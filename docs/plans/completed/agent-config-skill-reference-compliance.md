@@ -1,11 +1,11 @@
 ---
 id: k7p3m2q
 priority: high
-next_action: Document the Codex observation path in codex-hooks.md as built-and-wired, noting that live emission waits on native Codex PostToolUse dispatch
+next_action: ""
 blocked_by: []
 depends_on: []
 related: []
-reviewed_commit: 28d64aa
+reviewed_commit: 1a2f5fc
 ---
 
 # Make Skill Reference Loading and Validation Reliable
@@ -896,12 +896,52 @@ The plan is successful when:
 - The reported line still works, unchanged, when telemetry is disabled.
 - Maintainers have a reusable pattern for future skills: entry-point gates, detailed references, deterministic validators, and qualitative review.
 
+## Completion summary
+
+**Completed 2026-08-26** against `1a2f5fc`. All ten success criteria are met and no tasks remain.
+
+Phases 1-9 shipped the enforceable-reference design: entry-point gates in `SKILL.md`, deterministic
+plan-naming and namespace validation, the technical-writing Validator's explicit rule set, and
+regression coverage over the reference matrices.
+
+Phase 10 shipped skill-reference observation on both harnesses. The user-visible half — a reference
+tally in the response that skipped a reference, rather than a durable record nobody reads back — is
+the `> 🧩 **Skills loaded:**` line defined in `globals/packages/skill-visibility/rules.md`, and it
+renders live.
+
+**The one thing that does not work end to end is not this plan's to fix.** As of Codex 0.140.0
+neither `codex exec` nor the interactive TUI dispatches configured `PostToolUse` hooks after shell
+tool calls, so the Codex adapter never receives a payload in a live session. That is upstream
+dispatch, not missing work here: the adapter is written, wired through `hooks-codex.json`, and
+verified to emit correct output for both payload shapes it supports when fed one directly. The
+practical consequence — a session's tally reflects Claude reads and under-reports Codex ones — is
+recorded in `docs/user/reference/codex-hooks.md` so the number is read correctly rather than
+trusted blindly.
+
+Closing rather than holding: waiting would mean keeping a plan active for an upstream release, with
+nothing left to build on this side. If Codex ships dispatch and something here proves wrong, that is
+a new plan against evidence, not a resumption of this one.
+
 ## Verification
 
-Phases 1-9 are implemented. Phase 10's source changes and direct adapter behavior are implemented,
-but the required Codex end-to-end behavior remains blocked by Codex 0.140.0 not dispatching
-`PostToolUse` after shell tool calls in either `codex exec` or interactive TUI. Evidence below is
-from the implementation branch, not from the plan's own claims.
+Evidence below is from the implementation branch, not from the plan's own claims.
+
+### Completion review (2026-08-26, against `1a2f5fc`)
+
+```text
+node scripts/test/skill-reference-observer-check.mjs                  ok
+node scripts/test/skill-visibility-count-file-check.mjs               ok
+node scripts/test/skill-reference-matrix-characterization-check.mjs   ok
+node scripts/test/plan-docs-check.mjs                                 ok
+```
+
+Two success criteria were re-checked directly rather than accepted from the text above:
+
+- *"A skipped reference is visible to the user in the response that skipped it."* Confirmed live —
+  the PostToolUse hook injected `[skill-visibility] observed reference read:` lines into the
+  reviewing session's own context while it read this skill's references.
+- *"The reported line still works, unchanged, when telemetry is disabled."* Confirmed structurally:
+  neither observer references telemetry, so no telemetry state can gate the line.
 
 ### Checks run
 

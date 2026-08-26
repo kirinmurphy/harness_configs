@@ -62,7 +62,7 @@ function packageSkillEntries() {
   );
 }
 
-function findings(skill) {
+function findings(skill, knownSkillNames = []) {
   const out = [];
   const frontmatter = skill.content.startsWith("---\n")
     ? skill.content.slice(4, skill.content.indexOf("\n---\n", 4))
@@ -75,7 +75,119 @@ function findings(skill) {
   if (/```(?:bash|sh|shell)\s+!/i.test(skill.body)) out.push("dynamic shell code block");
   if (/\b(git push|deploy|release|publish|rm -rf|curl\s|wget\s)\b/i.test(skill.body)) out.push("side-effect keyword");
   if (!String(skill.meta.description || "").trim()) out.push("missing trigger description");
+  out.push(...referenceReachability(skill));
+  out.push(...pairedSkillShape(skill, knownSkillNames));
   return out;
+}
+
+// Vague conditions in a `Load when` cell. Each of these hands the judgment back to the reader, who
+// is the party that did not already know the skill applied — so the pairing silently never fires.
+const VAGUE_TRIGGERS = /\b(when relevant|if relevant|as needed|when appropriate|if useful|when useful|as applicable|when it makes sense)\b/i;
+
+// Structural check on a skill's paired-skill declaration.
+//
+// A paired skill is loaded from beside a skill the way a reference is loaded from within one, and
+// it fails the same way: by being mentioned rather than required. Prose that names a related skill
+// without instructing the load reads as background, and the observed consequence is that the user
+// names the paired skill by hand on every request.
+//
+// Reported here, all structural:
+//   - a skill that names another skill in prose but declares no Paired Skills table;
+//   - a table that does not instruct the load;
+//   - a `Load when` cell whose condition is not checkable ("when relevant");
+//   - a trigger that fires on the user asking, which restores the manual step being removed.
+//
+// What is NOT judged: whether a given pairing is the right one. That is a claim about the skills'
+// subject matter, not about the shape of the declaration.
+function pairedSkillShape(skill, knownSkillNames = []) {
+  const table = /## Paired Skills\n([\s\S]*?)(?=\n## |\n$)/.exec(skill.body);
+  if (!table) {
+    // Only flag skills that already tell the reader to pair with something; a skill with no
+    // cross-skill relationship is not missing a table.
+    //
+    // "pair with" was the only phrasing caught originally, which let the same instruction slip
+    // through as "Use `code-style`" or "load `plan-docs`". The verb list is broader now, but the
+    // target must be a *known skill name*: backticks around an ordinary value ("Use `data-testid`",
+    // "Use `blocked`") is not a pairing, and matching any backticked token flagged both of those.
+    const others = knownSkillNames.filter((name) => name !== skill.name);
+    const prosePairing = others.length
+      ? new RegExp(`\\b(?:pair(?: it)? with|load|use|read) \`(?:${others.join("|")})\``, "i")
+      : /\bpair with `[a-z-]+`/i;
+    return prosePairing.test(skill.body)
+      ? ["names a paired skill in prose but declares no Paired Skills table"]
+      : [];
+  }
+
+  const out = [];
+  const body = table[1];
+  if (!/do not wait to be asked for them by name/i.test(body)) {
+    out.push("Paired Skills table does not instruct the load");
+  }
+
+  const rows = body.split("\n").filter((line) => /^\|/.test(line) && !/^\|\s*-+/.test(line)).slice(1);
+  const vague = [];
+  const requestGated = [];
+  for (const row of rows) {
+    const cells = row.split("|").map((cell) => cell.trim());
+    const [, name, when = ""] = cells;
+    if (!name || !when) continue;
+    if (VAGUE_TRIGGERS.test(when)) vague.push(name);
+    if (/\bthe user (asks|requests|requested|names)\b/i.test(when)) requestGated.push(name);
+  }
+  if (vague.length) out.push(`unresolvable paired-skill trigger: ${vague.join(", ")}`);
+  if (requestGated.length) out.push(`paired-skill trigger gated on a user request: ${requestGated.join(", ")}`);
+  return out;
+}
+
+// The artifact-producing mode, by convention. A skill whose named modes include `write` or `create`
+// produces something a user keeps; every other mode inspects or routes.
+const ARTIFACT_MODES = ["write", "create"];
+
+// Structural check on a skill's own mode/reference matrix.
+//
+// Two failures are reported. The first is a reference that some named mode requires but the
+// artifact-producing mode cannot reach: a mandatory finishing step parked behind a mode nobody has
+// to select is a step the artifact path never takes. The second is a matrix that no longer parses,
+// which matters because the routing tests read this same prose — prose that stops parsing would
+// otherwise yield an empty reference set that passes every assertion trivially.
+//
+// This stays structural on purpose. Whether a reference *should* be required is a judgment about
+// the skill's content; whether a mode can reach one it declares elsewhere is not.
+function referenceReachability(skill) {
+  const section = /For a named mode, read only the needed references:\n([\s\S]*?)\n\n/.exec(skill.body);
+  if (!section) {
+    // Only skills that declare modes are expected to carry a matrix; a single-purpose skill with
+    // no mode list is not missing anything.
+    return /^\/\S+ (write|create|review|validate)\b/m.test(skill.body) ? ["unparseable mode/reference matrix"] : [];
+  }
+
+  const matrix = new Map();
+  for (const bullet of section[1].split(/\n(?=- )/)) {
+    const mode = /^- `([a-z-]+)`[:,]/.exec(bullet.replace(/\s+/g, " ").trim());
+    if (!mode) continue;
+    matrix.set(mode[1], [...bullet.matchAll(/references\/[a-z0-9-]+\.md/g)].map((match) => match[0]));
+  }
+  if (!matrix.size) return ["unparseable mode/reference matrix"];
+
+  const artifactMode = ARTIFACT_MODES.find((mode) => matrix.has(mode));
+  if (!artifactMode) return [];
+
+  const reachable = new Set(matrix.get(artifactMode));
+  const unreachable = [...matrix]
+    .filter(([mode]) => mode !== artifactMode)
+    .flatMap(([, references]) => references)
+    .filter((reference) => !reachable.has(reference) && isCompletionReference(reference));
+  return unreachable.length
+    ? [`reference unreachable from \`${artifactMode}\`: ${[...new Set(unreachable)].join(", ")}`]
+    : [];
+}
+
+// Not every reference belongs to every mode — `workflow-next.md` is `next`'s business alone, and
+// requiring it from `create` would be noise. The finding targets references that define how work is
+// finished or graded, which is the class that must be reachable from the mode producing the
+// artifact.
+function isCompletionReference(reference) {
+  return /(review-loop|validat|completion|checklist)/.test(reference);
 }
 
 function recommendation(policy, skillFindings) {
@@ -95,9 +207,12 @@ function escapeCell(value) {
 export function renderSkillAudit() {
   const policies = manifestPolicies();
   const skills = packageSkillEntries().map(readSkill);
+  // Prose-pairing detection matches against real skill names, so an ordinary backticked value is
+  // never mistaken for a cross-skill instruction.
+  const knownSkillNames = skills.map((entry) => entry.name).filter(Boolean);
   const rows = skills.map((skill) => {
     const policy = policies.get(skill.name);
-    const skillFindings = findings(skill);
+    const skillFindings = findings(skill, knownSkillNames);
     return {
       skill: skill.name,
       invocation: policy?.invocation || "missing",
@@ -150,6 +265,10 @@ export function renderSkillAudit() {
     "- dynamic shell code-block hints",
     "- side-effect keywords that deserve manual review",
     "- missing trigger descriptions",
+    "- completion references a mode requires but the artifact-producing mode cannot reach",
+    "- mode/reference matrices that no longer parse",
+    "- paired skills mentioned in prose but never declared, or declared without instructing the load",
+    "- paired-skill triggers that are unresolvable (\"when relevant\") or gated on a user request",
     "",
     "## Next Actions",
     "",

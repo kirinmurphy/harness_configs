@@ -125,32 +125,24 @@ async function applyBehaviorBucket(behaviorId, bucket) {
   return setBehaviorBucket(behaviorId, bucket);
 }
 
-// Is this view item user-toggleable in the wizard? Mirrors applyItemToggle's coverage: the four
-// Token-Optimization packages, all Chat-Time Output rules, every Commands / Code Conventions
-// skill, and the named Permissions behaviors (3-state, not boolean — see buildOnboardSteps).
+// Is this view item user-toggleable in the wizard? Package items carry their own toggle contract
+// from buildBehaviorView; named Permissions behaviors are the one non-package toggle here
+// (3-state, not boolean — see buildOnboardSteps).
 function isToggleableItem(section, item) {
-  if (section.category === "Token Optimization") {
-    return ["jcodemunch", "jdocmunch", "telemetry", "caveman"].includes(item.id);
-  }
+  if (item.toggle === "package") return true;
   if (section.category === "Permissions") {
     return item.kind === "behavior";
   }
-  return section.category === "Chat-Time Output"
-    || section.category === "Commands"
-    || section.category === "Code Conventions";
+  return false;
 }
 
-// Translate the live /config behavior view into wizard steps, in the user-facing order: token
-// optimization first, then commands, code conventions, chat-time output, and finally a read-only
+// Translate the live /config behavior view into wizard steps, in manifest order, then add the
 // Permissions panel. The wizard re-reads state after each toggle, so marks always reflect truth.
-function buildOnboardSteps({ showWebNotice = false } = {}) {
+export function buildOnboardSteps({ showWebNotice = false } = {}) {
   const view = buildBehaviorView(readConfigSnapshot());
-  const byCategory = (name) => view.find((s) => s.category === name);
   const steps = [];
 
-  for (const name of ["Token Optimization", "Commands", "Code Conventions", "Chat-Time Output"]) {
-    const section = byCategory(name);
-    if (!section) continue;
+  for (const section of view.filter((entry) => entry.items?.some((item) => item.toggle === "package"))) {
     const items = section.items
       .filter((item) => isToggleableItem(section, item))
       .map((item) => ({
@@ -165,9 +157,9 @@ function buildOnboardSteps({ showWebNotice = false } = {}) {
       }));
     if (items.length === 0) continue;
     steps.push({
-      title: name,
+      title: section.category,
       description: section.description,
-      itemHeader: name === "Commands" ? "Commands" : "",
+      itemHeader: "",
       footnote: section.footnote,
       items,
     });
@@ -180,7 +172,7 @@ function buildOnboardSteps({ showWebNotice = false } = {}) {
   // Permissions: the 5 named behaviors are directly toggleable here (deny/ask/allow cycle via
   // Space). Arbitrary commands are NOT editable in onboarding — a growable add/remove/move list
   // is a poor fit for a terminal wizard; the description below points to the portal for those.
-  const perms = byCategory("Permissions");
+  const perms = view.find((s) => s.category === "Permissions");
   if (perms) {
     const behaviorItems = perms.items
       .filter((it) => it.kind === "behavior")

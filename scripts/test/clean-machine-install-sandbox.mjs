@@ -1,64 +1,23 @@
 #!/usr/bin/env node
-import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 
-import { packTarball } from "./package-install-smoke/tarball.mjs";
+import {
+  dockerSandboxConfig,
+  packageName,
+  requireDockerOrSkip,
+  runDockerScript,
+  withPackedPackage,
+} from "./lib/docker-sandbox.mjs";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const packageName = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")).name;
-const image = process.env.ROBOREPO_CLEAN_MACHINE_IMAGE || "node:22-bookworm-slim";
-const strict = process.env.ROBOREPO_CLEAN_MACHINE_STRICT === "1";
-const dockerRunTimeoutMs = Number(process.env.ROBOREPO_CLEAN_MACHINE_TIMEOUT_MS || 300_000);
-
-const docker = spawnSync("docker", ["version", "--format", "{{.Server.Version}}"], { encoding: "utf8" });
-if (docker.status !== 0) {
-  const message = "skip: clean-machine install sandbox (Docker daemon unavailable)";
-  if (strict) throw new Error(`${message}\n${docker.stderr || docker.stdout}`);
-  console.log(message);
+const label = "clean-machine install sandbox";
+const { image, strict } = dockerSandboxConfig();
+if (!requireDockerOrSkip({ label, image, strict })) {
   process.exit(0);
 }
 
-const imageCheck = spawnSync("docker", ["image", "inspect", image], { encoding: "utf8" });
-if (imageCheck.status !== 0 && !strict) {
-  console.log(`skip: clean-machine install sandbox (${image} image not present; set ROBOREPO_CLEAN_MACHINE_STRICT=1 to pull/run)`);
-  process.exit(0);
-}
-
-const dockerTmpRoot = process.env.ROBOREPO_CLEAN_MACHINE_TMPDIR || "/tmp";
-const sandbox = fs.mkdtempSync(path.join(dockerTmpRoot, "roborepo-clean-machine-"));
-const packDest = path.join(sandbox, "pack");
-fs.mkdirSync(packDest, { recursive: true });
-
-try {
-  const { tarballPath, tarballName } = packTarball(repoRoot, packDest);
+await withPackedPackage(({ packDest, tarballName }) => {
   const script = cleanMachineScript({ packageName, tarballName });
-  const result = spawnSync(
-    "docker",
-    [
-      "run",
-      "--rm",
-      "--network=none",
-      "-v",
-      `${packDest}:/artifacts:ro`,
-      image,
-      "sh",
-      "-lc",
-      script,
-    ],
-    { encoding: "utf8", timeout: dockerRunTimeoutMs },
-  );
-
-  if (result.status !== 0) {
-    const exit = result.error ? `${result.error.name}: ${result.error.message}` : `exit ${result.status}`;
-    assert.fail(`clean-machine install sandbox failed (${exit})\n${result.stdout}${result.stderr}`);
-  }
-  process.stdout.write(result.stdout);
-} finally {
-  fs.rmSync(sandbox, { recursive: true, force: true });
-}
+  return runDockerScript({ label, packDest, script });
+});
 
 function cleanMachineScript({ packageName, tarballName }) {
   return `

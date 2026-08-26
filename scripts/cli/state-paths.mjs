@@ -79,6 +79,12 @@ export const legacyTelemetryPidPath = process.env.ROBOREPO_TELEMETRY_PID_PATH
 // even though it wasn't actually occupying the port being started on. ROBOREPO_PORTAL_PID_PATH
 // (set by test-telemetry-pid.sh to sandbox a temp dir) is an explicit override and wins outright,
 // regardless of port — a caller setting it has already opted out of the per-port default scheme.
+// The directory portalPidPathForPort() writes into. Exported so the stale-PID reaper can enumerate
+// every server-<port>.pid without duplicating the "portal" path segment. Note this deliberately
+// ignores the PID_PATH env overrides above: those point at a single sandboxed FILE, not a directory
+// of them, so a sweep must not follow them.
+export const portalStateDir = path.join(roborepoStateDir, "portal");
+
 export function portalPidPathForPort(port) {
   if (process.env.ROBOREPO_PORTAL_PID_PATH) return process.env.ROBOREPO_PORTAL_PID_PATH;
   if (process.env.ROBOREPO_TELEMETRY_PID_PATH) return process.env.ROBOREPO_TELEMETRY_PID_PATH;

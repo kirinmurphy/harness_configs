@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadPermissionManifest } from "../cli/permissions-render.mjs";
+import { loadPermissionManifest, loadPermissionWorkspaceRoots } from "../cli/permissions-render.mjs";
 import { renderCodexRules } from "../harnesses/permissions-render.mjs";
 import { listHarnessProviders } from "../harnesses/registry.mjs";
 import { GENERATED_POLICY_FILENAME } from "../harnesses/gemini/policy-toml.mjs";
@@ -22,6 +22,13 @@ import { GENERATED_POLICY_FILENAME } from "../harnesses/gemini/policy-toml.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
+
+function generatedHomeForRepo(root) {
+  if (process.env.ROBOREPO_GENERATED_HOME) return process.env.ROBOREPO_GENERATED_HOME;
+  return path.join(path.sep, "Users", "you");
+}
+
+const generatedRenderOptions = { home: generatedHomeForRepo(repoRoot) };
 
 // Provider manifest paths are home-relative (e.g. "~/.claude/settings.json"); the generated
 // candidate mirrors just the basename under generated/<provider-id>/. Most providers render
@@ -49,6 +56,7 @@ for (let i = 2; i < process.argv.length; i += 1) {
 }
 
 const manifest = loadPermissionManifest();
+const workspaceRoots = loadPermissionWorkspaceRoots();
 
 function checkOrWrite(target, rendered, label) {
   const current = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
@@ -72,7 +80,10 @@ try {
     if (!provider.manifest.capabilities.includes("permissions")) continue;
     const target = generatedPermissionsPath(provider);
     const current = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
-    const rendered = provider.adapters.permissions.render(current, manifest, {}, target);
+    const rendered = provider.adapters.permissions.render(current, manifest, {}, target, {
+      ...generatedRenderOptions,
+      workspaceRoots,
+    });
     ok = checkOrWrite(target, rendered, path.relative(repoRoot, target)) && ok;
   }
 

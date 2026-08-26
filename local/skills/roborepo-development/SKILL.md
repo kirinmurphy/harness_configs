@@ -87,6 +87,14 @@ Everything else (the two symlink levels, the layer table) lives in
   `scripts/build/render-rules.sh`. Agent permission outputs are rendered from
   `manifests/inventory/agent-permissions.json` by `scripts/build/render-agent-permissions.mjs`.
   Edit sources, re-render, then check. `doctor.sh` flags drift.
+- **`generated/` files are install baselines, not just fixtures.** `generated/<provider>/` is both the
+  tracked artifact tests diff against AND `rootConfigBaseline` (`scripts/cli/paths.mjs`), which
+  install/apply merges into the user's live `~/.claude`/`~/.codex` (`scripts/cli/presets.mjs`).
+  Claude's merge UNIONS permission arrays, so anything in the tracked file is additively copied into
+  every real home and cannot be removed by a later render. Never change a `generated/` file to make a
+  test deterministic: a placeholder that reads as obviously fake in the repo (`/Users/you`) ships
+  verbatim to users. Fix the test instead — point it at a temp render, or pass explicit render
+  options — and keep the tracked artifact equal to what a real install should produce.
 - **Adding global commands:** there is now ONE global command (`roborepo`); prefer adding a
   `roborepo` subcommand over a new `bin/` entry. If you ever DO add a `bin/` command, wire it in
   three places — `install-global-commands.sh` (preflight + `link_command`), `doctor.sh` (file +
@@ -104,12 +112,61 @@ Everything else (the two symlink levels, the layer table) lives in
   verifier through `grep`/`head` to trim output. `doctor.sh` also folds `link-skills.sh --check`,
   so it is the single repo-health entrypoint (`--installed` adds global ~/.claude·~/.codex live
   link checks including per-skill skill links); `test-roborepo.sh` stays the separate test suite.
+- **Docker test sandboxes:** use them for machine-shape behavior: clean `HOME`, clean `PATH`,
+  package-mode install/uninstall, fake harness discovery, and generated config projection. Use one
+  disposable image, one fresh container per scenario, one package install per scenario, and many
+  assertions inside it. Repeating npm install/uninstall per assertion is not scalable; reserve that
+  for lifecycle tests whose subject is install/uninstall itself. The doc of record is
+  `docs/internal/docker-test-sandboxes.md`.
 - **Cross-platform floor:** Node cores use only `node:` built-ins (no shelling to
   `zip`/`unzip`/`ln`), so the same code runs on macOS/Linux/Windows. Keep it that way.
 - **Skill discovery paths.** Project scope: `.codex/skills` (Codex) and `.claude/skills` (Claude).
   Global scope: `~/.codex/skills/<name>` (Codex) and `~/.claude/skills/<name>` (Claude) — roborepo
   links per-skill symlinks at install time (`link_global_skills` in install-lib.sh). Symlinked skill
   folders are followed. No `.agents/skills` anywhere.
+- **`internal` is VISIBILITY, not availability.** Two different axes get conflated constantly:
+
+  | Axis | Mechanism | Means |
+  |------|-----------|-------|
+  | Visibility | `kind: "internal"` on a command definition | Hidden from menus and scoped help; **still runs fine on end-user machines** |
+  | Visibility | `advanced: true` | Kept out of the root menu; still listed under its own namespace's help |
+  | Availability | `developmentOnly: true` on a command definition | Not listed, not resolvable, and not helpable off a dev checkout — `roborepo <it>` reports "unknown command" |
+  | Availability | Script under `local/` + `requiresDevelopmentCheckout` | Runtime gate for a command that IS reachable but cannot work; prints why and exits 1 |
+
+  The two availability rows are complementary, not alternatives. `developmentOnly` is enforced in
+  `command-catalog.mjs` (listing, via `childEntries`) AND `command-resolver.mjs` (resolution, via
+  `matchPath` — which walks raw children and would otherwise still open the menu for a command
+  every listing hides). `requiresDevelopmentCheckout` is the last line of defence inside the
+  command itself. A `developmentOnly` namespace still gets validated on every machine, because
+  `validateCommandCatalog` passes `includeUnavailable: true` — a malformed definition that ships in
+  the tarball must not fail only on a maintainer's laptop.
+
+  `internal` does NOT mean "not for users" — `setup`, `bundle`, `onboard-intro`, and `presets` are
+  all `internal` *because* they are machine-invoked install-time commands that must run on every
+  end-user machine. It means "not something a human browses to."
+
+  For dev-checkout-only behavior use `local/` plus the gate. `package.json`'s `files` never
+  publishes `local/`, but it DOES publish `manifests/` — so the command definition reaches an npm
+  user even when the script it points at does not. Without `requireDevelopmentCheckout()`
+  (`cli/roots.mjs`) that surfaces as a bare `missing script:` path error instead of an explanation.
+  Belt and suspenders: the script is absent AND the gate fires.
+- **The `dev` namespace** (`manifests/platform/cli/command-definitions/dev/`, `cli/dev.mjs`) holds
+  development-checkout-only tooling. `dev start`/`dev stop`/`dev status` orchestrate by calling the
+  same commands a human would (the fixture script, `web`/`web stop`) so there is one authoritative
+  code path per service — do not give the orchestrator its own copy of that logic, and do not add
+  thin per-service wrappers that only re-expose what a root command already does. The namespace
+  carries `advanced: true` to stay out of the root menu; its children deliberately do not, because
+  `includeAdvanced: false` in `help-renderer.mjs` would hide them from `roborepo help dev` too.
+- **`web --detach` cold starts are slow.** The portal warms telemetry/localhoster views before it
+  binds — measured ~29s on a normal dev checkout. `waitForPortalReady` allows 60s for that; do not
+  "tidy" it back down to a few seconds or every cold detached start fails while the child goes on
+  to bind moments later.
+- **Resolve before killing when starting a portal.** Both `serveCommand`'s foreground path and
+  `startDetachedPortal` call `resolvePortalPort` FIRST and only `killExistingServer` after the reuse
+  branch has declined. The detached path used to kill first, which made its reuse branch dead code:
+  every `web --detach` SIGTERMed a healthy portal and respawned it. `resolvePortalPort` already
+  covers what the early kill was for — it restarts a STALE portal (one running code that changed
+  since it started) and waits for the port to free. Keep the two paths in the same order.
 
 ## The `roborepo` CLI (the single consumer front door)
 
@@ -143,6 +200,9 @@ Subcommands, grouped by category:
   `enable`/`disable` already apply live immediately — no `roborepo update` needed afterward.
 - `setup` / `apply` / `workspace` / `version` — package-mode setup and root inspection tools.
 - `web` / `telemetry ...` — local portal and telemetry capture/reporting.
+- `dev start|stop|status`, `dev fixture start|stop|status` (`cli/dev.mjs`) — development-checkout-only
+  tooling, gated by `requireDevelopmentCheckout()`. See the `dev` namespace note above before adding
+  to it.
 - `update`/`repair`/`uninstall`/`doctor`/`rules`/`permissions` — lifecycle verbs that
   dispatch to the existing scripts. `update` re-runs `scripts/install/main.sh`; in package mode it
   aliases to `apply`.

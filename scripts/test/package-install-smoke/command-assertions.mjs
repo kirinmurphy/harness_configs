@@ -82,3 +82,30 @@ export function assertPublicLifecycle(binPath, dirs, env) {
     "uninstall --dry-run must not remove the workspace",
   );
 }
+
+export function assertInstalledUninstallRemovesPackage(binPath, dirs, env, packageName) {
+  const result = runCommand(binPath, ["uninstall", "--yes", "--delete-workspace"], dirs.cwd, env);
+  assert.match(
+    result.stdout,
+    /The npm package has been uninstalled/i,
+    `expected package uninstall confirmation\n${result.stdout}${result.stderr}`,
+  );
+  assert.ok(
+    !fs.existsSync(path.join(dirs.prefix, "lib", "node_modules", packageName)),
+    "roborepo uninstall must remove the installed npm application root",
+  );
+  assert.ok(
+    !fs.existsSync(binPath),
+    "roborepo uninstall must remove the npm-installed roborepo command",
+  );
+  assert.ok(
+    !fs.existsSync(dirs.stateRoot),
+    `roborepo uninstall --delete-workspace must remove the sandboxed state root; leftover: ${describePath(dirs.stateRoot)}`,
+  );
+}
+
+function describePath(target) {
+  if (!fs.existsSync(target)) return "(missing)";
+  if (!fs.statSync(target).isDirectory()) return "(file)";
+  return fs.readdirSync(target).sort().join(", ") || "(empty dir)";
+}

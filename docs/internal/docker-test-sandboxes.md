@@ -19,13 +19,19 @@ The scalable unit is:
 
 1. Pack or prepare the repository artifact once on the host.
 2. Start a container from the shared image.
-3. Give each case its own `HOME`, state root, workspace root, npm prefix, npm cache, and `PATH`.
-4. Run the scenario.
-5. Assert externally meaningful results.
+3. Install or initialize once for the scenario.
+4. Give each case its own `HOME`, state root, workspace root, npm prefix, npm cache, and `PATH`
+   when the scenario has multiple cases.
+5. Run all assertions that share that installed state.
 6. Throw the container away.
 
 This keeps failures attributable. If a scenario mutates shell profiles, npm bins, generated harness
 config, or machine-local state, that mutation dies with the container.
+
+The default scaling rule is **one package install per scenario, many assertions inside that
+scenario**. Repeating `npm install` / `roborepo init` / `roborepo uninstall` for every assertion
+does not scale. Do it only when install, initialization, or uninstall lifecycle behavior is itself
+the thing being tested.
 
 ## Image Policy
 
@@ -57,6 +63,34 @@ Use separate scripts when failure meaning differs.
 Do not put every assertion into the clean-install sandbox. It should stay narrow so package install
 breakage is obvious. Add a new sandbox when the setup or failure mode is meaningfully different.
 
+## Shared Runner Helper
+
+New clean-machine scenarios should use `scripts/test/lib/docker-sandbox.mjs` instead of hand-rolling
+Docker setup. The helper owns the common machine wrapper:
+
+- `dockerSandboxConfig()` reads the shared environment contract.
+- `requireDockerOrSkip({ label, image, strict })` probes Docker and skips locally when allowed.
+- `withPackedPackage(async ({ packDest, tarballName }) => ...)` packs the current checkout once
+  under a Docker-safe temp root and cleans it afterward.
+- `runDockerScript({ label, packDest, script })` runs one shell script in a fresh
+  `node:22-bookworm-slim` container with `--network=none`, streams output, and enforces a timeout.
+
+Environment knobs:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ROBOREPO_CLEAN_MACHINE_IMAGE` | `node:22-bookworm-slim` | Container image |
+| `ROBOREPO_CLEAN_MACHINE_STRICT` | unset | `1` turns Docker/image absence into a hard failure |
+| `ROBOREPO_CLEAN_MACHINE_TIMEOUT_MS` | `300000` | Per-container timeout |
+| `ROBOREPO_CLEAN_MACHINE_PROBE_TIMEOUT_MS` | `5000` | Docker daemon/image probe timeout |
+| `ROBOREPO_CLEAN_MACHINE_TMPDIR` | `/tmp` | Host temp root for Docker-bound pack artifacts |
+
+Prefer one script per scenario family. `clean-machine-install-sandbox.mjs` owns package
+install/uninstall behavior. `clean-machine-permissions-sandbox.mjs` owns fake-harness permission
+projection assertions. The older `clean-machine-container-check.mjs` is the broad integration
+container from the mainline install lifecycle work; keep it as the end-to-end install matrix, and
+put new narrow permission assertions in the permission sandbox.
+
 ## Harness Stubs
 
 For permissions and projection tests, prefer fake harness executables over real agent CLIs. A fake
@@ -73,6 +107,10 @@ Permissions sandbox cases should assert the generated or applied files directly:
 
 Hook behavior can be tested by invoking hook scripts directly with JSON payloads inside the
 container. That is still deterministic and does not require a real interactive harness session.
+
+Keep permissions projection assertions in one installed container whenever possible. Add more grep,
+JSON, TOML, or hook-payload assertions to the existing scenario before adding another full
+install/uninstall loop.
 
 ## Local And CI Behavior
 

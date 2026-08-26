@@ -33,8 +33,8 @@ function readCoreHooksFragment() {
   return JSON.parse(fs.readFileSync(coreHooksPath, "utf8"));
 }
 
-function renderClaudeRootConfig(current, manifest, overrides) {
-  const rendered = JSON.parse(renderClaudeSettings(current, manifest, overrides));
+function renderClaudeRootConfig(current, manifest, overrides, options = {}) {
+  const rendered = JSON.parse(renderClaudeSettings(current, manifest, overrides, options));
   rendered.hooks = mergeHooksMap(rendered.hooks || {}, readCoreHooksFragment()).hooks;
   return `${JSON.stringify(rendered, null, 2)}\n`;
 }
@@ -156,9 +156,10 @@ export const claudeProvider = defineHarnessProvider({
       locate,
       parse,
     },
-    // 4th param (target path) is Codex-only (used in an error message); Claude's render ignores it.
+    // 4th param (target path) is Codex-only (used in an error message). The optional 5th param lets
+    // the generated build render a deterministic home while live config renders keep using os.homedir().
     permissions: {
-      render: (current, manifest, overrides) => renderClaudeRootConfig(current, manifest, overrides),
+      render: (current, manifest, overrides, _target, options = {}) => renderClaudeRootConfig(current, manifest, overrides, options),
     },
   },
 });

@@ -30,12 +30,28 @@ jobs:
         with:
           node-version: "22"
 
-      # The repo is zero-dependency (pure node + bash + curl); nothing to install.
+      # The repo itself is zero-dependency (pure node + bash + curl). `expect` is a test-only
+      # dependency: the install-collision suite drives the interactive installer through a pty and
+      # hard-fails without it, unlike test-roborepo.sh, whose pty checks skip when it is absent.
+      # macOS runners ship expect; Ubuntu runners do not. Installing it means those interactive
+      # tests actually run on both, rather than the suite going quietly green with its pty coverage
+      # skipped — which is the failure mode adding it to CI was meant to close.
+      - name: install test dependencies (expect)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y expect
+
       - name: doctor (repo health + generated-file drift)
         run: bash scripts/doctor.sh --quiet
 
       - name: test suite
         run: bash scripts/test/test-roborepo.sh --quiet
+
+      # A second suite covering the install surface: symlink vs copy, collision handling, migration
+      # from older layouts, and the pty/keypress paths test-roborepo.sh explicitly defers to it. It
+      # is not part of `npm test`, so before this step nothing in CI ran it and that deferred
+      # coverage held only when someone remembered to run the file by hand.
+      - name: install collision suite
+        run: bash scripts/test/test-install-collisions.sh
 
       - name: package catalog + lifecycle checks
         run: |
@@ -50,9 +66,20 @@ jobs:
       - name: package install smoke (real tarball, isolated prefix)
         run: npm run --silent test:package-install
 
-      - name: clean-machine install sandbox
+      # Install and uninstall against a machine that has never seen RoboRepo: no prior state, no
+      # harness on PATH, and a real npm prefix. The step above sandboxes a prefix but cannot produce
+      # that machine, which is how an uninstall that left its own binary behind reached a user.
+      #
+      # Linux only: GitHub's macOS runners have no Docker daemon. The runner skips cleanly when
+      # Docker is absent, so this would pass vacuously there rather than fail — a green step
+      # asserting nothing is worse than an absent one.
+      - name: clean-machine container suite
+        if: runner.os == 'Linux'
+        run: npm run --silent test:clean-machine
+
+      - name: clean-machine permissions sandbox
         if: matrix.os == 'ubuntu-latest'
-        run: npm run --silent test:clean-machine-install-sandbox
+        run: npm run --silent test:clean-machine-permissions-sandbox
         env:
           ROBOREPO_CLEAN_MACHINE_STRICT: "1"
 

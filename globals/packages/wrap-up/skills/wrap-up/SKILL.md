@@ -6,8 +6,8 @@ description: >
   instruction like "wrap this up", "let's close this out", "get this ready for a new
   chat". Runs a fixed sequence: self-review the code changed this session, sync
   project-specific tracking docs when they exist (e.g. an abstraction-matrix), flag
-  stray/uncommitted files, commit, then produce a status summary and a ready-to-paste
-  handoff prompt for the next chat. Do not auto-invoke on ordinary edits, do not
+  stray/uncommitted files, commit, then produce a status summary and handoff note for
+  the next chat. Do not auto-invoke on ordinary edits, do not
   trigger on the mere presence of a diff, and do not run mid-task — this is an
   end-of-session action.
 ---
@@ -21,8 +21,8 @@ description: >
 Print a separator line like the one above (plain repeated characters — `━`, `=`, or
 `*` all work; a bold emoji-prefixed label between two rules) as the FIRST thing in the
 chat response when this skill starts running, before any review/commit output. This is
-plain markdown text emitted directly in the response — not a shell/ANSI escape (see the
-Rendering note under step 5 for why that distinction matters). Its job is to make the
+plain markdown text emitted directly in the response; do not generate terminal styling
+commands for it. Its job is to make the
 start of a wrap-up visually obvious in a long conversation, the same way the handoff
 block at the end is visually obvious.
 
@@ -31,7 +31,7 @@ block at the end is visually obvious.
 Wrap Up closes out a work session cleanly so the next chat can start cold without
 re-deriving context. It reviews what was built, brings docs in line with it, checks
 for anything left uncommitted, commits, and hands back both a status summary and a
-paste-ready prompt for a fresh chat.
+handoff note for a fresh chat.
 
 It is the session-boundary counterpart to a mid-session code-quality review and targeted doc
 sync — wrap-up orchestrates both plus commit and handoff, only when the user is ending the session.
@@ -141,9 +141,9 @@ deliverable of a "wrap up."
   - **Ambiguous priority / maybe-later:** ideas, optional polish, speculative improvements,
     or deferred questions where the user has not committed to continuing.
 - After committing but before writing the handoff prompt, review the open-thread list:
-  - Add every must-fix / clear continuation item to the handoff prompt.
+  - Add every must-fix / clear continuation item to the handoff note.
   - For ambiguous priority items, ask the user what to do with each item before including it.
-    Offer exactly these choices: **include details in a handoff prompt**, **add it to the
+    Offer exactly these choices: **include details in the handoff note**, **add it to the
     backlog as a new task**, or **forget about it**.
   - If the user chooses backlog, load `plan-docs` and create a backlog plan for that issue
     before committing. Stage that plan with the same wrap-up/session commit, not a separate
@@ -155,13 +155,13 @@ deliverable of a "wrap up."
 - Produce a short status summary (for the chat, not the pasted prompt): what shipped
   this session, what's still open.
 
-**Skip the handoff prompt when there's nothing to hand off.** If the scan finds no open
+**Skip the handoff note when there's nothing to hand off.** If the scan finds no open
 work — no tasks left in a plan doc, no deferred questions, no unstarted follow-ups —
-state that the session is fully closed and stop there. Do not generate the paste-ready
-prompt block (or its header/footer rule) in this case; a handoff prompt implies there is
+state that the session is fully closed and stop there. Do not generate the handoff
+block (or its header/footer rule) in this case; a handoff note implies there is
 a next task to run, and producing one anyway invents work that doesn't exist.
 
-**The paste-ready prompt.** Only produced when step 5's scan found real open work. Give
+**The handoff note.** Only produced when step 5's scan found real open work. Give
 the next chat enough standalone context to pick up
 cold: repo + branch, what's next, and any constraint the user stated. Then apply these
 filters to what you include:
@@ -169,9 +169,8 @@ filters to what you include:
 - **Scope done-work to the next step's needs.** Only describe work completed this
   session when the next task actually depends on that context (a decision it must not
   re-litigate, an interface it will build on, a gotcha it will hit). If a piece of
-  finished work is unrelated to what comes next, leave it out — the prompt is a runway
-  for the next task, not a changelog of this one. When in doubt, prefer the shorter
-  prompt.
+  finished work is unrelated to what comes next, leave it out — the handoff is a runway
+  for the next task, not a changelog of this one. When in doubt, prefer the shorter note.
 - **Never reference commits or push state.** Do not name commit hashes, describe the
   local-vs-pushed commit situation, or tell the next chat to push. The user manages
   their own git history; the handoff is about work content, not VCS bookkeeping.
@@ -179,34 +178,15 @@ filters to what you include:
   (open plan items, a half-built feature, a deferred decision) — as work, by what it is
   and where it lives, without framing it in terms of commits.
 
-**Rendering.** The prompt body goes in its own fenced code block so the copy button on
-that block grabs exactly the prompt and nothing else. Frame it with a header line
-directly ABOVE the fence and a matching rule directly BELOW it, both written as plain
-markdown text in the chat response — never as a shell command whose output is piped
-back (e.g. `Bash printf '\e[36m...'`). Match the rule's width to the header line.
-Example shape:
+**Rendering.** Write handoff headers directly as markdown. Do not generate shell
+commands or terminal color-control sequences to style chat output. Some chat surfaces
+render tool output as plain logs, so terminal styling can appear as unreadable control
+text. Markdown headers, bold text, and plain rule characters render consistently.
 
-```text
-**─── HANDOFF: paste into the next chat ───**
-```<fenced prompt body — the only thing meant to be copied>```
-**═══════════════════════════════════════**
-```
-
-The header/footer are delimiters only; the copyable content is the fenced body between
-them.
-
-Do NOT use raw ANSI escape codes (`\e[36m`, `\033[...]`) for this or any other emphasis
-in a chat response, even though they look like the obvious way to get color. They only
-render as color when whatever is displaying the output treats it as a live terminal
-stream. Markdown emphasis (bold/headers/etc.) you write directly into the response text
-is a different mechanism — the chat surface parses that as markdown natively, which is
-why *that* renders reliably as color/weight everywhere. But this header/footer is
-produced by a tool call whose result is piped back as tool-output text, not written
-directly into the response — some surfaces echo raw terminal streams straight through
-(color renders), others treat tool output as inert logged text (you get the literal
-`\e[36m` bytes on screen). There's no way to know in advance which one a given session
-is using, so don't gamble on it: use markdown bold/rule characters written directly in
-the chat text instead, which every surface renders the same way.
+The handoff body goes in one fenced code block so the copy button grabs exactly the
+handoff text and nothing else. Put a plain markdown header directly above the block and
+a matching rule directly below it. The header/footer are delimiters only; the copyable
+content is the fenced body between them.
 
 ## What Wrap Up Must Not Do
 

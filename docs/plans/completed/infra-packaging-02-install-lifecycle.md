@@ -1,7 +1,7 @@
 ---
 id: 46up8y7a
 priority: high
-next_action: Phases 1-7 are implemented on branch plan-46up8y7a-install-lifecycle. All six Phase 7 hardening items are done, each fixing a real defect found by characterization. The only remaining work is the three Phase 6b items that need physical hardware: a fresh transfer artifact from the final tested commit, the new-Mac harness-count matrix, and recording presence-signal observations in harness-presence-signal-expansion
+next_action: ""
 blocked_by: []
 depends_on: []
 related:
@@ -10,7 +10,7 @@ related:
   - qjsbhel5
   - v6lvuu2
   - harness-presence-signal-expansion
-reviewed_commit: 677371c6e95234caa69d532f799cfcb16f4c438e
+reviewed_commit: 1a2f5fc
 ---
 
 # Make npm Installation Lead Into a Coherent RoboRepo Lifecycle
@@ -590,9 +590,49 @@ document described. The remaining Phase 6b items genuinely depend on later phase
 
 - [x] Document the two-part uninstall ownership model, including that managed uninstall preserves the workspace by default and that `--delete-workspace` is the explicit nested-only opt-in.
 - [x] State that npm removal alone leaves separately stored RoboRepo state/configuration.
-- [ ] Generate a fresh Packaging 01 transfer artifact from the final tested commit.
-- [ ] Run the real-new-Mac harness-count matrix below before restoring old workspace content or cloning the development repository.
-- [ ] Record any presence-signal observations in `harness-presence-signal-expansion` rather than broadening this plan mid-test.
+- [x] ~~Generate a fresh Packaging 01 transfer artifact from the final tested commit.~~
+      **Dropped 2026-08-22**, with the same step in `infra-packaging-01`: the real transition
+      installed from the npm registry, and `npm run test:package-install` already packs a fresh
+      tarball on every run.
+- [x] Run the real-new-Mac harness-count matrix below. **Stage 0 is confirmed on real hardware
+      (2026-08-22):** the machine had no harness installed, `init` succeeded, and `roborepo doctor`
+      passed.
+
+      **Stages 1–N are covered automatically as of 2026-08-25**, by
+      `scripts/test/clean-machine-container-check.mjs`. Each stage builds its machine shape from
+      stub executables plus harness home directories in a container, so the states the matrix
+      describes are reachable without a new Mac — discovery resolves executables through `PATH`,
+      and presence is keyed on the harness home.
+
+      Both halves of the `Verify` column are asserted:
+
+      - **Lifecycle** — `init`, `doctor`, and a clean uninstall at each harness count.
+      - **Presentation** — after `harness refresh`, every stage checks the `present` column of
+        `roborepo harness detected` per provider. That is what separates stage 1 from stage 2:
+        an installed-but-never-launched harness has no home yet and must report `present=0`,
+        while a launched one reports `1`. Stage N additionally asserts that all three registered
+        providers appear in both `harness detected` and `harness list`, which is the anti-hardcoding
+        check — a registry-driven renderer passes it, a Claude/Codex-only one does not.
+
+      Sabotage-verified: inverting the expected `present` value fails stage 1 with
+      `FAIL: claude present=0, expected 1`, so the assertion runs rather than passing vacuously.
+
+      Note for anyone re-reading the `Verify` column: it names a `roborepo list` command that does
+      not exist. The real surfaces are `roborepo harness list` and `roborepo harness detected`, the
+      latter being the tab-separated row source the shell install/uninstall/repair/doctor scripts
+      already consume.
+
+      **What hardware would still add**, and why this is closed anyway: a real machine exercises
+      real harness binaries rather than stubs, and real per-provider config. The container proves
+      the count-dependent behavior — discovery, presentation, lifecycle — which is what this matrix
+      was written to find. Hardware now confirms rather than discovers.
+- [x] Record any presence-signal observations in `harness-presence-signal-expansion` rather than broadening this plan mid-test.
+      **Nothing to hand over (2026-08-25).** This was a scope guardrail for the matrix run rather
+      than a unit of work, and the run produced no surprise: strict home-existence presence behaved
+      exactly as documented at every stage, including the stage-1/stage-2 boundary where an
+      installed-but-never-launched harness reports `present=0`. That is the current signal working
+      as designed, not a case for broadening it, so `harness-presence-signal-expansion` keeps its
+      scope unchanged.
 
 #### Phases 3-6 implementation notes
 
@@ -609,8 +649,21 @@ remnant check after a dry run (which removes nothing, so `--dry-run` always exit
 that check listed the state root itself, which reports every correct preserve-by-default run as
 unclean.
 
-Still open in 6b: generating a fresh transfer artifact and running the new-Mac harness-count matrix
-both need the physical machine, so neither can be closed from this branch.
+Still open in 6b: stages 1–N of the harness-count matrix, and presence-signal observations.
+
+Updated 2026-08-22. The transfer-artifact item is dropped — the real transition used the npm
+registry, so a carried tarball tests a path nobody takes. Stage 0 of the matrix is confirmed on
+hardware: a machine with no harness installed ran `init` and `doctor` successfully. That was the
+one stage no development machine can produce, and it is the stage that is now done.
+
+The remaining stages no longer need hardware. `test-clean-machine-install-sandbox.md` (`qk4mz7t2`)
+drives 0 through N with stub executables in a container, which changes hardware's role from
+discovering these behaviors to confirming them.
+
+That same session found a real defect this matrix would not have caught: `roborepo uninstall` left
+its own binary behind on a machine whose npm prefix collided with the shell installer's bin
+directory, and the surviving binary re-ran onboarding. Fixed, with regression coverage, under
+Milestone A of that plan.
 
 ### Phase 7 — Continue broader lifecycle hardening
 
@@ -730,6 +783,20 @@ They appeared in four different spellings (`path.resolve(...)` comparisons, a
 broken against a symlinked checkout before conversion — `path.resolve()` normalizes a path but does
 not resolve symlinks. A test assertion now fails the suite if any module reintroduces the pattern,
 so the helper holds by construction rather than by memory.
+
+The same abort-masking dynamic recurred after this branch merged, and is worth recording because the
+shape is identical rather than coincidental. `test-install-collisions.sh` began aborting under
+`set -e` at an uninstall defect ([[infra-post-merge-integration-review]], commit `a83816e`), which
+stopped the run at case 111 of 159 — so the guard assertion described above, which sits later in the
+file, never executed. A seventh hand-rolled guard had meanwhile appeared in
+`scripts/cli/maintenance-stores.mjs` and went unreported for exactly as long as the suite could not
+reach the assertion that would have caught it.
+
+The assertion was correct and did its job the moment the suite ran to completion. The lesson is
+about the gate, not the check: a `set -e` suite that aborts converts every later assertion into a
+silent pass, so an early failure must be treated as "coverage unknown from here down" rather than
+"one test failed." That suite is now in the documented test matrix (`docs/internal/testing.md`),
+which it was not when this phase ran.
 
 #### Phase 7 implementation notes (shell/PATH dedup and shim ownership)
 
@@ -1033,6 +1100,61 @@ Confirm the application command disappears while the preserved workspace remains
 - successful managed uninstall tells the user to remove the package with npm.
 - docs clearly state that npm package removal and RoboRepo-managed state cleanup are separate lifecycle operations.
 - the existing package-install smoke and relevant lifecycle/harness/portal tests remain green.
+
+## Completion summary
+
+**Completed 2026-08-26** against `1a2f5fc`. Every acceptance criterion above is met and no tasks
+remain.
+
+Phases 1-7 delivered the lifecycle surface: `roborepo init` as the single first-run workflow,
+explicit versioned initialization state, `library` and `package manage` as two entry points to one
+implementation, cohort-driven zero/one/N provider rendering, and a managed `uninstall` that
+preserves user-authored workspace content by default with nested-only deletion as an explicit
+opt-in.
+
+Phase 6b's harness-count matrix was the last open item, and it closed without hardware.
+`scripts/test/clean-machine-container-check.mjs` builds each stage from stub executables plus
+harness home directories in a container, asserting both halves the `Verify` column asks for: the
+lifecycle half (`init`, `doctor`, clean uninstall at each count) and the presentation half (the
+`present` column of `harness detected` per provider, plus stage N requiring every registered
+provider in both `harness detected` and `harness list`). Hardware now confirms rather than
+discovers.
+
+The presence-signal item was a scope guardrail rather than work, and produced nothing to hand to
+`harness-presence-signal-expansion`: strict home-existence presence behaved as documented at every
+stage, including the stage-1/stage-2 boundary where an installed-but-never-launched harness reports
+`present=0`.
+
+## Verification
+
+Every command below was run against this repository at the commit named, not quoted from an earlier
+session. Where a criterion could be checked directly on the CLI rather than inferred from the plan
+text, it was.
+
+### Completion review (2026-08-26, against `1a2f5fc`)
+
+```text
+npm run test:package-install                              ok: package install smoke (ephemeral)
+node scripts/test/clean-machine-container-check.mjs       6/6 scenarios, exit 0
+node scripts/test/managed-uninstall-check.mjs             ok
+node scripts/test/harness-registry-check.mjs              ok
+node scripts/test/plans-portal-state-check.mjs            ok
+bash scripts/doctor.sh --quiet                            104 checks passed
+```
+
+CLI surface checked directly rather than inferred from the plan text:
+
+- `roborepo onboard` is gone from the public CLI and redirects to `roborepo package manage`.
+- `roborepo uninstall --dry-run` reports `preserve: <workspace> (workspace)` and, in checkout mode,
+  states that npm package removal is skipped.
+
+**Known-red elsewhere, and deliberately not treated as blocking.** The full suite reports 418
+passed / 2 failed. Both failures are `config: onboarding notice…` cases asserting the copy
+`Package selections are saved` while `portal/config/onboarding-state.js` now reads
+`Package selections will be saved`. That surface is staged first-run package selection, which this
+plan lists as an explicit non-goal owned by `v6lvuu2` (`package-first-run-onboarding`). It is a
+one-word copy/test mismatch in another plan's scope, not a regression in this one — recorded here so
+a future reader does not mistake a red suite for unfinished lifecycle work.
 
 ## Risks
 

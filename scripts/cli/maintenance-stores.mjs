@@ -9,7 +9,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { isMainModule } from "./roots.mjs";
 import { roborepoStateDir } from "./state-paths.mjs";
 import { loadSettings } from "../../modules/localhoster/settings.mjs";
 import {
@@ -212,6 +212,9 @@ export function storeHealth() {
 
 // Direct-invocation entry, so scripts/doctor.sh can run `node maintenance-stores.mjs --check`
 // without going through the CLI dispatcher — matching how local-config-repair.mjs is called.
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Uses isMainModule() from roots.mjs rather than a hand-rolled argv-to-module-URL comparison:
+// path normalization does not resolve symlinks, so that comparison silently no-ops when the script
+// is reached through a symlinked path — which is how an installed roborepo runs it.
+if (isMainModule(import.meta.url)) {
   process.exit(process.argv.includes("--check") ? checkStoreBounds() : maintenanceStores(process.argv.slice(2)));
 }

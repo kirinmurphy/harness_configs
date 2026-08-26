@@ -1,0 +1,13 @@
+{
+  "path": ["dev", "fixture"],
+  "kind": "command",
+  "title": "Localhoster fixture",
+  "description": "Shared-stack fixture behind Localhoster's shared-ownership verdict",
+  "order": 10,
+  "usage": "roborepo dev fixture <start|stop|status>",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/dev.mjs",
+    "export": "devFixtureCommand"
+  }
+}

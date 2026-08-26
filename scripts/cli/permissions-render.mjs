@@ -4,6 +4,7 @@ import os from "node:os";
 import { repoRoot } from "./paths.mjs";
 import { writeRootConfig } from "./root-config-writes.mjs";
 import { listHarnessProviders } from "../harnesses/registry.mjs";
+import { loadPermissionWorkspaceRoots as loadWorkspaceRoots } from "../harnesses/permission-workspace-roots.mjs";
 import {
   resolveBehaviors,
   resolveArbitraryCommands,
@@ -23,11 +24,17 @@ import { GENERATED_POLICY_FILENAME } from "../harnesses/gemini/policy-toml.mjs";
 // directly instead, since this module's writeRootConfig import pulls in paths.mjs's registry-
 // dependent half and would cycle back into a provider importing this file.
 export { resolveBehaviors, resolveArbitraryCommands, renderCodexConfig, renderCodexRules, claudePermissions, renderClaudeSettings };
+export { findPermissionPlansConfig, loadPermissionWorkspaceRootsForCwd } from "../harnesses/permission-workspace-roots.mjs";
 
 const manifestPath = path.join(repoRoot, "manifests", "inventory", "agent-permissions.json");
+const defaultPlansConfigPath = path.join(repoRoot, "docs", "plans", "plans-config.json");
 
 export function loadPermissionManifest(p = manifestPath) {
   return JSON.parse(fs.readFileSync(p, "utf8"));
+}
+
+export function loadPermissionWorkspaceRoots(input = defaultPlansConfigPath) {
+  return loadWorkspaceRoots(input);
 }
 
 // Where a provider's rendered permissions land, relative to its home dir, and whether roborepo may
@@ -62,6 +69,15 @@ function permissionsTargetFor(manifest, baseDir) {
   return { file: path.join(baseDir, rootRel), homeDir, mayCreate, seedCurrent: true };
 }
 
+function permissionOptionsForProvider(provider, { cwd = process.cwd(), workspaceRoots } = {}) {
+  const roots = [];
+  if (Array.isArray(workspaceRoots)) roots.push(...workspaceRoots);
+  if (typeof provider.adapters.permissions.workspaceRoots === "function") {
+    roots.push(...provider.adapters.permissions.workspaceRoots({ cwd }));
+  }
+  return { workspaceRoots: [...new Set(roots)] };
+}
+
 // Render the manifest (+ overrides) into each present harness's live config under `baseDir`.
 // Always global scope — no project override. `createClaude` retained for callers that might target
 // a fresh directory (e.g. a scratch/test harness home); default global-only usage never needs it.
@@ -70,7 +86,10 @@ function permissionsTargetFor(manifest, baseDir) {
 // Iterates the provider registry rather than a fixed provider list, so a newly registered harness
 // receives permissions without editing this function. A provider that does not declare the
 // "permissions" capability is skipped by contract, not by omission.
-export function renderPermissionsTo(baseDir, { manifest = loadPermissionManifest(), overrides = {}, createClaude = false } = {}) {
+export function renderPermissionsTo(
+  baseDir,
+  { manifest = loadPermissionManifest(), overrides = {}, createClaude = false, workspaceRoots = [], cwd = process.cwd() } = {},
+) {
   const touched = [];
 
   for (const provider of listHarnessProviders()) {
@@ -87,7 +106,7 @@ export function renderPermissionsTo(baseDir, { manifest = loadPermissionManifest
 
     fs.mkdirSync(path.dirname(target.file), { recursive: true });
     const cur = target.seedCurrent && fileExists ? fs.readFileSync(target.file, "utf8") : "";
-    const rendered = provider.adapters.permissions.render(cur, manifest, overrides, target.file);
+    const rendered = provider.adapters.permissions.render(cur, manifest, overrides, target.file, permissionOptionsForProvider(provider, { cwd, workspaceRoots }));
     writeRootConfig(provider.id, target.file, rendered);
     touched.push(target.file);
   }
@@ -96,6 +115,12 @@ export function renderPermissionsTo(baseDir, { manifest = loadPermissionManifest
 }
 
 // Back-compat shim: global-scope render into the home dir.
-export function renderPermissionsToHome({ home = os.homedir(), manifest = loadPermissionManifest(), overrides = {} } = {}) {
-  return renderPermissionsTo(home, { manifest, overrides });
+export function renderPermissionsToHome({
+  home = os.homedir(),
+  manifest = loadPermissionManifest(),
+  overrides = {},
+  workspaceRoots,
+  cwd = process.cwd(),
+} = {}) {
+  return renderPermissionsTo(home, { manifest, overrides, workspaceRoots, cwd });
 }

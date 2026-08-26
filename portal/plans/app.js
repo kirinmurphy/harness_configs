@@ -24,6 +24,9 @@ import {
   LIFECYCLE_LABELS,
   filteredPlans,
   actionablePlans,
+  sortForLifecycle,
+  isNotStarted,
+  completionRatio,
   isVisible,
   replaceRecord,
   filteredListActionFor,
@@ -56,6 +59,7 @@ const plansHeaderEl = document.getElementById("plans-header");
 const filtersToggleEl = document.getElementById("filters-toggle");
 const filtersBodyEl = document.getElementById("filters-body");
 const filterChipsEl = document.getElementById("filter-chips");
+const activeTasksBarEl = document.getElementById("active-tasks-bar");
 const plansCountTextEl = document.getElementById("plans-count-text");
 const reposCountTextEl = document.getElementById("repos-count-text");
 const lifecycleTabsEl = document.getElementById("lifecycle-tabs");
@@ -83,7 +87,9 @@ const lifecycleEventDialog = createLifecycleEventDialog(document.getElementById(
 const lifecycleErrorDialog = createLifecycleErrorDialog(document.getElementById("lifecycle-error-modal"), {
   onViewPlan: (key) => openPlan(key),
 });
+const allTasksModal = document.getElementById("all-tasks-modal");
 portalWireBackdropClose(drawer, () => drawer.close());
+portalWireBackdropClose(allTasksModal, () => allTasksModal.close());
 // Fires however the dialog closes (button, backdrop, Escape, or a programmatic .close() call
 // from presentChangeOutcome) — one place to clear which plan the drawer was showing.
 drawer.addEventListener("close", () => { state.openDrawerKey = null; });
@@ -107,6 +113,8 @@ function bindStaticControls() {
   });
   nextPrompt.addEventListener("click", openNextPrompt);
   document.getElementById("drawer-close").addEventListener("click", () => drawer.close());
+  document.getElementById("open-all-tasks").addEventListener("click", openAllTasks);
+  document.getElementById("all-tasks-close").addEventListener("click", () => allTasksModal.close());
   for (const id of FILTER_IDS) {
     const node = document.getElementById(id);
     node.addEventListener(id === "search" ? "input" : "change", () => {
@@ -205,9 +213,16 @@ function render() {
   const allMatchingCurrentFilters = filteredPlans(snapshot.plans, state.filters);
   renderLifecycleTabs(allMatchingCurrentFilters);
   nextPrompt.hidden = !snapshot.planDocsPackage.enabled;
-  const visiblePlans = allMatchingCurrentFilters.filter(
-    (record) => record.plan.lifecycle === state.selectedLifecycle,
-  );
+  // Sorted here rather than inside filteredPlans: that result spans every lifecycle (the tabs read
+  // it for counts, and visibleNextPromptKeys takes the top 20 across all of them in priority
+  // order). Completion ordering is Active-only, so it applies to the visible slice, after the tab
+  // filter has narrowed it to one lifecycle.
+  const visiblePlans = allMatchingCurrentFilters
+    .filter((record) => record.plan.lifecycle === state.selectedLifecycle)
+    .sort(sortForLifecycle(state.selectedLifecycle));
+  // Set before the empty-state return below, or switching to an empty Active tab would leave the
+  // previous tab's bar on screen.
+  activeTasksBarEl.hidden = state.selectedLifecycle !== "active" || visiblePlans.length === 0;
   if (visiblePlans.length === 0) {
     const empty = tmpl.emptyState(snapshot);
     groupsEl.replaceChildren(...(empty ? [empty] : []));
@@ -507,6 +522,40 @@ async function openPlan(key) {
   } catch (err) {
     showError(err);
   }
+}
+
+// Every active plan's remaining work in one view, ordered the same way the Active tab is so the
+// dialog and the board never disagree about what is furthest along.
+//
+// Reads the plans already in the snapshot rather than fetching: `openTasks` ships with the list
+// payload for active plans (see modules/plan-docs/index.mjs), so this needs no round trip and
+// cannot show something staler than the cards behind it. Respects the current filters for the same
+// reason — a dialog opened from a filtered board that ignored the filter would be a different
+// answer to the question the user is looking at.
+function openAllTasks() {
+  const active = filteredPlans(state.snapshot.plans, state.filters)
+    .filter((record) => record.plan.lifecycle === "active")
+    .sort(sortForLifecycle("active"));
+
+  const openCount = active.reduce((sum, record) => sum + record.plan.taskCounts.remaining, 0);
+  document.getElementById("all-tasks-summary").textContent =
+    `${openCount} open ${openCount === 1 ? "task" : "tasks"} across ${active.length} ${active.length === 1 ? "project" : "projects"}`;
+
+  document.getElementById("all-tasks-body").replaceChildren(
+    ...active.map((record) =>
+      tmpl.allTasksProject(record, {
+        notStarted: isNotStarted(record.plan),
+        percent: completionRatio(record.plan),
+        onViewStory: (key) => {
+          // One dialog at a time: the drawer is also a modal, and leaving this one open behind it
+          // would stack two backdrops and trap focus in the wrong layer.
+          allTasksModal.close();
+          openPlan(key);
+        },
+      }),
+    ),
+  );
+  allTasksModal.showModal();
 }
 
 function renderDrawer(doc) {

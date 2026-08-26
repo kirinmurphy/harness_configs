@@ -3,10 +3,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+// package.json declares node >=20 and moduleDir only landed in 20.11, so it is undefined
+// on a supported floor version. The rest of this repo derives the directory this way.
+import { fileURLToPath } from "node:url";
 import { loadPackageCatalog, validatePackageCatalog } from "../cli/package-catalog.mjs";
 import { listPackageCommands } from "../cli/package-commands.mjs";
 import { loadSlashCommandPlan } from "../cli/slash-commands.mjs";
 import { readConfigSnapshot } from "../cli/config.mjs";
+import { buildOnboardSteps } from "../cli/presets.mjs";
+
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -46,7 +52,7 @@ const sections = new Map(snapshot.behaviorView.map((section) => [section.categor
 // Categories with no packages are skipped: buildBehaviorView filters empty sections deliberately,
 // so an unused category is absent by design, not by failure.
 const categories = JSON.parse(
-  fs.readFileSync(path.join(import.meta.dirname, "../../manifests/inventory/package-categories.json"), "utf8"),
+  fs.readFileSync(path.join(moduleDir, "../../manifests/inventory/package-categories.json"), "utf8"),
 ).categories;
 const populated = new Set(catalog.map((pkg) => pkg.presentation?.category).filter(Boolean));
 for (const category of categories) {
@@ -66,6 +72,17 @@ for (const label of ["Permissions", "Local Stores"]) {
 
 assert(sections.get("Token Optimization").items.some((item) => item.id === "jcodemunch"), "jcodemunch not visible in Token Optimization");
 assert(sections.get("Skills - Development Life Cycle").items.some((item) => item.id === "tighten"), "tighten not visible in Skills - Development Life Cycle");
+
+const libraryStepTitles = new Set(buildOnboardSteps().map((step) => step.title));
+for (const section of snapshot.behaviorView) {
+  const packageItems = (section.items || []).filter((item) => item.toggle === "package");
+  if (packageItems.length === 0) continue;
+  assert(
+    libraryStepTitles.has(section.category),
+    `CLI Package Library omits package section "${section.category}" — `
+      + "terminal and portal package management must render from behaviorView, not a hard-coded category list",
+  );
+}
 
 // Every item `kind` buildBehaviorView emits must be handled by every consumer that branches on it.
 //
@@ -93,13 +110,49 @@ const emittedKinds = new Set(
     .filter(Boolean),
 );
 for (const consumer of consumers) {
-  const source = fs.readFileSync(path.join(import.meta.dirname, "../..", consumer.path), "utf8");
+  const source = fs.readFileSync(path.join(moduleDir, "../..", consumer.path), "utf8");
   for (const kind of emittedKinds) {
     if (sectionRenderedKinds.has(kind)) continue;
     assert(
       source.includes(`"${kind}"`),
       `buildBehaviorView emits item kind "${kind}" but ${consumer.label} never branches on it — `
         + `those rows render blank or fall through to the wrong branch in ${consumer.path}`,
+    );
+  }
+}
+
+// No source file may branch on a package category id that the manifest does not define.
+//
+// validatePackageCatalog already rejects a PACKAGE naming an unknown category, but nothing checked
+// CODE that hardcodes one. config.mjs branched on `presentation?.category === "commands"` long after
+// commit ac35c97 deleted that category, so the condition was permanently false and every
+// command-backed package silently lost its `/command` label — no test failed, because the data was
+// valid and only the consumer was stale. This is the same failure shape as the kind check above: a
+// second declaration of a name that must agree with the manifest.
+//
+// Matched by source text rather than executed, for the same reason as the consumer scan: these are
+// literals inside branches, and reaching them all would need a DOM and a stdout capture. Only
+// category-shaped comparisons are inspected, so unrelated `category` fields (telemetry operation
+// categories, for instance) are not swept in.
+const packageCategoryIds = new Set(categories.map((category) => category.id));
+const categoryComparison = /\bcategory\s*(?:===|!==)\s*"([a-z][a-z0-9-]*)"/g;
+const categoryConsumers = [
+  "scripts/cli/config.mjs",
+  "scripts/cli/config-cli-print.mjs",
+  "scripts/cli/package-catalog.mjs",
+  "portal/config/templates.js",
+  "portal/config/state.js",
+];
+for (const relPath of categoryConsumers) {
+  const fullPath = path.join(moduleDir, "../..", relPath);
+  if (!fs.existsSync(fullPath)) continue;
+  const source = fs.readFileSync(fullPath, "utf8");
+  for (const [, id] of source.matchAll(categoryComparison)) {
+    assert(
+      packageCategoryIds.has(id),
+      `${relPath} branches on package category "${id}", which manifests/inventory/`
+        + "package-categories.json does not define — that comparison can never be true, so the rows "
+        + "it governs silently render the wrong way",
     );
   }
 }
@@ -154,7 +207,7 @@ try {
     id: "legacy-shape",
     label: "Legacy Shape",
     description: "Legacy package shape.",
-    presentation: { category: "commands" },
+    presentation: { category: "skills-dev-lifecycle" },
     components: [],
   }));
   const result = spawnSync(process.execPath, [

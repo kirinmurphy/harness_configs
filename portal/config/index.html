@@ -57,6 +57,14 @@
       <div class="modal-footer" id="modal-footer" hidden></div>
     </dialog>
     <!-- Agent files summary: token warnings + per-harness file grid + defaults popover -->
+    <template id="tpl-config-onboarding-notice">
+      <portal-notice aria-live="polite">
+        <div class="config-empty">
+          <strong data-slot="title"></strong>
+          <span data-slot="body"></span>
+        </div>
+      </portal-notice>
+    </template>
     <template id="tpl-context-warnings">
       <portal-notice class="token-warnings" variant="warning" aria-live="polite">
         <div class="token-warnings-body">
@@ -99,19 +107,6 @@
               <span>Automation triggered by lifecycle or tool events.</span>
             </div>
           </div>
-        </div>
-      </section>
-    </template>
-    <!-- Zero-harness state for the Agents grid. A machine with no detected harness gets this
-         instead of a grid of columns for every provider roborepo happens to support. -->
-    <template id="tpl-config-files-empty">
-      <section class="panel wide">
-        <div class="config-empty">
-          <strong>No agent harnesses detected on this machine.</strong>
-          <span>
-            RoboRepo supports <span data-slot="supported"></span>. Install or launch one, then run
-            <code>roborepo harness refresh</code> to pick it up.
-          </span>
         </div>
       </section>
     </template>

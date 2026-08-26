@@ -12,11 +12,18 @@ import { repoRoot } from "../cli/paths.mjs";
 const cliPath = path.join(repoRoot, "scripts", "cli", "main.mjs");
 const catalog = loadCommandCatalog();
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-cli-surface-"));
+const generatedPermissionFiles = [
+  path.join(repoRoot, "generated", "claude", "settings.json"),
+  path.join(repoRoot, "generated", "codex", "config.toml"),
+  path.join(repoRoot, "generated", "codex", "rules", "default.rules"),
+  path.join(repoRoot, "generated", "gemini", "policies", "roborepo-permissions.toml"),
+];
 
 try {
   const env = {
     ...process.env,
     HOME: path.join(workDir, "home"),
+    ROBOREPO_GENERATED_HOME: generatedHomeForRepo(repoRoot),
     ROBOREPO_STATE_DIR: path.join(workDir, "state"),
     ROBOREPO_SKIP_MCP: "1",
   };
@@ -64,6 +71,30 @@ try {
   console.log("cli surface integration checks passed");
 } finally {
   fs.rmSync(workDir, { recursive: true, force: true });
+  // Reported from `finally` so a mid-suite failure still surfaces a write into this checkout — but
+  // printed rather than thrown, because throwing here would replace the real assertion error with
+  // this one and hide why the suite actually failed. The exit code is set instead.
+  reportRepoGeneratedUnchanged();
+}
+
+// The suite runs the real CLI against a temp HOME/state dir, but appRoot still points at this
+// checkout — so anything that renders into generated/ writes to tracked files, stamping a temp path
+// like /T/roborepo-cli-surface-XXXX into generated/claude/settings.json. That lands in the working
+// tree, gets committed by accident, and ships a permission rule scoped to a directory that no
+// longer exists. Fail loudly here instead: a test may read this checkout, never write to it.
+function reportRepoGeneratedUnchanged() {
+  const result = spawnSync("git", ["status", "--porcelain", "--", "generated"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  // No git (or not a checkout) means nothing to protect — skip rather than fail the whole suite.
+  if (result.status !== 0) return;
+  const dirty = result.stdout.trim();
+  if (!dirty) return;
+  console.error(
+    `\nthe suite modified tracked generated/ files; tests must not write into this checkout:\n${dirty}`,
+  );
+  process.exitCode = 1;
 }
 
 function assertCli(args, { env, input = "", status = 0, stdout, stderr } = {}) {
@@ -102,10 +133,30 @@ function assertTelemetryMenuSections() {
 // and renamed its label to "Token Telemetry". Both are asserted here so a future move breaks this
 // check rather than silently showing the package under a stale heading.
 function assertPackageLibraryLabels() {
-  const section = readConfigSnapshot().behaviorView.find((s) => s.category === "Monitoring");
+  const behaviorView = readConfigSnapshot().behaviorView;
+  const section = behaviorView.find((s) => s.category === "Monitoring");
   const labels = section?.items.map((item) => item.label) || [];
   assert(labels.includes("Token Telemetry"), "telemetry package should show product label in Package Library");
   assert(!labels.includes("/telemetry-marker"), "Monitoring should not show telemetry slash-command label");
+
+  // The rule behind the two assertions above, stated so it holds for packages that do not exist yet:
+  // a `/command` label is only correct when the command restates the package's own name. Telemetry
+  // broke this by exposing /telemetry-marker while being called "Token Telemetry", and the breakage
+  // was invisible because every other command-backed package happened to satisfy the rule.
+  const commandLabeled = behaviorView
+    .filter((s) => s.category !== "Permissions")
+    .flatMap((s) => s.items)
+    .filter((item) => typeof item.label === "string" && item.label.startsWith("/"));
+  assert(commandLabeled.length > 0, "expected at least one command-labeled package");
+  for (const item of commandLabeled) {
+    const words = item.label.slice(1).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    const idWords = String(item.id).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    assert(
+      words.every((word) => idWords.includes(word)),
+      `package ${item.id} is labeled ${item.label} but the command does not restate its name; `
+        + "a product that merely ships a command must keep its prose label",
+    );
+  }
 }
 
 function assertRootAgentConfigOrder() {
@@ -176,6 +227,7 @@ function assertInteractiveHelpPause({ env }) {
 }
 
 function assertSilentCommandReturnsToMenu({ env }) {
+  const before = readGeneratedPermissionFiles();
   const script = `
     set timeout 10
     spawn -noecho ${process.execPath} ${cliPath}
@@ -199,6 +251,11 @@ function assertSilentCommandReturnsToMenu({ env }) {
   }
 
   assert.equal(result.status, 0, `silent command PTY exit\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  assert.deepEqual(
+    readGeneratedPermissionFiles(),
+    before,
+    "fake HOME menu command should not rewrite tracked generated permission files",
+  );
 }
 
 function assertRemoteSyncMenuFlow({ env }) {
@@ -377,6 +434,16 @@ function markInitialized(stateDir) {
       startedAt: timestamp,
       completedAt: timestamp,
     }, null, 2) + "\n",
+  );
+}
+
+function generatedHomeForRepo(root) {
+  return path.join(path.sep, "Users", "you");
+}
+
+function readGeneratedPermissionFiles() {
+  return Object.fromEntries(
+    generatedPermissionFiles.map((file) => [path.relative(repoRoot, file), fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null]),
   );
 }
 

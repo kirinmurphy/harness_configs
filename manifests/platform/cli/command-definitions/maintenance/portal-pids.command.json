@@ -1,0 +1,15 @@
+{
+  "path": ["maintenance", "portal-pids"],
+  "kind": "command",
+  "title": "Portal pid files",
+  "description": "Find portal pid files whose process is gone, and optionally remove them",
+  "order": 45,
+  "usage": "roborepo maintenance portal-pids [--reap]",
+  "onComplete": "returnToSubmenu",
+  "continuePrompt": "Press any key to return to maintenance",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/portal-pid-reaper.mjs",
+    "export": "portalPidsCommand"
+  }
+}

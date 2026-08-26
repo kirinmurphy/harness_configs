@@ -7,6 +7,7 @@
   "adapter": "gemini",
   "detection": {
     "executables": ["gemini"],
+    "executableValidation": { "args": ["--version"] },
     "homeCandidates": ["~/.gemini"],
     "configCandidates": ["~/.gemini/settings.json"],
     "minimumConfidence": "probable"

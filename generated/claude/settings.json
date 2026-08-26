@@ -4,9 +4,6 @@
       "Read(//tmp/**)",
       "Read(//private/tmp/**)",
       "Read(//private/var/folders/**)",
-      "Write(//tmp/**)",
-      "Write(//private/tmp/**)",
-      "Write(//private/var/folders/**)",
       "Edit(//tmp/**)",
       "Edit(//private/tmp/**)",
       "Edit(//private/var/folders/**)",
@@ -91,7 +88,11 @@
       "Bash(roborepo presets:*)",
       "Bash(roborepo bundle:*)",
       "Bash(roborepo experimental:*)",
-      "Bash(roborepo onboard-intro:*)"
+      "Bash(roborepo onboard-intro:*)",
+      "Bash(roborepo init:*)",
+      "Bash(roborepo dev:*)",
+      "Bash(roborepo library:*)",
+      "Bash(roborepo uninstall:*)"
     ]
   },
   "hooks": {

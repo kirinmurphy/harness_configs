@@ -13,6 +13,7 @@ import { createRenders } from "./renders.js";
 import { createChart } from "./chart.js";
 import { createAnalysisExplorer } from "./analysis-explorer.js";
 import { createDocGuideModal } from "/portal/shared/doc-guide-modal.js";
+import { activePresentedHarnesses } from "/portal/shared/harness-cohort.js";
 import {
   fmt, sessionById as lookupSessionById, viewFromSearchParams, syncViewToUrl, activeFilterCountFromView,
 } from "./state.js";
@@ -40,6 +41,7 @@ let view = viewFromSearchParams(new URLSearchParams(location.search));
 let deepReadCli = null;
 // Last deeper-read text for the copy button.
 let lastDeepReadText = null;
+let setupReady = false;
 
 const modal = createDetailModal();
 const modals = createModalOpeners({ modal, getThreshold: () => curThreshold });
@@ -102,10 +104,48 @@ function setLoading(on) {
   if (ov) ov.classList.toggle("on", !!on);
 }
 
+function activeMachineHarnesses(cfg) {
+  return activePresentedHarnesses(cfg);
+}
+
+function applySetupState({ telemetryOn, activeHarnessCount }) {
+  setupReady = telemetryOn && activeHarnessCount > 0;
+  const setupPanel = document.getElementById("telemetryoff");
+  const controls = document.getElementById("telemetrycontrols");
+  const frame = document.getElementById("telemetryframe");
+  const content = document.getElementById("telemetrycontent");
+  const title = setupPanel.querySelector("[data-slot=title]");
+  const body = setupPanel.querySelector("[data-slot=body]");
+  const enableBtn = document.getElementById("enabletelemetry");
+  const addHarness = document.getElementById("addharness");
+
+  controls.hidden = !setupReady;
+  frame.hidden = !setupReady;
+  content.hidden = !setupReady;
+  setupPanel.style.display = setupReady ? "none" : "";
+  enableBtn.hidden = telemetryOn;
+  addHarness.hidden = activeHarnessCount > 0;
+
+  if (!telemetryOn && activeHarnessCount === 0) {
+    title.textContent = "telemetry setup required";
+    body.textContent = "Turn telemetry on and add an active harness before token usage can be captured.";
+  } else if (!telemetryOn) {
+    title.textContent = "telemetry is off";
+    body.textContent = "Token usage is not being captured. Turn telemetry on to start collecting data across your harnesses.";
+  } else {
+    title.textContent = "no active harness configured";
+    body.textContent = "RoboRepo needs an active agent harness before token telemetry has a source to capture.";
+  }
+}
+
 // Fetch the report scoped to the current global filter and repaint EVERY panel. Pass force=true to
 // repaint even when the server's version is unchanged (range/pan/resize). The version embeds the
 // windowed event set, so a normal 5s poll only repaints when that window's data actually changed.
 async function load(force, opts) {
+  if (!setupReady) {
+    if (firstLoad) { firstLoad = false; portalHideLoading(); }
+    return;
+  }
   const wipe = !!(opts && opts.wipe);
   if (wipe) { wipeSections(); setLoading(true); }
   let qs = view.rangeMs == null ? "" : "?range=" + view.rangeMs + (view.panEnd == null ? "" : "&end=" + view.panEnd);
@@ -452,14 +492,16 @@ document.getElementById("markerform").addEventListener("submit", async (e) => {
   }
 });
 
-// Telemetry on/off state drives the "turn on telemetry" prompt above the chart. Read from /api/config
-// (same source the config page uses). When off, the page shell + empty sections still render; the
-// prompt offers a one-click enable that hits the SAME endpoint as onboarding / the config toggle.
+// Telemetry setup state drives whether the report shell hydrates at all. Read from /api/config
+// (same source the config page uses), so telemetry-on and active-harness status stay consistent
+// with onboarding / the config toggle.
 async function refreshTelemetryState() {
   try {
     const cfg = await api.fetchTelemetryState();
     const on = !!(cfg.telemetry && cfg.telemetry.enabled);
-    document.getElementById("telemetryoff").style.display = on ? "none" : "";
+    const wasReady = setupReady;
+    applySetupState({ telemetryOn: on, activeHarnessCount: activeMachineHarnesses(cfg).length });
+    if (setupReady && !wasReady) load(true, { wipe: true });
   } catch { /* leave prompt hidden on error */ }
 }
 
@@ -469,7 +511,7 @@ document.getElementById("enabletelemetry").addEventListener("click", async () =>
   btn.disabled = true; err.textContent = "";
   try {
     await api.enableTelemetry();
-    document.getElementById("telemetryoff").style.display = "none";
+    await refreshTelemetryState();
     load(true, { wipe: true });
   } catch (e) {
     err.textContent = e.message; btn.disabled = false;
@@ -483,7 +525,6 @@ function showError(err) {
   console.error(err);
 }
 
-load(true).catch(showError);
 refreshTelemetryState();
 setInterval(() => load(false).catch(showError), LOAD_POLL_INTERVAL_MS);
 setInterval(refreshTelemetryState, TELEMETRY_STATE_POLL_INTERVAL_MS);

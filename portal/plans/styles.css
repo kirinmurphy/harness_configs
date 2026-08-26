@@ -466,6 +466,81 @@ dialog#skill-modal::backdrop {
   display: grid;
   gap: 18px;
 }
+/* All Open Tasks — the Active-tab bar and its dialog. */
+/* Scoped to this dialog rather than raising the shared .modal-title: every other modal on the page
+ * uses that rule, and this is the one whose title heads a long scrollable list. */
+#all-tasks-modal .modal-title {
+  font-size: var(--text-lg);
+}
+.active-tasks-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.all-tasks-body {
+  display: grid;
+  gap: 34px;
+}
+.all-tasks-project-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+/* Fixed width so the badges form a column the eye can scan down; the list is sorted by this
+ * number, and a ragged left edge would hide the ordering it exists to show. The badge carries the
+ * ramp color inline (see completionBadgeColor) — only the shape and the text treatment live here,
+ * so there is one source for the color and one for the geometry. */
+.all-tasks-percent {
+  flex: none;
+  width: 3.5em;
+  padding: 2px 0;
+  border-radius: 999px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: var(--text-xs);
+  color: #fff;
+  align-self: center;
+}
+.all-tasks-project-title {
+  font-weight: 600;
+  font-size: var(--text-lg);
+}
+.all-tasks-repo,
+.all-tasks-count {
+  color: var(--dim);
+  font-size: var(--text-xs);
+}
+.all-tasks-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+/* Indented to the same rail as the task list, so the not-started line and the tasks it sits above
+ * read as one block belonging to the project header rather than two separate columns. */
+.all-tasks-notstarted {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0 4.5em;
+  color: var(--dim);
+  font-size: var(--text-xs);
+}
+/* 4.5em clears the badge column (3.5em + the header's 10px gap), so tasks hang under the project
+ * name rather than under the percentage. */
+.all-tasks-list {
+  margin: 10px 0 0;
+  padding-left: 4.5em;
+  display: grid;
+  gap: 6px;
+}
+.all-tasks-list:empty {
+  display: none;
+}
+.all-tasks-item {
+  font-size: var(--text-sm);
+}
 .empty-state {
   border: 1px dashed var(--line);
   border-radius: 8px;

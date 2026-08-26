@@ -1,7 +1,7 @@
 ---
 id: qk4mz7t2
 priority: high
-next_action: Watch the first strict CI run, then extract shared Docker helpers before adding a permissions sandbox
+next_action: Watch the first strict CI run, then add deeper permission assertions to the shared permissions sandbox
 blocked_by: []
 depends_on: []
 related:
@@ -75,10 +75,14 @@ issues before CI:
   exempts the package-managed binary; `npm uninstall` remains the owner of application removal.
 
 The Docker direction is now documented in `docs/internal/docker-test-sandboxes.md`: use one image as
-a disposable machine template, run fresh containers per scenario or case, and keep scenario scripts
-separated by failure meaning. The clean-install runner should stay narrow. Permissions projection
-and fake harness assertions should be added as their own sandbox, sharing packing/container helpers
-rather than turning this script into a catch-all.
+a disposable machine template, run fresh containers per scenario, install once per scenario, and run
+many assertions inside that installed state. The clean-install runner stays narrow. Permissions
+projection and fake harness assertions now live in their own sandbox, sharing packing/container
+helpers rather than turning this script into a catch-all.
+
+`scripts/test/lib/docker-sandbox.mjs` now owns the common Docker mechanics: strict/local skip
+behavior, base image selection, `/tmp` artifact root, pack-once setup, `docker run --network=none`,
+timeout, and failure reporting.
 
 ## Implementation Plan
 
@@ -88,9 +92,10 @@ rather than turning this script into a catch-all.
 - [x] Make the runner skip locally when Docker is unavailable.
 - [x] Register `test:clean-machine-install-sandbox` in `package.json`.
 - [x] Wire the runner into CI as an Ubuntu-only strict step.
+- [x] Extract reusable Docker sandbox helpers for pack-once/run-container setup.
+- [x] Add a permissions sandbox with fake harnesses and direct config assertions.
 - [ ] Observe the first strict CI run and fix any container-only assumptions.
-- [ ] Extract reusable Docker sandbox helpers for pack-once/run-container/case-state setup.
-- [ ] Add a permissions sandbox with fake harnesses and direct config assertions.
+- [ ] Add deeper permission assertions to the permissions sandbox, keeping one install per scenario.
 - [ ] Add harness-count stubs for stages 0 through N after the permissions sandbox has a helper
       layer to reuse.
 - [ ] Decide whether workspace restore / `roborepo workspace import` belongs in this runner or in
@@ -114,6 +119,5 @@ ROBOREPO_CLEAN_MACHINE_STRICT=1 npm run test:clean-machine-install-sandbox
 ## Remaining Work
 
 - Watch the Ubuntu CI result for the first strict run.
-- Extract the Docker helper layer before adding more scenarios.
-- Add the permissions sandbox as a separate command so package install failures and permission
-  projection failures stay distinct.
+- Add more permission assertions inside `test:clean-machine-permissions-sandbox` before creating
+  another full install/uninstall scenario.

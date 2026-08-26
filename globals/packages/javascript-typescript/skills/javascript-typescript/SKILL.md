@@ -5,7 +5,18 @@ description: "Use when working on TypeScript, JavaScript, ECMAScript modules, TS
 
 # JavaScript TypeScript
 
-Apply this when the repo or touched files use JavaScript or TypeScript. Pair with `react` for components, hooks, or TSX UI behavior.
+Apply this when the repo or touched files use JavaScript or TypeScript.
+
+## Paired Skills
+
+**Load these as part of the work; do not wait to be asked for them by name.**
+
+| Skill | Load when | Contributes |
+| --- | --- | --- |
+| `react` | A touched file contains a component, a hook, JSX/TSX markup, or client state | Component and hook conventions, effect and state rules, and React-specific test shape |
+
+Say which paired skills applied and which did not. A skipped skill and a forgotten one look the
+same otherwise.
 
 ## Functions
 

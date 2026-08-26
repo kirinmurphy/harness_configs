@@ -73,9 +73,11 @@ panel renders:
 - **Commands** — skills that pair with a slash command, labelled by their `/command`.
   Toggle installs/removes the skill link.
 - **Code Conventions** — auto-loaded skills (no command). Same skill-link toggle.
-- **Chat-Time Output** — the inline chat-note behaviors (convention capture, impact
-  awareness, skill visibility), each a `rules` package merged into every managed harness. On by
-  default; toggling adds/removes the behavior's rules block.
+- **Chat-Time Output** — response shape (the shared formatting/closing-structure rules) plus the
+  inline chat-note behaviors (convention capture, impact awareness, skill visibility), each a
+  `rules` package merged into every managed harness. The three note behaviors `requires` response
+  shape, so enabling one auto-enables it. On by default; toggling adds/removes the behavior's rules
+  block.
 - **Permissions** — flat behavior and command buckets. Named behaviors and arbitrary commands can
   be set to `allow`, `ask`, `deny`, or reset to the manifest default. They render as one merged
   list split by authorship rather than by kind: entries the user customized appear first, each
@@ -116,6 +118,14 @@ and terminal flow share one implementation:
 
 Writes target the user's **live** config, not the repo template (`globals/`). The repo
 template is changed only by the install/render pipeline.
+
+When `roborepo config apply` or package-mode `roborepo update` runs from inside a repository with
+`docs/plans/plans-config.json`, the post-apply permissions refresh updates Codex's live profile with
+that repository family's concrete worktree root. With `"worktreeRoot": "~/.worktrees"` in
+`plans-config.json`, a normal checkout named `my-repo` renders `~/.worktrees/my-repo`; a nested
+worktree such as `~/.worktrees/my-repo/feature` renders the same family root. Codex profiles require
+concrete `workspace_roots`, so the Codex provider materializes the path instead of using a glob for
+every repository under `~/.worktrees`.
 
 ### Web endpoints
 
@@ -245,7 +255,30 @@ checkout in use and prompt otherwise.
 
 On Claude the family is read straight from git's own pointer files (`.git`, `commondir`,
 `.git/worktrees/*/gitdir`), costing ~15ms rather than a `git` subprocess. Codex expresses the write
-half through `sandbox_mode: workspace-write` and does not restrict reads at all.
+half through a `roborepo-workspace` permission profile, including this repo's derived worktree root
+from `docs/plans/plans-config.json`, and does not restrict reads at all.
+
+#### Codex worktree permissions coordinator
+
+Codex permission profiles accept only concrete `workspace_roots`; they do not support a dynamic
+"same repo name under my worktree parent" expression. Roborepo is therefore the coordinator that
+materializes those roots.
+
+The flow is:
+
+1. A repo carries `docs/plans/plans-config.json` with `"worktreeRoot": "~/.worktrees"`.
+2. `roborepo config apply`, package-mode `roborepo update`, or a permissions toggle renders live
+   permissions from the current working directory.
+3. The generic permission renderer passes provider context to each harness adapter.
+4. The Codex provider reads the current repo's plan config and contributes
+   `~/.worktrees/<repo-folder-name>` to `workspace_roots`.
+5. Claude and Gemini ignore that Codex-only context. Claude gets repository scoping from its
+   tool-call hook; Gemini cannot express a path predicate and keeps the documented skip.
+
+This keeps the provider seam intact: the platform owns the permission intent, the render
+orchestrator passes context, and each provider decides whether its native permission model can use
+that context. It also avoids granting all of `~/.worktrees`, which would let one repo's session
+write into another repo's worktree family.
 
 The repository boundary cannot be a path, because no rule syntax can express "wherever the session
 happens to be" — see [[agent-config-repo-scoped-write-permissions]] for why each anchor form fails.

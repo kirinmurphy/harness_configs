@@ -231,7 +231,14 @@ function packageConfigBase(id, description, category) {
 }
 
 function packageConfigForSkill(opts) {
-  const config = packageConfigBase(opts.name, opts.description, opts.kind === "skill-command" ? "skills-dev-lifecycle" : "code-conventions");
+  // "commands" was removed as a presentation category; scaffolding it produced a package the
+  // catalog validator rejects, so `skill new --kind=skill-command` failed at the slash-command
+  // render step. Command-shaped skills sit under the skill lifecycle category instead.
+  const config = packageConfigBase(
+    opts.name,
+    opts.description,
+    opts.kind === "skill-command" ? "skills-dev-lifecycle" : "code-conventions",
+  );
   const resource = {
     type: "skill",
     id: opts.name,

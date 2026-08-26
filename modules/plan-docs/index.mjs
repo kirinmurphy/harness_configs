@@ -8,6 +8,7 @@ import { finding, messagesOf } from "./findings.mjs";
 import { validateForLifecycle } from "./lifecycle-policy.mjs";
 import { buildRepairPrompt } from "./repair-prompt.mjs";
 import { classifyPlanId, isExternalBlocker } from "./plan-id.mjs";
+import { validatePlanNaming, readProjectNamespaces } from "./naming.mjs";
 import { renderMarkdown } from "../../scripts/cli/markdown-render.mjs";
 
 export const LIFECYCLES = new Set(["backlog", "active", "completed", "archived"]);
@@ -379,24 +380,38 @@ function walkPlans(dir, repoRoot, files, errors) {
 function readPlanRecord(repository, absolutePath) {
   const relativePath = relative(repository.root, absolutePath);
   const stat = fs.statSync(absolutePath);
+  // Naming findings depend on the repository's declared namespaces, not only on the plan file, so
+  // a cached record built under a different namespace set is stale even when the plan itself is
+  // untouched. Editing plans-config.json must re-validate every plan in the repository.
+  const namespaces = readProjectNamespaces(repository.root).namespaces;
+  const namespaceKey = namespaces.join(",");
   const cached = planRecordCache.get(absolutePath);
-  if (cached && cached.mtimeMs === stat.mtimeMs && cached.repositoryRoot === repository.root) {
+  if (
+    cached
+    && cached.mtimeMs === stat.mtimeMs
+    && cached.repositoryRoot === repository.root
+    && cached.namespaceKey === namespaceKey
+  ) {
     // Repository-level fields (truncated/errors) can change between scans even when the file
     // itself hasn't, so refresh those on the cached record instead of trusting them blindly.
     return { ...cached.record, repository };
   }
-  const record = buildPlanRecord(repository, absolutePath, relativePath, stat);
-  planRecordCache.set(absolutePath, { mtimeMs: stat.mtimeMs, repositoryRoot: repository.root, record });
+  const record = buildPlanRecord(repository, absolutePath, relativePath, stat, namespaces);
+  planRecordCache.set(absolutePath, { mtimeMs: stat.mtimeMs, repositoryRoot: repository.root, namespaceKey, record });
   return record;
 }
 
-function buildPlanRecord(repository, absolutePath, relativePath, stat) {
+function buildPlanRecord(repository, absolutePath, relativePath, stat, projectNamespaces = []) {
   const tooLarge = stat.size > MAX_DOC_BYTES;
   const markdown = tooLarge ? "" : fs.readFileSync(absolutePath, "utf8");
   const parsed = tooLarge ? emptyParsed("DOCUMENT_TOO_LARGE") : parsePlanMarkdown(markdown, { repository, relativePath });
   const lifecycle = lifecycleFromPath(relativePath);
   const git = gitFileInfo(repository.root, relativePath, parsed.frontmatter.reviewed_commit);
-  const validation = validateParsedPlan(parsed, { lifecycle });
+  const validation = validateParsedPlan(parsed, {
+    lifecycle,
+    filename: path.basename(relativePath),
+    projectNamespaces,
+  });
   const findings = [...parsed.findings, ...validation.findings];
   if (tooLarge) findings.push(finding("DOCUMENT_TOO_LARGE_TO_RENDER"));
   const warnings = messagesOf(findings);
@@ -422,6 +437,13 @@ function buildPlanRecord(repository, absolutePath, relativePath, stat) {
       gitLastChangedAt: git.lastChangedAt,
       gitStatus: git.status,
       taskCounts: parsed.taskCounts,
+      // Open task text, carried in the list snapshot for active plans only. The all-open-tasks
+      // dialog needs every active plan's remaining items at once; per-plan document fetches would
+      // be one round trip per card. Scoped to active because that is the only lifecycle the dialog
+      // covers, and shipping all 47 plans' tasks would roughly triple this field's cost (~68KB vs
+      // ~23KB measured) to serve a view that never reads the rest. Completed items are excluded —
+      // taskCounts already carries the totals the progress bar needs.
+      openTasks: lifecycle === "active" ? parsed.tasks.filter((task) => !task.done) : [],
       headings: parsed.headings,
       excerpt: excerpt(markdown),
       // `warnings` is the display-string projection of `findings`, derived here so the two can
@@ -611,8 +633,14 @@ function realpathOrStale(absolutePath) {
 function rebuildPlanRecordAt(repository, absolutePath) {
   const relativePath = relative(repository.root, absolutePath);
   const stat = fs.statSync(absolutePath);
-  const record = buildPlanRecord(repository, absolutePath, relativePath, stat);
-  planRecordCache.set(absolutePath, { mtimeMs: stat.mtimeMs, repositoryRoot: repository.root, record });
+  const namespaces = readProjectNamespaces(repository.root).namespaces;
+  const record = buildPlanRecord(repository, absolutePath, relativePath, stat, namespaces);
+  planRecordCache.set(absolutePath, {
+    mtimeMs: stat.mtimeMs,
+    repositoryRoot: repository.root,
+    namespaceKey: namespaces.join(","),
+    record,
+  });
   return publicPlan(record);
 }
 
@@ -696,7 +724,16 @@ export function movePlanLifecycle(snapshot, { id, key, lifecycle, expectedLifecy
     const markdown = fs.readFileSync(realFile, "utf8");
     const publicRepository = stripRepositoryRoot(record.repository);
     const parsed = parsePlanMarkdown(markdown, { repository: publicRepository, relativePath: record.plan.relativePath });
-    const destinationValidation = validateParsedPlan(parsed, { lifecycle });
+    // The filename travels with the file, so naming is evaluated against the destination
+    // lifecycle: a name that is only reported in backlog and active stops being reported the
+    // moment the same file lands in completed or archived.
+    const destinationValidation = validateParsedPlan(parsed, {
+      lifecycle,
+      // The same `filename` the destination path was built from, taken from disk rather than the
+      // snapshot record, so validation cannot grade a name different from the one the move creates.
+      filename,
+      projectNamespaces: readProjectNamespaces(record.repository.root).namespaces,
+    });
     if (!destinationValidation.ready) {
       throw domainError("LIFECYCLE_REQUIREMENTS", `Couldn't move "${record.plan.title}" to ${capitalize(lifecycle)}.`, {
         resolution: "Complete or remove the listed items, then try again — or move anyway.",
@@ -767,9 +804,15 @@ function normalizeFrontmatter(frontmatter, findings) {
 // Thin adapter over the destination-policy module — the rules themselves live in
 // lifecycle-policy.mjs, which is pure and filesystem-free so the same evaluation runs from the
 // scanner, from movePlanLifecycle, and from tests.
-function validateParsedPlan(parsed, { lifecycle }) {
-  const { ready, findings } = validateForLifecycle(parsed, { lifecycle, priorities: PRIORITIES, normalizeHeading });
-  return { ready, findings, warnings: messagesOf(findings) };
+//
+// Naming is validated alongside it rather than inside it: lifecycle-policy reads a parsed document
+// and knows nothing about where that document sits on disk, while naming needs the filename and the
+// repository's declared namespaces. Both produce the same finding shape, so the two lists merge and
+// every downstream consumer (portal, API, repair prompt) sees one result.
+function validateParsedPlan(parsed, { lifecycle, filename = "", projectNamespaces = [] }) {
+  const { findings } = validateForLifecycle(parsed, { lifecycle, priorities: PRIORITIES, normalizeHeading });
+  const all = [...findings, ...validatePlanNaming({ filename, lifecycle, projectNamespaces })];
+  return { ready: all.length === 0, findings: all, warnings: messagesOf(all) };
 }
 
 // Cross-plan problems, which can only be evaluated once every plan in the snapshot is known —

@@ -88,13 +88,21 @@ The three harnesses express scope differently, and only one of them consumes the
 | Harness | Scope mechanism | Consumes `paths` |
 | --- | --- | --- |
 | Claude | `Write(//path/**)` rules in `settings.json` | Yes |
-| Codex | `sandbox_mode` derived from the `write-files` gate | No |
+| Codex | `roborepo-workspace` permission profile derived from the `write-files` gate | Uses profile-defined workspace roots |
 | Gemini | Tool-name matching in the Policy Engine | No |
 
-`codexSandboxMode()` in `scripts/harnesses/permissions-render.mjs` maps the gate to
-`workspace-write` or `read-only` — a single coarse mode with no path list. `policy-toml.mjs` skips
-`tools-scoped` behaviors entirely, on the stated grounds that rendering a path-scoped allow as an
-unscoped allow would be strictly more permissive than intended.
+`codexSandboxMode()` in `scripts/harnesses/permissions-render.mjs` maps the gate to either a
+write-capable permission profile or `:read-only`. The write profile extends `:workspace`, includes
+the runtime workspace root that Codex supplies, and adds profile-defined roots loaded from
+`docs/plans/plans-config.json` so the configured `worktreeRoot` covers this repo's managed
+worktrees at `<worktreeRoot>/<repo-name>`, without granting every repo under the worktree parent.
+Live permission rewrites derive the repo name from the current repo's own plan-config location, so
+package-mode `roborepo update` and `roborepo config apply` can materialize
+`~/.worktrees/<current-repo-name>` for any repo that carries that config. Codex still receives
+concrete `workspace_roots`; the dynamic part is the Codex provider's render context, not Codex's
+profile syntax.
+`policy-toml.mjs` skips `tools-scoped` behaviors entirely, on the stated grounds that rendering a
+path-scoped allow as an unscoped allow would be strictly more permissive than intended.
 
 ## Current state
 
@@ -138,9 +146,10 @@ never written as a path.
 Per harness:
 
 - **Claude** — implement the hook; remove `~/projects/**` from `write-scope`.
-- **Codex** — `sandbox_mode: workspace-write` already scopes writes to the workspace. Verify what
-  Codex treats as the workspace root and whether that matches the repository boundary; if it does,
-  no hook is needed and the existing mode is the correct expression.
+- **Codex** — `default_permissions: roborepo-workspace` scopes writes to the runtime workspace root
+  plus this repo's profile-defined worktree root from `docs/plans/plans-config.json`. No hook is
+  needed for the common worktree path because `<worktreeRoot>/<repo-name>` covers the repo's
+  managed worktrees.
 - **Gemini** — the Policy Engine has no path predicate. Decide whether the gate alone is acceptable
   or the harness is documented as unable to express repository scoping.
 
@@ -188,6 +197,27 @@ for it at all.
       `repo-write-boundary` (`kind: "repo-scope"`, bucket `ask`) states the intent;
       `scripts/harnesses/permissions-render.mjs` skips the kind rather than flattening it into a
       path glob.
+
+### What the post-merge review changed here
+
+Two things moved under this plan without closing it (see [[infra-post-merge-integration-review]]).
+
+The tracked artifact no longer contains a *contributor's* home. `83c18ce` replaced it with a
+placeholder (`/Users/you`), which fixed the fake-`HOME` test drift but created a worse bug: that
+artifact is also the install baseline, and the root-config merge is additive, so every new install
+inherited a rule naming a directory that does not exist on that machine — permanently. Commit
+`204a0dc` stops that by dropping foreign-home rules during the merge.
+
+So the goal "no contributor's absolute home path in any tracked file" is now met only in the narrow
+sense that the committed string is a fake name rather than a real one. The underlying defect this
+plan targets is unchanged: `~/projects/**` is still in both scopes, still expands at render time,
+and the tracked artifact still carries an expanded absolute path. Removing the path from the
+manifest — this plan's actual fix — would make both the placeholder and the merge filter unnecessary.
+
+`write-scope` also now renders `Edit` rules only. Claude matches path-scoped rules under
+`Edit(path)`, which covers every file-editing tool including `Write`; the `Write(path)` rules this
+plan's "Current state" section quotes were inert and are gone. The gate/scope table above is still
+accurate; only the rendered verb changed.
 
 ### Measured latency
 
@@ -261,17 +291,16 @@ continue to the common directory.
 
 ## Implementation plan
 
-- [ ] Verify what Codex treats as the workspace root under `sandbox_mode: workspace-write`, and
-      whether it already matches the intended boundary. Requires a real Codex session; the current
-      mapping in `codexSandboxMode()` is documented as the intent's expression but unverified
-      against actual sandbox behavior.
+- [x] Move Codex from legacy `sandbox_mode: workspace-write` output to a `roborepo-workspace`
+      permission profile, and load profile-defined workspace roots from `docs/plans/plans-config.json`
+      so the configured `worktreeRoot` covers this repo's managed worktrees.
 - [ ] Decide whether Codex should enforce the **read** family at all. It ships a PreToolUse hook
       (`globals/system/hooks/codex/permission-check.mjs`) whose header records that Codex's
       `PreToolUsePermissionDecisionWire` is genuinely 3-valued — verified against the shipped 0.140
       binary — so a hook *could* express the boundary. Two gaps stop it today: that hook handles
       shell commands only (it exits unless `tool_name` is `exec_command`/`shell`/`local_shell`/
-      `bash`), and `sandbox_mode` bounds writes without restricting reads at all. Reaching read
-      parity means knowing Codex's file-read tool name and whether PreToolUse fires for it.
+      `bash`), and the workspace profile bounds writes without restricting reads at all. Reaching
+      read parity means knowing Codex's file-read tool name and whether PreToolUse fires for it.
 - [x] Give `scripts/harnesses/gemini/policy-toml.mjs` an explicit `repo-scope` case.
       Skipped deliberately and commented in the style of the neighbouring `tools-scoped` skip: the
       Policy Engine has neither a path predicate nor a hook surface, so there is nothing to render.

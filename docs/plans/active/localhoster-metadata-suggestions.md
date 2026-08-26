@@ -1,7 +1,7 @@
 ---
 id: localhoster-metadata-suggestions
 priority: high
-next_action: Implement safe same-origin metadata discovery and quick-link suggestions
+next_action: "STALE ON MAIN — do not plan from this copy. The work is implemented on branch `localhoster-metadata-suggestions` (41 commits ahead as of 2026-08-24); that branch's copy is authoritative and shows one remaining item (browser-verify the UI). This copy refreshes when the branch merges."
 blocked_by: []
 depends_on:
   - localhoster-final
@@ -13,6 +13,17 @@ reviewed_commit:
 ---
 
 # Localhoster Metadata Suggestions
+
+> **⚠️ This copy is stale. Do not plan or work from it.**
+>
+> The implementation lives on branch `localhoster-metadata-suggestions`, 41 commits ahead of `main`
+> as of 2026-08-24. That branch's copy of this file is authoritative: it records the work as done
+> and lists **one** remaining item (browser-verify the UI — no Chrome automation has been connected
+> in any session this plan ran). The checklist below still shows those items open because `main`
+> has not received the merge.
+>
+> Refresh happens by merging the branch, not by editing this file. Copying the branch's plan text
+> here alone would make `main` claim work its code does not contain.
 
 ## Summary
 

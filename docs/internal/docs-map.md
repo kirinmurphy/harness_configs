@@ -42,8 +42,9 @@ doc of record first; supporting docs should add context, not redefine the behavi
 | Plans portal and workflows | [Plans Portal Technical Reference](../user/reference/plans-portal.md) | [Plan Docs Walkthrough](../user/guides/plan/lifecycle/plan-docs.md) |
 | Telemetry and the telemetry portal | [Telemetry Service Reference](../user/reference/telemetry.md) | [Telemetry Walkthrough](../user/guides/telemetry.md) |
 | Inventory manifests | [Inventory Manifest README](../../manifests/inventory/README.md) | [Config-Code Separation](../architecture/config-code-separation.md) |
-| NPM release workflow | [NPM Release Workflow](npm-release.md) | — |
-| Docker-backed test sandboxes | [Docker Test Sandboxes](docker-test-sandboxes.md) | [NPM Release Workflow](npm-release.md) |
+| NPM release workflow | [NPM Release Workflow](npm-release.md) | [Testing RoboRepo](testing.md) |
+| Maintainer test matrix | [Testing RoboRepo](testing.md) | [NPM Release Workflow](npm-release.md) |
+| Docker-backed test sandboxes | [Docker Test Sandboxes](docker-test-sandboxes.md) | [Testing RoboRepo](testing.md) |
 
 ## Maintenance Notes
 

@@ -533,13 +533,9 @@ main {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 20px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--dim);
 }
 .config-empty strong {
-  color: var(--fg);
+  color: var(--ink);
 }
 .config-grid-head,
 .config-grid-row {

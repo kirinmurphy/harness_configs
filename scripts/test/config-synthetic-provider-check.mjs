@@ -38,7 +38,7 @@ fs.writeFileSync(
     displayName: "Acme Coder",
     commandName: "acme",
     adapter: "acme",
-    detection: { minimumConfidence: "possible" },
+    detection: { executables: ["acme"], minimumConfidence: "possible" },
     paths: {
       home: { path: "~/.acme", kind: "directory" },
       rootConfig: { path: "~/.acme/settings.json", kind: "file" },
@@ -120,6 +120,16 @@ fs.writeFileSync(
   }, null, 2),
 );
 
+// Live-discovery evidence for claude must come from the fixture, never from the developer's real
+// home. Discovery expands manifest-declared home-relative candidates against os.homedir(), so the
+// probe below runs with HOME pointed at this fabricated tree: ~/.claude exists (a "home" evidence
+// kind) but no `claude` executable is on the probe's PATH, which normalizeConfidence scores as
+// "possible". That is exactly the live-present/stale-absent case assertion (5) is about, and it is
+// now stated by the fixture rather than inherited from the machine -- on a CI runner with no
+// ~/.claude the old inherited-HOME version dropped claude from the cohort and failed.
+const probeHome = path.join(tmp, "home");
+fs.mkdirSync(path.join(probeHome, ".claude"), { recursive: true });
+
 const probeScript = path.join(tmp, "probe.mjs");
 fs.writeFileSync(
   probeScript,
@@ -162,10 +172,11 @@ fs.writeFileSync(
     "  process.exit(1);",
     "}",
     "",
-    "// (5) The machine cohort is derived from persisted discovery state, so it must pick up a",
-    "// synthetic provider with no source edit, must exclude providers discovery calls absent, and",
-    "// must keep an explicitly-disabled-but-present provider visible (it IS on the machine, it is",
-    "// just not managed). This is the distinction that makes the Agents view truthful.",
+    "// (5) The machine cohort combines persisted discovery state with bounded live discovery. It",
+    "// picks up a synthetic provider with no source edit, keeps an explicitly-disabled-but-present",
+    "// provider visible (it IS on the machine, it is just not managed), and also includes a provider",
+    "// whose persisted state says absent when live discovery reaches its manifest minimum.",
+    "// This is the distinction that makes the Agents view truthful even before refresh can write.",
     "const machine = configSnapshotMachineHarnesses();",
     "const ids = machine.map((h) => h.id).sort().join(',');",
     "if (ids !== 'acme,codex') {",
@@ -182,6 +193,13 @@ fs.writeFileSync(
     "  console.error('FAIL user-disabled provider must stay visible: ' + JSON.stringify(codexMachine));",
     "  process.exit(1);",
     "}",
+    "// Claude's manifest requires probable confidence, so a home-only possible signal is evidence,",
+    "// but it is below the machine-cohort detection threshold.",
+    "const claudeMachine = machine.find((h) => h.id === 'claude');",
+    "if (claudeMachine) {",
+    "  console.error('FAIL below-threshold claude must not appear: ' + JSON.stringify(claudeMachine));",
+    "  process.exit(1);",
+    "}",
     "// The registered catalog is unchanged by any of this -- config metadata still knows all three.",
     "if (configSnapshotHarnesses().length !== 3) {",
     "  console.error('FAIL registered catalog must retain every provider');",
@@ -194,10 +212,74 @@ fs.writeFileSync(
 
 const result = spawnSync(process.execPath, [probeScript], {
   encoding: "utf8",
-  env: { ...process.env, ROBOREPO_STATE_DIR: stateDir },
+  env: {
+    ...process.env,
+    HOME: probeHome,
+    USERPROFILE: probeHome,
+    PATH: ["/usr/bin", "/bin"].join(path.delimiter),
+    ROBOREPO_STATE_DIR: stateDir,
+  },
 });
 assert.equal(result.status, 0, `synthetic third-provider probe failed:\n${result.stdout}\n${result.stderr}`);
 assert.match(result.stdout, /ok/);
+
+// Empty/stale state must not make the Agents page claim "no harnesses detected" when bounded live
+// discovery can see a provider. This catches the exact regression where `/agents` depended only on
+// ~/.roborepo/harnesses/state.json and ignored executable evidence until `roborepo harness refresh`
+// was able to write machine state.
+fs.writeFileSync(
+  path.join(stateDir, "harnesses", "state.json"),
+  JSON.stringify({
+    schemaVersion: 1,
+    lastDiscoveredAt: "2026-01-01T00:00:00.000Z",
+    providers: {
+      acme: { enabled: false, selectionSource: "discovery", confidence: "absent", evidence: [] },
+    },
+  }, null, 2),
+);
+const toolBin = path.join(tmp, "tools");
+fs.mkdirSync(toolBin, { recursive: true });
+fs.writeFileSync(path.join(toolBin, "acme"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+
+// Deliberately an EMPTY home: this probe's whole point is that a fabricated `acme` executable on
+// PATH is enough on its own, so the cohort here must be exactly [acme] with no claude/codex leaking
+// in from the developer's real home directory.
+const liveProbeHome = path.join(tmp, "home-empty");
+fs.mkdirSync(liveProbeHome, { recursive: true });
+
+const liveProbeScript = path.join(tmp, "live-probe.mjs");
+fs.writeFileSync(
+  liveProbeScript,
+  [
+    `import { configSnapshotMachineHarnesses } from ${JSON.stringify(path.join(appRoot, "scripts", "cli", "config.mjs"))};`,
+    "",
+    "const machine = configSnapshotMachineHarnesses();",
+    "const acme = machine.find((h) => h.id === 'acme');",
+    "if (!acme || acme.enabled !== true || acme.confidence !== 'probable') {",
+    "  console.error('FAIL live-discovered acme: ' + JSON.stringify(machine));",
+    "  process.exit(1);",
+    "}",
+    "// Empty home + only the fabricated acme executable on PATH: nothing else may appear, which is",
+    "// what proves the cohort came from this fixture's evidence and not the ambient machine.",
+    "if (machine.length !== 1) {",
+    "  console.error('FAIL cohort must contain only fixture-backed providers: ' + JSON.stringify(machine));",
+    "  process.exit(1);",
+    "}",
+    "console.log('ok');",
+  ].join("\n"),
+);
+const liveFallbackResult = spawnSync(process.execPath, [liveProbeScript], {
+  encoding: "utf8",
+  env: {
+    ...process.env,
+    HOME: liveProbeHome,
+    USERPROFILE: liveProbeHome,
+    PATH: [toolBin, "/usr/bin", "/bin"].join(path.delimiter),
+    ROBOREPO_STATE_DIR: stateDir,
+  },
+});
+assert.equal(liveFallbackResult.status, 0, `live discovery fallback probe failed:\n${liveFallbackResult.stdout}\n${liveFallbackResult.stderr}`);
+assert.match(liveFallbackResult.stdout, /ok/);
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log("config synthetic third-provider checks passed");

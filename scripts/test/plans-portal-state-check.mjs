@@ -11,6 +11,12 @@ import {
   lifecycleFindingGroups,
   canRepairLifecycleError,
   taskProgressDisplay,
+  completionRatio,
+  isNotStarted,
+  activeCompletionSort,
+  completionBadgeColor,
+  sortForLifecycle,
+  planSort,
   FILTER_DEFAULTS,
 } from "../../portal/plans/state.js";
 
@@ -43,6 +49,13 @@ testEveryDisplayedFindingAppearsInTheRepairPrompt();
 testCanRepairRequiresANonEmptyPrompt();
 testLifecycleOptionsAreNeverDisabled();
 testTaskProgressDisplayByLifecycleAndProgress();
+testCompletionRatioIsNullWithoutTasks();
+testNotStartedCoversNoTasksAndNoneComplete();
+testActiveSortOrdersMostCompleteFirst();
+testActiveSortSinksUnstartedAndUntrackedToTheBottom();
+testActiveSortFallsBackToPlanSortOnTies();
+testSortForLifecycleOnlyChangesActive();
+testCompletionBadgeRampEndpointsAndBands();
 testCompleteStateSuppressesTheNextAction();
 console.log("ok: plans portal state (mutation orchestration helpers) checks passed");
 
@@ -330,4 +343,87 @@ function testLifecycleOptionsAreNeverDisabled() {
   const dropdown = source.slice(source.indexOf("renderLifecycleDropdown"));
   assert.ok(!/\bdisabled\b/.test(dropdown.slice(0, dropdown.indexOf("\n  }"))),
     "the lifecycle dropdown must never disable itself from snapshot warnings — only a submitted move may be rejected");
+}
+
+// --- Active-tab completion ordering ---------------------------------------------------------
+// The Active tab sorts by how finished a plan is (see state.js's activeCompletionSort). These pin
+// the two distinctions that are easy to collapse by accident: null (no checklist) is not 0%, and
+// the completion order must not leak into any other lifecycle.
+
+// A function declaration, not a const arrow: the test calls at the top of this file run before
+// this line is reached, and a const would still be in its temporal dead zone when they do.
+function counts(complete, total) {
+  return { total, complete, remaining: total - complete };
+}
+
+function testCompletionRatioIsNullWithoutTasks() {
+  assert.equal(completionRatio(record({ taskCounts: counts(0, 0) }).plan), null,
+    "a plan with no checkboxes has no ratio — 0/0 is untracked, not zero percent");
+  assert.equal(completionRatio(record({ taskCounts: counts(0, 10) }).plan), 0);
+  assert.equal(completionRatio(record({ taskCounts: counts(5, 10) }).plan), 0.5);
+  assert.equal(completionRatio(record({ taskCounts: counts(9, 9) }).plan), 1);
+}
+
+function testNotStartedCoversNoTasksAndNoneComplete() {
+  assert.equal(isNotStarted(record({ taskCounts: counts(0, 0) }).plan), true, "no checklist reads as not started");
+  assert.equal(isNotStarted(record({ taskCounts: counts(0, 10) }).plan), true, "zero of ten is not started");
+  assert.equal(isNotStarted(record({ taskCounts: counts(1, 10) }).plan), false, "one done means started");
+  assert.equal(isNotStarted(record({ taskCounts: counts(10, 10) }).plan), false);
+}
+
+function order(records) {
+  return [...records].sort(activeCompletionSort).map((r) => r.plan.id);
+}
+
+function testActiveSortOrdersMostCompleteFirst() {
+  const half = record({ id: "half", lifecycle: "active", taskCounts: counts(5, 10) });
+  const most = record({ id: "most", lifecycle: "active", taskCounts: counts(9, 10) });
+  const some = record({ id: "some", lifecycle: "active", taskCounts: counts(2, 10) });
+  assert.deepEqual(order([half, some, most]), ["most", "half", "some"]);
+}
+
+function testActiveSortSinksUnstartedAndUntrackedToTheBottom() {
+  const started = record({ id: "started", lifecycle: "active", taskCounts: counts(1, 10) });
+  const unstarted = record({ id: "unstarted", lifecycle: "active", taskCounts: counts(0, 10) });
+  const untracked = record({ id: "untracked", lifecycle: "active", taskCounts: counts(0, 0) });
+  const sorted = order([untracked, unstarted, started]);
+  assert.equal(sorted[0], "started", "any progress outranks none");
+  // Untracked (null) must sort with 0%, never above it: an absent checklist is not achievement.
+  assert.ok(sorted.indexOf("untracked") > 0, "a plan with no checklist must not lead the list");
+}
+
+function testActiveSortFallsBackToPlanSortOnTies() {
+  const a = record({ id: "aaa", lifecycle: "active", priority: "low", taskCounts: counts(5, 10) });
+  const b = record({ id: "bbb", lifecycle: "active", priority: "high", taskCounts: counts(5, 10) });
+  assert.deepEqual(order([a, b]), ["bbb", "aaa"],
+    "equal completion must defer to planSort, which ranks high priority first");
+}
+
+function testSortForLifecycleOnlyChangesActive() {
+  assert.equal(sortForLifecycle("active"), activeCompletionSort);
+  for (const lifecycle of ["backlog", "completed", "archived", "unclassified"]) {
+    assert.equal(sortForLifecycle(lifecycle), planSort,
+      `${lifecycle} must keep the shared sort — completion ordering is Active-only`);
+  }
+}
+
+function testCompletionBadgeRampEndpointsAndBands() {
+  const gray = completionBadgeColor(0);
+  const green = completionBadgeColor(1);
+  assert.equal(completionBadgeColor(null), gray, "no checklist must read as the neutral 0% badge");
+  assert.equal(completionBadgeColor(0.9), green, "90% is the first stop that looks finished");
+  assert.equal(completionBadgeColor(0.95), green);
+  assert.notEqual(completionBadgeColor(0.85), green,
+    "85% must stay distinguishable from 100% — flooring into bands is what prevents that collision");
+  assert.notEqual(completionBadgeColor(0.5), gray, "a half-done plan must not look untouched");
+  assert.match(green, /^rgb\(\d+,\d+,\d+\)$/, "the badge color must be a plain rgb() string");
+
+  // Monotonic: every 10% band must be at least as green as the one below it, never backwards.
+  let previous = -1;
+  for (let step = 0; step <= 10; step += 1) {
+    const [r, g] = completionBadgeColor(step / 10).match(/\d+/g).map(Number);
+    const greenness = g - r;
+    assert.ok(greenness >= previous, `band ${step * 10}% must not regress toward gray`);
+    previous = greenness;
+  }
 }

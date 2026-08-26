@@ -98,7 +98,7 @@ export function renderGeminiPolicyRules(providerManifest, behaviorManifest, over
     if (b.kind === "tools-scoped") continue;
     // Skipped deliberately: "repo-scope" states a boundary that is the repository the session is
     // working in, which no static rule can express — Claude enforces it with a PreToolUse hook,
-    // Codex with sandbox_mode. Gemini's Policy Engine has neither a path predicate nor a hook
+    // Codex with a permission profile. Gemini's Policy Engine has neither a path predicate nor a hook
     // surface to decide it at tool-call time, so there is nothing to render. Rendering the
     // governing tools-gate everywhere (above) remains the correct degradation, and Gemini is
     // deprecated here, so no parity work is planned.

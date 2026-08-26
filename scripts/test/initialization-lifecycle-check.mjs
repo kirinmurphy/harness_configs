@@ -33,6 +33,7 @@ const {
   WORKFLOW_VERSION,
 } = await import("../cli/initialization-state.mjs");
 const { initializationStatePath } = await import("../cli/state-paths.mjs");
+const { browserRedirectMessage, extractPortalUrl } = await import("../cli/initialize.mjs");
 
 try {
   testMissingState();
@@ -46,6 +47,8 @@ try {
   testExplicitCommandsBypassInit();
   testAliasReachesSameImplementation();
   testNewerRecordIsNeverOverwritten();
+  testBrowserRedirectMessage();
+  testInitDryRunShowsConfigurationChoice();
   console.log("initialization lifecycle checks passed");
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -211,6 +214,22 @@ function testNewerRecordIsNeverOverwritten() {
   resetState();
 }
 
+function testBrowserRedirectMessage() {
+  const url = "http://127.0.0.1:9876";
+  const message = browserRedirectMessage(url);
+  assert.match(message, /Welcome to roborepo/, "handoff screen must introduce roborepo");
+  assert.match(message, /admin dashboard/i, "handoff screen must describe the browser dashboard");
+  assert.match(message, /browser window/i, "handoff screen must explain the redirect");
+  assert.match(message, new RegExp(url.replaceAll(".", "\\.")), "handoff screen must include the portal URL");
+  assert.match(message, /Explore the CLI at `roborepo`/, "handoff screen must point at the CLI");
+
+  assert.equal(
+    extractPortalUrl("roborepo portal: http://127.0.0.1:4319  (detached)"),
+    "http://127.0.0.1:4319",
+    "init must reuse the actual portal URL reported by roborepo web",
+  );
+}
+
 // --- `roborepo library` and `roborepo package manage` must reach one implementation. Asserted
 // through the real CLI in a sandboxed HOME so this covers dispatch, not just catalog shape. ---
 function testAliasReachesSameImplementation() {
@@ -222,4 +241,13 @@ function testAliasReachesSameImplementation() {
   assert.equal(library.status, 0, `library --help failed:\n${library.stderr}`);
   assert.equal(manage.status, 0, `package manage --help failed:\n${manage.stderr}`);
   assert.match(library.stdout, /packages/i, "library help should describe the package workflow");
+}
+
+function testInitDryRunShowsConfigurationChoice() {
+  resetState();
+  const env = { ...process.env, HOME: tmp, ROBOREPO_STATE_DIR: stateDir, ROBOREPO_PRESETS_ONBOARD: "skip" };
+  const result = spawnSync(process.execPath, [cli, "init", "--dry-run"], { cwd: repoRoot, env, encoding: "utf8", input: "" });
+  assert.equal(result.status, 0, `init --dry-run failed:\n${result.stdout}${result.stderr}`);
+  assert.match(result.stdout, /open browser setup/i, "init must make browser setup the first-run entrypoint");
+  assert.match(result.stdout, /CLI fallback/i, "init must still expose the terminal fallback");
 }

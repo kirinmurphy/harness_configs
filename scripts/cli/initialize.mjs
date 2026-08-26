@@ -14,7 +14,11 @@
 import { listHarnessProviders } from "../harnesses/registry.mjs";
 import { discoverHarnessProviders } from "../harnesses/discovery.mjs";
 import { readHarnessState, writeHarnessState, applyDiscoveryToState } from "../harnesses/state.mjs";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { repoRoot } from "./paths.mjs";
 import { presetsOnboard } from "./presets.mjs";
+import { confirmYesNo, makePrompter } from "./skill-lib.mjs";
 import { setupCommand } from "./workspace.mjs";
 import {
   beginInitialization,
@@ -23,17 +27,21 @@ import {
   readFutureInitializationState,
 } from "./initialization-state.mjs";
 
+const DEFAULT_PORTAL_URL = "http://127.0.0.1:4317";
+const LOCAL_PORTAL_URL_RE = /http:\/\/127\.0\.0\.1:\d+/;
+
 // Refresh discovery and return the machine cohort rather than printing the provider table.
 // harnessRefresh() writes state and then dumps a tab-separated row per provider, which is the
 // right output for `roborepo harness refresh` and the wrong output mid-wizard, so init shares the
 // state-writing path and formats its own one-line summary.
 function refreshAndSummarizeHarnesses() {
-  const next = applyDiscoveryToState(readHarnessState(), discoverHarnessProviders(listHarnessProviders()));
+  const results = discoverHarnessProviders(listHarnessProviders());
+  const next = applyDiscoveryToState(readHarnessState(), results);
   writeHarnessState(next);
 
-  const detected = Object.entries(next.providers)
-    .filter(([, entry]) => entry.confidence !== "absent")
-    .map(([id]) => id);
+  const detected = results
+    .filter((entry) => entry.status === "detected")
+    .map((entry) => entry.providerId);
 
   return { state: next, detected };
 }
@@ -57,6 +65,88 @@ function printNextActions() {
   console.log("  roborepo library   browse and manage packages");
   console.log("  roborepo web       open the portal in a browser");
   console.log("  roborepo doctor    check installation health");
+}
+
+function printWelcome() {
+  console.log("Welcome to RoboRepo.");
+  console.log("Opening the browser setup.");
+  console.log("");
+}
+
+export function extractPortalUrl(output) {
+  return output.match(LOCAL_PORTAL_URL_RE)?.[0] ?? null;
+}
+
+export function browserRedirectMessage(url, { bold = false } = {}) {
+  const heading = bold ? "\x1b[1mWelcome to roborepo\x1b[0m" : "Welcome to roborepo";
+  return [
+    "------------------------------------------------------",
+    heading,
+    "The admin dashboard for your dev environment",
+    "------------------------------------------------------",
+    "",
+    "You are being redirected to a browser window to continue your setup.",
+    "",
+    `If the browser window did not open, go to \`${url}\``,
+    "",
+    "-------------------------------",
+    "",
+    "Explore the CLI at `roborepo` for further functionality and agent commands.",
+    "",
+  ].join("\n");
+}
+
+function clearInteractiveScreen() {
+  if (process.stdout.isTTY) process.stdout.write("\x1b[H\x1b[J");
+}
+
+async function offerCliMenuAfterBrowserSetup(url) {
+  if (!(process.stdin.isTTY && process.stdout.isTTY)) return;
+
+  clearInteractiveScreen();
+  console.log(browserRedirectMessage(url, { bold: true }));
+
+  const prompter = makePrompter();
+  try {
+    const loadCli = await confirmYesNo(prompter, "Would you like to load the CLI now?", false);
+    if (!loadCli) return;
+  } finally {
+    prompter.close();
+  }
+
+  spawnSync(process.execPath, [path.join(repoRoot, "scripts", "cli", "main.mjs")], { stdio: "inherit" });
+}
+
+async function runFirstRunConfiguration({ dryRun = false } = {}) {
+  if (dryRun) {
+    console.log("  - open browser setup, with CLI fallback for non-interactive shells");
+    return null;
+  }
+
+  if (!(process.stdin.isTTY && process.stdout.isTTY)) {
+    await presetsOnboard([]);
+    return { mode: "cli" };
+  }
+
+  printWelcome();
+  const result = spawnSync(
+    process.execPath,
+    [path.join(repoRoot, "scripts", "cli", "main.mjs"), "web", "--detach"],
+    { encoding: "utf8" },
+  );
+  if (result.status === 0) {
+    return {
+      mode: "browser",
+      url: extractPortalUrl(`${result.stdout ?? ""}\n${result.stderr ?? ""}`) ?? DEFAULT_PORTAL_URL,
+    };
+  }
+
+  console.log("");
+  console.log("Browser setup did not start; continuing in the CLI.");
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  await presetsOnboard([]);
+  return { mode: "cli" };
 }
 
 // Re-running a finished init must not replay the wizard: that would re-prompt for package
@@ -104,8 +194,7 @@ export async function initCommand(args = []) {
     console.log("would initialize RoboRepo:");
     console.log("  - create workspace and state directories");
     console.log("  - refresh harness discovery");
-    console.log("  - open the Package Library to choose functionality");
-    console.log("  - apply the resulting configuration");
+    await runFirstRunConfiguration({ dryRun: true });
     console.log(`  - mark initialization complete (currently: ${phase})`);
     return;
   }
@@ -123,12 +212,13 @@ export async function initCommand(args = []) {
   for (const line of describeHarnesses(detected)) console.log(line);
   console.log("");
 
-  // presetsOnboard owns both the interactive Package Library wizard and the non-interactive
-  // apply-the-defaults path, and applies the selection itself. init does not call config apply
-  // afterward: that would re-run the same update script a second time for no benefit.
-  await presetsOnboard([]);
+  const firstRunConfiguration = await runFirstRunConfiguration();
 
   completeInitialization();
+
+  if (firstRunConfiguration?.mode === "browser") {
+    await offerCliMenuAfterBrowserSetup(firstRunConfiguration.url);
+  }
 
   console.log("");
   console.log("RoboRepo is initialized.");

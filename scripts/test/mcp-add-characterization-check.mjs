@@ -16,24 +16,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 // recordMcpServer (mcp.mjs) writes to MCP_SERVERS_PATH (dev-checkout mode) or
 // workspaceMcpServersPath (package mode) -- MCP_SERVERS_PATH resolves under ROBOREPO_APP_ROOT, so
 // without a fake app root a real (non-dry-run) `mcp add` run would record into THIS repo's
 // tracked manifests/inventory/mcp-servers.json. Every test below must run against an isolated
 // copied app root, never the real repoRoot.
-function makeAppRoot() {
-  const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-mcp-add-char-app-"));
-  fs.mkdirSync(path.join(appRoot, ".git"), { recursive: true });
-  fs.cpSync(path.resolve("manifests"), path.join(appRoot, "manifests"), { recursive: true });
-  fs.cpSync(path.resolve("globals"), path.join(appRoot, "globals"), { recursive: true });
-  fs.cpSync(path.resolve("scripts"), path.join(appRoot, "scripts"), { recursive: true });
-  return appRoot;
-}
+import { makeAppRoot } from "./app-root-fixture.mjs";
 
+// Local makeHome on purpose: this check also seeds a ~/.gemini root config, which the shared
+// makeHome() does not.
 function makeHome() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-mcp-add-char-"));
   fs.mkdirSync(path.join(tmp, ".claude"), { recursive: true });

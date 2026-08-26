@@ -48,7 +48,9 @@ try {
   testNoninteractiveRefusesWithoutYes();
   testDryRunMutatesNothing();
   testRepeatedUninstallIsSafe();
+  testPackageModeRunsNpmUninstall();
   testCheckCleanToleratesPreservedWorkspace();
+  testNpmOwnedCliIsNotARemnant();
   testStateRootOwnershipInventory();
   testEveryDeclaredStatePathIsClassified();
   testUninstallWithConfirmedHarnesses();
@@ -89,6 +91,22 @@ function runCli(f, args, extra) {
   });
 }
 
+function npmStubEnv(f) {
+  const bin = path.join(f.home, "fake-bin");
+  const log = path.join(f.home, "npm-args.txt");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(
+    path.join(bin, "npm"),
+    `#!/bin/sh\nprintf '%s\\n' "$*" > "${log}"\n`,
+    { mode: 0o755 },
+  );
+  return {
+    PATH: `${bin}${path.delimiter}${process.env.PATH || ""}`,
+    ROBOREPO_MODE: "package",
+    npmLog: log,
+  };
+}
+
 function testNestedWorkspacePreservedByDefault() {
   const f = fixture();
   const result = runCli(f, ["uninstall", "--yes"]);
@@ -97,7 +115,7 @@ function testNestedWorkspacePreservedByDefault() {
   assert.ok(!fs.existsSync(path.join(f.stateDir, "telemetry")), "disposable state must be removed");
   assert.ok(!fs.existsSync(path.join(f.stateDir, "enabled-packages.json")), "package registry must be removed");
   assert.match(result.stdout, /preserved/i, "result must tell the user the workspace was kept");
-  assert.match(result.stdout, /npm uninstall -g codethings-roborepo-alpha/, "must print the npm removal command");
+  assert.match(result.stdout, /Development checkout application files were not removed/, "dev checkout must not claim npm removal");
 }
 
 function testRelocatedWorkspaceUntouched() {
@@ -167,6 +185,19 @@ function testRepeatedUninstallIsSafe() {
   assert.equal(fs.readFileSync(f.skill, "utf8"), "USER AUTHORED\n", "workspace still intact after two runs");
 }
 
+function testPackageModeRunsNpmUninstall() {
+  const f = fixture();
+  const stub = npmStubEnv(f);
+  const result = runCli(f, ["uninstall", "--yes"], stub);
+  assert.equal(result.status, 0, `package-mode uninstall failed:\n${result.stdout}\n${result.stderr}`);
+  assert.match(
+    fs.readFileSync(stub.npmLog, "utf8").trim(),
+    /^uninstall -g(?: --prefix .+)? codethings-roborepo-alpha$/,
+    "package-mode uninstall must remove the globally installed npm package",
+  );
+  assert.match(result.stdout, /npm package has been uninstalled/i, "result must report npm package removal");
+}
+
 // A preserved workspace legitimately keeps the state root alive, so --check-clean must not report
 // that as unclean; genuine leftovers still must fail it.
 function testCheckCleanToleratesPreservedWorkspace() {
@@ -179,6 +210,62 @@ function testCheckCleanToleratesPreservedWorkspace() {
   const dirty = spawnSync("bash", [uninstallSh, "--check-clean"], { cwd: repoRoot, env: env(f), encoding: "utf8" });
   assert.equal(dirty.status, 1, "genuine leftover state must still be reported");
   assert.match(dirty.stderr, /remnant/, "and must name what was left behind");
+}
+
+// An npm-owned CLI binary is not a remnant, and reporting it as one had teeth.
+//
+// npm's global bin is wherever the prefix points. On a machine configured with `prefix=~/.local`
+// (nvm and Homebrew both produce this), npm installs its binary to the SAME path the shell
+// installer uses — ~/.local/bin/roborepo. The remnant check listed that path unconditionally, so a
+// correct npm install always looked like leftover state.
+//
+// That nonzero exit was the gate on the npm handoff in uninstall.mjs, so the check suppressed the
+// `npm uninstall` that removes the binary: it survived, and because initialization.json lives in
+// the preserved state root, the surviving binary then re-ran onboarding. Observed on a real clean
+// machine before this was fixed.
+//
+// Ownership is read from the link target: npm's points into node_modules, the shell installer's
+// points into a checkout. A real shell-installer remnant at the same path must still be reported.
+function testNpmOwnedCliIsNotARemnant() {
+  if (process.platform === "win32") {
+    console.log("skip: npm-owned CLI remnant (POSIX symlink semantics)");
+    return;
+  }
+  // No `uninstall` run first, deliberately: that path removes the shell-installer link as part of
+  // its work, which would leave nothing for --check-clean to judge and make this pass either way.
+  // The unit under test is the remnant check's ownership call, so the fixture stages the link
+  // directly and invokes --check-clean on its own.
+  const f = fixture();
+  // fixture() seeds disposable state so the other cases have something to remove. It would be
+  // reported here and mask the assertion, so clear it: the CLI entry must be the only thing
+  // --check-clean has an opinion about.
+  fs.rmSync(path.join(f.stateDir, "telemetry"), { recursive: true, force: true });
+  fs.rmSync(path.join(f.stateDir, "enabled-packages.json"), { force: true });
+
+  const binDir = path.join(f.home, ".local/bin");
+  const cliEntry = path.join(binDir, "roborepo");
+  fs.mkdirSync(binDir, { recursive: true });
+
+  // npm-owned: target lives under node_modules. Expected mid-uninstall; npm removes it.
+  const npmPackage = path.join(f.home, "npm-prefix/lib/node_modules/codethings-roborepo-alpha/bin");
+  fs.mkdirSync(npmPackage, { recursive: true });
+  fs.writeFileSync(path.join(npmPackage, "roborepo"), "#!/bin/sh\n");
+  fs.symlinkSync(path.join(npmPackage, "roborepo"), cliEntry);
+
+  const npmOwned = spawnSync("bash", [uninstallSh, "--check-clean"], { cwd: repoRoot, env: env(f), encoding: "utf8" });
+  assert.equal(npmOwned.status, 0, `an npm-owned binary must not be reported as a remnant:\n${npmOwned.stderr}`);
+  assert.doesNotMatch(npmOwned.stderr, /remnant.*bin\/roborepo/, "and must not be named as one");
+
+  // Shell-installer-owned at the same path: still a genuine remnant.
+  fs.unlinkSync(cliEntry);
+  const checkout = path.join(f.home, "checkout/bin");
+  fs.mkdirSync(checkout, { recursive: true });
+  fs.writeFileSync(path.join(checkout, "roborepo"), "#!/bin/sh\n");
+  fs.symlinkSync(path.join(checkout, "roborepo"), cliEntry);
+
+  const installerOwned = spawnSync("bash", [uninstallSh, "--check-clean"], { cwd: repoRoot, env: env(f), encoding: "utf8" });
+  assert.equal(installerOwned.status, 1, "a shell-installer binary at the same path is still a remnant");
+  assert.match(installerOwned.stderr, /remnant/, "and must be named");
 }
 
 // --- Managed uninstall on a machine where the harnesses are actually installed.

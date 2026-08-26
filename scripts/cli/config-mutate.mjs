@@ -5,7 +5,12 @@ import { repoRoot } from "./paths.mjs";
 import { enablePackage, disablePackage, findPackage } from "./packages.mjs";
 import { loadPackageCatalog, unavailablePackageMessage } from "./package-catalog.mjs";
 import { listSourceSkills } from "./skill-files.mjs";
-import { loadPermissionManifest, renderPermissionsTo, resolveBehaviors, resolveArbitraryCommands } from "./permissions-render.mjs";
+import {
+  loadPermissionManifest,
+  renderPermissionsTo,
+  resolveBehaviors,
+  resolveArbitraryCommands,
+} from "./permissions-render.mjs";
 import { commandOverridesPath, roborepoSkillsDir } from "./state-paths.mjs";
 import { listHarnessProviders } from "../harnesses/registry.mjs";
 import { resolveHarnessPath } from "../harnesses/paths.mjs";
@@ -253,8 +258,9 @@ function packageSkillSources() {
 // push-pull-prs — or arbitrary, user-added) is independently deny/ask/allow. Personal choices
 // live in commandOverridesPath (state-paths.mjs), layered on top of the repo-tracked manifest's
 // defaults at render time, so `roborepo update` re-rendering the manifest never wipes them.
-// Global scope only — no per-project override (a detached web server has no reliable "current
-// project" the way a terminal's cwd does).
+// The write itself is global harness config. When the command is run from a repo that has
+// docs/plans/plans-config.json, Codex receives that repo family's concrete worktree root because
+// Codex permission profiles cannot express dynamic "current repo" roots.
 
 // Deny/ask/allow are the only valid buckets a behavior/command can be set to. No "looser" concept
 // remains — each behavior is independently reversible with the same three states, so there is no
@@ -334,7 +340,7 @@ function applyOverrides(manifest, overrides) {
   try {
     writeCommandOverrides(overrides);
     const home = os.homedir();
-    const { touched } = renderPermissionsTo(home, { manifest, overrides });
+    const { touched } = renderPermissionsTo(home, { manifest, overrides, cwd: process.cwd() });
     if (touched.length === 0) {
       return { ok: false, message: "no harness config found to write" };
     }

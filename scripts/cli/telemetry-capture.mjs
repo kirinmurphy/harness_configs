@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { telemetryCollectorDir, telemetryDir, telemetrySpoolDir } from "./state-paths.mjs";
 import { measureLog } from "../../modules/retention/index.mjs";
@@ -11,6 +10,7 @@ import { measureLog } from "../../modules/retention/index.mjs";
 import { mcpServerOf, transcriptStats } from "../harnesses/transcript-parse.mjs";
 import { classifyCommand, failureSignature } from "./telemetry-classify.mjs";
 import { generateCaptureId } from "./telemetry-schemas/capture-schema-v3.mjs";
+import { privacyHash } from "./telemetry-schemas/hash.mjs";
 import { inferPhase } from "./telemetry-phase-infer.mjs";
 import { categorizeFile } from "./telemetry-task-infer.mjs";
 import { normalizeGitRemote, localRepositoryIdForRoot } from "../../modules/repositories/index.mjs";
@@ -559,6 +559,9 @@ function git(cwd, args) {
   return result.status === 0 ? result.stdout.trim() : "";
 }
 
+// The algorithm now lives in telemetry-schemas/hash.mjs, shared with every module that has to
+// produce a matching value; the local name is kept so the call sites below read unchanged. That
+// module imports node:crypto and nothing else, so this file's minimal-import constraint holds.
 function hash(value) {
-  return createHash("sha256").update(String(value)).digest("hex").slice(0, 24);
+  return privacyHash(value);
 }

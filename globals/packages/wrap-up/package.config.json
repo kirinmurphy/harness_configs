@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "wrap-up",
   "label": "Wrap Up",
-  "description": "End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff prompt.",
+  "description": "End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff note.",
   "lifecycle": "optional",
   "presentation": {
     "category": "skills-dev-lifecycle",
@@ -19,7 +19,7 @@
         {
           "type": "slash-command",
           "name": "wrap-up",
-          "description": "End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff prompt.",
+          "description": "End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff note.",
           "harnesses": ["claude", "codex", "gemini"]
         }
       ]

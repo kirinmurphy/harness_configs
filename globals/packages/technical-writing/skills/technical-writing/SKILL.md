@@ -8,29 +8,60 @@ description: Use when creating or revising durable technical documentation — a
 Use this skill to write or revise technical documentation that helps future readers understand a
 system, plan, migration, or operational workflow.
 
-For anything under `docs/plans` specifically: pair with `plan-docs`. This skill covers prose
-quality — what to say and how to order it once the shape is known. `plan-docs` owns frontmatter,
-lifecycle folders, and the required-section schema for plan documents — don't duplicate its
-section list here (see `doc-shapes.md`'s note on this).
+## Paired Skills
+
+**Load these as part of the mode; do not wait to be asked for them by name.**
+
+| Skill | Load when | Contributes |
+| --- | --- | --- |
+| `plan-docs` | The document lives under `docs/plans` | Frontmatter, lifecycle folders, naming, and the required-section schema. Don't duplicate its section list here (see `doc-shapes.md`'s note on this) |
+| `code-style` | The document specifies where code goes: module boundaries, orchestration vs. execution, reuse | Ownership and layering constraints the guidance must respect |
+| `javascript-typescript` | The document covers JS/TS — ESM, exports, types, framework-less DOM structure | Language and markup conventions the guidance must not contradict |
+| `test-harness` | The document proposes tests, verification commands, or a regression strategy | Test selection and observable-behavior assertions |
+
+This skill covers prose quality; a paired skill governs whether what the document *says to build*
+is right. Both are in scope, and whatever loaded here joins the Validator's rule set in
+`references/review-loop.md`. State which paired skills applied and which did not — a skipped skill
+and a forgotten one look identical otherwise.
 
 ## Mode Selection
 
 If invoked as `/technical-writing` with no mode, return this compact help and stop:
 
 ```text
-/technical-writing write    draft or revise a doc
-/technical-writing review   run the Creator/Validator loop against an existing doc
+/technical-writing write    draft or revise a doc, then validate it
+/technical-writing review   read-only Creator/Validator pass over an existing doc
 ```
+
+`write` is the only artifact-producing mode: creating, editing, revising, restructuring, and
+updating a durable document are all `write`, and there is no separate `edit` or `revise` mode.
+`review` evaluates an existing document and reports violations without changing it.
 
 For a named mode, read only the needed references:
 
 - Always read this file's Core Writing Philosophy below.
 - `write`: also read `references/doc-shapes.md`, `references/section-guidance.md`,
-  `references/representation.md`, and `references/anti-patterns.md`.
+  `references/representation.md`, `references/anti-patterns.md`, and `references/review-loop.md`.
 - `review`: also read `references/review-loop.md`, plus whichever of `doc-shapes.md` /
   `section-guidance.md` / `representation.md` / `anti-patterns.md` / `doc-organization.md` the
   review needs to check against.
 - Revising a documentation set (not a single doc): also read `references/doc-organization.md`.
+
+## Completion Gate
+
+**Do not present a durable document as finished until the Creator/Validator loop in
+`references/review-loop.md` has run** — every `write` invocation, new document or edit alike. The
+procedure lives in the reference; what decides whether the work is done:
+
+- The Creator owns edits. The Validator only reports violations and never rewrites.
+- Every Validator pass is surfaced to the user in chat, including a pass that finds nothing.
+- A pass with violations returns to the Creator, and the next pass validates the *revised* draft.
+- The document is finished when a Validator pass reports zero violations, or when the documented
+  10-pass cap is reached — at the cap, report the outstanding violations instead of claiming
+  completion.
+
+`review` reports the same way but stops there: it never edits the document, and a clean report from
+`review` is an evaluation, not a delivery.
 
 ## Core Writing Philosophy
 

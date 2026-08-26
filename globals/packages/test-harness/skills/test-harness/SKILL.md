@@ -32,10 +32,11 @@ prefixes, harness discovery, generated config projection, uninstall ownership, L
 semantics, or absence/presence of agent CLIs. Do not use Docker for behavior that a focused
 Node/shell test can prove directly.
 
-Prefer one reusable image as a disposable machine template, with a fresh container per scenario or
-case. Reset state by deleting the container, not by trying to clean a long-lived container back to a
-baseline. Pack or prepare artifacts once on the host, then give each case isolated `HOME`, state
-root, workspace root, npm prefix, npm cache, and `PATH`.
+Prefer one reusable image as a disposable machine template, with a fresh container per scenario.
+Reset state by deleting the container, not by trying to clean a long-lived container back to a
+baseline. Pack or prepare artifacts once on the host, install once per scenario, then run every
+assertion that can share that installed state. Re-run package install/uninstall only when lifecycle
+behavior itself is under test.
 
 Keep Docker scenarios separated by failure meaning. A clean-install sandbox should prove package
 install/init/doctor/uninstall only; permissions projection, fake harnesses, lifecycle ownership, and

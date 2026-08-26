@@ -1,7 +1,7 @@
 ---
 id: c7b7swuh
 priority: high
-next_action: Run the final validation commands, generate the retained transfer artifact from a clean worktree, then perform the real new-Mac observation sequence before cloning the repository
+next_action: Only the workspace restore/import step is left. The npm-registry install, doctor, and zero-harness clean baseline are confirmed on real hardware (2026-08-22); the retained-artifact and repository-coexistence steps were dropped as superseded by the npm path
 blocked_by: []
 depends_on: []
 related:
@@ -491,17 +491,31 @@ uninstall must not be treated as permission to delete personal workspace content
 
 - [x] Add the final old-Mac/new-Mac workflow to `docs/user/guides/install-workflows.md` after commands and
       output names are implemented.
-- [ ] Generate a retained artifact on the old Mac from the recorded source commit after
-      `npm test`, `npm run pack:dry-run`, `npm run test:package-install`, and
-      `bash scripts/doctor.sh --quiet` pass.
-- [ ] Install and validate it on the new Mac before cloning the repository.
+- [x] ~~Generate a retained artifact on the old Mac from the recorded source commit.~~
+      **Dropped 2026-08-22.** This existed to bridge one migration, and that migration happened by
+      a better route: the new machine installed from the npm registry. A retained tarball is a
+      stale file carried between machines, and the packing path it would have exercised is already
+      covered continuously by `npm run test:package-install`, which packs a fresh tarball from the
+      current tree on every run. Nothing is lost by removing it.
+- [x] Install and validate on the new Mac before cloning the repository. **Confirmed on real
+      hardware 2026-08-22:** installed with `npm install -g codethings-roborepo-alpha`, launched,
+      loaded as expected, and `roborepo doctor` passed. The repository was never cloned there, so
+      the clean baseline held.
 - [ ] Restore a dedicated workspace or exercise `roborepo workspace import <old-checkout-or-workspace>` only after the clean baseline passes.
-- [ ] Clone the repository and verify packaged and development entry points coexist.
-- [ ] Verify package mode and checkout mode share `workspaceRoot` and `stateRoot` while reporting
-      different `appRoot` values, and that running `config apply` from either entry point leaves
-      content authored through the other in place. See `docs/user/guides/infra/root-domains.md`.
-- [ ] Record actual results, known provider-specific findings, and anything not verified in this
-      plan's final `Verification` section before completion.
+- [x] ~~Clone the repository and verify packaged and development entry points coexist.~~
+- [x] ~~Verify package mode and checkout mode share `workspaceRoot` and `stateRoot` while reporting
+      different `appRoot` values.~~
+      **Both descoped 2026-08-22.** npm is the primary workflow and that machine is npm-only for
+      now. Coexistence is a real question, but it is not this plan's — it belongs to whoever first
+      puts a development checkout on a package-installed machine, and answering it now would mean
+      creating the very state the clean baseline exists to avoid. `docs/user/guides/infra/root-domains.md`
+      documents the intended contract; verifying it moves to that future work.
+- [x] Record actual results, known provider-specific findings, and anything not verified in this
+      plan's final `Verification` section before completion. **Done 2026-08-24.** The Phase 4 table
+      below records the real-hardware run, including the uninstall failure it found; the section
+      after it records the container suite that now pins that machine shape. Both name what remains
+      unverified rather than only what passed — the two open items are the workspace-import
+      checklist line above and the CI step, which still has not run in GitHub Actions.
 
 ## Validation
 
@@ -548,6 +562,54 @@ Run from worktree `infra-packaging-01-new-mac-install`, commits `da322ff` → `c
   deferred in the Phase 1 checklist above — not a blocker for the smoke runner.
 - Phase 4 (real old-Mac/new-Mac hardware transition, `docs/user/guides/install-workflows.md` update) not
   attempted this pass; remains open.
+
+### Verification (Phase 4, real hardware, 2026-08-22)
+
+The transition happened, but not by the route this plan designed. The new Mac installed from the
+npm registry rather than from a carried tarball, which is the distribution path that matters and
+made the retained-artifact step unnecessary rather than incomplete.
+
+| Observation | Result |
+| --- | --- |
+| `npm install -g codethings-roborepo-alpha` on a machine that had never run RoboRepo | Installed, launched, loaded as expected |
+| `roborepo doctor` | Passed |
+| Repository cloned on that machine | No — the clean baseline was never contaminated |
+| Harnesses installed at first run | **None.** This is the zero-harness state no development machine can produce, and it behaved correctly |
+| Workspace restore / `workspace import` | Not attempted yet |
+| `roborepo uninstall` | **Failed** — left its own binary behind and the surviving binary re-ran onboarding. Root-caused and fixed; see `test-clean-machine-install-sandbox.md` (`qk4mz7t2`) |
+
+The zero-harness result is the one worth keeping. Every stage of `infra-packaging-02`'s matrix
+above zero can be simulated, but "a machine with no agent harness at all" is the state a developer
+machine cannot reach, and it is now confirmed rather than assumed.
+
+Old-Mac gates were re-run on this checkout the same day: `pack:dry-run`, `test:package-install`, and
+`doctor.sh --quiet` all pass; `test-roborepo.sh` reports 418 passed with 2 failures traced to an
+unrelated in-flight edit to `portal/config/onboarding-state.js`, not to packaging.
+
+### Verification (clean-machine container suite, 2026-08-24)
+
+`roborepo uninstall` failing on real hardware is the finding above that had no automated guard.
+`scripts/test/clean-machine-container-check.mjs` (commit `6197756`) now supplies one, and the
+Phase 4 machine shape is continuously testable rather than reachable only by owning a fresh Mac.
+
+- `npm run test:clean-machine` → all six scenarios pass: default prefix with zero harnesses,
+  colliding npm prefix, and harness-count matrix stages 1, 2, 3, and N.
+- **Sabotage-verified, not assumed.** Reverting both halves of `778ac00` fails the colliding-prefix
+  scenario with the original symptom, `FAIL: binary survived at the colliding prefix`. The fix was
+  restored and the suite re-run green afterward.
+- **A known blind spot, recorded deliberately.** Reverting *only* the shell half
+  (`is_npm_owned_cli`) does **not** fail this suite. `check_no_active_remnants` is the last
+  statement in `uninstall.sh`, so it only sets the exit status; with the CLI half intact the npm
+  handoff is ungated and removes the binary regardless, and the scenario asserts the binary is
+  absent. The shell half's own regression is `testNpmOwnedCliIsNotARemnant` in
+  `managed-uninstall-check.mjs`, confirmed to fail with `an npm-owned binary must not be reported
+  as a remnant` when that half is reverted. Each test covers one half; neither covers both.
+- Not verified: the CI step added in the same commit is Linux-gated and **has not run in GitHub
+  Actions** — nothing on this branch has been pushed. Same standing caveat as the Phases 1-3 CI
+  line above.
+- Not closed by this: `infra-packaging-02`'s matrix items are written as real-hardware acceptance.
+  The stub-executable stages make those states continuously testable so hardware confirms rather
+  than discovers; they do not substitute for it.
 
 Manual transition acceptance requires:
 

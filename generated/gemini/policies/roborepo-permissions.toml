@@ -240,6 +240,30 @@ priority = 500
 
 [[rule]]
 toolName = "run_shell_command"
+commandPrefix = "roborepo init"
+decision = "ask_user"
+priority = 500
+
+[[rule]]
+toolName = "run_shell_command"
+commandPrefix = "roborepo dev"
+decision = "ask_user"
+priority = 500
+
+[[rule]]
+toolName = "run_shell_command"
+commandPrefix = "roborepo library"
+decision = "ask_user"
+priority = 500
+
+[[rule]]
+toolName = "run_shell_command"
+commandPrefix = "roborepo uninstall"
+decision = "ask_user"
+priority = 500
+
+[[rule]]
+toolName = "run_shell_command"
 commandPrefix = "npm test"
 decision = "allow"
 priority = 500

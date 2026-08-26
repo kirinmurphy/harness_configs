@@ -10,19 +10,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+import { makeAppRoot } from "./app-root-fixture.mjs";
 
-function makeAppRoot() {
-  const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-skill-link-app-"));
-  fs.mkdirSync(path.join(appRoot, ".git"), { recursive: true });
-  fs.cpSync(path.resolve("manifests"), path.join(appRoot, "manifests"), { recursive: true });
-  fs.cpSync(path.resolve("globals"), path.join(appRoot, "globals"), { recursive: true });
-  fs.cpSync(path.resolve("scripts"), path.join(appRoot, "scripts"), { recursive: true });
-  return appRoot;
-}
-
+// Local makeHome on purpose: this check asserts on skill DIRECTORIES only, so it deliberately
+// leaves out the root config files the shared makeHome() seeds.
 function makeHome() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-skill-link-home-"));
   fs.mkdirSync(path.join(tmp, ".claude"), { recursive: true });

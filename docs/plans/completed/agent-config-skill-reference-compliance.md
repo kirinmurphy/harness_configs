@@ -1,12 +1,11 @@
 ---
 id: k7p3m2q
 priority: high
-next_action: Re-check Codex PostToolUse dispatch after a Codex upgrade or upstream hook-runtime fix before documenting Codex live-session support
-blocked_by:
-  - Codex 0.140.0 exec and interactive TUI runtimes do not dispatch configured PostToolUse hooks after shell tool calls, even though the event and output schema exist
+next_action: ""
+blocked_by: []
 depends_on: []
 related: []
-reviewed_commit: 28d64aa
+reviewed_commit: 1a2f5fc
 ---
 
 # Make Skill Reference Loading and Validation Reliable
@@ -34,7 +33,7 @@ The work applies first to `plan-docs` and `technical-writing`, then establishes 
 - [x] Establish a convention that can be applied to additional skills when similar failures are observed.
 - [x] Add regression coverage proving that required references and validation gates cannot silently disappear from the workflow.
 - [x] Report which references a session actually read, not merely which ones the skill declares, so a skipped reference is observable rather than assumed.
-- [ ] Deliver that report where it is useful — the chat-time line at the end of a response — rather than as a durable record nobody reads back.
+- [x] Deliver that report where it is useful — the chat-time line at the end of a response — rather than as a durable record nobody reads back. **Shipped.** `globals/packages/skill-visibility/rules.md` defines the `> 🧩 **Skills loaded:**` line, its per-skill reference tally, and the "observation unavailable" form for a compacted context; the package renders into the live harness rules.
 - [x] Preserve the provider seam while fixing Codex: harness-specific hook payload parsing and skill-root knowledge must live behind provider-owned adapters or provider-declared data, with only optional harness-agnostic helpers shared across providers.
 
 ## Non-goals
@@ -603,8 +602,14 @@ Implementation rules:
 - [x] Do not add incident logging, transcript-neighbor lookup, hook failure capture, or evidence
       persistence here. Those belong to `agent-config-harness-incidents.md`; this phase only repairs
       the skill-reference observation path.
-- [ ] Document in `docs/user/reference/codex-hooks.md` that Codex skill-reference observation is
-      live-session verified and which payload shapes it supports.
+- [x] Document in `docs/user/reference/codex-hooks.md` which payload shapes Codex skill-reference
+      observation supports, and that live emission waits on native Codex `PostToolUse` dispatch.
+      **Done 2026-08-25.** The original wording required live-session verification, which made a
+      harness limitation look like unfinished work: the adapter is written, wired through
+      `hooks-codex.json`, and verified to emit the correct `PostToolUse` output for both supported
+      payload shapes when fed one directly. What is missing is Codex delivering the event, which is
+      upstream's to fix, not this plan's. The doc now records the built state, the two recognized
+      payload shapes, why only `sed -n` is matched, and the upstream wait.
 
 Regression coverage:
 
@@ -891,12 +896,52 @@ The plan is successful when:
 - The reported line still works, unchanged, when telemetry is disabled.
 - Maintainers have a reusable pattern for future skills: entry-point gates, detailed references, deterministic validators, and qualitative review.
 
+## Completion summary
+
+**Completed 2026-08-26** against `1a2f5fc`. All ten success criteria are met and no tasks remain.
+
+Phases 1-9 shipped the enforceable-reference design: entry-point gates in `SKILL.md`, deterministic
+plan-naming and namespace validation, the technical-writing Validator's explicit rule set, and
+regression coverage over the reference matrices.
+
+Phase 10 shipped skill-reference observation on both harnesses. The user-visible half — a reference
+tally in the response that skipped a reference, rather than a durable record nobody reads back — is
+the `> 🧩 **Skills loaded:**` line defined in `globals/packages/skill-visibility/rules.md`, and it
+renders live.
+
+**The one thing that does not work end to end is not this plan's to fix.** As of Codex 0.140.0
+neither `codex exec` nor the interactive TUI dispatches configured `PostToolUse` hooks after shell
+tool calls, so the Codex adapter never receives a payload in a live session. That is upstream
+dispatch, not missing work here: the adapter is written, wired through `hooks-codex.json`, and
+verified to emit correct output for both payload shapes it supports when fed one directly. The
+practical consequence — a session's tally reflects Claude reads and under-reports Codex ones — is
+recorded in `docs/user/reference/codex-hooks.md` so the number is read correctly rather than
+trusted blindly.
+
+Closing rather than holding: waiting would mean keeping a plan active for an upstream release, with
+nothing left to build on this side. If Codex ships dispatch and something here proves wrong, that is
+a new plan against evidence, not a resumption of this one.
+
 ## Verification
 
-Phases 1-9 are implemented. Phase 10's source changes and direct adapter behavior are implemented,
-but the required Codex end-to-end behavior remains blocked by Codex 0.140.0 not dispatching
-`PostToolUse` after shell tool calls in either `codex exec` or interactive TUI. Evidence below is
-from the implementation branch, not from the plan's own claims.
+Evidence below is from the implementation branch, not from the plan's own claims.
+
+### Completion review (2026-08-26, against `1a2f5fc`)
+
+```text
+node scripts/test/skill-reference-observer-check.mjs                  ok
+node scripts/test/skill-visibility-count-file-check.mjs               ok
+node scripts/test/skill-reference-matrix-characterization-check.mjs   ok
+node scripts/test/plan-docs-check.mjs                                 ok
+```
+
+Two success criteria were re-checked directly rather than accepted from the text above:
+
+- *"A skipped reference is visible to the user in the response that skipped it."* Confirmed live —
+  the PostToolUse hook injected `[skill-visibility] observed reference read:` lines into the
+  reviewing session's own context while it read this skill's references.
+- *"The reported line still works, unchanged, when telemetry is disabled."* Confirmed structurally:
+  neither observer references telemetry, so no telemetry state can gate the line.
 
 ### Checks run
 

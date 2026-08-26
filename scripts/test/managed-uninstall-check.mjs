@@ -415,7 +415,12 @@ async function settle() {
 }
 
 async function testPortalUninstallRequiresExplicitConfirm() {
-  const { handleMaintenanceApi } = await import(path.join(repoRoot, "scripts/cli/portal-routes-maintenance.mjs"));
+  // Driven through dispatchRoutes rather than a bespoke entry point: maintenance is a route table
+  // like every other portal domain, so the test exercises the same path portal-server takes.
+  const { maintenanceRoutes } = await import(path.join(repoRoot, "scripts/cli/portal-routes-maintenance.mjs"));
+  const { dispatchRoutes } = await import(path.join(repoRoot, "scripts/cli/portal-router.mjs"));
+  const dispatch = (req, res, urlPath, qs, handlers) =>
+    dispatchRoutes([maintenanceRoutes], req, res, urlPath, qs, handlers);
   const f = fixture();
 
   // Stubs, deliberately: this test is about the route's own gating, not about cleanup itself
@@ -428,7 +433,7 @@ async function testPortalUninstallRequiresExplicitConfirm() {
 
   // A POST without { confirm: true } must be rejected by the handler itself, before any removal.
   const res = fakeRes();
-  const handled = handleMaintenanceApi(fakeReq({ method: "POST", body: {} }), res, "/api/maintenance/uninstall", "", handlers);
+  const handled = dispatch(fakeReq({ method: "POST", body: {} }), res, "/api/maintenance/uninstall", "", handlers);
   assert.equal(handled, true, "handler must claim the uninstall route");
   await settle();
   assert.equal(res.statusCode, 400, "POST without explicit confirm must be refused");
@@ -437,7 +442,7 @@ async function testPortalUninstallRequiresExplicitConfirm() {
 
   // Unknown maintenance paths fall through so portal-server can try the next domain / 404.
   assert.equal(
-    handleMaintenanceApi(fakeReq({ method: "GET" }), fakeRes(), "/api/maintenance/nope", "", handlers),
+    dispatch(fakeReq({ method: "GET" }), fakeRes(), "/api/maintenance/nope", "", handlers),
     false,
     "unmatched maintenance paths must not be claimed",
   );

@@ -18,7 +18,7 @@ const catalog = [
   const notice = configOnboardingNotice(snap);
   assert.equal(notice.variant, "warning");
   assert.match(notice.title, /No active agent harness/);
-  assert.match(notice.body, /Package selections are saved/);
+  assert.match(notice.body, /Package selections will be saved/);
   assert.match(notice.body, /Claude Code and Codex/);
 }
 

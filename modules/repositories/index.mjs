@@ -62,10 +62,26 @@ export {
   upsertRepository,
   recordDiscovery,
   registerLocalRoot,
+  registerLocalRootPath,
+  localRootPath,
+  checkoutRootsFor,
+  priorRepositoryForRoot,
   setEnrollment,
   hideRepository,
+  pinRepository,
   setAlias,
 } from "./registry.mjs";
+
+export {
+  LIFECYCLE_STATES,
+  AGE_OUT_MS,
+  inspectCheckout,
+  deriveLifecycle,
+  lastSeenAtFor,
+  ageOutCandidates,
+  supersededBy,
+  renamedInto,
+} from "./lifecycle.mjs";
 
 export {
   EVIDENCE_POLICY,

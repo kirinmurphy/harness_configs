@@ -151,6 +151,64 @@ export function registerLocalRoot(registry, id, { rootId, kind = "clone", now = 
   return false;
 }
 
+// Record where a rootId actually lives on disk (pljvmyh §2's private index). Separate from
+// registerLocalRoot because the two answer different questions — that one records THAT a checkout
+// exists under a repository, this one records WHERE — but callers that know the path should call
+// both, and recordRepositoryDiscovery does.
+//
+// Keyed by rootId alone: a rootId resolves to at most one current path. When a path moves, the
+// mapping is overwritten rather than appended, so the index can never offer two candidate
+// directories for one id.
+//
+// A rootId can legitimately change repositories — a directory that was one repo and became another
+// (one such rootId already exists in the live registry). That is a repointing, not a conflict:
+// repositoryId is overwritten alongside the path, and firstSeenAt is reset because it now dates a
+// different repository's occupancy of that directory.
+export function registerLocalRootPath(registry, id, { rootId, path, now = new Date().toISOString() }) {
+  if (!rootId || !path) return false;
+  requireRecord(registry, id, "register local root path");
+  if (!registry.localRootPaths) registry.localRootPaths = {};
+  const existing = registry.localRootPaths[rootId];
+  if (!existing) {
+    registry.localRootPaths[rootId] = { path, repositoryId: id, firstSeenAt: now, lastSeenAt: now };
+    return true;
+  }
+  if (existing.path !== path || existing.repositoryId !== id) {
+    // Repointed: the directory now resolves somewhere else, or to a different repository.
+    registry.localRootPaths[rootId] = { path, repositoryId: id, firstSeenAt: now, lastSeenAt: now };
+    return true;
+  }
+  // Unchanged — debounced exactly like registerLocalRoot so a steady-state poll writes nothing.
+  if (Date.parse(now) - Date.parse(existing.lastSeenAt) >= LAST_SEEN_DEBOUNCE_MS) {
+    existing.lastSeenAt = now;
+    return true;
+  }
+  return false;
+}
+
+// Resolve a rootId to its absolute path. Server-side only — never call this while building a
+// browser payload.
+export function localRootPath(registry, rootId) {
+  return registry.localRootPaths?.[rootId]?.path || null;
+}
+
+// Every known checkout path for a repository, as [{ rootId, path, kind }]. This is the set the
+// Compose classifier tests bind mounts against, and the set the card reads git from when nothing is
+// running. Roots with no recorded path are omitted: an entry with a null path cannot be tested or
+// read, so including it would only invite a null check at every call site.
+export function checkoutRootsFor(registry, id) {
+  const record = registry.repositories?.[id];
+  if (!record) return [];
+  const out = [];
+  for (const root of record.localRoots || []) {
+    const entry = registry.localRootPaths?.[root.rootId];
+    // Guard against a rootId that has since been repointed to a different repository.
+    if (!entry || entry.repositoryId !== id) continue;
+    out.push({ rootId: root.rootId, path: entry.path, kind: root.kind });
+  }
+  return out;
+}
+
 // Set enrollment for a domain. Idempotent — returns false when nothing changed.
 export function setEnrollment(registry, id, domain, { enabled, sourceId = null, now = new Date().toISOString() }) {
   const record = requireRecord(registry, id, "set enrollment");
@@ -167,8 +225,61 @@ export function hideRepository(registry, id, { hidden, now = new Date().toISOStr
   const target = hidden ? "hidden" : "visible";
   if (record.visibility === target) return false;
   record.visibility = target;
+  // Un-hiding is an explicit decision and has to outlast the thing that hid the record. The 30-day
+  // ageing sweep measures lastSeenAt, which restoring does not change — so without a marker the very
+  // next sweep would re-hide a repository the user just asked to see, forever. The marker is set
+  // only on restore and cleared on a deliberate re-hide, so hiding by hand still works.
+  if (hidden) delete record.restoredAt;
+  else record.restoredAt = now;
   record.updatedAt = now;
   return true;
+}
+
+// Pin or unpin a repository. Idempotent — returns false when nothing changed.
+//
+// Deliberately a repository-level fact rather than a per-member one: pinning survives the process
+// exiting, so an idle repository keeps its position in the list. The old per-app/per-compose
+// `favorite` could not do this — an idle repository has no members to hold the flag, so the toggle
+// wrote to an empty list and silently did nothing.
+export function pinRepository(registry, id, { pinned, now = new Date().toISOString() }) {
+  const record = requireRecord(registry, id, "pin");
+  const target = pinned === true;
+  if ((record.pinned === true) === target) return false;
+  record.pinned = target;
+  record.updatedAt = now;
+  return true;
+}
+
+// Find the repository a checkout already belongs to, when a scan resolves that same checkout to a
+// DIFFERENT canonical id than last time.
+//
+// `git remote set-url` changes a repository's canonical identity without changing the repository:
+// same directory, same history, same work. Registering the new id blind would mint a second record
+// and split one repository across two cards, each holding half its checkouts.
+//
+// But the same observation — "rootId X now resolves to id B, not A" — has a second possible cause:
+// the directory was deleted and a DIFFERENT repository cloned in its place. Aliasing that case
+// merges two unrelated repositories onto one card, which is worse than the duplicate aliasing
+// avoids: a duplicate is visible and correctable, a bad merge silently misattributes work.
+//
+// rootId cannot tell these apart — it is derived from the path, which is identical either way. The
+// live registry contains a real instance (one rootId under both harness_configs and roborepo, hours
+// apart) that reads as a rename but is indistinguishable from a repurpose in the stored data.
+//
+// So this never guesses, and it never aliases on its own. It REPORTS the ambiguity: the prior
+// repository that held this checkout, for a caller that wants to surface "this checkout moved from
+// A to B" or offer an explicit merge. `setAlias` stays the way two records become one, and stays a
+// deliberate act.
+//
+// Choosing to split rather than merge is the safe direction. A split repository is visible on the
+// page and fixable with one alias; a wrong merge hides one repository's work inside another's card
+// and gives the user no signal that it happened.
+export function priorRepositoryForRoot(registry, { rootId, nextRepositoryId }) {
+  if (!rootId || !nextRepositoryId) return null;
+  const entry = registry.localRootPaths?.[rootId];
+  if (!entry || entry.repositoryId === nextRepositoryId) return null;
+  if (!registry.repositories?.[entry.repositoryId]) return null;
+  return entry.repositoryId;
 }
 
 // Confirm that an opaque source identity aliases to a canonical repository. Cycle-checked before

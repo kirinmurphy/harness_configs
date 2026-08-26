@@ -55,12 +55,32 @@ const REPO_PROVENANCE = {
   "auto-bind": "repo inferred from mount path",
 };
 
+// How the stack's PLACEMENT was decided — which checkout it belongs to, a separate question from
+// REPO_PROVENANCE's "which repository". Keyed by ownershipEvidence.kind (classifyComposeOwnership).
+//
+// `shared` and `unverified` render in the same region but make different claims, and the wording
+// keeps them apart: "conflict"/"repo-root" are positive findings that the stack is not checkout-
+// specific, while "none" is an absence of evidence. Saying "shared" for a named-volumes-only stack
+// would assert something never observed.
+const OWNERSHIP_EVIDENCE = {
+  "bind-mount": "placed by bind mount into this checkout",
+  conflict: "mounts span several checkouts",
+  "repo-root": "mounts resolve to no checkout",
+  none: "no bind mounts to judge by",
+  manual: "placement set manually",
+};
+
 // One card per Docker Compose project, its containers listed as compact rows rather than each
 // getting its own top-level card — a Compose stack (app, db, proxy, mailhog...) is one logical
 // operation, not N unrelated ones. Each container is its own row (not each published port) since a
 // single container publishing several host ports (e.g. one Traefik proxy on 80/443/8080) is one
 // operational unit, not three. See docs/plans/active/localhoster-compose-project-grouping.md.
-export function composeProjectCard(composeProject, actions, { isMember = false, repositoryName = null } = {}) {
+// `hideProviderLink` covers the shared-services case, which is neither of the two the isMember flag
+// distinguishes: the card is standalone (no owning checkout to inherit git context from, so it keeps
+// its own badge) but it is NOT top-level, so the repository header above it already carries the one
+// provider link this repository gets. Without this it rendered a second, identical GitHub link a few
+// rows under the first.
+export function composeProjectCard(composeProject, actions, { isMember = false, repositoryName = null, hideProviderLink = false } = {}) {
   const allInstances = composeProject.containers.flatMap((c) => c.instances);
   const portCount = allInstances.length;
   // One CPU reading per container (not per port — a container's ports would otherwise multiply
@@ -93,10 +113,9 @@ export function composeProjectCard(composeProject, actions, { isMember = false, 
     // repository card is a drill-in with nothing behind it.
     node.querySelector(".compose-project-chevron")?.remove();
     node.open = true;
-    // Favorite and hide describe the whole repository and now live on its menu; leaving copies here
-    // would offer two controls for one setting. Repo association stays: it is specific to this
-    // stack, not to the repository it resolved into.
-    node.querySelector("[data-action=favorite]")?.remove();
+    // Hide describes the whole repository and now lives on its menu; leaving a copy here would
+    // offer two controls for one setting. Repo association stays: it is specific to this stack, not
+    // to the repository it resolved into. (Favorite is gone entirely — pinning is repository-level.)
     node.querySelector("[data-action=hide]")?.remove();
   }
   const tooltip = node.querySelector(".info-wrap > template").content;
@@ -110,12 +129,20 @@ export function composeProjectCard(composeProject, actions, { isMember = false, 
     resources: aggregateCpu > 0 || aggregateMemoryKb > 0
       ? `${aggregateCpu.toFixed(1)}% of machine CPU · ${formatMemory(aggregateMemoryKb)} RSS`
       : "unavailable",
-    identity: `compose · ${REPO_PROVENANCE[composeProject.resolvedFrom] || "repo unresolved"}`,
+    // Two independent facts: which repository this stack resolved to, and which checkout of it the
+    // stack was placed in. The second only shows when the classifier actually ran — an older
+    // snapshot, or a stack it never reached, carries no evidence and says nothing rather than
+    // implying a verdict.
+    identity: [
+      "compose",
+      REPO_PROVENANCE[composeProject.resolvedFrom] || "repo unresolved",
+      OWNERSHIP_EVIDENCE[composeProject.ownershipEvidence?.kind],
+    ].filter(Boolean).join(" · "),
   });
   // Git context belongs to the repository, which already shows it once above; a member repeating it
   // is the same branch and dirty state a few lines apart.
   if (!isMember) {
-    applyGitBadge(node, tooltip, composeProject.git, composeProject.providerUrl);
+    applyGitBadge(node, tooltip, composeProject.git, hideProviderLink ? null : composeProject.providerUrl, { hideProviderLink });
     wireCopyBranchButton(node, composeProject.git);
   }
   applyResourceConcernBadge(node, aggregateCpu);
@@ -193,13 +220,8 @@ function wireComposeCardActions(node, composeProject, actions) {
     actions.onCloseMenus();
     actions.onAssociateRepo(composeProject);
   });
-  // Optional for the same reason as wireCardActions: these are removed on a compose card nested
-  // inside a repository card, where favorite and hide belong to the repository.
-  node.querySelector("[data-action=favorite]")?.addEventListener("click", (event) => {
-    event.preventDefault();
-    actions.onCloseMenus();
-    actions.onToggleFavorite(composeProject);
-  });
+  // Optional for the same reason as wireCardActions: hide is removed on a compose card nested
+  // inside a repository card, where it belongs to the repository.
   node.querySelector("[data-action=hide]")?.addEventListener("click", (event) => {
     event.preventDefault();
     actions.onCloseMenus();
@@ -262,10 +284,6 @@ function composeContainerRow(container, actions) {
       warning.hidden = false;
       warning.textContent = instance.bind.warning;
     }
-    wireCopyAffordance(port.querySelector("[data-action=copy]"), {
-      getText: () => instance.origin || "",
-      hoverLabel: "copy url",
-    });
     const history = port.querySelector("[data-action=history]");
     if (!instance.opaqueKey || !actions?.onHistory) history.hidden = true;
     else history.addEventListener("click", () => actions.onHistory(null, instance));
@@ -286,41 +304,100 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
   // A Compose stack is ONE member that happens to contain containers, not N members. Counting its
   // containers made menugoats read "4 members" while expanding to a single entry — the count has to
   // match what the expanded card actually lists.
+  // Shared stacks count here, at repository level: they are genuinely members of this repository,
+  // just not of any one checkout of it. The count still matches what the expanded card lists,
+  // because the Shared services region below lists them.
+  //
+  // repository.composeGroups is the flat cross-root array and ALREADY contains the shared stacks
+  // (snapshot.mjs pushes every group into it before routing a null-rootId one to sharedComposeGroups
+  // as well), so they must not be added again here.
   const memberCount = repository.members.length + repository.composeGroups.length;
+  const lifecycleState = repository.lifecycle?.state || "active";
+  const isRunning = lifecycleState === "active";
   // Member count only. The container count was a second number competing with it in the collapsed
   // view, and it answers a question you only have once the card is open — where the containers are
   // listed anyway.
+  // "N members" describes a running repository. An idle one has none by definition, so it reports
+  // when it was last seen instead — the fact that actually distinguishes two idle repositories, and
+  // the one the 30-day ageing rule acts on.
   const node = fill(tpl("tpl-repository-card"), {
     title: repository.name,
-    meta: `${memberCount} member${memberCount === 1 ? "" : "s"}`,
+    meta: isRunning
+      ? `${memberCount} member${memberCount === 1 ? "" : "s"}`
+      : lastSeenLabel(repository.lastSeenAt),
   });
+  if (!isRunning) {
+    node.classList.add("is-not-running");
+    const badge = node.querySelector("[data-slot=lifecycle-state]");
+    if (badge) {
+      badge.hidden = false;
+      badge.textContent = lifecycleState;
+      badge.classList.add(`is-${lifecycleState}`);
+      // The reason is the useful half of `stale` — "checkout missing" vs "drive unreadable" are
+      // different problems with different fixes — and it is absent for an ordinary idle repository.
+      if (repository.lifecycle?.reason) badge.title = repository.lifecycle.reason;
+    }
+  }
   const tooltip = node.querySelector(".info-wrap > template").content;
+  // Shared stacks are marked as such rather than listed indistinguishably among the rest. The list
+  // is the one place every member of every checkout appears together, so an unqualified name here
+  // read as "a member of some worktree" — the exact reading the Shared services region exists to
+  // correct.
+  const sharedGroupNames = new Set((repository.sharedComposeGroups || []).map((group) => group.name));
   const memberNames = [
-    ...repository.composeGroups.map((group) => `compose ${group.name}`),
+    ...repository.composeGroups.map((group) =>
+      sharedGroupNames.has(group.name) ? `compose ${group.name} (shared)` : `compose ${group.name}`),
     ...repository.members.map((member) => member.name),
   ];
+  // Both figures are totals across EVERY checkout (repository.members is the flat cross-root array;
+  // cpuPercentOfHost sums all of them), which is what makes them repository-level rather than a
+  // duplicate of what each worktree row already reports for itself. Now that every root shows its
+  // own member list, the labels say "across N checkouts" outright — unqualified "Members" and
+  // "Resources" read as facts about one checkout when a card has several.
+  const rootCount = repository.roots?.length || 0;
+  const acrossSuffix = rootCount > 1 ? ` (across ${rootCount} checkouts)` : "";
   fill(tooltip, {
-    "members-detail": memberNames.join(", ") || "none",
+    "members-detail": (memberNames.join(", ") || "none") + acrossSuffix,
     // Same discipline as composeProjectCard: the raw figure lives here, and only crosses onto the
     // card as a badge once applyResourceConcernBadge decides it warrants action.
     resources: repository.cpuPercentOfHost != null
-      ? `${repository.cpuPercentOfHost.toFixed(1)}% of machine CPU`
+      ? `${repository.cpuPercentOfHost.toFixed(1)}% of machine CPU${acrossSuffix}`
       : "unavailable",
     // A git: id is portable across machines and promotable to other pages; a local: id is stable
     // but derived from this machine's path, so the distinction is worth stating outright.
     identity: repository.identityKind === "git" ? "git repository" : "local repository (no remote)",
   });
-  applyGitBadge(node, tooltip, repository.git, repository.providerUrl);
+  // No repository-level git badge: git is per-checkout now (see the roots loop below), and the
+  // repository header itself — name, provider link — never depends on which root is running.
   applyResourceConcernBadge(node, repository.cpuPercentOfHost);
-  wireCopyBranchButton(node, repository.git);
+
+  // One provider link per repository (not per root): a repository has exactly one canonical
+  // remote, however many checkouts run it, so it belongs at the header rather than repeated in
+  // every root section's git row.
+  const providerLinkSlot = node.querySelector("[data-slot=provider-link]");
+  if (providerLinkSlot && repository.providerUrl) {
+    providerLinkSlot.hidden = false;
+    providerLinkSlot.href = repository.providerUrl;
+    providerLinkSlot.querySelector("[data-slot=provider-link-label]").textContent = providerHostLabel(repository.providerUrl);
+    providerLinkSlot.title = repoNameFromProviderUrl(repository.providerUrl);
+  }
 
   // Every user-facing origin promoted to the header, so reaching the app never requires expanding
   // the card. Entrypoints sort first, so this is the leading run of the member list; a project with
   // an app plus an admin panel and a dashboard surfaces all three.
   wireRepositoryActions(node, repository, repositoryActions);
 
+  // Resolved before the header entrypoint below, which reads it: the title row's URL is the main
+  // checkout's, so the roots split has to happen before the header is filled in.
+  const mainRoot = repository.roots.find((root) => !root.isWorktree);
+
+  // Main checkout only. The header names the repository, so the URL beside it has to be the one that
+  // IS the repository — its main checkout. A worktree's port is a fact about that worktree and
+  // already appears on its own row; promoting it here made two rows claim the same rank, and left a
+  // worktree-only repository advertising a feature branch as though it were the canonical address.
+  // A repository with no main checkout running therefore shows no URL at all, by design.
   const entrypointSlot = node.querySelector("[data-slot=entrypoint]");
-  const entrypoints = repository.members.filter((member) => member.entrypoint && member.instance?.origin);
+  const entrypoints = (mainRoot?.members || []).filter((member) => member.entrypoint && member.instance?.origin);
   if (entrypoints.length) {
     entrypointSlot.hidden = false;
     // The dash is a property of having a URL, not of the title, so it appears with the URL and a
@@ -353,14 +430,160 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
       .join(" ");
   }
 
-  const members = node.querySelector("[data-slot=members]");
-  for (const group of repository.composeGroups) {
+  const rootsSlot = node.querySelector("[data-slot=roots]");
+  const worktreeRoots = repository.roots.filter((root) => root.isWorktree);
+  // The main section always renders, even with no rootId resolved at all (no member has ever
+  // reported one) — canonical repository identity must never appear to depend on which root
+  // happens to be running. departedMembers with no matching root fall back here too.
+  const departedByRoot = new Map();
+  for (const member of departedMembers) {
+    const key = member.rootId || null;
+    if (!departedByRoot.has(key)) departedByRoot.set(key, []);
+    departedByRoot.get(key).push(member);
+  }
+  const mainDeparted = [
+    ...(departedByRoot.get(mainRoot?.rootId ?? null) || []),
+    ...(mainRoot ? [] : departedByRoot.get(null) || []),
+  ];
+  // No label on the main row — it is always first, so its position alone identifies it; a "Main
+  // worktree" caption named a fact nobody needed spelled out.
+  rootsSlot.append(buildRootSection({
+    root: mainRoot,
+    departed: mainDeparted,
+    repository,
+    composeActions,
+    instanceActions,
+  }));
+  if (worktreeRoots.length) {
+    const heading = document.createElement("div");
+    heading.className = "repository-worktrees-heading";
+    heading.textContent = "Worktrees";
+    rootsSlot.append(heading);
+  }
+  for (const root of worktreeRoots) {
+    rootsSlot.append(buildRootSection({
+      root,
+      departed: departedByRoot.get(root.rootId) || [],
+      repository,
+      composeActions,
+      instanceActions,
+    }));
+  }
+
+  // Stacks that back the repository as a whole rather than any one checkout of it. Last, below every
+  // checkout, because that is the containment they describe: a Postgres shared by three worktrees is
+  // not a member of the first one, and putting it there was the bug this region fixes.
+  //
+  // Rendered as full (non-member) compose cards: without an owning checkout there is no root section
+  // to inherit git context from, so each stack keeps its own name, association control, and tooltip.
+  const sharedGroups = repository.sharedComposeGroups || [];
+  if (sharedGroups.length) {
+    const heading = document.createElement("div");
+    // Same class as the worktrees heading — both are peer dividers inside the roots list, and a
+    // second style would imply a difference in rank that does not exist.
+    heading.className = "repository-worktrees-heading";
+    heading.textContent = "Shared services";
+    rootsSlot.append(heading);
+    for (const group of sharedGroups) {
+      const card = composeProjectCard(group, composeActions, {
+        repositoryName: repository.name,
+        hideProviderLink: true,
+      });
+      card.classList.add("repository-shared-service");
+      rootsSlot.append(card);
+    }
+  }
+  return node;
+}
+
+// One section per checkout. `root` is undefined for the main slot when nothing has resolved a
+// rootId yet (no active listener on the main checkout) — the section still renders, git-free, so
+// the card never looks like it is missing a piece. A worktree section carries its branch in its
+// own git-row instead of a separate caption — the row already says "feature/x (worktree)"; a
+// heading above it repeating "Worktree" would be the same fact twice.
+function buildRootSection({ root, departed, repository, composeActions, instanceActions }) {
+  const section = tpl("tpl-repository-root");
+  // Lets a rebuild find "this same worktree's" <details> across renders (see reconcileSection in
+  // app.js) to carry its open/closed state forward — rootId is stable across polls, DOM position
+  // is not guaranteed to be.
+  section.dataset.rootId = root?.rootId || "main";
+  // This checkout's own info tooltip. Git detail belongs here rather than on the repository header
+  // — branch, commit, drift and fetch age all differ per worktree — so the repository-level tooltip
+  // carries only what every checkout shares (see tpl-repository-card).
+  const rootInfo = section.querySelector("[data-slot=root-info]");
+  const rootTooltip = rootInfo?.querySelector("template")?.content || null;
+  if (root?.git) {
+    // No providerUrl here: the repo link now lives once at the repository header (see above),
+    // not repeated inside every root section's git row.
+    applyGitBadge(section, rootTooltip || { querySelector: () => null }, root.git, null, {
+      hideProviderLink: true,
+      hideWorktreeSuffix: true,
+    });
+    mountCopyDropdown(section, root);
+  }
+  if (rootInfo && rootTooltip) {
+    // The filesystem path is the one fact that distinguishes two checkouts of the same branch, and
+    // it is deliberately not on the row itself (too long, and usually redundant with the branch).
+    if (root?.projectRoot) {
+      rootTooltip.querySelector("[data-slot=root-path-detail]").hidden = false;
+      rootTooltip.querySelector("[data-slot=root-path-text]").textContent = root.projectRoot;
+    }
+    // Revealed whenever there is anything to show — a root with no git at all still reports its
+    // path and member list, which is more than the bare row says.
+    if (root?.git || root?.projectRoot) rootInfo.hidden = false;
+  }
+  // This root's own entrypoint, same "lift the URL out of its member" pattern the repository
+  // header uses one level up — opening this checkout's app never requires expanding its members.
+  // Port-only display (":4322"): every listener here is loopback by construction, so the host is
+  // implied and repeating it on every row would be noise the branch/port pair didn't need.
+  // Worktree rows only. The main checkout's entrypoint is the repository's own address and is shown
+  // once on the title row; repeating it here stated the same port twice on one card, a line apart.
+  // Worktree ports have no such home above, so they stay.
+  const rootEntrypoints = root?.isWorktree
+    ? (root.members || []).filter((member) => member.entrypoint && member.instance?.origin)
+    : [];
+  const entrypointSlot = section.querySelector("[data-slot=root-entrypoint]");
+  if (rootEntrypoints.length) {
+    entrypointSlot.hidden = false;
+    entrypointSlot.textContent = displayOrigin(rootEntrypoints[0].instance.origin);
+    entrypointSlot.href = rootEntrypoints[0].instance.origin;
+    entrypointSlot.title = rootEntrypoints[0].instance.origin;
+  }
+  const composeGroups = root?.composeGroups || [];
+  const memberCount = (root?.members || []).length + composeGroups.length;
+  // A checkout that is not on disk reports THAT, rather than "no active members" — which is true of
+  // a missing checkout but describes it as though the directory were sitting there idle. The
+  // distinction is the whole point of inspectCheckout returning three states instead of a boolean:
+  // "absent" is a fact about the directory, "unreadable" is an admission that we could not look.
+  // A checkout with nothing running is reported as "Inactive" rather than "no active members": the
+  // row keeps its git badge either way (the branch is a fact about the checkout, not about what
+  // happens to be listening), so what the meta has left to say is simply whether it is running.
+  // "N members" is a count worth expanding; "Inactive" is not, so the row also stops behaving like a
+  // disclosure — see below. `absent`/`unreadable` keep their own wording, which says something
+  // "Inactive" would flatten away: the directory is gone, or we could not read it.
+  const metaSlot = section.querySelector("[data-slot=root-meta]");
+  const isInactive = !memberCount && !departed.length && !root?.checkoutState;
+  metaSlot.textContent = memberCount
+    ? `${memberCount} member${memberCount === 1 ? "" : "s"}`
+    : (isInactive ? "Inactive" : checkoutStateLabel(root));
+  if (isInactive) metaSlot.classList.add("is-inactive");
+  // Names them, where the row only counts them — same relationship the repository tooltip's
+  // members-detail has to the card's own member count.
+  if (rootTooltip) {
+    const names = [
+      ...composeGroups.map((group) => `compose ${group.name}`),
+      ...(root?.members || []).map((member) => member.name),
+    ];
+    rootTooltip.querySelector("[data-slot=root-members-detail]").textContent = names.join(", ") || "none";
+  }
+  const members = section.querySelector("[data-slot=members]");
+  for (const group of composeGroups) {
     members.append(composeProjectCard(group, composeActions, {
       isMember: true,
       repositoryName: repository.name,
     }));
   }
-  for (const member of repository.members) {
+  for (const member of root?.members || []) {
     const card = instanceCard(memberProject(repository, member), member.instance, instanceActions);
     applySecondaryPorts(card, member.secondaryPorts);
     // A non-entrypoint answered no page title: a runtime, a socket, an internal API. It is real and
@@ -371,12 +594,22 @@ export function repositoryCard(repository, { instanceActions, composeActions, re
   // Members whose process is gone. Shown rather than silently removed, matching how a top-level
   // card behaves when its instance exits — a member disappearing without a trace is the one case
   // where the page stops answering "what was running here a moment ago".
-  for (const member of departedMembers) {
+  for (const member of departed) {
     const card = instanceCard(memberProject(repository, member), member.instance, instanceActions);
     card.classList.add("is-offline");
     members.append(card);
   }
-  return node;
+  // An empty row has nothing behind the caret, so it stops presenting itself as expandable: the
+  // chevron goes and the summary refuses the toggle. A disclosure that opens onto nothing is the
+  // same lie as the disabled-but-clickable copy button above — it advertises content it does not
+  // have. Kept as a <details> rather than swapped for a <div> so reconcileSection in app.js still
+  // finds this root by dataset.rootId across rebuilds.
+  if (!section.querySelector("[data-slot=members]").children.length) {
+    section.classList.add("is-empty");
+    section.querySelector(".compose-project-chevron")?.remove();
+    section.querySelector("summary").addEventListener("click", (event) => event.preventDefault());
+  }
+  return section;
 }
 
 // The trigger sits inside <summary>, the only child a closed <details> keeps rendered, so its click
@@ -393,11 +626,18 @@ function wireRepositoryActions(node, repository, actions) {
     event.stopPropagation();
     actions.onToggleMenu(node);
   });
-  node.querySelector("[data-action=favorite]")?.addEventListener("click", (event) => {
-    event.preventDefault();
-    actions.onCloseMenus();
-    actions.onToggleFavorite(repository);
-  });
+  // The label states what the click will DO, not what the repository currently is — "Unpin" on a
+  // pinned repository. A menu item that named the current state would read as a status line and
+  // leave the action ambiguous.
+  const pin = node.querySelector("[data-action=pin]");
+  if (pin) {
+    pin.textContent = repository.pinned ? "Unpin" : "Pin";
+    pin.addEventListener("click", (event) => {
+      event.preventDefault();
+      actions.onCloseMenus();
+      actions.onTogglePinned(repository);
+    });
+  }
   node.querySelector("[data-action=hide]")?.addEventListener("click", (event) => {
     event.preventDefault();
     actions.onCloseMenus();
@@ -437,10 +677,9 @@ function applySecondaryPorts(card, secondaryPorts) {
 // Members arrive flattened for rendering, but instanceCard expects the project-shaped object the
 // legacy collections handed it. Rebuild just the fields it reads.
 //
-// Git context is deliberately omitted: it is a property of the repository, identical for every
-// member, and the repository card already shows it once. Passing it down drew the same branch,
-// dirty dot, and ahead/behind marks on every member row — three identical git rows on a
-// three-member card.
+// Git is always suppressed here: each member now renders inside its own root section, which already
+// shows that root's git once in its own git-row — see buildRootSection. A worktree on a different
+// branch gets its own section (and its own badge) rather than needing a per-member comparison.
 function memberProject(repository, member) {
   return {
     name: repository.name,
@@ -460,9 +699,9 @@ export function instanceCard(project, instance, actions) {
   // should not compete visually with the repository name above it.
   if (project.isMember) {
     node.classList.add("is-member");
-    // Favorite and hide are repository-scoped and live on the repository menu; the actions left
-    // here (links, copy, open, history, association, alias) genuinely describe this one listener.
-    node.querySelector("[data-action=favorite]")?.remove();
+    // Hide is repository-scoped and lives on the repository menu; the actions left here (links,
+    // copy, open, history, association, alias) genuinely describe this one listener. (Favorite is
+    // gone entirely — pinning is repository-level.)
     node.querySelector("[data-action=hide]")?.remove();
   }
   const tooltip = node.querySelector(".info-wrap > template").content;
@@ -503,6 +742,7 @@ export function instanceCard(project, instance, actions) {
     origin.textContent = "origin unavailable";
     origin.removeAttribute("href");
   }
+  mountInstanceCopyPid(node, instance);
   const warning = tooltip.querySelector("[data-slot=warning]");
   if (instance.bind.warning) {
     warning.hidden = false;
@@ -573,7 +813,10 @@ export function settingsRow(title, meta, label, onClick) {
 // The row itself is cloned from the shared tpl-git-row rather than pre-authored inside each card
 // template: both card kinds expose only an empty [data-slot=git-row] container, so there is exactly
 // one authored copy of this markup and the two cards cannot drift apart again.
-function applyGitBadge(node, tooltip, git, providerUrl) {
+// hideProviderLink skips both the link AND the "local repo" fallback text — used for root sections,
+// where the repository-level header already shows the one provider link once and a per-section
+// "local repo" label would be a false negative on an actual git-backed repository.
+function applyGitBadge(node, tooltip, git, providerUrl, { hideProviderLink = false, hideWorktreeSuffix = false } = {}) {
   const row = node.querySelector("[data-slot=git-row]");
   if (!row || !git?.provider?.ok || (!git.branch && !git.shortHead)) return;
 
@@ -587,12 +830,22 @@ function applyGitBadge(node, tooltip, git, providerUrl) {
   const branchLabel = !git.detached && DEFAULT_BRANCHES.has(branchName)
     ? `${branchName} branch`
     : branchName;
+  // No separate worktree icon/slot exists in tpl-git-row today, and a repository with two branches
+  // running side-by-side is rare enough that adding new markup for it isn't worth the churn — the
+  // branch name itself already disambiguates in the common case (main vs. a feature branch). This
+  // covers the one gap that leaves: two worktrees that happen to share a branch name would otherwise
+  // both read as plain "<branch>" with nothing marking either as the non-primary checkout.
+  //
+  // Suppressed inside a repository card's root sections (hideWorktreeSuffix): those rows sit under a
+  // "Worktrees" heading that already establishes what they are, so the suffix repeated the grouping
+  // on every row. A standalone card has no such heading and still needs it.
+  const worktreeSuffix = git.isWorktree && !hideWorktreeSuffix ? " (worktree)" : "";
   // Long branch names (ticket-prefixed, or a full feature description) would otherwise push the
   // rest of the row off. Middle-truncated because the tail of a branch name is usually the part
   // that identifies it — the shared helper's default cap is tuned for repo paths, so this passes
   // its own cap.
-  branchSlot.textContent = portalMiddleEllipsis(branchLabel, BRANCH_NAME_MAX_LENGTH);
-  if (branchSlot.textContent !== branchName) branchSlot.title = branchName;
+  branchSlot.textContent = portalMiddleEllipsis(branchLabel, BRANCH_NAME_MAX_LENGTH) + worktreeSuffix;
+  if (branchSlot.textContent !== branchName + worktreeSuffix) branchSlot.title = branchName + worktreeSuffix;
 
   const repoLink = badge.querySelector("[data-slot=git-repo-link]");
   const repoName = badge.querySelector("[data-slot=git-repo-name]");
@@ -604,7 +857,7 @@ function applyGitBadge(node, tooltip, git, providerUrl) {
     // not a branch view, so naming a branch would promise something the link does not do.
     repoLink.querySelector("[data-slot=git-repo-label]").textContent = providerHostLabel(providerUrl);
     repoLink.title = repoNameFromProviderUrl(providerUrl);
-  } else {
+  } else if (!hideProviderLink) {
     repoName.hidden = false;
     repoName.textContent = "local repo";
   }
@@ -890,11 +1143,101 @@ function wireCopyBranchButton(node, git) {
     // would leave the check behind on a control that can never reach that state.
     for (const icon of button.querySelectorAll("portal-icon")) icon.remove();
     button.classList.add("is-static");
+    // Same three steps mountCopyDropdown takes when it neutralizes this button, and for the same
+    // reason: stripping the icons only makes it LOOK inert. Left enabled it is still focusable, still
+    // clickable, and still announces "Copy branch name" from the markup's aria-label — a control that
+    // tells assistive technology it does something it no longer does. Sighted users see plain text;
+    // keyboard and screen-reader users find a button that does nothing.
+    button.disabled = true;
+    button.removeAttribute("aria-label");
     return;
   }
   wireCopyAffordance(button, {
     getText: () => (git?.detached ? git.shortHead || "" : git?.branch || ""),
     hoverLabel: "copy branch",
+  });
+}
+
+// The copy control on a root row, sized to what is actually worth copying there.
+//
+// Two identifiers are candidates — the branch name and the checkout's filesystem path — but neither
+// is universal:
+//   - Branch: skipped on a default branch. Nobody pastes "main" into a checkout (same rule
+//     wireCopyBranchButton already applies to standalone cards).
+//   - Path: skipped on the main checkout. Its path is the repository's own directory, which is not
+//     the thing you are reaching for — the worktree paths are.
+//
+// What survives decides the control's SHAPE, rather than the shape being fixed and its items
+// varying: two items get a dropdown, one gets a plain copy button (a caret guarding a single choice
+// is a click that asks a question with one answer), and zero gets no control at all.
+function mountCopyDropdown(section, root) {
+  const branchButton = section.querySelector("[data-action=copy-branch]");
+  if (!branchButton) return;
+  // The branch label is inside this button; its copy behavior moves to the control built below, so
+  // what remains is text. Leaving a live <button> that no longer does anything is a control that
+  // lies.
+  for (const icon of branchButton.querySelectorAll("portal-icon")) icon.remove();
+  branchButton.classList.add("is-static");
+  branchButton.disabled = true;
+  branchButton.removeAttribute("aria-label");
+
+  const git = root.git;
+  const items = [];
+  // Detached HEAD has no branch name to skip — the short SHA is exactly what you would copy.
+  if (git?.detached) {
+    items.push({ label: "Copy commit SHA", value: () => git.shortHead || "" });
+  } else if (git?.branch && !DEFAULT_BRANCHES.has(git.branch)) {
+    items.push({ label: "Copy branch name", value: () => git.branch || "" });
+  }
+  // Worktree checkouts only, and only when the path actually resolved — an item that copies nothing
+  // is worse than an absent one, since it reports success while writing an empty clipboard.
+  if (root.isWorktree && root.projectRoot) {
+    items.push({ label: "Copy worktree path", value: root.projectRoot });
+  }
+
+  if (!items.length) return;
+  if (items.length === 1) {
+    const button = document.createElement("portal-copy-button");
+    button.setAttribute("icon", "copy");
+    button.setAttribute("aria-label", items[0].label);
+    button.copySource = items[0].value;
+    branchButton.after(button);
+    return;
+  }
+  const menu = document.createElement("portal-copy-menu");
+  menu.items = items;
+  branchButton.after(menu);
+}
+
+// Per-instance copy actions. The row already opens its URL on click, so what this adds is the
+// values you cannot get by clicking: the address as text, the bare port, and the PID (the one thing
+// here you reach for when a process needs killing rather than visiting).
+//
+// Assembled from what this instance actually has — an inactive card with no origin still offers its
+// PID — and the whole control stays hidden if that leaves nothing, matching the correct-or-absent
+// discipline the badges follow.
+// Copy PID as a menu entry rather than a dropdown on the row.
+//
+// The dropdown this replaces offered three values, two of which the row already gave you: the
+// origin is a link you click, and the port is the visible half of it. A caret guarding one genuinely
+// useful value is a click that asks a question with one answer — the same reasoning mountCopyDropdown
+// applies to the root rows. The PID keeps its place because it is the one value here you cannot
+// reach any other way.
+//
+// Absent, not disabled, when there is no PID: a container member reports none, and an entry that
+// copies an empty string reports success while writing nothing.
+function mountInstanceCopyPid(node, instance) {
+  const button = node.querySelector("[data-action=copy-pid]");
+  if (!button) return;
+  const pid = instance.process?.pid;
+  if (!pid) {
+    button.remove();
+    return;
+  }
+  button.hidden = false;
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    portalCopyText(String(pid));
   });
 }
 
@@ -1023,6 +1366,22 @@ function applyPortHealthBadge(port, instance, state) {
   badge.title = `No HTTP healthcheck · ${statusDetail(instance)}`;
 }
 
+function checkoutStateLabel(root) {
+  if (root?.checkoutState === "absent") return "checkout missing";
+  if (root?.checkoutState === "unreadable") return root.checkoutReason || "checkout unreadable";
+  return "no active members";
+}
+
+// A repository with no lastSeenAt is not "seen infinitely long ago" — such records exist (registered
+// by a source that never resolved a root) and the ageing rule deliberately never hides them, so the
+// card must not imply an age the registry does not claim.
+function lastSeenLabel(lastSeenAt) {
+  if (!lastSeenAt) return "not running";
+  const elapsed = Date.now() - Date.parse(lastSeenAt);
+  if (!Number.isFinite(elapsed) || elapsed < 0) return "not running";
+  return `last seen ${formatDuration(elapsed)} ago`;
+}
+
 function formatMemory(kb) {
   if (kb >= 1024 * 1024) return `${(kb / (1024 * 1024)).toFixed(1)}GB`;
   if (kb >= 1024) return `${(kb / 1024).toFixed(1)}MB`;
@@ -1118,16 +1477,10 @@ function wireCardActions(node, project, instance, actions) {
     event.stopPropagation();
     actions.onToggleMenu(node);
   });
-  node.querySelector("[data-action=link]").addEventListener("click", () => {
-    actions.onCloseMenus();
-    actions.onAddLink(project, instance);
-  });
-  node.querySelector("[data-action=edit]").addEventListener("click", () => {
-    actions.onCloseMenus();
-    actions.onEditLinks(project, instance);
-  });
-  // No copy/open wiring: those menu entries were removed because the origin link in the same row
-  // already opens on click and the row carries its own copy affordance.
+  // No link wiring here any more: Add link / Edit links moved into the Pages & Routes panel, where
+  // user-added links sit alongside discovered ones as another source. No copy/open wiring either —
+  // those entries were removed because the origin link in the same row already opens on click and
+  // the row carries its own copy affordance.
   const history = node.querySelector("[data-action=history]");
   // Only an instance the current snapshot minted a key for has readable history.
   if (!instance.opaqueKey || !actions.onHistory) history.hidden = true;
@@ -1137,6 +1490,15 @@ function wireCardActions(node, project, instance, actions) {
       actions.onHistory(project, instance);
     });
   }
+  // Discovered-routes trigger lives outside the three-dot menu (see index.html's routes-trigger
+  // slot comment) — mounting a live widget is app.js's job (it owns the fetch/mutation calls this
+  // needs), templates.js only reveals the reserved slot and hands off. Same key requirement as
+  // history: suggestions are fetched live against the app's current origin.
+  const routesTrigger = node.querySelector("[data-slot=routes-trigger]");
+  if (routesTrigger && instance.opaqueKey && actions.onMountRoutesTrigger) {
+    routesTrigger.hidden = false;
+    actions.onMountRoutesTrigger(routesTrigger, project, instance);
+  }
   node.querySelector("[data-action=associate]").addEventListener("click", () => {
     actions.onCloseMenus();
     actions.onAssociate(project, instance);
@@ -1145,12 +1507,8 @@ function wireCardActions(node, project, instance, actions) {
     actions.onCloseMenus();
     actions.onAlias(project, instance);
   });
-  // Optional: favorite and hide are repository-scoped, so a card nested inside a repository card has
-  // had these buttons removed before wiring runs. A standalone card still has them.
-  node.querySelector("[data-action=favorite]")?.addEventListener("click", () => {
-    actions.onCloseMenus();
-    actions.onToggleFavorite(project, instance);
-  });
+  // Optional: hide is repository-scoped, so a card nested inside a repository card has had this
+  // button removed before wiring runs. A standalone card still has it.
   node.querySelector("[data-action=hide]")?.addEventListener("click", () => {
     actions.onCloseMenus();
     actions.onHide(project, instance);

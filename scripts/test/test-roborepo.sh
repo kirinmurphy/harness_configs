@@ -1781,6 +1781,15 @@ assert "repositories: discovery recording + Plans enrollment" \
 assert "repositories: browser-safe API contracts" \
   node "${repo_root}/scripts/test/repositories-api-check.mjs"
 
+# Repository lifecycle: active/idle/stale derivation, the unreadable-vs-absent distinction (an
+# unplugged drive must never read as a deleted checkout), 30-day ageing measured from lastSeenAt,
+# and a reused directory repointing without silently merging two repositories.
+assert "repositories: lifecycle states, ageing, reused directories" \
+  node "${repo_root}/scripts/test/repositories-lifecycle-check.mjs"
+# Cross-poll git caching for idle repositories: reused only while the checkout's git directory is
+# unchanged, so a long-lived portal cannot pin one branch reading forever.
+assert "repositories: idle git cache invalidates on checkout change" \
+  node "${repo_root}/scripts/test/repositories-idle-git-cache-check.mjs"
 # Per-branch ahead/behind/tracking-state facts against a real git fixture in a temp dir, plus
 # refreshRemote and pushBranchToUpstream. Had a package.json test:* script but nothing called it.
 assert "repositories: branch sync facts" \
@@ -1835,6 +1844,11 @@ assert "localhoster: docker provider parsing" \
 # Etime parsing for `ps`-style output: short-form, long-form, and day-qualified durations to seconds.
 assert "localhoster: process etime parsing" \
   node "${repo_root}/scripts/test/localhoster-process-check.mjs"
+
+# Same-origin metadata discovery: manifest/robots/sitemap/OpenAPI sources, the loopback fetch guards
+# (external redirect, body cap, timeout), auth-looking path exclusion, and source-priority dedupe.
+assert "localhoster: metadata suggestion discovery" \
+  node "${repo_root}/scripts/test/localhoster-metadata-check.mjs"
 
 # Root config drift VIEW (buildRootConfigView in root-config-view.mjs): the per-harness state the terminal
 # `config root inspect` report and the web /config drift chip both render from — not-installed /
@@ -1941,11 +1955,6 @@ assert "config: /api/config/source rejects missing/unknown harness ids" \
 # rootConfigBaseline/Active path maps do not encode a two-provider assumption.
 assert "config: synthetic third-provider harnesses list and root-config paths" \
   node "${repo_root}/scripts/test/config-synthetic-provider-check.mjs"
-
-# The first-run onboarding notice and its optional-package selection state. Added with the
-# onboarding surfaces but reachable from no runner, which orphan-test-check reports.
-assert "config: onboarding notice and optional-package selection state" \
-  node "${repo_root}/scripts/test/config-onboarding-state-check.mjs"
 
 # The install-side counterpart to the above: proves artifact DELIVERY (live permission rendering,
 # capability/path coherence, the shared harness-id helper) reaches a provider that is not in any

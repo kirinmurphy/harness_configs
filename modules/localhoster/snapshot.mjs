@@ -1,13 +1,32 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { defaultSettings, resolveProjectAlias } from "./settings.mjs";
-import { providerUrlForRepositoryId } from "../repositories/identity.mjs";
+import { canonicalRepositoryId, providerUrlForRepositoryId } from "../repositories/identity.mjs";
 
 export function buildLocalhosterSnapshot({
   discovery,
   settings = defaultSettings(),
   now = new Date(),
   refresh = { state: "idle", startedAt: null, error: null },
+  // repositoryId -> canonical display name, from the repository registry. Injected rather than read
+  // here so this stays a pure builder (the caller owns state access, as it already does for
+  // settings). Empty is fine: naming falls back to whatever the running checkouts report.
+  repositoryNames = new Map(),
+  // Repositories the registry knows that have nothing running right now, already carrying their
+  // lifecycle state and (for present checkouts) git context. Injected for the same reason as
+  // repositoryNames: reading the registry and shelling out to git are the caller's job, so this
+  // stays a pure function of its inputs. Empty means "no persistence available", which degrades to
+  // the pre-Phase-3 behaviour of listing only what is running.
+  persistedRepositories = [],
+  // Repositories the 30-day ageing sweep has hidden. Name and last-seen only — enough for the
+  // "Show hidden" affordance to offer them back, without deriving lifecycle or reading git for
+  // repositories that are by construction not on the page.
+  hiddenRepositories = [],
+  // Ids of repositories the user has pinned, from the repository registry. Injected for the same
+  // reason as repositoryNames: the registry is the caller's to read. A Set rather than a flag on
+  // each record because it is consulted once per repository, including for ones that arrived on the
+  // running path and therefore have no persisted record to carry it.
+  pinnedRepositoryIds = new Set(),
 } = {}) {
   const activeByProject = new Map();
   const unmatchedInstances = [];
@@ -35,6 +54,17 @@ export function buildLocalhosterSnapshot({
           repoPath: projectSettings.repoPath || null,
           git: gitInfo?.git || null,
           repositoryId: gitInfo?.repositoryId || null,
+          // Which checkout this stack's files actually live in, decided by its bind mounts rather
+          // than by where `docker compose up` was typed (classifyComposeOwnership in discovery.mjs).
+          // Null for a shared or unverified stack, which routes it to repository level instead of
+          // into one checkout's section.
+          rootId: gitInfo?.rootId || null,
+          // "owned" (mounts land in exactly one checkout), "shared" (they span several, or resolve
+          // to the repository root), or "unverified" (no bind mounts at all). shared and unverified
+          // render in the same place but are not the same claim — one is a positive finding, the
+          // other an absence of evidence — so the evidence kind travels alongside.
+          ownership: gitInfo?.ownership || null,
+          ownershipEvidence: gitInfo?.ownershipEvidence || null,
           // "manual" when settings.composeProjects[name].repoPath was set and used, "auto" when
           // resolveIdentity instead ran against the working_dir label from `docker ps`, null when
           // neither resolved (e.g. a compose project with no git repo at all).
@@ -110,6 +140,11 @@ export function buildLocalhosterSnapshot({
       }
       inactiveProjects.push({
         identity,
+        // Which repository this saved slot belongs to, when its identity resolves to one. Phase 3
+        // renders repositories from the registry instead, so a slot that HAS a repository is
+        // already represented by that repository's card and must not also appear as a loose saved
+        // app; only the never-resolved ones are still listed on their own.
+        repositoryId: canonicalRepositoryId(savedIdentityFor(identity)),
         name: project.name || inferredName(identity),
         favorite: project.favorite === true || app.favorite === true,
         hidden: false,
@@ -144,8 +179,9 @@ export function buildLocalhosterSnapshot({
     // Repository-keyed view over the same instances the three collections above hold. Built
     // alongside them during the migration (localhoster-repository-card-merge) so existing consumers
     // keep working while the portal moves over; the legacy three are removed once nothing reads them.
-    repositories: buildRepositories({ projects, composeProjects, unmatchedInstances }),
+    repositories: buildRepositories({ projects, composeProjects, unmatchedInstances, repositoryNames, persistedRepositories, pinnedRepositoryIds }),
     inactiveProjects: inactiveProjects.sort(compareProjects),
+    hiddenRepositories,
     hiddenCount,
     settings: settingsSummary(settings),
   };
@@ -193,8 +229,20 @@ function groupByContainer(instances) {
 // Only a real repositoryId groups. `process:` identities resolve to null (canonicalRepositoryId
 // returns null for them — no repository exists to be a member of) and stay unmatched, as do
 // Compose projects whose repo never resolved.
-function buildRepositories({ projects, composeProjects, unmatchedInstances }) {
+function buildRepositories({ projects, composeProjects, unmatchedInstances, repositoryNames = new Map(), persistedRepositories = [], pinnedRepositoryIds = new Set() }) {
   const byRepository = new Map();
+
+  // A worktree's project-level `name` is commonly its branch or directory name (e.g.
+  // "localhoster-metadata-suggestions"), not the repository's real name — only the main (non-
+  // worktree) checkout's name is canonical. Tracks name candidates per repository, tagged by
+  // whether they came from a worktree, so the repository-level name can prefer a main-checkout
+  // name and only fall back to a worktree's when no main checkout is present at all.
+  const nameCandidates = new Map();
+  const noteName = (repositoryId, name, isWorktree) => {
+    if (!name) return;
+    if (!nameCandidates.has(repositoryId)) nameCandidates.set(repositoryId, []);
+    nameCandidates.get(repositoryId).push({ name, isWorktree });
+  };
 
   const ensure = (repositoryId, source) => {
     if (!byRepository.has(repositoryId)) {
@@ -205,56 +253,141 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances }) {
         identityKind: repositoryId.startsWith("git:") ? "git" : "local",
         providerUrl: providerUrlForRepositoryId(repositoryId),
         name: source.name,
-        favorite: false,
-        git: null,
+        // Read from the repository registry (see pinnedRepositoryIds below), never from the members
+        // — a pin has to survive the process exiting, and an idle repository has no members to hold
+        // it. Defaults false here and is set once the registry has been consulted.
+        pinned: false,
+        // `active` by construction here: every entry created on the running path was created because
+        // something was discovered for it. The persisted-repository pass overwrites this with the
+        // registry-derived state for repositories that have nothing running.
+        lifecycle: { state: "active", reason: null },
+        lastSeenAt: null,
         composeGroups: [],
+        // Compose stacks that belong to the repository but to no single checkout of it — mounts
+        // spanning several checkouts, mounts resolving to none, or no bind mounts to judge by.
+        // Rendered once at repository level (see the Shared Services region in repositoryCard)
+        // rather than inside a checkout that does not own them.
+        sharedComposeGroups: [],
+        // Flat union of every root's members, kept for consumers that only ever needed "every
+        // member of this repository" and don't care which checkout it runs from (favorite/hide
+        // fan-out, departed-member tracking). `roots` below is the grouped view the card renders.
         members: [],
+        // One entry per checkout (main + every worktree) this repository has an active member or
+        // git identity for. The main checkout (isWorktree: false) is not guaranteed to exist here
+        // if only a worktree is currently running — the portal renders its section as empty rather
+        // than this array being padded with a placeholder.
+        roots: [],
       });
     }
     return byRepository.get(repositoryId);
   };
 
+  // rootId is per-checkout even though repositoryId is shared across a repo's worktrees — this is
+  // what lets a worktree's branch stay scoped to its own section instead of leaking onto the
+  // repository-level badge (see the plan doc's "Worktree/Root Hierarchy" section).
+  const ensureRoot = (entry, rootId, git, projectRoot) => {
+    let root = entry.roots.find((candidate) => candidate.rootId === rootId);
+    if (!root) {
+      root = { rootId, isWorktree: Boolean(git?.isWorktree), git: git || null, projectRoot: projectRoot || null, members: [], composeGroups: [] };
+      entry.roots.push(root);
+    } else {
+      if (!root.git && git) root.git = git;
+      if (!root.projectRoot && projectRoot) root.projectRoot = projectRoot;
+    }
+    return root;
+  };
+
   for (const project of projects) {
     if (!project.repositoryId) continue;
     const entry = ensure(project.repositoryId, project);
-    entry.favorite = entry.favorite || project.favorite === true;
-    entry.git = entry.git || project.git || null;
+    const rootId = project.rootId || `unresolved:${project.repositoryId}`;
+    const root = ensureRoot(entry, rootId, project.git, project.projectRoot);
+    noteName(project.repositoryId, project.name, root.isWorktree);
     for (const instance of project.instances) {
-      entry.members.push(toMember(instance, project.identity));
+      const member = toMember(instance, project.identity);
+      entry.members.push(member);
+      root.members.push(member);
     }
   }
 
   for (const composeProject of composeProjects) {
     if (!composeProject.repositoryId) continue;
     const entry = ensure(composeProject.repositoryId, composeProject);
-    entry.favorite = entry.favorite || composeProject.favorite === true;
-    entry.git = entry.git || composeProject.git || null;
     // A Compose stack is one deploy unit — `docker compose down` stops every container at once —
     // so it stays a named sub-group rather than flattening 11 Supabase containers into the member
     // list ahead of the single dev server the user actually cares about.
     // Carries the whole compose-project record (plus its own aggregate) so the portal renders the
     // sub-group with the same card it used when this was a top-level entry.
-    entry.composeGroups.push({
-      ...composeProject,
-      cpuPercentOfHost: sumCpuPercentOfHost(composeProject.instances),
-    });
+    const group = { ...composeProject, cpuPercentOfHost: sumCpuPercentOfHost(composeProject.instances) };
+    entry.composeGroups.push(group);
+    // Routes into the same checkout its containers actually run from (see the rootId comment above)
+    // when the mount evidence says exactly one checkout owns it.
+    //
+    // Anything else goes to the repository level instead of falling back to the main checkout. That
+    // fallback asserted something the evidence contradicts: a stack whose mounts land in two
+    // checkouts (`shared`), or in none of them (`repo-root`), or that has no bind mounts to read at
+    // all (`unverified`), is not the main checkout's — placing it there tells the user a worktree
+    // owns infrastructure that in fact backs several, and hides the sharing that is the whole point
+    // of classifying. Phase 4 sets rootId only for `owned`, so a null rootId here is the verdict,
+    // not missing data.
+    if (!composeProject.rootId) {
+      entry.sharedComposeGroups.push(group);
+      continue;
+    }
+    const root = ensureRoot(entry, composeProject.rootId, composeProject.git, composeProject.projectRoot);
+    root.composeGroups.push(group);
   }
 
   for (const instance of unmatchedInstances) {
     const repositoryId = instance.project?.repositoryId;
     if (!repositoryId) continue;
-    const entry = ensure(repositoryId, {
-      name: inferredName(instance.project.identity, instance.project.projectRoot),
-    });
-    entry.git = entry.git || instance.project.git || null;
-    entry.members.push(toMember(instance, instance.project.identity));
+    const name = inferredName(instance.project.identity, instance.project.projectRoot);
+    const entry = ensure(repositoryId, { name });
+    const rootId = instance.project.rootId || `unresolved:${repositoryId}`;
+    const root = ensureRoot(entry, rootId, instance.project.git, instance.project.projectRoot);
+    noteName(repositoryId, name, root.isWorktree);
+    const member = toMember(instance, instance.project.identity);
+    entry.members.push(member);
+    root.members.push(member);
   }
 
   for (const entry of byRepository.values()) {
     entry.members = collapseByPid(entry.members);
-    entry.duplicateGroups = findStaleDuplicates(entry.members);
     entry.members.sort(compareMembers);
+    // Duplicate-listener detection runs per checkout, not repository-wide: a repository legitimately
+    // runs the same app shape on two different ports when it is open in two worktrees at once (each
+    // an independent, intentional checkout) — that is not the stale-leftover-process case this warns
+    // about, which is two processes serving the same shape from the SAME checkout.
+    entry.duplicateGroups = [];
+    for (const root of entry.roots) {
+      root.members = collapseByPid(root.members);
+      entry.duplicateGroups.push(...findStaleDuplicates(root.members));
+      root.members.sort(compareMembers);
+      root.composeGroups.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    // Main checkout first (even if empty — the portal always renders its section), then worktrees
+    // alphabetically by branch so the order is stable across polls.
+    entry.roots.sort((a, b) => {
+      if (a.isWorktree !== b.isWorktree) return a.isWorktree ? 1 : -1;
+      return (a.git?.branch || "").localeCompare(b.git?.branch || "");
+    });
+    // A main-checkout name is canonical (a worktree's name is commonly its branch/dir name, not the
+    // repository's real name); only fall back to a worktree's name when no main-checkout name was
+    // ever seen — e.g. only a worktree is currently running.
+    //
+    // The registry's name outranks both. It is the repository-level fact, recorded when the
+    // repository was first resolved and independent of which checkouts happen to be running now —
+    // which is exactly the case the candidate list cannot cover: when only a worktree is up there is
+    // no main-checkout candidate to prefer, and the card would otherwise be titled with the
+    // worktree's branch/directory name (e.g. "localhoster-metadata-suggestions" for roborepo).
+    const candidates = nameCandidates.get(entry.repositoryId) || [];
+    const registryName = repositoryNames.get(entry.repositoryId);
+    const mainName = candidates.find((c) => !c.isWorktree)?.name;
+    if (registryName) entry.name = registryName;
+    else if (mainName) entry.name = mainName;
+    else if (candidates.length) entry.name = candidates[0].name;
     entry.composeGroups.sort((a, b) => a.name.localeCompare(b.name));
+    entry.sharedComposeGroups.sort((a, b) => a.name.localeCompare(b.name));
     // Every member counts toward the aggregate today. Tool processes that resolve to a repository
     // only by inherited working directory (a tunnel, a stray `npx`) arguably should not — their CPU
     // tracks their own traffic, not application load — but no field currently separates them from a
@@ -267,7 +400,66 @@ function buildRepositories({ projects, composeProjects, unmatchedInstances }) {
     ]);
   }
 
-  return [...byRepository.values()].sort(compareRepositories);
+  // Everything above came from something running. These come from the registry instead, so the list
+  // stops being "what is up right now" and becomes "every repository, with its state" — which is what
+  // retires the separate inactive section.
+  //
+  // Guarded against double-listing: the caller already excludes running repositories, but a stack
+  // resolved on this scan can land in the registry a moment before the snapshot is built, and a
+  // repository appearing twice is far worse than one appearing a poll late.
+  for (const persisted of persistedRepositories) {
+    if (!persisted?.repositoryId || byRepository.has(persisted.repositoryId)) continue;
+    const entry = ensure(persisted.repositoryId, { name: persisted.name || labelFromRepositoryId(persisted.repositoryId) });
+    entry.lifecycle = persisted.lifecycle || { state: "idle", reason: null };
+    entry.lastSeenAt = persisted.lastSeenAt || null;
+    // Same root shape the running path builds, so the card renders one kind of section either way.
+    // members stays empty by construction: an idle repository has no instances, and that absence is
+    // the entire difference between the two states.
+    for (const checkout of persisted.checkouts || []) {
+      if (!checkout?.rootId) continue;
+      const root = ensureRoot(entry, checkout.rootId, checkout.git, checkout.projectRoot);
+      root.checkoutState = checkout.state;
+      root.checkoutReason = checkout.reason || null;
+    }
+    entry.roots.sort((a, b) => {
+      if (a.isWorktree !== b.isWorktree) return a.isWorktree ? 1 : -1;
+      return (a.git?.branch || "").localeCompare(b.git?.branch || "");
+    });
+    entry.duplicateGroups = [];
+    entry.cpuPercentOfHost = null;
+  }
+
+  // Applied to every entry at once, after both the running and persisted passes, because a pin is a
+  // property of the repository rather than of how this scan happened to find it — resolving it in
+  // one place is what makes an idle repository pinnable at all.
+  for (const [repositoryId, entry] of byRepository) {
+    entry.pinned = pinnedRepositoryIds.has(repositoryId);
+  }
+
+  return sortRepositoriesForDisplay([...byRepository.values()]);
+}
+
+// Running repositories first, then idle/stale — a card with something live on it outranks one
+// without, whatever their names. Within each group compareRepositories applies, so pins and
+// alphabetical order still hold where they did before.
+//
+// Exported because the pin mutation re-sorts an existing snapshot in place rather than rebuilding
+// it (see setLocalhosterRepositoryPinned): pinning changes the order, and the order must be derived
+// the same way in both paths or the list would reshuffle on the next poll.
+export function sortRepositoriesForDisplay(repositories) {
+  return [...repositories].sort((a, b) => {
+    const aIdle = a.lifecycle && a.lifecycle.state !== "active";
+    const bIdle = b.lifecycle && b.lifecycle.state !== "active";
+    if (aIdle !== bIdle) return aIdle ? 1 : -1;
+    return compareRepositories(a, b);
+  });
+}
+
+// Last path segment of a git: id, or a generic label for a local: one. Only used when the registry
+// has no displayName recorded — a repository registered by a source that never resolved a name.
+function labelFromRepositoryId(repositoryId) {
+  if (repositoryId.startsWith("git:")) return repositoryId.split("/").pop() || repositoryId;
+  return "repository";
 }
 
 // One process listening on several ports is one member, not several. A dev server commonly binds a
@@ -346,6 +538,9 @@ function toMember(instance, projectIdentity) {
   return {
     kind: instance.docker ? "container" : "listener",
     projectIdentity,
+    // Which checkout this member belongs to, so the portal can route a departed (process-gone)
+    // member back into the same root section it came from instead of only the main one.
+    rootId: instance.project?.rootId ?? null,
     // Whether this port is something a user opens (it answered with a page title) or infrastructure
     // behind one. Drives which members get a permanent, always-visible slot on the card.
     entrypoint: Boolean(instance.title),
@@ -420,9 +615,29 @@ function compareMembers(a, b) {
 // Favorites first, then portable git-backed repositories ahead of path-derived local ones. Offline
 // ordering within a group is unchanged — it still falls out of the member sort.
 function compareRepositories(a, b) {
-  if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+  if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+  // Most recently started first, among repositories that have something running. elapsedSeconds is
+  // time SINCE start, so smaller is newer. Only meaningful for active repositories — an idle one has
+  // no process to have started — so it is compared only when both sides report one, and ties (or a
+  // pair with no metrics at all) fall through to the existing name ordering rather than shuffling.
+  const aStarted = startedRank(a);
+  const bStarted = startedRank(b);
+  if (aStarted !== bStarted) return aStarted - bStarted;
   if (a.identityKind !== b.identityKind) return a.identityKind === "git" ? -1 : 1;
   return a.name.localeCompare(b.name) || a.repositoryId.localeCompare(b.repositoryId);
+}
+
+// Smallest elapsed time across a repository's members — the most recently started thing in it, which
+// is what "recently started" means for a card that can hold several processes. Infinity for a
+// repository with no usable metric, so it sorts after every repository that has one without
+// disturbing their relative order.
+function startedRank(repository) {
+  let best = Infinity;
+  for (const member of repository.members || []) {
+    const elapsed = member.instance?.processMetrics?.elapsedSeconds;
+    if (typeof elapsed === "number" && Number.isFinite(elapsed) && elapsed < best) best = elapsed;
+  }
+  return best;
 }
 
 // Groups instances by project identity, then by "shape" (same page title + same relative cwd)
@@ -446,9 +661,15 @@ function groupByIdentityShape(instances) {
 // No title means there's nothing reliable to compare, so an untitled instance never counts as a
 // duplicate of anything else — each gets its own unique key instead of silently grouping under a
 // shared blank title.
+//
+// rootId is part of the key because relativeCwd is root-relative, not root-identifying: a repo's
+// top-level app reports relativeCwd "." from its main checkout AND from every worktree alike, so
+// without rootId two genuinely different checkouts (each an intentional, separate running instance)
+// collapsed into one "duplicate listener" shape group — the second one silently vanished as
+// duplicatePorts metadata instead of becoming its own project/root.
 function instanceShapeKey(instance) {
   if (!instance.title) return `untitled:${instance.key}`;
-  return `${instance.title}::${instance.matchSignature?.relativeCwd ?? ""}`;
+  return `${instance.title}::${instance.matchSignature?.relativeCwd ?? ""}::${instance.project?.rootId ?? ""}`;
 }
 
 function ensureProject(map, identity, settings, instance) {
@@ -464,6 +685,11 @@ function ensureProject(map, identity, settings, instance) {
       repositoryId: instance.project.repositoryId ?? null,
       providerUrl: instance.project.repositoryId ? providerUrlForRepositoryId(instance.project.repositoryId) : null,
       rootId: instance.project.rootId ?? null,
+      // Carried for the same reason as rootId: it identifies WHICH checkout this is, and it is the
+      // one fact that distinguishes two worktrees on the same branch. buildRepositories passes it to
+      // ensureRoot, which is where the root row's "Copy worktree path" item reads it from — without
+      // it every root reported projectRoot: null and that item could never appear.
+      projectRoot: instance.project.projectRoot ?? null,
       // Git context is per-root, so every instance under one project reports the same value; take it
       // from the first instance that has one rather than duplicating it on each.
       git: instance.project.git ?? null,
@@ -525,6 +751,13 @@ function inferredName(identity, projectRoot = null) {
   if (identity.startsWith("path:")) return path.basename(identity.slice("path:".length));
   if (projectRoot) return path.basename(projectRoot);
   return identity.split(":").at(-1) || identity;
+}
+
+function savedIdentityFor(identity) {
+  if (typeof identity !== "string") return null;
+  if (identity.startsWith("git:")) return { identityKind: "git", identity, projectRoot: null };
+  if (identity.startsWith("path:")) return { identityKind: "path", identity, projectRoot: identity.slice("path:".length) };
+  return null;
 }
 
 function labelFromId(value) {

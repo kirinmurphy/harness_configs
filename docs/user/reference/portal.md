@@ -3,11 +3,11 @@
 ## Purpose
 
 The portal is the local `roborepo web` UI: Config (`/`, alias `/config`), Plans (`/plans`),
-Localhoster (`/localhoster`), and Telemetry (`/telemetry`). It is static HTML/CSS/browser JavaScript served by a loopback-only
-Node HTTP server — no build step, no framework, no bundler. This doc covers the shared
-architecture (page manifest, browser API helpers, server route dispatch) that every page relies
-on. Page-specific behavior lives in `docs/user/reference/config-control-panel.md` and
-`docs/user/reference/plans-portal.md`.
+Localhoster (`/localhoster`), and Tokens (`/tokens`). It is static HTML/CSS/browser JavaScript
+served by a loopback-only Node HTTP server — no build step, no framework, no bundler. This doc
+covers the shared architecture (page manifest, browser API helpers, server route dispatch) that
+every page relies on. Page-specific behavior lives in
+`docs/user/reference/config-control-panel.md` and `docs/user/reference/plans-portal.md`.
 
 ## Directory Layout
 
@@ -22,6 +22,8 @@ portal/
   localhoster/{index.html,styles.css,app.js,api.js,state.js,templates.js}
   telemetry/{index.html,styles.css,app.js}
 scripts/cli/portal-server.mjs   — the server: page manifest, route dispatch, static assets
+scripts/cli/portal-router.mjs   — the route table matcher every domain file builds on
+scripts/cli/portal-routes-metadata.mjs — /manifest.json, /sitemap.xml, /robots.txt (generated from PAGES)
 ```
 
 Every page's `index.html` links `/portal/shared/base.css` and loads `theme.js` and its own
@@ -57,8 +59,8 @@ attribute is needed).
 3. In `app.js`, import what you need from `/portal/shared/api.js` (see below) instead of writing
    page-local fetch/token/clipboard helpers.
 4. If the page needs its own read or mutating API routes, add a `scripts/cli/portal-routes-<domain>.mjs`
-   exporting a `handle<Domain>Api` function (see "Server Route Dispatch") and wire it into `route()`
-   in `portal-server.mjs`.
+   exporting a route table built with `defineRoutes()` (see "Server Route Dispatch") and add it to
+   `API_ROUTE_TABLES` in `portal-server.mjs`.
 5. Run the checks in "Checks to Run" below.
 
 Nothing else needs updating — the nav, `/api/portal/status`, and the `/config` alias behavior are
@@ -82,47 +84,119 @@ it:
 
 ### Adding a Read API
 
-Add a branch to the relevant `handle<Domain>Api` function in its `scripts/cli/portal-routes-<domain>.mjs`
-file (see below) that returns JSON via `send(res, 200, "application/json", JSON.stringify(...))`.
-No token or origin check is required for GET routes — they stay tokenless on purpose so
-`curl`/local debugging keeps working. Call it from the page with `portalGetJson(path)`.
+Add an entry to the relevant domain's route table in its `scripts/cli/portal-routes-<domain>.mjs`
+file (see "Server Route Dispatch") whose handler returns JSON via
+`send(res, 200, "application/json", JSON.stringify(...))`. No token or origin check is required
+for GET routes — they stay tokenless on purpose so `curl`/local debugging keeps working. Call it
+from the page with `portalGetJson(path)`.
 
 ### Adding a Mutating API
 
-Mutating routes must be POST. `route()` already gates every POST with the origin check and the
-mutation-token check before any handler runs (see "Mutation-Token Contract" below), so the handler
-itself only needs to validate its body shape and return a JSON result. Call it from the page with
-`portalPostJson(path, body)` — the token header is attached automatically.
+Mutating routes must be POST (or PATCH — see `portal-routes-repositories.mjs`). `route()` already
+gates every mutating method with the origin check and the mutation-token check before any handler
+runs (see "Mutation-Token Contract" below), so the handler itself only needs to validate its body
+shape and return a JSON result. Call it from the page with `portalPostJson(path, body)` — the
+token header is attached automatically.
 
 ## Server Route Dispatch
 
-`route()` in `scripts/cli/portal-server.mjs` only does: URL/query parsing, the origin + mutation-
-token guard, calling each domain handler in order, and the final 404. Each `handle<Domain>Api`
-function lives in its own `scripts/cli/portal-routes-<domain>.mjs` file (imported into
-`portal-server.mjs`), receives `(req, res, urlPath, qs, handlers)`, and returns `true` once it has
-written a response, `false` if the URL/method didn't match so `route()` falls through to the next
-one. `scripts/cli/portal-routes-http.mjs` holds the `send`/`readJsonBody` helpers every route file
-imports:
+Every domain's API surface is declared as a **route table**, not an if-chain — this is the pattern
+every new domain must follow. `scripts/cli/portal-routes-<domain>.mjs` exports an array built with
+`defineRoutes()` (from `scripts/cli/portal-router.mjs`):
 
-- `portal-routes-config.mjs` → `handleConfigApi` — `/api/config`, `/api/config/source`,
-  `/api/config/packages`, `/api/config/skills`, `/api/config/permissions`
-- `portal-routes-plans.mjs` → `handlePlansApi` — `/api/plans`, `/api/plans/document`,
-  `/api/plans/prompt`, `/api/plans/settings`, `/api/plans/refresh`
-- `portal-routes-localhoster.mjs` → `handleLocalhosterApi` — `/api/localhoster`,
-  `/api/localhoster/refresh`, `/api/localhoster/links`, `/api/localhoster/association`,
-  `/api/localhoster/project`
-- `handlePortalPage` (in `portal-server.mjs`) — serves a page's `index.html` (with the injected
-  manifest + token)
-- `handlePortalAsset` (in `portal-server.mjs`) — static files under `/portal/`
-- `handlePortalStatus` (in `portal-server.mjs`) — `/api/portal/status`
-- `portal-routes-telemetry.mjs` → `handleTelemetryApi` — `/api/data`, `/api/session`,
-  `/api/insights-llm`, `/api/telemetry/markers` (GET/POST), `/api/telemetry/experiments`
-  (GET/POST), `/api/telemetry/experiments/:id/end` (POST), `/api/telemetry/analysis` (POST) — see
-  `docs/user/reference/telemetry.md` for the marker/experiment/analysis domain
+```js
+// scripts/cli/portal-routes-usage.mjs
+export const usageRoutes = defineRoutes([
+  {
+    method: "GET",
+    path: "/api/usage",
+    handler: (req, res, { handlers }) => {
+      send(res, 200, "application/json", JSON.stringify(buildUsageResponse()));
+      return true;
+    },
+  },
+]);
+```
 
-Adding a new API domain means adding one more `portal-routes-<domain>.mjs` file and one more import
-+ dispatch line in `route()` — each domain's API surface stays in its own file instead of growing
-a shared one.
+A route entry is `{ method, path, handler }`:
+
+| Field | Value | Notes |
+| --- | --- | --- |
+| `method` | `GET` / `POST` / `PATCH` / omitted | Omit to match any method — rare; only read-only routes with no side effect should do this. |
+| `path` | Literal (`/api/plans`) or `:param` pattern (`/api/repositories/:id/associations`) | Matcher splits pattern and URL on `/` and compares segment-by-segment, so a `:param` only ever captures one segment. |
+| `handler` | `(req, res, { params, qs, handlers }) => boolean` | `params` holds decoded `:param` values (repository ids contain `:`/`/`, so they arrive percent-encoded and come out decoded). Returns `true` once it has written a response; may return `false` to let matching continue, mirroring the old `handle<Domain>Api` contract. |
+
+`portal-server.mjs` concatenates every domain's table into one `API_ROUTE_TABLES` array and calls
+`dispatchRoutes(API_ROUTE_TABLES, req, res, urlPath, qs, handlers)` once per request:
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as route()
+    participant D as dispatchRoutes()
+    participant H as matched handler
+
+    C->>R: HTTP request
+    R->>R: parse urlPath + qs
+    R->>R: origin + mutation-token guard (mutating methods only)
+    R->>D: dispatchRoutes(API_ROUTE_TABLES, ...)
+    D->>D: walk tables, match path segments
+    alt path matches, method matches
+        D->>H: handler(req, res, { params, qs, handlers })
+        H-->>C: JSON response
+    else path matches, method does not
+        D-->>C: 405 method not allowed
+    else no path matches
+        D-->>R: false
+        R->>R: try metadata / page / asset / status
+        R-->>C: 404 not found (final fallback)
+    end
+```
+
+That single `API_ROUTE_TABLES` array is the entire enumerable API surface of the portal, in one
+place — which is what would let a future OpenAPI document be generated straight from it instead of
+hand-maintained. Each domain's table:
+
+| File | Export | Routes |
+| --- | --- | --- |
+| `portal-routes-config.mjs` | `configRoutes` | `/api/config`, `/api/config/source`, `/api/config/packages`, `/api/config/skills`, `/api/config/permissions` |
+| `portal-routes-plans.mjs` | `plansRoutes` | `/api/plans`, `/api/plans/document`, `/api/plans/prompt`, `/api/plans/settings`, `/api/plans/priority`, `/api/plans/lifecycle`, `/api/plans/refresh` |
+| `portal-routes-localhoster.mjs` | `localhosterRoutes` | `/api/localhoster`, `/api/localhoster/refresh`, `/api/localhoster/history`, `/api/localhoster/metadata`, `/api/localhoster/links`, `/api/localhoster/association`, `/api/localhoster/project`, `/api/localhoster/alias`, `/api/localhoster/compose-project`, `/api/localhoster/repository-visibility`, `/api/localhoster/repository-pinned` |
+| `portal-routes-repositories.mjs` | `repositoriesRoutes` | `/api/repositories`, `/api/repositories/:id`, `/api/repositories/:id/associations`, `/api/repositories/:id/plans-enrollment` — path-param routes; a method with no matching route on a path that does match returns `405`, matching the old handler's explicit `methodNotAllowed` |
+| `portal-routes-usage.mjs` | `usageRoutes` | `/api/usage`, `/api/usage/refresh` |
+| `portal-routes-telemetry.mjs` | `telemetryRoutes` | `/api/data`, `/api/session`, `/api/insights-llm`, `/api/telemetry/markers` (GET/POST), `/api/telemetry/experiments` (GET/POST), `/api/telemetry/experiments/:id/end` (POST), `/api/telemetry/analysis` (POST) — see `docs/reference/services/telemetry.md` for the marker/experiment/analysis domain |
+| `portal-routes-metadata.mjs` | `handleMetadataAsset` | `/manifest.json`, `/sitemap.xml`, `/robots.txt` — called separately from `API_ROUTE_TABLES` since these are unauthenticated static assets, not `/api/*` routes (see "Self-Describing Metadata" below) |
+| `portal-server.mjs` | `handlePortalPage` | Serves a page's `index.html` (with the injected manifest + token) |
+| `portal-server.mjs` | `handlePortalAsset` | Static files under `/portal/` |
+| `portal-server.mjs` | `handlePortalStatus` | `/api/portal/status` |
+
+`scripts/cli/portal-routes-http.mjs` holds the `send`/`readJsonBody` helpers every route file
+imports.
+
+Adding a new API domain means adding one more `portal-routes-<domain>.mjs` file exporting one more
+route table, and one more line in `portal-server.mjs`'s `API_ROUTE_TABLES` array — each domain's
+API surface stays in its own file instead of growing a shared one.
+
+`validateRouteTables()` (`portal-router.mjs`) runs once, synchronously, right after
+`API_ROUTE_TABLES` is built — before the server binds a port. It rejects a route with no leading
+`/` or no handler function, and rejects two routes that resolve to the same `method` + segment
+shape (`:param` names are normalized away for this check, so `/api/x/:id` and `/api/x/:foo` count
+as the same route and collide). A copy-pasted or malformed entry fails loudly at startup instead of
+silently shadowing another route at request time.
+
+## Self-Describing Metadata
+
+The portal serves `/manifest.json`, `/sitemap.xml`, `/robots.txt`, and `/openapi.json` at their conventional root
+paths (`portal-routes-metadata.mjs`), so `roborepo:portal` is itself a live, correct example of the
+same same-origin conventions `modules/localhoster/metadata.mjs` discovers on other apps (see
+`docs/reference/services/localhoster.md`'s "Metadata suggestions" section).
+
+| Artifact | Source | Why |
+| --- | --- | --- |
+| `manifest.json` | Generated from `PAGES` at request time | Can never drift from the real page list — adding or removing a page changes it on the next request, nothing to hand-sync. |
+| `sitemap.xml` | Generated from `PAGES` at request time | Same guarantee as `manifest.json`. |
+| `robots.txt` | Static: `Disallow: /` for every agent, plus a `Sitemap:` declaration | Deliberate, not a placeholder — the portal only ever binds to loopback (`LOOPBACK` in `portal-server.mjs`) and will never actually be crawled, so the file's job is to be an honest, safe example of the convention rather than to invite indexing. |
+| `openapi.json` | Generated from `API_ROUTE_TABLES` at request time | Documents the live `/api/*` route table exposed by the portal server. |
 
 ## Telemetry Analysis Performance Model
 
@@ -179,7 +253,7 @@ Telemetry's "turn on telemetry" button, which previously POSTed without the toke
 - `npm test` (`scripts/test/test-roborepo.sh`) — starts the portal server, asserts
   `/api/portal/status`, token exposure, mutating POST success/400/403 responses, and that each
   served `app.js` parses (`node --check`).
-- `roborepo web` — click through Config → Plans → Localhoster → Telemetry, confirm nav highlighting, and
+- `roborepo web` — click through Config → Plans → Localhoster → Tokens, confirm nav highlighting, and
   exercise each page's mutations (Config toggles, Plans refresh/discovery-root edits, Telemetry
   "turn on telemetry").
 - `node --input-type=module --check < portal/<page>/app.js` for a quick module-syntax check on a

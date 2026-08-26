@@ -29,6 +29,8 @@ import {
   loadLocalhosterMetadata,
   refreshLocalhosterSnapshot,
   updateLocalhosterSettings,
+  setLocalhosterRepositoryVisibility,
+  setLocalhosterRepositoryPinned,
   setLocalhosterPortalInfo,
 } from "./localhoster.mjs";
 import {
@@ -719,9 +721,11 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
   if (readTelemetryState().enabled !== true) {
     console.log("telemetry is disabled; serving whatever is already in the spool.");
   }
-  // Keep the default-view report warm in the background (debounced on spool changes) so page loads
-  // and the 5s poll read a ready result instead of computing the ~250ms analyze on the request path.
-  startAnalysisRefresh();
+  // Warming the default view is deliberately NOT done here. It parses the whole spool, and that
+  // cost scales with the spool: at ~45MB the first analyze takes ~30s, during which the process has
+  // not called listen() yet. `roborepo web --detach` gives the child 3s to bind (waitForPortalReady)
+  // and so declared every start a failure — on a machine whose spool had simply grown. It moved into
+  // onListening below, so the socket is accepting before any of that work begins.
   // The server reads the spool through an incremental in-memory store (readSpoolEventsCached), so a
   // running dashboard reflects live captures without re-parsing the whole file each request. A
   // `window` ({ rangeMs, end }) scopes the whole report to a trailing time slice before analysis, so
@@ -756,6 +760,8 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     loadLocalhoster: () => loadLocalhosterSnapshot(),
     refreshLocalhoster: () => refreshLocalhosterSnapshot(),
     updateLocalhosterSettings: (params) => updateLocalhosterSettings(params),
+    setLocalhosterRepositoryVisibility: (params) => setLocalhosterRepositoryVisibility(params),
+    setLocalhosterRepositoryPinned: (params) => setLocalhosterRepositoryPinned(params),
     loadLocalhosterHistory: (key) => loadLocalhosterHistory(key),
     loadLocalhosterMetadata: (key) => loadLocalhosterMetadata(key),
     loadRepositories: () => { reconcileTelemetryRepositories(); return loadRepositoriesPayload(); },
@@ -775,6 +781,12 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     onListening: (actualPort) => {
       setLocalhosterPortalInfo({ port: actualPort });
       if (options.open) openLocalUrl(`${portalUrl(actualPort)}${openPath}`);
+      // Deferred to the next tick so the ready-file write and this callback complete first: the
+      // warm-up is synchronous and would otherwise block the event loop before the detaching parent
+      // ever sees the child as ready. The dashboard's first request may still race it and pay the
+      // analyze cost itself, which is the pre-existing behavior for a cold portal — the difference
+      // is that the server is now listening while it happens.
+      setTimeout(() => startAnalysisRefresh(), 0);
     },
   });
 }

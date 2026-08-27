@@ -539,12 +539,20 @@ fi
 # integrity; calling it here keeps doctor from drifting against the linker.
 #
 if [[ "${quiet}" -eq 1 ]]; then
-  node "${repo_root}/scripts/build/render-agent-permissions.mjs" --check >/dev/null || failed=1
+  if [[ "${package_mode}" -ne 1 ]]; then
+    node "${repo_root}/scripts/build/render-agent-permissions.mjs" --check >/dev/null || failed=1
+  else
+    ok "generated permission render drift skipped in package mode"
+  fi
   node "${repo_root}/scripts/build/render-slash-commands.mjs" --check --quiet >/dev/null || failed=1
   "${repo_root}/scripts/build/render-rules.sh" --check >/dev/null || failed=1
   "${repo_root}/scripts/build/link-skills.sh" --check >/dev/null || failed=1
 else
-  node "${repo_root}/scripts/build/render-agent-permissions.mjs" --check || failed=1
+  if [[ "${package_mode}" -ne 1 ]]; then
+    node "${repo_root}/scripts/build/render-agent-permissions.mjs" --check || failed=1
+  else
+    ok "generated permission render drift skipped in package mode"
+  fi
   node "${repo_root}/scripts/build/render-slash-commands.mjs" --check || failed=1
   "${repo_root}/scripts/build/render-rules.sh" --check || failed=1
   "${repo_root}/scripts/build/link-skills.sh" --check || failed=1

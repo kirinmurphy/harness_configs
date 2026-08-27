@@ -28,6 +28,10 @@ function repoNameForWorktreeRoot(worktreeRoot, projectRoot) {
     const [repoName] = relative.split(path.sep);
     if (repoName) return repoName;
   }
+  const rootName = path.basename(worktreeRoot.replace(/[\\/]+$/, ""));
+  const segments = path.resolve(projectRoot).split(path.sep);
+  const rootIndex = segments.lastIndexOf(rootName);
+  if (rootIndex >= 0 && segments[rootIndex + 1]) return segments[rootIndex + 1];
   return path.basename(projectRoot);
 }
 

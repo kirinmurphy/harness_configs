@@ -211,6 +211,11 @@ run_post_install_onboarding() {
       export_user_config "${id}" "generated/${id}/$(basename "${root_config_path}")" "${root_config_path}"
     done
   fi
+  while IFS=$'\t' read -r _id home_path present _display_name _root_config_path; do
+    [[ -z "${_id}" ]] && continue
+    [[ "${present}" == "1" ]] || continue
+    link_global_skills "${home_path}" --preserve-existing roborepo-support
+  done < <(harness_detected_rows)
 
   if presets_onboarded; then
     echo "Already onboarded. Run 'roborepo package manage' to change which behaviors are enabled."

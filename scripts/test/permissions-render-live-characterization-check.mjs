@@ -70,6 +70,31 @@ function makeHome() {
   }
 }
 
+// --- Derivation is stable when tests replace HOME with a synthetic install home ---
+{
+  const realHome = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-real-home-"));
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-fake-home-"));
+  const oldHome = process.env.HOME;
+  process.env.HOME = fakeHome;
+  try {
+    const project = path.join(realHome, ".worktrees", "sample-repo", "feature-branch");
+    const plansDir = path.join(project, "docs", "plans");
+    const configPath = path.join(plansDir, "plans-config.json");
+    fs.mkdirSync(plansDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({ schemaVersion: 1, worktreeRoot: "~/.worktrees" }));
+    assert.deepEqual(
+      loadPermissionWorkspaceRoots({ configPath }),
+      ["~/.worktrees/sample-repo"],
+      "a synthetic HOME must not make generated workspace roots fall back to the branch folder",
+    );
+  } finally {
+    if (oldHome === undefined) delete process.env.HOME;
+    else process.env.HOME = oldHome;
+    fs.rmSync(realHome, { recursive: true, force: true });
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+}
+
 // --- Only present harness configs are touched; Codex is skipped entirely when config.toml doesn't
 // already exist (a home with only .claude present) ---
 {

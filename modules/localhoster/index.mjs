@@ -3,6 +3,7 @@ export {
 } from "./capabilities.mjs";
 export {
   discoverInstances,
+  classifyComposeOwnership,
 } from "./discovery.mjs";
 export {
   collectGitContext,
@@ -69,10 +70,14 @@ export {
   originCandidatesForListener,
 } from "./origin.mjs";
 export {
+  fetchLoopbackText,
   isTlsTrustErrorCode,
   probeHttpCandidate,
   probeHttpCandidates,
 } from "./http-probe.mjs";
+export {
+  discoverMetadataSuggestions,
+} from "./metadata.mjs";
 export {
   SETTINGS_VERSION,
   defaultSettings,
@@ -87,4 +92,5 @@ export {
 export {
   buildLocalhosterSnapshot,
   findCurrentInstanceByOpaqueKey,
+  sortRepositoriesForDisplay,
 } from "./snapshot.mjs";

@@ -123,45 +123,36 @@ main {
   display: grid;
   gap: 6px;
 }
-/* A repository card is a container for two full-bleed bands (the summary and the expanded drawer)
- * rather than a padded box: the drawer needs to reach the card's edges so it reads as a distinct
- * surface, which it cannot do while the card's own padding insets it. Padding moves to the two
- * bands, so each owns its spacing and the boundary between them spans the full width. */
+/* Raised only while one of its menus is open, and applied to the CARD rather than the panel — see
+ * the .menu-panel note. Transient by design: leaving every card raised would make the sibling order
+ * meaningless again, and a permanent `position: relative` here would create a stacking context on
+ * every card for the benefit of the one that is open. Toggled in toggleActionMenu/closeActionMenus. */
+.instance-card.has-open-menu {
+  position: relative;
+  z-index: 20;
+}
+/* A repository card is a container for two full-bleed bands (the title row and the worktree list)
+ * rather than a padded box: the worktree list needs to reach the card's edges so it reads as a
+ * distinct surface, which it cannot do while the card's own padding insets it. Padding moves to the
+ * two bands, so each owns its spacing and the boundary between them spans the full width. No
+ * <details>/disclosure at this level any more — every worktree row is always visible and owns its
+ * own independent expand/collapse for its member list, so there is nothing left for a
+ * repository-level toggle to do. */
 .instance-card.repository-card {
   padding: 0;
   gap: 0;
   border-radius: 6px;
-  /* Bands stack in document order, no CSS reordering: the disclosure (title row + drill-down inside
-   * <summary>, then the members drawer) followed by the git row. The card is a plain wrapper rather
-   * than the <details> itself — that is what lets the git row sit below the drawer while staying
-   * outside the disclosure, so collapsing cannot hide it. Do not reach for flex `order` here: an
-   * earlier attempt did, and it silently did nothing because the row it targeted was inside the
-   * block-level <summary> rather than a child of this flex box. */
   display: flex;
   flex-direction: column;
   /* Deliberately NOT overflow:hidden. Clipping is the obvious way to keep full-bleed bands inside
    * the rounded corners, but it also clips the action menu, which is absolutely positioned inside
-   * this card and must escape it. The bands round their own outer corners instead (see the summary
-   * and drawer rules below). The info tooltip is unaffected either way — it renders in a shared
-   * position:fixed bubble outside the card entirely, which is why it never had this bug. */
+   * this card and must escape it. The bands round their own outer corners instead. */
 }
-/* The disclosure is pure structure — it groups the summary and the drawer so <details> can hide the
- * latter, and contributes no box of its own. Its children are the real bands. */
-.repository-disclosure {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-/* The title row and the git row are separately padded bands, so each owns its spacing and neither
- * depends on a shared parent's padding. Wider left/right than before to give the first row room. */
-.repository-card > .repository-disclosure > summary {
-  padding: 0;
-  /* Top corners only, in both states: the git row is always below the disclosure, so the summary is
-   * never the card's bottom edge. */
-  border-radius: 6px 6px 0 0;
-}
+/* The title row and the worktree list are separately padded bands, so each owns its spacing and
+ * neither depends on a shared parent's padding. */
 .repository-card .card-title-row {
   padding: 12px 16px;
+  border-radius: 6px 6px 0 0;
 }
 .repository-card > .card-notice {
   padding: 0 16px 10px;
@@ -244,23 +235,105 @@ main {
 .card-git-row:empty {
   display: none;
 }
-/* On a repository card the git row is its own full-bleed band, one step further from --panel than
- * the expanded drawer so the three surfaces (title row, git row, drawer) stay distinguishable. It
- * spans the full card width; the action menu sits in the title row above, so nothing overlaps it. */
-/* A direct child of the card and a sibling of the disclosure, never inside it — that is what keeps
- * it visible when the card is collapsed, since <details> hides everything but its <summary>. Always
- * the card's last band, in both states, so it unconditionally carries the bottom radius. */
-.repository-card > .card-git-row:not(:empty) {
-  margin-top: 0;
-  margin-right: 5px;
-  background: color-mix(in srgb, var(--ink) 9%, var(--panel));
-  border-top: 1px solid var(--line);
-  border-radius: 0 0 6px 6px;
+/* A repository can span several checkouts (main + worktrees), each on its own branch — one root
+ * section per checkout, each owning its own git row and member list, instead of one arbitrary
+ * branch badge for the whole card. Lives inside the drawer (behind the disclosure toggle) rather
+ * than as a full-bleed band outside it: with N sections instead of one fixed git row, there is no
+ * longer a single band that can sensibly stay visible while collapsed. One shared drawer background
+ * runs behind the main section and every worktree section — they are one workspace, not competing
+ * surfaces — so only the "Worktrees" heading and a left rule mark where the nested checkouts begin. */
+.repository-roots {
+  display: grid;
+  gap: 0;
+  background: color-mix(in srgb, var(--ink) 5%, var(--panel));
 }
-/* Light theme's --panel is white, so mixing toward --ink darkens rather than lightens. The band
- * steps to --bg and the drawer below it goes one step further, preserving the ordering. */
-:root[data-theme="light"] .repository-card > .card-git-row:not(:empty) {
-  background: color-mix(in srgb, var(--bg) 55%, var(--panel));
+:root[data-theme="light"] .repository-roots {
+  background: var(--bg);
+}
+/* Full-width, not an inset/padded sub-panel — every row underneath (main and worktrees alike)
+ * shares one flat background and one uniform size, since they are one workspace, not a nested
+ * group living inside another. The heading itself sits on its own band, distinct from the rows it
+ * labels, so it reads as the divider between the main checkout and its worktrees.
+ *
+ * --raised, the background scale's "nested within a panel" step, rather than a bare color-mix()
+ * tint (see the scale's note in base.css) — it is defined per theme, so this stays distinct from
+ * .repository-roots in both, where a literal var(--bg) would have matched its own backdrop in
+ * light theme and shown nothing. */
+.repository-worktrees-heading {
+  padding: 10px 16px 4px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border-top: 1px solid var(--line);
+  background: var(--raised);
+}
+/* A stack backing the repository as a whole, not any one checkout. Sits in the roots list under its
+ * own heading, so it needs the same horizontal rhythm as a .repository-root row rather than the
+ * inset a compose card carries when it is a member inside one. Separated by the same rule the root
+ * sections use, so the run of shared stacks reads as peer rows in the same list. */
+.repository-shared-service {
+  display: block;
+  font-size: var(--text-sm);
+  padding: 8px 16px;
+}
+.repository-shared-service:not(:last-child) {
+  border-bottom: 1px solid var(--line);
+}
+/* A worktree is its own <details>: name/branch/entrypoint stay visible once the repository card is
+ * open, and only its member list hides behind its own chevron — expanding one worktree's members
+ * never affects any sibling worktree. Same dimensions as the main row — no indent, no left rule,
+ * no smaller text — so a worktree reads as a peer row, not a nested sub-item. */
+.repository-root {
+  display: block;
+  font-size: var(--text-sm);
+}
+.repository-root:not(:last-child) {
+  border-bottom: 1px solid var(--line);
+}
+.repository-root > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.repository-root > summary::-webkit-details-marker {
+  display: none;
+}
+.repository-root .card-git-row:not(:empty) {
+  padding: 8px 16px;
+}
+.repository-root .git-badge {
+  font-size: var(--text-sm);
+}
+.repository-root-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px 8px;
+}
+.repository-root-meta {
+  color: var(--dim);
+  font-size: var(--text-xs);
+  margin-left: auto;
+}
+/* "Inactive" is a state, not a quantity — it recedes below the member counts it sits among rather
+ * than reading as one more figure. Opacity instead of a new colour token: --dim is already the
+ * faintest ink the palette defines, and both themes derive their own from it. */
+.repository-root-meta.is-inactive {
+  opacity: 0.72;
+  font-style: italic;
+}
+/* Nothing behind the caret, so the row drops the affordances of a disclosure it no longer performs
+ * (the chevron is removed and the toggle refused in buildRootSection). */
+.repository-root.is-empty > summary {
+  cursor: default;
+}
+.repository-root .compose-project-chevron {
+  transition: transform 0.15s ease;
+  color: var(--dim);
+}
+.repository-root[open] > summary .compose-project-chevron {
+  transform: rotate(180deg);
 }
 /* Aligned to the first text line of column one, not to that column's box. `align-items: center` on
  * .card-head centers the menu against the whole column — which includes the title row's wrap
@@ -288,6 +361,18 @@ main {
 .card-title a {
   color: var(--accent);
   font-family: var(--mono);
+}
+/* The provider link is a name, not an address: it reads as inline text following the repository
+ * title, so it keeps the body font and the body color. Scoped under .card-title to outrank the
+ * blanket `.card-title a` rule above (0,2,0 vs 0,1,1) — the bare .git-repo-link declaration lower
+ * in this file has the right color but loses on specificity, which is what rendered this link
+ * accent-blue and monospaced despite that rule existing. */
+.card-title .git-repo-link {
+  color: var(--ink);
+  font-family: inherit;
+}
+.card-title .git-repo-link:hover {
+  color: var(--accent);
 }
 .title-separator {
   color: var(--dim);
@@ -332,6 +417,11 @@ main {
   width: var(--icon-md);
   height: var(--icon-md);
 }
+/* z-index alone was not enough: cards are siblings with their own opaque background and no
+ * position, so they paint in DOM order and the NEXT card covered the previous card's open menu.
+ * A z-index only orders elements inside one stacking context, and the panel's context ended at its
+ * own card. The card holding an open menu is raised instead (see .instance-card.has-open-menu), so
+ * the whole card — and therefore its panel — sits above every card below it. */
 .menu-panel {
   position: absolute;
   z-index: 10;
@@ -653,13 +743,6 @@ dialog::backdrop {
 :root[data-theme="light"] .copy-affordance .copy-overlay {
   background: color-mix(in srgb, var(--bg) 55%, var(--panel));
 }
-/* Container port rows sit on the drawer surface, not the git band. */
-.compose-container-port-action .copy-overlay {
-  background: color-mix(in srgb, var(--ink) 5%, var(--panel));
-}
-:root[data-theme="light"] .compose-container-port-action .copy-overlay {
-  background: var(--bg);
-}
 .copy-affordance[data-copy-state="hover"] .copy-overlay,
 .copy-affordance[data-copy-state="copied"] .copy-overlay {
   display: flex;
@@ -717,123 +800,6 @@ dialog::backdrop {
   display: inline-flex;
   color: var(--ok);
 }
-/* Port rows: default text color, not link color — this label sits beside the origin link and must
- * not compete with it for "the thing to click". */
-.compose-container-port-action.copy-affordance {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  color: var(--dim);
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  cursor: pointer;
-}
-.compose-container-port-action.copy-affordance:hover {
-  color: var(--ink);
-}
-/* The drill-down's own row, between the title and the git row. Right-aligned so the control stays
- * where the eye already expects it from the title row above. */
-.repository-drilldown-row {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 16px 8px;
-}
-/* This row toggles the card too, so it takes the same hover treatment as the title row — otherwise
- * the control most obviously *for* expanding was the one part of the summary with no feedback.
- * Closed only: once open the drill-down becomes a tab joined to the drawer (see below), and a hover
- * tint over it would fight that connection. */
-.repository-disclosure:not([open])
-  > summary
-  .repository-drilldown-row:hover
-  .repository-drilldown {
-  background: var(--row-hover-overlay);
-  border-radius: 6px;
-}
-/* Hovering the drill-down underlines the title, matching the title row's own hover: both are the
- * same click with the same result, so they name the same target. Needs :has() on the summary —
- * the title row precedes this one, so no sibling combinator can reach backwards to it. */
-.repository-card
-  > .repository-disclosure
-  > summary:has(.repository-drilldown-row:hover)
-  .card-title
-  h3 {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-/* The member count and chevron are one drill-down affordance. Grouping them is what makes the count
- * read as a label for what expanding reveals rather than loose metadata. */
-.repository-drilldown {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  padding: 4px 10px;
-  /* Top corners only, so it can butt against the drawer as a tab when open (see below). */
-  border-radius: 6px 6px 0 0;
-  font-size: var(--text-xs);
-}
-/* Open: the control takes the drawer's surface and loses its bottom corners, so it reads as a tab
- * attached to the panel below rather than a button floating above it. Valid because the drill-down
- * row is the summary's last child and the drawer is the disclosure's next sibling — the two are
- * adjacent, with the git row below both, outside the disclosure entirely. */
-.repository-disclosure[open] > summary .repository-drilldown {
-  background: color-mix(in srgb, var(--ink) 5%, var(--panel));
-  border: 1px solid var(--line);
-  border-bottom: 0;
-  margin-bottom: -1px;
-}
-:root[data-theme="light"]
-  .repository-disclosure[open]
-  > summary
-  .repository-drilldown {
-  background: var(--bg);
-}
-/* The whole title row is the click target, so the whole row takes the hover — feedback confined to
- * the chevron understated how much of it was clickable.
- *
- * Uses --row-hover-overlay (portal/shared/base.css), the surface-relative sibling of --row-hover.
- * Telemetry's clickable table rows keep the flat --row-hover: they sit on --bg, where it lands ~19
- * luminance from its background and reads correctly. The two tokens are one system, picked by which
- * surface the row sits on rather than by which page it is on.
- *
- * :has() lets the row withdraw its own hover while the pointer is over a nested control. Those
- * controls stop propagation and do NOT toggle the card, so showing the expand affordance over them
- * would promise a click that does something else entirely. */
-.repository-card
-  > .repository-disclosure
-  > summary
-  .card-title-row:hover:not(:has(.repository-nested-control:hover)) {
-  /* Layered over the card's own surface rather than replacing it: --row-hover-overlay is a tint, so
-   * it composites onto --panel here and onto the drawer elsewhere, staying equally visible on both.
-   * The flat --row-hover it replaces was tuned against --bg and sat 1.5 luminance from --panel. */
-  background:
-    linear-gradient(var(--row-hover-overlay), var(--row-hover-overlay)),
-    var(--panel);
-}
-/* Underlining the title on hover is the convention for "this opens something", and it names what
- * the click acts on. Applied from the row so hovering anywhere in it underlines the title, not only
- * a direct hover over the text — and withdrawn over nested controls for the same reason as above. */
-.repository-card
-  > .repository-disclosure
-  > summary
-  .card-title-row:hover:not(:has(.repository-nested-control:hover))
-  .card-title
-  h3 {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-/* Keyboard parity: <summary> is focusable, and a keyboard user gets the same affordance a mouse
- * user does rather than only the browser's default outline. */
-.repository-card
-  > .repository-disclosure
-  > summary:focus-visible
-  .card-title
-  h3 {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
 /* Docker/Compose badge, styled like the Git badge for a consistent title-row language. */
 .docker-badge {
   display: inline-flex;
@@ -869,33 +835,21 @@ dialog::backdrop {
 
 /* The summary is only the click target — .card-head inside it owns the layout, identical to a
  * plain instance card's, so both kinds present the same persistent structure. */
-.compose-project-card > summary,
-.repository-card > .repository-disclosure > summary {
+.compose-project-card > summary {
   display: block;
-  cursor: pointer;
+  cursor: default;
   list-style: none;
 }
-/* A Compose card is always expanded, so its summary is a heading rather than a control: no pointer
- * cursor, and clicks on it are ignored (see wireComposeCardActions) so it cannot collapse. Nested
- * controls re-enable pointer events for themselves. */
-.compose-project-card > summary {
-  cursor: default;
-}
-.compose-project-card > summary::-webkit-details-marker,
-.repository-card > .repository-disclosure > summary::-webkit-details-marker {
+.compose-project-card > summary::-webkit-details-marker {
   display: none;
 }
-/* The expand affordance is the one element with no counterpart on a plain card, so it sits in the
- * title row where the eye already is rather than adding a third column just for it. */
+/* The expand affordance. Used by both the Compose card's own drill-down (no rotation state — a
+ * Compose card is always expanded) and each worktree row's own chevron (rotation rule lives on
+ * .repository-root[open], further down). */
 .compose-project-chevron {
   display: inline-flex;
   color: var(--dim);
   transition: transform 0.15s ease;
-}
-/* Only the repository card toggles. The Compose card is permanently open and no longer renders a
- * chevron at all, so it has no rotation state to express. */
-.repository-disclosure[open] > summary .compose-project-chevron {
-  transform: rotate(180deg);
 }
 /* Members are whole cards, not compact rows, so they keep their own borders and spacing. The inset
  * and left rule are what signal containment — without them a nested card reads as a sibling. */
@@ -923,16 +877,27 @@ dialog::backdrop {
   padding: 0;
   background: color-mix(in srgb, var(--ink) 5%, var(--panel));
   border-top: 1px solid var(--line);
-  /* No bottom radius: the git row is ordered after this, so the drawer is no longer the card's
-   * last band and rounding here would cut a notch above a square row. */
   /* Deliberately NOT overflow:hidden, for the same reason the card itself is not (see
    * .instance-card.repository-card): clipping would round the drawer's bottom corners but also trap
    * every member's action menu inside the drawer. The last member rounds its own corners instead. */
 }
-/* Square: the git row sits below the drawer and is the card's bottom edge, so rounding here would
- * cut a notch above it. The git row carries the radius instead. */
 .repository-members > :last-child {
   border-radius: 0;
+}
+/* .repository-roots (not .repository-members) is now the drawer's actual last band — it can hold
+ * several root sections, each with its own members list — so the bottom radius belongs on its last
+ * child instead of on the last member of what may not be the last section. */
+/* Radius only — no overflow:hidden. Clipping here rounded the drawer's bottom corners but also cut
+ * off any action menu opened inside the last root section, which is absolutely positioned and has
+ * to escape its ancestors. Same trade the repository card itself already refuses (see its note):
+ * the band rounds its own corners, and its children round theirs, so nothing needs to clip. */
+.repository-roots > :last-child {
+  border-radius: 0 0 6px 6px;
+}
+/* The corner-rounding that overflow:hidden used to do for free. Only the last member of the last
+ * root section touches the drawer's bottom edge, so only it needs the radius. */
+.repository-roots > :last-child .repository-members > :last-child {
+  border-radius: 0 0 6px 6px;
 }
 /* Light theme's --panel is pure white, so mixing toward --ink can only darken it — the opposite of
  * the intent. There is no lighter surface available above white, so the drawer steps *down* to the
@@ -1016,9 +981,13 @@ dialog::backdrop {
   color: var(--desc-dim);
 }
 /* The canonical entrypoint(s). Sits at heading level because reaching the running app is the
- * card's primary job. */
-.repository-entrypoint {
+ * card's primary job. Explicit blue, both link states: with no color rule at all this fell back to
+ * the browser's default visited-link purple once you'd actually opened the URL once, which most of
+ * these have been. */
+.repository-entrypoint,
+.repository-entrypoint:visited {
   font-size: var(--text-xs);
+  color: var(--accent);
 }
 .repository-entrypoint + .repository-entrypoint {
   margin-left: 8px;
@@ -1026,11 +995,6 @@ dialog::backdrop {
 .compose-project-meta {
   color: var(--dim);
   font-size: var(--text-2xs);
-}
-/* One step up from the surrounding meta text: this pairs with the chevron as the drill-down's
- * label, so it is an affordance rather than fine print. */
-.repository-drilldown .compose-project-meta {
-  font-size: var(--text-xs);
 }
 /* Capped so a large stack (Supabase publishes 11 containers) scrolls instead of pushing every
  * sibling card off the page. Sized to show roughly 5-6 rows before scrolling. */
@@ -1069,6 +1033,32 @@ dialog::backdrop {
 }
 .resource-concern-badge[data-tone="danger"] {
   background: var(--danger);
+}
+/* Lifecycle state, shown only when a repository is NOT running — an active one says so by listing
+ * members. Outlined rather than filled: this is a neutral statement of fact competing with the
+ * resource badge beside it, which is filled precisely because it wants attention. */
+.repository-state-badge {
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--dim);
+}
+/* `stale` means every checkout is gone or unreadable — a repository that needs looking at, not just
+ * one that happens to be stopped. It is the only state that earns a colour. */
+.repository-state-badge.is-stale {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+/* The whole card recedes while nothing runs in it, so a glance down the list separates live work
+ * from history without reading a single badge. Text stays at full contrast — this is a de-emphasis,
+ * not a disabled control. */
+.repository-card.is-not-running {
+  opacity: 0.82;
 }
 .compose-container-head .info-wrap portal-info-icon .info-icon {
   width: var(--icon-sm);
@@ -1136,21 +1126,6 @@ dialog::backdrop {
   width: var(--icon-md);
   height: var(--icon-md);
 }
-/* An inline action, not a chrome-bearing button: no border, background, or fixed hit-box — the
- * icon is the control. Deliberately not .icon-button, whose 34px box dwarfs a compact port row. */
-.compose-container-port-action {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--dim);
-  cursor: pointer;
-  display: inline-grid;
-  place-items: center;
-}
-.compose-container-port-action:hover {
-  color: var(--accent);
-  background: none;
-}
 .compose-container-port-history {
   font-size: var(--text-2xs);
   color: var(--dim);
@@ -1196,6 +1171,258 @@ dialog::backdrop {
 .history-detail {
   color: var(--desc-dim);
   overflow-wrap: anywhere;
+}
+/* Discovered-routes dropdown (portal-menu-button's panel, mounted by app.js's mountRoutesTrigger).
+   Each row is a plain link, not a form row, so it reuses history-row's text styling but not its
+   grid/border rules — a menu-button panel is already a bounded popover, not a scrollable list. */
+.routes-dropdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  /* Fits the widest source label ("User Added") on one line with its path beside it. At 14rem the
+     source column wrapped to two lines, which made every user row twice the height of its
+     neighbours and broke the list's alignment. */
+  min-width: 24rem;
+  /* Wider than the page-only list used to need: an API row expands to a parameter table and a curl
+     command, and wrapping those at 22rem made every command a ragged multi-line block. */
+  max-width: 34rem;
+}
+/* Separates Pages (things you open) from API Routes (things you call). Only rendered when that
+   section has entries, so a page-only app never shows an empty "API Routes" heading. */
+/* Banded rather than bare text: Pages and API Routes are different kinds of thing (one you open,
+   one you call), and at a glance a plain uppercase line read as just another row in the list. A
+   filled bar with its own rules reads as a divider between two lists instead of an entry in one. */
+.routes-section-heading {
+  padding: 0.35rem 0.5rem;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  /* --dim lost too much contrast against the filled band; the heading is the thing that separates
+     the sections, so it carries body-weight color. */
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  /* Full-bleed against the panel's own padding, so the band spans the dropdown's width rather than
+     floating inset with the rows. */
+  margin: 0 -0.25rem;
+  /* Flex so the heading's optional action sits at the right end of the same row as its title. */
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+/* A plain button, not a CTA: adding a link is one option among the rows below, not the panel's
+ * purpose. `margin-left: auto` right-aligns it without the title needing a width. */
+.routes-heading-action {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  /* The heading is uppercased; the button is a label, not a heading, so it opts back out. */
+  text-transform: none;
+  letter-spacing: normal;
+  padding: 0.1rem 0.4rem;
+}
+/* Sits where the saved checkmark would be, so a row's trailing content lands in one place whether
+ * it reports state or offers actions. */
+.route-link-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+.route-row-action {
+  border: 0;
+  background: transparent;
+  padding: 0.1rem;
+  display: inline-flex;
+  color: var(--dim);
+  cursor: pointer;
+}
+.route-row-action:hover {
+  color: var(--ink);
+}
+/* Extra air above a second section only. The band now carries its own border, so this no longer
+   adds one — it just keeps API Routes from crowding the last Pages row. */
+.routes-section-heading:not(:first-child) {
+  margin-top: 0.6rem;
+}
+.route-link-row {
+  display: grid;
+  /* 5.75rem is what "User Added" needs at this font size without wrapping — the longest label in
+     SOURCE_LABELS, and the one that set the column's width requirement. */
+  grid-template-columns: 5.75rem 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+/* The source label is a fixed-width column, so it must not wrap inside it. */
+.route-link-row [data-slot=source] {
+  white-space: nowrap;
+}
+.route-link-row:hover {
+  background: var(--panel);
+}
+.route-link-row [data-slot=saved-check] {
+  color: var(--ok);
+}
+/* API route rows. A button, not a link: clicking opens the contract modal rather than navigating,
+   since these endpoints mostly cannot be usefully opened in a browser. */
+.route-api-row {
+  display: grid;
+  /* Third column holds the saved checkmark, which a saved API route shows here rather than as a
+     duplicate row under Pages. */
+  grid-template-columns: 3.5rem 1fr auto;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.route-api-row:hover {
+  background: var(--panel);
+}
+.route-api-row [data-slot=saved-check] {
+  color: var(--ok);
+}
+/* Color-coded by side effect, not by verb identity: read-only GET reads calm, creates/updates read
+   as attention-worthy, and DELETE as destructive — the distinction that matters when scanning a
+   list of endpoints you might run. */
+.route-api-method {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.route-api-method[data-method="get"] { color: var(--ok); }
+.route-api-method[data-method="post"],
+.route-api-method[data-method="put"],
+.route-api-method[data-method="patch"] { color: var(--accent); }
+.route-api-method[data-method="delete"] { color: var(--danger); }
+.route-api-path {
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+/* The modal's title is the endpoint itself — method and path, same treatment as the row that opened
+   it, so the connection between the two is immediate. */
+#api-route-dialog .modal-head h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+#api-route-dialog .modal-body {
+  display: grid;
+  gap: 0.75rem;
+}
+.route-api-description {
+  margin: 0;
+  color: var(--desc-dim);
+}
+.route-api-empty {
+  margin: 0;
+  color: var(--dim);
+  font-size: var(--text-xs);
+}
+.route-param-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--dim);
+  margin-bottom: 0.2rem;
+}
+.route-param-table + .route-param-table {
+  margin-top: 0.4rem;
+}
+.route-param-row {
+  display: grid;
+  grid-template-columns: minmax(5rem, auto) auto auto 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.15rem 0;
+  font-size: var(--text-xs);
+}
+.route-param-name {
+  font-family: var(--mono);
+}
+.route-param-type,
+.route-param-example {
+  color: var(--desc-dim);
+  overflow-wrap: anywhere;
+}
+.route-param-required {
+  color: var(--dim);
+}
+/* Required is the exception worth marking; optional is the common case and stays quiet. */
+.route-param-row .route-param-required:not(:empty) {
+  font-size: var(--text-xs);
+}
+.route-api-curl {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.route-api-curl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.4rem;
+  background: var(--raised);
+}
+.route-api-curl-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+/* Wraps rather than scrolling: a curl command is meant to be read in full before it is run, and a
+   horizontally-scrolling command hides the arguments that most need checking. */
+.route-api-curl-text {
+  margin: 0;
+  padding: 0.4rem;
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.route-api-curl-hint {
+  margin: 0;
+  padding: 0 0.4rem 0.4rem;
+  font-size: var(--text-xs);
+  color: var(--dim);
+}
+/* The copy dropdown itself is now the shared <portal-copy-menu> (portal/shared/copy-menu.js) and
+ * carries its own styling in base.css — only the two mount points need placement rules here. */
+/* Per-instance copy menu, in the card title row beside the info icon. */
+.card-copy-menu {
+  display: inline-flex;
+  align-items: center;
+}
+/* The branch label after its copy behavior moved into the adjacent menu. Still a <button> in the
+ * markup (shared with the non-worktree git row, where it IS interactive), so every affordance has
+ * to be actively switched off — otherwise it keeps a pointer cursor and a hover color for a click
+ * that no longer does anything. */
+.git-branch-button.is-static,
+.git-branch-button.is-static:hover {
+  cursor: default;
+  background: none;
+  color: inherit;
+}
+/* Breathing room between the branch name and the copy control that follows it. The git row's own
+ * gap is tuned for middot-separated text fragments, which is too tight once the next sibling is a
+ * button-sized target rather than another word. */
+.git-branch-button.is-static + portal-copy-menu,
+.git-branch-button.is-static + portal-copy-button {
+  margin-left: 0.4rem;
 }
 
 @media (max-width: 720px) {

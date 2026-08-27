@@ -46,7 +46,9 @@ out-ranks every path-scoped rule and silently defeats the scoping it exists to e
 - Writes outside the current repository prompt rather than proceeding silently.
 - No contributor's absolute home path in any tracked permission rule, including generated artifacts.
   Secret denies stay home-relative with Claude's `~/...` anchor.
-- Credential material unreadable everywhere, including inside the current repository.
+- Credential patterns covered by the `read-secrets` denylist are unreadable everywhere, including
+  inside the current repository. Broader unknown-sensitive files are protected by the read/write
+  scope boundary, not by a universal credential detector.
 - Reads quiet across the repository family; writes still bounded to the checkout in use.
 - Explicit, verified behavior for each of the three harnesses rather than a Claude-only fix.
 
@@ -463,9 +465,6 @@ Not verified:
 ## Open questions
 
 - Is there a supported way to inspect a Codex workspace root, or must it be determined empirically?
-- Should `.env.example` be readable? `//**/.env.*` denies it today, and deny has no in-session
-  override. It carries no secrets by convention, but carving out a pattern near credential material
-  invites a near-miss (`.env.example.local`) that a looser glob would let through.
 - Does the repo family extend to submodules, or stop at the superproject? Not exercised by the
   current tests either way.
 
@@ -473,6 +472,12 @@ Not verified:
 
 - **Does `read-scope` keep `~/projects/**`?** No — both scopes lost it. Reads are re-answered by the
   repository family rather than by a path, so the no-home-paths goal and quiet reads are both met.
+- **Should `.env.example` be readable?** Yes. The manifest no longer uses `//**/.env.*`; it denies
+  known secret-bearing variants (`.env`, `.env.local`, `.env.*.local`, and environment-specific
+  `.env.development`/`.env.production`/`.env.staging`/`.env.test`) while leaving committed templates
+  such as `.env.example` and `.env.sample` readable. The rendered Claude deny rules and
+  `permission-rule-home-path-check.mjs` cover this behavior by checking the generated denylist and
+  ensuring allow rules do not regain home-scoped paths.
   See "Read scope decision".
 - **Can one hook response carry both a permission decision and added context?** Yes. Both fields are
   documented for `PreToolUse` and both are honored, which is what unblocks the hook merge.

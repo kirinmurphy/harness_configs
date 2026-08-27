@@ -11,36 +11,40 @@
 //     before any shutdown can run — see the deferred exit in executeUninstall below.
 
 import { send, readJsonBody } from "./portal-routes-http.mjs";
+import { defineRoutes } from "./portal-router.mjs";
 
-export function handleMaintenanceApi(req, res, urlPath, qs, handlers) {
-  const { uninstallPreview, uninstallExecute } = handlers;
-
-  // Preview is a GET: it mutates nothing and is safe to re-request while the user reads it.
-  if (req.method === "GET" && urlPath === "/api/maintenance/uninstall/preview") {
-    Promise.resolve()
-      .then(uninstallPreview)
-      .then((preview) => send(res, 200, "application/json", JSON.stringify(preview)))
-      .catch((err) => send(res, 500, "application/json", JSON.stringify({ error: err?.message || String(err) })));
-    return true;
-  }
-
-  // Execute is POST (origin+token guarded by route() before we get here) and additionally requires
-  // an explicit confirm flag in the body, so a bare POST cannot trigger removal.
-  if (req.method === "POST" && urlPath === "/api/maintenance/uninstall") {
-    readJsonBody(req, (body, err) => {
-      if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
-      if (body?.confirm !== true) {
-        return send(res, 400, "application/json", JSON.stringify({
-          error: "expected { confirm: true } — managed cleanup requires explicit confirmation",
-        }));
-      }
+export const maintenanceRoutes = defineRoutes([
+  {
+    // Preview is a GET: it mutates nothing and is safe to re-request while the user reads it.
+    method: "GET",
+    path: "/api/maintenance/uninstall/preview",
+    handler: (req, res, { handlers }) => {
       Promise.resolve()
-        .then(uninstallExecute)
-        .then((result) => send(res, result.ok ? 200 : 500, "application/json", JSON.stringify(result)))
-        .catch((e) => send(res, 500, "application/json", JSON.stringify({ error: e?.message || String(e) })));
-    });
-    return true;
-  }
-
-  return false;
-}
+        .then(handlers.uninstallPreview)
+        .then((preview) => send(res, 200, "application/json", JSON.stringify(preview)))
+        .catch((err) => send(res, 500, "application/json", JSON.stringify({ error: err?.message || String(err) })));
+      return true;
+    },
+  },
+  {
+    // Execute is POST (origin+token guarded by route() before we get here) and additionally requires
+    // an explicit confirm flag in the body, so a bare POST cannot trigger removal.
+    method: "POST",
+    path: "/api/maintenance/uninstall",
+    handler: (req, res, { handlers }) => {
+      readJsonBody(req, (body, err) => {
+        if (err) return send(res, 400, "application/json", JSON.stringify({ error: "invalid JSON body" }));
+        if (body?.confirm !== true) {
+          return send(res, 400, "application/json", JSON.stringify({
+            error: "expected { confirm: true } — managed cleanup requires explicit confirmation",
+          }));
+        }
+        Promise.resolve()
+          .then(handlers.uninstallExecute)
+          .then((result) => send(res, result.ok ? 200 : 500, "application/json", JSON.stringify(result)))
+          .catch((e) => send(res, 500, "application/json", JSON.stringify({ error: e?.message || String(e) })));
+      });
+      return true;
+    },
+  },
+]);

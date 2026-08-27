@@ -29,7 +29,7 @@ const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 // an anonymized placeholder (`//Users/<user>/projects/**`) to explain what was removed and why. A
 // placeholder names no real person, so matching it would flag the documentation as the problem.
 const HOME_PATH = /(?:^|\/)(?:Users|home)\/(?!<)[^/"<>)]+\//;
-const HOME_TILDE = /^~\//;
+const HOME_TILDE = /(?:^|[^\w/])~\//;
 
 const offenders = [];
 
@@ -37,7 +37,7 @@ const offenders = [];
 const settingsPath = path.join(repoRoot, "generated", "claude", "settings.json");
 const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
 for (const rule of settings.permissions?.allow ?? []) {
-  if (HOME_PATH.test(rule)) offenders.push(`generated/claude/settings.json: allow ${rule}`);
+  if (HOME_TILDE.test(rule) || HOME_PATH.test(rule)) offenders.push(`generated/claude/settings.json: allow ${rule}`);
 }
 
 // --- The manifest source: only behaviors whose bucket is allow. ---
@@ -61,6 +61,7 @@ assert.deepEqual(
 assert.ok(HOME_PATH.test("Read(//Users/someone/projects/**)"), "must match an expanded macOS home");
 assert.ok(HOME_PATH.test("Write(//home/someone/projects/**)"), "must match an expanded Linux home");
 assert.ok(HOME_TILDE.test("~/projects/**"), "must match an un-expanded manifest home path");
+assert.ok(HOME_TILDE.test("Read(~/projects/**)"), "must match a wrapped Claude home path");
 assert.ok(!HOME_PATH.test("Read(//Users/<user>/projects/**)"), "must ignore anonymized placeholders");
 assert.ok(!HOME_TILDE.test("/tmp/**"), "must ignore scratch scope paths");
 
@@ -74,6 +75,14 @@ assert.ok(
 assert.ok(
   denies.every((r) => !HOME_PATH.test(r)),
   "generated deny rules must not contain a contributor's expanded home directory",
+);
+assert.ok(
+  !denies.includes("Read(//**/.env.*)"),
+  "read-secrets must enumerate secret-bearing .env variants instead of denying every .env.* file",
+);
+assert.ok(
+  denies.every((r) => !/\.env\.(example|sample)(?:\)|$)/.test(r)),
+  ".env.example and .env.sample must remain readable template files",
 );
 
 console.log(`permission-rule-home-path ok (${denies.length} deny rules exempt by design)`);

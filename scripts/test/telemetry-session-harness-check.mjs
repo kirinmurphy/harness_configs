@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { handleTelemetryApi } from "../cli/portal-routes-telemetry.mjs";
+import { telemetryRoutes } from "../cli/portal-routes-telemetry.mjs";
+import { dispatchRoutes } from "../cli/portal-router.mjs";
 
 // Phase 6 of discoverable-harness-provider-architecture-plan.md: /api/session must reject a missing
 // or unrecognized harness id instead of silently defaulting to Claude. Fakes just enough of
@@ -21,7 +22,7 @@ function fakeRes() {
 function testMissingHarnessRejected() {
   const res = fakeRes();
   let called = false;
-  handleTelemetryApi({}, res, "/api/session", "id=abc123", { loadSession: () => { called = true; } });
+  dispatchRoutes([telemetryRoutes], { method: "GET" }, res, "/api/session", "id=abc123", { loadSession: () => { called = true; } });
   assert.equal(res.status, 400);
   assert.match(JSON.parse(res.body).error, /missing or unknown harness/);
   assert.equal(called, false, "loadSession must not run when harness is missing");
@@ -30,7 +31,7 @@ function testMissingHarnessRejected() {
 function testUnknownHarnessRejected() {
   const res = fakeRes();
   let called = false;
-  handleTelemetryApi({}, res, "/api/session", "id=abc123&harness=timetravel", { loadSession: () => { called = true; } });
+  dispatchRoutes([telemetryRoutes], { method: "GET" }, res, "/api/session", "id=abc123&harness=timetravel", { loadSession: () => { called = true; } });
   assert.equal(res.status, 400);
   assert.match(JSON.parse(res.body).error, /missing or unknown harness: timetravel/);
   assert.equal(called, false, "loadSession must not run for an unrecognized harness id");
@@ -39,7 +40,7 @@ function testUnknownHarnessRejected() {
 function testKnownHarnessReachesLoadSession() {
   const res = fakeRes();
   let receivedHarness = null;
-  handleTelemetryApi({}, res, "/api/session", "id=abc123&harness=codex", {
+  dispatchRoutes([telemetryRoutes], { method: "GET" }, res, "/api/session", "id=abc123&harness=codex", {
     loadSession: (req) => { receivedHarness = req.harness; return { found: false }; },
   });
   assert.equal(res.status, 200);

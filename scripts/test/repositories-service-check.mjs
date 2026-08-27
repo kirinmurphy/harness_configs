@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { recordRepositoryDiscovery, enrollRepositoryInPlans } from "../cli/repositories.mjs";
-import { loadRegistry, registryPathFor } from "../../modules/repositories/index.mjs";
+import { loadRegistry, registryPathFor, localRootPath, checkoutRootsFor, repositoryDetailPayload } from "../../modules/repositories/index.mjs";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-repo-service-"));
 const stateRoot = path.join(tempRoot, "state");
@@ -78,6 +78,54 @@ try {
   assert.throws(() => enrollRepositoryInPlans({ repositoryId: "git:github.com/x/y", repoRoot, stateRoot,
     readSettings: () => ({ discoveryRoots: [] }), updatePlanSettings: () => {}, refreshPlans: () => {},
   }), /unknown repository/);
+
+  // ---- Private rootId -> path index (pljvmyh §2, delivered by h4tqm2wz) ----
+  const pathId = "git:github.com/kirinmurphy/pathed";
+  const mainPath = path.join(tempRoot, "checkouts", "pathed");
+  const treePath = path.join(tempRoot, "worktrees", "pathed-feature");
+  const recordPathed = (over = {}) => recordRepositoryDiscovery({
+    repositoryId: pathId, kind: "git", displayName: "pathed", source: "localhoster",
+    evidence: "git-remote", confidence: "high", stateRoot, ...over,
+  });
+
+  recordPathed({ localRoot: "rootdddd4444", localRootPath: mainPath, now: "2026-08-11T00:00:00.000Z" });
+  reg = loadRegistry({ stateRoot });
+  assert.equal(localRootPath(reg, "rootdddd4444"), mainPath, "discovery records where the checkout lives");
+  const revAfterPath = reg.revision;
+
+  // The steady-state poll runs every ~10s. Re-recording an unchanged root must not write, or the
+  // poll would churn the revision that mutation conflict-detection depends on.
+  recordPathed({ localRoot: "rootdddd4444", localRootPath: mainPath, now: "2026-08-11T00:00:10.000Z" });
+  assert.equal(loadRegistry({ stateRoot }).revision, revAfterPath, "steady-state poll performs no write");
+
+  // A second checkout is additive; both are knowable when nothing is running.
+  recordPathed({ localRoot: "rooteeee5555", localRootKind: "worktree", localRootPath: treePath, now: "2026-08-11T00:00:20.000Z" });
+  reg = loadRegistry({ stateRoot });
+  assert.deepEqual(
+    checkoutRootsFor(reg, pathId).map((r) => r.path).sort(),
+    [mainPath, treePath].sort(),
+    "every checkout of the repository is recorded",
+  );
+
+  // A moved checkout overwrites its mapping — a rootId resolves to at most one current path.
+  recordPathed({ localRoot: "rooteeee5555", localRootKind: "worktree", localRootPath: `${treePath}-renamed`, now: "2026-08-11T00:01:00.000Z" });
+  assert.equal(localRootPath(loadRegistry({ stateRoot }), "rooteeee5555"), `${treePath}-renamed`, "moved checkout repoints");
+
+  // A directory that was one repository and became another (this exists in the live registry).
+  // The new owner takes the mapping and the old repository stops claiming that root.
+  const reuseId = "git:github.com/kirinmurphy/reused";
+  recordRepositoryDiscovery({ repositoryId: reuseId, kind: "git", displayName: "reused", source: "localhoster",
+    evidence: "git-remote", confidence: "high", localRoot: "rootdddd4444", localRootPath: mainPath, stateRoot, now: "2026-08-11T00:02:00.000Z" });
+  reg = loadRegistry({ stateRoot });
+  assert.equal(reg.localRootPaths.rootdddd4444.repositoryId, reuseId, "reused directory repoints to its new repository");
+  assert.ok(!checkoutRootsFor(reg, pathId).some((r) => r.rootId === "rootdddd4444"), "prior owner no longer claims the root");
+
+  // A process stopping never deletes anything: nothing was re-recorded above for the worktree, and
+  // it is still there.
+  assert.equal(checkoutRootsFor(reg, pathId).length, 1, "records survive their processes stopping");
+
+  // Paths are server-side only.
+  assert.ok(!JSON.stringify(repositoryDetailPayload(reg.repositories[pathId])).includes(tempRoot), "no absolute path in the browser payload");
 
   assert.ok(fs.existsSync(registryPathFor(stateRoot)));
   console.log("repositories-service-check passed");

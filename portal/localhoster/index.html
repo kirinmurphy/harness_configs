@@ -185,6 +185,31 @@
       </div>
     </dialog>
 
+    <!-- API endpoint contract. A real modal rather than an inline expander: the routes list is
+         itself a popover, so an endpoint's parameter tables and curl command had no room to open
+         in place without the row scrolling out from under them. -->
+    <dialog id="api-route-dialog" aria-labelledby="api-route-dialog-title">
+      <div class="modal-head">
+        <h2 id="api-route-dialog-title">
+          <span class="route-api-method" data-slot="method"></span>
+          <span class="route-api-path" data-slot="path"></span>
+        </h2>
+        <portal-close-button data-close aria-label="Close"></portal-close-button>
+      </div>
+      <div class="modal-body">
+        <p class="route-api-description" data-slot="summary" hidden></p>
+        <div data-slot="params"></div>
+        <div class="route-api-curl">
+          <div class="route-api-curl-head">
+            <span class="route-api-curl-label">curl</span>
+            <portal-copy-button data-slot="curl-copy" label="Copy"></portal-copy-button>
+          </div>
+          <pre class="route-api-curl-text" data-slot="curl-text"></pre>
+          <p class="route-api-curl-hint" data-slot="curl-hint" hidden></p>
+        </div>
+      </div>
+    </dialog>
+
     <!-- Instance grouping & toolbar -->
     <template id="tpl-group">
       <section class="instance-group">
@@ -274,6 +299,11 @@
                    applySecondaryPorts. -->
               <span class="secondary-ports" data-slot="secondary-ports" hidden></span>
               <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
+              <!-- The per-row copy dropdown (URL, port, PID) was removed: two of its three entries
+                   restated what the row already gives you — the origin is a link you click, the
+                   port is the visible half of it. The PID, the one value you cannot get any other
+                   way, moved to this card's three-dot menu as its first entry. -->
+
               <span class="info-wrap" data-tip-html="template">
                 <portal-info-icon
                   aria-label="Show instance details"
@@ -320,6 +350,12 @@
             </div>
             <div class="card-git-row" data-slot="git-row"></div>
           </div>
+          <!-- Discovered-routes dropdown lives outside the three-dot menu so browsing suggestions
+               is its own single click, not a menu-open-then-select detour. Mounted with a
+               portal-menu-button (portal/shared/menu-button.js) by app.js, since its content is
+               fetched live and can't be pre-authored as static markup — this slot just reserves
+               the position. Hidden until wiring confirms the card has an opaque key. -->
+          <span data-slot="routes-trigger" hidden></span>
           <!-- Ships hidden; wiring reveals it only once the card is known to have a usable action
                (see revealActionMenuIfUsable). A menu that renders by default and is retracted later
                shows a lying trigger the moment a call site is missed. -->
@@ -336,17 +372,27 @@
             <div class="menu-panel" data-menu hidden>
               <!-- Copy URL and Open were removed: the origin link in this same row already opens
                    on click, and the row carries its own copy affordance. Both entries restated
-                   default link behavior rather than adding an action. -->
-              <button type="button" data-action="link">Add link</button>
-              <button type="button" data-action="edit">Edit links</button>
+                   default link behavior rather than adding an action.
+
+                   Copy PID leads: it is the one value here you cannot get by clicking the row, and
+                   the one you reach for when a process needs killing rather than visiting. It
+                   replaces the row's separate copy dropdown, whose other two entries (URL, port)
+                   were both obtainable from the row itself.
+
+                   Add link / Edit links moved to the Pages & Routes panel, where user-added links
+                   now sit alongside discovered ones as just another source. -->
+              <button type="button" data-action="copy-pid" data-slot="copy-pid" hidden>
+                Copy PID
+              </button>
               <button type="button" data-action="history">View history</button>
               <button type="button" data-action="associate">
                 Change association
               </button>
               <button type="button" data-action="alias">Confirm alias</button>
-              <button type="button" data-action="favorite">
-                Toggle favorite
-              </button>
+              <!-- No favorite here: pinning is a repository-level idea (see the repository card's
+                   Pin action), and offering it per member asked the user to favorite one port of a
+                   thing they were already pinning as a whole. Hide stays — hiding one noisy
+                   listener is a real per-member need. -->
               <button type="button" data-action="hide">Hide</button>
             </div>
           </div>
@@ -420,7 +466,8 @@
               <div class="menu-panel" data-menu hidden>
                 <!-- "Associate repo" moved to the repository card's menu: it binds a path to the
                      whole repository, not to this one Compose stack. -->
-                <button type="button" data-action="favorite">Toggle favorite</button>
+                <!-- Favorite removed for the same reason as on the instance card: pinning belongs
+                     to the repository, not to one Compose stack under it. -->
                 <button type="button" data-action="hide">Hide</button>
               </div>
             </div>
@@ -446,100 +493,136 @@
          entirely. Ordering alone cannot do this — a git row inside <details> disappears no matter
          where it is placed, and one inside <summary> is forced above the drawer. -->
     <template id="tpl-repository-card">
+      <!-- No outer <details>/toggle: each worktree row below is its own independent disclosure for
+           its member list, so there is nothing left for a repository-level expand/collapse to do —
+           name, GitHub link, and every worktree row are always visible. -->
       <article class="instance-card repository-card">
-        <details class="repository-disclosure">
-          <summary>
-            <!-- Two independently padded bands, not a padded card: the git row needs its own
-                 full-bleed background, which it cannot have while a shared parent insets it. The
-                 action menu sits inside the title row rather than spanning both, so the git row can
-                 reach the card's edges without the menu overlapping it. -->
-            <div class="card-head card-title-row">
-              <div class="card-main">
-                <div class="card-title">
-                  <h3 data-slot="title"></h3>
-                  <!-- The separator belongs to the URL, not the title: it only earns its space when
-                       there is a second thing to separate, so it is toggled with the entrypoint. -->
-                  <span class="title-separator" data-slot="title-separator" hidden>—</span>
-                  <!-- The canonical entrypoint's URL, lifted out of its member so opening the app is
-                       one click from page load even while the member list is collapsed. -->
-                  <a class="repository-entrypoint repository-nested-control" data-slot="entrypoint" target="_blank" rel="noreferrer" hidden></a>
-                  <!-- Info trails the URL (or the title when there is no URL) so it annotates the
-                       identity of the thing, rather than floating after the member count. -->
-                  <span class="info-wrap repository-nested-control" data-tip-html="template">
-                    <portal-info-icon aria-label="Show repository details"></portal-info-icon>
-                    <template>
-                      <!-- Grouped rather than one flat list: the repository's own identity and its
-                           git position are two different questions, and a reader scanning for one
-                           should not have to filter out the other. -->
-                      <span class="info-tooltip-content">
-                        <span class="info-tooltip-group">Repository</span>
-                        <span><strong>Members</strong><span data-slot="members-detail"></span></span>
-                        <span><strong>Resources</strong><span data-slot="resources"></span></span>
-                        <span><strong>Identity</strong><span data-slot="identity"></span></span>
-                        <span class="info-tooltip-group">Git</span>
-                        <span data-slot="git-detail" hidden
-                          ><strong>Tracking</strong><span data-slot="git-detail-text"></span
-                        ></span>
-                        <span data-slot="git-commit-detail" hidden
-                          ><strong>Commit</strong><span data-slot="git-commit-text"></span
-                        ></span>
-                        <span data-slot="git-status-detail" hidden
-                          ><strong>Working tree</strong><span data-slot="git-status-text"></span
-                        ></span>
-                        <span data-slot="git-drift-detail" hidden
-                          ><strong>Drift</strong><span data-slot="git-drift-text"></span
-                        ></span>
-                        <span data-slot="git-fetch-detail" hidden
-                          ><strong>Fetched</strong><span data-slot="git-fetch-text"></span
-                        ></span>
-                      </span>
-                    </template>
+        <div class="card-head card-title-row">
+          <div class="card-main">
+            <div class="card-title">
+              <h3 data-slot="title"></h3>
+              <!-- One GitHub/provider link per repository — root-independent (a repository has
+                   exactly one canonical remote, however many checkouts run it). Sits right after the
+                   name and before any URL, matching how a reader scans identity before location. -->
+              <a class="git-repo-link repository-nested-control" data-slot="provider-link" target="_blank" rel="noreferrer" hidden
+                ><span data-slot="provider-link-label">repo</span
+                ><portal-icon name="external-link" size="sm"></portal-icon
+              ></a>
+              <!-- The separator belongs to the URL, not the title: it only earns its space when
+                   there is a second thing to separate, so it is toggled with the entrypoint. -->
+              <span class="title-separator" data-slot="title-separator" hidden>—</span>
+              <!-- The canonical entrypoint's URL, lifted out of its member so opening the app is
+                   one click from page load. -->
+              <a class="repository-entrypoint repository-nested-control" data-slot="entrypoint" target="_blank" rel="noreferrer" hidden></a>
+              <!-- Info trails the URL (or the title when there is no URL) so it annotates the
+                   identity of the thing, rather than floating after the member count. -->
+              <span class="info-wrap repository-nested-control" data-tip-html="template">
+                <portal-info-icon aria-label="Show repository details"></portal-info-icon>
+                <template>
+                  <!-- Repository-level facts only. Git is deliberately absent: it is per-checkout
+                       (branch, commit, drift, fetch age all differ between worktrees), so it lives
+                       on each worktree row's own tooltip instead. A "Git" group here previously
+                       rendered a heading above five slots nothing ever filled, because
+                       repositoryCard() never calls applyGitTooltipFields.
+                       Members and Resources stay: both are aggregates across every checkout, which
+                       is a genuinely repository-level question. -->
+                  <span class="info-tooltip-content">
+                    <span class="info-tooltip-group">Repository</span>
+                    <span><strong>Members</strong><span data-slot="members-detail"></span></span>
+                    <span><strong>Resources</strong><span data-slot="resources"></span></span>
+                    <span><strong>Identity</strong><span data-slot="identity"></span></span>
                   </span>
-                  <!-- The member count and the chevron are one affordance: the count names what the
-                       drill-down contains, so they sit together at the far end of the row rather than
-                       the count reading as loose metadata beside the title. -->
-                  <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
-                </div>
-              </div>
-              <!-- Repository-scoped actions only. Favorite and hide describe the whole repository,
-                   not one listener inside it; per-member actions (links, association, history) stay
-                   on the member cards where they apply. -->
-              <!-- Hidden until earned — see tpl-card's note. -->
-              <div class="action-menu repository-nested-control" hidden>
-                <button
-                  type="button"
-                  class="menu-trigger"
-                  data-action="menu"
-                  aria-label="Actions"
-                  aria-expanded="false"
-                >
-                  <span></span><span></span><span></span>
-                </button>
-                <div class="menu-panel" data-menu hidden>
-                  <button type="button" data-action="repo">Associate repo</button>
-                  <button type="button" data-action="favorite">Toggle favorite</button>
-                  <button type="button" data-action="hide">Hide</button>
-                </div>
-              </div>
-            </div>
-            <!-- The expand/collapse control, above the git row. Both stay visible when the card is
-                 closed; only the members drawer is behind the toggle. -->
-            <div class="repository-drilldown-row">
-              <span class="repository-drilldown">
-                <span class="compose-project-meta" data-slot="meta"></span>
-                <portal-icon name="chevron" size="sm" class="compose-project-chevron"></portal-icon>
+                </template>
               </span>
+              <span class="resource-concern-badge" data-slot="resource-concern" hidden></span>
+              <!-- Only present when the repository is NOT running. An active repository says so by
+                   listing its members, so a matching "running" badge would label the default. -->
+              <span class="repository-state-badge" data-slot="lifecycle-state" hidden></span>
             </div>
-          </summary>
-          <p class="card-notice" data-slot="duplicate-notice" hidden></p>
-          <div class="repository-members" data-slot="members"></div>
-        </details>
-        <!-- Outside <details>, so <details> cannot hide it: git context is persistent, not a detail
-             you expand for. Last in the card, so it reads below the members drawer when open. Its
-             own band, carrying a full-bleed background to both card edges. Empty when git is
-             unresolvable. -->
-        <div class="card-git-row" data-slot="git-row"></div>
+          </div>
+          <!-- Repository-scoped actions only. Pin and hide describe the whole repository,
+               not one listener inside it; per-member actions (links, association, history) stay
+               on the member cards where they apply. -->
+          <!-- Hidden until earned — see tpl-card's note. -->
+          <div class="action-menu repository-nested-control" hidden>
+            <button
+              type="button"
+              class="menu-trigger"
+              data-action="menu"
+              aria-label="Actions"
+              aria-expanded="false"
+            >
+              <span></span><span></span><span></span>
+            </button>
+            <div class="menu-panel" data-menu hidden>
+              <button type="button" data-action="repo">Associate repo</button>
+              <button type="button" data-action="pin" data-slot="pin-label">Pin</button>
+              <button type="button" data-action="hide">Hide</button>
+            </div>
+          </div>
+        </div>
+        <p class="card-notice" data-slot="duplicate-notice" hidden></p>
+        <!-- One row per checkout (main worktree first, then every linked worktree) instead of one
+             flat member list — see the plan doc's "Worktree/Root Hierarchy" section. Every row is
+             always visible; each has its own independent expand/collapse for its member list. -->
+        <div class="repository-roots" data-slot="roots"></div>
       </article>
+    </template>
+    <!-- One row per checkout, persistently listed (branch/port/entrypoint always visible) with its
+         OWN expand/collapse for its member list — one worktree's members open does not require or
+         affect any other worktree's. The main row always renders (no git-row/members/entrypoint)
+         even with no active listener, so canonical repository identity never appears to depend on
+         which root happens to be running. -->
+    <template id="tpl-repository-root">
+      <details class="repository-root">
+        <summary class="repository-root-summary">
+          <div class="repository-root-head">
+            <!-- Branch name and this root's own port share one line — the two facts that actually
+                 distinguish a checkout, without also spelling out the worktree's directory name
+                 (redundant with the branch in the common case: one worktree per branch). -->
+            <div class="card-git-row" data-slot="git-row"></div>
+            <!-- This root's own entrypoint, port-only (":4322", not the full "127.0.0.1:4322") — the
+                 host is already implied (every listener here is loopback) and repeating it on every
+                 row was noise the branch/port pair didn't need. -->
+            <a class="repository-entrypoint" data-slot="root-entrypoint" target="_blank" rel="noreferrer" hidden></a>
+            <!-- Git detail for THIS checkout. Branch, commit, working tree, drift and fetch age are
+                 all per-worktree facts, so they annotate the worktree row rather than the
+                 repository header above (which shows only what every checkout shares). Revealed by
+                 buildRootSection once this root has git to report. -->
+            <span class="info-wrap" data-slot="root-info" data-tip-html="template" hidden>
+              <portal-info-icon aria-label="Show worktree details"></portal-info-icon>
+              <template>
+                <span class="info-tooltip-content">
+                  <span class="info-tooltip-group">Worktree</span>
+                  <span data-slot="root-path-detail" hidden
+                    ><strong>Path</strong><span data-slot="root-path-text"></span
+                  ></span>
+                  <span><strong>Members</strong><span data-slot="root-members-detail"></span></span>
+                  <span class="info-tooltip-group">Git</span>
+                  <span data-slot="git-detail" hidden
+                    ><strong>Tracking</strong><span data-slot="git-detail-text"></span
+                  ></span>
+                  <span data-slot="git-commit-detail" hidden
+                    ><strong>Commit</strong><span data-slot="git-commit-text"></span
+                  ></span>
+                  <span data-slot="git-status-detail" hidden
+                    ><strong>Working tree</strong><span data-slot="git-status-text"></span
+                  ></span>
+                  <span data-slot="git-drift-detail" hidden
+                    ><strong>Drift</strong><span data-slot="git-drift-text"></span
+                  ></span>
+                  <span data-slot="git-fetch-detail" hidden
+                    ><strong>Fetched</strong><span data-slot="git-fetch-text"></span
+                  ></span>
+                </span>
+              </template>
+            </span>
+            <span class="repository-root-meta" data-slot="root-meta"></span>
+            <portal-icon name="chevron" size="sm" class="compose-project-chevron"></portal-icon>
+          </div>
+        </summary>
+        <div class="repository-members" data-slot="members"></div>
+      </details>
     </template>
     <!-- One row per container (not per published port) — a single container publishing several
          host ports lists them as nested port rows underneath, instead of repeating the container.
@@ -579,16 +662,10 @@
       <div class="compose-container-port">
         <span class="port-health-badge" data-slot="health-badge"></span>
         <span class="compose-container-port-address">
+          <!-- No copy button beside it: a link is already copyable (right-click, or drag), and a
+               dedicated control for the same string doubled the row's width for no capability the
+               reader did not already have. -->
           <a class="compose-container-port-origin" data-slot="origin" target="_blank" rel="noreferrer"></a>
-          <!-- Labeled rather than icon-only: a bare copy glyph beside a link reads as ambiguous
-               (copy what — the link, the port, the row?). Default text color, not link color, so it
-               does not compete with the origin link it sits beside. The check icon is shown only in
-               the copied state; see .copy-affordance in styles.css. -->
-          <button type="button" class="compose-container-port-action copy-affordance" data-action="copy" aria-label="Copy URL">
-            <span class="copy-affordance-label">copy url</span>
-            <portal-icon name="copy" size="md" class="copy-icon-idle"></portal-icon>
-            <portal-icon name="check" size="md" class="copy-icon-done"></portal-icon>
-          </button>
           <span class="info-wrap" data-tip-html="template">
             <portal-info-icon aria-label="Show port details"></portal-info-icon>
             <template>
@@ -628,6 +705,71 @@
         <span class="history-when" data-slot="when"></span>
         <span class="history-type" data-slot="type"></span>
         <span class="history-detail" data-slot="detail"></span>
+      </div>
+    </template>
+    <!-- One discovered route in the routes-trigger dropdown (portal-menu-button's panel, wired in
+         app.js). A plain link, not a form control: clicking it opens the route AND — the first time
+         only, see wireRouteLink in app.js — captures it into the app's saved quick links. The
+         checkmark is a static indicator, not a toggle; there is no "remove" affordance here, that
+         still lives in "Edit links" for the same reason a browser bookmarks bar isn't managed from
+         its own autocomplete dropdown. -->
+    <!-- The trailing slot holds either the saved checkmark (a discovered route that has been
+         captured) or the edit/delete pair (a user-added one). They are mutually exclusive and share
+         the row's end position: a user link is saved by definition, so a checkmark there would state
+         something that is never in question, where the actions are what that row actually needs. -->
+    <template id="tpl-route-link-row">
+      <a class="route-link-row" data-slot="href" target="_blank" rel="noreferrer">
+        <span class="history-type" data-slot="source"></span>
+        <span class="history-detail" data-slot="path"></span>
+        <portal-icon name="check" size="sm" data-slot="saved-check" hidden></portal-icon>
+        <span class="route-link-actions" data-slot="row-actions" hidden>
+          <button type="button" class="route-row-action" data-action="edit-link" aria-label="Edit link">
+            <portal-icon name="pencil" size="sm"></portal-icon>
+          </button>
+          <!-- `close` rather than a trash glyph: the icon set has no trash, and close already reads
+               as "remove this" everywhere else in the portal. Adding a one-use glyph for parity with
+               a convention this UI does not otherwise follow is not worth the surface. -->
+          <button type="button" class="route-row-action" data-action="delete-link" aria-label="Delete link">
+            <portal-icon name="close" size="sm"></portal-icon>
+          </button>
+        </span>
+      </a>
+    </template>
+    <!-- Section heading with an optional right-aligned action. Used by the Pages heading to carry
+         "+ Add", which is a plain button rather than a CTA: adding a link is one option among the
+         rows below it, not the panel's primary purpose. -->
+    <template id="tpl-routes-section-heading">
+      <div class="routes-section-heading">
+        <span data-slot="title"></span>
+        <button type="button" class="routes-heading-action" data-slot="action" hidden>
+          + Add
+        </button>
+      </div>
+    </template>
+    <!-- An API route is described, not opened. Most need a method, a body, or auth, so a plain link
+         would 404/405 or dump JSON. The row is a button that opens the contract modal
+         (#api-route-dialog) instead of an anchor that navigates. -->
+    <template id="tpl-route-api-row">
+      <button type="button" class="route-api-row">
+        <span class="route-api-method" data-slot="method"></span>
+        <span class="route-api-path" data-slot="path"></span>
+        <!-- A saved API route renders here only, never as a duplicate row under Pages, so this is
+             where its saved state has to appear. -->
+        <portal-icon name="check" size="sm" data-slot="saved-check" hidden></portal-icon>
+      </button>
+    </template>
+    <template id="tpl-route-param-table">
+      <div class="route-param-table">
+        <div class="route-param-title" data-slot="title"></div>
+        <div class="route-param-rows" data-slot="rows"></div>
+      </div>
+    </template>
+    <template id="tpl-route-param-row">
+      <div class="route-param-row">
+        <span class="route-param-name" data-slot="name"></span>
+        <span class="route-param-type" data-slot="type"></span>
+        <span class="route-param-required" data-slot="required"></span>
+        <span class="route-param-example" data-slot="example"></span>
       </div>
     </template>
     <!-- Settings dialog: link editor rows + settings sections -->

@@ -82,7 +82,12 @@ const ICONS = {
 // to invent a size, and page CSS must not shrink an icon below the scale with a bare `svg { width }`
 // rule — every step here is chosen to stay legible, and 10px-class icons (which this page had) are
 // not. `md` is the default and matches the body-text cap height.
-const ICON_SIZES = { sm: 14, md: 16, lg: 20, xl: 24 };
+//
+// The floor sits at 16px: at 14 the stroke-heavy glyphs in this set (git-branch's three circles,
+// the copy sheets) lost their interior detail and read as smudges next to text, which is what made
+// the small icons on the repository card hard to identify. Each step is ~1.25x its predecessor so
+// the gaps stay visually distinct rather than being pixel-adjacent.
+const ICON_SIZES = { sm: 16, md: 20, lg: 24, xl: 30 };
 const DEFAULT_ICON_SIZE = "md";
 
 class PortalIcon extends HTMLElement {

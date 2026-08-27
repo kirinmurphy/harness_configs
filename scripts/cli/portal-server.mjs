@@ -5,18 +5,35 @@ import crypto from "node:crypto";
 import { repoRoot } from "./paths.mjs";
 import { computePortalSourceHash } from "./portal-source-hash.mjs";
 import { send } from "./portal-routes-http.mjs";
-import { handleConfigApi } from "./portal-routes-config.mjs";
-import { handleMaintenanceApi } from "./portal-routes-maintenance.mjs";
-import { handlePlansApi } from "./portal-routes-plans.mjs";
-import { handleLocalhosterApi } from "./portal-routes-localhoster.mjs";
-import { handleTelemetryApi } from "./portal-routes-telemetry.mjs";
-import { handleRepositoriesApi } from "./portal-routes-repositories.mjs";
-import { handleUsageApi } from "./portal-routes-usage.mjs";
+import { dispatchRoutes, validateRouteTables } from "./portal-router.mjs";
+import { configRoutes } from "./portal-routes-config.mjs";
+import { maintenanceRoutes } from "./portal-routes-maintenance.mjs";
+import { plansRoutes } from "./portal-routes-plans.mjs";
+import { localhosterRoutes } from "./portal-routes-localhoster.mjs";
+import { telemetryRoutes } from "./portal-routes-telemetry.mjs";
+import { repositoriesRoutes } from "./portal-routes-repositories.mjs";
+import { usageRoutes } from "./portal-routes-usage.mjs";
+import { handleMetadataAsset } from "./portal-routes-metadata.mjs";
+
+// Every domain's route table, concatenated once — the single enumerable list of this portal's
+// entire API surface (see portal-router.mjs). A future OpenAPI doc can be generated straight from
+// this array instead of hand-maintained, since nothing routes outside it.
+const API_ROUTE_TABLES = [
+  configRoutes,
+  maintenanceRoutes,
+  plansRoutes,
+  localhosterRoutes,
+  repositoriesRoutes,
+  usageRoutes,
+  telemetryRoutes,
+];
+validateRouteTables(API_ROUTE_TABLES);
 
 // Tiny local-only portal server. Binds to loopback only so telemetry/config data never leaves the
 // machine. Stdlib `http` keeps the install dependency-free, matching the rest of the CLI.
 const LOOPBACK = "127.0.0.1";
 const PORTAL_DIR = path.join(repoRoot, "portal");
+const APP_NAME = "roborepo";
 
 // Computed once at startup so a new `serve`/`web` invocation can detect "a portal is already
 // running at this path, but its code is now stale" and restart it instead of reusing it (see
@@ -210,17 +227,12 @@ function route(req, res, handlers, mutationToken) {
     );
   }
 
-  if (handleConfigApi(req, res, urlPath, qs, handlers)) return;
-  if (handleMaintenanceApi(req, res, urlPath, qs, handlers)) return;
-  if (handlePlansApi(req, res, urlPath, qs, handlers)) return;
-  if (handleLocalhosterApi(req, res, urlPath, qs, handlers)) return;
-  if (handleRepositoriesApi(req, res, urlPath, qs, handlers)) return;
-  if (handleUsageApi(req, res, urlPath)) return;
+  if (dispatchRoutes(API_ROUTE_TABLES, req, res, urlPath, qs, handlers)) return;
+  if (handleMetadataAsset(req, res, urlPath, { pages: PAGES, appName: APP_NAME, apiRouteTables: API_ROUTE_TABLES })) return;
   if (handlePortalPage(req, res, urlPath, mutationToken)) return;
   if (handlePortalAsset(req, res, urlPath)) return;
   if (handleDocsAsset(req, res, urlPath)) return;
   if (handlePortalStatus(req, res, urlPath)) return;
-  if (handleTelemetryApi(req, res, urlPath, qs, handlers)) return;
   send(res, 404, "text/plain", "not found");
 }
 

@@ -47,6 +47,7 @@
       "description": "Where files may be written without prompting regardless of which repository is in use: the temp dirs agent scratch work lands in. Writes inside the current repository are decided by the repository boundary, not by this list, so no personal directory layout belongs here.",
       "kind": "tools-scoped",
       "tools": [
+        "Write",
         "Edit"
       ],
       "paths": [

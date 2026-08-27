@@ -63,6 +63,29 @@
   <div class="menu-button-panel"></div>
 </template>
 
+<!-- copy-menu.js — icon-only copy trigger + caret, opening a list of copy actions. The trigger
+     carries no text label: the copy glyph names the action, and the items inside say what each
+     one copies, so a "Copy" word on the trigger only repeated the first word of every item. -->
+<template id="tpl-copy-menu-trigger">
+  <button type="button" class="copy-menu-trigger" aria-haspopup="true" aria-label="Copy">
+    <portal-icon name="copy" size="lg"></portal-icon
+    ><portal-icon name="chevron" size="sm" class="copy-menu-chevron"></portal-icon>
+    <!-- Confirmation floats OVER the trigger (absolutely positioned, see .copy-flash in base.css)
+         rather than replacing its contents: the trigger keeps its own width, so a dense row does
+         not reflow at the moment of copying. Shared with portal-copy-button so both controls
+         confirm identically. -->
+    <span class="copy-flash" data-slot="flash" role="status" aria-live="polite" hidden
+      >Copied<portal-icon name="check" size="sm"></portal-icon
+    ></span>
+  </button>
+</template>
+<template id="tpl-copy-menu-panel">
+  <div class="copy-menu-panel"></div>
+</template>
+<template id="tpl-copy-menu-item">
+  <button type="button" class="copy-menu-item"><span data-slot="label"></span></button>
+</template>
+
 <!-- copy-button.js -->
 <template id="tpl-copy-button">
   <button type="button" class="copy-button">
@@ -70,7 +93,12 @@
       <portal-icon data-slot="icon" size="sm"></portal-icon
       ><span data-slot="label"></span>
     </span>
-    <span class="copy-button-state copy-button-copied" aria-hidden="true">Copied!</span>
+    <!-- Same floating confirmation as the copy-menu trigger (.copy-flash). An icon-only copy button
+         is narrower than the word "Copied", so stacking the two in one grid cell — as this did —
+         sized every such button to the confirmation it shows for five seconds out of every use. -->
+    <span class="copy-flash" data-slot="flash" role="status" aria-live="polite" hidden
+      >Copied<portal-icon name="check" size="sm"></portal-icon
+    ></span>
   </button>
 </template>
 

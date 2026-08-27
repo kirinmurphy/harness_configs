@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Every test file under scripts/test/ must be reachable from something that actually runs it:
-// the bash suite, an npm script CALLED BY CI, or a CI job directly. A test nothing invokes passes
+// the bash suite, the local CI-parity runner, or a CI job directly. A test nothing invokes passes
 // forever without asserting anything.
 //
 // This is not hypothetical. test-install-collisions.sh sat in no test list, which is how an
@@ -8,12 +8,11 @@
 // reported green the entire time, because the check that would have failed was never called.
 //
 // A second, quieter version of the same failure: a file registered as a package.json `test:*`
-// script is not thereby reachable. `ci.yml` does not run `npm test`; it names specific `test:*`
-// scripts one by one, and test-roborepo.sh is its own hand-maintained assert list. A `test:*` entry
-// that nothing calls by name is exactly as orphaned as a file with no npm script at all — it just
-// looks covered. So a `test:*` script counts as reachable only when test-roborepo.sh references its
-// target file, or ci.yml invokes that `test:*` name directly — never merely by existing in
-// package.json.
+// script is not thereby reachable. The CI/local gate names specific `test:*` scripts, and
+// test-roborepo.sh is its own hand-maintained assert list. A `test:*` entry that nothing calls by
+// name is exactly as orphaned as a file with no npm script at all — it just looks covered. So a
+// `test:*` script counts as reachable only when a runner references its target file or invokes that
+// `test:*` name directly — never merely by existing in package.json.
 //
 // Files that are deliberately not suite entry points declare themselves in EXEMPT below, each with
 // a reason. An exemption is a decision on the record; an orphan is an accident.
@@ -30,6 +29,7 @@ const testDir = path.join(repoRoot, "scripts", "test");
 // reader can tell a deliberate non-test from a test that quietly fell out of the suite.
 const EXEMPT = new Map([
   ["test-roborepo.sh", "the suite runner itself"],
+  ["local-ci.sh", "the local CI-parity runner itself"],
   ["telemetry-schemas-persistence-child.mjs", "child process spawned by telemetry-schemas-check.mjs"],
   ["telemetry-spool-bench.mjs", "micro-benchmark against the live spool; run by hand, not asserted"],
   ["test-telemetry-pid.sh", "binds a real port; manual smoke, deliberately out of the automated suite"],
@@ -43,7 +43,11 @@ const EXEMPT = new Map([
 // Direct runners: substring matching on filename is deliberate. These files call their children in
 // several shapes (node "${repo_root}/scripts/test/x.mjs", bash scripts/test/x.sh), and matching the
 // filename catches all of them without trying to parse two languages.
-const DIRECT_RUNNER_SOURCES = ["scripts/test/test-roborepo.sh", ".github/workflows/ci.yml"];
+const DIRECT_RUNNER_SOURCES = [
+  "scripts/test/test-roborepo.sh",
+  "scripts/test/local-ci.sh",
+  ".github/workflows/ci.yml",
+];
 
 function readIfPresent(relativePath) {
   const absolute = path.join(repoRoot, relativePath);
@@ -51,20 +55,18 @@ function readIfPresent(relativePath) {
 }
 
 const directHaystack = DIRECT_RUNNER_SOURCES.map(readIfPresent).join("\n");
-const ciWorkflow = readIfPresent(".github/workflows/ci.yml");
 const packageJsonRaw = readIfPresent("package.json");
 const packageJsonScripts = JSON.parse(packageJsonRaw || "{}").scripts || {};
 
-// A test:* npm script only counts as a runner when CI names that script directly (e.g. `npm run
-// --silent test:packages`). Being registered in package.json is not enough — ci.yml does not run
-// `npm test`, so an unreferenced test:* entry is exactly as unreachable as having no script at all.
-const targetsOfCiCalledScripts = new Set();
+// A test:* npm script only counts as a runner when a real runner names that script directly (e.g.
+// `npm run --silent test:packages`). Being registered in package.json is not enough.
+const targetsOfRunnerCalledScripts = new Set();
 for (const [scriptName, command] of Object.entries(packageJsonScripts)) {
   if (!scriptName.startsWith("test:")) continue;
-  const calledByCi = new RegExp(`\\b${scriptName}\\b`).test(ciWorkflow);
-  if (!calledByCi) continue;
+  const calledByRunner = new RegExp(`\\b${scriptName}\\b`).test(directHaystack);
+  if (!calledByRunner) continue;
   const match = command.match(/scripts\/test\/([a-zA-Z0-9_.-]+\.(mjs|sh|ps1))/);
-  if (match) targetsOfCiCalledScripts.add(match[1]);
+  if (match) targetsOfRunnerCalledScripts.add(match[1]);
 }
 
 const testFiles = fs
@@ -76,7 +78,7 @@ const orphans = [];
 for (const name of testFiles) {
   if (EXEMPT.has(name)) continue;
   if (directHaystack.includes(name)) continue;
-  if (targetsOfCiCalledScripts.has(name)) continue;
+  if (targetsOfRunnerCalledScripts.has(name)) continue;
   orphans.push(name);
 }
 

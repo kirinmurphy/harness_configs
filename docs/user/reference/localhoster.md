@@ -62,8 +62,8 @@ Discovery is split across provider boundaries:
 - `docker.mjs` collects running-container/Compose data; `process-metrics.mjs` collects live
   CPU/memory/elapsed for discovered PIDs. See [Docker and process metrics](#docker-and-process-metrics).
 
-Metadata suggestions remain listed as a provider capability but marked unsupported until its
-smaller follow-up plan implements it.
+Metadata suggestions are available through the same-origin metadata endpoint and can propose
+manifest, sitemap, robots, and OpenAPI routes without promoting them to saved quick links.
 
 ## Git context
 
@@ -256,7 +256,8 @@ Read-only:
 - `GET /api/localhoster/history?key=<opaque-key>` accepts only a key emitted by the current
   snapshot and returns that app's recorded events, newest first, capped at 200.
 - `GET /api/localhoster/metadata?key=<opaque-key>` accepts only a key emitted by the current
-  snapshot. It currently returns no suggestions until metadata discovery ships.
+  snapshot and returns discovered same-origin route suggestions for that app. See
+  [Metadata suggestions](#metadata-suggestions).
 
 Mutating routes are POST-only and inherit the portal's loopback origin check and mutation-token
 check:
@@ -266,6 +267,11 @@ check:
 - `POST /api/localhoster/association`
 - `POST /api/localhoster/project`
 - `POST /api/localhoster/alias`
+- `POST /api/localhoster/repository-visibility` — hides or restores a whole repository. Unlike the
+  routes above it writes the repository registry, not Localhoster's settings, so it carries no
+  settings revision: visibility is one boolean per record with no cross-field invariant to protect.
+- `POST /api/localhoster/repository-pinned` — pins or unpins a whole repository in the repository
+  registry so its order is stable across running and idle snapshots.
 
 Revision conflicts return `409` with the current snapshot.
 
@@ -275,17 +281,58 @@ The portal uses these same mutation routes for curation:
   preference, health path/status policy, and match hints.
 - The action menu can favorite or hide an app without deleting saved links.
 - The settings dialog lists hidden items, manual associations, and aliases so local decisions can
-  be restored or removed.
+  be restored or removed. It also lists hidden *repositories* separately: those are whole
+  repositories the 30-day ageing sweep retired from the list, which live in the repository registry
+  rather than in Localhoster's settings, and each row restores one.
 - Removing an association deletes only the association entry. Saved project/app settings and quick
   links remain in settings.
 - Alias creation requires an explicit confirmation checkbox and uses the cycle-safe server-side
   alias mutation.
+
+## Metadata suggestions
+
+`GET /api/localhoster/metadata?key=<opaque-key>` inspects an app's own same-origin conventions and
+returns candidate routes as suggestions — never as automatic quick links. A suggestion only becomes
+a saved link when the user opens it from the "Suggested routes" action and confirms it through the
+normal add-link form.
+
+Sources inspected, each same-origin and loopback-only:
+
+- **`/manifest.json`** — `start_url`, labeled with `name`/`short_name` when present. Only the
+  conventional path is checked; a page that links its manifest via `<link rel=manifest>` at a
+  non-conventional path is not currently discovered.
+- **`/robots.txt`** — `Sitemap:` declarations, each fetched and parsed for `<loc>` entries.
+- **`/sitemap.xml`** — checked directly as a fallback even when `robots.txt` declares none.
+- **An OpenAPI/Swagger document, in JSON** — every key under the document's `paths` object. No
+  single conventional path exists the way there is for `manifest.json`/`sitemap.xml`, so a short
+  list of common framework paths is tried in order — `/openapi.json`, `/swagger.json`,
+  `/v3/api-docs`, `/v2/api-docs`, `/api-docs` — and the first response that actually parses as a
+  valid document (has a `paths` object) wins. Only JSON bodies are parsed; a YAML-only document is
+  not discovered. A 200 response that isn't a real document — e.g. a dev server's catch-all route
+  serving its HTML shell for any path — is skipped, not treated as a hit.
+  `discoverMetadataSuggestions` also accepts an explicit `openApiUrl` override for a nonstandard
+  path, but nothing in settings/CLI/UI currently supplies one — only the conventional-path guessing
+  runs in production today.
+
+Every discovered path is validated the same way a hand-typed quick link is (loopback host, no
+credentials, no protocol-relative URLs), and cross-source duplicates keep only the
+highest-confidence source label, in this order: OpenAPI, sitemap, manifest, robots. Paths that look
+authenticated or administrative (`/admin`, `/login`, `/dashboard`, `/account`, and similar segments)
+are dropped unless the same path was explicitly present in OpenAPI or sitemap evidence — an OpenAPI
+document or sitemap entry is a deliberate publisher declaration, not a guess, so it overrides the
+heuristic.
+
+Discovery never throws: a source that is absent, unreachable, or malformed simply contributes no
+suggestions, so one broken source never blocks suggestions from the others.
 
 ## Security
 
 Localhoster never accepts a browser-supplied target URL for server-side probing. Targets come only
 from local listener records. Probes do not send cookies or credentials, do not follow redirects away
 from loopback, bound body size and timeouts, and treat titles/favicons as untrusted display data.
+Metadata discovery (manifest/robots/sitemap/OpenAPI reads) shares this same fetch guard rather than
+implementing its own, so it inherits every constraint above — see [Metadata
+suggestions](#metadata-suggestions).
 
 Listeners bound to wildcard or non-loopback interfaces stay visible with a warning. Unsupported
 platforms keep saved settings available while clearly saying automatic discovery is unavailable.
@@ -310,10 +357,29 @@ confirmation workflow in the portal. It does not yet auto-suggest path-to-Git al
 Future final-phase work will surface those prompts when discovery evidence says a `path:<realpath>`
 project and a Git remote identity are likely the same project.
 
-Localhoster does not yet collect metadata route suggestions. That piece is tracked in a smaller
-backlog plan so shipped behavior stays honest and testable. See
-[Docker and process metrics](#docker-and-process-metrics) for what Docker/Compose and process
+One alias case *is* now applied automatically: a repository whose Git remote was renamed. Two
+records sharing a `rootId` is direct evidence the same directory was seen under both remotes (a
+`rootId` is a hash of an absolute path), and the most-recently-seen root separates a rename from a
+deleted-and-recloned directory. That case is aliased on sight rather than prompted, because an alias
+leaves both records intact and is undone by removing one entry. Merging records — which would
+rewrite checkout ownership — is still never done automatically.
+
+See [Docker and process metrics](#docker-and-process-metrics) for what Docker/Compose and process
 collection cover today, including the host-port merge limitation on Docker Desktop for macOS.
+
+- **Metadata suggestions only check the conventional `/manifest.json` path**, not an HTML page's
+  `<link rel=manifest>` tag at a non-conventional location. See [Metadata
+  suggestions](#metadata-suggestions).
+- **OpenAPI-document discovery relies on guessing a conventional path**, since no single convention
+  covers every framework the way `/manifest.json`/`/sitemap.xml` do. An app serving its document at a
+  genuinely nonstandard path is not discovered — `discoverMetadataSuggestions` accepts an explicit
+  `openApiUrl` override for that case, but nothing in settings/CLI/UI currently supplies one.
+- **HTTPS self-signed and authenticated-page metadata discovery is fixture-tested only.** It has not
+  been exercised against a real app serving those conditions.
+- **The Suggested routes dialog and add-as-quick-link prefill flow have not been visually verified in
+  a browser.** Discovery itself was verified against a real local app over a real socket; the portal
+  UI built on top of it (`portal/localhoster/suggestions-view.js`, the card action menu entry) has
+  only been reviewed by reading the code and checking `node --check`.
 
 Known limits in the Git, health, and history behavior described above:
 

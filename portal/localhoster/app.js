@@ -4,6 +4,11 @@ import * as state from "./state.js";
 import * as tmpl from "./templates.js";
 import * as fields from "./form-fields.js";
 import { createHistoryView } from "./history-view.js";
+import { buildRoutesDropdown, fillApiRouteDialog } from "./suggestions-view.js";
+import "/portal/shared/menu-button.js";
+import "/portal/shared/copy-menu.js";
+// The API-route rows in the Pages/Routes panel use <portal-copy-button> for their curl commands.
+import "/portal/shared/copy-button.js";
 
 // A stale opaque key (the app moved ports since this render) resolves by reloading the snapshot
 // rather than surfacing an error.
@@ -34,6 +39,7 @@ const refs = {
   composeRepoForm: document.getElementById("compose-repo-form"),
   settingsDialog: document.getElementById("settings-dialog"),
   settingsBody: document.getElementById("settings-body"),
+  apiRouteDialog: document.getElementById("api-route-dialog"),
 };
 
 let lastSnapshot = null;
@@ -162,15 +168,26 @@ function render(snapshot, { reconcile }) {
       })),
     },
     {
+      // What remains of the old "Inactive saved projects" list. Repositories are no longer here —
+      // they render in the main list above with their own lifecycle state, which is the whole point
+      // of persisting them: a repository you ran once and stopped stays listed, where before only
+      // ones you had explicitly configured an app slot for appeared at all.
+      //
+      // Saved app slots that have never resolved to a repository have nowhere to go, so they stay.
+      // They are configuration the user deliberately created — names, quick links, health checks —
+      // and dropping them because discovery has not yet matched them would lose real work. The
+      // section empties itself as they resolve.
       id: "inactive",
       kind: "group",
-      title: "Inactive saved projects",
-      meta: (n) => `${n} saved`,
-      cards: snapshot.inactiveProjects.map((project) => ({
-        key: `${project.identity}#${project.app?.id || ""}`,
-        hash: JSON.stringify(project),
-        build: () => tmpl.inactiveCard(project, cardActions()),
-      })),
+      title: "Saved apps",
+      meta: (n) => `${n} not yet matched to a repository`,
+      cards: snapshot.inactiveProjects
+        .filter((project) => !project.repositoryId)
+        .map((project) => ({
+          key: `${project.identity}#${project.app?.id || ""}`,
+          hash: JSON.stringify(project),
+          build: () => tmpl.inactiveCard(project, cardActions()),
+        })),
     },
   ];
 
@@ -271,15 +288,24 @@ function reconcileSection(section) {
       // <details> the operator opened — e.g. an expanded compose-project card — since the
       // rebuilt node is a fresh element with no memory of the old one's open state.
       //
-      // The card root is the <details> on most kinds, but a repository card is a plain wrapper
-      // holding one (its git row has to sit outside the disclosure to survive collapse), so the
-      // state lives one level down. Resolve to whichever this card is before copying.
-      const disclosureOf = (el) =>
-        el instanceof HTMLDetailsElement ? el : el.querySelector(":scope > details");
+      // The card root is the <details> on most kinds. A repository card is a plain wrapper with
+      // no <details> of its own — each worktree row inside it is independently collapsible, so
+      // every one of those needs its state carried forward, matched by rootId since DOM order
+      // across a rebuild is not guaranteed to match.
+      const disclosureOf = (el) => (el instanceof HTMLDetailsElement ? el : el.querySelector(":scope > details"));
       const prevDisclosure = disclosureOf(existing.node);
       const nextDisclosure = disclosureOf(node);
       if (prevDisclosure && nextDisclosure) {
         nextDisclosure.open = prevDisclosure.open;
+      }
+      const prevRoots = existing.node.querySelectorAll(".repository-root[data-root-id]");
+      if (prevRoots.length) {
+        const openByRootId = new Map([...prevRoots].map((el) => [el.dataset.rootId, el.open]));
+        for (const nextRoot of node.querySelectorAll(".repository-root[data-root-id]")) {
+          if (openByRootId.has(nextRoot.dataset.rootId)) {
+            nextRoot.open = openByRootId.get(nextRoot.dataset.rootId);
+          }
+        }
       }
       const wasOffline = existing.offline;
       existing.node.replaceWith(node);
@@ -379,20 +405,21 @@ function cardActions() {
     onEditLinks: openLinkDialog,
     onAssociate: openAppDialog,
     onAlias: openAliasDialog,
-    onToggleFavorite: toggleFavorite,
     onHide: hideInstance,
     onToggleMenu: toggleActionMenu,
     onCloseMenus: closeActionMenus,
     onHistory: (project, instance) => historyView.open(project, instance),
+    onMountRoutesTrigger: mountRoutesTrigger,
   };
 }
 
-// Repository-scoped. Settings are keyed per-app and per-compose-project, so a repository action
-// fans out to every member it contains rather than writing a repository-level record that the
-// schema has no place for.
+// Repository-scoped. Actions whose subject is the repository itself (pin, hide, associate) write to
+// the repository registry against its id. Actions whose subject is a running app still fan out to
+// members, because that is where per-app settings are keyed — the distinction is whether the state
+// has to survive the process exiting.
 function repositoryActions() {
   return {
-    onToggleFavorite: toggleRepositoryFavorite,
+    onTogglePinned: toggleRepositoryPinned,
     onHide: hideRepository,
     onToggleMenu: toggleActionMenu,
     onCloseMenus: closeActionMenus,
@@ -402,36 +429,20 @@ function repositoryActions() {
   };
 }
 
-async function toggleRepositoryFavorite(repository) {
-  // Favorited when anything under it is; the toggle therefore turns everything off if any member is
-  // currently on, and everything on otherwise.
-  const anyFavorite = repository.members.some((member) => member.instance?.app?.favorite === true)
-    || repository.composeGroups.some((group) => group.favorite === true);
+// One write to the repository registry, against the repository's own id.
+//
+// This replaces a fan-out that wrote a `favorite` flag to every member and compose group. That
+// approach could not express the state it was asked to store: an idle repository has no members, so
+// the loops ran zero times and the toggle silently did nothing — the user clicked and the page did
+// not change. Pinning belongs to the repository, which exists whether or not anything is running in
+// it, so it is stored there.
+async function toggleRepositoryPinned(repository) {
   try {
-    // Each write returns the next revision, so they are threaded rather than issued in parallel —
-    // a stale revision is rejected by the API as a conflicting edit.
-    let latest = null;
-    let revision = lastSnapshot.settingsRevision;
-    for (const group of repository.composeGroups) {
-      const result = await api.updateComposeProject({
-        revision,
-        composeProject: group.name,
-        favorite: !anyFavorite,
-      });
-      latest = result.localhoster || result;
-      revision = latest.settingsRevision;
-    }
-    for (const member of repository.members) {
-      const result = await api.updateProject({
-        revision,
-        projectIdentity: member.projectIdentity,
-        appId: member.instance?.app?.id || "web",
-        appFavorite: !anyFavorite,
-      });
-      latest = result.localhoster || result;
-      revision = latest.settingsRevision;
-    }
-    if (latest) applySnapshot(latest);
+    const result = await api.setRepositoryPinned({
+      repositoryId: repository.repositoryId,
+      pinned: !repository.pinned,
+    });
+    applySnapshot(result.localhoster || result);
   } catch (err) {
     showError(err.message);
   }
@@ -465,11 +476,11 @@ async function hideRepository(repository) {
 function composeProjectActions() {
   return {
     onAssociateRepo: openComposeRepoDialog,
-    onToggleFavorite: toggleComposeFavorite,
     onHide: hideComposeProject,
     onToggleMenu: toggleActionMenu,
     onCloseMenus: closeActionMenus,
     onHistory: (project, instance) => historyView.open(project, instance),
+    onMountRoutesTrigger: mountRoutesTrigger,
   };
 }
 
@@ -479,19 +490,6 @@ function openComposeRepoDialog(composeProject) {
   fields.setValue("compose-repo-path", composeProject.repoPath || "");
   fields.setText("compose-repo-error", "");
   refs.composeRepoDialog.showModal();
-}
-
-async function toggleComposeFavorite(composeProject) {
-  try {
-    const result = await api.updateComposeProject({
-      revision: lastSnapshot.settingsRevision,
-      composeProject: composeProject.name,
-      favorite: !composeProject.favorite,
-    });
-    applySnapshot(result.localhoster || result);
-  } catch (err) {
-    showError(err.message);
-  }
 }
 
 async function hideComposeProject(composeProject) {
@@ -508,17 +506,121 @@ async function hideComposeProject(composeProject) {
 }
 
 function openAddLinkDialog(project, instance) {
-  openLinkDialog(project, instance, { addBlank: true });
+  openLinkDialog(project, instance);
 }
 
-function openLinkDialog(project, instance, { addBlank = false } = {}) {
+// The saved links for one app, in the {id, label, path} shape the routes panel renders.
+function currentLinksFor(project, instance) {
+  const appId = instance.app?.id || "web";
+  const projectIdentity = project.identity || instance.project?.identity;
+  return state.currentLinks(lastSnapshot, projectIdentity, appId);
+}
+
+// Removes one saved link by id, writing the remaining set back — the links API replaces the whole
+// array rather than patching one entry, so "delete" is "save everything except this".
+async function deleteLink(project, instance, linkId) {
+  const appId = instance.app?.id || "web";
+  const projectIdentity = project.identity || instance.project?.identity;
+  const remaining = state
+    .currentLinks(lastSnapshot, projectIdentity, appId)
+    .filter((link) => link.id !== linkId);
+  try {
+    const result = await api.updateLinks({
+      revision: lastSnapshot.settingsRevision,
+      projectIdentity,
+      appId,
+      links: remaining,
+    });
+    applySnapshot(result.localhoster || result);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+// Mounts a portal-menu-button (portal/shared/menu-button.js) into the card's reserved
+// routes-trigger slot (see index.html). Panel content is fetched live, so it is built once on
+// first open rather than for every card on every render — same lazy-fetch discipline
+// historyView uses, just per-card now instead of one shared dialog.
+function mountRoutesTrigger(slotNode, project, instance) {
+  const button = document.createElement("portal-menu-button");
+  // "Pages/Routes", not "Routes": the panel lists both navigable HTML pages and API endpoints, and
+  // "Routes" alone read as framework-internal plumbing rather than as pages you can open.
+  button.label = "Pages/Routes";
+  let loaded = false;
+  // Rebuilt when the app's saved links change, not on every open: the discovered half costs a fetch
+  // and does not change between polls, but the user-added half is now editable from inside this very
+  // panel — so an add, edit, or delete has to invalidate the cached content or the list would still
+  // show what it held when it was first opened.
+  let renderedLinkState = null;
+  const linkStateKey = () => JSON.stringify(currentLinksFor(project, instance));
+  const originalToggle = button.toggle.bind(button);
+  button.toggle = async () => {
+    if (!loaded || renderedLinkState !== linkStateKey()) {
+      loaded = true;
+      renderedLinkState = linkStateKey();
+      button.panelContent = await buildRoutesDropdown(project, instance, {
+        onStale: () => load({ force: true }),
+        captureLink: captureRouteLink,
+        isSaved: isRouteSaved,
+        onOpenApiRoute: openApiRouteDialog,
+        // User-added links render in the Pages section as their own source, alongside discovered
+        // ones — this is where adding and editing them now lives, rather than on the three-dot menu.
+        userLinks: currentLinksFor(project, instance),
+        onAddLink: openAddLinkDialog,
+        onEditLink: openLinkDialog,
+        onDeleteLink: deleteLink,
+      });
+    }
+    originalToggle();
+  };
+  slotNode.replaceWith(button);
+}
+
+// Opens the shared API contract modal for one endpoint. The routes popover is closed first: it is
+// a fixed-position panel anchored to its card, so leaving it open would float it above the modal's
+// backdrop. closeActionMenus() does not cover it — that one handles the [data-menu] three-dot
+// menus, and this is a portal-menu-button widget with its own close().
+function openApiRouteDialog(instance, suggestion) {
+  for (const menu of refs.content.querySelectorAll("portal-menu-button")) menu.close?.();
+  fillApiRouteDialog(refs.apiRouteDialog, instance, suggestion);
+  refs.apiRouteDialog.showModal();
+}
+
+function isRouteSaved(project, instance, path) {
+  const appId = instance.app?.id || "web";
+  const projectIdentity = project.identity || instance.project?.identity;
+  const links = state.currentLinks(lastSnapshot, projectIdentity, appId);
+  return links.some((link) => link.path === path);
+}
+
+// Captures one discovered route into the app's saved links — no free-text dialog detour, since a
+// discovered route is already a known-good, server-validated path. Skips the mutation entirely if
+// the path is already saved (checked by the caller via isRouteSaved before this ever runs, and
+// re-checked here since the dropdown's list is built once per open and could go stale if the user
+// edits links in another tab mid-session). updateLinks still runs its own path validation
+// (normalizeRoutePath) and revision-conflict check server-side.
+async function captureRouteLink(project, instance, suggestion) {
+  const appId = instance.app?.id || "web";
+  const projectIdentity = project.identity || instance.project?.identity;
+  const links = state.currentLinks(lastSnapshot, projectIdentity, appId);
+  if (links.some((link) => link.path === suggestion.path)) return;
+  const result = await api.updateLinks({
+    revision: lastSnapshot.settingsRevision,
+    projectIdentity,
+    appId,
+    links: [...links, { label: suggestion.label || suggestion.path, path: suggestion.path }],
+  });
+  applySnapshot(result.localhoster || result);
+}
+
+function openLinkDialog(project, instance) {
   const appId = instance.app?.id || "web";
   const projectIdentity = project.identity || instance.project?.identity;
   fields.setValue("link-project", projectIdentity);
   fields.setValue("link-app", appId);
   fields.setText("link-error", "");
   const links = state.currentLinks(lastSnapshot, projectIdentity, appId);
-  renderLinkRows(addBlank ? [...links, { label: "", path: "" }] : links);
+  renderLinkRows([...links, { label: "", path: "" }]);
   refs.linkDialog.showModal();
 }
 
@@ -686,31 +788,26 @@ function toggleActionMenu(card) {
   closeActionMenus();
   menu.hidden = !willOpen;
   trigger.setAttribute("aria-expanded", willOpen ? "true" : "false");
+  // Lifts this card above the ones after it for as long as the menu is open. Cards are opaque
+  // siblings painted in DOM order, so without this the next card covers the panel however high its
+  // own z-index is — the panel cannot escape its card's stacking context. Applied to the nearest
+  // card so a menu on a nested member card raises the member, and the outer repository card is
+  // raised too when the menu belongs to it.
+  if (willOpen) menu.closest(".instance-card")?.classList.add("has-open-menu");
 }
 
 function closeActionMenus() {
   for (const menu of refs.content.querySelectorAll("[data-menu]")) {
     menu.hidden = true;
-    menu
-      .closest(".instance-card")
-      ?.querySelector("[data-action=menu]")
-      ?.setAttribute("aria-expanded", "false");
+    const card = menu.closest(".instance-card");
+    card?.querySelector("[data-action=menu]")?.setAttribute("aria-expanded", "false");
+    card?.classList.remove("has-open-menu");
   }
-}
-
-async function toggleFavorite(project, instance) {
-  const projectIdentity = project.identity || instance.project?.identity;
-  const appId = instance.app?.id || "web";
-  try {
-    const result = await api.updateProject({
-      revision: lastSnapshot.settingsRevision,
-      projectIdentity,
-      appId,
-      appFavorite: !(instance.app?.favorite === true),
-    });
-    applySnapshot(result.localhoster || result);
-  } catch (err) {
-    showError(err.message);
+  // Cleared everywhere rather than only on cards that still hold a [data-menu]: a card can be
+  // rebuilt by a poll while its menu is open, and a stale raised card would keep covering its
+  // neighbours with nothing visible to explain why.
+  for (const raised of refs.content.querySelectorAll(".has-open-menu")) {
+    raised.classList.remove("has-open-menu");
   }
 }
 
@@ -743,10 +840,41 @@ async function hideInstance(project, instance) {
 
 function renderSettingsDialog() {
   refs.settingsBody.replaceChildren(
+    // Two hidden lists, deliberately separate. "Hidden" holds projects and apps the user hid by
+    // hand, in Localhoster's settings. "Hidden repositories" holds whole repositories the 30-day
+    // ageing sweep retired from the list — a different store, a different actor, and a different
+    // thing to restore, so merging them would misreport who hid what.
     tmpl.settingsSection("Hidden", hiddenRows()),
+    tmpl.settingsSection("Hidden repositories", hiddenRepositoryRows()),
     tmpl.settingsSection("Associations", associationRows()),
     tmpl.settingsSection("Aliases", aliasRows()),
   );
+}
+
+function hiddenRepositoryRows() {
+  return (lastSnapshot.hiddenRepositories || []).map((item) =>
+    tmpl.settingsRow(
+      item.name,
+      // Records are never deleted, so a repository is here because it went 30 days unseen — saying
+      // when makes that legible rather than leaving the user to guess why it left the list.
+      item.lastSeenAt ? `last seen ${new Date(item.lastSeenAt).toLocaleDateString()}` : item.repositoryId,
+      "Show",
+      () => restoreHiddenRepository(item),
+    ),
+  );
+}
+
+async function restoreHiddenRepository(item) {
+  try {
+    const result = await api.setRepositoryVisibility({ repositoryId: item.repositoryId, hidden: false });
+    if (result.localhoster) applySnapshot(result.localhoster);
+    // The restore kicks a refresh server-side rather than rebuilding from cached discovery (the
+    // persisted-repository list is only assembled on the refresh path), so the repository appears on
+    // the next snapshot rather than in this response.
+    renderSettingsDialog();
+  } catch (err) {
+    showError(err.message);
+  }
 }
 
 function hiddenRows() {

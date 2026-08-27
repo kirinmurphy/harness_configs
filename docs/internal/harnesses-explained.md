@@ -187,9 +187,16 @@ rest of the file alone:
 # Source: manifests/inventory/agent-permissions.json
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
+default_permissions = "roborepo-workspace"
 
-[sandbox_workspace_write]
-network_access = false
+[permissions.roborepo-workspace]
+extends = ":workspace"
+
+[permissions.roborepo-workspace.workspace_roots]
+"~/.worktrees/roborepo" = true
+
+[permissions.roborepo-workspace.network]
+enabled = false
 # END GENERATED AGENT PERMISSIONS
 ```
 

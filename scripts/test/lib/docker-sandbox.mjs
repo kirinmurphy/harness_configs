@@ -57,7 +57,8 @@ export async function withPackedPackage(callback) {
 
 export function runDockerScript({ label, packDest, script }) {
   const { image, timeoutMs } = dockerSandboxConfig();
-  const args = ["run", "--rm", "--network=none", "-v", `${packDest}:/artifacts:ro`, image, "sh", "-lc", script];
+  const cidfile = path.join(packDest, `.docker-${process.pid}-${Date.now()}.cid`);
+  const args = ["run", "--rm", "--cidfile", cidfile, "--network=none", "-v", `${packDest}:/artifacts:ro`, image, "sh", "-lc", script];
 
   return new Promise((resolve, reject) => {
     let stdout = "";
@@ -66,6 +67,8 @@ export function runDockerScript({ label, packDest, script }) {
     const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"] });
     const timeout = setTimeout(() => {
       timedOut = true;
+      const containerId = readContainerId(cidfile);
+      if (containerId) spawnSync("docker", ["rm", "-f", containerId], { stdio: "ignore" });
       child.kill("SIGKILL");
     }, timeoutMs);
 
@@ -81,10 +84,12 @@ export function runDockerScript({ label, packDest, script }) {
     });
     child.on("error", (error) => {
       clearTimeout(timeout);
+      fs.rmSync(cidfile, { force: true });
       reject(new assert.AssertionError({ message: `${label} failed (${error.name}: ${error.message})` }));
     });
     child.on("close", (code, signal) => {
       clearTimeout(timeout);
+      fs.rmSync(cidfile, { force: true });
       if (code === 0) {
         resolve();
         return;
@@ -93,4 +98,12 @@ export function runDockerScript({ label, packDest, script }) {
       reject(new assert.AssertionError({ message: `${label} failed (${exit})\n${stdout}${stderr}` }));
     });
   });
+}
+
+function readContainerId(cidfile) {
+  try {
+    return fs.readFileSync(cidfile, "utf8").trim();
+  } catch {
+    return "";
+  }
 }

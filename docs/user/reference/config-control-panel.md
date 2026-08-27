@@ -240,7 +240,7 @@ whole story, and the distinction matters when changing one:
 | Which fixed directories are quiet? | Render time | Path allowlist in the manifest |
 | Is this path in the current repository? | **Tool-call time** | `repo-scope` behavior, per provider |
 
-The repository zone is **wider for reads than for writes**, deliberately:
+For Claude, the repository zone is **wider for reads than for writes**, deliberately:
 
 | | Reads | Writes |
 | --- | --- | --- |
@@ -253,10 +253,10 @@ repository family. Writing across checkouts is how one session clobbers another'
 and it is rare — isolation is the reason to create a worktree — so writes stay bounded to the
 checkout in use and prompt otherwise.
 
-On Claude the family is read straight from git's own pointer files (`.git`, `commondir`,
-`.git/worktrees/*/gitdir`), costing ~15ms rather than a `git` subprocess. Codex expresses the write
-half through a `roborepo-workspace` permission profile, including this repo's derived worktree root
-from `docs/plans/plans-config.json`, and does not restrict reads at all.
+Claude reads the family straight from git's own pointer files (`.git`, `commondir`,
+`.git/worktrees/*/gitdir`), costing ~15ms rather than a `git` subprocess. Codex does not enforce the
+read half of this table. It expresses only the write half through a `roborepo-workspace` permission
+profile, including this repo's derived worktree root from `docs/plans/plans-config.json`.
 
 #### Codex worktree permissions coordinator
 

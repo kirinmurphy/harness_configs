@@ -12,6 +12,7 @@ import { isHooksMap, mergeHooksMap, unmergeHooksMap } from "../hooks-merge.mjs";
 import { mergeCodexConfig, normalizeRootConfigContent } from "../../cli/root-config-merge.mjs";
 import { clearOwnedScalar, readOwnedScalar, recordOwnedScalar } from "../../cli/owned-scalars-state.mjs";
 import { resolveBehaviors, resolveArbitraryCommands, renderCodexConfig } from "../permissions-render.mjs";
+import { loadPermissionWorkspaceRootsForCwd } from "../permission-workspace-roots.mjs";
 import { addCodexMcpBlock, removeCodexMcpBlock, codexHasMcp, listCodexMcpServers } from "../mcp-codex-toml.mjs";
 import { transcriptStats, privacySafeRateLimits } from "../transcript-parse.mjs";
 import { locateTranscript, extractHeavyTurns, transcriptTitle } from "../transcript-locate.mjs";
@@ -287,10 +288,11 @@ export const codexProvider = defineHarnessProvider({
       unmergePackageComponent,
     },
     permissions: {
-      render: (current, manifest, overrides, target) => {
+      workspaceRoots: ({ cwd } = {}) => loadPermissionWorkspaceRootsForCwd(cwd),
+      render: (current, manifest, overrides, target, options = {}) => {
         const behaviors = resolveBehaviors(manifest, overrides.behaviors);
         const arbitraryCommands = resolveArbitraryCommands(manifest, overrides.commands);
-        return renderCodexConfig(current, behaviors, arbitraryCommands, target);
+        return renderCodexConfig(current, behaviors, arbitraryCommands, target, options);
       },
     },
     mcp: {

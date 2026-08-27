@@ -1,0 +1,34 @@
+{
+  "_comment": "Core (non-package) Claude hook wiring. Package hooks declare their own fragments under globals/packages/<id>/hooks-claude.json and are merged on enable; these are the hooks roborepo always installs, so they had no fragment and lived only in generated/claude/settings.json — tracked state with no source. scripts/test/core-hook-wiring-check.mjs asserts the two agree.",
+  "PreToolUse": [
+    {
+      "matcher": "Bash",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"$HOME/.claude/hooks/minimize-bash-output.mjs\""
+        }
+      ]
+    },
+    {
+      "_comment": "repo-scope enforcement. Read is included deliberately: reads span the repository family (worktree + primary + siblings) while writes stay bounded to the checkout in use. See globals/harnesses/claude/hooks/repo-write-scope.mjs.",
+      "matcher": "Read|Write|Edit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"$HOME/.claude/hooks/provider/repo-write-scope.mjs\""
+        }
+      ]
+    },
+    {
+      "_comment": "Symlink reminders for writes into managed harness homes. Stays on Write|Edit — it has nothing to say about reads, so widening its matcher would spawn a process per Read for no output.",
+      "matcher": "Write|Edit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"$HOME/.claude/hooks/roborepo-write-guard.mjs\""
+        }
+      ]
+    }
+  ]
+}

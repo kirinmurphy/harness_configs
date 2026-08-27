@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "worktreeRoot": "~/.worktrees",
+  "worktreeRepoName": "roborepo",
   "namespaces": {
     "plan": "The plan-docs system itself: schema, validation, repair, authoring workflow.",
     "plan-lifecycle": "Plan lifecycle states, transitions, and the workflow between them.",

@@ -60,3 +60,4 @@ codex	cleanup	-	skills	codex	-
 # ^^^ migration: removes any old dir-level ~/.codex/skills -> repo symlink (pre-native-alignment era).
 # skills/ is now managed per-skill by the installer's enumerate-step.
 gemini	managed_copy	globals/harnesses/gemini/MANAGED_BY_ROBOREPO.md	MANAGED_BY_ROBOREPO.md	gemini	nodoctor
+gemini	managed_copy	generated/gemini/policies	policies	gemini	-

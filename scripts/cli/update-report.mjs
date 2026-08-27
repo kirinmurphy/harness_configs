@@ -12,7 +12,7 @@ const HARNESS_HOME = harnessHome;
 
 const MANAGED_MARKER = ".roborepo-managed";
 
-export function runUpdateWithReport(commandConfig, args) {
+export async function runUpdateWithReport(commandConfig, args) {
   const { installArgs, verbose } = parseReportArgs(args);
   const before = snapshotInstallState();
   const result = runInstall(commandConfig, installArgs, { verbose });
@@ -21,9 +21,19 @@ export function runUpdateWithReport(commandConfig, args) {
     process.stdout.write(installOutput);
   }
   if (result.status === 0) {
+    if (!installArgs.includes("--dry-run")) await refreshLivePermissions({ verbose });
     printUpdateReport(before, snapshotInstallState(), { verbose, installOutput });
   }
   process.exit(result.status ?? 1);
+}
+
+async function refreshLivePermissions({ verbose = false } = {}) {
+  const { readCommandOverrides } = await import("./config-mutate.mjs");
+  const { renderPermissionsToHome } = await import("./permissions-render.mjs");
+  const { touched } = renderPermissionsToHome({ overrides: readCommandOverrides(), cwd: process.cwd() });
+  if (verbose) {
+    for (const file of touched) console.log(`permissions: ${file}`);
+  }
 }
 
 function parseReportArgs(args) {

@@ -16,6 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { resolvesIntoRepo } from "../cli/hook-composition.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const cli = path.join(repoRoot, "scripts/cli/main.mjs");
@@ -76,6 +77,19 @@ function codexHookCommands() {
 }
 
 try {
+  // --- symlink guard: complete chains back into the repo are refused ---
+  {
+    const repoTarget = path.join(repoRoot, "globals");
+    const linkTwo = path.join(tmp, "hooks-link-two");
+    const linkOne = path.join(tmp, "hooks-link-one");
+    const outside = path.join(tmp, "outside");
+    fs.mkdirSync(outside);
+    fs.symlinkSync(repoTarget, linkTwo);
+    fs.symlinkSync(linkTwo, linkOne);
+    assert.equal(resolvesIntoRepo(linkOne, repoRoot), true, "multi-hop symlink into repo is detected");
+    assert.equal(resolvesIntoRepo(outside, repoRoot), false, "ordinary outside directory is allowed");
+  }
+
   // --- enable: both harnesses' hooks land ---
   {
     const enable = run(["package", "enable", "hook-composition-fixture"]);

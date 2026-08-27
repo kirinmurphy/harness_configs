@@ -217,7 +217,9 @@ const result = spawnSync(process.execPath, [probeScript], {
     HOME: probeHome,
     USERPROFILE: probeHome,
     PATH: ["/usr/bin", "/bin"].join(path.delimiter),
+    ROBOREPO_APP_ROOT: appRoot,
     ROBOREPO_STATE_DIR: stateDir,
+    ROBOREPO_WORKSPACE_ROOT: path.join(tmp, "workspace"),
   },
 });
 assert.equal(result.status, 0, `synthetic third-provider probe failed:\n${result.stdout}\n${result.stderr}`);
@@ -275,7 +277,9 @@ const liveFallbackResult = spawnSync(process.execPath, [liveProbeScript], {
     HOME: liveProbeHome,
     USERPROFILE: liveProbeHome,
     PATH: [toolBin, "/usr/bin", "/bin"].join(path.delimiter),
+    ROBOREPO_APP_ROOT: appRoot,
     ROBOREPO_STATE_DIR: stateDir,
+    ROBOREPO_WORKSPACE_ROOT: path.join(tmp, "workspace-live"),
   },
 });
 assert.equal(liveFallbackResult.status, 0, `live discovery fallback probe failed:\n${liveFallbackResult.stdout}\n${liveFallbackResult.stderr}`);

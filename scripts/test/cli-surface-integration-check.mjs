@@ -18,6 +18,7 @@ const generatedPermissionFiles = [
   path.join(repoRoot, "generated", "codex", "rules", "default.rules"),
   path.join(repoRoot, "generated", "gemini", "policies", "roborepo-permissions.toml"),
 ];
+const generatedBaseline = gitGeneratedStatus();
 
 try {
   const env = {
@@ -83,18 +84,22 @@ try {
 // tree, gets committed by accident, and ships a permission rule scoped to a directory that no
 // longer exists. Fail loudly here instead: a test may read this checkout, never write to it.
 function reportRepoGeneratedUnchanged() {
+  const dirty = gitGeneratedStatus();
+  if (dirty === null || dirty === generatedBaseline) return;
+  console.error(
+    `\nthe suite modified tracked generated/ files; tests must not write into this checkout:\n${dirty}`,
+  );
+  process.exitCode = 1;
+}
+
+function gitGeneratedStatus() {
   const result = spawnSync("git", ["status", "--porcelain", "--", "generated"], {
     cwd: repoRoot,
     encoding: "utf8",
   });
   // No git (or not a checkout) means nothing to protect — skip rather than fail the whole suite.
-  if (result.status !== 0) return;
-  const dirty = result.stdout.trim();
-  if (!dirty) return;
-  console.error(
-    `\nthe suite modified tracked generated/ files; tests must not write into this checkout:\n${dirty}`,
-  );
-  process.exitCode = 1;
+  if (result.status !== 0) return null;
+  return result.stdout.trim();
 }
 
 function assertCli(args, { env, input = "", status = 0, stdout, stderr } = {}) {

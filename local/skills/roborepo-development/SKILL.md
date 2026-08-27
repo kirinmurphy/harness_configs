@@ -112,6 +112,22 @@ Everything else (the two symlink levels, the layer table) lives in
   verifier through `grep`/`head` to trim output. `doctor.sh` also folds `link-skills.sh --check`,
   so it is the single repo-health entrypoint (`--installed` adds global ~/.claude·~/.codex live
   link checks including per-skill skill links); `test-roborepo.sh` stays the separate test suite.
+- **Health gate before handoff.** After a merge from main, generated-file change,
+  provider/adapter change, CI/workflow change, or `scripts/test/` addition/removal, run
+  `bash scripts/doctor.sh --quiet` and `git diff --check` before final/push. `doctor.sh` is the
+  provider-registry health gate; do not substitute narrower render/catalog checks when the change
+  touches harness, provider, test, or CI plumbing.
+- **Full CI parity is expensive.** `npm run check` is the full local CI parity gate: main suite,
+  install-collisions, package install, and Docker clean-machine checks when Docker is available.
+  Do not use it as the default cleanup loop for ordinary review or CodeRabbit feedback. Prefer
+  targeted checks plus `bash scripts/doctor.sh --quiet`; reserve `npm run check` for pre-push,
+  release, or changes to CI/workflow/test orchestration itself.
+- **Docker test sandboxes:** use them for machine-shape behavior: clean `HOME`, clean `PATH`,
+  package-mode install/uninstall, fake harness discovery, and generated config projection. Use one
+  disposable image, one fresh container per scenario, one package install per scenario, and many
+  assertions inside it. Repeating npm install/uninstall per assertion is not scalable; reserve that
+  for lifecycle tests whose subject is install/uninstall itself. The doc of record is
+  `docs/internal/docker-test-sandboxes.md`.
 - **Cross-platform floor:** Node cores use only `node:` built-ins (no shelling to
   `zip`/`unzip`/`ln`), so the same code runs on macOS/Linux/Windows. Keep it that way.
 - **Skill discovery paths.** Project scope: `.codex/skills` (Codex) and `.claude/skills` (Claude).

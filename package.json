@@ -25,6 +25,7 @@
     "shell/",
     "README.md",
     "LICENSE",
+    "docs/plans/plans-config.json",
     "docs/user/"
   ],
   "scripts": {
@@ -63,6 +64,8 @@
     "test:slash-commands-characterization": "node scripts/test/slash-commands-characterization-check.mjs",
     "test:config-mutate-skill-characterization": "node scripts/test/config-mutate-skill-characterization-check.mjs",
     "test:permissions-render-live-characterization": "node scripts/test/permissions-render-live-characterization-check.mjs",
+    "test:core-hook-wiring": "node scripts/test/core-hook-wiring-check.mjs",
+    "test:permission-rule-home-path": "node scripts/test/permission-rule-home-path-check.mjs",
     "test:mcp-add-characterization": "node scripts/test/mcp-add-characterization-check.mjs",
     "test:mcp-package-lifecycle-characterization": "node scripts/test/mcp-package-lifecycle-characterization-check.mjs",
     "test:package-lifecycle": "node scripts/test/package-lifecycle-check.mjs",
@@ -105,7 +108,9 @@
     "pack:dry-run": "npm pack --dry-run",
     "pack:smoke": "npm pack",
     "test:package-install": "node scripts/test/package-install-smoke.mjs",
+    "test:clean-machine-install-sandbox": "node scripts/test/clean-machine-install-sandbox.mjs",
     "test:clean-machine": "node scripts/test/clean-machine-container-check.mjs",
+    "test:clean-machine-permissions-sandbox": "node scripts/test/clean-machine-permissions-sandbox.mjs",
     "prepare:new-mac-install": "node scripts/test/package-install-smoke.mjs",
     "publish:npm": "bash scripts/release/publish-npm.sh",
     "publish:npm-latest": "npm run publish:npm -- --latest",

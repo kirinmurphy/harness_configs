@@ -25,6 +25,21 @@ test command/suite.
 | Hermetic rerun | `bash scripts/test/hermetic-suite.sh --quiet` | the main suite under a temp `HOME` and a PATH with no harness executables | Reproduces CI-runner conditions locally. A test that fails only here is reading ambient machine state. |
 | Portal smoke | `roborepo web --no-open --port <port>` plus `curl`/browser checks | local portal routes and API snapshots | Start under direct control and stop with Ctrl-C. Do not use detached mode for test runs. |
 
+## Required Cleanup Gate
+
+Before pushing or closing any merge-from-main, generated-file, harness/provider, package/test, or
+CI/workflow change, run:
+
+```sh
+bash scripts/doctor.sh --quiet
+git diff --check
+```
+
+`doctor.sh` is the cross-harness repo-health gate. It derives provider and harness expectations from
+the repo manifests and registry, then checks generated permissions/rules, command catalog shape,
+orphaned tests, shell syntax, and related repository invariants. Do not substitute a narrower render
+or targeted test check when the touched surface is harness/provider/test/CI plumbing.
+
 ## Publish Matrix
 
 Before an npm publish decision, run these commands from a clean `main` checkout with Node 20 or
@@ -103,9 +118,10 @@ that no real browser was used.
 ## Adding A Test
 
 Write the check, then wire it into a runner. `scripts/doctor.sh` fails when any file under
-`scripts/test/` is invoked by neither `test-roborepo.sh`, an `npm run test:*` script, nor a CI job —
-because a test nothing runs asserts nothing, which is exactly how an uninstall defect once survived
-a full review pass.
+`scripts/test/` is invoked by neither `test-roborepo.sh`, an `npm run test:*` script that CI directly
+calls, nor a CI job — because a test nothing runs asserts nothing, which is exactly how an uninstall
+defect once survived a full review pass. A `package.json` script by itself is only a named entry
+point; it must still be reached by CI or the main test runner.
 
 When that check fails, add the file to a runner. Only if it is genuinely not a suite entry point —
 a child process, a benchmark, a manual smoke that binds a port — add it to `EXEMPT` in

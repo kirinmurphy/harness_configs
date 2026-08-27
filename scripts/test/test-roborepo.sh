@@ -862,7 +862,7 @@ fi
 # Seed a codex config.toml so the renderer has a marker block to merge into.
 cp "${repo_root}/generated/codex/config.toml" "${cfg_home}/.codex/config.toml"
 assert "config: setBehaviorBucket rewrites live home config + preserves other keys" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const fs=require('fs');const before=JSON.parse(fs.readFileSync('${cfg_home}/.claude/settings.json'));const r=m.setBehaviorBucket('write-files','deny');const after=JSON.parse(fs.readFileSync('${cfg_home}/.claude/settings.json'));const codex=fs.readFileSync('${cfg_home}/.codex/config.toml','utf8');process.exit(r.ok&&/sandbox_mode = .read-only./.test(codex)&&!after.permissions.allow.includes('Write')?0:1)})\""
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const fs=require('fs');const before=JSON.parse(fs.readFileSync('${cfg_home}/.claude/settings.json'));const r=m.setBehaviorBucket('write-files','deny');const after=JSON.parse(fs.readFileSync('${cfg_home}/.claude/settings.json'));const codex=fs.readFileSync('${cfg_home}/.codex/config.toml','utf8');const writeAllowed=after.permissions.allow.some(p=>p==='Write'||p.startsWith('Write(')||p==='Edit'||p.startsWith('Edit('));process.exit(r.ok&&/default_permissions = .:read-only./.test(codex)&&!writeAllowed?0:1)})\""
 assert "config: setBehaviorBucket rejects unknown behavior" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setBehaviorBucket('bogus-behavior','deny');process.exit(r.ok?1:0)})\""
 assert "config: setBehaviorBucket rejects unknown bucket" \
@@ -874,7 +874,11 @@ assert "config: setCommandBucket tracks a new arbitrary command" \
 assert "config: setCommandBucket rejects empty tokens" \
   bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config-mutate.mjs').then(m=>{const r=m.setCommandBucket([],'ask');process.exit(r.ok?1:0)})\""
 assert "config: snapshot reports behaviors + arbitrary commands" \
-  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const p=s.permissions;process.exit(Array.isArray(p.behaviors)&&p.behaviors.some(b=>b.id==='repo-write-boundary')&&p.behaviors.some(b=>b.id==='go-online')&&Array.isArray(p.arbitrary)?0:1)})\""
+  bash -c "${cfg_env} node -e \"import('${repo_root}/scripts/cli/config.mjs').then(c=>{const s=c.readConfigSnapshot();const p=s.permissions;process.exit(Array.isArray(p.behaviors)&&p.behaviors.some(b=>b.id==='read-secrets')&&p.behaviors.some(b=>b.id==='repo-write-boundary')&&p.behaviors.some(b=>b.id==='go-online')&&Array.isArray(p.arbitrary)?0:1)})\""
+assert "hooks: core hook wiring check passes" \
+  node "${repo_root}/scripts/test/core-hook-wiring-check.mjs"
+assert "permissions: generated allow rules avoid home paths" \
+  node "${repo_root}/scripts/test/permission-rule-home-path-check.mjs"
 
 if [[ -n "${cfg_port:-}" ]]; then
   # Permission POST endpoint: named behavior (200), arbitrary command (200), invalid bucket (400),

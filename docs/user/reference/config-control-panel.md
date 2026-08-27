@@ -119,6 +119,14 @@ and terminal flow share one implementation:
 Writes target the user's **live** config, not the repo template (`globals/`). The repo
 template is changed only by the install/render pipeline.
 
+When `roborepo config apply` or package-mode `roborepo update` runs from inside a repository with
+`docs/plans/plans-config.json`, the post-apply permissions refresh updates Codex's live profile with
+that repository family's concrete worktree root. With `"worktreeRoot": "~/.worktrees"` in
+`plans-config.json`, a normal checkout named `my-repo` renders `~/.worktrees/my-repo`; a nested
+worktree such as `~/.worktrees/my-repo/feature` renders the same family root. Codex profiles require
+concrete `workspace_roots`, so the Codex provider materializes the path instead of using a glob for
+every repository under `~/.worktrees`.
+
 ### Web endpoints
 
 The loopback-only portal server (`scripts/cli/portal-server.mjs`) serves `/config`
@@ -200,12 +208,81 @@ Policy Engine), and falls back to the whole-tool decision there. `write-files` d
 unscoped rule of its own: a bare `Write`/`Edit` entry out-ranks every path-scoped rule and would
 silently defeat the scoping.
 
+#### Credential denylist
+
+`read-secrets` denies reads of credential material — `~/.ssh`, `~/.aws`, `~/.gnupg`, cloud config,
+keychains, and `.env`/`*.pem`/private-key files anywhere on disk. It is the one layer the repository
+boundary cannot provide: a `.env` inside your checkout is *in*-bounds for the boundary, so only a
+deny rule stops it.
+
+Two properties make this the security floor rather than one more preference:
+
+- **Deny out-ranks everything.** Claude evaluates deny before ask before allow, so these beat both
+  the scope allowlists and any `allow` a hook returns.
+- **Deny is not a prompt.** There is no in-session override. If a denied path needs reading, carve
+  it out of the behavior rather than working around it.
+
+The denylist is home-relative by design (`~/.ssh/**`), which is correct on every machine — unlike a
+personal *project* layout, which is not. Both forms contain `~`; only the second is a portability
+bug, which is why `scripts/test/permission-rule-home-path-check.mjs` tests the bucket rather than
+the presence of a tilde.
+
+A denylist only catches what it names. It cannot cover unknown-sensitive files — a tax PDF, a
+client repo under NDA — which is why it complements the scope perimeter instead of replacing it.
+
 #### Changing path scopes
 
-Scope paths are expanded at **render** time into static harness config, not resolved per session.
-A scope change is therefore an install-time concern, and any mechanism that depends on a runtime
-value (a project-dir variable, for instance) has to be verified against each harness's own rule
-syntax before it is relied on.
+Scope paths are expanded at **render** time into static harness config — but this is no longer the
+whole story, and the distinction matters when changing one:
+
+| Question | Resolved | Mechanism |
+| --- | --- | --- |
+| Which fixed directories are quiet? | Render time | Path allowlist in the manifest |
+| Is this path in the current repository? | **Tool-call time** | `repo-scope` behavior, per provider |
+
+For Claude, the repository zone is **wider for reads than for writes**, deliberately:
+
+| | Reads | Writes |
+| --- | --- | --- |
+| The checkout in use | quiet | quiet |
+| Its primary checkout and sibling worktrees | quiet | **prompt** |
+| Anywhere else | prompt | prompt |
+
+Comparing a branch against `main` from a worktree is routine and harmless, so reads span the whole
+repository family. Writing across checkouts is how one session clobbers another's in-flight work,
+and it is rare — isolation is the reason to create a worktree — so writes stay bounded to the
+checkout in use and prompt otherwise.
+
+Claude reads the family straight from git's own pointer files (`.git`, `commondir`,
+`.git/worktrees/*/gitdir`), costing ~15ms rather than a `git` subprocess. Codex does not enforce the
+read half of this table. It expresses only the write half through a `roborepo-workspace` permission
+profile, including this repo's derived worktree root from `docs/plans/plans-config.json`.
+
+#### Codex worktree permissions coordinator
+
+Codex permission profiles accept only concrete `workspace_roots`; they do not support a dynamic
+"same repo name under my worktree parent" expression. Roborepo is therefore the coordinator that
+materializes those roots.
+
+The flow is:
+
+1. A repo carries `docs/plans/plans-config.json` with `"worktreeRoot": "~/.worktrees"`.
+2. `roborepo config apply`, package-mode `roborepo update`, or a permissions toggle renders live
+   permissions from the current working directory.
+3. The generic permission renderer passes provider context to each harness adapter.
+4. The Codex provider reads the current repo's plan config and contributes
+   `~/.worktrees/<repo-folder-name>` to `workspace_roots`.
+5. Claude and Gemini ignore that Codex-only context. Claude gets repository scoping from its
+   tool-call hook; Gemini cannot express a path predicate and keeps the documented skip.
+
+This keeps the provider seam intact: the platform owns the permission intent, the render
+orchestrator passes context, and each provider decides whether its native permission model can use
+that context. It also avoids granting all of `~/.worktrees`, which would let one repo's session
+write into another repo's worktree family.
+
+The repository boundary cannot be a path, because no rule syntax can express "wherever the session
+happens to be" — see [[agent-config-repo-scoped-write-permissions]] for why each anchor form fails.
+So a scope change is an install-time concern, while a *boundary* change takes effect immediately.
 
 Path-scoping changes must be worked through **per provider** — Claude and Codex both, not Claude
 alone. The two render through different code paths in `scripts/harnesses/permissions-render.mjs`

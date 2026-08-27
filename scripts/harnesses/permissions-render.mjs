@@ -54,17 +54,16 @@ function findBehavior(behaviors, id) {
 }
 
 // Filesystem write access derives from the write-files behavior specifically. "deny" or "ask"
-// both mean Codex's sandbox should not be opened for arbitrary writes; only an explicit "allow"
-// opens workspace-write.
+// both mean Codex should stay read-only; only an explicit "allow" opens the workspace profile.
 //
 // This is also Codex's implementation of the platform's `repo-write-boundary` behavior. Codex has
-// no per-path permission rules, so it cannot ask per write the way Claude's hook does; what it has
-// is a sandbox whose writable area is the workspace. Leaving the boundary on therefore means
-// `workspace-write` — writes stay inside the workspace and anything outside is refused by the
-// sandbox rather than prompted. Switching the boundary off ("allow") is the only case where a
-// wider `danger-full-access` would be correct, and that is deliberately NOT rendered here: opening
-// the whole filesystem is a bigger step than turning off a prompt, and should be an explicit
-// Codex-side choice rather than a side effect of a permissions toggle.
+// no per-write prompt hook equivalent to Claude's boundary hook; what it has is a permission
+// profile whose writable area is the active workspace roots. The runtime workspace root is always
+// included by Codex, and roborepo adds profile-defined roots from plans config for managed
+// worktrees. Switching the boundary off ("allow") would imply a wider full-access profile, and
+// that is deliberately NOT rendered here: opening the whole filesystem is a bigger step than
+// turning off a prompt, and should be an explicit Codex-side choice rather than a side effect of a
+// permissions toggle.
 function codexSandboxMode(behaviors) {
   const writeFiles = findBehavior(behaviors, "write-files");
   return writeFiles?.bucket === "allow" ? "workspace-write" : "read-only";
@@ -76,25 +75,40 @@ function codexNetworkAccess(behaviors) {
   return findBehavior(behaviors, "go-online")?.bucket === "allow";
 }
 
-function renderCodexPermissionBlock(behaviors, arbitraryCommands) {
-  const sandboxMode = codexSandboxMode(behaviors);
+function renderCodexWorkspaceProfile(behaviors, workspaceRoots = []) {
+  const roots = [...new Set(workspaceRoots.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim()))];
+  const profile = "roborepo-workspace";
   const lines = [
-    begin,
-    "# Source: manifests/inventory/agent-permissions.json",
-    `approval_policy = ${quoteToml(codexApprovalPolicy(behaviors, arbitraryCommands))}`,
-    `sandbox_mode = ${quoteToml(sandboxMode)}`,
+    `default_permissions = ${quoteToml(profile)}`,
+    "",
+    `[permissions.${profile}]`,
+    `extends = ${quoteToml(":workspace")}`,
   ];
 
-  if (sandboxMode === "workspace-write") {
-    lines.push("", "[sandbox_workspace_write]", `network_access = ${codexNetworkAccess(behaviors) ? "true" : "false"}`);
+  if (roots.length > 0) {
+    lines.push("", `[permissions.${profile}.workspace_roots]`);
+    for (const root of roots) lines.push(`${quoteToml(root)} = true`);
   }
 
-  lines.push(end);
-  return `${lines.join("\n")}\n`;
+  lines.push("", `[permissions.${profile}.network]`, `enabled = ${codexNetworkAccess(behaviors) ? "true" : "false"}`);
+  return lines;
 }
 
-export function renderCodexConfig(current, behaviors, arbitraryCommands, target) {
-  const block = renderCodexPermissionBlock(behaviors, arbitraryCommands);
+function renderCodexPermissionBlock(behaviors, arbitraryCommands, { workspaceRoots = [] } = {}) {
+  const sandboxMode = codexSandboxMode(behaviors);
+  const lines = [begin, "# Source: manifests/inventory/agent-permissions.json", `approval_policy = ${quoteToml(codexApprovalPolicy(behaviors, arbitraryCommands))}`];
+
+  if (sandboxMode === "workspace-write") {
+    lines.push(...renderCodexWorkspaceProfile(behaviors, workspaceRoots));
+  } else {
+    lines.push(`default_permissions = ${quoteToml(":read-only")}`);
+  }
+
+  return `${[...lines, end].join("\n")}\n`;
+}
+
+export function renderCodexConfig(current, behaviors, arbitraryCommands, target, options = {}) {
+  const block = renderCodexPermissionBlock(behaviors, arbitraryCommands, options);
   const oldBegin = "# BEGIN GENERATED CODEX PERMISSIONS";
   const oldEnd = "# END GENERATED CODEX PERMISSIONS";
   const start = current.includes(begin) ? current.indexOf(begin) : current.indexOf(oldBegin);
@@ -154,23 +168,18 @@ function commandToClaude(pattern) {
   return `Bash(${joined}:*)`;
 }
 
-// Claude path-scoped tool rules are `Tool(//absolute/glob)` — a leading `//` after the tool name,
-// so a `~` in the manifest has to be expanded to a real home path at render time. The manifest
-// stays machine-portable (it ships `~/projects/**`); only the rendered output is absolute.
-function expandHome(p, home) {
-  if (p === "~") return home;
-  if (p.startsWith("~/")) return `${home}/${p.slice(2)}`;
-  return p;
-}
-
-function scopedToolToClaude(tool, scopePath, home) {
-  const abs = expandHome(scopePath, home).replace(/^\/+/, "");
+// Claude accepts home-relative permission anchors (`~/path`) directly. Keep them home-relative in
+// generated source artifacts so package-mode doctor is not tied to the machine that packed the npm
+// tarball. Absolute paths still render with Claude's `//absolute/path` spelling.
+function scopedToolToClaude(tool, scopePath) {
+  if (scopePath === "~" || scopePath.startsWith("~/")) return `${tool}(${scopePath})`;
+  const abs = scopePath.replace(/^\/+/, "");
   return `${tool}(//${abs})`;
 }
 
 // Claude has a real 3-state permissions model (allow/deny/ask), so every resolved behavior and
 // arbitrary command maps directly with no fallback/approximation needed — unlike the Codex side.
-export function claudePermissions(manifest, overrides = {}, { home = os.homedir() } = {}) {
+export function claudePermissions(manifest, overrides = {}, { home: _home = os.homedir() } = {}) {
   const behaviors = resolveBehaviors(manifest, overrides.behaviors);
   const arbitraryCommands = resolveArbitraryCommands(manifest, overrides.commands);
   const allow = [...(manifest.tools?.read ?? [])];
@@ -198,7 +207,7 @@ export function claudePermissions(manifest, overrides = {}, { home = os.homedir(
       if (gate !== undefined && gate !== "allow") continue;
       const bucket = b.bucket === "deny" ? deny : b.bucket === "ask" ? ask : allow;
       for (const tool of b.tools ?? []) {
-        for (const scopePath of b.paths ?? []) bucket.push(scopedToolToClaude(tool, scopePath, home));
+        for (const scopePath of b.paths ?? []) bucket.push(scopedToolToClaude(tool, scopePath));
       }
       continue;
     }

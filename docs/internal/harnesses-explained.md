@@ -172,9 +172,9 @@ Here the harnesses diverge harder. It's no longer just a name:
 
 - Claude expresses permissions as a JSON array of tool matchers inside `settings.json`, with a
   real third `ask` state alongside allow/deny.
-- Codex expresses them as TOML session defaults (`approval_policy`, `sandbox_mode`,
-  `network_access`) _plus_ a separate binary (`forbidden`/`allow`-only) command-policy rules
-  file — no native `ask` tier at the rules layer.
+- Codex expresses them as TOML session defaults (`approval_policy`, `default_permissions`, a named
+  permission profile, workspace roots, and network setting) _plus_ a separate binary
+  (`forbidden`/`allow`-only) command-policy rules file — no native `ask` tier at the rules layer.
 
 Different **format**, different **structure**, and — this is the interesting part — different
 **expressiveness**. Yet the principle from Step 2 carries straight over: author the intent once, as
@@ -187,9 +187,16 @@ rest of the file alone:
 # Source: manifests/inventory/agent-permissions.json
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
+default_permissions = "roborepo-workspace"
 
-[sandbox_workspace_write]
-network_access = false
+[permissions.roborepo-workspace]
+extends = ":workspace"
+
+[permissions.roborepo-workspace.workspace_roots]
+"~/.worktrees/roborepo" = true
+
+[permissions.roborepo-workspace.network]
+enabled = false
 # END GENERATED AGENT PERMISSIONS
 ```
 

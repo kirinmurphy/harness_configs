@@ -410,7 +410,7 @@ The renderer writes Claude and Codex native output from the same manifest:
 | Harness | Rendered output |
 | --- | --- |
 | Claude | `permissions.allow`, `permissions.deny`, and `permissions.ask` in `generated/claude/settings.json` |
-| Codex | `approval_policy`, `sandbox_mode`, `network_access` in `generated/codex/config.toml`, plus shell prefix rules in `generated/codex/rules/default.rules` |
+| Codex | `approval_policy`, `default_permissions`, permission profile roots, and network setting in `generated/codex/config.toml`, plus shell prefix rules in `generated/codex/rules/default.rules` |
 
 Existing `~/.claude/settings.json` and `~/.codex/config.toml` are active local root config files, so
 rendered baseline changes affect an already installed machine only after `roborepo update` and the

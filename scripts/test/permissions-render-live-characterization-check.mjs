@@ -16,12 +16,102 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 process.env.ROBOREPO_APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const { renderPermissionsTo, loadPermissionManifest } = await import("../cli/permissions-render.mjs");
+const {
+  loadPermissionManifest,
+  loadPermissionWorkspaceRoots,
+  loadPermissionWorkspaceRootsForCwd,
+  renderPermissionsTo,
+} = await import("../cli/permissions-render.mjs");
 
 const manifest = loadPermissionManifest();
 
 function makeHome() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-permissions-live-"));
+}
+
+// --- Plans config worktreeRoot materializes a concrete Codex workspace root per repo family ---
+{
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-plan-config-root-"));
+  try {
+    const project = path.join(root, "sample-repo");
+    const plansDir = path.join(project, "docs", "plans");
+    const configPath = path.join(plansDir, "plans-config.json");
+    fs.mkdirSync(plansDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({ schemaVersion: 1, worktreeRoot: "~/.worktrees" }));
+    assert.deepEqual(
+      loadPermissionWorkspaceRoots({ configPath }),
+      ["~/.worktrees/sample-repo"],
+      "a normal checkout derives ~/.worktrees/<repo-folder-name> from plans-config worktreeRoot",
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+// --- The same derivation works when cwd is already inside ~/.worktrees/<repo>/<branch> ---
+{
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-worktree-home-"));
+  const oldHome = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    const project = path.join(home, ".worktrees", "sample-repo", "feature-branch");
+    const plansDir = path.join(project, "docs", "plans");
+    fs.mkdirSync(plansDir, { recursive: true });
+    fs.writeFileSync(path.join(plansDir, "plans-config.json"), JSON.stringify({ schemaVersion: 1, worktreeRoot: "~/.worktrees" }));
+    assert.deepEqual(
+      loadPermissionWorkspaceRootsForCwd(path.join(project, "src")),
+      ["~/.worktrees/sample-repo"],
+      "a nested worktree checkout derives the shared repo-family root, not the branch folder",
+    );
+  } finally {
+    if (oldHome === undefined) delete process.env.HOME;
+    else process.env.HOME = oldHome;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+// --- An explicit worktreeRepoName keeps package-mode app folder names out of workspace roots ---
+{
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-package-app-root-"));
+  try {
+    const project = path.join(root, "codethings-roborepo-alpha");
+    const plansDir = path.join(project, "docs", "plans");
+    const configPath = path.join(plansDir, "plans-config.json");
+    fs.mkdirSync(plansDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({ schemaVersion: 1, worktreeRoot: "~/.worktrees", worktreeRepoName: "roborepo" }));
+    assert.deepEqual(
+      loadPermissionWorkspaceRoots({ configPath }),
+      ["~/.worktrees/roborepo"],
+      "explicit worktreeRepoName avoids deriving the npm package folder as the repo-family root",
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+// --- Derivation is stable when tests replace HOME with a synthetic install home ---
+{
+  const realHome = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-real-home-"));
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-fake-home-"));
+  const oldHome = process.env.HOME;
+  process.env.HOME = fakeHome;
+  try {
+    const project = path.join(realHome, ".worktrees", "sample-repo", "feature-branch");
+    const plansDir = path.join(project, "docs", "plans");
+    const configPath = path.join(plansDir, "plans-config.json");
+    fs.mkdirSync(plansDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({ schemaVersion: 1, worktreeRoot: "~/.worktrees" }));
+    assert.deepEqual(
+      loadPermissionWorkspaceRoots({ configPath }),
+      ["~/.worktrees/sample-repo"],
+      "a synthetic HOME must not make generated workspace roots fall back to the branch folder",
+    );
+  } finally {
+    if (oldHome === undefined) delete process.env.HOME;
+    else process.env.HOME = oldHome;
+    fs.rmSync(realHome, { recursive: true, force: true });
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
 }
 
 // --- Only present harness configs are touched; Codex is skipped entirely when config.toml doesn't
@@ -36,7 +126,33 @@ function makeHome() {
     const settings = JSON.parse(fs.readFileSync(path.join(home, ".claude", "settings.json"), "utf8"));
     assert.ok(settings.permissions, "permissions key rendered into Claude settings");
     assert.ok(Array.isArray(settings.permissions.allow), "Claude permissions.allow is an array");
+    assert.ok(
+      settings.hooks?.PreToolUse?.some((entry) =>
+        entry.matcher === "Read|Write|Edit"
+          && entry.hooks?.some((hook) => hook.command === 'node "$HOME/.claude/hooks/provider/repo-write-scope.mjs"')),
+      "core Claude repo-scope hook is rendered from globals/harnesses/claude/hooks-claude.json",
+    );
   } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+// --- Live Codex render adds the current repo family's worktree root through the provider adapter ---
+{
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-live-repo-root-"));
+  const home = makeHome();
+  try {
+    const project = path.join(root, "sample-repo");
+    const plansDir = path.join(project, "docs", "plans");
+    fs.mkdirSync(plansDir, { recursive: true });
+    fs.writeFileSync(path.join(plansDir, "plans-config.json"), JSON.stringify({ schemaVersion: 1, worktreeRoot: "~/.worktrees" }));
+    fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
+    fs.writeFileSync(path.join(home, ".codex", "config.toml"), "");
+    renderPermissionsTo(home, { manifest, cwd: path.join(project, "src") });
+    const codexToml = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
+    assert.match(codexToml, /"~\/\.worktrees\/sample-repo" = true/, "Codex provider contributes the current repo family's worktree root");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(home, { recursive: true, force: true });
   }
 }
@@ -60,6 +176,10 @@ function makeHome() {
 
     const codexToml = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
     assert.match(codexToml, /BEGIN GENERATED AGENT PERMISSIONS/, "Codex config gets the generated permissions block");
+    assert.match(codexToml, /default_permissions = "roborepo-workspace"/, "Codex uses a named permission profile");
+    assert.match(codexToml, /\[permissions\.roborepo-workspace\.workspace_roots\]/, "Codex profile has workspace roots");
+    assert.match(codexToml, /"~\/\.worktrees\/roborepo" = true/, "Codex profile includes this repo's plans-config worktree root");
+    assert.doesNotMatch(codexToml, /^sandbox_mode =/m, "Codex profile render must not emit legacy sandbox_mode");
     assert.match(codexToml, /model_reasoning_effort = "high"/, "unrelated existing Codex config content is preserved");
 
     const geminiPolicyPath = path.join(home, ".gemini", "policies", "roborepo-permissions.toml");

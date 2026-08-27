@@ -1,0 +1,140 @@
+---
+id: q6lj4w96
+priority: high
+next_action: Map the current local CI steps into proposed fast, integration, package, and clean-machine tiers with expected ownership for each script
+blocked_by: []
+depends_on: []
+related:
+  - qk4mz7t2
+reviewed_commit:
+---
+
+# Split Validation Into First-Class Tiers
+
+## Summary
+
+`npm run check` is the local CI parity gate. That makes it the right command before declaring a
+branch merge-ready, but the wrong default loop for ordinary cleanup. It currently serializes repo
+health checks, the large shell suite, install collision coverage, package-mode lifecycle tests,
+Docker clean-machine sandboxes, and optional PowerShell installer parity under one command.
+
+This plan creates explicit validation tiers so maintainers and agents can choose the smallest
+command that proves the current change while preserving one complete gate for PR merge readiness.
+
+## Goals
+
+- Keep `npm run check` as the full local CI parity gate.
+- Add first-class scripts for fast, integration, package, and clean-machine validation.
+- Make each tier's purpose, cost, and expected use clear in code and docs.
+- Add per-stage timing output so slow legs are visible without inspecting CI logs by hand.
+- Keep CI behavior equivalent or stronger than today.
+- Give agents a deterministic rule for when targeted checks are enough and when full parity is
+  required before handoff or push.
+
+## Non-Goals
+
+- Removing Docker clean-machine coverage.
+- Weakening PR or release readiness requirements.
+- Rewriting the underlying tests for speed before the tiers expose where time is going.
+- Replacing CI's macOS and Linux coverage with a single platform.
+
+## Current State
+
+`package.json` exposes many focused `test:*` scripts, but `npm run check` points at
+`scripts/test/local-ci.sh`, which runs the full suite as one serial workflow:
+
+```text
+npm run check
+  bash scripts/doctor.sh --quiet
+  bash scripts/test/test-roborepo.sh --quiet
+  bash scripts/test/test-install-collisions.sh
+  selected package / harness / lifecycle node checks
+  npm run --silent test:package-install
+  strict Docker clean-machine checks when Docker is available
+  optional PowerShell installer check when pwsh is available
+```
+
+`.github/workflows/ci.yml` calls `npm run check` on both Ubuntu and macOS. A separate Windows job
+runs `scripts/test/windows-installer-check.ps1`.
+
+The current shape has one useful property: local `npm run check` means CI parity. It also has a
+cost problem: maintainers and agents either run the entire expensive gate or manually select
+targeted checks without a shared contract for when that is acceptable.
+
+## Proposed Design
+
+Keep one full gate and add named tiers beneath it.
+
+| Script | Intended use | Contains |
+| --- | --- | --- |
+| `check:fast` | ordinary local cleanup and review feedback | `doctor --quiet`, generated drift checks, orphan test coverage checks, focused catalog/render/config checks that do not install packages or start containers |
+| `check:integration` | broad repo behavior changes without package/container risk | `check:fast`, `test-roborepo.sh --quiet`, install collision suite, core lifecycle and harness node checks |
+| `check:package` | package-mode, install/update/uninstall, npm tarball, published file list | package install smoke, package lifecycle/default-enabled/initialization checks, package-mode permission/config checks |
+| `check:clean-machine` | clean `HOME`, clean `PATH`, Docker sandbox, package artifact in container | strict clean-machine container, install sandbox, permissions sandbox |
+| `check` | PR merge readiness and CI parity | all relevant tiers plus platform-specific optional checks |
+
+The split should be implemented as a shared shell runner rather than copy-pasted command lists.
+Each stage should print duration.
+
+```mermaid
+flowchart TD
+  Fast["check:fast"] --> Integration["check:integration"]
+  Fast --> Package["check:package"]
+  Package --> CleanMachine["check:clean-machine"]
+  Integration --> Full["check"]
+  Package --> Full
+  CleanMachine --> Full
+  Platform["platform parity: pwsh/windows where available"] --> Full
+```
+
+## Implementation Plan
+
+- [ ] Inventory each command currently run by `scripts/test/local-ci.sh` and assign it to exactly
+      one tier.
+- [ ] Add a reusable shell runner for named stages with consistent headers, exit behavior, and
+      elapsed time reporting.
+- [ ] Add `package.json` scripts: `check:fast`, `check:integration`, `check:package`, and
+      `check:clean-machine`.
+- [ ] Keep `npm run check` as the full parity gate by composing the tiers.
+- [ ] Decide whether `check:integration` includes `check:fast` internally or whether `check`
+      composes both; document the command contract either way.
+- [ ] Preserve strict Docker behavior for CI while keeping local clean-machine skips clear when
+      Docker is unavailable.
+- [ ] Update `.github/workflows/ci.yml` only if the split improves observability without reducing
+      coverage.
+- [ ] Update internal development guidance so agents use targeted tiers during iteration and full
+      `npm run check` before merge-ready handoff when required.
+- [ ] Add a doctor or test assertion that `npm run check` continues to include every required tier.
+
+## Validation
+
+The implementation is successful when these commands pass locally:
+
+```text
+npm run check:fast
+npm run check:integration
+npm run check:package
+npm run check:clean-machine
+npm run check
+```
+
+CI should still exercise the full parity gate on pull requests. If CI is changed to call tiers as
+separate steps, the union of those steps must remain equivalent to the previous `npm run check`
+coverage.
+
+## Risks
+
+- Splitting scripts can accidentally make `npm run check` weaker if the full gate does not compose
+  every required tier.
+- Tier names can drift from actual cost if slow tests are placed in `check:fast`.
+- macOS/Linux differences can be hidden if CI runs different tier content by platform.
+- Docker time can remain high even after tiering; the split exposes the cost but does not optimize
+  the container scenarios by itself.
+
+## Open Questions
+
+- Should `check:integration` include `check:package`, or should package behavior stay a separate
+  explicit tier until `npm run check` composes both?
+- Should CI display each tier as a separate workflow step for better timing and failure isolation,
+  or keep a single `npm run check` command for local/remote command parity?
+- What is the acceptable target runtime for `check:fast` on a normal maintainer machine?

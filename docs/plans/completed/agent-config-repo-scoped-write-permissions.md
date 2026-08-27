@@ -1,12 +1,13 @@
 ---
 id: ia1q1z9
 priority: high
-next_action: Smoke-test the hook live once `roborepo update` completes in a real terminal, then decide whether Codex should enforce the read family
+next_action:
 blocked_by: []
 depends_on: []
 related:
   - permissions-ui-revamp
-reviewed_commit: 1d4cb64
+  - 4zyo2woj
+reviewed_commit: bea08c6
 ---
 
 # Repo-Scoped Write Permissions
@@ -397,6 +398,13 @@ continue to the common directory.
       confirm.
 
 ## Verification
+
+Completed: `roborepo doctor --installed` passes clean (116 checks) from the primary checkout, and
+`scripts/test/repo-write-scope-check.mjs` passes. Both re-run clean at close-out against commit
+`bea08c6`. Codex's write-scope and read behavior were verified live against the shipped 0.140.0
+binary rather than inferred from config. The one open item this plan surfaced — Codex has no
+equivalent to Claude's `read-secrets` credential-path denylist — is tracked separately as plan
+`4zyo2woj`, since fixing it is a different, undecided scope than this plan's write-scope-parity goal.
 
 `scripts/test/repo-write-scope-check.mjs` passes against merged main. It builds real checkouts on
 disk — a repository, a sibling repository, and a linked worktree — and runs the hook as a

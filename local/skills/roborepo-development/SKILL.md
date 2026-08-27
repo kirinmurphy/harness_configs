@@ -68,6 +68,19 @@ Everything else (the two symlink levels, the layer table) lives in
 
 ## Operational judgment (not in the docs)
 
+- **Cross-harness behavior is parity in outcome, not parity in execution.** When a rule/permission
+  behavior must hold for every harness (e.g. "credential paths are unreadable," "writes are scoped
+  to the repo in use"), enforce it through `scripts/harnesses/contract.mjs`'s capability model, not
+  by porting one provider's implementation into another. `permissions` is already a required
+  capability (`adapters.permissions.render`) that Claude and Codex both implement against the same
+  shared `scripts/harnesses/permissions-render.mjs`, each in its own idiom — Claude denies on
+  structured tool arguments, Codex enforces via its own sandbox/hook mechanics. Add a new capability
+  or extend the required-methods list when a guarantee needs to be checked structurally
+  (`validateCapabilityAdapters` fails a provider that declares a capability without implementing it,
+  rather than shipping a silent gap); do not build a one-off matcher in a single provider's hook and
+  call it parity. See plan `ia1q1z9` (repo-scoped write permissions) and plan `4zyo2woj` (Codex
+  credential-read guard) for a worked example of this reasoning applied to Codex's read-scope
+  enforcement.
 - **Adding any skill:** prefer `roborepo skill new`. Shared skill → a package under
   `globals/packages/`, then run `roborepo skill sync-global` to refresh the machine-local cache and
   harness views. Shared command surfaces are rendered from package `slash-command` resources; run

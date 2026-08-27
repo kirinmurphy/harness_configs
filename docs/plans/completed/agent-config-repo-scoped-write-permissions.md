@@ -1,12 +1,13 @@
 ---
 id: ia1q1z9
 priority: high
-next_action: Smoke-test the hook live once `roborepo update` completes in a real terminal, then decide whether Codex should enforce the read family
+next_action:
 blocked_by: []
 depends_on: []
 related:
   - permissions-ui-revamp
-reviewed_commit: 1d4cb64
+  - 4zyo2woj
+reviewed_commit: bea08c6
 ---
 
 # Repo-Scoped Write Permissions
@@ -296,13 +297,22 @@ continue to the common directory.
 - [x] Move Codex from legacy `sandbox_mode: workspace-write` output to a `roborepo-workspace`
       permission profile, and load profile-defined workspace roots from `docs/plans/plans-config.json`
       so the configured `worktreeRoot` covers this repo's managed worktrees.
-- [ ] Decide whether Codex should enforce the **read** family at all. It ships a PreToolUse hook
-      (`globals/system/hooks/codex/permission-check.mjs`) whose header records that Codex's
-      `PreToolUsePermissionDecisionWire` is genuinely 3-valued — verified against the shipped 0.140
-      binary — so a hook *could* express the boundary. Two gaps stop it today: that hook handles
-      shell commands only (it exits unless `tool_name` is `exec_command`/`shell`/`local_shell`/
-      `bash`), and the workspace profile bounds writes without restricting reads at all. Reaching
-      read parity means knowing Codex's file-read tool name and whether PreToolUse fires for it.
+- [x] Decide whether Codex should enforce the **read** family at all. No hook needed — closing as
+      resolved-by-design, not deferred. Verified live against the shipped 0.140.0 binary
+      (`codex sandbox -P roborepo-workspace -- ...` probes, not just `--help` text):
+      - Reads are **unrestricted disk-wide** under `workspace-write` by default — confirmed reading
+        the primary checkout, a sibling worktree, `/etc/hosts`, and `~/.ssh/config` all succeed.
+        Writes are strictly confined to `workspace_roots` — confirmed a write to `$HOME` and to the
+        primary checkout both fail with `Operation not permitted`, while a write inside the active
+        worktree and inside `~/.worktrees/roborepo` (a sibling worktree of this repo) succeed.
+        So Codex already has a read-wide/write-narrow split, same shape as Claude's, just enforced
+        by the OS sandbox instead of a PreToolUse hook — no gap to close with a hook.
+      - This makes Codex's read boundary **wider than Claude's**, not narrower: Claude's
+        `read-secrets` denylist blocks `.ssh` even inside the repo; Codex's sandbox does not block
+        it at all. That asymmetry is real and unresolved by this plan — Codex has no equivalent to
+        `read-secrets` today. Flagging as a known follow-up rather than blocking this plan on it,
+        since this plan's goal was write-scope parity, and Codex's write-scope already matches.
+        Tracked separately as [[4zyo2woj]].
 - [x] Give `scripts/harnesses/gemini/policy-toml.mjs` an explicit `repo-scope` case.
       Skipped deliberately and commented in the style of the neighbouring `tools-scoped` skip: the
       Policy Engine has neither a path predicate nor a hook surface, so there is nothing to render.
@@ -374,10 +384,27 @@ continue to the common directory.
 - [x] A read of an unrelated repository still prompts.
 - [x] A write into the primary checkout from a worktree still prompts.
 - [x] A payload with no `tool_name` falls back to the narrower write boundary.
-- [ ] `roborepo doctor --installed` passes, including the generated-permissions drift check.
-- [ ] The behavior above is confirmed on each harness that ships a write scope, not on Claude alone.
+- [x] `roborepo doctor --installed` passes, including the generated-permissions drift check.
+      Ran clean (116 checks) from the primary checkout after `roborepo update` and
+      `roborepo maintenance repair local-config --apply` cleared unrelated stale-config drift
+      (Codex duplicated generated markers). No permission/drift-specific failures at any point.
+- [x] The behavior above is confirmed on each harness that ships a write scope, not on Claude alone.
+      Claude: existing `scripts/test/repo-write-scope-check.mjs` coverage (unchanged by this pass).
+      Codex: live-verified against the shipped 0.140.0 binary with `codex sandbox -P
+      roborepo-workspace`. Write inside the active worktree succeeds; write to a sibling worktree of
+      this repo succeeds; write to the primary checkout and to `$HOME` both fail with `Operation not
+      permitted`. Gemini: no write-scope mechanism exists (`repo-scope` case already marked skipped
+      above — Policy Engine has neither a path predicate nor a hook surface), so there is nothing to
+      confirm.
 
 ## Verification
+
+Completed: `roborepo doctor --installed` passes clean (116 checks) from the primary checkout, and
+`scripts/test/repo-write-scope-check.mjs` passes. Both re-run clean at close-out against commit
+`bea08c6`. Codex's write-scope and read behavior were verified live against the shipped 0.140.0
+binary rather than inferred from config. The one open item this plan surfaced — Codex has no
+equivalent to Claude's `read-secrets` credential-path denylist — is tracked separately as plan
+`4zyo2woj`, since fixing it is a different, undecided scope than this plan's write-scope-parity goal.
 
 `scripts/test/repo-write-scope-check.mjs` passes against merged main. It builds real checkouts on
 disk — a repository, a sibling repository, and a linked worktree — and runs the hook as a

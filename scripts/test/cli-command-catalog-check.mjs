@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadCommandCatalog, listCommandNodes, promotedRootEntries } from "../cli/command-catalog.mjs";
@@ -156,6 +157,62 @@ assert.ok(catalog.nodes.package.children.dev, "package dev is a separate namespa
     true,
     "validateCommandCatalog must traverse developmentOnly nodes in package mode (includeUnavailable)",
   );
+}
+
+{
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-config-permissions-home-"));
+  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-config-permissions-state-"));
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-config-permissions-workspace-"));
+  try {
+    fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+    fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
+    fs.mkdirSync(path.join(home, ".gemini"), { recursive: true });
+    fs.writeFileSync(path.join(home, ".claude", "settings.json"), "{}");
+    fs.copyFileSync(
+      path.join(repoRoot, "generated", "codex", "config.toml"),
+      path.join(home, ".codex", "config.toml"),
+    );
+
+    const result = spawnSync(process.execPath, [path.join(repoRoot, "scripts", "cli", "main.mjs"), "config", "permissions"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: home,
+        ROBOREPO_MODE: "package",
+        ROBOREPO_PRESETS_ONBOARD: "skip",
+        ROBOREPO_STATE_ROOT: stateRoot,
+        ROBOREPO_WORKSPACE_ROOT: workspaceRoot,
+      },
+    });
+    assert.equal(
+      result.status,
+      0,
+      `config permissions must run in package mode without a dev checkout\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    );
+    assert.doesNotMatch(
+      `${result.stdout}\n${result.stderr}`,
+      /requires development checkout/,
+      "config permissions must not dispatch to a development-checkout-only repoScript",
+    );
+    assert.match(
+      fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8"),
+      /default_permissions = "roborepo-workspace"/,
+      "package-mode config permissions writes Codex live permissions",
+    );
+    assert.match(
+      fs.readFileSync(path.join(home, ".claude", "settings.json"), "utf8"),
+      /Read\(~\/\.ssh\/\*\*\)/,
+      "package-mode config permissions writes Claude live permissions",
+    );
+    assert.ok(
+      fs.existsSync(path.join(home, ".gemini", "policies", "roborepo-permissions.toml")),
+      "package-mode config permissions writes Gemini live permissions",
+    );
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(stateRoot, { recursive: true, force: true });
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  }
 }
 
 const activeDocPaths = [

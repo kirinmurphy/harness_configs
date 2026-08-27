@@ -2,8 +2,12 @@
   "path": ["config", "permissions"],
   "kind": "command",
   "title": "Permissions",
-  "description": "Render or check agent permission outputs",
+  "description": "Apply agent permission outputs to live harness config",
   "order": 40,
-  "usage": "roborepo config permissions [--check]",
-  "execution": { "adapter": "repoScript", "script": "permissions" }
+  "usage": "roborepo config permissions",
+  "execution": {
+    "adapter": "module",
+    "module": "scripts/cli/config-mutate.mjs",
+    "export": "permissionsCommand"
+  }
 }

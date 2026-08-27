@@ -336,6 +336,31 @@ export function setCommandBucket(tokens, bucket) {
   return applyOverrides(manifest, overrides);
 }
 
+export function permissionsCommand(args = []) {
+  const invalid = args.filter((arg) => arg !== "--check");
+  if (invalid.length > 0) {
+    console.error(`unknown flag for config permissions: ${invalid.join(" ")}`);
+    process.exit(2);
+  }
+  if (args.includes("--check")) {
+    console.error("roborepo config permissions writes live harness config; use `roborepo permissions --check` from a development checkout to check generated source artifacts.");
+    process.exit(2);
+  }
+  let manifest;
+  try {
+    manifest = loadPermissionManifest();
+  } catch (err) {
+    console.error(`cannot read permission manifest: ${String(err?.message || err)}`);
+    process.exit(1);
+  }
+  const result = applyOverrides(manifest, readCommandOverrides());
+  if (!result.ok) {
+    console.error(result.message);
+    process.exit(1);
+  }
+  console.log(result.message);
+}
+
 function applyOverrides(manifest, overrides) {
   try {
     writeCommandOverrides(overrides);

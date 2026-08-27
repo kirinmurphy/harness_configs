@@ -1,5 +1,5 @@
 {
-  "default": ["base"],
+  "default": ["base", "hooks"],
   "bundles": [
     {
       "id": "base",
@@ -24,7 +24,7 @@
       "id": "hooks",
       "label": "Hooks",
       "description": "Claude and Codex lifecycle hooks.",
-      "rows": ["claude:hooks", "codex:hooks.json"]
+      "rows": ["claude:hooks", "claude:hooks/provider", "codex:hooks.json"]
     },
     {
       "id": "commands",

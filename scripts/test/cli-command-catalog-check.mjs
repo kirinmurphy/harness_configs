@@ -173,16 +173,31 @@ assert.ok(catalog.nodes.package.children.dev, "package dev is a separate namespa
       path.join(home, ".codex", "config.toml"),
     );
 
+    const env = {
+      ...process.env,
+      HOME: home,
+      ROBOREPO_MODE: "package",
+      ROBOREPO_PRESETS_ONBOARD: "skip",
+      ROBOREPO_STATE_ROOT: stateRoot,
+      ROBOREPO_WORKSPACE_ROOT: workspaceRoot,
+    };
+    const initResult = spawnSync(process.execPath, [path.join(repoRoot, "scripts", "cli", "main.mjs"), "init"], {
+      encoding: "utf8",
+      env,
+    });
+    assert.equal(
+      initResult.status,
+      0,
+      `package-mode init must apply default config\nstdout:\n${initResult.stdout}\nstderr:\n${initResult.stderr}`,
+    );
+    assert.ok(
+      fs.existsSync(path.join(home, ".claude", "hooks", "provider", "repo-write-scope.mjs")),
+      "package-mode default init must copy Claude hook scripts referenced by generated settings",
+    );
+
     const result = spawnSync(process.execPath, [path.join(repoRoot, "scripts", "cli", "main.mjs"), "config", "permissions"], {
       encoding: "utf8",
-      env: {
-        ...process.env,
-        HOME: home,
-        ROBOREPO_MODE: "package",
-        ROBOREPO_PRESETS_ONBOARD: "skip",
-        ROBOREPO_STATE_ROOT: stateRoot,
-        ROBOREPO_WORKSPACE_ROOT: workspaceRoot,
-      },
+      env,
     });
     assert.equal(
       result.status,

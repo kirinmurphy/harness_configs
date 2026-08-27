@@ -53,7 +53,7 @@ when the diff actually warrants it.
 ## Current State
 
 `package.json` exposes many focused `test:*` scripts, but `npm run check` points at
-`scripts/test/local-ci.sh`, which runs the full suite as one serial workflow:
+`scripts/test/ci.sh`, which runs the full suite as one serial workflow:
 
 ```text
 npm run check
@@ -115,7 +115,7 @@ step computes the changed-path set and skips a tier whose mapped paths are untou
 
 ## Implementation Plan
 
-- [ ] Inventory each command currently run by `scripts/test/local-ci.sh` and assign it to exactly
+- [ ] Inventory each command currently run by `scripts/test/ci.sh` and assign it to exactly
       one tier.
 - [ ] Add a reusable shell runner for named stages with consistent headers, exit behavior, and
       elapsed time reporting.

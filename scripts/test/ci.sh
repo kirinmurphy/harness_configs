@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Local CI parity gate. Keep this in lockstep with .github/workflows/ci.yml so a maintainer can
-# find release-blocking failures before pushing.
+# The CI gate. .github/workflows/ci.yml invokes this same script via `npm run check`, so a run on
+# a contributor's machine and a run in GitHub Actions are the same command, not two gates to keep
+# in sync — a local pass means a CI pass.
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${repo_root}"
@@ -33,6 +34,7 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   run env ROBOREPO_CLEAN_MACHINE_STRICT=1 npm run --silent test:clean-machine
   run env ROBOREPO_CLEAN_MACHINE_STRICT=1 npm run --silent test:clean-machine-install-sandbox
   run env ROBOREPO_CLEAN_MACHINE_STRICT=1 npm run --silent test:clean-machine-permissions-sandbox
+  run env ROBOREPO_CLEAN_MACHINE_STRICT=1 npm run --silent test:clean-machine-onboarding-sandbox
 else
   echo ""
   echo "skip: clean-machine container suite (docker unavailable)"
@@ -47,4 +49,4 @@ else
 fi
 
 echo ""
-echo "local CI checks passed"
+echo "CI checks passed"

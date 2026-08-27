@@ -30,7 +30,7 @@
   ],
   "scripts": {
     "build": "npm run --silent pack:dry-run",
-    "check": "bash scripts/test/local-ci.sh",
+    "check": "bash scripts/test/ci.sh",
     "test": "scripts/test/test-roborepo.sh --quiet",
     "test:install-collisions": "scripts/test/test-install-collisions.sh",
     "test:install-smoke": "node scripts/test/install-smoke.mjs",
@@ -111,6 +111,7 @@
     "test:clean-machine-install-sandbox": "node scripts/test/clean-machine-install-sandbox.mjs",
     "test:clean-machine": "node scripts/test/clean-machine-container-check.mjs",
     "test:clean-machine-permissions-sandbox": "node scripts/test/clean-machine-permissions-sandbox.mjs",
+    "test:clean-machine-onboarding-sandbox": "node scripts/test/clean-machine-onboarding-sandbox.mjs",
     "prepare:new-mac-install": "node scripts/test/package-install-smoke.mjs",
     "publish:npm": "bash scripts/release/publish-npm.sh",
     "publish:npm-latest": "npm run publish:npm -- --latest",

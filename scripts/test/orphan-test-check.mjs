@@ -29,7 +29,7 @@ const testDir = path.join(repoRoot, "scripts", "test");
 // reader can tell a deliberate non-test from a test that quietly fell out of the suite.
 const EXEMPT = new Map([
   ["test-roborepo.sh", "the suite runner itself"],
-  ["local-ci.sh", "the local CI-parity runner itself"],
+  ["ci.sh", "the CI runner itself"],
   ["telemetry-schemas-persistence-child.mjs", "child process spawned by telemetry-schemas-check.mjs"],
   ["telemetry-spool-bench.mjs", "micro-benchmark against the live spool; run by hand, not asserted"],
   ["test-telemetry-pid.sh", "binds a real port; manual smoke, deliberately out of the automated suite"],
@@ -45,7 +45,7 @@ const EXEMPT = new Map([
 // filename catches all of them without trying to parse two languages.
 const DIRECT_RUNNER_SOURCES = [
   "scripts/test/test-roborepo.sh",
-  "scripts/test/local-ci.sh",
+  "scripts/test/ci.sh",
   ".github/workflows/ci.yml",
 ];
 

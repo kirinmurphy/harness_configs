@@ -27,8 +27,8 @@ run_case() {
   label="$1"
   prefix="$2"
   home="/tmp/rr-\${label}-home"
-  state="/tmp/rr-\${label}-state"
-  workspace="/tmp/rr-\${label}-workspace"
+  state="\${3:-/tmp/rr-\${label}-state}"
+  workspace="\${4:-/tmp/rr-\${label}-workspace}"
   cache="/tmp/rr-\${label}-npm-cache"
   cwd="/tmp/rr-\${label}-cwd"
   if [ "$prefix" = "__HOME_LOCAL__" ]; then
@@ -81,6 +81,12 @@ run_case() {
 
 run_case standard /tmp/rr-standard-prefix
 run_case colliding __HOME_LOCAL__
+
+# Case 8: package-mode state/workspace roots in unusual filesystem shapes -- a path with spaces,
+# deep nesting, and a symlinked root. A temp-dir unit test would not naturally land on any of these.
+mkdir -p "/tmp/rr with spaces/deep/nested/target"
+ln -sfn "/tmp/rr with spaces/deep/nested/target" /tmp/rr-unusual-roots-link
+run_case unusual-roots /tmp/rr-unusual-roots-prefix "/tmp/rr with spaces/state" "/tmp/rr-unusual-roots-link/workspace"
 
 echo "clean-machine install sandbox passed"
 `;

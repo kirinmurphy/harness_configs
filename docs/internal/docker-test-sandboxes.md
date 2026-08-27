@@ -55,8 +55,9 @@ Use separate scripts when failure meaning differs.
 
 | Scenario type | Proves | Example command |
 | --- | --- | --- |
-| Clean install | Packed package installs, initializes, doctors, uninstalls, then npm removes app files | `npm run test:clean-machine-install-sandbox` |
+| Clean install | Packed package installs, initializes, doctors, uninstalls, then npm removes app files. Also covers package-mode state/workspace roots in unusual filesystem shapes (spaces, deep nesting, symlinks) | `npm run test:clean-machine-install-sandbox` |
 | Permissions projection | Fake harness presence receives the expected rendered config and no over-broad permissions | `npm run test:clean-machine-permissions-sandbox` |
+| Onboarding/init lifecycle | First-run states a redirected-HOME unit test cannot reach: installed-not-initialized, a harness home with no root config yet, an older-shaped state record, and state left by a real killed `init` | `npm run test:clean-machine-onboarding-sandbox` |
 | Lifecycle ownership | Install/uninstall preserves user-owned state and removes only roborepo-owned state | dedicated lifecycle sandbox |
 | Platform assumptions | Linux path, shell, case-sensitivity, or coreutils assumptions are valid | dedicated portability sandbox |
 
@@ -86,10 +87,14 @@ Environment knobs:
 | `ROBOREPO_CLEAN_MACHINE_TMPDIR` | `/tmp` | Host temp root for Docker-bound pack artifacts |
 
 Prefer one script per scenario family. `clean-machine-install-sandbox.mjs` owns package
-install/uninstall behavior. `clean-machine-permissions-sandbox.mjs` owns fake-harness permission
-projection assertions. The older `clean-machine-container-check.mjs` is the broad integration
-container from the mainline install lifecycle work; keep it as the end-to-end install matrix, and
-put new narrow permission assertions in the permission sandbox.
+install/uninstall behavior, including unusual state/workspace root shapes. `clean-machine-permissions-sandbox.mjs` owns fake-harness permission
+projection assertions. `clean-machine-onboarding-sandbox.mjs` owns first-run/init-lifecycle machine
+states that need a real install or a real interrupted process rather than a redirected `HOME` unit
+test; per-harness detection/presentation correctness across the provider count matrix stays in
+`clean-machine-container-check.mjs` rather than being duplicated per onboarding case. The older
+`clean-machine-container-check.mjs` is the broad integration container from the mainline install
+lifecycle work; keep it as the end-to-end install matrix, and put new narrow permission assertions
+in the permission sandbox.
 
 ## Harness Stubs
 

@@ -1,7 +1,7 @@
 ---
 id: q6lj4w96
 priority: high
-next_action: Map the current local CI steps into proposed fast, integration, package, and clean-machine tiers with expected ownership for each script
+next_action: Map the current local CI steps into proposed fast, integration, package, and clean-machine tiers with expected ownership for each script; separately, inventory which tiers a docs-only or scope-limited diff can skip entirely
 blocked_by: []
 depends_on: []
 related:
@@ -9,17 +9,21 @@ related:
 reviewed_commit:
 ---
 
-# Split Validation Into First-Class Tiers
+# Tier and Diff-Scope Validation
 
 ## Summary
 
 `npm run check` is the local CI parity gate. That makes it the right command before declaring a
 branch merge-ready, but the wrong default loop for ordinary cleanup. It currently serializes repo
 health checks, the large shell suite, install collision coverage, package-mode lifecycle tests,
-Docker clean-machine sandboxes, and optional PowerShell installer parity under one command.
+Docker clean-machine sandboxes, and optional PowerShell installer parity under one command — for
+every PR, regardless of what changed. `.github/workflows/ci.yml` has no `paths`/`paths-ignore`
+filtering today, so a docs-only PR runs the identical full gate as a core refactor.
 
 This plan creates explicit validation tiers so maintainers and agents can choose the smallest
-command that proves the current change while preserving one complete gate for PR merge readiness.
+command that proves the current change, and makes CI itself diff-aware so a change that cannot
+affect a tier's outcome skips that tier — while preserving one complete gate for PR merge readiness
+when the diff actually warrants it.
 
 ## Goals
 
@@ -30,6 +34,9 @@ command that proves the current change while preserving one complete gate for PR
 - Keep CI behavior equivalent or stronger than today.
 - Give agents a deterministic rule for when targeted checks are enough and when full parity is
   required before handoff or push.
+- Make CI skip a tier when the changed paths cannot affect that tier's outcome (e.g. a docs-only or
+  plan-doc-only PR skips package/clean-machine/Docker tiers), without weakening required-status-check
+  guarantees — a skipped job must not silently read as an unreported check on the PR.
 
 ## Non-Goals
 
@@ -37,6 +44,11 @@ command that proves the current change while preserving one complete gate for PR
 - Weakening PR or release readiness requirements.
 - Rewriting the underlying tests for speed before the tiers expose where time is going.
 - Replacing CI's macOS and Linux coverage with a single platform.
+- Skipping a tier by guessing intent from a PR title or description — skip decisions are based on
+  changed paths only.
+- Allowing a skipped tier to silently satisfy a branch-protection required check; if a tier's job
+  does not run, its required-check status must be explicit (reported as skipped/success), never
+  absent.
 
 ## Current State
 
@@ -87,6 +99,20 @@ flowchart TD
   Platform["platform parity: pwsh/windows where available"] --> Full
 ```
 
+### Diff-scoped tier selection
+
+Map each tier to the path prefixes whose changes can affect its outcome, and use that map both
+locally (an agent or maintainer picks the right tier for the paths they touched) and in CI (a job
+step computes the changed-path set and skips a tier whose mapped paths are untouched).
+
+| Tier | Runs when the diff touches |
+| --- | --- |
+| `check:fast` | any source, config, script, or manifest path |
+| `check:integration` | `scripts/`, `manifests/`, harness/provider adapters, root config templates |
+| `check:package` | `globals/packages/`, `scripts/cli/packages.mjs`, package manifest schema, `package.json` |
+| `check:clean-machine` | install/uninstall scripts, `bin/`, Docker sandbox fixtures, anything `check:package` already triggers on |
+| none of the above (e.g. `docs/`, `docs/plans/`, `*.md` outside `manifests/`) | only `check:fast`'s doc-relevant pieces, if any — see Risks before assuming markdown is always inert |
+
 ## Implementation Plan
 
 - [ ] Inventory each command currently run by `scripts/test/local-ci.sh` and assign it to exactly
@@ -105,6 +131,14 @@ flowchart TD
 - [ ] Update internal development guidance so agents use targeted tiers during iteration and full
       `npm run check` before merge-ready handoff when required.
 - [ ] Add a doctor or test assertion that `npm run check` continues to include every required tier.
+- [ ] Define the path-to-tier map (see Proposed design's Diff-scoped tier selection) as tracked
+      config, not inline workflow logic, so both a local helper and CI read the same mapping.
+- [ ] Add a CI step that computes the changed-path set against the base branch and determines which
+      tiers are required for this PR.
+- [ ] Resolve how a skipped tier reports its required-check status on GitHub — a job that never
+      runs can leave a required check permanently pending under branch protection; verify whether
+      GitHub Actions' path-filter or a job-level conditional-with-explicit-success is needed to keep
+      skipped tiers from blocking merge.
 
 ## Validation
 
@@ -118,9 +152,13 @@ npm run check:clean-machine
 npm run check
 ```
 
-CI should still exercise the full parity gate on pull requests. If CI is changed to call tiers as
-separate steps, the union of those steps must remain equivalent to the previous `npm run check`
-coverage.
+CI should still exercise the full parity gate on pull requests whose diff warrants it. If CI is
+changed to call tiers as separate steps, the union of those steps must remain equivalent to the
+previous `npm run check` coverage for any diff that touches every tier's paths.
+
+A docs-only or plan-doc-only PR — such as this repository's own `docs/plans/`-only changes — must
+skip `check:package` and `check:clean-machine` without leaving either as a permanently pending
+required check.
 
 ## Risks
 
@@ -130,6 +168,11 @@ coverage.
 - macOS/Linux differences can be hidden if CI runs different tier content by platform.
 - Docker time can remain high even after tiering; the split exposes the cost but does not optimize
   the container scenarios by itself.
+- A tier skipped via path filtering can leave its required GitHub status check permanently pending
+  rather than passing, which blocks merge under branch protection even though nothing in the diff
+  needed that tier. Must be resolved before diff-scoped skipping ships, not discovered after.
+- A path-to-tier map that is too coarse (e.g. treating all of `docs/` as inert) can miss a doc change
+  that legitimately affects a tier's outcome, such as an update to a doc a test asserts against.
 
 ## Open Questions
 

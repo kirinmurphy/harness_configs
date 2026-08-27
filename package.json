@@ -25,6 +25,7 @@
     "shell/",
     "README.md",
     "LICENSE",
+    "docs/plans/plans-config.json",
     "docs/user/"
   ],
   "scripts": {

@@ -70,6 +70,25 @@ function makeHome() {
   }
 }
 
+// --- An explicit worktreeRepoName keeps package-mode app folder names out of workspace roots ---
+{
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-package-app-root-"));
+  try {
+    const project = path.join(root, "codethings-roborepo-alpha");
+    const plansDir = path.join(project, "docs", "plans");
+    const configPath = path.join(plansDir, "plans-config.json");
+    fs.mkdirSync(plansDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({ schemaVersion: 1, worktreeRoot: "~/.worktrees", worktreeRepoName: "roborepo" }));
+    assert.deepEqual(
+      loadPermissionWorkspaceRoots({ configPath }),
+      ["~/.worktrees/roborepo"],
+      "explicit worktreeRepoName avoids deriving the npm package folder as the repo-family root",
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
 // --- Derivation is stable when tests replace HOME with a synthetic install home ---
 {
   const realHome = fs.mkdtempSync(path.join(os.tmpdir(), "roborepo-real-home-"));

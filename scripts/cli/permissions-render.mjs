@@ -71,11 +71,27 @@ function permissionsTargetFor(manifest, baseDir) {
 
 function permissionOptionsForProvider(provider, { cwd = process.cwd(), workspaceRoots } = {}) {
   const roots = [];
+  roots.push(...loadPermissionWorkspaceRoots());
   if (Array.isArray(workspaceRoots)) roots.push(...workspaceRoots);
   if (typeof provider.adapters.permissions.workspaceRoots === "function") {
     roots.push(...provider.adapters.permissions.workspaceRoots({ cwd }));
   }
   return { workspaceRoots: [...new Set(roots)] };
+}
+
+function ensureClaudePermissionHookAssets(baseDir) {
+  const sourceDir = path.join(repoRoot, "globals", "harnesses", "claude", "hooks");
+  const destDir = path.join(baseDir, ".claude", "hooks", "provider");
+  if (!fs.existsSync(sourceDir)) return;
+  if (fs.existsSync(destDir) && !fs.lstatSync(destDir).isDirectory()) return;
+  fs.mkdirSync(destDir, { recursive: true });
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const source = path.join(sourceDir, entry.name);
+    const dest = path.join(destDir, entry.name);
+    if (fs.existsSync(dest) && !fs.lstatSync(dest).isFile()) continue;
+    fs.copyFileSync(source, dest);
+  }
 }
 
 // Render the manifest (+ overrides) into each present harness's live config under `baseDir`.
@@ -108,6 +124,7 @@ export function renderPermissionsTo(
     const cur = target.seedCurrent && fileExists ? fs.readFileSync(target.file, "utf8") : "";
     const rendered = provider.adapters.permissions.render(cur, manifest, overrides, target.file, permissionOptionsForProvider(provider, { cwd, workspaceRoots }));
     writeRootConfig(provider.id, target.file, rendered);
+    if (provider.id === "claude") ensureClaudePermissionHookAssets(baseDir);
     touched.push(target.file);
   }
 

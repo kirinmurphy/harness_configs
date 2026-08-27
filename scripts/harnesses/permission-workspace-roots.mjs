@@ -35,6 +35,11 @@ function repoNameForWorktreeRoot(worktreeRoot, projectRoot) {
   return path.basename(projectRoot);
 }
 
+function configuredWorktreeRepoName(config) {
+  const value = config.worktreeRepoName;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 export function loadPermissionWorkspaceRoots(input) {
   const options = typeof input === "string" ? { configPath: input } : (input ?? {});
   const configPath = options.configPath;
@@ -45,7 +50,7 @@ export function loadPermissionWorkspaceRoots(input) {
     const roots = [];
     if (typeof config.worktreeRoot === "string" && config.worktreeRoot.trim()) {
       const root = config.worktreeRoot.trim();
-      roots.push(appendPathSegment(root, repoNameForWorktreeRoot(root, projectRoot)));
+      roots.push(appendPathSegment(root, configuredWorktreeRepoName(config) ?? repoNameForWorktreeRoot(root, projectRoot)));
     }
     if (Array.isArray(config.workspaceRoots)) {
       for (const root of config.workspaceRoots) {

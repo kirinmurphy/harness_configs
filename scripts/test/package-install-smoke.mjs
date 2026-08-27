@@ -62,6 +62,10 @@ function main() {
 
     const appRoot = path.join(dirs.prefix, "lib", "node_modules", packageName);
     assert.ok(fs.existsSync(appRoot), `expected installed application root at ${appRoot}`);
+    assert.ok(
+      fs.existsSync(path.join(appRoot, "docs", "plans", "plans-config.json")),
+      "package install must include plans-config.json for package-mode workspace-root derivation",
+    );
 
     const hashBefore = hashDirectory(appRoot);
 

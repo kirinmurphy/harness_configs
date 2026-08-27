@@ -190,13 +190,9 @@ assert.ok(catalog.nodes.package.children.dev, "package dev is a separate namespa
       0,
       `package-mode init must apply default config\nstdout:\n${initResult.stdout}\nstderr:\n${initResult.stderr}`,
     );
-    assert.ok(
-      fs.existsSync(path.join(home, ".claude", "hooks", "provider", "repo-write-scope.mjs")),
-      "package-mode default init must copy Claude hook scripts referenced by generated settings",
-    );
-
     const result = spawnSync(process.execPath, [path.join(repoRoot, "scripts", "cli", "main.mjs"), "config", "permissions"], {
       encoding: "utf8",
+      cwd: workspaceRoot,
       env,
     });
     assert.equal(
@@ -215,9 +211,18 @@ assert.ok(catalog.nodes.package.children.dev, "package dev is a separate namespa
       "package-mode config permissions writes Codex live permissions",
     );
     assert.match(
+      fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8"),
+      /"~\/\.worktrees\/roborepo" = true/,
+      "package-mode config permissions includes appRoot plans-config workspace root from an arbitrary cwd",
+    );
+    assert.match(
       fs.readFileSync(path.join(home, ".claude", "settings.json"), "utf8"),
       /Read\(~\/\.ssh\/\*\*\)/,
       "package-mode config permissions writes Claude live permissions",
+    );
+    assert.ok(
+      fs.existsSync(path.join(home, ".claude", "hooks", "provider", "repo-write-scope.mjs")),
+      "package-mode config permissions copies Claude hook scripts referenced by generated settings",
     );
     assert.ok(
       fs.existsSync(path.join(home, ".gemini", "policies", "roborepo-permissions.toml")),

@@ -67,26 +67,39 @@ test -f "$claude_settings"
 test -f "$codex_config"
 test -f "$gemini_policy"
 
+assert_contains() {
+  needle="$1"
+  file="$2"
+  if grep -F "$needle" "$file" >/dev/null; then
+    return 0
+  fi
+  echo "FAIL: expected $file to contain: $needle" >&2
+  echo "----- $file -----" >&2
+  sed -n '1,160p' "$file" >&2
+  echo "-----------------" >&2
+  exit 1
+}
+
 echo "clean-machine[$label]: assert Claude permissions"
-grep -F 'Read(~/.ssh/**)' "$claude_settings" >/dev/null
-grep -F '"matcher": "Read|Write|Edit"' "$claude_settings" >/dev/null
-grep -F 'repo-write-scope.mjs' "$claude_settings" >/dev/null
+assert_contains 'Read(~/.ssh/**)' "$claude_settings"
+assert_contains '"matcher": "Read|Write|Edit"' "$claude_settings"
+assert_contains 'repo-write-scope.mjs' "$claude_settings"
 test -f "$HOME/.claude/hooks/provider/repo-write-scope.mjs"
 
 echo "clean-machine[$label]: assert Codex permissions"
-grep -F 'default_permissions = "roborepo-workspace"' "$codex_config" >/dev/null
-grep -F '[permissions.roborepo-workspace]' "$codex_config" >/dev/null
-grep -F '[permissions.roborepo-workspace.workspace_roots]' "$codex_config" >/dev/null
-grep -F '"~/.worktrees/roborepo" = true' "$codex_config" >/dev/null
-grep -F 'enabled = false' "$codex_config" >/dev/null
+assert_contains 'default_permissions = "roborepo-workspace"' "$codex_config"
+assert_contains '[permissions.roborepo-workspace]' "$codex_config"
+assert_contains '[permissions.roborepo-workspace.workspace_roots]' "$codex_config"
+assert_contains '"~/.worktrees/roborepo" = true' "$codex_config"
+assert_contains 'enabled = false' "$codex_config"
 if grep -F 'sandbox_mode = "workspace-write"' "$codex_config" >/dev/null; then
   echo "FAIL: Codex permissions still use legacy sandbox_mode instead of profile roots" >&2
   exit 1
 fi
 
 echo "clean-machine[$label]: assert Gemini permissions"
-grep -F 'toolName = ["write_file", "replace"]' "$gemini_policy" >/dev/null
-grep -F 'toolName = "read_file"' "$gemini_policy" >/dev/null
+assert_contains 'toolName = ["write_file", "replace"]' "$gemini_policy"
+assert_contains 'toolName = "read_file"' "$gemini_policy"
 
 echo "clean-machine[$label]: assert no stale personal path scopes"
 for file in "$claude_settings" "$codex_config" "$gemini_policy"; do

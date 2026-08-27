@@ -171,6 +171,9 @@ This is a separate workflow from the checkout-based install above. Use it when y
 this repository. Keep the bare `roborepo` command pointing at the packaged snapshot. Use package-mode
 commands such as `roborepo config apply` to materialize live configuration.
 
+Maintainers repeating development-vs-package environment permutations: see
+[Test Scenarios](../../internal/test-scenarios.md).
+
 ### 1. On the old Mac: build and verify a transfer artifact
 
 From a clean checkout (no uncommitted changes — the tool refuses otherwise, since the artifact's

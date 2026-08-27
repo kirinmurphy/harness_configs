@@ -45,6 +45,8 @@ doc of record first; supporting docs should add context, not redefine the behavi
 | NPM release workflow | [NPM Release Workflow](npm-release.md) | [Testing RoboRepo](testing.md) |
 | Maintainer test matrix | [Testing RoboRepo](testing.md) | [NPM Release Workflow](npm-release.md) |
 | Docker-backed test sandboxes | [Docker Test Sandboxes](docker-test-sandboxes.md) | [Testing RoboRepo](testing.md) |
+| Test development vs packaged RoboRepo | [Test Scenarios](test-scenarios.md) | [Testing RoboRepo](testing.md) |
+| Test fresh onboarding / harness permutations | [Test Scenarios](test-scenarios.md) | [Testing RoboRepo](testing.md) |
 
 ## Maintenance Notes
 

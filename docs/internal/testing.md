@@ -8,6 +8,9 @@ npm behavior, and machine-local harness state.
 
 Use the smallest layer that proves the change. Before publishing, run the full publish matrix.
 
+Use [`test-scenarios.md`](test-scenarios.md) to choose the environment. Use this doc to choose the
+test command/suite.
+
 ## Test Layers
 
 | Layer | Command | Covers | Notes |

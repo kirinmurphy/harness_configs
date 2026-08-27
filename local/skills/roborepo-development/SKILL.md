@@ -117,6 +117,11 @@ Everything else (the two symlink levels, the layer table) lives in
   `bash scripts/doctor.sh --quiet` and `git diff --check` before final/push. `doctor.sh` is the
   provider-registry health gate; do not substitute narrower render/catalog checks when the change
   touches harness, provider, test, or CI plumbing.
+- **Full CI parity is expensive.** `npm run check` is the full local CI parity gate: main suite,
+  install-collisions, package install, and Docker clean-machine checks when Docker is available.
+  Do not use it as the default cleanup loop for ordinary review or CodeRabbit feedback. Prefer
+  targeted checks plus `bash scripts/doctor.sh --quiet`; reserve `npm run check` for pre-push,
+  release, or changes to CI/workflow/test orchestration itself.
 - **Docker test sandboxes:** use them for machine-shape behavior: clean `HOME`, clean `PATH`,
   package-mode install/uninstall, fake harness discovery, and generated config projection. Use one
   disposable image, one fresh container per scenario, one package install per scenario, and many

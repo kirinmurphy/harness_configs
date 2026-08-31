@@ -20,7 +20,8 @@
   --ink: #e6edf3;
   --dim: #a3adb8;
   --desc-dim: #c3cad3;
-  --active: #333;
+  --active: #e6edf3;
+  --active-ink: #0b0f14;
   --accent: #58a6ff;
   --ok: #3fb950;
   --off: #484f58;
@@ -119,7 +120,8 @@
   --ink: #1f2328;
   --dim: #656d76;
   --desc-dim: #454f58;
-  --active: #ddd;
+  --active: #1f2328;
+  --active-ink: #ffffff;
   --accent: #0969da;
   --ok: #1a7f37;
   --off: #afb8c1;
@@ -276,7 +278,7 @@ samp {
  * should not add another .inner layer — use .inner directly on the padded parent instead. */
 .inner {
   width: 100%;
-  max-width: 1200px;
+  max-width: 1024px;
   margin: 0 auto;
   padding-left: 20px;
   padding-right: 20px;
@@ -310,6 +312,11 @@ samp {
 }
 nav {
   display: flex;
+}
+/* The header nav is right-aligned against the logo; that push belongs to the header chrome only,
+ * not to every <nav> on a page (a content-level <nav> like Home's card grid must start at the
+ * same left edge as the rest of the page). */
+.portal-header nav {
   margin-left: auto;
 }
 nav a {
@@ -331,7 +338,7 @@ nav a:hover {
   border-color: var(--line);
 }
 nav a.active {
-  color: var(--ink);
+  color: var(--active-ink);
   background: var(--active);
   border-color: var(--line);
 }
@@ -373,6 +380,7 @@ portal-info-icon,
   --icon-md: 20px;
   --icon-lg: 24px;
   --icon-xl: 30px;
+  --icon-xxl: 40px;
 }
 portal-icon {
   display: inline-flex;

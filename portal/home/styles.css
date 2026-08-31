@@ -7,10 +7,9 @@ main.home-main {
   padding-bottom: 24px;
 }
 
-/* Welcome block: the page's only <h1>, followed by a lead line capped so the whole intro reads
- * as a short greeting rather than a paragraph. */
+/* Welcome block: the page's only <h1>, followed by a lead line. The lead intentionally runs the
+ * full content width — no cap — so the intro reads across the whole column. */
 .home-welcome {
-  max-width: 640px;
   margin: 32px 0 24px;
 }
 .home-title {
@@ -23,27 +22,21 @@ main.home-main {
   color: var(--dim);
   font-size: var(--text-sm);
   line-height: var(--line-height-normal);
-  max-width: 56ch;
 }
 
-/* Destination cards: the four primary entry points, laid out 2x2 at desktop width (so each
- * description stays within ~two lines) and stacked on narrow screens. Each card is a single
- * full-bleed link so the whole tile is primary navigation. */
+/* Destination cards: the four primary entry points, stacked in a single column so each reads as
+ * a full-width row. Each card is a single full-bleed link so the whole tile is primary
+ * navigation. */
 .home-cards {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
   gap: 16px;
   max-width: 900px;
 }
-@media (max-width: 640px) {
-  .home-cards {
-    grid-template-columns: 1fr;
-  }
-}
 .home-card {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 16px;
   padding: 20px;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -52,11 +45,18 @@ main.home-main {
   text-decoration: none;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
-/* Icon treatment: accent-tinted glyph marks the card as an entry point without inventing a
- * per-section color. Titles/body stay on the ink scale; only the glyph carries the accent. */
+/* Icon treatment: accent-tinted glyph in a fixed left column; the title/description read in a
+ * column to its right. The glyph keeps its own horizontal space so it never squeezes the text. */
 .home-card-icon {
   color: var(--accent);
-  margin-bottom: 6px;
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.home-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 .home-card-title {
   font-size: var(--text-md);

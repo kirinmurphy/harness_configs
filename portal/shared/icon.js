@@ -117,7 +117,7 @@ const ICONS = {
 // the copy sheets) lost their interior detail and read as smudges next to text, which is what made
 // the small icons on the repository card hard to identify. Each step is ~1.25x its predecessor so
 // the gaps stay visually distinct rather than being pixel-adjacent.
-const ICON_SIZES = { sm: 16, md: 20, lg: 24, xl: 30 };
+const ICON_SIZES = { sm: 16, md: 20, lg: 24, xl: 30, xxl: 40 };
 const DEFAULT_ICON_SIZE = "md";
 
 class PortalIcon extends HTMLElement {

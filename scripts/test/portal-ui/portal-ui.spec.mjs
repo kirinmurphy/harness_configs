@@ -40,8 +40,96 @@ test.describe("portal home (portal-onboarding-home)", () => {
 
     // Static first-run content — no loading overlay, no dependence on harness state.
     await expect(page.locator("h1.home-title")).toHaveText("Welcome to RoboRepo");
-    await expect(page.locator(".home-lead")).toContainText("Manage your local agent configuration");
+    await expect(page.locator(".home-lead")).toContainText("A passive admin panel for your local dev environment");
     await expect(page.locator(".home-card")).toHaveCount(4);
+  });
+
+  test("Home cards stack in a single column with large icons", async ({ page }) => {
+    await page.goto("/");
+    // The four destination cards form one column (not a 2x2 grid). With a single 1fr track the
+    // computed grid-template-columns resolves to that one track's used size (e.g. "900px"), so
+    // assert exactly one track exists.
+    const columns = await page.locator(".home-cards").evaluate(
+      (el) => getComputedStyle(el).gridTemplateColumns,
+    );
+    expect(columns.trim().split(/\s+/).length).toBe(1);
+    // Every card icon uses the enlarged xxl step.
+    const sizes = await page.locator(".home-card portal-icon").evaluateAll((els) =>
+      els.map((el) => el.getAttribute("size")),
+    );
+    expect(sizes).toEqual(["xxl", "xxl", "xxl", "xxl"]);
+    const iconHeight = await page
+      .locator(".home-card portal-icon svg")
+      .first()
+      .evaluate((svg) => svg.getAttribute("height"));
+    expect(Number(iconHeight)).toBeGreaterThanOrEqual(30);
+  });
+
+  test("internal content column is 1024px wide and centered", async ({ page }) => {
+    await page.goto("/");
+    const info = await page.locator("main.inner").evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return {
+        maxWidth: cs.maxWidth,
+        leftMargin: rect.left,
+        rightMargin: window.innerWidth - rect.right,
+        width: rect.width,
+      };
+    });
+    expect(info.maxWidth).toBe("1024px");
+    // Centered: the empty margin is split symmetrically around the content column.
+    expect(Math.abs(info.leftMargin - info.rightMargin)).toBeLessThanOrEqual(1);
+    expect(info.width).toBeLessThanOrEqual(1024);
+  });
+
+  test("Home cards are left-aligned with the welcome block", async ({ page }) => {
+    await page.goto("/");
+    // The card grid is a <nav>, which used to inherit the header-nav `margin-left: auto` and get
+    // pushed off the page's left edge. It must sit at the same left edge as the welcome heading.
+    const edges = await page.evaluate(() => {
+      const left = (sel) => Math.round(document.querySelector(sel).getBoundingClientRect().left);
+      return {
+        welcome: left(".home-welcome"),
+        cards: left(".home-cards"),
+      };
+    });
+    expect(edges.cards).toBe(edges.welcome);
+  });
+
+  test("active nav inverts the theme palette", async ({ page }) => {
+    // In dark mode the selected nav item is LIGHT with dark text; in light mode it is DARK with
+    // light text — the inverse of the page surface.
+    for (const theme of ["dark", "light"]) {
+      await page.goto("/");
+      await page.evaluate((t) => {
+        try {
+          localStorage.setItem("roborepo-theme", t);
+        } catch {}
+        document.documentElement.dataset.theme = t;
+      }, theme);
+      await page.reload();
+      const s = await page.locator("#nav a.active").evaluate((el) => {
+        const cs = getComputedStyle(el);
+        const root = getComputedStyle(document.documentElement);
+        return {
+          background: cs.backgroundColor,
+          color: cs.color,
+          pageBg: root.getPropertyValue("--bg").trim(),
+          activeBg: root.getPropertyValue("--active").trim(),
+          activeInk: root.getPropertyValue("--active-ink").trim(),
+        };
+      });
+      // The active background is the exact inverse of the page base: a near-black page gets a
+      // light active pill, a light page gets a dark one. So --active must equal the *opposite*
+      // theme's --ink value, and the active text must be the other theme's ink.
+      const isLightActive = s.pageBg === "#0b0f14" && s.activeBg === "#e6edf3" && s.activeInk === "#0b0f14";
+      const isDarkActive = s.pageBg === "#e7eaee" && s.activeBg === "#1f2328" && s.activeInk === "#ffffff";
+      expect(isLightActive || isDarkActive).toBe(true);
+      // The rendered nav item resolves those tokens (no missing var() falling through).
+      expect(s.background).not.toBe("rgba(0, 0, 0, 0)");
+      expect(s.color).not.toBe("rgba(0, 0, 0, 0)");
+    }
   });
 
   test("global nav order is Home, Agents, Plans, Tokens, Localhost", async ({ page }) => {

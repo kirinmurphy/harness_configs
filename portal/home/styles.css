@@ -1,0 +1,81 @@
+/* Home page — the first-run landing surface. Everything here reuses the shared palette tokens
+ * from portal/shared/base.css (--panel, --raised, --line, --accent, --ink, --dim); there are no
+ * page-local hex colors. Status colors (--ok/--warn/--danger) stay reserved for status meaning.
+ */
+main.home-main {
+  padding-top: 18px;
+  padding-bottom: 24px;
+}
+
+/* Welcome block: the page's only <h1>, followed by a lead line. The lead intentionally runs the
+ * full content width — no cap — so the intro reads across the whole column. */
+.home-welcome {
+  margin: 32px 0 24px;
+}
+.home-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.home-lead {
+  margin: 0;
+  color: var(--dim);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-normal);
+}
+
+/* Destination cards: the four primary entry points, stacked in a single column so each reads as
+ * a full-width row. Each card is a single full-bleed link so the whole tile is primary
+ * navigation. Inside each card is an explicit two-column grid: the icon owns column 1 (spanning
+ * both text rows, vertically centered) and the title/description fill column 2 on rows 1 and 2. */
+.home-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  max-width: 900px;
+}
+.home-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 18px;
+  align-items: start;
+  padding: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+/* Icon treatment: accent-tinted glyph in a fixed left column. It spans both text rows so it stays
+ * centered against the title+description pair rather than pinned to the top line. */
+.home-card-icon {
+  color: var(--accent);
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+.home-card-title {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.home-card-desc {
+  grid-column: 2;
+  grid-row: 2;
+  color: var(--dim);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-normal);
+}
+/* Hover/focus: raised surface + accent emphasis — the reusable highlight pattern. A visible
+ * focus ring on the whole card is required for keyboard navigation. */
+.home-card:hover {
+  background: var(--raised);
+  border-color: var(--accent);
+}
+.home-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

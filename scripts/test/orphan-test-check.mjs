@@ -30,6 +30,7 @@ const testDir = path.join(repoRoot, "scripts", "test");
 const EXEMPT = new Map([
   ["test-roborepo.sh", "the suite runner itself"],
   ["ci.sh", "the CI runner itself"],
+  ["run-checks.mjs", "the discover-and-run runner; every *-check.mjs is reachable through it (see GLOB_RUNNER below)"],
   ["telemetry-schemas-persistence-child.mjs", "child process spawned by telemetry-schemas-check.mjs"],
   ["telemetry-spool-bench.mjs", "micro-benchmark against the live spool; run by hand, not asserted"],
   ["test-telemetry-pid.sh", "binds a real port; manual smoke, deliberately out of the automated suite"],
@@ -39,6 +40,13 @@ const EXEMPT = new Map([
   ["publish-npm-check.mjs", "touches the real npm registry; release-only, never run in CI"],
   ["app-root-fixture.mjs", "shared helper imported by other checks to build an isolated app root; exports no assertions of its own"],
 ]);
+
+// The runner that discovers suites by convention rather than naming them. When this file exists,
+// every scripts/test/*-check.mjs is reachable — `node scripts/test/run-checks.mjs` with no args
+// runs the whole glob, so a `-check.mjs` file cannot be orphaned while the runner is present.
+// This is the deliberate replacement for the package.json `test:*` entries those files used to
+// each get; see run-checks.mjs for the rationale.
+const GLOB_RUNNER = "run-checks.mjs";
 
 // Direct runners: substring matching on filename is deliberate. These files call their children in
 // several shapes (node "${repo_root}/scripts/test/x.mjs", bash scripts/test/x.sh), and matching the
@@ -74,9 +82,14 @@ const testFiles = fs
   .filter((name) => /\.(mjs|sh|ps1)$/.test(name))
   .sort();
 
+const globRunnerPresent = fs.existsSync(path.join(testDir, GLOB_RUNNER));
+
 const orphans = [];
 for (const name of testFiles) {
   if (EXEMPT.has(name)) continue;
+  // Any *-check.mjs is reachable through the glob runner when it exists — run-checks.mjs runs
+  // every discovered *-check.mjs with no args, so these files no longer need a per-file runner.
+  if (globRunnerPresent && /\.mjs$/.test(name) && name.endsWith("-check.mjs")) continue;
   if (directHaystack.includes(name)) continue;
   if (targetsOfRunnerCalledScripts.has(name)) continue;
   orphans.push(name);

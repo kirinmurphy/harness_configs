@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The portal is the local `roborepo web` UI: Config (`/`, alias `/config`), Plans (`/plans`),
+The portal is the local `roborepo web` UI: Home (`/`), Config (`/config`), Plans (`/plans`),
 Localhoster (`/localhoster`), and Tokens (`/tokens`). It is static HTML/CSS/browser JavaScript
 served by a loopback-only Node HTTP server — no build step, no framework, no bundler. This doc
 covers the shared architecture (page manifest, browser API helpers, server route dispatch) that
@@ -17,6 +17,7 @@ portal/
     base.css     — shared palette + chrome styles
     theme.js     — header/footer/nav/theme-toggle, reads window.ROBOREPO_PORTAL
     api.js       — shared fetch/token/clipboard/DOM helpers (ES module)
+  home/{index.html,styles.css}
   config/{index.html,styles.css,app.js}
   plans/{index.html,styles.css,app.js}
   localhoster/{index.html,styles.css,app.js,api.js,state.js,templates.js}
@@ -53,9 +54,10 @@ attribute is needed).
 ## Adding a Page
 
 1. Add an entry to `PAGES` in `scripts/cli/portal-server.mjs` (`id`, `path`, `title`, `dir`).
-2. Create `portal/<dir>/{index.html,styles.css,app.js}`. `index.html` links
-   `/portal/shared/base.css`, then loads `/portal/shared/theme.js` and `/portal/<dir>/app.js` as
-   `type="module"`.
+2. Create `portal/<dir>/{index.html,styles.css}`. `index.html` links
+   `/portal/shared/base.css`, then loads `/portal/shared/theme.js` (and, for data-driven pages,
+   `/portal/<dir>/app.js`) as `type="module"`. A fully static page like Home (`portal/home/`) needs
+   no `app.js` at all — it renders immediately with no API dependency.
 3. In `app.js`, import what you need from `/portal/shared/api.js` (see below) instead of writing
    page-local fetch/token/clipboard helpers.
 4. If the page needs its own read or mutating API routes, add a `scripts/cli/portal-routes-<domain>.mjs`
@@ -63,8 +65,8 @@ attribute is needed).
    `API_ROUTE_TABLES` in `portal-server.mjs`.
 5. Run the checks in "Checks to Run" below.
 
-Nothing else needs updating — the nav, `/api/portal/status`, and the `/config` alias behavior are
-all driven by `PAGES` and `PAGE_BY_PATH`.
+Nothing else needs updating — the nav and `/api/portal/status` are all driven by `PAGES` and
+`PAGE_BY_PATH`. Each route is canonical (one path per page); Home owns `/`, Agents owns `/config`.
 
 ## Shared Browser API (`portal/shared/api.js`)
 
@@ -253,7 +255,7 @@ Telemetry's "turn on telemetry" button, which previously POSTed without the toke
 - `npm test` (`scripts/test/test-roborepo.sh`) — starts the portal server, asserts
   `/api/portal/status`, token exposure, mutating POST success/400/403 responses, and that each
   served `app.js` parses (`node --check`).
-- `roborepo web` — click through Config → Plans → Localhoster → Tokens, confirm nav highlighting, and
+- `roborepo web` — click through Home → Agents → Plans → Localhoster → Tokens, confirm nav highlighting, and
   exercise each page's mutations (Config toggles, Plans refresh/discovery-root edits, Telemetry
   "turn on telemetry").
 - `node --input-type=module --check < portal/<page>/app.js` for a quick module-syntax check on a

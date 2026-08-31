@@ -167,37 +167,37 @@ When `portal-repository-home-and-detail.md` is implemented later:
 
 ### Phase 1 — Routing and global navigation
 
-- [ ] Add `{ path: "/", id: "home", title: "Home", dir: "home", default: true }` to `PAGES` in `scripts/cli/portal-server.mjs`.
-- [ ] Change Agents to canonical `{ path: "/config", id: "config", title: "Agents", dir: "config" }`.
-- [ ] Order `PAGES` as Home, Agents, Plans, Tokens, Localhost so the generated global nav follows the requested order.
-- [ ] Remove the `/`/`/config` Agents alias special case from `PAGE_BY_PATH`.
-- [ ] Remove the `/`/`/config` active-nav special case from `portal/shared/theme.js`; active state should match the canonical page path.
-- [ ] Confirm `roborepo web` continues opening the default page and now lands on Home.
+- [x] Add `{ path: "/", id: "home", title: "Home", dir: "home", default: true }` to `PAGES` in `scripts/cli/portal-server.mjs`.
+- [x] Change Agents to canonical `{ path: "/config", id: "config", title: "Agents", dir: "config" }`.
+- [x] Order `PAGES` as Home, Agents, Plans, Tokens, Localhost so the generated global nav follows the requested order.
+- [x] Remove the `/`/`/config` Agents alias special case from `PAGE_BY_PATH`.
+- [x] Remove the `/`/`/config` active-nav special case from `portal/shared/theme.js`; active state should match the canonical page path.
+- [x] Confirm `roborepo web` continues opening the default page and now lands on Home.
 
 ### Phase 2 — Home page
 
-- [ ] Add `portal/home/index.html`.
-- [ ] Add `portal/home/styles.css`.
-- [ ] Add the short welcome heading and description.
-- [ ] Add four full-card links for Agents, Plans, Tokens, and Localhost.
-- [ ] Keep each card description to no more than two lines in the intended desktop layout.
-- [ ] Use semantic HTML and keyboard-visible focus states.
+- [x] Add `portal/home/index.html`.
+- [x] Add `portal/home/styles.css`.
+- [x] Add the short welcome heading and description.
+- [x] Add four full-card links for Agents, Plans, Tokens, and Localhost.
+- [x] Keep each card description to no more than two lines in the intended desktop layout.
+- [x] Use semantic HTML and keyboard-visible focus states.
 
 ### Phase 3 — Shared visual language
 
-- [ ] Reuse shared palette tokens from `portal/shared/base.css`; add no page-local hex colors.
-- [ ] Use `--accent` as the first reusable product-entry highlight treatment.
-- [ ] Extend `portal/shared/icon.js` with any missing section icons.
-- [ ] Keep icons monochrome and compatible with both themes.
-- [ ] Verify the card treatment reads clearly in dark and light modes.
+- [x] Reuse shared palette tokens from `portal/shared/base.css`; add no page-local hex colors.
+- [x] Use `--accent` as the first reusable product-entry highlight treatment.
+- [x] Extend `portal/shared/icon.js` with any missing section icons.
+- [x] Keep icons monochrome and compatible with both themes.
+- [x] Verify the card treatment reads clearly in dark and light modes.
 
 ### Phase 4 — Tests and documentation consistency
 
-- [ ] Add or extend focused portal routing coverage for `/`, `/config`, and the page manifest order.
-- [ ] Assert Home is the default page and Agents is canonical at `/config`.
-- [ ] Add a browser/UI assertion for the five nav destinations and the four Home entry links if the existing portal test harness supports it.
-- [ ] Check docs that still describe `/` as Agents and update only references made stale by this routing change.
-- [ ] Leave `portal-repository-home-and-detail.md` in backlog and keep this plan related to it rather than merging the scopes.
+- [x] Add or extend focused portal routing coverage for `/`, `/config`, and the page manifest order.
+- [x] Assert Home is the default page and Agents is canonical at `/config`.
+- [x] Add a browser/UI assertion for the five nav destinations and the four Home entry links if the existing portal test harness supports it.
+- [x] Check docs that still describe `/` as Agents and update only references made stale by this routing change.
+- [x] Leave `portal-repository-home-and-detail.md` in backlog and keep this plan related to it rather than merging the scopes.
 
 ## Validation
 
@@ -206,7 +206,7 @@ Use the smallest repo-native checks that prove the routing and page changes, the
 At minimum:
 
 ```text
-npm run test:plans
+npm run test:unit -- --filter plan-docs
 npm test
 ```
 

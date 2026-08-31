@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  {{HEAD}}
+  <body>
+    {{CHROME}}
+    {{WIDGET_TEMPLATES}}
+    <main id="main" class="inner home-main">
+      <!-- Home is intentionally static: it carries no loading-overlay marker (the overlay is only
+           injected where that marker appears) and no page-local script module, because nothing on
+           this page waits on an API response or harness state. It is the first-run landing page
+           even on a machine with no harnesses. -->
+      <section class="home-welcome">
+        <h1 class="home-title">Welcome to RoboRepo</h1>
+        <p class="home-lead">
+          A passive admin panel for your local dev environment.
+        </p>
+      </section>
+      <nav class="home-cards" aria-label="Portal sections">
+        <a class="home-card" href="/config">
+          <portal-icon name="agents" size="xxxl" class="home-card-icon"></portal-icon>
+          <span class="home-card-title">Agents</span>
+          <span class="home-card-desc">
+            Manage agent harness configuration, shared packages, rules, permissions, and
+            related setup.
+          </span>
+        </a>
+        <a class="home-card" href="/plans">
+          <portal-icon name="plans" size="xxxl" class="home-card-icon"></portal-icon>
+          <span class="home-card-title">Plans</span>
+          <span class="home-card-desc">
+            View and manage implementation plans and their lifecycle.
+          </span>
+        </a>
+        <a class="home-card" href="/tokens">
+          <portal-icon name="tokens" size="xxxl" class="home-card-icon"></portal-icon>
+          <span class="home-card-title">Tokens</span>
+          <span class="home-card-desc">
+            Inspect agent-session token usage and telemetry.
+          </span>
+        </a>
+        <a class="home-card" href="/localhoster">
+          <portal-icon name="localhost" size="xxxl" class="home-card-icon"></portal-icon>
+          <span class="home-card-title">Localhost</span>
+          <span class="home-card-desc">
+            See local development servers and runtime activity discovered by RoboRepo.
+          </span>
+        </a>
+      </nav>
+    </main>
+    <script src="/portal/shared/icon.js" type="module"></script>
+    <script src="/portal/shared/theme.js" type="module"></script>
+  </body>
+</html>

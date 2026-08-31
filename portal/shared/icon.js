@@ -76,6 +76,36 @@ const ICONS = {
     viewBox: "0 0 16 16",
     body: `<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M4 6l4 4 4-4" />`,
   },
+
+  // Portal section glyphs — the monochrome entry-point icons for Home's destination cards.
+  // Same stroke family as the rest of this set (1.3 weight, round caps/joins, currentColor).
+  // Home: a house — roof peak over a door, read as "start here".
+  home: {
+    viewBox: "0 0 16 16",
+    body: `<path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round" d="M2.5 7.6 8 3l5.5 4.6" /><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="M4 6.8V13h8V6.8" /><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="M6.5 13v-3h3v3" />`,
+  },
+  // Agents: a small robot head — the harness/prompt side of the portal. A neutral bot mark rather
+  // than a vendor silhouette, so it can't be misread as a brand logo.
+  agents: {
+    viewBox: "0 0 16 16",
+    body: `<rect x="3.5" y="6" width="9" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.3" /><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M8 3.5V6" /><circle cx="8" cy="2.8" r="1.1" fill="none" stroke="currentColor" stroke-width="1.3" /><path fill="currentColor" d="M6.4 9.3h.01M9.6 9.3h.01" />`,
+  },
+  // Plans: a checklist document — a bordered sheet with a check, read as "implementation plan".
+  plans: {
+    viewBox: "0 0 16 16",
+    body: `<rect x="3" y="2.5" width="10" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" /><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" d="M5.6 6.6l1.3 1.3 2.6-2.8" />`,
+  },
+  // Tokens: a coin — a token unit. The inner "T" notches read as a minted value without needing a
+  // currency glyph.
+  tokens: {
+    viewBox: "0 0 16 16",
+    body: `<circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.3" /><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M6.4 6.4h3.2M8 6.4v3.2" />`,
+  },
+  // Localhost: a terminal — the dev-server / local process side of the portal.
+  localhost: {
+    viewBox: "0 0 16 16",
+    body: `<rect x="2.5" y="3.5" width="11" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" /><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" d="M5 6.5l2 2-2 2" /><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M8.5 10.5h2.5" />`,
+  },
 };
 
 // A fixed scale, not free-form pixel values. Call sites pick a step (`size="sm"`); they do not get
@@ -87,7 +117,7 @@ const ICONS = {
 // the copy sheets) lost their interior detail and read as smudges next to text, which is what made
 // the small icons on the repository card hard to identify. Each step is ~1.25x its predecessor so
 // the gaps stay visually distinct rather than being pixel-adjacent.
-const ICON_SIZES = { sm: 16, md: 20, lg: 24, xl: 30 };
+const ICON_SIZES = { sm: 16, md: 20, lg: 24, xl: 30, xxl: 40, xxxl: 48 };
 const DEFAULT_ICON_SIZE = "md";
 
 class PortalIcon extends HTMLElement {

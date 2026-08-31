@@ -18,16 +18,7 @@ run bash scripts/doctor.sh --quiet
 run bash scripts/test/test-roborepo.sh --quiet
 run bash scripts/test/test-install-collisions.sh
 
-run npm run --silent test:packages
-run npm run --silent test:package-lifecycle
-run npm run --silent test:package-default-enabled
-run npm run --silent test:initialization-lifecycle
-run npm run --silent test:harness-cohort
-run npm run --silent test:managed-uninstall
-run npm run --silent test:plan-promote-start
-run npm run --silent test:core-hook-wiring
-run npm run --silent test:permission-rule-home-path
-
+run npm run --silent test:unit -- --group ci
 run npm run --silent test:package-install
 
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then

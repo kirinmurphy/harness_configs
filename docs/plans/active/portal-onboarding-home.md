@@ -206,7 +206,7 @@ Use the smallest repo-native checks that prove the routing and page changes, the
 At minimum:
 
 ```text
-npm run test:plans
+npm run test:unit -- --filter plan-docs
 npm test
 ```
 

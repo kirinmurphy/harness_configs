@@ -25,3 +25,10 @@ export function getHarnessProvider(id) {
 export function hasHarnessProvider(id) {
   return PROVIDERS.has(id);
 }
+
+// The human-facing name for a provider id, falling back to the id itself when the id is unknown.
+// Centralized so every caller that summarizes detected harnesses (init's handoff message, the
+// `web` first-run banner, `harness list`) renders the same name and cannot drift.
+export function harnessDisplayName(id) {
+  return PROVIDERS.get(id)?.manifest.displayName ?? id;
+}

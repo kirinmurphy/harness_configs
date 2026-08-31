@@ -3,8 +3,8 @@
 // and console output only; harness provider logic stays in scripts/harnesses/.
 
 import { listHarnessProviders, getHarnessProvider, hasHarnessProvider } from "../harnesses/registry.mjs";
-import { discoverHarnessProviders } from "../harnesses/discovery.mjs";
-import { readHarnessState, writeHarnessState, applyDiscoveryToState, setProviderEnabled } from "../harnesses/state.mjs";
+import { refreshHarnessState } from "../harnesses/refresh.mjs";
+import { readHarnessState, writeHarnessState, setProviderEnabled } from "../harnesses/state.mjs";
 import { resolveHarnessPath, hasHarnessPath } from "../harnesses/paths.mjs";
 import fs from "node:fs";
 
@@ -40,10 +40,7 @@ export function harnessInspect(rest) {
 }
 
 export function harnessRefresh() {
-  const previous = readHarnessState();
-  const results = discoverHarnessProviders(listHarnessProviders());
-  const next = applyDiscoveryToState(previous, results);
-  writeHarnessState(next);
+  refreshHarnessState();
   harnessList();
 }
 

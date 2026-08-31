@@ -9,7 +9,7 @@ import {
   setProviderEnabled,
   isProviderEnabled,
 } from "../harnesses/state.mjs";
-import { listHarnessProviders, getHarnessProvider, hasHarnessProvider } from "../harnesses/registry.mjs";
+import { listHarnessProviders, getHarnessProvider, hasHarnessProvider, harnessDisplayName } from "../harnesses/registry.mjs";
 import { createHarnessRuntime, requireHarnessCapability } from "../harnesses/runtime.mjs";
 import fs from "node:fs";
 import os from "node:os";
@@ -35,6 +35,12 @@ const providers = listHarnessProviders();
 assert(providers.length === 3, `expected 3 registered providers, got ${providers.length}`);
 assert(hasHarnessProvider("claude") && hasHarnessProvider("codex") && hasHarnessProvider("gemini"), "registry must know claude, codex, and gemini");
 assertThrows(() => getHarnessProvider("nonexistent"), "getHarnessProvider unknown id");
+
+// --- harnessDisplayName: human-facing name for known ids, id fallback for unknown ids. Used by
+// init/web first-run summaries, so a fallback regression would surface as a raw id in user-facing
+// output rather than a crash — asserted directly. ---
+assert(harnessDisplayName("claude") === providers.find((p) => p.id === "claude").manifest.displayName, "harnessDisplayName must return the manifest displayName for a known id");
+assert(harnessDisplayName("nonexistent") === "nonexistent", "harnessDisplayName must fall back to the id for an unknown id");
 
 // --- Discovery confidence normalization: executable+home+config -> confirmed; executable-only or
 // config-only -> probable; home-only -> possible; nothing -> absent. Uses fake manifests pointed

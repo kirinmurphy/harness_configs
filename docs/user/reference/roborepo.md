@@ -254,20 +254,26 @@ documented maintainer workflows.
 
 ## First Run and the Package Library
 
-`roborepo init` is the first-run workflow: it runs the internal `setup` primitive, refreshes harness
-discovery, then asks whether to configure settings in the browser or in the CLI. Browser opens
+`roborepo web` is the browser-first entry point: on a fresh install it first runs the shared
+procedural bootstrap (the same `ensureInitialized()` that `roborepo init` calls) — creating the
+workspace/state roots, refreshing harness discovery, and recording initialization — then opens the
+portal. `npm install -g` followed by `roborepo web` is therefore a complete first run with no
+separate `init` step.
+
+`roborepo init` remains the explicit alternative first-run workflow: it runs the same procedural
+bootstrap, then asks whether to configure settings in the browser or in the CLI. Browser opens
 `roborepo web --detach`; CLI continues into the Package Library and applies the resulting
-configuration. After the selected path starts or finishes, `init` records that initialization
-completed. That record lives at `<stateRoot>/initialization.json` and is the only thing that
-distinguishes a never-initialized install from a finished one — directory existence is not evidence,
-since `setup` can create the workspace on its own.
+configuration. The initialization record lives at `<stateRoot>/initialization.json` and is the only
+thing that distinguishes a never-initialized install from a finished one — directory existence is
+not evidence, since `setup` can create the workspace on its own. Both `init` and a first-run `web`
+write the same record through the shared bootstrap.
 
 A bare, interactive `roborepo` on an uninitialized install routes into `init`. This is not the old
 forced-onboarding gate, which blocked arbitrary commands and has been removed: explicit commands
 always run regardless of initialization state, including `doctor`, `version`, and `--help`, and a
 bare non-interactive invocation goes to the normal menu so automation is never dropped into a
-wizard it cannot answer. An interrupted `init` is resumable; a completed `init` re-runs as a no-op
-report rather than replaying the wizard.
+wizard it cannot answer. An interrupted first run is resumable; a completed one re-runs as a no-op
+report rather than replaying the bootstrap.
 
 `roborepo library` (equivalently `roborepo package manage`) is the machine-level chooser for global
 harness behaviors. Both names dispatch to one implementation. Re-running it shows enabled options
@@ -375,7 +381,10 @@ id, heaviest turns surfaced, plus a copy-paste analysis prompt).
 
 `roborepo web [--detach] [--no-open] [--port <n>]` (default `4317`) starts a dependency-free local
 web portal on `127.0.0.1` and opens `/config` by default (`--detach` forks it into the background and
-writes the PID file; this is what `roborepo web` uses under the hood). Before binding, it probes an
+writes the PID file; this is what `roborepo web` uses under the hood). On a fresh install, before
+anything else it runs the shared procedural bootstrap (`ensureInitialized()`) so `npm install -g` →
+`roborepo web` initializes and opens the portal in one step; on an initialized install this is a
+no-op. Before binding, it probes an
 occupied port through `/api/portal/status`, which reports a content hash of the served portal
 source: a portal running current code is reused/adopted; one that's still alive but running code
 from before a `git pull`/merge (a detached server outlives the CLI invocation that started it, and

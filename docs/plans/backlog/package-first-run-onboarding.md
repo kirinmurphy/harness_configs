@@ -188,6 +188,17 @@ The exact schema should be minimal. Do not duplicate package manifests, provider
 
 The lifecycle initialization record from plan `46up8y7a` remains authoritative for whether RoboRepo is fully initialized. The onboarding draft only records an in-progress configuration proposal.
 
+> **Sync note (plan `32i43fdm`, portal-web-first-run-bootstrap):** the initialization record is now
+> defined as *procedural machine bootstrap* — workspace/state roots, persisted harness discovery,
+> and the completion marker. It is written by the shared `ensureInitialized()` primitive that both
+> `roborepo init` and `roborepo web` call, *before* any package selection or onboarding interaction.
+> This plan MUST NOT treat "initialization complete" as proof that staged package onboarding
+> finished. Track staged-onboarding completion in the separate draft/session state described here
+> (its own `status`/`completedAt`), and treat the procedural marker only as "the machine was
+> bootstrapped". `roborepo web` on a fresh install now completes that procedural marker and opens
+> the portal; the `/setup` route this plan builds is the place to resume package onboarding, not a
+> replacement for the procedural record.
+
 ### 3. Defaults are proposals until confirmation
 
 First-run defaults must be visible before becoming live.

@@ -10,7 +10,7 @@ After [installing roborepo](../guides/first-time-setup.md), install puts it on y
 
 |                            |                                                                                                                                                                  |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `roborepo init [--dry-run] [--force]` | Sets up a new installation: creates workspace/state directories, refreshes harness discovery, asks whether to configure in the browser or CLI, then records that initialization completed. The browser path opens `roborepo web --detach`; the CLI path opens the Package Library and applies the result. Safe to re-run — a completed install reports and exits instead of replaying the wizard. `--dry-run` previews without mutating; `--force` re-runs the full workflow on an already-initialized install. |
+| `roborepo init [--dry-run] [--force]` | Explicit first-run entry point. Runs the same procedural bootstrap `roborepo web` runs automatically (creates workspace/state directories, refreshes harness discovery, records initialization), then asks whether to configure in the browser or CLI. The browser path opens `roborepo web --detach`; the CLI path opens the Package Library and applies the result. Safe to re-run — a completed install reports and exits instead of replaying the wizard. `--dry-run` previews without mutating; `--force` re-runs the full workflow on an already-initialized install. |
 | `roborepo library`         | Opens the Package Library to change which behaviors are enabled. Identical to `roborepo package manage`. |
 
 A bare, interactive `roborepo` on an uninitialized install goes into `init` automatically. Explicit
@@ -69,7 +69,7 @@ Package development is a maintainer workflow; package users usually only need `p
 
 | | |
 | --- | --- |
-| `roborepo web` | Starts the local portal. `/config` manages packages/permissions, `/plans` browses plan docs, `/localhoster` lists local web apps, and `/telemetry` shows token usage when telemetry has data. |
+| `roborepo web` | Starts the local portal. On a fresh install it first performs the same procedural setup as `roborepo init` (workspace/state dirs, harness discovery, initialization record), then opens the portal — so `npm install -g` followed by `roborepo web` is a complete first run. `/config` manages packages/permissions, `/plans` browses plan docs, `/localhoster` lists local web apps, and `/telemetry` shows token usage when telemetry has data. |
 | `roborepo web --detach [--no-open] [--port <n>]` | Starts the same portal detached and opens it in the browser. A cold start warms its views before binding and can take ~30s. |
 | `roborepo web stop [--port <n>]` | Stops the detached portal. PID files are tracked per port, so pass the same `--port` used to start it. |
 | `roborepo localhoster [--json] [--open]` | Lists active localhost HTTP apps, prints the portal snapshot as JSON, or opens `/localhoster`. |

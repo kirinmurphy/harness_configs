@@ -1,50 +1,26 @@
-// `roborepo init` — the single user-facing first-run workflow.
+// `roborepo init` — the explicit user-facing first-run workflow.
 //
-// This is an orchestrator, not an implementation. Every step below already exists as a primitive
-// (setup, harness refresh, the Package Library wizard, config apply); init's whole job is to run
-// them in the right order, keep the initialization record honest about how far it got, and give
-// the user one thing to read at the end. Any logic that belongs to a step belongs in that step's
-// module, not here — otherwise `init` and the primitive drift apart and the primitive becomes the
-// one nobody tests.
+// This is an orchestrator, not an implementation. The procedural machine bootstrap (workspace/state
+// roots, persisted harness discovery, the initialization record) lives in
+// initialization-bootstrap.mjs's `ensureInitialized()`, which `init` and `web` share so the two
+// first-run entry points cannot drift. init's whole remaining job is presentation: run the shared
+// bootstrap, refresh the harness summary, hand the user to the browser or the CLI configuration
+// surface, and give them one thing to read at the end.
 //
-// Failure policy: the record is marked complete only after every required step returns. A throw,
-// a Ctrl-C, or a process exit anywhere in between leaves it "in-progress", which is what makes a
-// half-finished first run resumable instead of indistinguishable from a fresh install.
+// Failure policy: `ensureInitialized()` records `complete` only after the procedural steps return.
+// Everything init adds after that (browser handoff, CLI config) is configuration, not required
+// machine state — the portal and `roborepo library` / package commands both operate without it.
 
-import { listHarnessProviders } from "../harnesses/registry.mjs";
-import { discoverHarnessProviders } from "../harnesses/discovery.mjs";
-import { readHarnessState, writeHarnessState, applyDiscoveryToState } from "../harnesses/state.mjs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { repoRoot } from "./paths.mjs";
+import { harnessDisplayName } from "../harnesses/registry.mjs";
 import { presetsOnboard } from "./presets.mjs";
 import { confirmYesNo, makePrompter } from "./skill-lib.mjs";
-import { setupCommand } from "./workspace.mjs";
-import {
-  beginInitialization,
-  completeInitialization,
-  initializationPhase,
-  readFutureInitializationState,
-} from "./initialization-state.mjs";
+import { ensureInitialized, describeNewerSchemaRefusal } from "./initialization-bootstrap.mjs";
 
 const DEFAULT_PORTAL_URL = "http://127.0.0.1:4317";
 const LOCAL_PORTAL_URL_RE = /http:\/\/127\.0\.0\.1:\d+/;
-
-// Refresh discovery and return the machine cohort rather than printing the provider table.
-// harnessRefresh() writes state and then dumps a tab-separated row per provider, which is the
-// right output for `roborepo harness refresh` and the wrong output mid-wizard, so init shares the
-// state-writing path and formats its own one-line summary.
-function refreshAndSummarizeHarnesses() {
-  const results = discoverHarnessProviders(listHarnessProviders());
-  const next = applyDiscoveryToState(readHarnessState(), results);
-  writeHarnessState(next);
-
-  const detected = results
-    .filter((entry) => entry.status === "detected")
-    .map((entry) => entry.providerId);
-
-  return { state: next, detected };
-}
 
 function describeHarnesses(detected) {
   if (detected.length === 0) {
@@ -53,7 +29,7 @@ function describeHarnesses(detected) {
       "RoboRepo is initialized; install or launch a supported harness later, then run `roborepo harness refresh`.",
     ];
   }
-  const names = detected.map((id) => listHarnessProviders().find((p) => p.id === id)?.manifest.displayName ?? id);
+  const names = detected.map((id) => harnessDisplayName(id));
   const list = names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
   return [`Detected ${names.length === 1 ? "harness" : `${names.length} harnesses`}: ${list}.`];
 }
@@ -117,6 +93,22 @@ async function offerCliMenuAfterBrowserSetup(url) {
   spawnSync(process.execPath, [path.join(repoRoot, "scripts", "cli", "main.mjs")], { stdio: "inherit" });
 }
 
+// The browser-vs-CLI decision after `web --detach` has run, as a pure function of its result.
+// Split out of runFirstRunConfiguration so the routing rule is testable without a terminal (same
+// pattern as resolveFirstRunRoute): the PTY side effects (welcome banner, presets onboarding,
+// stdout relay) stay in the orchestrator, but which mode is selected — and, for the browser path,
+// which URL to hand off — is decided here. The caller never reaches this with an empty
+// spawnStatus when non-interactive: non-TTY invocations short-circuit before spawning.
+export function resolveFirstRunConfigurationMode({ spawnStatus, spawnOutput }) {
+  if (spawnStatus === 0) {
+    return {
+      mode: "browser",
+      url: extractPortalUrl(spawnOutput) ?? DEFAULT_PORTAL_URL,
+    };
+  }
+  return { mode: "cli" };
+}
+
 async function runFirstRunConfiguration({ dryRun = false } = {}) {
   if (dryRun) {
     console.log("  - open browser setup, with CLI fallback for non-interactive shells");
@@ -134,11 +126,12 @@ async function runFirstRunConfiguration({ dryRun = false } = {}) {
     [path.join(repoRoot, "scripts", "cli", "main.mjs"), "web", "--detach"],
     { encoding: "utf8" },
   );
-  if (result.status === 0) {
-    return {
-      mode: "browser",
-      url: extractPortalUrl(`${result.stdout ?? ""}\n${result.stderr ?? ""}`) ?? DEFAULT_PORTAL_URL,
-    };
+  const decided = resolveFirstRunConfigurationMode({
+    spawnStatus: result.status,
+    spawnOutput: `${result.stdout ?? ""}\n${result.stderr ?? ""}`,
+  });
+  if (decided.mode === "browser") {
+    return decided;
   }
 
   console.log("");
@@ -146,7 +139,7 @@ async function runFirstRunConfiguration({ dryRun = false } = {}) {
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   await presetsOnboard([]);
-  return { mode: "cli" };
+  return decided;
 }
 
 // Re-running a finished init must not replay the wizard: that would re-prompt for package
@@ -169,52 +162,44 @@ export async function initCommand(args = []) {
     process.exit(2);
   }
 
-  // A record written by a newer RoboRepo reads as "not initialized" (this build cannot vouch for
-  // its shape), which would otherwise make init replay the entire first-run workflow and overwrite
-  // it. Report the downgrade and stop before touching anything — including under --force, which
-  // means "re-run initialization", not "discard a newer installation's state".
-  const future = readFutureInitializationState();
-  if (future) {
-    console.error("This installation was initialized by a newer version of RoboRepo.");
-    console.error(`  record schemaVersion: ${future.schemaVersion} (this build understands 1)`);
-    console.error("");
-    console.error("Upgrade RoboRepo again, or remove the initialization record to start over:");
-    console.error("  roborepo doctor        check installation health");
+  // The entire procedural machine bootstrap — future-schema guard, phase inspection, workspace/state
+  // roots, persisted harness discovery, and the completion record — runs inside this one call,
+  // shared verbatim with `roborepo web`. init only decides how to present the result.
+  const result = ensureInitialized({ force, dryRun });
+
+  if (result.status === "refused") {
+    for (const line of describeNewerSchemaRefusal(result.schemaVersion)) console.error(line);
     process.exit(1);
   }
 
-  const phase = initializationPhase();
-
-  if (phase === "complete" && !force) {
+  if (result.status === "noop") {
     reportAlreadyInitialized();
     return;
   }
 
-  if (dryRun) {
+  if (result.status === "dryrun") {
     console.log("would initialize RoboRepo:");
-    console.log("  - create workspace and state directories");
-    console.log("  - refresh harness discovery");
+    console.log(`  - ${result.steps[0]}`);
+    console.log(`  - ${result.steps[1]}`);
     await runFirstRunConfiguration({ dryRun: true });
-    console.log(`  - mark initialization complete (currently: ${phase})`);
+    console.log(`  - ${result.steps[2]} (currently: ${result.phase})`);
     return;
   }
 
-  if (phase === "in-progress") {
+  // status === "bootstrapped"
+  if (result.phase === "in-progress") {
     console.log("Resuming an interrupted initialization.");
     console.log("");
   }
 
-  beginInitialization();
-
-  setupCommand([]);
-
-  const { detected } = refreshAndSummarizeHarnesses();
-  for (const line of describeHarnesses(detected)) console.log(line);
+  for (const line of describeHarnesses(result.detected)) console.log(line);
   console.log("");
 
+  // The procedural record is already `complete` before this runs (ensureInitialized finished it),
+  // so the browser handoff and CLI configuration are additive presentation — and the `web --detach`
+  // spawned below sees a complete record, takes the no-op bootstrap path, and cannot race this
+  // process's first-run mutation.
   const firstRunConfiguration = await runFirstRunConfiguration();
-
-  completeInitialization();
 
   if (firstRunConfiguration?.mode === "browser") {
     await offerCliMenuAfterBrowserSetup(firstRunConfiguration.url);

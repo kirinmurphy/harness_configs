@@ -15,8 +15,8 @@ This document chooses the environment. For the repository's broader test suite a
 | Current checkout behavior | `./bin/roborepo` |
 | Currently installed npm package | `roborepo` |
 | Dev vs installed npm against the same user state | Alternate `./bin/roborepo` and `roborepo` |
-| Fresh onboarding from the installed npm package | Isolated `ROBOREPO_STATE_ROOT` + `roborepo init` |
-| Fresh onboarding from current checkout source | Isolated `ROBOREPO_STATE_ROOT` + `./bin/roborepo init` |
+| Fresh onboarding from the installed npm package | Isolated `ROBOREPO_STATE_ROOT` + `roborepo web` (first run bootstraps) |
+| Fresh onboarding from current checkout source | Isolated `ROBOREPO_STATE_ROOT` + `./bin/roborepo web` (first run bootstraps) |
 | Current checkout packaged like npm before publishing | `npm run test:package-install` |
 | Clean-machine lifecycle with zero harnesses | `npm run test:clean-machine` |
 | Harness discovery as tools appear | `roborepo harness refresh` between harness states |
@@ -197,7 +197,8 @@ export ROBOREPO_STATE_ROOT=/tmp/roborepo-onboarding
 rm -rf "$ROBOREPO_STATE_ROOT"
 
 roborepo version
-roborepo init
+# First run bootstraps either way; `web` is the primary browser-first path, `init` the explicit one.
+roborepo web --detach --no-open
 ```
 
 ### Start: Current Checkout
@@ -207,7 +208,7 @@ export ROBOREPO_STATE_ROOT=/tmp/roborepo-onboarding
 rm -rf "$ROBOREPO_STATE_ROOT"
 
 ./bin/roborepo version
-./bin/roborepo init
+./bin/roborepo web --detach --no-open
 ```
 
 ### Verify

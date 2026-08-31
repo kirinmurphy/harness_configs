@@ -216,12 +216,14 @@ without a repo checkout anywhere on this machine.
 Then set it up for first use:
 
 ```sh
-roborepo init
+roborepo web
 ```
 
-`init` creates the workspace and state directories, detects installed harnesses, opens the Package
-Library, and applies your selection. It should succeed with no harness binaries installed and no
-native harness home/config created yet — zero detected harnesses is a valid outcome.
+The first `roborepo web` performs the same procedural setup `init` does — it creates the workspace
+and state directories, detects installed harnesses, records initialization, and starts the portal.
+It should succeed with no harness binaries installed and no native harness home/config created yet
+— zero detected harnesses is a valid outcome. `roborepo init` is the explicit alternative that adds
+the browser-or-CLI configuration chooser before opening the portal.
 
 Confirm the result:
 

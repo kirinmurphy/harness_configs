@@ -46,7 +46,8 @@ import { privacyHash } from "./telemetry-schemas/hash.mjs";
 import { buildAnalysisPrompt } from "../harnesses/transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
 import { hookFilePath, writeHooksFile } from "./hook-composition.mjs";
-import { getHarnessProvider, hasHarnessProvider, listHarnessProviders } from "../harnesses/registry.mjs";
+import { getHarnessProvider, hasHarnessProvider, listHarnessProviders, harnessDisplayName } from "../harnesses/registry.mjs";
+import { ensureInitialized, describeNewerSchemaRefusal } from "./initialization-bootstrap.mjs";
 
 export async function telemetryCommand(rest) {
   const [sub, ...args] = rest;
@@ -692,6 +693,30 @@ function loadTelemetryGuide() {
 
 export async function serveCommand(args, { allowPortFallback = false, openPath = "" } = {}) {
   const options = parseServeArgs(args);
+
+  // First-run bootstrap: `roborepo web` must produce the same procedural machine state as
+  // `roborepo init` on a fresh install, so the portal never runs on a machine that was never
+  // initialized. This runs in the invoking process BEFORE the detach branch spawns its foreground
+  // child (and before reuse/start), so the child inherits a completed initialization record and
+  // takes the no-op path instead of racing this process's first-run mutation. On an already
+  // initialized install this is a no-op and adds no extra startup work. `web` never passes
+  // --force or --dry-run; it always uses the default non-forced, mutating path.
+  const bootstrap = ensureInitialized();
+  if (bootstrap.status === "refused") {
+    for (const line of describeNewerSchemaRefusal(bootstrap.schemaVersion)) console.error(line);
+    process.exit(1);
+  }
+  if (bootstrap.status === "bootstrapped") {
+    if (bootstrap.phase === "in-progress") console.log("Resuming an interrupted initialization.");
+    const detected = bootstrap.detected ?? [];
+    if (detected.length === 0) {
+      console.log("RoboRepo initialized.");
+    } else {
+      const names = detected.map(harnessDisplayName);
+      console.log(`RoboRepo initialized. Detected harnesses: ${names.join(", ")}.`);
+    }
+  }
+
   if (options.detach) {
     const port = await startDetachedPortal(options.port, { allowPortFallback, portExplicit: options.portExplicit });
     const detachedPortalUrl = `http://127.0.0.1:${port}`;

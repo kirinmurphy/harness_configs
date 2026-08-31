@@ -34,8 +34,13 @@ Requires **Node.js 20+**.
 
 ```sh
 npm install -g codethings-roborepo-alpha
-roborepo init
+roborepo web
 ```
+
+The first `roborepo web` performs the same one-time machine setup as `roborepo init` — it creates the
+workspace/state directories, detects your installed agent harnesses, and records initialization —
+then opens the portal. On later runs `web` just starts the portal. `roborepo init` remains the
+explicit alternative first-run entry point if you prefer the terminal handoff.
 
 Then use either entry point:
 

@@ -33,7 +33,10 @@ const {
   WORKFLOW_VERSION,
 } = await import("../cli/initialization-state.mjs");
 const { initializationStatePath } = await import("../cli/state-paths.mjs");
-const { browserRedirectMessage, extractPortalUrl } = await import("../cli/initialize.mjs");
+const { harnessStatePath } = await import("../cli/state-paths.mjs");
+const { workspaceRoot, stateRoot } = await import("../cli/roots.mjs");
+const { ensureInitialized, describeNewerSchemaRefusal } = await import("../cli/initialization-bootstrap.mjs");
+const { browserRedirectMessage, extractPortalUrl, resolveFirstRunConfigurationMode } = await import("../cli/initialize.mjs");
 
 try {
   testMissingState();
@@ -49,6 +52,14 @@ try {
   testNewerRecordIsNeverOverwritten();
   testBrowserRedirectMessage();
   testInitDryRunShowsConfigurationChoice();
+  testEnsureInitializedBootstrapsMissing();
+  testEnsureInitializedIsIdempotent();
+  testEnsureInitializedResumesInProgress();
+  testEnsureInitializedRefusesNewerSchema();
+  testEnsureInitializedDryRunDoesNotMutate();
+  testEnsureInitializedForceRebootstrapsComplete();
+  testWebRefusesNewerSchemaThroughRealCli();
+  testResolveFirstRunConfigurationMode();
   console.log("initialization lifecycle checks passed");
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -250,4 +261,180 @@ function testInitDryRunShowsConfigurationChoice() {
   assert.equal(result.status, 0, `init --dry-run failed:\n${result.stdout}${result.stderr}`);
   assert.match(result.stdout, /open browser setup/i, "init must make browser setup the first-run entrypoint");
   assert.match(result.stdout, /CLI fallback/i, "init must still expose the terminal fallback");
+}
+
+// --- The shared bootstrap primitive that both `roborepo init` and `roborepo web` call. The
+// porting plan (portal-web-first-run-bootstrap.md) exists so the two first-run entry points cannot
+// drift: first-run `web` must produce the same machine state as first-run `init`, and an
+// already-initialized `web` must be a no-op. These tests exercise the primitive directly rather
+// than through a PTY so they stay CI-runnable. ---
+function testEnsureInitializedBootstrapsMissing() {
+  resetState();
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  fs.rmSync(harnessStatePath, { force: true });
+  const result = ensureInitialized();
+  assert.equal(result.status, "bootstrapped", "a missing record must bootstrap");
+  assert.equal(result.phase, "missing");
+  assert.ok(Array.isArray(result.detected), "bootstrap must report detected harness ids");
+
+  const record = readInitializationState();
+  assert.equal(record.status, "complete", "bootstrap must record completion");
+  assert.ok(record.completedAt, "bootstrap must stamp completion");
+  assert.equal(initializationPhase(), "complete");
+  assert.ok(fs.existsSync(workspaceRoot), "bootstrap must create the workspace root");
+  assert.ok(fs.existsSync(stateRoot), "bootstrap must create the state root");
+  assert.ok(fs.existsSync(harnessStatePath), "bootstrap must persist harness discovery state");
+}
+
+// Re-running after a successful bootstrap must not replay the procedural steps or rewrite the
+// record's timestamps — otherwise every `roborepo web` after the first would look like a fresh
+// initialization and destroy the "when did the user first start" provenance.
+function testEnsureInitializedIsIdempotent() {
+  resetState();
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  fs.rmSync(harnessStatePath, { force: true });
+  ensureInitialized();
+  const before = readInitializationState();
+
+  const result = ensureInitialized();
+  assert.equal(result.status, "noop", "a completed bootstrap must be a no-op on re-entry");
+  assert.equal(result.phase, "complete");
+  const after = readInitializationState();
+  assert.deepEqual(after, before, "re-entry must not rewrite the initialization record");
+}
+
+// An interrupted run (status in-progress, no completedAt) must be resumed to completion while
+// preserving the original startedAt — the same preservation rule as `init`'s beginInitialization.
+function testEnsureInitializedResumesInProgress() {
+  resetState();
+  beginInitialization({ now: () => "2020-01-01T00:00:00.000Z" });
+  assert.equal(initializationPhase(), "in-progress");
+
+  const result = ensureInitialized();
+  assert.equal(result.status, "bootstrapped", "an in-progress record must resume the bootstrap");
+  assert.equal(result.phase, "in-progress", "the starting phase must be reported, not the final one");
+  const record = readInitializationState();
+  assert.equal(record.status, "complete");
+  assert.equal(record.startedAt, "2020-01-01T00:00:00.000Z", "resume must preserve the original startedAt");
+}
+
+// A record written by a newer RoboRepo must be refused without overwrite — the same downgrade
+// protection `init` already has, now shared with `web`. `ensureInitialized` must report the refusal
+// structurally so the caller can explain it rather than throwing a raw stack trace.
+function testEnsureInitializedRefusesNewerSchema() {
+  resetState();
+  const newer = {
+    schemaVersion: 99,
+    workflowVersion: 9,
+    status: "complete",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    completedAt: "2026-01-01T00:01:00.000Z",
+  };
+  fs.mkdirSync(path.dirname(initializationStatePath), { recursive: true });
+  fs.writeFileSync(initializationStatePath, `${JSON.stringify(newer)}\n`);
+
+  const result = ensureInitialized();
+  assert.equal(result.status, "refused", "a newer-schema record must refuse the bootstrap");
+  assert.equal(result.schemaVersion, 99);
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(initializationStatePath, "utf8")),
+    newer,
+    "a refused bootstrap must leave the newer record byte-for-byte intact",
+  );
+  const lines = describeNewerSchemaRefusal(result.schemaVersion);
+  assert.ok(lines.some((l) => /newer version of RoboRepo/i.test(l)), "refusal presentation must explain the downgrade");
+  resetState();
+}
+
+// --dry-run reports the procedural steps without mutating any state. Shared by `init --dry-run`;
+// `web` never passes dryRun.
+function testEnsureInitializedDryRunDoesNotMutate() {
+  resetState();
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  fs.rmSync(harnessStatePath, { force: true });
+
+  const result = ensureInitialized({ dryRun: true });
+  assert.equal(result.status, "dryrun");
+  assert.ok(Array.isArray(result.steps) && result.steps.length >= 3, "dry run must enumerate the procedural steps");
+  assert.equal(readInitializationState(), null, "dry run must not write the initialization record");
+  assert.ok(!fs.existsSync(workspaceRoot), "dry run must not create the workspace root");
+  assert.ok(!fs.existsSync(harnessStatePath), "dry run must not persist harness state");
+}
+
+// `--force` (init only) re-runs the procedural bootstrap on an already-complete record. It must
+// return `bootstrapped` (not `noop`), still end on a complete record, and preserve the original
+// startedAt — the same provenance rule as every other re-entry. Nothing about a completed install
+// exempts it from `--force`'s explicit "re-run initialization" meaning.
+function testEnsureInitializedForceRebootstrapsComplete() {
+  resetState();
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  fs.rmSync(harnessStatePath, { force: true });
+  ensureInitialized(); // bootstrap a complete record
+  const before = readInitializationState();
+
+  const result = ensureInitialized({ force: true });
+  assert.equal(result.status, "bootstrapped", "force must re-run the bootstrap on a complete record");
+  const after = readInitializationState();
+  assert.equal(after.status, "complete", "a forced re-run must end complete");
+  assert.equal(after.startedAt, before.startedAt, "a forced re-run must preserve the original startedAt");
+  assert.ok(fs.existsSync(workspaceRoot), "a forced re-run must still ensure the workspace root");
+  assert.ok(fs.existsSync(harnessStatePath), "a forced re-run must still refresh harness discovery");
+}
+
+// `roborepo web` must refuse a newer-schema initialization record exactly like `roborepo init`
+// does — including through the real CLI, where the refusal happens before any portal/reuse logic.
+// The in-process `testEnsureInitializedRefusesNewerSchema` proves the primitive; this proves the
+// `web` command's public behavior: exit 1, a plain-language explanation, and the record left
+// byte-for-byte intact. No portal is started, so no port is needed and this stays CI-runnable.
+function testWebRefusesNewerSchemaThroughRealCli() {
+  resetState();
+  const newer = {
+    schemaVersion: 99,
+    workflowVersion: 9,
+    status: "complete",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    completedAt: "2026-01-01T00:01:00.000Z",
+  };
+  fs.mkdirSync(path.dirname(initializationStatePath), { recursive: true });
+  fs.writeFileSync(initializationStatePath, `${JSON.stringify(newer)}\n`);
+
+  const env = { ...process.env, HOME: tmp, ROBOREPO_STATE_DIR: stateDir, ROBOREPO_PRESETS_ONBOARD: "skip" };
+  const result = spawnSync(process.execPath, [cli, "web", "--no-open", "--port", "0", "--allow-zero-port"], { cwd: repoRoot, env, encoding: "utf8", input: "" });
+  assert.equal(result.status, 1, "web must refuse a newer-schema record");
+  assert.match(result.stderr, /newer version of RoboRepo/i, "web must explain the refusal");
+  assert.doesNotMatch(result.stderr, /at writeInitializationState/, "web must not surface a raw stack trace");
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(initializationStatePath, "utf8")),
+    newer,
+    "web must leave the newer record byte-for-byte intact",
+  );
+  resetState();
+}
+
+// The browser-vs-CLI first-run configuration decision, as a pure function of the spawned
+// `web --detach` result. The PTY side effects around it (welcome banner, presets onboarding,
+// stdout relay) cannot run in CI by design, but the rule they wrap is testable without a terminal:
+// a successful spawn hands the user to the browser with the portal URL the child actually
+// reported, and anything else falls back to the CLI. This is the same split resolveFirstRunRoute
+// makes for the entry-point routing decision.
+function testResolveFirstRunConfigurationMode() {
+  // Successful spawn -> browser, reusing the actual portal URL from web's output.
+  const browser = resolveFirstRunConfigurationMode({
+    spawnStatus: 0,
+    spawnOutput: "roborepo portal: http://127.0.0.1:4319  (detached)",
+  });
+  assert.equal(browser.mode, "browser", "a successful web --detach must hand off to the browser");
+  assert.equal(browser.url, "http://127.0.0.1:4319", "browser handoff must use the portal URL web reported");
+
+  // Successful spawn but the portal URL is absent from output -> browser with the documented
+  // default URL, never a crash.
+  const noUrl = resolveFirstRunConfigurationMode({ spawnStatus: 0, spawnOutput: "" });
+  assert.equal(noUrl.mode, "browser");
+  assert.equal(noUrl.url, "http://127.0.0.1:4317", "missing portal URL must fall back to the default");
+
+  // Failed spawn -> CLI fallback, regardless of what was printed.
+  const fallback = resolveFirstRunConfigurationMode({ spawnStatus: 1, spawnOutput: "boom" });
+  assert.equal(fallback.mode, "cli", "a failed web --detach must fall back to the CLI");
+  const signalFallback = resolveFirstRunConfigurationMode({ spawnStatus: null, spawnOutput: "" });
+  assert.equal(signalFallback.mode, "cli", "a signal-terminated web --detach must fall back to the CLI");
 }

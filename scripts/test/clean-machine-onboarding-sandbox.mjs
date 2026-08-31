@@ -145,6 +145,141 @@ grep -q '"startedAt": "'"$original_started_at"'"' "$state/initialization.json" |
 roborepo doctor --quiet
 echo "case 7: OK"
 
+# --- Case 8: first-run \`roborepo web\` must bootstrap a clean install — no prior \`init\` required.
+# This is the headline behavior of the porting plan: \`npm install -g\` then \`roborepo web\` must
+# produce the same procedural machine state as \`roborepo init\` (workspace/state roots, persisted
+# harness discovery, a \`complete\` initialization record) and then start the portal. The second
+# invocation must be a no-op that does not rewrite the record's timestamps. ---
+echo "case 8: first-run web bootstraps a clean install"
+fresh_env case8
+if [ -e "$state/initialization.json" ]; then
+  echo "FAIL: fresh install must not have an initialization record" >&2
+  exit 1
+fi
+mkdir -p "/tmp/rr-case8-fakebin"
+cat > "/tmp/rr-case8-fakebin/claude" <<'SH'
+#!/bin/sh
+echo "fake claude"
+SH
+chmod +x "/tmp/rr-case8-fakebin/claude"
+export PATH="/tmp/rr-case8-fakebin:$PATH"
+web_port=14321
+roborepo web --no-open --port "$web_port" --detach >/tmp/rr-case8-web.log 2>&1
+test -f "$state/initialization.json" || { echo "FAIL: first-run web did not write an initialization record" >&2; exit 1; }
+grep -q '"status": "complete"' "$state/initialization.json" || { echo "FAIL: first-run web did not reach initialization complete" >&2; exit 1; }
+test -d "$workspace" || { echo "FAIL: first-run web did not create the workspace root" >&2; exit 1; }
+test -f "$workspace/workspace.json" || { echo "FAIL: first-run web did not create the workspace manifest" >&2; exit 1; }
+test -f "$state/harnesses/state.json" || { echo "FAIL: first-run web did not persist harness discovery" >&2; exit 1; }
+grep -q '"enabled": true' "$state/harnesses/state.json" || { echo "FAIL: first-run web harness discovery did not record the fake harness" >&2; exit 1; }
+started_before=$(grep -o '"startedAt": "[^"]*"' "$state/initialization.json")
+completed_before=$(grep -o '"completedAt": "[^"]*"' "$state/initialization.json")
+# A second web must be a no-op: no replay, no timestamp rewrite.
+roborepo web --no-open --port "$web_port" --detach >/tmp/rr-case8-web2.log 2>&1
+started_after=$(grep -o '"startedAt": "[^"]*"' "$state/initialization.json")
+completed_after=$(grep -o '"completedAt": "[^"]*"' "$state/initialization.json")
+[ "$started_before" = "$started_after" ] || { echo "FAIL: second web rewrote startedAt" >&2; exit 1; }
+[ "$completed_before" = "$completed_after" ] || { echo "FAIL: second web rewrote completedAt" >&2; exit 1; }
+roborepo web stop --port "$web_port" >/dev/null 2>&1 || true
+echo "case 8: OK"
+
+# --- Case 9: first-run \`roborepo web\` on an \`in-progress\` record must resume it to completion,
+# preserving the original startedAt — the same resume rule case 7 proves for \`init\`, now checked
+# through the web path with a real installed binary. ---
+echo "case 9: first-run web resumes an in-progress record"
+fresh_env case9
+original_started_at="2020-01-01T00:00:00.000Z"
+cat > "$state/initialization.json" <<JSON
+{
+  "schemaVersion": 1,
+  "workflowVersion": 1,
+  "status": "in-progress",
+  "startedAt": "$original_started_at",
+  "completedAt": null
+}
+JSON
+web_port=14322
+roborepo web --no-open --port "$web_port" --detach >/tmp/rr-case9-web.log 2>&1
+grep -q '"status": "complete"' "$state/initialization.json" || { echo "FAIL: web resume did not reach complete" >&2; exit 1; }
+grep -q '"startedAt": "'"$original_started_at"'"' "$state/initialization.json" || { echo "FAIL: web resume must preserve the original startedAt, not reset it" >&2; exit 1; }
+roborepo web stop --port "$web_port" >/dev/null 2>&1 || true
+echo "case 9: OK"
+
+# --- Case 10: \`roborepo web\` must refuse a newer-schema initialization record like \`init\` does —
+# exit nonzero, explain the downgrade, and leave the record byte-for-byte intact. Refusal must
+# happen before any portal/reuse logic (this is the downgrade-protection half of the shared
+# bootstrap, now checked through the real installed binary). ---
+echo "case 10: web refuses a newer-schema record"
+fresh_env case10
+cat > "$state/initialization.json" <<JSON
+{
+  "schemaVersion": 99,
+  "workflowVersion": 9,
+  "status": "complete",
+  "startedAt": "2026-01-01T00:00:00.000Z",
+  "completedAt": "2026-01-01T00:01:00.000Z"
+}
+JSON
+web_port=14323
+if roborepo web --no-open --port "$web_port" --detach >/tmp/rr-case10-web.log 2>&1; then
+  echo "FAIL: web must refuse a newer-schema record" >&2
+  exit 1
+fi
+grep -qi 'newer version of RoboRepo' /tmp/rr-case10-web.log || { echo "FAIL: web refusal must explain the downgrade" >&2; exit 1; }
+grep -q '"schemaVersion": 99' "$state/initialization.json" || { echo "FAIL: web refusal must leave the newer record intact" >&2; exit 1; }
+echo "case 10: OK"
+
+# --- Case 11: \`init --force\` on a complete install re-runs the procedural bootstrap. "Force"
+# means "re-run initialization", not "reset provenance": the record must end complete and keep the
+# original startedAt. The in-process suite proves the primitive; this checks the real CLI flag. ---
+echo "case 11: init --force re-runs bootstrap on a complete install"
+fresh_env case11
+roborepo init
+grep -q '"status": "complete"' "$state/initialization.json" || { echo "FAIL: init did not complete" >&2; exit 1; }
+started_before=$(grep -o '"startedAt": "[^"]*"' "$state/initialization.json")
+roborepo init --force
+grep -q '"status": "complete"' "$state/initialization.json" || { echo "FAIL: init --force did not end complete" >&2; exit 1; }
+started_after=$(grep -o '"startedAt": "[^"]*"' "$state/initialization.json")
+[ "$started_before" = "$started_after" ] || { echo "FAIL: init --force rewrote startedAt" >&2; exit 1; }
+echo "case 11: OK"
+
+# --- Case 12: first-run \`init\` and first-run \`web\` must produce equivalent procedural machine
+# state for the same harness fixture. Run both on identical fresh envs with one fake claude, then
+# compare the initialization record (schemaVersion/workflowVersion/status) and persisted harness
+# discovery (claude enabled). This is the plan's "init and web cannot drift" guarantee asserted
+# end to end, not just in-process. ---
+echo "case 12: init and web produce equivalent procedural state"
+fresh_env case12a
+mkdir -p "/tmp/rr-case12-fakebin"
+cat > "/tmp/rr-case12-fakebin/claude" <<'SH'
+#!/bin/sh
+echo "fake claude"
+SH
+chmod +x "/tmp/rr-case12-fakebin/claude"
+export PATH="/tmp/rr-case12-fakebin:$PATH"
+roborepo init
+cp "$state/initialization.json" /tmp/rr-case12-init-record.json
+cp "$state/harnesses/state.json" /tmp/rr-case12-init-harness.json
+
+fresh_env case12b
+export PATH="/tmp/rr-case12-fakebin:$PATH"
+web_port=14324
+roborepo web --no-open --port "$web_port" --detach >/tmp/rr-case12-web.log 2>&1
+roborepo web stop --port "$web_port" >/dev/null 2>&1 || true
+
+# Both records must agree on schema, workflow, and completion.
+for f in /tmp/rr-case12-init-record.json "$state/initialization.json"; do
+  grep -q '"schemaVersion": 1' "$f" || { echo "FAIL: record schema mismatch in $f" >&2; exit 1; }
+  grep -q '"workflowVersion": 1' "$f" || { echo "FAIL: record workflow mismatch in $f" >&2; exit 1; }
+  grep -q '"status": "complete"' "$f" || { echo "FAIL: record not complete in $f" >&2; exit 1; }
+done
+# Both harness states must have claude enabled.
+for f in /tmp/rr-case12-init-harness.json "$state/harnesses/state.json"; do
+  grep -q '"claude"' "$f" || { echo "FAIL: harness state lacks claude in $f" >&2; exit 1; }
+done
+grep -q '"enabled": true' /tmp/rr-case12-init-harness.json || { echo "FAIL: init harness state did not enable claude" >&2; exit 1; }
+grep -q '"enabled": true' "$state/harnesses/state.json" || { echo "FAIL: web harness state did not enable claude" >&2; exit 1; }
+echo "case 12: OK"
+
 echo "clean-machine onboarding sandbox passed"
 `;
 }

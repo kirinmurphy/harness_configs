@@ -29,10 +29,15 @@ This installs the core CLI plus the shared baseline. It detects which harnesses 
 Set up the installation for first use:
 
 ```sh
-roborepo init
+roborepo web
 ```
 
-That workflow turns on or skips optional behavior packages such as skills, hooks, commands, rules, MCP defaults, permissions, and telemetry. To change those choices later, reopen the chooser with `roborepo library` — it shows selected options checked and unselected options unchecked.
+The first `roborepo web` performs the same one-time procedural setup as `roborepo init` — it creates
+the workspace/state directories, detects installed harnesses, records initialization, and opens the
+portal. `roborepo init` is the explicit alternative that adds a browser-or-CLI configuration chooser
+step. That workflow turns on or skips optional behavior packages such as skills, hooks, commands,
+rules, MCP defaults, permissions, and telemetry. To change those choices later, reopen the chooser
+with `roborepo library` — it shows selected options checked and unselected options unchecked.
 
 The installer has one materialization model: copy owned files, render generated rules, and preserve
 user-authored root config unless the selected collision policy says otherwise. See

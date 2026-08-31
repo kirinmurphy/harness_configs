@@ -1,0 +1,79 @@
+/* Home page — the first-run landing surface. Everything here reuses the shared palette tokens
+ * from portal/shared/base.css (--panel, --raised, --line, --accent, --ink, --dim); there are no
+ * page-local hex colors. Status colors (--ok/--warn/--danger) stay reserved for status meaning.
+ */
+main.home-main {
+  padding-top: 18px;
+  padding-bottom: 24px;
+}
+
+/* Welcome block: the page's only <h1>, followed by a lead line capped so the whole intro reads
+ * as a short greeting rather than a paragraph. */
+.home-welcome {
+  max-width: 640px;
+  margin: 32px 0 24px;
+}
+.home-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.home-lead {
+  margin: 0;
+  color: var(--dim);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-normal);
+  max-width: 56ch;
+}
+
+/* Destination cards: the four primary entry points, laid out 2x2 at desktop width (so each
+ * description stays within ~two lines) and stacked on narrow screens. Each card is a single
+ * full-bleed link so the whole tile is primary navigation. */
+.home-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  max-width: 900px;
+}
+@media (max-width: 640px) {
+  .home-cards {
+    grid-template-columns: 1fr;
+  }
+}
+.home-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+/* Icon treatment: accent-tinted glyph marks the card as an entry point without inventing a
+ * per-section color. Titles/body stay on the ink scale; only the glyph carries the accent. */
+.home-card-icon {
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.home-card-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.home-card-desc {
+  color: var(--dim);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-normal);
+}
+/* Hover/focus: raised surface + accent emphasis — the reusable highlight pattern. A visible
+ * focus ring on the whole card is required for keyboard navigation. */
+.home-card:hover {
+  background: var(--raised);
+  border-color: var(--accent);
+}
+.home-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

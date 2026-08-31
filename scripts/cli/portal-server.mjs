@@ -51,16 +51,17 @@ const STATIC_TYPES = {
 // browser nav (portal/shared/theme.js) reads this list from window.ROBOREPO_PORTAL, injected by
 // pageHtml() below, so there is nothing to hand-sync client-side. See docs/user/reference/portal.md.
 // Each page's HTML is just its index.html read from disk (mirrors static assets). `default: true`
-// marks the page served at "/" (what `roborepo web` opens). Keep "/config" as a stable alias for
-// existing docs, tests, and saved browser links.
+// marks the page served at "/" (what `roborepo web` opens). Home owns "/" as its canonical route;
+// Agents lives at canonical "/config". Order here is the global nav order.
 export const PAGES = [
+  { path: "/", id: "home", title: "Home", dir: "home", default: true },
+  { path: "/config", id: "config", title: "Agents", dir: "config" },
   { path: "/plans", id: "plans", title: "Plans", dir: "plans" },
   // Path and title say "tokens" while id and dir say "telemetry", deliberately: the system captures
   // agent-session telemetry broadly (test-failure streaks, edit/read counts, phase signals, tool
   // provenance) and tokens are one field of it — but token cost is what a user opens this page to
   // read. The identifier stays accurate to the system; the URL and tab stay honest about the draw.
   { path: "/tokens", id: "telemetry", title: "Tokens", dir: "telemetry" },
-  { path: "/", id: "config", title: "Agents", dir: "config", default: true },
   {
     path: "/localhoster",
     id: "localhoster",
@@ -68,16 +69,7 @@ export const PAGES = [
     dir: "localhoster",
   },
 ];
-const PAGE_BY_PATH = new Map(
-  PAGES.flatMap((p) =>
-    p.id === "config"
-      ? [
-          [p.path, p],
-          ["/config", p],
-        ]
-      : [[p.path, p]],
-  ),
-);
+const PAGE_BY_PATH = new Map(PAGES.map((p) => [p.path, p]));
 // Shape shared by /api/portal/status and the browser-injected manifest so both can never drift.
 const pageManifest = () =>
   PAGES.map(({ path, id, title }) => ({ path, id, title }));

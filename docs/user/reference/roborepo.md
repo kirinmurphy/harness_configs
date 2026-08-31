@@ -380,7 +380,7 @@ id, heaviest turns surfaced, plus a copy-paste analysis prompt).
 > `telemetry-transcript.mjs` — without it, Codex MCP usage is undercounted.
 
 `roborepo web [--detach] [--no-open] [--port <n>]` (default `4317`) starts a dependency-free local
-web portal on `127.0.0.1` and opens `/config` by default (`--detach` forks it into the background and
+web portal on `127.0.0.1` and opens the Home page by default (`--detach` forks it into the background and
 writes the PID file; this is what `roborepo web` uses under the hood). On a fresh install, before
 anything else it runs the shared procedural bootstrap (`ensureInitialized()`) so `npm install -g` →
 `roborepo web` initializes and opens the portal in one step; on an initialized install this is a

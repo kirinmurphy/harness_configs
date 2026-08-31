@@ -40,6 +40,42 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y expect
 
+      # Install the devDependency graph (@playwright/test is a test-only dependency — the shipped
+      # npm package stays zero-dependency via the files whitelist + no `dependencies` field).
+      # `npm ci` needs the lockfile, so cache node_modules keyed on it.
+      - name: cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: install dev dependencies
+        run: npm ci
+
+      # Playwright browsers live in the machine-local ms-playwright cache (~/.cache on Linux,
+      # ~/Library/Caches on macOS) — a ~200MB download per runner unless cached. Cache it keyed on
+      # the lockfile so the @playwright/test version bump that would change the browser build
+      # invalidates the entry. The cache is restored before the install step below so CI only pays
+      # the download on a cache miss.
+      - name: cache playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/Library/Caches/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # The portal UI suite needs Chromium actually installed. Plain install on macOS; --with-deps
+      # on Linux also pulls the system libraries Chromium needs (the check job already installs
+      # expect on Linux, and this is the same apt path).
+      - name: install playwright chromium
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            npx playwright install --with-deps chromium
+          else
+            npx playwright install chromium
+          fi
+
       - name: local CI parity gate
         run: npm run check
 

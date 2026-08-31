@@ -366,7 +366,7 @@ function printIntroHelp() {
 async function maybeLaunchPortal() {
   console.log("\nWeb portal:");
   console.log("  roborepo web             open the portal and keep the server running in the background");
-  console.log("  URL: http://127.0.0.1:4317/config");
+  console.log("  URL: http://127.0.0.1:4317");
 
   const prompter = makePrompter();
   try {

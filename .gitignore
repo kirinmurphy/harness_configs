@@ -30,6 +30,13 @@
 # Local backup output from install script.
 .backups/
 
+# devDependency install (Playwright test tooling) — never committed; the shipped npm package
+# stays zero-dependency via the files whitelist + no `dependencies` field.
+node_modules/
+
+# Playwright output (portal-ui browser suite) — last-run state + failure screenshots.
+test-results/
+
 # Skill export bundles produced by `harness_helper --export-skill` (shareable artifacts,
 # not source). Pattern guards against accidentally committing a test/export run.
 global_agent_skills_*.zip

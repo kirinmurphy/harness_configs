@@ -38,6 +38,7 @@
     "pack:dry-run": "npm pack --dry-run",
     "pack:smoke": "npm pack",
     "test:package-install": "node scripts/test/package-install-smoke.mjs",
+    "test:portal-ui": "node scripts/test/portal-ui/run.mjs",
     "test:clean-machine-install-sandbox": "node scripts/test/clean-machine-install-sandbox.mjs",
     "test:clean-machine": "node scripts/test/clean-machine-container-check.mjs",
     "test:clean-machine-permissions-sandbox": "node scripts/test/clean-machine-permissions-sandbox.mjs",
@@ -52,5 +53,8 @@
     "node": ">=20"
   },
   "license": "MIT",
-  "private": false
+  "private": false,
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
+  }
 }

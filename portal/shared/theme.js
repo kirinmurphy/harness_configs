@@ -36,7 +36,7 @@ const PORTAL_PAGES = window.ROBOREPO_PORTAL.pages;
       const link = tpl("tpl-nav-link");
       link.href = p.path;
       link.textContent = p.title;
-      if (p.path === here || (p.path === "/" && here === "/config")) link.classList.add("active");
+      if (p.path === here) link.classList.add("active");
       return link;
     }),
   );

@@ -39,5 +39,16 @@ else
   echo "skip: windows installer parity (pwsh unavailable)"
 fi
 
+# Portal UI browser suite (Playwright). Same availability-gate pattern as docker/pwsh above:
+# run it when the Chromium browser is installed (it lives in the machine-local ms-playwright
+# cache, not in node_modules), otherwise print a visible skip line. The runner re-checks too, so
+# `npm run test:portal-ui` is safe to invoke directly on a machine without the browser.
+if node scripts/test/portal-ui/has-browser.mjs >/dev/null 2>&1; then
+  run npm run --silent test:portal-ui
+else
+  echo ""
+  echo "skip: portal UI browser suite (chromium not installed; run npx playwright install chromium)"
+fi
+
 echo ""
 echo "CI checks passed"

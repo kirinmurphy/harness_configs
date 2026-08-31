@@ -53,16 +53,59 @@ test.describe("portal home (portal-onboarding-home)", () => {
       (el) => getComputedStyle(el).gridTemplateColumns,
     );
     expect(columns.trim().split(/\s+/).length).toBe(1);
-    // Every card icon uses the enlarged xxl step.
+    // Every card icon uses the enlarged xxxl step.
     const sizes = await page.locator(".home-card portal-icon").evaluateAll((els) =>
       els.map((el) => el.getAttribute("size")),
     );
-    expect(sizes).toEqual(["xxl", "xxl", "xxl", "xxl"]);
+    expect(sizes).toEqual(["xxxl", "xxxl", "xxxl", "xxxl"]);
     const iconHeight = await page
       .locator(".home-card portal-icon svg")
       .first()
       .evaluate((svg) => svg.getAttribute("height"));
-    expect(Number(iconHeight)).toBeGreaterThanOrEqual(30);
+    expect(Number(iconHeight)).toBeGreaterThanOrEqual(40);
+  });
+
+  test("card layout is icon column 1, title row 1, description row 2", async ({ page }) => {
+    await page.goto("/");
+    const layout = await page.locator(".home-card").first().evaluate((card) => {
+      const cs = getComputedStyle(card);
+      const icon = card.querySelector(".home-card-icon");
+      const title = card.querySelector(".home-card-title");
+      const desc = card.querySelector(".home-card-desc");
+      const g = (el) => getComputedStyle(el);
+      const l = (el) => Math.round(el.getBoundingClientRect().left);
+      const t = (el) => Math.round(el.getBoundingClientRect().top);
+      return {
+        display: cs.display,
+        gridCols: cs.gridTemplateColumns,
+        gridRows: cs.gridTemplateRows,
+        // grid-placement properties serialize as strings (e.g. "1"); normalize to numbers.
+        iconCol: Number(g(icon).gridColumnStart),
+        iconRow: Number(g(icon).gridRowStart),
+        titleCol: Number(g(title).gridColumnStart),
+        titleRow: Number(g(title).gridRowStart),
+        descCol: Number(g(desc).gridColumnStart),
+        descRow: Number(g(desc).gridRowStart),
+        // Spatial proof: title and description both sit right of the icon, description below title.
+        iconLeft: l(icon),
+        titleLeft: l(title),
+        descLeft: l(desc),
+        titleTop: t(title),
+        descTop: t(desc),
+      };
+    });
+    expect(layout.display).toBe("grid");
+    expect(layout.gridCols.trim().split(/\s+/).length).toBe(2);
+    // Icon owns column 1 and spans both rows; title/description share column 2 on rows 1/2.
+    expect(layout.iconCol).toBe(1);
+    expect(layout.titleCol).toBe(2);
+    expect(layout.titleRow).toBe(1);
+    expect(layout.descCol).toBe(2);
+    expect(layout.descRow).toBe(2);
+    // Spatial: text is to the right of the icon, description is below the title.
+    expect(layout.titleLeft).toBeGreaterThan(layout.iconLeft);
+    expect(layout.descLeft).toBeGreaterThan(layout.iconLeft);
+    expect(layout.descTop).toBeGreaterThan(layout.titleTop);
   });
 
   test("internal content column is 1024px wide and centered", async ({ page }) => {

@@ -26,7 +26,8 @@ main.home-main {
 
 /* Destination cards: the four primary entry points, stacked in a single column so each reads as
  * a full-width row. Each card is a single full-bleed link so the whole tile is primary
- * navigation. */
+ * navigation. Inside each card is an explicit two-column grid: the icon owns column 1 (spanning
+ * both text rows, vertically centered) and the title/description fill column 2 on rows 1 and 2. */
 .home-cards {
   display: grid;
   grid-template-columns: 1fr;
@@ -34,9 +35,11 @@ main.home-main {
   max-width: 900px;
 }
 .home-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 18px;
+  align-items: start;
   padding: 20px;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -45,24 +48,23 @@ main.home-main {
   text-decoration: none;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
-/* Icon treatment: accent-tinted glyph in a fixed left column; the title/description read in a
- * column to its right. The glyph keeps its own horizontal space so it never squeezes the text. */
+/* Icon treatment: accent-tinted glyph in a fixed left column. It spans both text rows so it stays
+ * centered against the title+description pair rather than pinned to the top line. */
 .home-card-icon {
   color: var(--accent);
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-.home-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: center;
 }
 .home-card-title {
+  grid-column: 2;
+  grid-row: 1;
   font-size: var(--text-md);
   font-weight: 600;
 }
 .home-card-desc {
+  grid-column: 2;
+  grid-row: 2;
   color: var(--dim);
   font-size: var(--text-sm);
   line-height: var(--line-height-normal);

@@ -381,6 +381,7 @@ portal-info-icon,
   --icon-lg: 24px;
   --icon-xl: 30px;
   --icon-xxl: 40px;
+  --icon-xxxl: 48px;
 }
 portal-icon {
   display: inline-flex;

@@ -47,7 +47,7 @@ import { buildAnalysisPrompt } from "../harnesses/transcript-locate.mjs";
 import { insightsSummary } from "./telemetry-insights.mjs";
 import { hookFilePath, writeHooksFile } from "./hook-composition.mjs";
 import { getHarnessProvider, hasHarnessProvider, listHarnessProviders, harnessDisplayName } from "../harnesses/registry.mjs";
-import { ensureInitialized, describeNewerSchemaRefusal } from "./initialization-bootstrap.mjs";
+import { ensureInitialized, finalizeInitialization, describeNewerSchemaRefusal } from "./initialization-bootstrap.mjs";
 
 export async function telemetryCommand(rest) {
   const [sub, ...args] = rest;
@@ -701,12 +701,18 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
   // takes the no-op path instead of racing this process's first-run mutation. On an already
   // initialized install this is a no-op and adds no extra startup work. `web` never passes
   // --force or --dry-run; it always uses the default non-forced, mutating path.
+  //
+  // Unlike `init`, `web` finalizes the initialization record immediately after the procedural
+  // bootstrap: starting the portal IS web's first-run destination, so there is no separate
+  // configuration step to wait for. If that configuration step is interrupted or fails, only the
+  // in-progress record remains, and a later `roborepo init` resumes it.
   const bootstrap = ensureInitialized();
   if (bootstrap.status === "refused") {
     for (const line of describeNewerSchemaRefusal(bootstrap.schemaVersion)) console.error(line);
     process.exit(1);
   }
   if (bootstrap.status === "bootstrapped") {
+    finalizeInitialization();
     if (bootstrap.phase === "in-progress") console.log("Resuming an interrupted initialization.");
     const detected = bootstrap.detected ?? [];
     if (detected.length === 0) {

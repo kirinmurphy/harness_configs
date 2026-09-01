@@ -1,15 +1,18 @@
 // `roborepo init` — the explicit user-facing first-run workflow.
 //
 // This is an orchestrator, not an implementation. The procedural machine bootstrap (workspace/state
-// roots, persisted harness discovery, the initialization record) lives in
+// roots, persisted harness discovery) lives in
 // initialization-bootstrap.mjs's `ensureInitialized()`, which `init` and `web` share so the two
 // first-run entry points cannot drift. init's whole remaining job is presentation: run the shared
 // bootstrap, refresh the harness summary, hand the user to the browser or the CLI configuration
 // surface, and give them one thing to read at the end.
 //
-// Failure policy: `ensureInitialized()` records `complete` only after the procedural steps return.
-// Everything init adds after that (browser handoff, CLI config) is configuration, not required
-// machine state — the portal and `roborepo library` / package commands both operate without it.
+// Failure policy: `ensureInitialized()` performs the bootstrap but deliberately leaves the record
+// `in-progress` — finalizing is a separate, explicit step. init calls `finalizeInitialization()`
+// only after its browser/CLI configuration step returns successfully. If that configuration is
+// interrupted or fails, the record stays `in-progress`, so a later `roborepo init` resumes instead
+// of reporting "already initialized". (web, by contrast, finalizes immediately after the bootstrap,
+// since starting the portal is its first-run destination.)
 
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -17,7 +20,7 @@ import { repoRoot } from "./paths.mjs";
 import { harnessDisplayName } from "../harnesses/registry.mjs";
 import { presetsOnboard } from "./presets.mjs";
 import { confirmYesNo, makePrompter } from "./skill-lib.mjs";
-import { ensureInitialized, describeNewerSchemaRefusal } from "./initialization-bootstrap.mjs";
+import { ensureInitialized, finalizeInitialization, describeNewerSchemaRefusal } from "./initialization-bootstrap.mjs";
 
 const DEFAULT_PORTAL_URL = "http://127.0.0.1:4317";
 const LOCAL_PORTAL_URL_RE = /http:\/\/127\.0\.0\.1:\d+/;
@@ -163,8 +166,9 @@ export async function initCommand(args = []) {
   }
 
   // The entire procedural machine bootstrap — future-schema guard, phase inspection, workspace/state
-  // roots, persisted harness discovery, and the completion record — runs inside this one call,
-  // shared verbatim with `roborepo web`. init only decides how to present the result.
+  // roots, and persisted harness discovery — runs inside this one call, shared verbatim with
+  // `roborepo web`. It deliberately leaves the record `in-progress`; we finalize it below after the
+  // browser/CLI configuration step succeeds. init only decides how to present the result.
   const result = ensureInitialized({ force, dryRun });
 
   if (result.status === "refused") {
@@ -195,11 +199,21 @@ export async function initCommand(args = []) {
   for (const line of describeHarnesses(result.detected)) console.log(line);
   console.log("");
 
-  // The procedural record is already `complete` before this runs (ensureInitialized finished it),
-  // so the browser handoff and CLI configuration are additive presentation — and the `web --detach`
-  // spawned below sees a complete record, takes the no-op bootstrap path, and cannot race this
-  // process's first-run mutation.
+  // The procedural record is deliberately still `in-progress` here: `ensureInitialized()` ran the
+  // bootstrap but left finalizing to us. init finalizes only once its browser/CLI first-run
+  // configuration step has succeeded, so an interrupted or failed configuration leaves the record
+  // resumable — the next `roborepo init` resumes instead of reporting "already initialized".
+  //
+  // Note the `web --detach` spawned below also calls the shared bootstrap: it sees our
+  // in-progress record, resumes it (preserving startedAt), and finalizes on its own path, so the
+  // browser handoff and the detached portal child all observe a complete record and cannot race
+  // this process's first-run mutation.
   const firstRunConfiguration = await runFirstRunConfiguration();
+
+  // Configuration succeeded (browser handed off, or CLI configuration applied). Only now is the
+  // first run finished. If runFirstRunConfiguration threw (or the user interrupted it), this line
+  // never runs and the record stays `in-progress` for a later `roborepo init` to resume.
+  finalizeInitialization();
 
   if (firstRunConfiguration?.mode === "browser") {
     await offerCliMenuAfterBrowserSetup(firstRunConfiguration.url);

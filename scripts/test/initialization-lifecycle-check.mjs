@@ -35,7 +35,7 @@ const {
 const { initializationStatePath } = await import("../cli/state-paths.mjs");
 const { harnessStatePath } = await import("../cli/state-paths.mjs");
 const { workspaceRoot, stateRoot } = await import("../cli/roots.mjs");
-const { ensureInitialized, describeNewerSchemaRefusal } = await import("../cli/initialization-bootstrap.mjs");
+const { ensureInitialized, finalizeInitialization, describeNewerSchemaRefusal } = await import("../cli/initialization-bootstrap.mjs");
 const { browserRedirectMessage, extractPortalUrl, resolveFirstRunConfigurationMode } = await import("../cli/initialize.mjs");
 
 try {
@@ -58,6 +58,8 @@ try {
   testEnsureInitializedRefusesNewerSchema();
   testEnsureInitializedDryRunDoesNotMutate();
   testEnsureInitializedForceRebootstrapsComplete();
+  testInterruptedInitConfigStaysInProgressAndResumes();
+  testInitResumesInterruptedConfigNotAlreadyInitialized();
   testWebRefusesNewerSchemaThroughRealCli();
   testResolveFirstRunConfigurationMode();
   console.log("initialization lifecycle checks passed");
@@ -277,23 +279,34 @@ function testEnsureInitializedBootstrapsMissing() {
   assert.equal(result.phase, "missing");
   assert.ok(Array.isArray(result.detected), "bootstrap must report detected harness ids");
 
+  // The bootstrap performs the procedural work but must NOT finalize the record on its own: init's
+  // browser/CLI configuration has not run yet, so the record stays in-progress and remains
+  // resumable. finalizeInitialization() (which init calls after configuration succeeds) completes it.
   const record = readInitializationState();
-  assert.equal(record.status, "complete", "bootstrap must record completion");
-  assert.ok(record.completedAt, "bootstrap must stamp completion");
-  assert.equal(initializationPhase(), "complete");
+  assert.equal(record.status, "in-progress", "bootstrap must leave the record in-progress, not complete");
+  assert.equal(record.completedAt, null, "bootstrap must not stamp completion before configuration");
+  assert.equal(initializationPhase(), "in-progress");
   assert.ok(fs.existsSync(workspaceRoot), "bootstrap must create the workspace root");
   assert.ok(fs.existsSync(stateRoot), "bootstrap must create the state root");
   assert.ok(fs.existsSync(harnessStatePath), "bootstrap must persist harness discovery state");
+
+  finalizeInitialization();
+  const finished = readInitializationState();
+  assert.equal(finished.status, "complete", "finalize must mark the record complete");
+  assert.ok(finished.completedAt, "finalize must stamp completion");
+  assert.equal(initializationPhase(), "complete");
 }
 
-// Re-running after a successful bootstrap must not replay the procedural steps or rewrite the
-// record's timestamps — otherwise every `roborepo web` after the first would look like a fresh
-// initialization and destroy the "when did the user first start" provenance.
+// Re-running after a successful full first run (bootstrap + finalized configuration) must not replay
+// the procedural steps or rewrite the record's timestamps — otherwise every `roborepo web` after the
+// first would look like a fresh initialization and destroy the "when did the user first start"
+// provenance.
 function testEnsureInitializedIsIdempotent() {
   resetState();
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
   fs.rmSync(harnessStatePath, { force: true });
   ensureInitialized();
+  finalizeInitialization(); // a finished first run: bootstrap succeeded, configuration succeeded
   const before = readInitializationState();
 
   const result = ensureInitialized();
@@ -305,6 +318,7 @@ function testEnsureInitializedIsIdempotent() {
 
 // An interrupted run (status in-progress, no completedAt) must be resumed to completion while
 // preserving the original startedAt — the same preservation rule as `init`'s beginInitialization.
+// Resume performs the procedural bootstrap again but stays in-progress until the caller finalizes.
 function testEnsureInitializedResumesInProgress() {
   resetState();
   beginInitialization({ now: () => "2020-01-01T00:00:00.000Z" });
@@ -314,8 +328,14 @@ function testEnsureInitializedResumesInProgress() {
   assert.equal(result.status, "bootstrapped", "an in-progress record must resume the bootstrap");
   assert.equal(result.phase, "in-progress", "the starting phase must be reported, not the final one");
   const record = readInitializationState();
-  assert.equal(record.status, "complete");
+  assert.equal(record.status, "in-progress", "a resumed init must stay in-progress until configuration finalizes it");
+  assert.equal(record.completedAt, null, "resume must not stamp completion before configuration");
   assert.equal(record.startedAt, "2020-01-01T00:00:00.000Z", "resume must preserve the original startedAt");
+
+  finalizeInitialization();
+  const finished = readInitializationState();
+  assert.equal(finished.status, "complete", "finalize after a resumed init must complete the record");
+  assert.equal(finished.startedAt, "2020-01-01T00:00:00.000Z", "finalize must preserve the original startedAt");
 }
 
 // A record written by a newer RoboRepo must be refused without overwrite — the same downgrade
@@ -362,23 +382,93 @@ function testEnsureInitializedDryRunDoesNotMutate() {
 }
 
 // `--force` (init only) re-runs the procedural bootstrap on an already-complete record. It must
-// return `bootstrapped` (not `noop`), still end on a complete record, and preserve the original
-// startedAt — the same provenance rule as every other re-entry. Nothing about a completed install
-// exempts it from `--force`'s explicit "re-run initialization" meaning.
+// return `bootstrapped` (not `noop`), leave the record in-progress until configuration finalizes it,
+// and preserve the original startedAt — the same provenance rule as every other re-entry. Nothing
+// about a completed install exempts it from `--force`'s explicit "re-run initialization" meaning.
 function testEnsureInitializedForceRebootstrapsComplete() {
   resetState();
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
   fs.rmSync(harnessStatePath, { force: true });
-  ensureInitialized(); // bootstrap a complete record
+  ensureInitialized();
+  finalizeInitialization(); // an already-complete install
   const before = readInitializationState();
 
   const result = ensureInitialized({ force: true });
   assert.equal(result.status, "bootstrapped", "force must re-run the bootstrap on a complete record");
-  const after = readInitializationState();
-  assert.equal(after.status, "complete", "a forced re-run must end complete");
-  assert.equal(after.startedAt, before.startedAt, "a forced re-run must preserve the original startedAt");
+  const mid = readInitializationState();
+  assert.equal(mid.status, "in-progress", "a forced re-run must go back to in-progress until configuration finalizes it");
+  assert.equal(mid.startedAt, before.startedAt, "a forced re-run must preserve the original startedAt");
   assert.ok(fs.existsSync(workspaceRoot), "a forced re-run must still ensure the workspace root");
   assert.ok(fs.existsSync(harnessStatePath), "a forced re-run must still refresh harness discovery");
+
+  finalizeInitialization();
+  const after = readInitializationState();
+  assert.equal(after.status, "complete", "a forced re-run must end complete once configuration finalizes it");
+  assert.equal(after.startedAt, before.startedAt, "finalize must preserve the original startedAt through a forced re-run");
+}
+
+// --- Regression: init's first-run configuration step must stay resumable. ---
+//
+// The shared bootstrap (`ensureInitialized()`) performs the procedural work but must NOT finalize the
+// record; `finalizeInitialization()` is the explicit completion step init runs only after its
+// browser/CLI configuration step succeeds. This models init's exact sequence — bootstrap succeeds,
+// configuration is interrupted (finalize never runs), the phase stays "in-progress", and the next
+// `roborepo init` resumes the bootstrap instead of reporting "already initialized". Before the
+// split, `ensureInitialized()` marked the record `complete` during the bootstrap, so an interrupted
+// configuration left the record `complete` and a subsequent `init` reported "already initialized".
+function testInterruptedInitConfigStaysInProgressAndResumes() {
+  resetState();
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  fs.rmSync(harnessStatePath, { force: true });
+
+  // init starts: the procedural bootstrap succeeds.
+  const result = ensureInitialized();
+  assert.equal(result.status, "bootstrapped", "init's procedural bootstrap must succeed");
+  assert.equal(initializationPhase(), "in-progress", "bootstrap alone must not complete the record");
+
+  // configuration is interrupted or fails → finalizeInitialization() is never reached.
+  // (No call to finalizeInitialization here — this is the interrupted-config shape on disk.)
+
+  assert.equal(initializationPhase(), "in-progress", "an interrupted configuration must leave the record in-progress");
+
+  // the next `roborepo init` resumes instead of reporting "already initialized".
+  const resume = ensureInitialized();
+  assert.equal(resume.status, "bootstrapped", "the next init must resume the bootstrap, not no-op as already initialized");
+  assert.equal(resume.phase, "in-progress", "resume reports the in-progress starting phase");
+  assert.equal(initializationPhase(), "in-progress", "a resumed bootstrap must still await finalize");
+
+  // configuration finally succeeds → finalize completes the record.
+  finalizeInitialization();
+  assert.equal(initializationPhase(), "complete", "finalize after a successful configuration completes the record");
+}
+
+// The same regression through the real CLI: a partial initialization record left by an interrupted
+// `roborepo init` configuration must resume to `complete` on the next run, and must not print
+// "already initialized". This is the public symptom the split restores.
+function testInitResumesInterruptedConfigNotAlreadyInitialized() {
+  resetState();
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  fs.rmSync(harnessStatePath, { force: true });
+  fs.mkdirSync(path.dirname(initializationStatePath), { recursive: true });
+  fs.writeFileSync(
+    initializationStatePath,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      workflowVersion: 1,
+      status: "in-progress",
+      startedAt: "2020-01-01T00:00:00.000Z",
+      completedAt: null,
+    })}\n`,
+  );
+
+  const env = { ...process.env, HOME: tmp, ROBOREPO_STATE_DIR: stateDir, ROBOREPO_PRESETS_ONBOARD: "skip" };
+  const result = spawnSync(process.execPath, [cli, "init"], { cwd: repoRoot, env, encoding: "utf8", input: "" });
+  assert.equal(result.status, 0, `init must resume, not fail:\n${result.stdout}${result.stderr}`);
+  assert.doesNotMatch(result.stdout, /already initialized/i, "init must not report already initialized on a resumable record");
+
+  const record = JSON.parse(fs.readFileSync(initializationStatePath, "utf8"));
+  assert.equal(record.status, "complete", "a resumed init must reach complete after configuration");
+  assert.equal(record.startedAt, "2020-01-01T00:00:00.000Z", "resume must preserve the original startedAt");
 }
 
 // `roborepo web` must refuse a newer-schema initialization record exactly like `roborepo init`

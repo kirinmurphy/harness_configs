@@ -1,7 +1,7 @@
 ---
 id: q7m4k2p
-priority: high
-next_action: Add the new Home page at `/`, move Agents to canonical `/config`, and update the shared page manifest/navigation before styling the onboarding cards.
+priority: none
+next_action:
 blocked_by: []
 depends_on: []
 related:
@@ -222,6 +222,16 @@ Manual browser validation:
 6. Confirm Home remains complete and understandable on a machine with no installed harnesses.
 7. Confirm keyboard focus is visible on every card and nav destination.
 8. Check both light and dark themes.
+
+## Verification
+
+The plan was completed against the merged main (`roborepo-homepage` → main via PR #13):
+
+- `npm run test:unit` — 105/105 check suites passed.
+- `npm test` — 423 passed, 0 failed.
+- `npm run check` — full CI gate passed, including the 14-test `portal-ui` browser suite.
+- `npm run build` — pack dry-run passed.
+- All plan checkboxes across Phases 1-4 are ticked; the acceptance criteria in the section below were met.
 
 ## Acceptance Criteria
 

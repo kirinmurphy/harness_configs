@@ -765,7 +765,11 @@ for (const close of document.querySelectorAll("[data-close]")) {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) clearInterval(pollTimer);
   else {
-    load();
+    // Returning to the tab forces a FULL rebuild, not the quiet reconcile: the card DOM may be
+    // minutes stale (the poll was paused while hidden, and an entrypoint URL / health state that
+    // changed in the meantime renders only on a rebuild). A user refocusing the tab expects
+    // current reality, the same contract a force refresh already follows.
+    load({ force: true });
     pollTimer = setInterval(load, 10000);
   }
 });

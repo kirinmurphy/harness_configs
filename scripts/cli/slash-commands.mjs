@@ -25,6 +25,42 @@ function readIfExists(filePath) {
   }
 }
 
+// Agent-facing description for a slash command. Single source of truth: the SKILL.md frontmatter
+// (the skill's own file for skill-backed commands, the command source's frontmatter for standalone
+// ones). The package config's entrypoint MAY override it, but when the entrypoint description is
+// absent (or merely repeats the package description) the frontmatter wins — SKILL.md is what the
+// agent actually reads, so a hand-synced copy in package.config.json can only drift.
+function commandDescription(command) {
+  if (command.description && command.description !== command.packageDescription) return command.description;
+  if (command.skillSourceAbs) {
+    const desc = frontmatterDescription(readIfExists(command.skillSourceAbs));
+    if (desc) return desc;
+  }
+  if (command.sourceAbs) {
+    const desc = frontmatterDescription(readIfExists(command.sourceAbs));
+    if (desc) return desc;
+  }
+  return command.description || command.packageDescription;
+}
+
+function frontmatterDescription(source) {
+  if (!source) return null;
+  const frontmatter = source.match(/^---\n([\s\S]*?)\n---/)?.[1];
+  if (!frontmatter) return null;
+  const lines = frontmatter.split("\n");
+  const start = lines.findIndex((line) => /^description:\s*(.*)$/.test(line));
+  if (start === -1) return null;
+  const first = lines[start].match(/^description:\s*(.*)$/)[1].trim();
+  // YAML block scalars (">" / "|") put the value on indented continuation lines — fold them.
+  if (!["", ">", "|", ">-", "|-"].includes(first)) return first;
+  const folded = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (!/^\s/.test(lines[i])) break;
+    folded.push(lines[i].trim());
+  }
+  return folded.join(" ").trim() || null;
+}
+
 function commandTarget(name) {
   return `${name}.md`;
 }
@@ -152,7 +188,9 @@ function slashCommandsFromPackages(packages) {
             name: entrypoint.name,
             kind: "skill-backed",
             description: entrypoint.description,
+            packageDescription: pkg.description,
             skill: resource.id,
+            skillSourceAbs: path.join(pkg.sourceRoot, resource.source, "SKILL.md"),
             harnesses: entrypoint.harnesses,
             packageId: pkg.id,
           };
@@ -164,7 +202,8 @@ function slashCommandsFromPackages(packages) {
         addCommand(commands, seen, {
           name: resource.name,
           kind: "standalone",
-          description: resource.description || pkg.description,
+          description: resource.description,
+          packageDescription: pkg.description,
           sourceAbs: path.join(pkg.sourceRoot, resource.source),
           harnesses: resource.harnesses,
           packageId: pkg.id,
@@ -178,6 +217,9 @@ function slashCommandsFromPackages(packages) {
 function addCommand(commands, seen, command, packageId) {
   if (seen.has(command.name)) throw new Error(`duplicate slash command from packages: ${command.name}`);
   seen.add(command.name);
+  // Resolve the agent-facing description here (after source paths exist): SKILL.md frontmatter is
+  // the single source of truth unless the entrypoint carries a genuinely different override.
+  command.description = commandDescription(command);
   if (!command.description || command.description.includes("\n")) {
     throw new Error(`${packageId}: /${command.name} needs a one-line description`);
   }

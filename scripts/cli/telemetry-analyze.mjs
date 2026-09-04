@@ -150,11 +150,13 @@ export function analyzeTelemetry(events, options = {}) {
 function testingEfficiencySummary(captures) {
   const metricIds = [
     "test.full_suite_calls_per_session",
+    "test.full_suite_calls_per_testing_session",
     "test.full_suite_calls_per_debug_phase",
     "test.full_suite_without_intervening_edit",
     "test.full_suite_unchanged_failure_signature",
     "test.targeted_to_full_ratio",
     "test.share_of_tool_time",
+    "test.token_share",
     "test.time_failure_to_targeted_repro_ms",
     "test.time_first_failure_to_verification_ms",
     "test.finalization_full_suite_count",
@@ -439,8 +441,9 @@ function resultToolLabel(toolName) {
 // for both the live tool metadata and the transcript-attributed result.
 function toolGroup(toolName) {
   const server = mcpServerOf(toolName);
-  if (server === "jcodemunch") return "mcp-code";
-  if (server === "jdocmunch") return "mcp-docs";
+  // Groups named by the REAL package when the bucket is a single known server (the user reads
+  // "jcodemunch", not a made-up category); generic bucket only for other/unrecognized servers.
+  if (server === "jcodemunch" || server === "jdocmunch") return server;
   if (server) return "mcp-other";
   if (toolName === "Read" || toolName === "Grep" || toolName === "Glob") return "native-read";
   if (toolName === "Edit" || toolName === "Write" || toolName === "NotebookEdit") return "edit";
@@ -497,7 +500,13 @@ function groupCost(captures) {
         calls_per_session: Math.round(r.calls / sessions),
       };
     })
-    .sort((a, b) => b.avg_tokens - a.avg_tokens);
+    // Attach each group's SHARE of all attributed tool tokens, then sort by share (not avg) —
+    // share answers "where does my context budget go", avg-per-call is the secondary detail.
+    .map((row, _i, all) => {
+      const total = all.reduce((s, g) => s + g.total_tokens, 0);
+      return { ...row, total_tokens: row.total_tokens, share_of_tokens: total > 0 ? row.total_tokens / total : 0 };
+    })
+    .sort((a, b) => b.total_tokens - a.total_tokens);
 }
 
 // What is over-represented in spikes vs normal turns. Lift = group's share of spike captures ÷ its
@@ -570,14 +579,41 @@ function regression(captures) {
   };
   const before = avgByGroup(rows.slice(0, mid));
   const after = avgByGroup(rows.slice(mid));
+  // Total result tokens per half — the denominator for each group's SHARE of tool tokens.
+  // Share (not raw delta) is the comparable unit: a group can only gain share by growing
+  // relative to everything else, which is the actual "got more expensive" question.
+  const halfTotal = (slice) => slice.reduce((s, e) => s + (e.last_result.chars || 0), 0);
+  const totalBefore = halfTotal(rows.slice(0, mid));
+  const totalAfter = halfTotal(rows.slice(mid));
+  // This-week share: same formula, trailing-7-day window — the third column the table shows,
+  // aligned with the waste cards' week window.
+  const latestTs = rows[rows.length - 1].ts;
+  const weekCutoff = new Date(Date.parse(latestTs) - 7 * 86400000).toISOString();
+  const weekRows = rows.filter((e) => e.ts >= weekCutoff);
+  const weekAgg = avgByGroup(weekRows);
+  const totalWeek = halfTotal(weekRows);
   const groups = [];
   for (const g of new Set([...before.keys(), ...after.keys()])) {
     const b = before.get(g), a = after.get(g);
     const bAvg = b ? approxTokens(b.chars / b.calls) : 0;
     const aAvg = a ? approxTokens(a.chars / a.calls) : 0;
-    groups.push({ group: g, before_avg_tokens: bAvg, after_avg_tokens: aAvg, delta_tokens: aAvg - bAvg, before_calls: b?.calls ?? 0, after_calls: a?.calls ?? 0 });
+    const bChars = b?.chars ?? 0;
+    const aChars = a?.chars ?? 0;
+    groups.push({
+      group: g,
+      before_avg_tokens: bAvg,
+      after_avg_tokens: aAvg,
+      delta_tokens: aAvg - bAvg,
+      before_calls: b?.calls ?? 0,
+      after_calls: a?.calls ?? 0,
+      // Share of all tool tokens (result chars) in each window, as 0..1 fractions. A group absent
+      // from a window has share 0 there. These feed the % primary display and the trend framing.
+      before_share: totalBefore > 0 ? bChars / totalBefore : 0,
+      after_share: totalAfter > 0 ? aChars / totalAfter : 0,
+      week_share: totalWeek > 0 ? (weekAgg.get(g)?.chars ?? 0) / totalWeek : 0,
+    });
   }
-  groups.sort((a, b) => Math.abs(b.delta_tokens) - Math.abs(a.delta_tokens));
+  groups.sort((a, b) => Math.abs(b.after_share - b.before_share) - Math.abs(a.after_share - a.before_share));
   return { split_ts: splitTs, groups };
 }
 
@@ -596,11 +632,14 @@ function detectLoops(captures, sessionsById) {
   for (const [id, events] of bySession) {
     events.sort((a, b) => a.ts.localeCompare(b.ts));
     let runTool = null, run = 0, bestTool = null, best = 0, bestStartTs = null, runStartTs = null;
+    // Wasted tokens for a run = every repeat turn's delta beyond the first (the first call did
+    // the work; each consecutive repeat re-spent tokens for the same answer).
+    let runWasted = 0, bestWasted = 0;
     for (const e of events) {
       const t = e.tool.mcp_tool || e.tool.name;
-      if (t === runTool) run += 1;
-      else { runTool = t; run = 1; runStartTs = e.ts; }
-      if (run > best) { best = run; bestTool = t; bestStartTs = runStartTs; }
+      if (t === runTool) { run += 1; runWasted += e.delta_tokens || 0; }
+      else { runTool = t; run = 1; runStartTs = e.ts; runWasted = 0; }
+      if (run > best) { best = run; bestTool = t; bestStartTs = runStartTs; bestWasted = runWasted; }
     }
     if (best >= LOOP_REPEAT_THRESHOLD) {
       loops.push({
@@ -610,6 +649,7 @@ function detectLoops(captures, sessionsById) {
         tool: bestTool,
         max_repeat: best,
         ts: bestStartTs,
+        wasted_tokens: bestWasted,
         hint: mcpServerOf(events.find((e) => (e.tool.mcp_tool || e.tool.name) === bestTool)?.tool?.name)
           ? "MCP tool firing in a tight loop — check the agent/skill that calls it"
           : bestTool + " repeated " + best + "× in a row — likely a runaway loop",
@@ -683,7 +723,7 @@ function readWarnings(events, sessionsById) {
         read_count: 1,
         result_chars: result.chars,
         approx_tokens: approxTokens(result.chars),
-        hint: "large document read; use jdocmunch section lookup when available",
+        hint: "large document read — prefer a section-level lookup over loading the whole file",
       }));
     }
     if (event.event === "PostToolUse" && fileHash && DOC_EXTS.has(ext)) {
@@ -702,7 +742,7 @@ function readWarnings(events, sessionsById) {
         read_count: cur.count,
         result_chars: cur.chars,
         approx_tokens: approxTokens(cur.chars),
-        hint: "same document read repeatedly; reuse anchors or use jdocmunch section lookup",
+        hint: "same document read repeatedly — reuse the earlier result or look up only the needed section",
       }));
     }
   }
@@ -713,7 +753,7 @@ function readWarnings(events, sessionsById) {
       warnings.push(readWarningRow("stale_doc_lookup", sessionEvents[0], sessionsById, {
         read_count: repeatedDocs,
         jdocmunch_calls: jdocCalls,
-        hint: "docs were read repeatedly with no jdocmunch calls observed",
+        hint: "docs were read repeatedly with no doc-index lookups observed",
       }));
     }
     const jcodeCalls = sessionEvents.filter((event) => mcpServerOf(event.last_result?.tool || event.tool?.name) === "jcodemunch").length;

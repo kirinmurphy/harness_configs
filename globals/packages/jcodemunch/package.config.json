@@ -4,6 +4,7 @@
   "label": "Code Indexing (with JCodeMunch)",
   "description": "Local code index with symbol search, outline, references, and context bundling. Blocks Grep/Glob and routes code exploration through jcodemunch tools.",
   "lifecycle": "optional",
+  "capabilities": ["code-lookup"],
   "presentation": {
     "category": "token-optimization",
     "order": 20

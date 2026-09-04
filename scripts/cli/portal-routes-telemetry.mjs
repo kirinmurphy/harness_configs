@@ -8,6 +8,17 @@ import { defineRoutes } from "./portal-router.mjs";
 
 export const telemetryRoutes = defineRoutes([
   {
+    // Mock analysis for the /tokens2 page: reads the bundled mock spool file
+    // (portal/tokens2/mock-spool.jsonl) through the same analyzeTelemetry() pipeline.
+    // Used by the /tokens2 page when no real harness is installed — the report renders
+    // below the harness-warning banner with a mock-data disclaimer.
+    path: "/api/tokens2/mock",
+    handler: (req, res, { handlers }) => {
+      send(res, 200, "application/json", handlers.loadMockAnalysisJson());
+      return true;
+    },
+  },
+  {
     // Backs the page's "view docs" popup — server-rendered docs/user/guides/telemetry.md, so the popup
     // and the on-disk guide are always the same content, never a second copy to keep in sync.
     path: "/api/telemetry/guide",

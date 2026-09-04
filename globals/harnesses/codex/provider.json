@@ -10,7 +10,7 @@
     "executableValidation": { "args": ["--version"] },
     "homeCandidates": ["~/.codex"],
     "configCandidates": ["~/.codex/config.toml"],
-    "minimumConfidence": "probable"
+    "minimumConfidence": "confirmed"
   },
   "paths": {
     "home": { "path": "~/.codex", "kind": "directory" },

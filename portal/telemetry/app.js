@@ -4,7 +4,7 @@
 // markup construction, canvas drawing, or panel-render logic should live in this file — add a
 // template in templates.js, a draw routine in chart.js, or a render* in renders.js instead.
 
-import { portalSetUpdatedAt, portalHideLoading, portalCopyText, portalWireBackdropClose } from "/portal/shared/api.js";
+import { portalSetUpdatedAt, portalHideLoading, portalHideLoadingNow, portalCopyText, portalWireBackdropClose } from "/portal/shared/api.js";
 import * as api from "./api.js";
 import * as tmpl from "./templates.js";
 import { createDetailModal } from "./panels.js";
@@ -14,8 +14,10 @@ import { createChart } from "./chart.js";
 import { createAnalysisExplorer } from "./analysis-explorer.js";
 import { createDocGuideModal } from "/portal/shared/doc-guide-modal.js";
 import { activePresentedHarnesses } from "/portal/shared/harness-cohort.js";
+import { harnessWarningElement } from "/portal/shared/harness-warning.js";
 import {
   fmt, sessionById as lookupSessionById, viewFromSearchParams, syncViewToUrl, activeFilterCountFromView,
+  pageState,
 } from "./state.js";
 
 let firstLoad = true;
@@ -108,8 +110,28 @@ function activeMachineHarnesses(cfg) {
   return activePresentedHarnesses(cfg);
 }
 
-function applySetupState({ telemetryOn, activeHarnessCount }) {
+// Whether the report has anything to show. Set from load()'s first successful response; the setup
+// poll reads it so a fresh install (telemetry on, harness active, spool empty) lands on the
+// "no telemetry data yet" banner instead of an empty report scaffold.
+let hasData = false;
+
+// Four page states, a strict cascade (see applySetupState below):
+//   telemetry off            -> "Telemetry Setup Required" banner alone; scaffold (filter bar,
+//                               mark-change banner, frame, panels) fully hidden. No "add a harness"
+//                               action — that banner is only about the telemetry toggle.
+//   telemetry on, no harness -> shared "Install a supported harness" banner (the SAME element the
+//                               Agents page renders, from /portal/shared/harness-warning.js);
+//                               scaffold hidden — there is nothing to filter yet.
+//   telemetry on + harness, no data -> "no telemetry data yet" banner; scaffold hidden — an empty
+//                               filter bar over an empty chart is noise, not a report.
+//   telemetry on + harness + data   -> full report: filter bar + mark-change banner + data panels;
+//                               banners hidden.
+// setupReady gates only the data panels and load().
+function applySetupState({ telemetryOn, activeHarnessCount, snap }) {
   setupReady = telemetryOn && activeHarnessCount > 0;
+  // Any state that will never fetch data must clear the full-page loading overlay — the normal
+  // hide only fires from load(), which these states never reach.
+  if (!setupReady && firstLoad) { firstLoad = false; portalHideLoadingNow(); }
   const setupPanel = document.getElementById("telemetryoff");
   const controls = document.getElementById("telemetrycontrols");
   const frame = document.getElementById("telemetryframe");
@@ -117,24 +139,50 @@ function applySetupState({ telemetryOn, activeHarnessCount }) {
   const title = setupPanel.querySelector("[data-slot=title]");
   const body = setupPanel.querySelector("[data-slot=body]");
   const enableBtn = document.getElementById("enabletelemetry");
-  const addHarness = document.getElementById("addharness");
+  const state = pageState({ telemetryOn, activeHarnessCount, hasData });
+  const nothingToReport = state !== "full";
 
-  controls.hidden = !setupReady;
-  frame.hidden = !setupReady;
-  content.hidden = !setupReady;
-  setupPanel.style.display = setupReady ? "none" : "";
+  // Scaffold (filter bar + mark-change banner + data panels) belongs to the "has data to show"
+  // state only.
+  controls.hidden = nothingToReport;
+  frame.hidden = nothingToReport;
+  content.hidden = nothingToReport;
   enableBtn.hidden = telemetryOn;
-  addHarness.hidden = activeHarnessCount > 0;
 
-  if (!telemetryOn && activeHarnessCount === 0) {
-    title.textContent = "telemetry setup required";
-    body.textContent = "Turn telemetry on and add an active harness before token usage can be captured.";
-  } else if (!telemetryOn) {
-    title.textContent = "telemetry is off";
-    body.textContent = "Token usage is not being captured. Turn telemetry on to start collecting data across your harnesses.";
+  if (!telemetryOn) {
+    // Telemetry off — the banner IS the page.
+    const bannerHost = document.getElementById("telemetrybanner");
+    bannerHost.style.display = "none";
+    bannerHost.replaceChildren();
+    setupPanel.style.display = "";
+    if (activeHarnessCount === 0) {
+      title.textContent = "telemetry setup required";
+      body.textContent = "Turn telemetry on before token usage can be captured. Harness setup is separate — see the Agents page.";
+    } else {
+      title.textContent = "telemetry is off";
+      body.textContent = "Token usage is not being captured. Turn telemetry on to start collecting data across your harnesses.";
+    }
+  } else if (activeHarnessCount === 0) {
+    // Telemetry on but no harness: the shared harness banner replaces the old bespoke setup panel.
+    setupPanel.style.display = "none";
+    const banner = harnessWarningElement(snap);
+    const bannerHost = document.getElementById("telemetrybanner");
+    bannerHost.style.display = banner ? "" : "none";
+    bannerHost.replaceChildren(...(banner ? [banner] : []));
+  } else if (!hasData) {
+    // Telemetry on, harness active, but the spool holds no captured usage yet.
+    setupPanel.style.display = "";
+    const bannerHost = document.getElementById("telemetrybanner");
+    bannerHost.style.display = "none";
+    bannerHost.replaceChildren();
+    title.textContent = "no telemetry data yet";
+    body.textContent = "Telemetry is on and a harness is active, but nothing has been captured yet. Run a session in your harness — this page fills in as usage data lands.";
   } else {
-    title.textContent = "no active harness configured";
-    body.textContent = "RoboRepo needs an active agent harness before token telemetry has a source to capture.";
+    // Full report.
+    setupPanel.style.display = "none";
+    const bannerHost = document.getElementById("telemetrybanner");
+    bannerHost.style.display = "none";
+    bannerHost.replaceChildren();
   }
 }
 
@@ -163,6 +211,10 @@ async function load(force, opts) {
   }
   if (!force && data.version === lastVersion) return;
   lastVersion = data.version;
+  // A successful response with actual capture records flips the page into reportable state; the
+  // next refreshTelemetryState() poll re-runs applySetupState and swaps the "no data yet" banner
+  // for the full report scaffold.
+  hasData = (data.capture_count ?? 0) > 0;
   renderMeta(data);
   portalSetUpdatedAt();
   // Update the deeper-read button label based on which CLI is available.
@@ -500,8 +552,14 @@ async function refreshTelemetryState() {
     const cfg = await api.fetchTelemetryState();
     const on = !!(cfg.telemetry && cfg.telemetry.enabled);
     const wasReady = setupReady;
-    applySetupState({ telemetryOn: on, activeHarnessCount: activeMachineHarnesses(cfg).length });
+    const wasState = pageState({ telemetryOn: on, activeHarnessCount: activeMachineHarnesses(cfg).length, hasData });
+    applySetupState({ telemetryOn: on, activeHarnessCount: activeMachineHarnesses(cfg).length, snap: cfg });
     if (setupReady && !wasReady) load(true, { wipe: true });
+    // The data poll sets hasData from the report response; when that flips (empty report ->
+    // reportable, or a wipe emptied the spool), re-apply the setup state so the banner and
+    // scaffold follow without waiting for a state change in the config itself.
+    const nowState = pageState({ telemetryOn: on, activeHarnessCount: activeMachineHarnesses(cfg).length, hasData });
+    if (nowState !== wasState) applySetupState({ telemetryOn: on, activeHarnessCount: activeMachineHarnesses(cfg).length, snap: cfg });
   } catch { /* leave prompt hidden on error */ }
 }
 

@@ -15,7 +15,7 @@
 
 import { test, expect } from "@playwright/test";
 
-const NAV_ORDER = ["Home", "Agents", "Plans", "Tokens", "Localhost"];
+const NAV_ORDER = ["Home", "Agents", "Plans", "Tokens", "Tokens2", "Localhost"];
 
 const HOME_CARDS = [
   { title: "Agents", href: "/config" },
@@ -279,7 +279,7 @@ test.describe("portal home (portal-onboarding-home)", () => {
         };
       });
 
-    // Tab through the five nav destinations: Home, Agents, Plans, Tokens, Localhost.
+    // Tab through the nav destinations, in NAV_ORDER.
     for (const expected of NAV_ORDER) {
       await page.keyboard.press("Tab");
       const focused = await focusSummary();

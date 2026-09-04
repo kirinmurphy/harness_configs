@@ -62,6 +62,7 @@ export const PAGES = [
   // provenance) and tokens are one field of it — but token cost is what a user opens this page to
   // read. The identifier stays accurate to the system; the URL and tab stay honest about the draw.
   { path: "/tokens", id: "telemetry", title: "Tokens", dir: "telemetry" },
+  { path: "/tokens2", id: "tokens2", title: "Tokens2", dir: "tokens2" },
   {
     path: "/localhoster",
     id: "localhoster",

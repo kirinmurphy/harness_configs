@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const { configOnboardingNotice, hasOptionalPackageSelected } = await import(
+const { configHarnessWarning, hasOptionalPackageSelected } = await import(
   path.join(repoRoot, "portal/config/onboarding-state.js")
 );
 
@@ -15,10 +15,10 @@ const catalog = [
 
 {
   const snap = { harnesses: catalog, machineHarnesses: [], packages: [] };
-  const notice = configOnboardingNotice(snap);
+  const notice = configHarnessWarning(snap);
   assert.equal(notice.variant, "warning");
-  assert.match(notice.title, /No active agent harness/);
-  assert.match(notice.body, /Package selections will be saved/);
+  assert.match(notice.body, /Install a supported harness/);
+  assert.match(notice.body, /roborepo harness refresh/);
   assert.match(notice.body, /Claude Code and Codex/);
 }
 
@@ -29,9 +29,9 @@ const catalog = [
     onboarding: { libraryCompleted: false },
     packages: [{ id: "usage-statusline", enabled: true, defaultEnabled: true }],
   };
-  const notice = configOnboardingNotice(snap);
-  assert.equal(notice.variant, "info");
-  assert.match(notice.title, /Finish choosing optional packages/);
+  // Optional-package state no longer produces a notice: the packages explanation is a persistent
+  // page intro (tpl-packages-intro), not an ephemeral onboarding banner.
+  assert.equal(configHarnessWarning(snap), null);
   assert.equal(hasOptionalPackageSelected(snap), false);
 }
 
@@ -42,9 +42,7 @@ const catalog = [
     onboarding: { libraryCompleted: true },
     packages: [{ id: "usage-statusline", enabled: true, defaultEnabled: true }],
   };
-  const notice = configOnboardingNotice(snap);
-  assert.equal(notice.variant, "info");
-  assert.match(notice.title, /Add optional packages/);
+  assert.equal(configHarnessWarning(snap), null);
 }
 
 {
@@ -58,7 +56,7 @@ const catalog = [
     ],
   };
   assert.equal(hasOptionalPackageSelected(snap), true);
-  assert.equal(configOnboardingNotice(snap), null);
+  assert.equal(configHarnessWarning(snap), null);
 }
 
 {
@@ -67,7 +65,7 @@ const catalog = [
     machineHarnesses: [{ id: "codex", displayName: "Codex", enabled: false }],
     packages: [{ id: "telemetry", enabled: true, defaultEnabled: false }],
   };
-  assert.equal(configOnboardingNotice(snap).variant, "warning", "disabled harnesses do not count as active");
+  assert.equal(configHarnessWarning(snap).variant, "warning", "disabled harnesses do not count as active");
 }
 
 console.log("config onboarding state checks passed");

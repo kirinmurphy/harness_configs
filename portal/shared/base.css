@@ -501,7 +501,9 @@ main {
   font-size: var(--text-sm);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--dim);
+  /* Section titles read as content headings, not faint labels: near-white in dark mode,
+   * near-black in light — both via --ink, so the themes can't drift. */
+  color: var(--ink);
   margin: 0;
   font-weight: 600;
   display: inline;
@@ -954,8 +956,8 @@ portal-menu-button {
  * the caller. Variant class (.notice-alert/-warning/-info/-success) is set by the element. */
 .portal-notice {
   display: flex;
-  gap: var(--space-sm);
-  align-items: flex-start;
+  gap: var(--space-md);
+  align-items: center;
   padding: var(--space-sm) var(--space-md);
   border: 1px solid var(--info-line);
   background: var(--info-bg);
@@ -965,7 +967,7 @@ portal-menu-button {
 .portal-notice > [data-notice-icon] {
   flex: none;
   display: inline-flex;
-  margin-top: 1px;
+  margin-top: 5px;
 }
 /* The slotted content should take the remaining width so multi-line bodies wrap cleanly next to
  * the icon rather than being squeezed. Direct children other than our own icon node. */

@@ -19,8 +19,11 @@
         {
           "type": "slash-command",
           "name": "wrap-up",
-          "description": "End a work session cleanly: self-review added code, sync docs, commit, then produce a handoff note.",
-          "harnesses": ["claude", "codex", "gemini"]
+          "harnesses": [
+            "claude",
+            "codex",
+            "gemini"
+          ]
         }
       ]
     }

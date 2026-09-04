@@ -10,7 +10,7 @@
     "executableValidation": { "args": ["--version"] },
     "homeCandidates": ["~/.gemini"],
     "configCandidates": ["~/.gemini/settings.json"],
-    "minimumConfidence": "probable"
+    "minimumConfidence": "confirmed"
   },
   "paths": {
     "home": { "path": "~/.gemini", "kind": "directory" },

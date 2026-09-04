@@ -155,6 +155,7 @@ export function readConfigSnapshot() {
     description: pkg.description || null,
     status: packageLiveState.get(pkg.id)?.status || "disabled",
     catalogStatus: pkg.status || "available",
+    capabilities: pkg.capabilities || [],
     defaultEnabled: pkg.defaultEnabled === true,
     desired: packageLiveState.get(pkg.id)?.desired || false,
     cliCommands: [...new Set([...(pkg.cliCommands || []), ...pkg.components.filter((c) => c.type === "command").map((c) => c.name)])],

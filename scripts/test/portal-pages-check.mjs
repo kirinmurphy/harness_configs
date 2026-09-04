@@ -25,6 +25,7 @@ const EXPECTED = [
   { path: "/config", id: "config", title: "Agents", dir: "config" },
   { path: "/plans", id: "plans", title: "Plans", dir: "plans" },
   { path: "/tokens", id: "telemetry", title: "Tokens", dir: "telemetry" },
+  { path: "/tokens2", id: "tokens2", title: "Tokens2", dir: "tokens2" },
   { path: "/localhoster", id: "localhoster", title: "Localhost", dir: "localhoster" },
 ];
 

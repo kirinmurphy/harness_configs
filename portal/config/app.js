@@ -68,13 +68,20 @@ function render(snap) {
   const main = document.getElementById("main");
   // Section model comes straight from the server snapshot (buildBehaviorView), no client fork.
   const view = snap.behaviorView || [];
+  // Package-category sections (everything the packages intro describes) vs the non-package
+  // sections that follow. The intro sits between the harness file grid and the first package
+  // section; the harness-warning notice (no active harness) stays at the top of the page.
+  const packageSections = view.filter((section) => section.categoryId);
+  const otherSections = view.filter((section) => !section.categoryId);
   main.replaceChildren(
     ...[
-      tmpl.onboardingNotice(snap),
+      tmpl.harnessWarning(snap),
       tmpl.contextWarnings(snap),
       tmpl.configFiles(snap, { onInspectClick: openSourceModal }),
+      tmpl.packagesIntro(),
     ].filter(Boolean),
-    ...view.map((section) => renderSection(section, snap.contextCost)).filter(Boolean),
+    ...packageSections.map((section) => renderSection(section, snap.contextCost)).filter(Boolean),
+    ...otherSections.map((section) => renderSection(section, snap.contextCost)).filter(Boolean),
     // Last panel on the page: app-level lifecycle, well below the day-to-day controls.
     tmpl.maintenancePanel({
       onPreview: api.fetchUninstallPreview,

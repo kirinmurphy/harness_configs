@@ -86,6 +86,12 @@ export function portalHideLoading() {
   document.getElementById("page-loading")?.classList.add("hidden");
 }
 
+// Same, but forced: for pages whose setup state never reaches the data-fetch phase (e.g. the
+// Tokens page with telemetry off / no harness), so the spinner can't spin forever over a banner.
+export function portalHideLoadingNow() {
+  document.getElementById("page-loading")?.classList.add("hidden");
+}
+
 // Clones a <template>'s first child by id — the shared render pattern for dynamically-injected
 // markup, so pages keep an HTML anchor for new elements instead of building raw strings.
 export function portalTpl(id) {

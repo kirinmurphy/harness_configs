@@ -7,7 +7,25 @@ export const MAX_BODY_BYTES = 64 * 1024;
 export async function probeHttpCandidate(candidate, options = {}) {
   const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
   const first = await probeOrigin(candidate.origin, { timeoutMs });
-  if (first.http || !looksLikeTlsError(first.errorCode, first.errorMessage)) return first;
+  if (first.http || !looksLikeTlsError(first.errorCode, first.errorMessage)) {
+    // A redirect response carries no HTML body, so its title is null — and title is the
+    // entrypoint signal that decides whether a member gets hoisted to the repository header.
+    // Static servers commonly redirect "/" -> /index.html or /admin/..., so follow ONE more
+    // hop when the redirect stays loopback. Never follows off-machine (probeOrigin's
+    // redirectExternal guard would apply to that target anyway, and here we simply don't go).
+    const redirected = !first.title && first.redirect && isLoopbackUrl(first.redirect)
+      ? await probeOrigin(first.redirect, { timeoutMs })
+      : null;
+    if (redirected && (redirected.title || redirected.favicon)) {
+      return {
+        ...redirected,
+        // The ORIGINAL origin is what the user opens; the redirect is only where the title
+        // came from. Status/latency stay the first hop's (the reachable entry point).
+        origin: candidate.origin,
+      };
+    }
+    return first;
+  }
   const httpsOrigin = candidate.origin.replace(/^http:/, "https:");
   return probeOrigin(httpsOrigin, { timeoutMs, protocol: "https" });
 }

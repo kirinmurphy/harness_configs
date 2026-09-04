@@ -770,6 +770,7 @@ export async function serveCommand(args, { allowPortFallback = false, openPath =
     // view is. See telemetry-analyze.mjs's analyzeTelemetry() options and telemetry-cohort.mjs for
     // the shared filter shape the CLI report will eventually reuse too.
     loadAnalysisJson: (window, harness, extra = {}) => cachedAnalysisJson(window, harness, extra),
+    loadMockAnalysisJson: () => loadMockAnalysisJson(),
     loadSession: (req) => loadSessionDetail({ ...req, spoolContext: sessionSpoolContext(req.id, readMarkers()) }),
     loadInsightsLlm: () => loadInsightsLlm(),
     loadMarkers: () => readMarkers(),
@@ -1249,6 +1250,47 @@ function cachedAnalysisEntry(window, harness, extra = {}) {
 // Serialized report JSON for the hot /api/data path, memoized per signature+window+harness+cohort.
 function cachedAnalysisJson(window, harness, extra = {}) {
   return cachedAnalysisEntry(window, harness, extra).json;
+}
+
+// Mock analysis for the /tokens2 page: reads the bundled mock spool file
+// (portal/tokens2/mock-spool.jsonl) and runs it through the same analyzeTelemetry()
+// pipeline as real data. The mock spool is a committed .jsonl file with the same
+// schema-2 record shape telemetryCapture() writes, so the only difference from real
+// data is the source file — analyzeTelemetry() processes it identically. Cached so
+// repeated requests don't re-parse the file.
+let _mockAnalysisJson = null;
+const MOCK_SPOOL_PATH = path.join(repoRoot, "portal", "tokens2", "mock-spool.jsonl");
+// Demo marker for the mock report: the mock spool is seeded with sessions on both sides of
+// this timestamp so the "Before vs after your change" section has real pipeline output.
+const MOCK_MARKER = {
+  marker_id: "mk_demo-skill-change",
+  type: "change",
+  title: "jcodemunch skill swap (demo marker)",
+  ts: "2026-06-13T12:00:00.000Z",
+};
+function loadMockAnalysisJson() {
+  if (_mockAnalysisJson) return _mockAnalysisJson;
+  const events = [];
+  try {
+    const text = fs.readFileSync(MOCK_SPOOL_PATH, "utf8");
+    for (const line of text.split("\n")) {
+      if (!line.trim()) continue;
+      try { events.push(JSON.parse(line)); } catch { /* ignore corrupt lines */ }
+    }
+  } catch { /* no mock spool — return empty report */ }
+  const report = analyzeTelemetry(events, { markers: [MOCK_MARKER], markerId: MOCK_MARKER.marker_id });
+  report.available_harnesses = [...new Set(events.map((e) => e.harness).filter(Boolean))].sort();
+  report.harness_display_names = Object.fromEntries(
+    (report.available_harnesses || []).map((id) => [id, hasHarnessProvider(id) ? getHarnessProvider(id).manifest.displayName : id]),
+  );
+  report.available_models = [...new Set(events.map((e) => e.session?.model).filter(Boolean))].sort();
+  report.available_repos = [...new Set(events.map((e) => e.repo?.label).filter(Boolean))].sort();
+  report.available_metrics = listMetrics().map((m) => m.id);
+  report.markers = [];
+  report.experiments = [];
+  report.deepread_cli = findDeepReadCli();
+  _mockAnalysisJson = JSON.stringify(report);
+  return _mockAnalysisJson;
 }
 
 // Tier 2 — debounced default-view refresh. cachedAnalysisJson() still computes synchronously on a

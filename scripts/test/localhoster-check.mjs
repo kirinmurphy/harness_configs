@@ -480,7 +480,13 @@ try {
     assert.equal(redirect.redirectExternal, true);
     const sameOriginRedirect = await probeHttpCandidate({ origin: `http://127.0.0.1:${port}/same` });
     assert.equal(sameOriginRedirect.redirectExternal, false);
-    assert.equal(sameOriginRedirect.redirect, `http://127.0.0.1:${port}/login`);
+    // probeHttpCandidate follows ONE loopback redirect hop to recover a title (the entrypoint
+    // signal): /same 302s to /login, which falls through to the default handler here — same
+    // title as root, but the follow proves the hop happened. The ORIGINAL origin is preserved;
+    // the redirect field is consumed, not surfaced.
+    assert.equal(sameOriginRedirect.origin, `http://127.0.0.1:${port}/same`);
+    assert.equal(sameOriginRedirect.redirect, null);
+    assert.equal(sameOriginRedirect.title, "Local App");
     const huge = await probeHttpCandidate({ origin: `http://127.0.0.1:${port}/huge` });
     assert.equal(huge.title, null);
   } finally {

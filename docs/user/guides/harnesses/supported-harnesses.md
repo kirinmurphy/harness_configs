@@ -72,13 +72,19 @@ file. It never scans your filesystem broadly. The evidence it finds becomes a co
 
 | Evidence found | Confidence |
 | --- | --- |
-| Executable on `PATH` **and** a home dir or config file | `confirmed` |
-| Executable only, or config file only | `probable` |
-| Home directory only | `possible` |
+| Executable on `PATH` (validated) **and** a home dir or config file | `confirmed` |
+| Executable on `PATH` (validated) only | `probable` |
+| Home directory or config file only | `possible` |
 | Nothing | `absent` |
 
 Each provider declares the minimum confidence it will accept. Meeting that bar makes the harness
 eligible; roborepo then manages it on the next `roborepo update`.
+
+Every shipped provider requires `confirmed` — a validated executable on `PATH` **plus** a home dir
+or config file. A config directory left behind by another tool (a `~/.claude` with no `claude`
+binary, say) is not enough to make roborepo believe the harness is installed; it shows up as
+`possible` instead. This matters because a leftover settings file would otherwise flip the Agents
+page to "installed" with no CLI present.
 
 Two consequences worth knowing:
 

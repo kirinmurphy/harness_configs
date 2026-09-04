@@ -4,6 +4,7 @@
   "label": "Doc Indexing (with JDocMunch)",
   "description": "Local docs index with section search, TOC, and context retrieval. Routes doc exploration through jdocmunch tools instead of reading full files.",
   "lifecycle": "optional",
+  "capabilities": ["doc-lookup"],
   "presentation": {
     "category": "token-optimization",
     "order": 30

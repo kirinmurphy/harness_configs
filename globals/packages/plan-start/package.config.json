@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "plan-start",
   "label": "Plan Start",
-  "description": "Use when beginning implementation from an existing prepared repository plan. Inspect the current plan and repository, create or safely reuse an isolated worktree, implement every in-scope unblocked objective, make clear or reversible decisions autonomously, continue around blockers, verify the work, synchronize the plan, and report the result. Do not use for initial plan preparation, lifecycle orchestration, portal actions, integration-branch closeout, or implementation without an existing plan.",
+  "description": "Implement from an existing prepared plan: worktree, in-scope objectives, verification, sync.",
   "lifecycle": "optional",
   "presentation": {
     "category": "skills-dev-lifecycle",
@@ -19,7 +19,6 @@
         {
           "type": "slash-command",
           "name": "plan-start",
-          "description": "Use when beginning implementation from an existing prepared repository plan. Inspect the current plan and repository, create or safely reuse an isolated worktree, implement every in-scope unblocked objective, make clear or reversible decisions autonomously, continue around blockers, verify the work, synchronize the plan, and report the result. Do not use for initial plan preparation, lifecycle orchestration, portal actions, integration-branch closeout, or implementation without an existing plan.",
           "harnesses": [
             "claude",
             "codex",

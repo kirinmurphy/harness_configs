@@ -105,8 +105,8 @@ if (process.platform !== "win32") {
       fs.mkdirSync(configDir, { recursive: true });
       fs.writeFileSync(path.join(configDir, "settings.json"), "{}\n");
       const configResult = detectHarnessProvider(fakeManifest("config-only", { configCandidates: ["~/.config-only/settings.json"] }));
-      assert(configResult.status === "detected", "existing config file behavior must remain detected");
-      assert(configResult.confidence === "probable", "config-only evidence must remain probable");
+      assert(configResult.status === "absent", "config-only evidence must not detect (a stray config file is not an installed harness)");
+      assert(configResult.confidence === "possible", "config-only evidence must rank only possible");
     });
 
     withDiscoveryEnv({ home, pathPrefix: bin }, () => {

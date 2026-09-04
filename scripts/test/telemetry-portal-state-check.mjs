@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import {
-  viewToSearchParams, viewFromSearchParams, activeFilterCountFromView,
+  viewToSearchParams, viewFromSearchParams, activeFilterCountFromView, pageState,
 } from "../../portal/telemetry/state.js";
 
 // Phase 6 of docs/plans/active/roborepo-telemetry-events-experiments-plan.md: the Telemetry portal's
@@ -16,6 +16,7 @@ testOmitsNullFields();
 testRestoresDefaultsFromEmptyParams();
 testInvalidNumericFieldsFallBackToNull();
 testActiveFilterCountExcludesTimeFields();
+testPageStateCascade();
 console.log("telemetry portal state (URL round-trip) checks passed");
 
 function testRoundTripAllFields() {
@@ -51,4 +52,16 @@ function testActiveFilterCountExcludesTimeFields() {
   assert.equal(activeFilterCountFromView(withModel), 1);
   const withThree = { ...onlyTime, harness: "claude", model: "x", markerId: "mark_1" };
   assert.equal(activeFilterCountFromView(withThree), 3);
+}
+
+function testPageStateCascade() {
+  // Strict cascade: the shown state is the FIRST failing rung (see state.js's pageState).
+  assert.equal(pageState({ telemetryOn: false, activeHarnessCount: 0, hasData: false }), "telemetry-off");
+  assert.equal(pageState({ telemetryOn: false, activeHarnessCount: 2, hasData: true }), "telemetry-off",
+    "telemetry off wins even with harnesses and data present");
+  assert.equal(pageState({ telemetryOn: true, activeHarnessCount: 0, hasData: false }), "no-harness");
+  assert.equal(pageState({ telemetryOn: true, activeHarnessCount: 0, hasData: true }), "no-harness",
+    "no-harness wins over stale data (harness removed, spool not yet trimmed)");
+  assert.equal(pageState({ telemetryOn: true, activeHarnessCount: 1, hasData: false }), "no-data");
+  assert.equal(pageState({ telemetryOn: true, activeHarnessCount: 3, hasData: true }), "full");
 }

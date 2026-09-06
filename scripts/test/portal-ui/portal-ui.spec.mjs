@@ -15,7 +15,7 @@
 
 import { test, expect } from "@playwright/test";
 
-const NAV_ORDER = ["Home", "Agents", "Plans", "Tokens", "Tokens2", "Localhost"];
+const NAV_ORDER = ["Home", "Agents", "Plans", "Tokens", "Localhost"];
 
 const HOME_CARDS = [
   { title: "Agents", href: "/config" },

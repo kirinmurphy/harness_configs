@@ -4,7 +4,7 @@
 
 import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
 import { presentedHarnesses } from "/portal/shared/harness-cohort.js";
-import { configHarnessWarning } from "./onboarding-state.js";
+import { harnessWarningElement } from "/portal/shared/harness-warning.js";
 import {
   resolveDriftChip,
   harnessChipSpec,
@@ -338,14 +338,11 @@ export function contextWarnings(snap) {
   return panel;
 }
 
+// The "install a supported harness" warning banner — rendered from the SHARED module
+// (harness-warning.js + tpl-harness-warning) so /config and /tokens can never drift. Null when
+// the machine has at least one active harness.
 export function harnessWarning(snap) {
-  const notice = configHarnessWarning(snap);
-  if (!notice) return null;
-  const panel = tpl("tpl-config-onboarding-notice");
-  panel.setAttribute("variant", notice.variant);
-  panel.querySelector("[data-slot=title]").textContent = notice.title;
-  panel.querySelector("[data-slot=body]").innerHTML = notice.body;
-  return panel;
+  return harnessWarningElement(snap);
 }
 
 // Persistent intro above the package sections. Always rendered (not an ephemeral onboarding

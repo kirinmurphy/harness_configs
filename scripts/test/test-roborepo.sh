@@ -902,7 +902,7 @@ if [[ -n "${cfg_port:-}" ]]; then
   # experiment/analysis endpoints. Real HTTP calls against the running loopback server (per the
   # plan's "no Playwright" decision — verified via API status/JSON-shape checks, not a real browser).
   assert "telemetry: served page includes cohort filter bar and marker-create dialog" \
-    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/tokens' | grep -q 'id=\"cohortfilt\"' && curl -s 'http://127.0.0.1:${cfg_port}/tokens' | grep -q 'id=\"marker-modal\"'"
+    bash -c "curl -s 'http://127.0.0.1:${cfg_port}/tokens_v1' | grep -q 'id=\"cohortfilt\"' && curl -s 'http://127.0.0.1:${cfg_port}/tokens_v1' | grep -q 'id=\"marker-modal\"'"
   assert "telemetry: served dashboard JS parses" \
     bash -c "telejs=\"${cfg_home}/telemetry-app.mjs\"; curl -s 'http://127.0.0.1:${cfg_port}/portal/telemetry/app.js' > \"\${telejs}\" && node --check \"\${telejs}\""
   assert "telemetry: served chart.js parses" \

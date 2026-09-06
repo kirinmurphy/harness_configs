@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // Reusable hermetic-portal capture utility — boots a disposable portal, optionally seeds the
-// /tokens2 mock spool, captures full-page screenshots (dark + light), and stops the server.
+// /tokens mock spool, captures full-page screenshots (dark + light), and stops the server.
 //
 // Usage:
-//   node scripts/test/portal-ui/capture.mjs [--seed-tokens2] [--page /tokens2] [--out /tmp/rr-shots]
+//   node scripts/test/portal-ui/capture.mjs [--seed-tokens2] [--page /tokens] [--out /tmp/rr-shots]
 //
 // Flags:
 //   --seed-tokens2   Copy portal/tokens2/mock-spool.jsonl into the hermetic spool dir so
-//                    /tokens2 renders its full mock report (spikes, loops, reads, testing,
+//                    /tokens renders its full mock report (spikes, loops, reads, testing,
 //                    marker comparison). Without it the page renders its empty/no-data state.
-//   --page <path>    Page path to capture (default /tokens2).
+//   --page <path>    Page path to capture (default /tokens).
 //   --out <dir>      Output directory for PNGs (default /tmp/rr-shots).
 //
 // Encapsulates the gotchas documented in references/portal-capture-recipe.md:
@@ -37,7 +37,7 @@ const value = (name, fallback) => {
   return i !== -1 && args[i + 1] && !args[i + 1].startsWith("--") ? args[i + 1] : fallback;
 };
 const seedTokens2 = flag("--seed-tokens2");
-const pagePath = value("--page", "/tokens2");
+const pagePath = value("--page", "/tokens");
 const outDir = path.resolve(value("--out", "/tmp/rr-shots"));
 
 fs.mkdirSync(outDir, { recursive: true });
@@ -53,7 +53,7 @@ if (seedTokens2) {
     path.join(repoRoot, "portal", "tokens2", "mock-spool.jsonl"),
     path.join(spoolDir, "claude.jsonl"),
   );
-  console.log(`seeded /tokens2 mock spool → ${spoolDir}/claude.jsonl`);
+  console.log(`seeded /tokens mock spool → ${spoolDir}/claude.jsonl`);
 }
 
 const readyFile = path.join(tmp, "portal.ready");

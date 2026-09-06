@@ -15,6 +15,11 @@ let lastVersion = null;
 let hasData = false;
 let setupReady = false;
 let pollTimer = null;
+// Last applied setup snapshot + the cascade rung it produced — load() re-applies the setup state
+// when a real-data response flips hasData (first captures land mid-poll, or a wipe empties the
+// spool), so the no-data panel and the full report follow without a config change or reload.
+let lastSetup = null;
+let lastSetupState = null;
 
 // ── Formatting helpers (local — no dependency on telemetry/state.js's fmt for tokens) ──
 const fmt = (n) => Number(n || 0).toLocaleString("en-US");
@@ -64,6 +69,10 @@ async function init() {
   // In the full state, we fetch from /api/data (the real spool).
   const isFullState = setupReady;
   await load(!isFullState);
+  // Re-apply the setup cascade after the first report load: hasData is now established from the
+  // real /api/data response, so pageState reflects actual captures — the "no telemetry data yet"
+  // panel hides when real data exists instead of persisting from the pre-load default.
+  await applySetupState({ telemetryOn, activeHarnessCount: harnessCount, snap: cfg });
   if (setupReady) {
     pollTimer = setInterval(() => load(), 5000);
   }
@@ -76,12 +85,14 @@ async function init() {
 // data if the spool has content even when the config says telemetry is off.
 async function applySetupState({ telemetryOn, activeHarnessCount, snap }) {
   setupReady = telemetryOn && activeHarnessCount > 0;
+  lastSetup = { telemetryOn, activeHarnessCount, snap };
   if (!setupReady && firstLoad) { firstLoad = false; portalHideLoadingNow(); }
 
   const offPanel = document.getElementById("tokens2off");
   const bannerHost = document.getElementById("tokens2banner");
   const content = document.getElementById("tokens2content");
   const state = pageState({ telemetryOn, activeHarnessCount, hasData });
+  lastSetupState = state;
 
   // The banner (telemetry-off or harness-warning) shows in every non-full state.
   // The content (report) is ALWAYS shown — in non-full states it renders the demo
@@ -159,7 +170,21 @@ async function load(force) {
   if (firstLoad) { firstLoad = false; portalHideLoading(); }
   if (!force && data.version === lastVersion) return;
   lastVersion = data.version;
-  hasData = (data.capture_count ?? 0) > 0;
+  // hasData reflects REAL captures only — the mock endpoint's spool always has records, and
+  // letting it set hasData would advance the cascade to the real-data rung (hiding the no-data
+  // panel and the mock disclaimer) before any real telemetry exists.
+  if (!force) {
+    hasData = (data.capture_count ?? 0) > 0;
+    // Re-apply the setup cascade when the report's hasData flips the shown rung (e.g. the first
+    // real captures land and the "no telemetry data yet" panel should give way to the report).
+    if (lastSetup) {
+      const state = pageState({ telemetryOn: lastSetup.telemetryOn, activeHarnessCount: lastSetup.activeHarnessCount, hasData });
+      if (state !== lastSetupState) {
+        lastSetupState = state;
+        applySetupState(lastSetup);
+      }
+    }
+  }
   portalSetUpdatedAt();
 
   // Mock-data disclaimer: shown when the page is NOT in the "full" state (no real
@@ -306,9 +331,12 @@ function wasteInWindow(parts, data, days) {
   // Loop waste: timestamped loop rows.
   const loopWasteWeek = (data.loops || []).filter((l) => inWindow(l.ts)).reduce((s, l) => s + (l.wasted_tokens || 0), 0);
 
-  // Testing: global metric — apportion by the window's share of timeline volume.
-  const weekShare = timeline.filter((p) => inWindow(p.ts)).reduce((s, p) => s + (p.delta || 0), 0)
-    / timeline.reduce((s, p) => s + (p.delta || 0), 0);
+  // Testing: global metric — apportion by the window's share of timeline volume. A zero
+  // all-window delta (all deltas absent/empty) must yield a safe zero share, not NaN — the
+  // clamped weekWaste below needs a finite value.
+  const weekDelta = timeline.filter((p) => inWindow(p.ts)).reduce((s, p) => s + (p.delta || 0), 0);
+  const allDelta = timeline.reduce((s, p) => s + (p.delta || 0), 0);
+  const weekShare = allDelta > 0 ? weekDelta / allDelta : 0;
   const testPart = parts.find((p) => p.label === "over-testing");
   const testWeek = testPart ? testPart.tokens * weekShare : 0;
 
@@ -517,19 +545,9 @@ function renderInvestigationSections(data) {
     }
   }
 
-  // 4h: Marker comparison — badge is the measured change.
-  if (data.marker_comparison) {
-    const ev = data.marker_comparison.evidence || {};
-    const rel = ev.relative_change;
-    container.appendChild(investSection({
-      key: "marker",
-      title: "Before vs after your change",
-      framing: "pick a marker you set (a skill change, a model swap) and compare token cost across it",
-      badge: rel != null ? `${rel > 0 ? "+" : ""}${pct(rel)}% tokens/session` : "no change measured",
-      badgeClass: rel != null && rel > 0 ? "warn" : "",
-      bodyEl: markerComparisonBody(data.marker_comparison),
-    }));
-  }
+  // 4h (removed): "Before vs after your change" marker comparison — half an idea on its own;
+  // a future iteration will address change-marking holistically. The pipeline fields
+  // (marker_comparison, MOCK_MARKER) stay — the /tokens_v1 page and CLI still read them.
 }
 
 function investSection({ key, title, framing, badge, badgeClass, bodyEl }) {
@@ -640,6 +658,9 @@ function docLookupHint(warning, type) {
     return `a doc index is already installed (${installed.label}) — pull only the section you need instead of the full file`;
   }
   const available = pkgs[0];
+  // Plain text, not an anchor: itemRow escapes the hint (and the agent prompt interpolates it as
+  // raw text), so embedded HTML would render as a literal tag. The label name + install guidance
+  // are preserved; /config is one click away in the page nav.
   return `a doc index would serve just the section you need — ${available.label} is available but not installed`;
 }
 
@@ -743,7 +764,7 @@ function regressionBody(r) {
     const note = document.createElement("p");
     note.className = "item-detail";
     note.style.margin = "8px 0 0";
-    note.innerHTML = `<strong>Exploratory:</strong> midpoint split, not tied to a specific change. Mark the change you suspect and use the marker-relative comparison for a precise before/after.`;
+    note.innerHTML = `<strong>Exploratory:</strong> midpoint split, not tied to a specific change. The marker-relative comparison in a future iteration will give a precise before/after once a change is marked.`;
     frag.appendChild(note);
   }
   return frag;
@@ -757,29 +778,12 @@ function testingEfficiencyBody(te) {
   const redundantRounded = Math.round(redundant);
   frag.appendChild(itemRow({
     dotColor: redundant >= 1 ? "var(--warn)" : "var(--accent)",
-    head: `Full suite run ${fullPerActiveSession != null ? fullPerActiveSession.toFixed(1) : "—"}× per session with any testing`,
+    head: fullPerActiveSession != null && fullPerActiveSession >= 1
+      ? `Full suite run ${fullPerActiveSession.toFixed(1)}× per session with any testing`
+      : `Full suite run less than once per testing session`,
     detail: `<span class="num">${tokenShare != null ? tokenShare : "—"}%</span> of all captured tokens went to testing${redundantRounded >= 1 ? ` · <span class="num">${redundantRounded}</span> full-suite rerun${redundantRounded === 1 ? "" : "s"} without an intervening edit` : ""}.`,
     hint: "Run targeted tests (single file or --filter) between edits — save the full suite for the end.",
   }));
-  return frag;
-}
-
-function markerComparisonBody(mc) {
-  const frag = document.createDocumentFragment();
-  if (!mc) { frag.appendChild(emptyMsg("No marker selected — mark a change to enable this view.")); return frag; }
-  const grid = document.createElement("div");
-  grid.className = "stat-grid";
-  const ev = mc.evidence || mc;
-  const before = ev.before || { value: 0 };
-  const after = ev.after || { value: 0 };
-  const change = ev.relative_change != null ? pct(ev.relative_change) : "—";
-  const conf = mc.confidence || "—";
-  grid.innerHTML = `
-    <div class="stat-card"><span class="stat-label">Before</span><span class="stat-val">${tokShort(before.value)}</span><span class="stat-frame">avg tokens/session</span></div>
-    <div class="stat-card"><span class="stat-label">After</span><span class="stat-val">${tokShort(after.value)}</span><span class="stat-frame">avg tokens/session</span></div>
-    <div class="stat-card"><span class="stat-label">Change</span><span class="stat-val" style="color:var(${(ev.effect_size || 0) > 0 ? "--danger" : "--ok"})">${change > 0 ? "+" : ""}${change}%</span><span class="stat-frame">${mc.marker_title ? esc(mc.marker_title) : ""}</span></div>
-    <div class="stat-card"><span class="stat-label">Confidence</span><span class="stat-val" style="font-size:var(--text-md)">${esc(conf)}</span><span class="stat-frame">${mc.sample_size || 0} sessions</span></div>`;
-  frag.appendChild(grid);
   return frag;
 }
 
@@ -887,14 +891,6 @@ function renderAgentPrompt(data) {
       }
     }
   }
-  if (data.marker_comparison) {
-    const ev = data.marker_comparison.evidence || {};
-    const before = ev.before?.value, after = ev.after?.value;
-    if (before != null && after != null) {
-      lines.push("");
-      lines.push(`Before vs after "${data.marker_comparison.cohort?.marker?.title || "the marked change"}": average tokens/session went ${tokShort(before)} → ${tokShort(after)} (${data.marker_comparison.confidence}).`);
-    }
-  }
   if (data.insights?.length) {
     lines.push("");
     lines.push("Deterministic findings from the analysis pipeline:");
@@ -919,12 +915,21 @@ function renderFullData(data) {
   const container = document.getElementById("fulldata-content");
   container.replaceChildren();
 
-  // Data quality notice.
+  // Data quality notice + the actual warnings (per-harness rows) — the old dead "view details"
+  // link is gone; the details render right here.
   if (data.data_quality_warnings?.length) {
     const notice = document.createElement("div");
     notice.className = "dq-notice";
-    notice.innerHTML = `<span class="dq-icon">⚠</span><span>Data quality: ${data.data_quality_warnings.length} warning${data.data_quality_warnings.length > 1 ? "s" : ""} — some events may have incomplete token data. <a href="#" style="color:var(--accent);text-decoration:underline dotted">view details ›</a></span>`;
+    notice.innerHTML = `<span class="dq-icon">⚠</span><span>Data quality: ${data.data_quality_warnings.length} warning${data.data_quality_warnings.length > 1 ? "s" : ""} — some events may have incomplete token data.</span>`;
     container.appendChild(notice);
+    container.appendChild(rawTable("Data quality warnings", ["harness", "warning", "events", "detail"],
+      data.data_quality_warnings.slice(0, 10).map((w) => [
+        esc(w.harness || "unknown"),
+        esc(w.type),
+        { num: w.events ?? w.token_records ?? 0 },
+        esc(w.hint || ""),
+      ]),
+    ));
   }
 
   // Top sessions.

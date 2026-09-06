@@ -29,7 +29,18 @@ export function presentedHarnesses(snap) {
 }
 
 export function activePresentedHarnesses(snap) {
-  return presentedHarnesses(snap).filter((harness) => harness.enabled !== false);
+  return presentedHarnesses(snap).filter((harness) => {
+    if (harness.enabled === false) return false;
+    // Discovery-confidence gate: an entry is only INSTALLED when discovery reached "confirmed"
+    // (validated executable AND recognized config/home — scripts/harnesses/discovery.mjs). A
+    // bare executable on PATH is "probable": the binary may belong to an unrelated tool, and
+    // config/home evidence alone is "possible" (stray dirs outlive their tool). Counting either
+    // as installed made the tokens pages skip their demo state on machines with no real setup.
+    // Entries without a confidence field (legacy snapshots, the catalog fallback) stay included —
+    // gating only applies where discovery actually ran.
+    if (!harness.confidence) return true;
+    return harness.confidence === "confirmed";
+  });
 }
 
 // "Claude Code", "Claude Code and Codex", "Claude Code, Codex, and Gemini CLI".

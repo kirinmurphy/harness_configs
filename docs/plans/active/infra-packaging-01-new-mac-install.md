@@ -501,7 +501,7 @@ uninstall must not be treated as permission to delete personal workspace content
       hardware 2026-08-22:** installed with `npm install -g codethings-roborepo-alpha`, launched,
       loaded as expected, and `roborepo doctor` passed. The repository was never cloned there, so
       the clean baseline held.
-- [ ] Restore a dedicated workspace or exercise `roborepo workspace import <old-checkout-or-workspace>` only after the clean baseline passes.
+- [x] Restore a dedicated workspace or exercise `roborepo workspace import <old-checkout-or-workspace>` only after the clean baseline passes.
 - [x] ~~Clone the repository and verify packaged and development entry points coexist.~~
 - [x] ~~Verify package mode and checkout mode share `workspaceRoot` and `stateRoot` while reporting
       different `appRoot` values.~~

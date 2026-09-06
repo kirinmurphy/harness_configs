@@ -440,6 +440,7 @@ register({
   unit: "percent",
   direction_good: "lower",
   summary: "rate",
+  minimum_sample: 20,
   compute(captures) {
     const total = captures.reduce((sum, e) => sum + (e.delta_tokens || 0), 0);
     if (total <= 0) return null;

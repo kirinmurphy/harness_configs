@@ -7,6 +7,13 @@ export function fetchAnalysis(qs) {
   return portalGetJson("/api/data" + qs);
 }
 
+// Demo path (same contract as the v2 /tokens page): when the install cascade is not in the full
+// state (telemetry off / no harness), the report renders from the shared mock analysis — the same
+// spool + pipeline the v2 page demos with. Only difference from real data is the source file.
+export function fetchMockAnalysis(qs) {
+  return portalGetJson("/api/tokens2/mock" + qs);
+}
+
 export function fetchSession({ id, harness, finding, repo }) {
   // No client-side default to "claude": the server now rejects a missing/unknown harness rather
   // than silently assuming one.

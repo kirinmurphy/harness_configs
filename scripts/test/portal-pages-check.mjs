@@ -24,7 +24,9 @@ const EXPECTED = [
   { path: "/", id: "home", title: "Home", dir: "home", default: true },
   { path: "/config", id: "config", title: "Agents", dir: "config" },
   { path: "/plans", id: "plans", title: "Plans", dir: "plans" },
-  { path: "/tokens", id: "telemetry", title: "Tokens", dir: "telemetry" },
+  // v2 token report owns /tokens; the v1 dashboard stays served at /tokens_v1, hidden from nav.
+  { path: "/tokens", id: "tokens2", title: "Tokens", dir: "tokens2" },
+  { path: "/tokens_v1", id: "telemetry", title: "Tokens", dir: "telemetry", hidden: true },
   { path: "/localhoster", id: "localhoster", title: "Localhost", dir: "localhoster" },
 ];
 

@@ -10,7 +10,7 @@
     "executableValidation": { "args": ["--version"] },
     "homeCandidates": ["~/.claude"],
     "configCandidates": ["~/.claude/settings.json"],
-    "minimumConfidence": "probable"
+    "minimumConfidence": "confirmed"
   },
   "paths": {
     "home": { "path": "~/.claude", "kind": "directory" },

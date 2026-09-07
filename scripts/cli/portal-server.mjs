@@ -57,11 +57,11 @@ export const PAGES = [
   { path: "/", id: "home", title: "Home", dir: "home", default: true },
   { path: "/config", id: "config", title: "Agents", dir: "config" },
   { path: "/plans", id: "plans", title: "Plans", dir: "plans" },
-  // Path and title say "tokens" while id and dir say "telemetry", deliberately: the system captures
-  // agent-session telemetry broadly (test-failure streaks, edit/read counts, phase signals, tool
-  // provenance) and tokens are one field of it — but token cost is what a user opens this page to
-  // read. The identifier stays accurate to the system; the URL and tab stay honest about the draw.
-  { path: "/tokens", id: "telemetry", title: "Tokens", dir: "telemetry" },
+  // The v2 token report owns /tokens (id/dir keep the tokens2 module paths). The v1 telemetry
+  // dashboard stays served at /tokens_v1 for comparison, hidden from nav (hidden: true) until the
+  // v1 retirement call is made — nav headers shouldn't advertise two token pages.
+  { path: "/tokens", id: "tokens2", title: "Tokens", dir: "tokens2" },
+  { path: "/tokens_v1", id: "telemetry", title: "Tokens", dir: "telemetry", hidden: true },
   {
     path: "/localhoster",
     id: "localhoster",
@@ -72,7 +72,9 @@ export const PAGES = [
 const PAGE_BY_PATH = new Map(PAGES.map((p) => [p.path, p]));
 // Shape shared by /api/portal/status and the browser-injected manifest so both can never drift.
 const pageManifest = () =>
-  PAGES.map(({ path, id, title }) => ({ path, id, title }));
+  // `hidden` rides along: the browser nav (theme.js) needs it to keep hidden pages served but
+  // out of the header. Shape stays browser-safe (plain path/id/title/hidden).
+  PAGES.map(({ path, id, title, hidden }) => hidden ? { path, id, title, hidden: true } : { path, id, title });
 
 // The <head> boilerplate (theme-flash guard + meta tags) is identical across every page except
 // the title and stylesheet href, so each page's index.html holds just a {{HEAD}} marker instead

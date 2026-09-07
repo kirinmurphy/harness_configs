@@ -1,0 +1,203 @@
+<!doctype html>
+<!-- Roborepo Tokens page — evolution concept (static demo, fake data, no build step) -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tokens — concept: distilled briefing</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d1117; --panel: #161b22; --raised: #1c2330; --line: #2a3040;
+    --ink: #e6edf3; --dim: #8b949e; --accent: #58a6ff; --warn: #f0883e; --danger: #f85149; --ok: #3fb950;
+    --radius: 10px;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 20px 80px; }
+  .concept-note {
+    border: 1px dashed var(--warn); border-radius: var(--radius);
+    padding: 10px 14px; font-size: 12px; color: var(--warn); margin-bottom: 24px;
+  }
+  .topbar { display: flex; align-items: baseline; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+  .topbar h1 { font-size: 20px; font-weight: 700; }
+  .topbar .range { margin-left: auto; display: flex; gap: 4px; }
+  .range button {
+    background: none; border: 1px solid var(--line); color: var(--dim);
+    border-radius: 6px; padding: 2px 10px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  .range button.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+
+  /* THE BRIEF — the one panel that replaces the dashboard */
+  .brief {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 20px; margin-bottom: 16px;
+  }
+  .brief-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .brief-head h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+  .brief-head .when { margin-left: auto; font-size: 11px; color: var(--dim); }
+  .finding { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .finding:first-of-type { border-top: none; padding-top: 4px; }
+  .finding .sev { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-top: 7px; }
+  .sev.high { background: var(--danger); } .sev.warn { background: var(--warn); } .sev.info { background: var(--dim); }
+  .finding .hl { font-size: 14px; font-weight: 600; }
+  .finding .why { font-size: 12.5px; color: var(--dim); margin-top: 2px; }
+  .finding .evidence { font-size: 11px; color: var(--dim); margin-top: 6px; font-family: ui-monospace, "SF Mono", Menlo, monospace; background: var(--raised); border-radius: 6px; padding: 6px 9px; white-space: pre-wrap; }
+  .finding .actions { margin-top: 8px; display: flex; gap: 10px; }
+  .finding .actions button {
+    background: none; border: 1px solid var(--line); color: var(--accent); font: inherit;
+    font-size: 12px; border-radius: 6px; padding: 3px 10px; cursor: pointer;
+  }
+  .finding .actions button:hover { border-color: var(--accent); }
+
+  /* hand-off strip: the agent-facing artifact */
+  .handoff {
+    display: flex; align-items: center; gap: 14px;
+    background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+    border-radius: var(--radius); padding: 14px 18px; margin-bottom: 28px; flex-wrap: wrap;
+  }
+  .handoff .txt { font-size: 13px; }
+  .handoff .txt b { color: var(--ink); }
+  .handoff .txt span { color: var(--dim); }
+  .handoff button {
+    margin-left: auto; background: var(--accent); color: var(--bg); border: none;
+    border-radius: 7px; padding: 7px 14px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+
+  /* secondary: one-line numbers, not panels of tables */
+  .strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 28px; }
+  @media (max-width: 760px) { .strip { grid-template-columns: repeat(2, 1fr); } }
+  .metric { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+  .metric .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--dim); }
+  .metric .v { font-size: 20px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .metric .d { font-size: 11px; margin-top: 2px; }
+  .d.up { color: var(--danger); } .d.down { color: var(--ok); } .d.flat { color: var(--dim); }
+
+  section.dim-section { margin-bottom: 28px; }
+  .dim-head { display: flex; align-items: center; margin-bottom: 8px; }
+  .dim-head h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
+  .dim-head .note { margin-left: auto; font-size: 11px; color: var(--dim); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  th, td { text-align: left; padding: 8px 12px; border-top: 1px solid var(--line); }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); border-top: none; font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.click { cursor: pointer; } tr.click:hover td { background: var(--raised); }
+  .delta { font-size: 11px; margin-left: 6px; }
+  .delta.up { color: var(--danger); } .delta.down { color: var(--ok); }
+
+  .footnote { font-size: 11.5px; color: var(--dim); border-top: 1px solid var(--line); padding-top: 14px; }
+  .footnote code { background: var(--raised); border-radius: 4px; padding: 1px 5px; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="concept-note">CONCEPT DEMO — static page with fake data. This is the Tokens page evolved: the 15-panel dashboard collapses into one briefing you can act on (or hand to an agent), with raw tables demoted below the fold.</div>
+
+  <div class="topbar">
+    <h1>Tokens</h1>
+    <span style="color:var(--dim);font-size:12px">last 7 days · all repos</span>
+    <div class="range">
+      <button>1d</button><button class="active">7d</button><button>30d</button><button>all</button>
+    </div>
+  </div>
+
+  <!-- THE BRIEF -->
+  <div class="brief">
+    <div class="brief-head">
+      <h2>What your tokens did this week</h2>
+      <span class="when">computed locally · refreshed 2 min ago</span>
+    </div>
+
+    <div class="finding">
+      <span class="sev high"></span>
+      <div>
+        <div class="hl">One runaway skill cost you 41% of the week's tokens</div>
+        <div class="why">The <b>goal-accountability</b> skill re-reads the entire backlog file on every turn — 340k tokens across 11 sessions, all repeat reads of an unchanged file.</div>
+        <div class="evidence">sessions: 11 · repeats: 34 reads of horizon/backlog.md (unchanged between 31 of them) · avg 10k tokens/read</div>
+        <div class="actions">
+          <button>Open one example chat</button>
+          <button>Pin as regression marker</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="finding">
+      <span class="sev warn"></span>
+      <div>
+        <div class="hl">MCP jdocmunch calls put 3× more into context than the native reads they replaced</div>
+        <div class="why">Avg 14k tokens/call vs 4.6k for Read+Grep on the same lookup class. If this trend held all month it's ~2.1M extra tokens.</div>
+        <div class="evidence">n=27 calls · native baseline from 118 same-class reads · approx = result_chars ÷ 4</div>
+        <div class="actions"><button>Compare calls side by side</button></div>
+      </div>
+    </div>
+
+    <div class="finding">
+      <span class="sev info"></span>
+      <div>
+        <div class="hl">roborepo got 18% cheaper per session after Tuesday's marker</div>
+        <div class="why">The "trim session prompts" change (marker <code style="font-size:11px">mk_8f2</code>) dropped avg session context from 1.9M → 1.56M with no change in tasks completed.</div>
+        <div class="evidence">before: 14 sessions · after: 9 sessions · same task mix (edit/test ratio within 4%)</div>
+        <div class="actions"><button>View comparison</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HAND-OFF -->
+  <div class="handoff">
+    <div class="txt">
+      <b>Hand this to an agent.</b>
+      <span>One distilled JSON brief — findings, evidence pointers, session ids — no parsing needed. ~2k tokens instead of 40k of raw spool.</span>
+    </div>
+    <button>Copy agent brief</button>
+  </div>
+
+  <!-- NUMBERS STRIP -->
+  <div class="strip">
+    <div class="metric"><div class="k">Week total</div><div class="v">4.8M</div><div class="d flat">same as last week</div></div>
+    <div class="metric"><div class="k">Avg / session</div><div class="v">1.62M</div><div class="d down">▼ 18% after mk_8f2</div></div>
+    <div class="metric"><div class="k">Spikes</div><div class="v">11</div><div class="d up">▲ 9 explained by finding #1</div></div>
+    <div class="metric"><div class="k">Cheapest harness</div><div class="v">Codex</div><div class="d down">0.8× Claude same task class</div></div>
+  </div>
+
+  <!-- DEMOTED DETAIL -->
+  <section class="dim-section">
+    <div class="dim-head"><h3>Cost by tool</h3><span class="note">avg tokens put into context per call</span></div>
+    <table>
+      <thead><tr><th>Tool</th><th class="num">Avg / call</th><th class="num">Calls</th><th class="num">Share</th><th class="num">Δ vs prior week</th></tr></thead>
+      <tbody>
+        <tr class="click"><td>skill:goal-accountability</td><td class="num">10.1k</td><td class="num">34</td><td class="num">41%</td><td class="num">+312% <span class="delta up">↑</span></td></tr>
+        <tr class="click"><td>mcp__jdocmunch</td><td class="num">14.0k</td><td class="num">27</td><td class="num">18%</td><td class="num">+9% <span class="delta up">↑</span></td></tr>
+        <tr class="click"><td>Read</td><td class="num">4.6k</td><td class="num">118</td><td class="num">12%</td><td class="num">−2% <span class="delta down">↓</span></td></tr>
+        <tr class="click"><td>Bash (npm test)</td><td class="num">8.9k</td><td class="num">41</td><td class="num">11%</td><td class="num">+1% <span class="delta flat">·</span></td></tr>
+        <tr class="click"><td>Edit</td><td class="num">2.2k</td><td class="num">63</td><td class="num">6%</td><td class="num">−11% <span class="delta down">↓</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="dim-section">
+    <div class="dim-head"><h3>Sessions</h3><span class="note">click a row to open the chat</span></div>
+    <table>
+      <thead><tr><th>Session</th><th>Task</th><th class="num">Tokens</th><th class="num">Dur</th></tr></thead>
+      <tbody>
+        <tr class="click"><td>goal backlog review</td><td style="color:var(--dim)">accountability daily touch ×4 re-reads</td><td class="num">412k</td><td class="num">18m</td></tr>
+        <tr class="click"><td>tokens page polish</td><td style="color:var(--dim)">roborepo · three-state cascade</td><td class="num">380k</td><td class="num">52m</td></tr>
+        <tr class="click"><td>localhoster hoist fix</td><td style="color:var(--dim)">probe redirect follow</td><td class="num">298k</td><td class="num">31m</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="footnote">
+    Everything above is computed deterministically from the spool before any LLM sees it — the brief is a
+    <code>brief.json</code> the CLI already knows how to produce; the portal renders it and the hand-off copies it.
+    The current page's chart, spike anatomy, package regressions, and analysis explorer remain available
+    <span style="color:var(--ink)">behind one "advanced" expander</span> — not deleted, demoted.
+  </div>
+
+</div>
+</body>
+</html>

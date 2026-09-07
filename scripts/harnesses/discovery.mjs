@@ -62,8 +62,11 @@ function collectEvidence(manifest) {
   return evidence;
 }
 
-// Confidence rules from the plan's Discovery model table: executable + recognized config/home is
-// confirmed; executable-only or config-only is probable; home-only is possible; nothing is absent.
+// Confidence rules: a validated executable is the strongest signal — executable alone is
+// probable, executable + recognized config/home is confirmed. A config file or home directory
+// without the executable is only possible: harness config homes routinely outlive the tool that
+// created them (a stray ~/.claude/settings.json from another tool must not register Claude Code
+// as installed), so file evidence alone never clears a probable minimum.
 function normalizeConfidence(evidence) {
   const kinds = new Set(evidence.map((item) => item.kind));
   const hasExecutable = kinds.has("executable");
@@ -71,8 +74,8 @@ function normalizeConfidence(evidence) {
   const hasHome = kinds.has("home");
 
   if (hasExecutable && (hasConfig || hasHome)) return "confirmed";
-  if (hasExecutable || hasConfig) return "probable";
-  if (hasHome) return "possible";
+  if (hasExecutable) return "probable";
+  if (hasConfig || hasHome) return "possible";
   return "absent";
 }
 

@@ -56,14 +56,17 @@
       </div>
       <div class="modal-footer" id="modal-footer" hidden></div>
     </dialog>
-    <!-- Agent files summary: token warnings + per-harness file grid + defaults popover -->
-    <template id="tpl-config-onboarding-notice">
-      <portal-notice aria-live="polite">
-        <div class="config-empty">
-          <strong data-slot="title"></strong>
-          <span data-slot="body"></span>
-        </div>
-      </portal-notice>
+    <!-- Persistent intro above the package sections: what the package manager provides. Not an
+         onboarding notice — it renders on every load, whatever the onboarding state. A plain
+         header, not a .panel: .panel is reserved for the package-group sections below it. -->
+    <template id="tpl-packages-intro">
+      <header class="packages-intro">
+        <h2>Available Agent Tools</h2>
+        <p>
+          Extend your active harness config beyond the base setup.  <br/> Toggling a package below writes it
+          into every active harness's configuration.
+        </p>
+      </header>
     </template>
     <template id="tpl-context-warnings">
       <portal-notice class="token-warnings" variant="warning" aria-live="polite">
@@ -255,7 +258,13 @@
           <h2>Local Stores</h2>
           <span class="muted" data-slot="description"></span>
         </div>
-        <div data-slot="rows"></div>
+        <button
+          type="button"
+          class="perm-defaults-toggle stores-toggle"
+          data-slot="stores-toggle"
+          aria-expanded="false"
+        ></button>
+        <div data-slot="rows" hidden></div>
       </section>
     </template>
     <template id="tpl-store-row">

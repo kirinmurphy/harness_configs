@@ -44,20 +44,22 @@
         </div>
       </div>
     </div>
-    <!-- Marker creation lives outside the filter bar — it's a data-entry action ("I changed
-         something, mark it"), not a way of narrowing the current view, so grouping it with the
-         filter controls above misrepresented what it does. -->
-    <!-- Frame-of-reference count line (left) + the "I changed something, mark it" data-entry action
-         (right), on one flex-row. Stacks on mobile. The counts stay deliberately low-prominence —
-         the action-items panel and the chart carry the actionable load. -->
-    <div class="page-frame inner" id="telemetryframe">
-      <div class="frame-counts" id="meta"></div>
+    <!-- The mark-change action is a data-entry step, not a filter and not a panel: a full-width
+         banner states WHY you'd mark something (instruction left, CTA right). The frame-of-reference
+         count line (#meta) rides in the banner's copy column — it's context for the report below. -->
+    <div class="markchange-banner inner" id="telemetryframe" hidden>
+      <div class="markchange-copy">
+        <span class="markchange-head">Changed something — a skill, a model, a workflow?</span>
+        <span class="markchange-desc">Mark it. A marker is a named point on the timeline that lets every report compare token cost before vs. after, so you can see what a change actually cost.</span>
+        <span class="frame-counts" id="meta"></span>
+      </div>
       <button data-btn="cta" id="openmarkermodal" type="button">+ mark change</button>
     </div>
     <main class="inner">
       {{LOADING}}
-      <!-- Setup prompt: shown by itself when capture is disabled or no active harness is detected.
-       Enabling telemetry here is the same action as toggling it in onboarding / the config page. -->
+      <!-- Setup prompt: shown when capture is disabled. When telemetry is off this is the whole
+       page (scaffold + banner host hidden). Enabling telemetry here is the same action as toggling
+       it in onboarding / the config page. -->
       <section
         class="panel telemetry-off"
         id="telemetryoff"
@@ -69,12 +71,20 @@
           <button data-btn="cta" id="enabletelemetry">
             turn on telemetry
           </button>
-          <a data-btn="cta" id="addharness" href="/config">
-            add a harness
-          </a>
         </div>
         <div class="item-err" id="enableerr"></div>
       </section>
+
+      <!-- Host for the shared "install a supported harness" banner (harness-warning.js): shown
+       only when telemetry is on but no harness is installed. Kept separate from #telemetryoff so
+       the two banners never render at once. -->
+      <div id="telemetrybanner" style="display: none"></div>
+
+      <!-- Mock-data disclaimer: shown when the report below renders from the demo spool (telemetry
+       off / no harness — same contract as the v2 /tokens page). -->
+      <div id="mock-disclaimer" class="mock-disclaimer" style="display: none">
+        <span class="mock-text">Below is a <b>simulated tracking report</b>, track your activity after running your own agent sessions.</span>
+      </div>
 
       <div id="telemetrycontent">
         <!-- TIER 1 — conclusions & action items (the headline; always first) -->

@@ -261,6 +261,24 @@ register({
   },
 });
 
+// Full-suite runs per TESTING-ACTIVE session — the denominator that matters for "am I running the
+// whole suite too often": sessions with no testing at all shouldn't dilute the rate. Null when no
+// session ran any tests (honest empty state, never a guessed zero).
+register({
+  id: "test.full_suite_calls_per_testing_session",
+  label: "Full-suite runs per session with any testing",
+  unit: "count",
+  direction_good: "lower",
+  summary: "mean",
+  minimum_sample: 1,
+  compute(captures) {
+    const perSession = [...bySession(captures).values()]
+      .filter((events) => events.some(isTestOperation))
+      .map((events) => events.filter(isFullSuite).length);
+    return perSession.length ? mean(perSession) : null;
+  },
+});
+
 register({
   id: "test.full_suite_calls_per_debug_phase",
   label: "Full-suite runs per debugging phase",
@@ -410,6 +428,24 @@ register({
       .map((events) => events.filter(isTestOperation).reduce((sum, e) => sum + (e.delta_tokens || 0), 0))
       .filter((v) => v > 0);
     return perSession.length ? trimmedMean(perSession) : null;
+  },
+});
+
+// Testing's share of all captured token traffic — the comparable, unit-free framing for "how much
+// of my budget goes to tests". Report-global ratio (not per-session mean): a share only means
+// something against the whole, same denominator the waste cards and group shares use.
+register({
+  id: "test.token_share",
+  label: "Testing share of all captured tokens",
+  unit: "percent",
+  direction_good: "lower",
+  summary: "rate",
+  minimum_sample: 20,
+  compute(captures) {
+    const total = captures.reduce((sum, e) => sum + (e.delta_tokens || 0), 0);
+    if (total <= 0) return null;
+    const test = captures.filter(isTestOperation).reduce((sum, e) => sum + (e.delta_tokens || 0), 0);
+    return Math.round((test / total) * 1000) / 10;
   },
 });
 

@@ -25,6 +25,94 @@ function readIfExists(filePath) {
   }
 }
 
+// Agent-facing description for a slash command. Single source of truth: the SKILL.md frontmatter
+// (the skill's own file for skill-backed commands, the command source's frontmatter for standalone
+// ones). The package config's entrypoint MAY override it, but when the entrypoint description is
+// absent (or merely repeats the package description) the frontmatter wins — SKILL.md is what the
+// agent actually reads, so a hand-synced copy in package.config.json can only drift.
+function commandDescription(command) {
+  if (command.description && command.description !== command.packageDescription) return command.description;
+  if (command.skillSourceAbs) {
+    const desc = frontmatterDescription(readIfExists(command.skillSourceAbs));
+    if (desc) return desc;
+  }
+  if (command.sourceAbs) {
+    const desc = frontmatterDescription(readIfExists(command.sourceAbs));
+    if (desc) return desc;
+  }
+  return command.description || command.packageDescription;
+}
+
+function frontmatterDescription(source) {
+  if (!source) return null;
+  const frontmatter = source.match(/^---\n([\s\S]*?)\n---/)?.[1];
+  if (!frontmatter) return null;
+  const lines = frontmatter.split("\n");
+  const start = lines.findIndex((line) => /^description:\s*(.*)$/.test(line));
+  if (start === -1) return null;
+  const first = lines[start].match(/^description:\s*(.*)$/)[1].trim();
+  // YAML block scalars (">" / "|") put the value on indented continuation lines — fold them.
+  if (!["", ">", "|", ">-", "|-"].includes(first)) return first;
+  const folded = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (!/^\s/.test(lines[i])) break;
+    folded.push(lines[i].trim());
+  }
+  return folded.join(" ").trim() || null;
+}
+
+// Serialize a command description as a valid single-line YAML scalar for generated command
+// frontmatter. Plain when unambiguous; double-quoted (escaped) when the text contains ": " / " #",
+// a leading indicator char, tabs, or leading/trailing whitespace — anything that would make the
+// frontmatter misparse (e.g. "Trigger: /case-study, ..." folding into a nested mapping).
+function yamlDescription(value) {
+  const s = String(value);
+  const needsQuotes =
+    /^\s/.test(s) ||
+    /^[\-?:,[\]{}#&*!|>'"%@`]/.test(s) ||
+    /(: | #|:\s*$)/.test(s) ||
+    /\s$/.test(s) ||
+    /\t/.test(s);
+  if (!needsQuotes) return s;
+  return `"${s
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/[\x00-\x1f]/g, (c) =>
+      c === "\t" ? "\\t" : c === "\n" ? "\\n" : `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`)}"`;
+}
+
+// Minimal YAML parser for exactly the `description: <scalar>` line we generate — enough to prove
+// the serialization round-trips (quoting/escaping is correct). Returns the parsed value, or null
+// for any line that isn't a well-formed single-line scalar.
+function parseYamlScalar(text) {
+  if (!text.length) return null;
+  if (text.startsWith('"')) {
+    if (!text.endsWith('"') || text.length < 2) return null;
+    let out = "";
+    for (let i = 1; i < text.length - 1; i++) {
+      const ch = text[i];
+      if (ch !== "\\") { out += ch; continue; }
+      const next = text[i + 1];
+      if (next === '"' || next === "\\") { out += next; i++; continue; }
+      if (next === "t") { out += "\t"; i++; continue; }
+      if (next === "n") { out += "\n"; i++; continue; }
+      if (next === "x") {
+        const hex = text.slice(i + 2, i + 4);
+        if (!/^[0-9a-fA-F]{2}$/.test(hex)) return null;
+        out += String.fromCharCode(parseInt(hex, 16));
+        i += 3;
+        continue;
+      }
+      return null; // unsupported escape — yamlDescription must never emit one
+    }
+    return out;
+  }
+  // Plain scalar: no leading indicator/whitespace, no ": " / " #" sequences, no trailing colon.
+  if (/^\s/.test(text) || /^[\-?:,[\]{}#&*!|>'"%@`]/.test(text)) return null;
+  if (/(: | #|:\s*$)/.test(text) || /\s$/.test(text) || /\t/.test(text)) return null;
+  return text;
+}
+
 function commandTarget(name) {
   return `${name}.md`;
 }
@@ -49,8 +137,17 @@ function withGeneratedMarker(content, packageId) {
 }
 
 function skillBackedCommand(command, harnessName) {
+  const description = yamlDescription(command.description);
+  // Round-trip assertion — runs in BOTH render and --check paths (expectedCommands feeds both), so
+  // a description that would misparse as nested YAML fails loudly instead of shipping broken
+  // frontmatter. The case-study trigger ("Trigger: /case-study, ...") needs the quoted form.
+  if (parseYamlScalar(description) !== command.description) {
+    throw new Error(
+      `${command.packageId}: /${command.name} description does not serialize as a valid YAML scalar: ${JSON.stringify(command.description)}`,
+    );
+  }
   return withGeneratedMarker(`---
-description: ${command.description}
+description: ${description}
 ---
 
 # /${command.name}
@@ -152,7 +249,9 @@ function slashCommandsFromPackages(packages) {
             name: entrypoint.name,
             kind: "skill-backed",
             description: entrypoint.description,
+            packageDescription: pkg.description,
             skill: resource.id,
+            skillSourceAbs: path.join(pkg.sourceRoot, resource.source, "SKILL.md"),
             harnesses: entrypoint.harnesses,
             packageId: pkg.id,
           };
@@ -164,7 +263,8 @@ function slashCommandsFromPackages(packages) {
         addCommand(commands, seen, {
           name: resource.name,
           kind: "standalone",
-          description: resource.description || pkg.description,
+          description: resource.description,
+          packageDescription: pkg.description,
           sourceAbs: path.join(pkg.sourceRoot, resource.source),
           harnesses: resource.harnesses,
           packageId: pkg.id,
@@ -178,6 +278,9 @@ function slashCommandsFromPackages(packages) {
 function addCommand(commands, seen, command, packageId) {
   if (seen.has(command.name)) throw new Error(`duplicate slash command from packages: ${command.name}`);
   seen.add(command.name);
+  // Resolve the agent-facing description here (after source paths exist): SKILL.md frontmatter is
+  // the single source of truth unless the entrypoint carries a genuinely different override.
+  command.description = commandDescription(command);
   if (!command.description || command.description.includes("\n")) {
     throw new Error(`${packageId}: /${command.name} needs a one-line description`);
   }

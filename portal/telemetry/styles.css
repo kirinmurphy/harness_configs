@@ -8,17 +8,30 @@
      marker-comparison tiles). Vertical padding only (longhand) so it never zeroes a horizontal
      gutter; nested in a panel it has no .inner and correctly gets 0 side inset from here. */
   .stat-row { display:flex; flex-wrap:wrap; gap:20px; padding-top:12px; padding-bottom:12px; }
-  /* Page frame: subtle count line (left) + mark-change CTA (right) on one row. .inner carries the
-     side gutter. Wraps to stacked on narrow screens, CTA below the counts. */
-  .page-frame { display:flex; align-items:center; justify-content:space-between; gap:var(--space-md);
-    flex-wrap:wrap; padding-top:12px; padding-bottom:12px; }
-  .frame-counts { color:var(--dim); font-size:var(--text-2xs); font-variant-numeric:tabular-nums;
-    letter-spacing:.02em; }
+  /* Mark-change banner: full-width panel-grade strip that answers "why would I press this" —
+     instruction left, CTA right. Same card chrome as .panel so it reads as a peer of the report
+     panels, but placed above the chart tier since marking is an input, not an output. The
+     frame-of-reference counts (#meta) ride at the bottom of the copy column at low prominence. */
+  .markchange-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+    background: var(--panel);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .markchange-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .markchange-head { color: var(--ink); font-size: var(--text-sm); font-weight: 600; }
+  .markchange-desc { color: var(--dim); font-size: var(--text-xs); max-width: 60ch; }
+  .frame-counts { color: var(--dim); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
   @media (max-width: 560px) {
-    /* Stack counts over a full-width CTA — same clear tap-target intent the old .page-actions
-       block had for #openmarkermodal at narrow widths. */
-    .page-frame { flex-direction:column; align-items:stretch; }
-    .page-frame [data-btn="cta"] { width:100%; }
+    /* Stack copy over a full-width CTA — same clear tap-target intent the old .page-frame block
+       had for #openmarkermodal at narrow widths. */
+    .markchange-banner { flex-direction: column; align-items: stretch; }
+    .markchange-banner [data-btn="cta"] { width: 100%; }
   }
   .stat-item { display:flex; flex-direction:column; gap:2px; }
   .stat-label { color:var(--dim); font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.06em; }
@@ -38,7 +51,10 @@
   .quality-issues li { margin:2px 0; }
   main { padding-top:20px; padding-bottom:20px; display:grid; gap:20px; }
   .panel h2 { font-size:var(--text-xs); text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 12px; }
-  .sectionhead { font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.1em; color:var(--accent); margin:18px 0 0; font-weight:700; padding-top:14px; border-top:1px solid var(--line); }
+  /* main is a 20px grid, so the sectionhead rides on that gap: no own margin-top, just a small
+     padding-top around its border. (Previously margin 18px + padding 14px stacked on top of the
+     grid gap — ~52px before the heading, visibly looser than every other panel separation.) */
+  .sectionhead { font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.1em; color:var(--accent); margin:0; font-weight:700; padding-top:6px; border-top:1px solid var(--line); }
   .sectionhead:first-of-type { border-top:none; padding-top:0; margin-top:0; }
   .sectionhead .sub { color:var(--dim); text-transform:none; letter-spacing:0; font-weight:400; margin-left:8px; }
   .go { color:var(--accent); font-size:var(--text-2xs); opacity:0; transition:opacity .1s; }
@@ -71,14 +87,17 @@
   .insight .next-line { display:block; }
   .insight .next-action { color:var(--next-ink); }
   #deepreadout { white-space:pre-wrap; font-size:var(--text-xs); color:var(--ink); }
-  .detailsblock { border-top:1px solid var(--line); padding-top:8px; }
+  /* detailsblock is a grid so its opened panels get the SAME 20px rhythm as main's own gap —
+     as plain block children they butted together with zero space between section summaries.
+     The [open] summary's margin-bottom is dropped: the grid gap already provides the separation,
+     and the two stacked (32px) read as loose next to every other panel spacing on the page. */
+  .detailsblock { border-top:1px solid var(--line); padding-top:8px; display:grid; gap:20px; align-content:start; }
   .detailsblock > summary { font-size:var(--text-2xs); text-transform:uppercase; letter-spacing:.1em; color:var(--dim); font-weight:700; cursor:pointer; padding:6px 0; list-style:none; }
   .detailsblock > summary::-webkit-details-marker { display:none; }
   .detailsblock > summary::before { content:"▸ "; color:var(--accent); }
   .detailsblock[open] > summary::before { content:"▾ "; }
   .detailsblock > summary:hover { color:var(--ink); }
   .detailsblock > summary .sub { text-transform:none; letter-spacing:0; font-weight:400; margin-left:8px; }
-  .detailsblock[open] > summary { margin-bottom:12px; }
   #insightspanel h2 { color:var(--accent); }
   .chartwrap { position:relative; }
   canvas { width:100%; height:280px; display:block; cursor:crosshair; }

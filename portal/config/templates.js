@@ -4,7 +4,7 @@
 
 import { portalTpl as tpl, portalFillSlots as fill } from "/portal/shared/api.js";
 import { presentedHarnesses } from "/portal/shared/harness-cohort.js";
-import { configOnboardingNotice } from "./onboarding-state.js";
+import { harnessWarningElement } from "/portal/shared/harness-warning.js";
 import {
   resolveDriftChip,
   harnessChipSpec,
@@ -252,6 +252,19 @@ export function storesSection(section) {
   const panel = tpl("tpl-stores-section");
   panel.querySelector('[data-slot="description"]').textContent = section.description || "";
   panel.querySelector('[data-slot="rows"]').replaceChildren(...section.items.map(storeRow));
+  // Collapsed by default: store paths are diagnostics, not daily controls — the same
+  // show/hide-with-count pattern the Permissions section uses for its defaults list.
+  const rows = panel.querySelector('[data-slot="rows"]');
+  const toggle = panel.querySelector('[data-slot="stores-toggle"]');
+  const setOpen = (open) => {
+    rows.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.textContent = open
+      ? `Hide stores (${section.items.length})`
+      : `Show stores (${section.items.length})`;
+  };
+  setOpen(false);
+  toggle.addEventListener("click", () => setOpen(rows.hidden));
   return panel;
 }
 
@@ -325,14 +338,17 @@ export function contextWarnings(snap) {
   return panel;
 }
 
-export function onboardingNotice(snap) {
-  const notice = configOnboardingNotice(snap);
-  if (!notice) return null;
-  const panel = tpl("tpl-config-onboarding-notice");
-  panel.setAttribute("variant", notice.variant);
-  panel.querySelector("[data-slot=title]").textContent = notice.title;
-  panel.querySelector("[data-slot=body]").textContent = notice.body;
-  return panel;
+// The "install a supported harness" warning banner — rendered from the SHARED module
+// (harness-warning.js + tpl-harness-warning) so /config and /tokens can never drift. Null when
+// the machine has at least one active harness.
+export function harnessWarning(snap) {
+  return harnessWarningElement(snap);
+}
+
+// Persistent intro above the package sections. Always rendered (not an ephemeral onboarding
+// banner) — it explains what the package manager provides, whatever the onboarding state.
+export function packagesIntro() {
+  return tpl("tpl-packages-intro");
 }
 
 function wireInspectButton(btn, kind, id, harness, label, onInspectClick) {

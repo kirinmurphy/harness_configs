@@ -279,7 +279,7 @@ test.describe("portal home (portal-onboarding-home)", () => {
         };
       });
 
-    // Tab through the five nav destinations: Home, Agents, Plans, Tokens, Localhost.
+    // Tab through the nav destinations, in NAV_ORDER.
     for (const expected of NAV_ORDER) {
       await page.keyboard.press("Tab");
       const focused = await focusSummary();

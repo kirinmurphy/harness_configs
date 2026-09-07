@@ -103,13 +103,17 @@ export function deriveInsights(report) {
   }
 
   // --- regression: a group that got more expensive over time -----------------------------------
+  // Trigger stays on per-call cost (a ≥50% jump is unambiguous), but the HEADLINE speaks in share
+  // of tool tokens — the unit the rest of the report uses — with the raw per-call move as detail.
   const reg = (report.regression?.groups || []).filter((g) => g.delta_tokens > 0 && g.after_calls >= MIN_CALLS / 2);
   const worstReg = reg.sort((a, b) => b.delta_tokens - a.delta_tokens)[0];
   if (worstReg && worstReg.before_avg_tokens > 0 && worstReg.delta_tokens / worstReg.before_avg_tokens >= 0.5) {
+    const beforeShare = Math.round((worstReg.before_share ?? 0) * 100);
+    const afterShare = Math.round((worstReg.after_share ?? 0) * 100);
     out.push({
       severity: "warn",
-      headline: `${worstReg.group} got ${fmt(worstReg.delta_tokens)} tok/call more expensive in the later half`,
-      detail: `${fmt(worstReg.before_avg_tokens)} → ${fmt(worstReg.after_avg_tokens)} tok/call — something recent made it heavier`,
+      headline: `${worstReg.group} now takes ${afterShare}% of tool tokens, up from ${beforeShare}% in the earlier half`,
+      detail: `${fmt(worstReg.before_avg_tokens)} → ${fmt(worstReg.after_avg_tokens)} tok/call — the calls themselves got ${pct(worstReg.delta_tokens / worstReg.before_avg_tokens)}% heavier`,
       metric: worstReg.delta_tokens,
       kind: "midpoint_regression",
       sample_size: worstReg.before_calls + worstReg.after_calls,

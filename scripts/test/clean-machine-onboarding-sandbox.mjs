@@ -163,6 +163,9 @@ echo "fake claude"
 SH
 chmod +x "/tmp/rr-case8-fakebin/claude"
 export PATH="/tmp/rr-case8-fakebin:$PATH"
+# Shipped providers require 'confirmed' confidence: a validated executable AND a home dir. The
+# fake shim alone is executable-only (probable); a real install would have created ~/.claude too.
+mkdir -p "$HOME/.claude"
 web_port=14321
 roborepo web --no-open --port "$web_port" --detach >/tmp/rr-case8-web.log 2>&1
 test -f "$state/initialization.json" || { echo "FAIL: first-run web did not write an initialization record" >&2; exit 1; }
@@ -256,12 +259,16 @@ echo "fake claude"
 SH
 chmod +x "/tmp/rr-case12-fakebin/claude"
 export PATH="/tmp/rr-case12-fakebin:$PATH"
+# Shipped providers require 'confirmed' confidence: a validated executable AND a home dir.
+mkdir -p "$HOME/.claude"
 roborepo init
 cp "$state/initialization.json" /tmp/rr-case12-init-record.json
 cp "$state/harnesses/state.json" /tmp/rr-case12-init-harness.json
 
 fresh_env case12b
 export PATH="/tmp/rr-case12-fakebin:$PATH"
+# Same confirmed-confidence requirement as case12a: executable + home dir.
+mkdir -p "$HOME/.claude"
 web_port=14324
 roborepo web --no-open --port "$web_port" --detach >/tmp/rr-case12-web.log 2>&1
 roborepo web stop --port "$web_port" >/dev/null 2>&1 || true

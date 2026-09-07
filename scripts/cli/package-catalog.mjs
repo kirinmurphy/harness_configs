@@ -232,10 +232,17 @@ function normalizePackage(pkg, { file, root, origin }) {
   }
   const presentation = normalizePresentation(pkg);
   const resources = normalizeResources(pkg.resources, { pkgId: pkg.id, file, root });
+  // Self-declared behavior capabilities (e.g. "doc-lookup", "code-lookup") — how consumers match
+  // this package to a telemetry hint WITHOUT hardcoding its id. Optional and unvalidated by
+  // design: an unrecognized capability is inert, never an install error.
+  const capabilities = Array.isArray(pkg.capabilities)
+    ? pkg.capabilities.filter((c) => typeof c === "string" && c.trim()).map((c) => c.trim())
+    : [];
   return {
     ...pkg,
     lifecycle,
     defaultEnabled: pkg.defaultEnabled === true,
+    capabilities,
     presentation,
     requires: Array.isArray(pkg.requires) ? [...pkg.requires] : [],
     resources,
@@ -331,8 +338,13 @@ function normalizeSlashEntrypoint(entrypoint, pkgId, skillId) {
   if (!entrypoint || entrypoint.type !== "slash-command") throw new Error(`${pkgId}:${skillId} entrypoint must be slash-command`);
   const name = String(entrypoint.name || "").replace(/^\//, "");
   if (!isSlug(name)) throw new Error(`${pkgId}:${skillId} entrypoint has invalid command name`);
-  const description = String(entrypoint.description || "").trim();
-  if (!description || description.includes("\n")) throw new Error(`${pkgId}:/${name} needs one-line description`);
+  // Description is optional here: when absent (or left as a copy of the package description), the
+  // generated command falls back to the skill's SKILL.md frontmatter — the agent-facing single
+  // source of truth. A genuinely different override may still be set explicitly.
+  const description = entrypoint.description === undefined ? undefined : String(entrypoint.description).trim() || undefined;
+  if (description !== undefined && (description.includes("\n") || description === "")) {
+    throw new Error(`${pkgId}:/${name} needs a one-line description`);
+  }
   validateHarnesses(entrypoint.harnesses, `${pkgId}:/${name}`, { requiredCapability: "slash-commands" });
   return { ...entrypoint, name, description };
 }
